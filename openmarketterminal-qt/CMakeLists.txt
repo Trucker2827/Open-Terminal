@@ -1160,6 +1160,7 @@ set(SERVICE_SOURCES
     src/services/ma_analytics/MAAnalyticsService.cpp
     src/services/geopolitics/GeopoliticsService.cpp
     src/services/maritime/MaritimeService.cpp
+    src/services/maritime/AisStreamFeed.cpp
     src/services/maritime/PortsCatalog.cpp
     src/services/maritime/GeocodingService.cpp
     src/services/ai_quant_lab/AIQuantLabService.cpp

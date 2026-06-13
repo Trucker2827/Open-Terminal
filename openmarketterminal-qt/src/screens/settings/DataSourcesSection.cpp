@@ -176,6 +176,10 @@ QWidget* DataSourcesSection::build_content() {
         add_row(tr("MARITIME / AIS URL"), QStringLiteral("connectors.maritime_url"),
                 tr("e.g. http://127.0.0.1:8900"),
                 tr("Optional self-hosted AIS/maritime proxy. Blank = disabled (no network)."));
+        add_row(tr("AISSTREAM.IO API KEY"), QStringLiteral("connectors.aisstream_key"),
+                tr("free key from aisstream.io"),
+                tr("Free key from aisstream.io — enables the live vessel feed (positions/speed/course). "
+                   "Blank = maritime stays empty (no network)."));
 
         vl->addWidget(panel);
         vl->addSpacing(4);

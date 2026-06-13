@@ -42,6 +42,7 @@ class MaritimeVesselsWidget : public BaseWidget {
     void build_rows();
     void clear_rows();
     void on_vessel(const QString& imo, const QVariant& v);
+    void on_area(const QVariant& v);  // live AISStream vessel page
     void hub_resubscribe();
     void hub_unsubscribe_all();
 

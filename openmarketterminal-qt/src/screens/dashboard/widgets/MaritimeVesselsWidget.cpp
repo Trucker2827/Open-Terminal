@@ -1,6 +1,7 @@
 #include "screens/dashboard/widgets/MaritimeVesselsWidget.h"
 
 #include "datahub/DataHub.h"
+#include "services/maritime/AisStreamFeed.h"
 #include "services/maritime/MaritimeTypes.h"
 #include "ui/theme/Theme.h"
 
@@ -181,17 +182,84 @@ void MaritimeVesselsWidget::build_rows() {
 void MaritimeVesselsWidget::hub_resubscribe() {
     auto& hub = datahub::DataHub::instance();
     hub.unsubscribe(this);
+
+    // Live AIS feed (AISStream.io, if a key is configured): a rolling page of
+    // real vessels currently transmitting. This is the primary source — it
+    // replaces the per-IMO rows with live traffic when available.
+    services::maritime::AisStreamFeed::instance().start();
+    const QString area_topic = QStringLiteral("maritime:vessels:area");
+    hub.subscribe(this, area_topic, [this](const QVariant& v) { on_area(v); });
+    const QVariant cached_area = hub.peek(area_topic);
+    if (cached_area.isValid())
+        on_area(cached_area);
+
+    // Per-IMO fallback (e.g. a configured AIS proxy that resolves specific IMOs).
     for (const auto& imo : imos_) {
         const QString topic = QStringLiteral("maritime:vessel:") + imo;
         const QString imo_copy = imo;
         hub.subscribe(this, topic, [this, imo_copy](const QVariant& v) { on_vessel(imo_copy, v); });
-
-        // Seed from cache so existing data shows immediately.
         const QVariant cached = hub.peek(topic);
         if (cached.isValid())
             on_vessel(imo, cached);
     }
     hub_active_ = true;
+}
+
+// Render the live AIS vessel page (overrides the per-IMO rows). AIS carries
+// position/speed/course/destination but not origin or route %, so those columns
+// stay "—" rather than showing fabricated values.
+void MaritimeVesselsWidget::on_area(const QVariant& v) {
+    using services::maritime::VesselsPage;
+    if (!v.canConvert<VesselsPage>())
+        return;
+    const VesselsPage page = v.value<VesselsPage>();
+    if (page.vessels.isEmpty())
+        return;
+
+    clear_rows();
+    const int shown = qMin(page.vessels.size(), 12);
+    bool alt = false;
+    for (int i = 0; i < shown; ++i) {
+        const auto& vd = page.vessels[i];
+        auto* row = new QWidget(this);
+        row->setStyleSheet(QString("background: %1;").arg(alt ? ui::colors::BG_RAISED() : "transparent"));
+        auto* rl = new QHBoxLayout(row);
+        rl->setContentsMargins(8, 4, 8, 4);
+
+        Row r;
+        r.container = row;
+        r.name = new QLabel(vd.name.isEmpty() ? QStringLiteral("—") : vd.name);
+        r.name->setStyleSheet(QString("color:%1;font-size:10px;font-weight:bold;background:transparent;")
+                                  .arg(ui::colors::TEXT_PRIMARY()));
+        rl->addWidget(r.name, 3);
+
+        QString to = vd.to_port.trimmed();
+        if (to.length() > 16) to = to.left(15) + QStringLiteral("…");
+        r.route = new QLabel(to.isEmpty() ? QStringLiteral("—")
+                                          : (QStringLiteral("→ ") + to));
+        r.route->setStyleSheet(QString("color:%1;font-size:9px;background:transparent;")
+                                   .arg(ui::colors::TEXT_SECONDARY()));
+        rl->addWidget(r.route, 4);
+
+        r.speed = new QLabel(QString::number(vd.speed, 'f', 1));
+        r.speed->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        r.speed->setStyleSheet(QString("color:%1;font-size:10px;font-weight:bold;background:transparent;")
+                                   .arg(ui::colors::TEXT_PRIMARY()));
+        rl->addWidget(r.speed, 1);
+
+        // Course over ground (°) — AIS gives heading, not route progress.
+        r.progress = new QLabel(QString::number(vd.angle, 'f', 0) + QStringLiteral("°"));
+        r.progress->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        r.progress->setStyleSheet(QString("color:%1;font-size:9px;background:transparent;")
+                                      .arg(ui::colors::CYAN()));
+        rl->addWidget(r.progress, 1);
+
+        list_layout_->addWidget(row);
+        rows_.insert(QString::number(i), r);  // index-keyed; live rows rebuild wholesale
+        alt = !alt;
+    }
+    list_layout_->addStretch();
+    set_loading(false);
 }
 
 void MaritimeVesselsWidget::hub_unsubscribe_all() {
