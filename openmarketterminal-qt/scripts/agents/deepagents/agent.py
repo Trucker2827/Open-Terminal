@@ -53,18 +53,59 @@ class OpenMarketTerminalContext:
 # MCP tool wrappers — LangChain BaseTool instances wrapping OpenMarketTerminal capabilities
 # ---------------------------------------------------------------------------
 
+import json as _json
+import re as _re
+
+
+def _extract_tickers(query: str):
+    """Pull candidate ticker symbols out of a free-text query."""
+    toks = _re.findall(r"\b[A-Z][A-Z.\-]{0,5}\b", query or "")
+    stop = {"USD", "OHLCV", "CEO", "IPO", "ETF", "GDP", "CPI", "FED", "US", "EPS",
+            "PE", "AI", "Q1", "Q2", "Q3", "Q4", "YTD", "NYSE", "NASDAQ", "EU", "UK"}
+    cands = [t for t in toks if t not in stop]
+    if not cands and query and query.strip():
+        cands = [query.strip().split()[0].upper()]
+    return cands[:5]
+
+
 def _make_market_data_tool() -> BaseTool:
     @tool
     def market_data(query: str) -> str:
         """
-        Fetch market data for a symbol or query.
-        Input: symbol name, query like 'AAPL price', 'BTC/USD OHLCV', or 'top gainers'.
-        Returns: JSON string with market data.
+        Fetch LIVE market data for a symbol or query.
+        Input: symbol name, query like 'AAPL price', 'NVDA quote', 'MSFT OHLCV'.
+        Returns: JSON string with real current market data from Yahoo Finance.
         """
-        # Honesty: this tool has no real data source in standalone mode. Return an
-        # explicit unavailable marker so the agent never presents fabricated data as real.
-        return ('{"available": false, "error": "market_data tool is not connected to a real '
-                'data source in this context. No data was returned."}')
+        try:
+            import yfinance as yf
+        except Exception:
+            return _json.dumps({"available": False, "error": "yfinance not available in this environment."})
+        tickers = _extract_tickers(query)
+        if not tickers:
+            return _json.dumps({"available": False, "error": "Could not identify a ticker symbol in the query."})
+        out = {}
+        for sym in tickers:
+            try:
+                t = yf.Ticker(sym)
+                hist = t.history(period="5d", auto_adjust=True)
+                if hist is None or hist.empty:
+                    continue
+                last = float(hist["Close"].iloc[-1])
+                prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else None
+                out[sym] = {
+                    "last_price": round(last, 4),
+                    "prev_close": round(prev, 4) if prev else None,
+                    "change_pct": round((last / prev - 1) * 100, 2) if prev else None,
+                    "day_high": round(float(hist["High"].iloc[-1]), 4),
+                    "day_low": round(float(hist["Low"].iloc[-1]), 4),
+                    "volume": int(hist["Volume"].iloc[-1]),
+                    "as_of": str(hist.index[-1].date()),
+                }
+            except Exception:
+                continue
+        if not out:
+            return _json.dumps({"available": False, "error": f"No market data found for {tickers}."})
+        return _json.dumps({"available": True, "source": "yahoo_finance", "data": out})
     return market_data
 
 
@@ -72,14 +113,18 @@ def _make_portfolio_tool() -> BaseTool:
     @tool
     def portfolio_data(query: str) -> str:
         """
-        Access portfolio positions, P&L, and allocation data.
+        Access the user's portfolio positions, P&L, and allocation.
         Input: query like 'current positions', 'portfolio P&L', 'sector allocation'.
         Returns: JSON string with portfolio data.
         """
-        # Honesty: this tool has no real data source in standalone mode. Return an
-        # explicit unavailable marker so the agent never presents fabricated data as real.
-        return ('{"available": false, "error": "portfolio_data tool is not connected to a real '
-                'data source in this context. No data was returned."}')
+        # Honesty: a standalone research agent has no access to the user's live
+        # portfolio (it lives in the app's session/database, not here). Report that
+        # plainly rather than fabricate positions.
+        return _json.dumps({
+            "available": False,
+            "error": ("portfolio_data requires the running app's portfolio session and is not "
+                      "accessible to this standalone agent. No positions were returned."),
+        })
     return portfolio_data
 
 
@@ -87,29 +132,101 @@ def _make_news_tool() -> BaseTool:
     @tool
     def financial_news(query: str) -> str:
         """
-        Fetch recent financial news articles for a topic or symbol.
-        Input: topic, company name, or symbol like 'AAPL earnings', 'Fed rate decision'.
-        Returns: JSON string with news headlines and summaries.
+        Fetch recent REAL financial news for a company or symbol.
+        Input: company name or symbol like 'AAPL earnings', 'NVDA', 'Tesla'.
+        Returns: JSON string with real recent headlines from Yahoo Finance.
         """
-        # Honesty: this tool has no real data source in standalone mode. Return an
-        # explicit unavailable marker so the agent never presents fabricated data as real.
-        return ('{"available": false, "error": "financial_news tool is not connected to a real '
-                'data source in this context. No data was returned."}')
+        try:
+            import yfinance as yf
+        except Exception:
+            return _json.dumps({"available": False, "error": "yfinance not available in this environment."})
+        tickers = _extract_tickers(query)
+        if not tickers:
+            return _json.dumps({"available": False, "error": "Could not identify a ticker symbol for news."})
+        items = []
+        for sym in tickers[:2]:
+            try:
+                for n in (yf.Ticker(sym).news or [])[:5]:
+                    c = n.get("content", n)  # newer yfinance nests under 'content'
+                    title = c.get("title")
+                    if not title:
+                        continue
+                    prov = c.get("provider")
+                    canon = c.get("canonicalUrl")
+                    items.append({
+                        "ticker": sym,
+                        "title": title,
+                        "publisher": prov.get("displayName") if isinstance(prov, dict) else c.get("publisher"),
+                        "published": c.get("pubDate") or c.get("providerPublishTime"),
+                        "url": canon.get("url") if isinstance(canon, dict) else c.get("link"),
+                    })
+            except Exception:
+                continue
+        if not items:
+            return _json.dumps({"available": False, "error": f"No recent news found for {tickers}."})
+        return _json.dumps({"available": True, "source": "yahoo_finance", "articles": items})
     return financial_news
+
+
+# Market-based macro proxies reachable via Yahoo (yields, vol, FX, commodities, indices).
+_MACRO_PROXIES = {
+    "^TNX": ("10-Year Treasury Yield", ["10 year", "10-year", "treasury", "yield curve", "yields", "tnx"]),
+    "^FVX": ("5-Year Treasury Yield", ["5 year", "5-year", "fvx"]),
+    "^IRX": ("13-Week T-Bill Rate", ["13 week", "t-bill", "short rate", "irx", "fed funds", "fed rate"]),
+    "^VIX": ("CBOE Volatility Index (VIX)", ["vix", "volatility", "fear"]),
+    "DX-Y.NYB": ("US Dollar Index (DXY)", ["dollar", "dxy", "usd index"]),
+    "GC=F": ("Gold Futures", ["gold"]),
+    "CL=F": ("Crude Oil Futures (WTI)", ["oil", "crude", "wti"]),
+    "^GSPC": ("S&P 500 Index", ["s&p", "sp500", "s and p"]),
+    "^IXIC": ("Nasdaq Composite", ["nasdaq"]),
+    "^DJI": ("Dow Jones Industrial Average", ["dow"]),
+}
 
 
 def _make_economics_tool() -> BaseTool:
     @tool
     def economics_data(query: str) -> str:
         """
-        Fetch macroeconomic indicators and central bank data.
-        Input: indicator name like 'US GDP', 'CPI inflation', 'Fed funds rate', 'yield curve'.
-        Returns: JSON string with economic data.
+        Fetch LIVE market-based macro indicators: Treasury yields, the VIX, the US
+        dollar index, gold/oil, and major equity indices.
+        Input: indicator like 'yield curve', '10-year treasury', 'VIX', 'dollar', 'gold', 'oil'.
+        Returns: JSON with real current values. Official statistics (CPI, GDP,
+        unemployment) require a FRED API key and are not available here.
         """
-        # Honesty: this tool has no real data source in standalone mode. Return an
-        # explicit unavailable marker so the agent never presents fabricated data as real.
-        return ('{"available": false, "error": "economics_data tool is not connected to a real '
-                'data source in this context. No data was returned."}')
+        try:
+            import yfinance as yf
+        except Exception:
+            return _json.dumps({"available": False, "error": "yfinance not available in this environment."})
+        q = (query or "").lower()
+        matched = [(sym, name) for sym, (name, kws) in _MACRO_PROXIES.items()
+                   if any(k in q for k in kws)]
+        if not matched:
+            official = any(k in q for k in ("cpi", "inflation", "gdp", "unemployment", "payroll", "jobs"))
+            return _json.dumps({
+                "available": False,
+                "error": ("No market-based macro proxy matched this query."
+                          + (" Official statistics (CPI/GDP/unemployment) require a FRED API key, "
+                             "which is not configured for this agent." if official else "")),
+                "supported": [name for _, (name, _k) in _MACRO_PROXIES.items()],
+            })
+        out = {}
+        for sym, name in matched:
+            try:
+                hist = yf.Ticker(sym).history(period="5d")
+                if hist is None or hist.empty:
+                    continue
+                last = float(hist["Close"].iloc[-1])
+                prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else None
+                out[name] = {
+                    "value": round(last, 4),
+                    "change_pct": round((last / prev - 1) * 100, 2) if prev else None,
+                    "as_of": str(hist.index[-1].date()),
+                }
+            except Exception:
+                continue
+        if not out:
+            return _json.dumps({"available": False, "error": "Could not fetch the matched macro indicators."})
+        return _json.dumps({"available": True, "source": "yahoo_finance", "note": "market-based proxies", "data": out})
     return economics_data
 
 
