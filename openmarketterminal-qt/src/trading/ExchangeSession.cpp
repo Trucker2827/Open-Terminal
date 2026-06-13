@@ -3,7 +3,6 @@
 #include "core/logging/Logger.h"
 #include "python/PythonRunner.h"
 #include "storage/secure/SecureStorage.h"
-#include "trading/BrokerRegistry.h"
 #include "trading/ExchangeDaemonPool.h"
 
 #include <QThread>
@@ -35,26 +34,6 @@ QString session_resolve_script_path(const QString& relative) {
     return dir + "/" + relative;
 }
 
-bool session_is_broker_stream(const QString& id) {
-    return openmarketterminal::trading::BrokerRegistry::instance().has(id);
-}
-
-QStringList session_to_broker_symbol_args(const QStringList& symbols) {
-    QStringList out;
-    out.reserve(symbols.size());
-    for (const auto& s : symbols) {
-        QString sym = s.trimmed();
-        if (sym.isEmpty())
-            continue;
-        QString exchange = "NSE";
-        if (sym.contains(':')) {
-            exchange = sym.section(':', 0, 0).trimmed().toUpper();
-            sym = sym.section(':', 1).trimmed();
-        }
-        out << (sym + ":" + exchange + ":0");
-    }
-    return out;
-}
 } // namespace
 
 ExchangeSession::ExchangeSession(const QString& exchange_id, SessionPublisher publisher, QObject* parent)
@@ -195,58 +174,16 @@ bool ExchangeSession::start_ws(const QString& primary_symbol, const QStringList&
     ws_all_symbols_ = all_symbols;
 
     const QString python_path = python::PythonRunner::instance().python_path();
-    QString script_path;
     QStringList args;
 
-    if (session_is_broker_stream(exchange_id_)) {
-        script_path = session_resolve_script_path("exchange/broker_ws_bridge.py");
-        if (python_path.isEmpty() || script_path.isEmpty()) {
-            LOG_ERROR(kSessionTag, "Python or broker_ws_bridge.py not found");
-            return false;
-        }
-        auto* broker = BrokerRegistry::instance().get(exchange_id_);
-        if (!broker) {
-            LOG_ERROR(kSessionTag, "Broker stream requested but broker is not registered: " + exchange_id_);
-            return false;
-        }
-        auto creds = broker->load_credentials();
-        if (creds.api_key.isEmpty() || creds.access_token.isEmpty()) {
-            LOG_ERROR(kSessionTag, "Broker stream credentials missing for " + exchange_id_);
-            return false;
-        }
-        QString feed_token;
-        QString user_id = creds.user_id;
-        if (!creds.additional_data.isEmpty()) {
-            const auto ad = QJsonDocument::fromJson(creds.additional_data.toUtf8()).object();
-            if (user_id.isEmpty())
-                user_id = ad.value("client_code").toString();
-            feed_token = ad.value("feed_token").toString();
-        }
-        if (user_id.isEmpty())
-            user_id = creds.api_key;
-
-        QStringList broker_symbols = session_to_broker_symbol_args(all_symbols);
-        if (broker_symbols.isEmpty())
-            broker_symbols = session_to_broker_symbol_args({primary_symbol});
-        if (broker_symbols.isEmpty()) {
-            LOG_ERROR(kSessionTag, "No symbols provided for broker websocket stream");
-            return false;
-        }
-        args << "-u" << "-B" << script_path << exchange_id_ << creds.api_key << creds.access_token << user_id;
-        if (!feed_token.isEmpty())
-            args << "--feed-token" << feed_token;
-        args << "--symbols";
-        args.append(broker_symbols);
-    } else {
-        script_path = session_resolve_script_path("exchange/ws_stream.py");
-        if (python_path.isEmpty() || script_path.isEmpty()) {
-            LOG_ERROR(kSessionTag, "Python or ws_stream.py not found");
-            return false;
-        }
-        args << "-u" << "-B" << script_path << exchange_id_;
-        for (const auto& sym : all_symbols)
-            args << sym;
+    const QString script_path = session_resolve_script_path("exchange/ws_stream.py");
+    if (python_path.isEmpty() || script_path.isEmpty()) {
+        LOG_ERROR(kSessionTag, "Python or ws_stream.py not found");
+        return false;
     }
+    args << "-u" << "-B" << script_path << exchange_id_;
+    for (const auto& sym : all_symbols)
+        args << sym;
 
     ws_process_ = new QProcess(this);
     connect(ws_process_, &QProcess::readyReadStandardOutput, this, &ExchangeSession::drain_ws_buffer);
@@ -298,9 +235,8 @@ void ExchangeSession::set_ws_primary_symbol(const QString& symbol) {
     // Re-point the live stream in place — ws_stream.py switches its
     // orderbook/trades/ohlc tasks to the new primary (stdin command) without
     // dropping the watchlist ticker streams. Fall back to a relaunch only if
-    // the process isn't up yet, or this is a broker bridge (no cmd protocol).
-    if (ws_process_ && ws_process_->state() != QProcess::NotRunning &&
-        !session_is_broker_stream(exchange_id_)) {
+    // the process isn't up yet.
+    if (ws_process_ && ws_process_->state() != QProcess::NotRunning) {
         QJsonObject cmd;
         cmd[QStringLiteral("cmd")] = QStringLiteral("set_primary");
         cmd[QStringLiteral("symbol")] = symbol;
@@ -317,8 +253,7 @@ void ExchangeSession::set_ws_primary_symbol(const QString& symbol) {
 
 void ExchangeSession::set_ws_timeframe(const QString& timeframe) {
     // Re-point only the OHLC stream to a new chart timeframe, in place.
-    if (!ws_process_ || ws_process_->state() == QProcess::NotRunning ||
-        session_is_broker_stream(exchange_id_))
+    if (!ws_process_ || ws_process_->state() == QProcess::NotRunning)
         return;
     QJsonObject cmd;
     cmd[QStringLiteral("cmd")] = QStringLiteral("set_timeframe");
