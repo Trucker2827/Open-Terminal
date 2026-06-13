@@ -275,6 +275,29 @@ void GeopoliticsService::fetch_unique_cities() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// RELATIONSHIP NETWORK — Python → GDELT Events 2.0 (CAMEO)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void GeopoliticsService::fetch_event_network() {
+    run_python("geopolitics/gdelt_events_network.py", {}, "event_network",
+               [this](bool ok, const QString& out) {
+                   if (!ok) {
+                       emit error_occurred("event_network", out);
+                       return;
+                   }
+                   const auto obj = QJsonDocument::fromJson(python::extract_json(out).toUtf8()).object();
+                   if (!obj.value("ok").toBool()) {
+                       emit error_occurred("event_network",
+                                           obj.value("error").toString(QStringLiteral("GDELT network unavailable")));
+                       return;
+                   }
+                   emit event_network_loaded(obj);
+                   if (hub_registered_)
+                       publish_to_hub(QStringLiteral("geopolitics:network"), QVariant(obj));
+               });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HDX HUMANITARIAN DATA — Python
 // ═══════════════════════════════════════════════════════════════════════════════
 

@@ -55,6 +55,11 @@ class GeopoliticsService : public QObject
     // ── Geolocation (Python) ────────────────────────────────────────────────
     void extract_geolocations(const QStringList& headlines);
 
+    // ── Relationship network (Python → GDELT Events 2.0 / CAMEO) ────────────
+    // Aggregates the latest GDELT event exports into directed actor→actor
+    // (country→country) edges with Goldstein conflict/cooperation intensity.
+    void fetch_event_network();
+
   signals:
     void events_loaded(openmarketterminal::services::geo::EventsPage page);
     void countries_loaded(QVector<openmarketterminal::services::geo::UniqueCountry> countries);
@@ -63,6 +68,7 @@ class GeopoliticsService : public QObject
     void hdx_results_loaded(QString context, QVector<openmarketterminal::services::geo::HDXDataset> datasets);
     void trade_result_ready(QString context, QJsonObject data);
     void geolocation_ready(QJsonObject data);
+    void event_network_loaded(QJsonObject data);
     void error_occurred(QString context, QString message);
 
   private:

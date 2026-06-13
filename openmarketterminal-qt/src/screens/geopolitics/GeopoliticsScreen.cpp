@@ -158,6 +158,10 @@ void GeopoliticsScreen::build_ui() {
     content_stack_->addWidget(trade_panel_);
     body->addWidget(content_stack_, 1);
 
+    // Feed the relationship network with live GDELT actor→actor events.
+    connect(&GeopoliticsService::instance(), &GeopoliticsService::event_network_loaded,
+            relationship_panel_, &RelationshipPanel::set_event_network);
+
     auto* body_w = new QWidget(this);
     body_w->setLayout(body);
     root->addWidget(body_w, 1);
@@ -467,6 +471,13 @@ void GeopoliticsScreen::on_tab_changed(int index) {
     if (content_stack_)
         content_stack_->setCurrentIndex(index);
     ScreenStateManager::instance().notify_changed(this);
+
+    // Relationship tab (index 2): fetch the live GDELT actor→actor network on
+    // first view (the download is a few MB, so we don't re-pull on every switch).
+    if (index == 2 && !network_requested_) {
+        network_requested_ = true;
+        GeopoliticsService::instance().fetch_event_network();
+    }
 
     const QStringList colors = {ui::colors::NEGATIVE, ui::colors::CYAN, ui::colors::INFO, ui::colors::WARNING};
     for (int i = 0; i < tab_buttons_.size(); ++i) {

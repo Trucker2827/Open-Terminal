@@ -92,6 +92,7 @@ class GeopoliticsScreen : public QWidget, public IStatefulScreen {
     // Tab buttons
     QVector<QPushButton*> tab_buttons_;
     int active_tab_ = 0;
+    bool network_requested_ = false;  // GDELT relationship network fetched once
 
     // Status
     QLabel* event_count_label_ = nullptr;
