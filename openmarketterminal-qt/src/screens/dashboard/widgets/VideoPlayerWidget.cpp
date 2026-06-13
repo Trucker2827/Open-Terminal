@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QProcessEnvironment>
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QUrl>
@@ -296,7 +297,19 @@ void VideoPlayerWidget::resolve_youtube_and_play(const QString& youtube_url, con
     connect(proc, &QProcess::finished, proc, &QProcess::deleteLater);
     connect(proc, &QProcess::errorOccurred, this, &VideoPlayerWidget::on_ytdlp_error);
 
-    // -f bestvideo+bestaudio/best: best quality with audio
+    // A Finder/Dock-launched GUI app inherits a minimal PATH that omits the
+    // Homebrew/local bin dirs, so yt-dlp can't find a JavaScript runtime
+    // (deno/node) and fails YouTube extraction with "No supported JavaScript
+    // runtime could be found". Make the common install locations visible.
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+#ifndef _WIN32
+    const QString cur_path = env.value(QStringLiteral("PATH"));
+    const QString extra = QStringLiteral("/opt/homebrew/bin:/usr/local/bin");
+    env.insert(QStringLiteral("PATH"), cur_path.isEmpty() ? extra : extra + ":" + cur_path);
+#endif
+    proc->setProcessEnvironment(env);
+
+    // -f best[ext=mp4]/best: best single-file stream (QMediaPlayer takes one URL)
     // --no-playlist: single video only
     // -g: print URL only, don't download
     proc->start(ytdlp_program,
