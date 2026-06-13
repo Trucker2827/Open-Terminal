@@ -186,6 +186,13 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     void hub_subscribe_streaming();
     void hub_unsubscribe_all();
     void hub_subscribe_quotes();
+    // Paper mode: subscribe to the free MarketDataService quote feed (yfinance).
+    void hub_subscribe_market_quotes();
+    // Per-tick UI + paper-engine update shared by the broker and free feeds.
+    void apply_equity_quote(const QString& sym, const trading::BrokerQuote& quote);
+    // Candle source router: paper → free yfinance history; live → broker.
+    void load_candles_for(const QString& symbol);
+    void fetch_paper_candles(const QString& symbol);
     QString broker_id_for_focused() const;
 
     // Mark held F&O option positions to market. Fyers' live HSM tick feed spells

@@ -162,7 +162,6 @@ void EquityTradingScreen::on_account_changed(const QString& account_id) {
         if (stream) {
             stream->set_selected_symbol(selected_symbol_, selected_exchange_);
             stream->subscribe_symbols(QStringLiteral("equity:watchlist"), effective_symbols());
-            stream->fetch_candles(selected_symbol_, chart_->current_timeframe());
             stream->fetch_orderbook(selected_symbol_);
             // US-only market data — skip for Indian/other brokers (no tape/calendar).
             if (focused_is_us_market_) {
@@ -171,6 +170,8 @@ void EquityTradingScreen::on_account_changed(const QString& account_id) {
                 stream->fetch_clock();
             }
         }
+        // Candles route by mode (paper → free yfinance history; live → broker).
+        load_candles_for(selected_symbol_);
     }
 
     // Switching accounts cleared the shared blotter (EquityBottomPanel::
@@ -231,7 +232,6 @@ void EquityTradingScreen::switch_symbol(const QString& symbol) {
     auto* stream = DataStreamManager::instance().stream_for(focused_account_id_);
     if (stream) {
         stream->set_selected_symbol(symbol, selected_exchange_);
-        stream->fetch_candles(symbol, chart_->current_timeframe());
         stream->fetch_orderbook(symbol);
 
         auto account = AccountManager::instance().get_account(focused_account_id_);
@@ -239,6 +239,8 @@ void EquityTradingScreen::switch_symbol(const QString& symbol) {
             stream->fetch_time_sales(symbol);
         }
     }
+    // Candles route by mode (paper → free yfinance history; live → broker).
+    load_candles_for(symbol);
 }
 
 QStringList EquityTradingScreen::search_broker_ids() const {
@@ -628,9 +630,8 @@ void EquityTradingScreen::on_ob_price_clicked(double price) {
 }
 
 void EquityTradingScreen::refresh_candles() {
-    auto* stream = DataStreamManager::instance().stream_for(focused_account_id_);
-    if (stream)
-        stream->fetch_candles(selected_symbol_, chart_->current_timeframe());
+    // Paper → free yfinance history; live → broker candle endpoint.
+    load_candles_for(selected_symbol_);
 }
 
 void EquityTradingScreen::async_modify_order(const QString& order_id, double qty, double price) {

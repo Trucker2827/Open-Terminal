@@ -14,6 +14,7 @@
 #include "core/logging/Logger.h"
 #include "datahub/DataHub.h"
 #include "datahub/DataHubMetaTypes.h"
+#include "services/markets/MarketDataService.h"
 #include "screens/equity_trading/EquityBottomPanel.h"
 #include "screens/equity_trading/EquityChartPanel.h"
 #include "screens/equity_trading/EquityOrderBook.h"
@@ -28,6 +29,8 @@
 #include "trading/PaperTrading.h"
 #include "trading/websocket/FyersTickTypes.h"
 
+#include <QDateTime>
+#include <QPointer>
 #include <QTimer>
 
 namespace openmarketterminal::screens {
@@ -57,29 +60,38 @@ void EquityTradingScreen::hub_subscribe_streaming() {
     hub.unsubscribe(this);
     hub_active_ = false;
 
-    const QString bid = broker_id_for_focused();
-    if (bid.isEmpty() || focused_account_id_.isEmpty())
+    if (focused_account_id_.isEmpty())
         return;
-
     const QString aid = focused_account_id_;
 
-    // Paper accounts must NOT show live broker positions/holdings/orders/balance —
-    // that data comes from the paper engine (pt_* / OrderMatcher). Only live mode
-    // subscribes to the live broker portfolio topics. Quotes flow in both modes.
-    //
-    // Cache the trading mode + paper portfolio id once here. This runs on every
-    // focus / symbol / mode change, so the cache stays fresh, and it keeps the
-    // per-tick quote handler off AccountManager::get_account() — which locks a
-    // mutex and copies the whole BrokerAccount struct on every single tick.
+    // Cache the trading mode + paper portfolio id once here (read on every
+    // focus/symbol/mode change; keeps the per-tick quote handler off
+    // AccountManager's mutex).
     const auto focused_account = AccountManager::instance().get_account(aid);
     const bool is_paper = focused_account.trading_mode == QLatin1String("paper");
     focused_is_paper_ = is_paper;
     focused_paper_portfolio_id_ = is_paper ? focused_account.paper_portfolio_id : QString();
-    // Drop any prices buffered for a previous account/portfolio. An in-flight flush
-    // timer simply finds the map empty (or the new portfolio's prices) and no-ops.
     pending_paper_prices_.clear();
 
-    if (!is_paper) {
+    // Paper mode is broker-independent: quotes — and therefore paper fills, which
+    // run inside the quote handler — come from the free MarketDataService feed
+    // (the same yfinance source the Markets screen uses). No broker or API key
+    // needed, so paper trading works out of the box.
+    if (is_paper) {
+        hub_subscribe_market_quotes();
+        hub_active_ = true;
+        LOG_INFO(TAG, QString("Hub subscribed (paper / free market feed): %1").arg(aid));
+        return;
+    }
+
+    // ── Live mode: requires a connected broker ──
+    const QString bid = broker_id_for_focused();
+    if (bid.isEmpty())
+        return;
+
+    // Live broker portfolio topics (positions/holdings/orders/balance). Paper
+    // returned above — its portfolio comes from the paper engine, not these.
+    {
         // ── Positions ──
         hub.subscribe(this, broker_topic(bid, aid, QStringLiteral("positions")),
                       [this](const QVariant& v) {
@@ -168,55 +180,135 @@ void EquityTradingScreen::hub_subscribe_quotes() {
         hub.subscribe(this, topic, [this, sym](const QVariant& v) {
             if (!v.canConvert<BrokerQuote>())
                 return;
-            const auto quote = v.value<BrokerQuote>();
-
-            // Open-positions table (bottom sheet): patch LTP / P&L from the SAME
-            // quote that feeds the ticker bar, so the header and the position row
-            // never show different prices. Live & paper both handled inside.
-            bottom_panel_->update_quote(sym, quote);
-
-            // Ticker bar + order entry for selected symbol
-            if (sym == selected_symbol_) {
-                current_price_ = quote.ltp;
-                ticker_bar_->update_quote(quote.ltp, quote.change, quote.change_pct,
-                                          quote.high, quote.low, quote.volume,
-                                          quote.bid, quote.ask);
-                order_entry_->set_current_price(quote.ltp);
-                chart_->on_quote(quote);       // roll the tick into the live forming candle
-                chart_->update_pnl(quote.ltp); // live P&L on the chart's position card
-            }
-
-            // Repaint only this symbol's watchlist row (a no-op if it isn't in the
-            // active list). Rebuilding the entire watchlist from a cache on every
-            // tick was O(rows×entries) of GUI-thread work per tick — the dominant
-            // cost on an unthrottled quote feed.
-            watchlist_->update_quote(quote);
-
-            // Feed paper trading engine. Mode + portfolio id are cached at subscribe
-            // time (hub_subscribe_streaming) so this hot path never copies a
-            // BrokerAccount under AccountManager's mutex on every tick.
-            if (focused_is_paper_ && !focused_paper_portfolio_id_.isEmpty() && quote.ltp > 0) {
-                // Buffer the latest price and coalesce the SQLite persist onto a
-                // timer — one UPDATE per symbol per window instead of per tick.
-                // flush_paper_prices() also runs synchronously before
-                // refresh_paper_panels reads, so order/funds snapshots stay exact.
-                pending_paper_prices_[sym] = quote.ltp;
-                if (!paper_flush_armed_) {
-                    paper_flush_armed_ = true;
-                    QTimer::singleShot(kPaperPriceFlushMs, this, [this]() { flush_paper_prices(); });
-                }
-                // SL/TP + limit matching must see EVERY tick — run on the live
-                // price against in-memory order/trigger tables (no DB per tick).
-                PriceData pd;
-                pd.last = quote.ltp;
-                pd.bid = quote.bid;
-                pd.ask = quote.ask;
-                pd.timestamp = quote.timestamp;
-                OrderMatcher::instance().check_orders(sym, pd, focused_paper_portfolio_id_);
-                OrderMatcher::instance().check_sl_tp_triggers(focused_paper_portfolio_id_, sym, quote.ltp);
-            }
+            apply_equity_quote(sym, v.value<BrokerQuote>());
         });
     }
+}
+
+// Per-tick UI + paper-engine update for one symbol. Shared by the live broker
+// quote feed (hub_subscribe_quotes) and the free market-data feed used in paper
+// mode (hub_subscribe_market_quotes).
+void EquityTradingScreen::apply_equity_quote(const QString& sym, const BrokerQuote& quote) {
+    // Open-positions table (bottom sheet): patch LTP / P&L from the SAME quote
+    // that feeds the ticker bar, so the header and the position row never show
+    // different prices.
+    bottom_panel_->update_quote(sym, quote);
+
+    // Ticker bar + order entry + chart for the selected symbol.
+    if (sym == selected_symbol_) {
+        current_price_ = quote.ltp;
+        ticker_bar_->update_quote(quote.ltp, quote.change, quote.change_pct,
+                                  quote.high, quote.low, quote.volume,
+                                  quote.bid, quote.ask);
+        order_entry_->set_current_price(quote.ltp);
+        chart_->on_quote(quote);       // roll the tick into the live forming candle
+        chart_->update_pnl(quote.ltp); // live P&L on the chart's position card
+    }
+
+    // Repaint only this symbol's watchlist row (no-op if not in the active list).
+    watchlist_->update_quote(quote);
+
+    // Feed the paper trading engine (mode + portfolio cached at subscribe time).
+    if (focused_is_paper_ && !focused_paper_portfolio_id_.isEmpty() && quote.ltp > 0) {
+        pending_paper_prices_[sym] = quote.ltp;
+        if (!paper_flush_armed_) {
+            paper_flush_armed_ = true;
+            QTimer::singleShot(kPaperPriceFlushMs, this, [this]() { flush_paper_prices(); });
+        }
+        // SL/TP + limit matching must see EVERY tick (in-memory; no DB per tick).
+        PriceData pd;
+        pd.last = quote.ltp;
+        pd.bid = quote.bid;
+        pd.ask = quote.ask;
+        pd.timestamp = quote.timestamp;
+        OrderMatcher::instance().check_orders(sym, pd, focused_paper_portfolio_id_);
+        OrderMatcher::instance().check_sl_tp_triggers(focused_paper_portfolio_id_, sym, quote.ltp);
+    }
+}
+
+// Paper mode: subscribe the watchlist/ticker symbols to the free MarketDataService
+// quote feed (market:quote:<sym>, yfinance) and route each tick through the same
+// apply_equity_quote() path the broker feed uses — so quotes, the chart's live
+// candle, and paper fills all work with no broker connected.
+void EquityTradingScreen::hub_subscribe_market_quotes() {
+    auto& hub = datahub::DataHub::instance();
+
+    QSet<QString> symbols;
+    symbols.insert(selected_symbol_);
+    for (const auto& s : watchlist_symbols_)
+        symbols.insert(s);
+    for (const auto& s : position_symbols_)
+        symbols.insert(s);
+
+    for (const auto& sym : symbols) {
+        if (sym.isEmpty())
+            continue;
+        const QString topic = QStringLiteral("market:quote:") + sym;
+        hub.subscribe(this, topic, [this, sym](const QVariant& v) {
+            if (!v.canConvert<services::QuoteData>())
+                return;
+            const auto q = v.value<services::QuoteData>();
+            BrokerQuote bq;
+            bq.symbol = sym;
+            bq.ltp = q.price;
+            bq.change = q.change;
+            bq.change_pct = q.change_pct;
+            bq.high = q.high;
+            bq.low = q.low;
+            bq.volume = q.volume;
+            // yfinance quotes carry no bid/ask depth — leave 0 (ticker shows "—").
+            bq.timestamp = QDateTime::currentMSecsSinceEpoch();
+            apply_equity_quote(sym, bq);
+        });
+        hub.request(topic);  // kick a fetch so the card fills immediately
+    }
+}
+
+// Route a candle request to the right source: paper → free MarketDataService
+// history (yfinance); live → the connected broker's candle endpoint.
+void EquityTradingScreen::load_candles_for(const QString& symbol) {
+    if (symbol.isEmpty())
+        return;
+    if (focused_is_paper_) {
+        fetch_paper_candles(symbol);
+        return;
+    }
+    if (auto* stream = DataStreamManager::instance().stream_for(focused_account_id_))
+        stream->fetch_candles(symbol, chart_->current_timeframe());
+}
+
+void EquityTradingScreen::fetch_paper_candles(const QString& symbol) {
+    // Map the chart timeframe to a yfinance (period, interval) pair.
+    const QString tf = chart_->current_timeframe();
+    QString period, interval;
+    if (tf == QLatin1String("1m"))       { period = "5d";  interval = "1m"; }
+    else if (tf == QLatin1String("5m"))  { period = "1mo"; interval = "5m"; }
+    else if (tf == QLatin1String("15m")) { period = "1mo"; interval = "15m"; }
+    else if (tf == QLatin1String("1h"))  { period = "3mo"; interval = "1h"; }
+    else if (tf == QLatin1String("1d"))  { period = "2y";  interval = "1d"; }
+    else if (tf == QLatin1String("1w"))  { period = "5y";  interval = "1wk"; }
+    else                                 { period = "1mo"; interval = "15m"; }
+
+    QPointer<EquityTradingScreen> self = this;
+    services::MarketDataService::instance().fetch_history(
+        symbol, period, interval,
+        [self, symbol](bool ok, QVector<services::HistoryPoint> pts) {
+            if (!self || !ok || !self->focused_is_paper_ || symbol != self->selected_symbol_)
+                return;
+            QVector<BrokerCandle> candles;
+            candles.reserve(pts.size());
+            for (const auto& p : pts) {
+                BrokerCandle c;
+                c.timestamp = p.timestamp * 1000;  // HistoryPoint=secs, chart wants ms
+                c.open = p.open;
+                c.high = p.high;
+                c.low = p.low;
+                c.close = p.close;
+                c.volume = static_cast<double>(p.volume);
+                candles.append(c);
+            }
+            self->chart_->set_candles(candles);
+        });
 }
 
 void EquityTradingScreen::route_option_quote(const QString& account_id, const QString& symbol,
