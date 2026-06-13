@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -497,12 +498,47 @@ void ExcelScreen::retranslateUi() {
 // ── IStatefulScreen ───────────────────────────────────────────────────────────
 
 QVariantMap ExcelScreen::save_state() const {
-    return {{"tab_index", sheet_tabs_ ? sheet_tabs_->currentIndex() : 0}};
+    // Persist every sheet's cell contents/formulas (not just the active tab)
+    // so the user's work survives closing the screen or the app.
+    QVariantList sheets;
+    if (sheet_tabs_) {
+        for (int i = 0; i < sheet_tabs_->count(); ++i) {
+            auto* sheet = qobject_cast<SpreadsheetWidget*>(sheet_tabs_->widget(i));
+            if (sheet)
+                sheets.append(sheet->serialize().toVariantMap());
+        }
+    }
+    return {
+        {"tab_index", sheet_tabs_ ? sheet_tabs_->currentIndex() : 0},
+        {"sheets", sheets},
+    };
 }
 
 void ExcelScreen::restore_state(const QVariantMap& state) {
+    const QVariantList sheets = state.value("sheets").toList();
+
+    if (sheet_tabs_ && !sheets.isEmpty()) {
+        // Drop the default "Sheet1" created in build_ui() before recreating the
+        // saved tabs (mirrors the tab-clearing loop in on_import()).
+        while (sheet_tabs_->count() > 0) {
+            auto* w = sheet_tabs_->widget(0);
+            sheet_tabs_->removeTab(0);
+            w->deleteLater();
+        }
+
+        for (const auto& v : sheets) {
+            const QJsonObject obj = QJsonObject::fromVariantMap(v.toMap());
+            auto* sheet = new SpreadsheetWidget("Sheet1", 100, 26, sheet_tabs_);
+            sheet->deserialize(obj);
+            sheet_tabs_->addTab(sheet, sheet->sheet_name());
+        }
+
+        sheet_counter_ = sheets.size() + 1; // keep generated sheet names unique
+        update_status();
+    }
+
     const int idx = state.value("tab_index", 0).toInt();
-    if (sheet_tabs_ && idx < sheet_tabs_->count())
+    if (sheet_tabs_ && idx >= 0 && idx < sheet_tabs_->count())
         sheet_tabs_->setCurrentIndex(idx);
 }
 

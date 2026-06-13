@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QAction>
+#include <QJsonObject>
 #include <QLineEdit>
 #include <QMenu>
 #include <QTableWidget>
@@ -48,6 +49,14 @@ class SpreadsheetWidget : public QWidget {
 
     /// Set data from 2D string array
     void set_data(const QVector<QVector<QString>>& data);
+
+    /// Serialize the sheet (name, dimensions, and non-empty cell contents/formulas)
+    /// to a JSON object for session persistence.
+    QJsonObject serialize() const;
+
+    /// Restore a sheet previously produced by serialize(). Round-trips the raw
+    /// cell text/formulas so reopening restores the user's work.
+    void deserialize(const QJsonObject& obj);
 
     /// Get raw text of a cell
     QString cell_text(int row, int col) const;

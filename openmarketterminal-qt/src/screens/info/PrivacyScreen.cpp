@@ -111,7 +111,7 @@ QWidget* PrivacyScreen::build_page() {
                              .arg(colors::AMBER(), MF));
     vl->addWidget(title);
 
-    auto* updated = new QLabel(tr("Last updated: January 1, 2026"));
+    auto* updated = new QLabel(tr("Applies to the open-source release."));
     updated->setStyleSheet(
         QString("color: %1; font-size: 11px; background: transparent; %2").arg(colors::TEXT_TERTIARY(), MF));
     vl->addWidget(updated);
@@ -126,81 +126,69 @@ QWidget* PrivacyScreen::build_page() {
     pvl->setSpacing(6);
 
     // 1 — Commitment
-    pvl->addWidget(section_heading("#", tr("OUR COMMITMENT TO PRIVACY")));
+    pvl->addWidget(section_heading("#", tr("LOCAL-FIRST BY DESIGN")));
     pvl->addWidget(
-        body_text(tr("At Open Terminal contributors, we are committed to protecting your privacy. This policy describes "
-                     "how we collect, use, and safeguard your personal information when you use Open Terminal.")));
+        body_text(tr("Open Terminal is a local-first desktop app that runs entirely on your computer. There is no "
+                     "Open Terminal server. We do not collect, transmit, sell, or share your personal data, and the "
+                     "app contains no analytics, telemetry, or phone-home of any kind.")));
 
-    // 2 — Information We Collect
-    pvl->addWidget(section_heading("@", tr("INFORMATION WE COLLECT")));
-    pvl->addWidget(body_text(tr("Personal Information:")));
-    pvl->addWidget(bullet(tr("Name and email address")));
-    pvl->addWidget(bullet(tr("Account credentials (encrypted)")));
-    pvl->addWidget(bullet(tr("Payment information (processed by third-party providers)")));
-    pvl->addWidget(bullet(tr("Phone number (optional)")));
-    pvl->addWidget(bullet(tr("Country and region")));
+    // 2 — What stays on your device
+    pvl->addWidget(section_heading("@", tr("YOUR DATA STAYS ON YOUR DEVICE")));
+    pvl->addWidget(body_text(tr("Everything you create in the app is stored locally on your machine:")));
+    pvl->addWidget(bullet(tr("Watchlists, portfolios, notes, and settings — in local SQLite databases")));
+    pvl->addWidget(bullet(tr("Secrets such as API keys — in your operating system's keychain")));
+    pvl->addWidget(bullet(tr("Nothing is uploaded to us; there is no account to register and no cloud sync")));
 
-    pvl->addSpacing(4);
-    pvl->addWidget(body_text(tr("Usage Information:")));
-    pvl->addWidget(bullet(tr("Feature usage and navigation patterns")));
-    pvl->addWidget(bullet(tr("Device and browser information")));
-    pvl->addWidget(bullet(tr("IP address and approximate location")));
-    pvl->addWidget(bullet(tr("Error logs and performance metrics")));
-    pvl->addWidget(bullet(tr("Session duration and frequency")));
-
-    // 3 — How We Use
-    pvl->addWidget(section_heading("*", tr("HOW WE USE YOUR INFORMATION")));
+    // 3 — API keys and third-party services
+    pvl->addWidget(section_heading("*", tr("API KEYS AND THIRD-PARTY SERVICES")));
     {
         auto* grid = new QGridLayout;
         grid->setSpacing(8);
         grid->addWidget(
-            info_card(tr("SERVICE DELIVERY"),
-                      tr("Provide and maintain terminal features, process transactions, and deliver data feeds")),
+            info_card(tr("STORED LOCALLY"),
+                      tr("API keys you configure are kept on your device and are never sent to us")),
             0, 0);
         grid->addWidget(
-            info_card(tr("SECURITY"),
-                      tr("Protect accounts, detect fraud, enforce terms of service, and ensure platform integrity")),
+            info_card(tr("DIRECT CONNECTIONS"),
+                      tr("Keys are used only to connect directly from your machine to the brokers and data "
+                         "providers you choose")),
             0, 1);
-        grid->addWidget(info_card(tr("COMMUNICATION"),
-                                  tr("Send service updates, security alerts, support responses, and optional marketing")),
+        grid->addWidget(info_card(tr("THEIR POLICIES APPLY"),
+                                  tr("Those third parties handle your requests under their own privacy policies — "
+                                     "review them separately")),
                         1, 0);
         grid->addWidget(
-            info_card(tr("IMPROVEMENT"), tr("Analyze usage to improve features, fix bugs, and develop new capabilities")), 1,
-            1);
+            info_card(tr("YOU DECIDE"),
+                      tr("No connection is made unless you add a key and choose to use that service")),
+            1, 1);
         pvl->addLayout(grid);
     }
 
-    // 4 — Sharing
-    pvl->addWidget(section_heading("~", tr("INFORMATION SHARING")));
-    pvl->addWidget(body_text(tr("We may share your information with:")));
-    pvl->addWidget(bullet(tr("Service Providers — third-party services that help operate the platform")));
-    pvl->addWidget(bullet(tr("Legal Requirements — when required by law or to protect our rights")));
-    pvl->addWidget(bullet(tr("Business Transfer — in connection with a merger, acquisition, or sale")));
-    pvl->addWidget(bullet(tr("With Your Consent — when you explicitly authorize sharing")));
+    // 4 — No data collection
+    pvl->addWidget(section_heading("~", tr("NO COLLECTION, NO SHARING")));
+    pvl->addWidget(body_text(tr("Because there is no server and no telemetry:")));
+    pvl->addWidget(bullet(tr("We do not collect names, emails, phone numbers, payment details, or location")));
+    pvl->addWidget(bullet(tr("We do not track feature usage, navigation, or session activity")));
+    pvl->addWidget(bullet(tr("We have no data to sell, share with partners, or hand over")));
 
     // 5 — Security
-    pvl->addWidget(section_heading("!", tr("DATA SECURITY")));
-    pvl->addWidget(body_text(tr("We implement industry-standard security measures:")));
-    pvl->addWidget(bullet(tr("End-to-end encryption for sensitive data")));
-    pvl->addWidget(bullet(tr("Secure credential storage (encrypted at rest)")));
-    pvl->addWidget(bullet(tr("Regular security audits and penetration testing")));
-    pvl->addWidget(bullet(tr("Access controls and authentication requirements")));
-    pvl->addWidget(bullet(tr("Automatic session expiry and logout")));
-    pvl->addWidget(bullet(tr("HTTPS/TLS for all data transmission")));
+    pvl->addWidget(section_heading("!", tr("KEEPING YOUR DATA SAFE")));
+    pvl->addWidget(body_text(tr("Your data's security rests with your own machine:")));
+    pvl->addWidget(bullet(tr("Secrets are stored in the OS keychain rather than plain text")));
+    pvl->addWidget(bullet(tr("Local databases live under your user profile, protected by your OS account")));
+    pvl->addWidget(bullet(tr("Keeping your device and operating system secure protects your data")));
 
-    // 6 — Rights
-    pvl->addWidget(section_heading("=", tr("YOUR RIGHTS")));
-    pvl->addWidget(body_text(tr("You have the right to:")));
-    pvl->addWidget(bullet(tr("Access — Request a copy of your personal data")));
-    pvl->addWidget(bullet(tr("Correction — Update inaccurate or incomplete data")));
-    pvl->addWidget(bullet(tr("Deletion — Request deletion of your account and data")));
-    pvl->addWidget(bullet(tr("Portability — Export your data in a machine-readable format")));
-    pvl->addWidget(bullet(tr("Opt-out — Unsubscribe from marketing communications")));
+    // 6 — Transparency
+    pvl->addWidget(section_heading("=", tr("OPEN AND INSPECTABLE")));
+    pvl->addWidget(body_text(tr("Open Terminal is open-source software:")));
+    pvl->addWidget(bullet(tr("You can read the source to see exactly how your data is handled")));
+    pvl->addWidget(bullet(tr("You control your local data — back it up, export it, or delete it at any time")));
+    pvl->addWidget(bullet(tr("Removing the app's data folders removes your data completely")));
 
     // 7 — Contact
-    pvl->addWidget(section_heading("@", tr("CONTACT US")));
-    pvl->addWidget(body_text(tr("Privacy contact: github.com/your-org/open-terminal/issues")));
-    pvl->addWidget(body_text(tr("For privacy-related inquiries, write to the address above.")));
+    pvl->addWidget(section_heading("@", tr("QUESTIONS")));
+    pvl->addWidget(body_text(tr("Privacy questions can be raised in the public issue tracker:")));
+    pvl->addWidget(body_text(tr("github.com/Trucker2827/Open-Terminal/issues")));
 
     vl->addWidget(panel);
 

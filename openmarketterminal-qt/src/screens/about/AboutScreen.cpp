@@ -212,7 +212,7 @@ AboutScreen::AboutScreen(QWidget* parent) : QWidget(parent) {
             pvl->addWidget(body);
 
             // Footer link
-            auto* foot = new QLabel("apache.org/licenses/LICENSE-2.0");
+            auto* foot = new QLabel("github.com/Trucker2827/Open-Terminal/blob/main/LICENSE");
             foot->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent; "
                                         "padding: 6px 14px; border-top: 1px solid %2; "
                                         "font-family: 'Consolas','Courier New',monospace;")
@@ -244,7 +244,7 @@ AboutScreen::AboutScreen(QWidget* parent) : QWidget(parent) {
             pvl->addWidget(body);
 
             // Footer link
-            auto* foot = new QLabel("github.com/your-org/open-terminal");
+            auto* foot = new QLabel("github.com/Trucker2827/Open-Terminal");
             foot->setStyleSheet(QString("color: %1; font-size: 11px; background: transparent; "
                                         "padding: 6px 14px; border-top: 1px solid %2; "
                                         "font-family: 'Consolas','Courier New',monospace;")
@@ -356,12 +356,12 @@ AboutScreen::AboutScreen(QWidget* parent) : QWidget(parent) {
             QString url;
         };
         const Link links[] = {
-            {tr("GitHub Repository"), "https://github.com/your-org/open-terminal"},
-            {tr("License (MIT)"), "https://github.com/your-org/open-terminal/blob/main/LICENSE"},
-            {tr("Documentation"), "https://github.com/your-org/open-terminal/tree/main/docs"},
-            {tr("Issue Tracker"), "https://github.com/your-org/open-terminal/issues"},
-            {tr("Release Notes"), "https://github.com/your-org/open-terminal/releases"},
-            {tr("Source Code"), "https://github.com/your-org/open-terminal"},
+            {tr("GitHub Repository"), "https://github.com/Trucker2827/Open-Terminal"},
+            {tr("License (MIT)"), "https://github.com/Trucker2827/Open-Terminal/blob/main/LICENSE"},
+            {tr("Documentation"), "https://github.com/Trucker2827/Open-Terminal/tree/main/docs"},
+            {tr("Issue Tracker"), "https://github.com/Trucker2827/Open-Terminal/issues"},
+            {tr("Release Notes"), "https://github.com/Trucker2827/Open-Terminal/releases"},
+            {tr("Source Code"), "https://github.com/Trucker2827/Open-Terminal"},
         };
 
         for (int i = 0; i < 6; ++i) {
@@ -398,10 +398,10 @@ AboutScreen::AboutScreen(QWidget* parent) : QWidget(parent) {
             QString email;
         };
         const Contact contacts[] = {
-            {tr("PROJECT"), "github.com/your-org/open-terminal"},
-            {tr("ISSUES"), "github.com/your-org/open-terminal/issues"},
-            {tr("SECURITY"), "github.com/your-org/open-terminal/security"},
-            {tr("LICENSE"), "github.com/your-org/open-terminal/blob/main/LICENSE"},
+            {tr("PROJECT"), "github.com/Trucker2827/Open-Terminal"},
+            {tr("ISSUES"), "github.com/Trucker2827/Open-Terminal/issues"},
+            {tr("SECURITY"), "github.com/Trucker2827/Open-Terminal/security"},
+            {tr("LICENSE"), "github.com/Trucker2827/Open-Terminal/blob/main/LICENSE"},
         };
 
         for (int i = 0; i < 4; ++i) {

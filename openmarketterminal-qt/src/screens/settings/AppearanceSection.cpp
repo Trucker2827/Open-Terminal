@@ -206,16 +206,9 @@ void AppearanceSection::build_ui() {
     ticker_bar_toggle_ = new QCheckBox(tr("Show Ticker Bar"));
     ticker_bar_toggle_->setChecked(true);
     ticker_bar_toggle_->setStyleSheet(check_ss());
-    auto* ticker_bar_row = make_row(tr("Ticker Bar"), ticker_bar_toggle_, tr("Live price ticker at the bottom of the screen."));
+    auto* ticker_bar_row = make_row(tr("Ticker Bar"), ticker_bar_toggle_, tr("Live price ticker on the dashboard."));
     capture_row_labels(ticker_bar_row, &ticker_bar_label_, &ticker_bar_desc_);
     vl->addWidget(ticker_bar_row);
-
-    animations_toggle_ = new QCheckBox(tr("Enable Animations"));
-    animations_toggle_->setChecked(true);
-    animations_toggle_->setStyleSheet(check_ss());
-    auto* animations_row = make_row(tr("Animations"), animations_toggle_, tr("Fade and transition effects throughout the UI."));
-    capture_row_labels(animations_row, &animations_label_, &animations_desc_);
-    vl->addWidget(animations_row);
 
     vl->addSpacing(16);
 
@@ -231,7 +224,6 @@ void AppearanceSection::build_ui() {
         repo.set("appearance.density",           app_density_->currentText(),                              "appearance");
         repo.set("appearance.show_chat_bubble",  chat_bubble_toggle_->isChecked() ? "true" : "false",      "appearance");
         repo.set("appearance.show_ticker_bar",   ticker_bar_toggle_->isChecked()  ? "true" : "false",      "appearance");
-        repo.set("appearance.animations",        animations_toggle_->isChecked()  ? "true" : "false",      "appearance");
 
         // Flush any pending debounce immediately on save. Same coalesced +
         // queued path as the live-preview lambda above so a Save click that
@@ -290,7 +282,6 @@ void AppearanceSection::reload() {
 
     load_check(chat_bubble_toggle_, "appearance.show_chat_bubble", true);
     load_check(ticker_bar_toggle_,  "appearance.show_ticker_bar",  true);
-    load_check(animations_toggle_,  "appearance.animations",       true);
 }
 
 void AppearanceSection::changeEvent(QEvent* event) {
@@ -320,11 +311,7 @@ void AppearanceSection::retranslateUi() {
 
     if (ticker_bar_label_)  ticker_bar_label_->setText(tr("Ticker Bar"));
     if (ticker_bar_toggle_) ticker_bar_toggle_->setText(tr("Show Ticker Bar"));
-    if (ticker_bar_desc_)   ticker_bar_desc_->setText(tr("Live price ticker at the bottom of the screen."));
-
-    if (animations_label_)  animations_label_->setText(tr("Animations"));
-    if (animations_toggle_) animations_toggle_->setText(tr("Enable Animations"));
-    if (animations_desc_)   animations_desc_->setText(tr("Fade and transition effects throughout the UI."));
+    if (ticker_bar_desc_)   ticker_bar_desc_->setText(tr("Live price ticker on the dashboard."));
 
     // Save button.
     if (save_btn_) save_btn_->setText(tr("Save Settings"));

@@ -420,6 +420,59 @@ void SpreadsheetWidget::set_data(const QVector<QVector<QString>>& cells) {
     recalculate();
 }
 
+// ── Session persistence ──────────────────────────────────────────────────────
+
+QJsonObject SpreadsheetWidget::serialize() const {
+    const int rows = table_->rowCount();
+    const int cols = table_->columnCount();
+
+    // Store only non-empty cells, keyed "row,col", to keep the state compact.
+    QJsonObject cells;
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            auto* item = dynamic_cast<SpreadsheetItem*>(table_->item(r, c));
+            const QString text = item ? item->raw_text() : QString();
+            if (!text.isEmpty())
+                cells.insert(QString("%1,%2").arg(r).arg(c), text);
+        }
+    }
+
+    QJsonObject obj;
+    obj.insert("name", sheet_name_);
+    obj.insert("rows", rows);
+    obj.insert("cols", cols);
+    obj.insert("cells", cells);
+    return obj;
+}
+
+void SpreadsheetWidget::deserialize(const QJsonObject& obj) {
+    const int rows = std::max(obj.value("rows").toInt(100), 1);
+    const int cols = std::max(obj.value("cols").toInt(26), 1);
+
+    QVector<QVector<QString>> grid(rows);
+    for (int r = 0; r < rows; ++r)
+        grid[r].resize(cols);
+
+    const QJsonObject cells = obj.value("cells").toObject();
+    for (auto it = cells.constBegin(); it != cells.constEnd(); ++it) {
+        const QStringList rc = it.key().split(',');
+        if (rc.size() != 2)
+            continue;
+        bool ok_r = false, ok_c = false;
+        const int r = rc[0].toInt(&ok_r);
+        const int c = rc[1].toInt(&ok_c);
+        if (ok_r && ok_c && r >= 0 && r < rows && c >= 0 && c < cols)
+            grid[r][c] = it.value().toString();
+    }
+
+    // set_data() rebuilds items, restores formula raw text, and recalculates.
+    set_data(grid);
+
+    const QString name = obj.value("name").toString();
+    if (!name.isEmpty())
+        sheet_name_ = name;
+}
+
 QString SpreadsheetWidget::cell_text(int row, int col) const {
     auto* item = dynamic_cast<SpreadsheetItem*>(table_->item(row, col));
     return item ? item->raw_text() : "";

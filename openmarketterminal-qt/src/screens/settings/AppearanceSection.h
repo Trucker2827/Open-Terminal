@@ -36,7 +36,6 @@ class AppearanceSection : public QWidget {
     QComboBox* app_density_         = nullptr;
     QCheckBox* chat_bubble_toggle_  = nullptr;
     QCheckBox* ticker_bar_toggle_   = nullptr;
-    QCheckBox* animations_toggle_   = nullptr;
     QTimer*    appearance_debounce_ = nullptr;
 
     // Section titles.
@@ -54,8 +53,6 @@ class AppearanceSection : public QWidget {
     QLabel* chat_bubble_desc_     = nullptr;
     QLabel* ticker_bar_label_     = nullptr;
     QLabel* ticker_bar_desc_      = nullptr;
-    QLabel* animations_label_     = nullptr;
-    QLabel* animations_desc_      = nullptr;
 
     QPushButton* save_btn_ = nullptr;
 };

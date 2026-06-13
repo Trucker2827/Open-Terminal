@@ -31,14 +31,6 @@ static QLabel* body_text(const QString& text) {
     return lbl;
 }
 
-static QLabel* bullet(const QString& text) {
-    auto* lbl = new QLabel(QString("  > %1").arg(text));
-    lbl->setWordWrap(true);
-    lbl->setStyleSheet(
-        QString("color: %1; font-size: 12px; background: transparent; %2").arg(colors::TEXT_SECONDARY(), MF));
-    return lbl;
-}
-
 TermsScreen::TermsScreen(QWidget* parent) : QWidget(parent) {
     setStyleSheet(QString("QWidget#TermsRoot { background: %1; }").arg(colors::BG_BASE()));
     setObjectName("TermsRoot");
@@ -89,7 +81,7 @@ QWidget* TermsScreen::build_page() {
                              .arg(colors::AMBER(), MF));
     vl->addWidget(title);
 
-    auto* updated = new QLabel(tr("Last updated: January 1, 2026"));
+    auto* updated = new QLabel(tr("Applies to the open-source release."));
     updated->setStyleSheet(
         QString("color: %1; font-size: 11px; background: transparent; %2").arg(colors::TEXT_TERTIARY(), MF));
     vl->addWidget(updated);
@@ -104,61 +96,45 @@ QWidget* TermsScreen::build_page() {
     pvl->setSpacing(6);
 
     // Section 1
-    pvl->addWidget(section_heading("1", tr("ACCEPTANCE OF TERMS")));
-    pvl->addWidget(body_text(tr("By accessing or using Open Terminal (\"the Service\"), you agree to be bound by these "
-                                "Terms of Service. If you do not agree to these terms, do not use the Service.")));
+    pvl->addWidget(section_heading("1", tr("FREE AND OPEN SOURCE")));
+    pvl->addWidget(body_text(tr("Open Terminal is free, open-source software released under the MIT License. There is "
+                                "no subscription, fee, or billing of any kind. You may use, copy, modify, and "
+                                "redistribute it under the terms of that license.")));
 
     // Section 2
-    pvl->addWidget(section_heading("2", tr("DESCRIPTION OF SERVICE")));
-    pvl->addWidget(body_text(tr("Open Terminal is a desktop financial intelligence terminal providing market data, "
-                                "analytics, trading tools, and AI-powered research capabilities.")));
+    pvl->addWidget(section_heading("2", tr("WHAT OPEN TERMINAL IS")));
+    pvl->addWidget(body_text(tr("Open Terminal is a local-first desktop application that runs entirely on your own "
+                                "computer. It is a research and educational tool — it does not provide financial "
+                                "advice, brokerage services, or any guarantee about the data it displays.")));
 
     // Section 3
-    pvl->addWidget(section_heading("3", tr("USER ACCOUNTS AND REGISTRATION")));
-    pvl->addWidget(
-        body_text(tr("To access certain features, you must create an account. You are responsible for maintaining "
-                     "the confidentiality of your account credentials and for all activities under your account.")));
+    pvl->addWidget(section_heading("3", tr("PROVIDED \"AS IS\"")));
+    pvl->addWidget(body_text(tr("As stated in the MIT License, the software is provided \"AS IS\", without warranty "
+                                "of any kind, express or implied. The authors and contributors are not liable for "
+                                "any claim, damages, or other liability arising from the use of the software.")));
 
     // Section 4
-    pvl->addWidget(section_heading("4", tr("ACCEPTABLE USE POLICY")));
-    pvl->addWidget(body_text(tr("You agree not to:")));
-    pvl->addWidget(bullet(tr("Use the Service for any unlawful purpose")));
-    pvl->addWidget(bullet(tr("Attempt to gain unauthorized access to any part of the Service")));
-    pvl->addWidget(bullet(tr("Interfere with or disrupt the Service or its servers")));
-    pvl->addWidget(bullet(tr("Reverse engineer, decompile, or disassemble any part of the Service")));
-    pvl->addWidget(bullet(tr("Use automated means to access the Service without permission")));
+    pvl->addWidget(section_heading("4", tr("NOT FINANCIAL ADVICE")));
+    pvl->addWidget(body_text(tr("Market data, analytics, and AI-generated output are for informational and "
+                                "educational purposes only and do not constitute investment advice. You are solely "
+                                "responsible for your own trading and investment decisions and their outcomes.")));
 
     // Section 5
-    pvl->addWidget(section_heading("5", tr("DATA AND PRIVACY")));
-    pvl->addWidget(body_text(tr("Your use of the Service is also governed by our Privacy Policy. By using the Service, "
-                                "you consent to the collection and use of information as described therein.")));
+    pvl->addWidget(section_heading("5", tr("THIRD-PARTY SERVICES")));
+    pvl->addWidget(
+        body_text(tr("When you configure API keys, the app connects directly from your machine to the brokers and "
+                     "data providers you choose. You are responsible for complying with the terms, fees, and usage "
+                     "policies of any third-party service you connect, and for any orders you place through them.")));
 
     // Section 6
-    pvl->addWidget(section_heading("6", tr("SUBSCRIPTION AND BILLING")));
-    pvl->addWidget(
-        body_text(tr("Certain features require a paid subscription. Subscriptions are billed in advance. "
-                     "Refunds are handled according to our refund policy. Credits expire according to plan terms.")));
+    pvl->addWidget(section_heading("6", tr("PRIVACY")));
+    pvl->addWidget(body_text(tr("Open Terminal has no server and collects no personal data. Your data stays on your "
+                                "device. See the Privacy Policy for details.")));
 
     // Section 7
-    pvl->addWidget(section_heading("7", tr("DISCLAIMERS AND LIMITATIONS")));
-    pvl->addWidget(
-        body_text(tr("The Service is provided \"as is\" without warranty of any kind. Open Terminal contributors shall not "
-                     "be liable for any indirect, incidental, special, or consequential damages. Financial data "
-                     "and analytics are for informational purposes only and do not constitute investment advice.")));
-
-    // Section 8
-    pvl->addWidget(section_heading("8", tr("TERMINATION")));
-    pvl->addWidget(body_text(tr("We may terminate or suspend your account at any time for violation of these terms. "
-                                "Upon termination, your right to use the Service will immediately cease.")));
-
-    // Section 9
-    pvl->addWidget(section_heading("9", tr("CHANGES TO TERMS")));
-    pvl->addWidget(body_text(tr("We reserve the right to modify these terms at any time. Continued use of the Service "
-                                "after changes constitutes acceptance of the modified terms.")));
-
-    // Section 10
-    pvl->addWidget(section_heading("10", tr("CONTACT INFORMATION")));
-    pvl->addWidget(body_text(tr("For questions about these Terms, open an issue in the project repository.")));
+    pvl->addWidget(section_heading("7", tr("CONTACT")));
+    pvl->addWidget(body_text(tr("For questions about these Terms, open an issue in the project repository:")));
+    pvl->addWidget(body_text(tr("github.com/Trucker2827/Open-Terminal/issues")));
 
     vl->addWidget(panel);
 

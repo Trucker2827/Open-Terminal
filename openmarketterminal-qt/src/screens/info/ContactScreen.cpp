@@ -136,9 +136,9 @@ QWidget* ContactScreen::build_page() {
         grid->setSpacing(10);
 
         // Project URLs are shown verbatim — not translated.
-        grid->addWidget(make_contact_card(tr("REPOSITORY"), "github.com/your-org/open-terminal", tr("Source code and releases")), 0, 0);
-        grid->addWidget(make_contact_card(tr("ISSUE TRACKER"), "github.com/your-org/open-terminal/issues", tr("Bugs and feature requests")), 0, 1);
-        grid->addWidget(make_contact_card(tr("SECURITY"), "github.com/your-org/open-terminal/security", tr("Responsible disclosure")), 1, 0);
+        grid->addWidget(make_contact_card(tr("REPOSITORY"), "github.com/Trucker2827/Open-Terminal", tr("Source code and releases")), 0, 0);
+        grid->addWidget(make_contact_card(tr("ISSUE TRACKER"), "github.com/Trucker2827/Open-Terminal/issues", tr("Bugs and feature requests")), 0, 1);
+        grid->addWidget(make_contact_card(tr("SECURITY"), "github.com/Trucker2827/Open-Terminal/security", tr("Responsible disclosure")), 1, 0);
         grid->addWidget(make_contact_card(tr("PROJECT"), "Open Terminal contributors", tr("Open-source community project")), 1, 1);
 
         pvl->addWidget(body);
@@ -175,19 +175,13 @@ QWidget* ContactScreen::build_page() {
 
         auto* issues_btn = make_action(tr("Open Issues"));
         connect(issues_btn, &QPushButton::clicked, this,
-                []() { QDesktopServices::openUrl(QUrl("https://github.com/your-org/open-terminal/issues")); });
+                []() { QDesktopServices::openUrl(QUrl("https://github.com/Trucker2827/Open-Terminal/issues")); });
         hl->addWidget(issues_btn);
 
         auto* source_btn = make_action(tr("View Source"));
         connect(source_btn, &QPushButton::clicked, this,
-                []() { QDesktopServices::openUrl(QUrl("https://github.com/your-org/open-terminal")); });
+                []() { QDesktopServices::openUrl(QUrl("https://github.com/Trucker2827/Open-Terminal")); });
         hl->addWidget(source_btn);
-
-        auto* github_btn = make_action(tr("GitHub Issues"));
-        connect(github_btn, &QPushButton::clicked, this, []() {
-            QDesktopServices::openUrl(QUrl("https://github.com/your-org/open-terminal/issues"));
-        });
-        hl->addWidget(github_btn);
 
         hl->addStretch();
         pvl->addWidget(body);

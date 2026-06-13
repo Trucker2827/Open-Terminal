@@ -59,6 +59,12 @@ DashboardScreen::DashboardScreen(QWidget* parent) : QWidget(parent) {
     // ── Scrolling Ticker Bar ──
     ticker_bar_ = new TickerBar;
     vl->addWidget(ticker_bar_);
+    // Honor the Appearance > "Show Ticker Bar" toggle. Re-applied on each show
+    // (see showEvent) so toggling + Save in Settings takes effect on return.
+    {
+        auto r = SettingsRepository::instance().get("appearance.show_ticker_bar");
+        ticker_bar_->setVisible(!r.is_ok() || r.value() != "false");
+    }
     // When user saves a new symbol list, re-fetch quotes immediately.
     connect(ticker_bar_, &TickerBar::symbols_changed, this, &DashboardScreen::refresh_ticker);
 
@@ -191,8 +197,13 @@ void DashboardScreen::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
     refresh_theme();
 
-    if (ticker_bar_)
+    if (ticker_bar_) {
+        // Re-read the "Show Ticker Bar" toggle so a change made in Settings
+        // applies when the user navigates back to the dashboard.
+        auto r = SettingsRepository::instance().get("appearance.show_ticker_bar");
+        ticker_bar_->setVisible(!r.is_ok() || r.value() != "false");
         ticker_bar_->resume();
+    }
 
     // Subscribe to current ticker symbols — hub schedules refreshes per TopicPolicy.
     hub_resubscribe_ticker();
