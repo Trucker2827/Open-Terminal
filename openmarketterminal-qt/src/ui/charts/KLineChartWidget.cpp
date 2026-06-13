@@ -10,6 +10,7 @@
 #include <QContextMenuEvent>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -99,8 +100,11 @@ void KLineChartWidget::ensure_web_view() {
     connect(web_view_, &QWebEngineView::loadFinished,
             this, &KLineChartWidget::on_load_finished);
 
-    const QString html_path = QCoreApplication::applicationDirPath()
-                              + QStringLiteral("/resources/charts/klinechart.html");
+    const QString base = QCoreApplication::applicationDirPath();
+    // macOS canonical (.app/Contents/Resources/...) first, then dev/build layout.
+    QString html_path = base + QStringLiteral("/../Resources/resources/charts/klinechart.html");
+    if (!QFileInfo::exists(html_path))
+        html_path = base + QStringLiteral("/resources/charts/klinechart.html");
     QUrl url = QUrl::fromLocalFile(html_path);
     url.setQuery(QStringLiteral("v=%1").arg(QDateTime::currentMSecsSinceEpoch())); // cache-bust
     web_view_->load(url);

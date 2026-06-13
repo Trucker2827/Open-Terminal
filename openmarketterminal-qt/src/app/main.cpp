@@ -309,6 +309,8 @@ int main(int argc, char* argv[]) {
     // first (present after cmake configure copies resources) and fall back to
     // the source-tree path for local dev runs without install step.
     openmarketterminal::ComponentCatalog::instance().load_with_fallbacks({
+        // macOS canonical (.app/Contents/Resources/...) first, then dev/build layout.
+        QCoreApplication::applicationDirPath() + "/../Resources/resources/component_catalog.json",
         QCoreApplication::applicationDirPath() + "/resources/component_catalog.json",
         QCoreApplication::applicationDirPath() + "/component_catalog.json",
         "resources/component_catalog.json",
