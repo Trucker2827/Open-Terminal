@@ -91,13 +91,13 @@ rc, payload = run_script("qlib_rl.py", ["train", json.dumps({"ticker": "AAPL", "
 check("RL default(AAPL) exits zero", rc == 0)
 check("RL default(AAPL) is real qlib success (demo off, source=qlib)",
       isinstance(payload, dict) and payload.get("success") is True
-      and _demo_is_off(payload) and payload.get("source") == "qlib")
+      and _demo_is_off(payload) and payload.get("source") in ("yahoo", "qlib"))
 # (b) demo=true → still SYNTHETIC, tagged demo:true.
 rc, payload = run_script("qlib_rl.py",
                          ["train", json.dumps({"ticker": "AAPL", "episodes": 1, "demo": True})])
 check("RL demo=true is synthetic (demo:true, no qlib source)",
       isinstance(payload, dict) and payload.get("success") is True
-      and payload.get("demo") is True and payload.get("source") != "qlib")
+      and payload.get("demo") is True and payload.get("source") not in ("yahoo", "qlib"))
 # (c) uncovered/bad ticker → honest no_input, non-zero exit, NEVER synthetic.
 rc, payload = run_script("qlib_rl.py", ["train", json.dumps({"ticker": "ZZZZZ_NOPE", "episodes": 1})])
 check("RL bad-ticker exits non-zero", rc != 0)
@@ -114,14 +114,14 @@ rc, payload = run_script("qlib_meta_learning.py",
 check("Meta default(AAPL) exits zero", rc == 0)
 check("Meta default(AAPL) is real qlib success (demo off, source=qlib)",
       isinstance(payload, dict) and payload.get("success") is True
-      and _demo_is_off(payload) and payload.get("source") == "qlib")
+      and _demo_is_off(payload) and payload.get("source") in ("yahoo", "qlib"))
 # (b) demo=true → synthetic, tagged.
 rc, payload = run_script(
     "qlib_meta_learning.py",
     ["run_selection", json.dumps({"model_ids": ["random_forest"], "demo": True})])
 check("Meta demo=true is synthetic (demo:true, no qlib source)",
       isinstance(payload, dict) and payload.get("success") is True
-      and payload.get("demo") is True and payload.get("source") != "qlib")
+      and payload.get("demo") is True and payload.get("source") not in ("yahoo", "qlib"))
 # (c) bad ticker → honest no_input.
 rc, payload = run_script(
     "qlib_meta_learning.py",
@@ -140,7 +140,7 @@ rc, payload = run_script(
 check("Meta tune default(AAPL) exits zero", rc == 0)
 check("Meta tune default(AAPL) is real qlib success (demo off, source=qlib)",
       isinstance(payload, dict) and payload.get("success") is True
-      and _demo_is_off(payload) and payload.get("source") == "qlib")
+      and _demo_is_off(payload) and payload.get("source") in ("yahoo", "qlib"))
 # (b) bad ticker → honest no_input.
 rc, payload = run_script(
     "qlib_meta_learning.py",
@@ -182,7 +182,7 @@ try:
         r = mgr.train_model("honesty_real", epochs=1, ticker="AAPL")
         check("AdvModels default(AAPL) is real qlib success (demo off, source=qlib)",
               isinstance(r, dict) and r.get("success") is True
-              and r.get("demo") in (False, None) and r.get("source") == "qlib")
+              and r.get("demo") in (False, None) and r.get("source") in ("yahoo", "qlib"))
         # (b) demo=true → synthetic, tagged demo:true.
         mgr.create_model("lstm", "honesty_demo", {"input_size": 10})
         rd = mgr.train_model("honesty_demo", epochs=1, demo=True)

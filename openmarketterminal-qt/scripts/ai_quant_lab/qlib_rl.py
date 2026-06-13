@@ -15,7 +15,7 @@ warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 
-from qlib_realdata import load_ohlcv
+from qlib_realdata import load_ohlcv, last_source
 
 # Qlib RL imports with availability check
 RL_AVAILABLE = False
@@ -342,7 +342,7 @@ class RLTradingAgent:
                     }
                 result_meta = {
                     'demo': False,
-                    'source': 'qlib',
+                    'source': last_source() or 'qlib',
                     'ticker': symbol,
                     'message': f'Trading environment created (REAL qlib data for {symbol})',
                 }

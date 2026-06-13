@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 
-from qlib_realdata import load_sequences
+from qlib_realdata import load_sequences, last_source
 
 # Check available deep learning frameworks
 TORCH_AVAILABLE = False
@@ -420,7 +420,7 @@ class AdvancedModelsManager:
                 'message': f'Training completed in {epochs} epochs'
             }
             if real_used:
-                result['source'] = 'qlib'
+                result['source'] = last_source() or 'qlib'
                 result['ticker'] = ticker
                 result['data_points'] = int(len(X_train))
             return result
@@ -492,7 +492,7 @@ class AdvancedModelsManager:
                             + (' (SYNTHETIC demo input)' if synthetic_pred else ''))
             }
             if real_pred:
-                result['source'] = 'qlib'
+                result['source'] = last_source() or 'qlib'
                 result['ticker'] = ticker
             return result
 

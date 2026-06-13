@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 
-from qlib_realdata import load_matrix
+from qlib_realdata import load_matrix, last_source
 
 # Check available ML libraries
 SKLEARN_AVAILABLE = False
@@ -313,7 +313,7 @@ class MetaLearningManager:
             'task_type': task_type
         }
         if real_used:
-            result['source'] = 'qlib'
+            result['source'] = last_source() or 'qlib'
             result['ticker'] = ticker
         return result
 
@@ -500,7 +500,7 @@ class MetaLearningManager:
                 'cv_folds': cv
             }
             if real_used:
-                result['source'] = 'qlib'
+                result['source'] = last_source() or 'qlib'
                 result['ticker'] = ticker
             return result
 
