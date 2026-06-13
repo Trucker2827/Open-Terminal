@@ -33,7 +33,6 @@ static const PresetChannel kPresets[] = {
     {"Bloomberg TV", "https://www.youtube.com/@markets/live", "Global business & markets", "#9D4EDD"},
     {"CNBC Live", "https://www.youtube.com/@CNBC/live", "US market coverage", "#2563eb"},
     {"Yahoo Finance", "https://www.youtube.com/@YahooFinance/live", "Market analysis", "#16a34a"},
-    {"NDTV Profit", "https://www.youtube.com/@NDTVProfitIndia/live", "India business & markets", "#0891b2"},
     {"Al Jazeera", "https://www.youtube.com/@aljazeeraenglish/live", "World news & finance", "#d97706"},
 };
 
@@ -312,11 +311,15 @@ void VideoPlayerWidget::resolve_youtube_and_play(const QString& youtube_url, con
 #endif
     proc->setProcessEnvironment(env);
 
+    // --cookies-from-browser chrome: YouTube now refuses anonymous extraction
+    // ("Sign in to confirm you're not a bot"); reusing the user's logged-in
+    // Chrome session satisfies that gate. Harmless if Chrome isn't present —
+    // yt-dlp just reports it, and on_ytdlp_finished surfaces a clear message.
     // -f best[ext=mp4]/best: best single-file stream (QMediaPlayer takes one URL)
-    // --no-playlist: single video only
-    // -g: print URL only, don't download
+    // --no-playlist: single video only;  -g: print URL only, don't download
     proc->start(ytdlp_program,
-                {"-f", "best[ext=mp4]/best", "--no-playlist", "-g", youtube_url});
+                {"--cookies-from-browser", "chrome",
+                 "-f", "best[ext=mp4]/best", "--no-playlist", "-g", youtube_url});
 }
 
 void VideoPlayerWidget::on_ytdlp_finished(int exit_code, QProcess::ExitStatus /*status*/) {
@@ -325,11 +328,34 @@ void VideoPlayerWidget::on_ytdlp_finished(int exit_code, QProcess::ExitStatus /*
         return;
 
     if (exit_code != 0) {
-        const QString err = proc->readAllStandardError().trimmed();
+        const QString stderr_all = proc->readAllStandardError().trimmed();
+        // Surface the real ERROR line, not the leading WARNINGs (e.g. the
+        // benign "No title found in player responses" that otherwise masked
+        // the actual failure).
+        QString err_line;
+        const auto lines = stderr_all.split('\n', Qt::SkipEmptyParts);
+        for (const QString& l : lines) {
+            if (l.trimmed().startsWith(QStringLiteral("ERROR"))) { err_line = l.trimmed(); break; }
+        }
+        if (err_line.isEmpty())
+            err_line = lines.isEmpty() ? QString() : lines.last().trimmed();
+
+        QString msg;
+        if (err_line.contains(QStringLiteral("not a bot")) ||
+            err_line.contains(QStringLiteral("Sign in to confirm")))
+            msg = tr("YouTube is blocking automated playback (sign-in required). "
+                     "Make sure you're logged into YouTube in Chrome, then try again.");
+        else if (err_line.contains(QStringLiteral("not currently live")))
+            msg = tr("This channel is not live right now.");
+        else if (err_line.contains(QStringLiteral("cookies")) && err_line.contains(QStringLiteral("Chrome")))
+            msg = tr("Couldn't read Chrome cookies for YouTube sign-in. Open Chrome and sign into YouTube, then retry.");
+        else
+            msg = tr("yt-dlp error: %1").arg(err_line.isEmpty() ? tr("Unknown error") : err_line.left(140));
+
         set_loading(false);
-        status_label_->setText(tr("yt-dlp error: %1").arg(err.isEmpty() ? tr("Unknown error") : err.left(120)));
+        status_label_->setText(msg);
         status_label_->show();
-        LOG_ERROR("VideoPlayer", "yt-dlp failed: " + err.left(250));
+        LOG_ERROR("VideoPlayer", "yt-dlp failed: " + stderr_all.left(250));
         return;
     }
 
