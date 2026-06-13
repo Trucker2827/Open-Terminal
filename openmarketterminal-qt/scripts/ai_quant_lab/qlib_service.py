@@ -1301,15 +1301,15 @@ class QlibService:
             return {"success": False, "error": "Qlib not initialized"}
 
         try:
+            # D.instruments(market) returns a config dict in qlib 0.9.x; the actual
+            # symbol list must be resolved via D.list_instruments(...).
             instruments = D.instruments(market=market)
-
-            # If instruments is a filter, get the actual list
             if hasattr(instruments, 'to_list'):
                 instrument_list = instruments.to_list()
             elif isinstance(instruments, (list, tuple)):
                 instrument_list = list(instruments)
             else:
-                instrument_list = []
+                instrument_list = D.list_instruments(instruments, as_list=True)
 
             if not instrument_list:
                 return {
