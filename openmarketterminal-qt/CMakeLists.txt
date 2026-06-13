@@ -1381,12 +1381,6 @@ set(SCREEN_SOURCES
     src/screens/docs/DocsScreen_Pages_Trading.cpp
     src/screens/docs/DocsScreen_Pages_Data.cpp
     src/screens/common/ComingSoonScreen.cpp
-    src/screens/chat_mode/ChatModeService.cpp
-    src/screens/chat_mode/ChatSessionPanel.cpp
-    src/screens/chat_mode/ChatMessagePanel.cpp
-    src/screens/chat_mode/ChatAgentPanel.cpp
-    src/screens/chat_mode/ChatModeScreen.cpp
-    src/screens/chat_mode/TerminalToolBridge.cpp
     src/screens/setup/SetupScreen.cpp
     src/screens/launchpad/LaunchpadScreen.cpp
     src/screens/launchpad/OnboardingTour.cpp
@@ -2249,10 +2243,6 @@ set_source_files_properties(
     src/screens/polymarket/PolymarketStatusBar.cpp
     src/screens/polymarket/PredictionAccountDialog.cpp
     src/screens/polymarket/PolymarketOrderBlotter.cpp
-    src/screens/chat_mode/ChatAgentPanel.cpp
-    src/screens/chat_mode/ChatModeScreen.cpp
-    src/screens/chat_mode/ChatModeService.cpp
-    src/screens/chat_mode/TerminalToolBridge.cpp
     src/screens/quantlib/QuantLibScreen.cpp
     src/screens/quantlib/QuantLibScreen_Data.cpp
     src/trading/brokers/BrokerHttp.cpp

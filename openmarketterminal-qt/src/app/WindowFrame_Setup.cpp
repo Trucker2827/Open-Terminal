@@ -32,7 +32,6 @@
 #include "screens/auth/LockScreen.h"
 #include "screens/auth/LoginScreen.h"
 #include "screens/backtesting/BacktestingScreen.h"
-#include "screens/chat_mode/ChatModeScreen.h"
 #include "screens/code_editor/CodeEditorScreen.h"
 #include "screens/crypto_trading/CryptoTradingScreen.h"
 #include "screens/dashboard/DashboardScreen.h"

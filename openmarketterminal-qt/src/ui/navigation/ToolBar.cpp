@@ -111,14 +111,6 @@ ToolBar::ToolBar(QWidget* parent) : QWidget(parent) {
     hl->addWidget(user_label_);
     sep();
 
-    chat_mode_btn_ = new QPushButton;
-    chat_mode_btn_->setFixedHeight(20);
-    chat_mode_btn_->setCursor(Qt::PointingHandCursor);
-    chat_mode_btn_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    connect(chat_mode_btn_, &QPushButton::clicked, this, &ToolBar::chat_mode_toggled);
-    hl->addWidget(chat_mode_btn_);
-    sep();
-
     logout_btn_ = new QPushButton;
     logout_btn_->setFixedHeight(20);
     logout_btn_->setCursor(Qt::PointingHandCursor);
@@ -154,14 +146,6 @@ void ToolBar::changeEvent(QEvent* e) {
 void ToolBar::retranslateUi() {
     if (subtitle_label_) subtitle_label_->setText(tr("  |  PROFESSIONAL RESEARCH DESK"));
     if (live_label_)     live_label_->setText(tr(" LIVE"));
-    if (chat_mode_btn_) {
-        // Keep the ⬡ glyph (U+2B21) as a visual icon; only the label after it
-        // translates. Must use fromUtf8 to decode the UTF-8 bytes — wrapping
-        // them in QStringLiteral widens each byte into its own UTF-16 unit and
-        // renders as mojibake ("â¬¡").
-        chat_mode_btn_->setText(QString::fromUtf8("\xe2\xac\xa1 ") + tr("CHAT"));
-        chat_mode_btn_->setToolTip(tr("Switch to Chat Mode (F9)"));
-    }
     if (logout_btn_) logout_btn_->setText(tr("LOGOUT"));
     // Rebuild menus so the new translator applies to every QAction label.
     rebuild_menus();
@@ -205,13 +189,6 @@ void ToolBar::refresh_theme() {
     lbl(live_label_, colors::POSITIVE(), true);
     lbl(clock_label_, colors::TEXT_PRIMARY());
     lbl(user_label_, colors::AMBER());
-    if (chat_mode_btn_)
-        chat_mode_btn_->setStyleSheet(QString("QPushButton{background:transparent;color:%1;border:1px solid %2;"
-                                              "padding:0 8px;font-weight:700;}"
-                                              "QPushButton:hover{background:%2;color:%3;border-color:%1;}")
-                                          .arg(colors::AMBER())
-                                          .arg(colors::AMBER_DIM())
-                                          .arg(colors::TEXT_PRIMARY()));
     if (logout_btn_)
         logout_btn_->setStyleSheet(QString("QPushButton{background:transparent;color:%1;border:1px solid %1;"
                                            "padding:0 8px;font-weight:700;}"
@@ -241,8 +218,6 @@ void ToolBar::apply_responsive_layout(int w) {
         live_dot_->setVisible(show_live);
     if (live_label_)
         live_label_->setVisible(show_live);
-    if (chat_mode_btn_)
-        chat_mode_btn_->setVisible(show_chat);
 
     // Two extra separators were added to bracket the inline pushpin bar at
     // the start of the layout, so the credits/chat separator indices shift by 2.

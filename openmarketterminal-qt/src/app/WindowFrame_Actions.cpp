@@ -12,7 +12,6 @@
 #include "app/DockScreenRouter.h"
 #include "core/logging/Logger.h"
 #include "core/session/SessionManager.h"
-#include "screens/chat_mode/ChatModeScreen.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/command/CommandPalette.h"
 #include "ui/command/QuickCommandBar.h"
@@ -31,40 +30,6 @@
 
 namespace openmarketterminal {
 
-void WindowFrame::toggle_chat_mode() {
-    if (locked_) return;
-    chat_mode_ = !chat_mode_;
-
-    if (chat_mode_) {
-        if (dock_toolbar_)
-            dock_toolbar_->setVisible(false);
-        if (dock_status_bar_)
-            dock_status_bar_->setVisible(false);
-        if (chat_bubble_)
-            chat_bubble_->setVisible(false);
-        stack_->setCurrentIndex(2);
-        LOG_INFO("WindowFrame", "Entered Chat Mode");
-    } else {
-        stack_->setCurrentIndex(1);
-        if (dock_toolbar_)
-            dock_toolbar_->setVisible(true);
-        if (dock_status_bar_)
-            dock_status_bar_->setVisible(true);
-        // Restore chat bubble based on setting
-        if (chat_bubble_) {
-            auto r = SettingsRepository::instance().get("appearance.show_chat_bubble");
-            const bool show = !r.is_ok() || r.value() != "false";
-            chat_bubble_->setVisible(show);
-            if (show) {
-                chat_bubble_->reposition();
-                chat_bubble_->raise();
-            }
-        }
-        LOG_INFO("WindowFrame", "Exited Chat Mode");
-    }
-}
-
-
 void WindowFrame::toggle_focus_mode() {
     // Don't let focus mode toggle shell visibility while the user is on an
     // auth screen — the toolbar must stay hidden there. Mirrors the gate
@@ -78,12 +43,6 @@ void WindowFrame::toggle_focus_mode() {
         dock_status_bar_->setVisible(!focus_mode_);
 }
 
-void WindowFrame::toggle_chat_mode_action() {
-    // Public facade so action handlers in builtin_actions.cpp can call into
-    // the existing private implementation without becoming friends of this
-    // class. Caller has already gated on is_locked().
-    toggle_chat_mode();
-}
 
 void WindowFrame::refresh_focused_panel() {
     if (!dock_manager_)

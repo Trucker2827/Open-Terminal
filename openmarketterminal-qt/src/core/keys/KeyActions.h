@@ -5,7 +5,6 @@ namespace openmarketterminal {
 enum class KeyAction {
     // Global
     Refresh,
-    ToggleChat,
     FocusMode,
     Fullscreen,
     Screenshot,

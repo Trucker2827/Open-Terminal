@@ -32,7 +32,6 @@ class ToolBar : public QWidget {
     void dock_command(const QString& action, const QString& primary, const QString& secondary);
     void action_triggered(const QString& action);
     void logout_clicked();
-    void chat_mode_toggled();
 
   protected:
     void resizeEvent(QResizeEvent* e) override;
@@ -49,7 +48,6 @@ class ToolBar : public QWidget {
     QLabel* branding_label_ = nullptr;
     QLabel* live_dot_ = nullptr;
     QLabel* live_label_ = nullptr;
-    QPushButton* chat_mode_btn_ = nullptr;
     QPushButton* logout_btn_ = nullptr;
     QTimer* clock_timer_ = nullptr;
     QVector<QLabel*> separators_;

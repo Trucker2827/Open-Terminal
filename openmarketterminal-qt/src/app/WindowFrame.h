@@ -25,9 +25,6 @@ class TabBar;
 class DebugOverlay;
 class QuickCommandBar;
 } // namespace openmarketterminal::ui
-namespace openmarketterminal::chat_mode {
-class ChatModeScreen;
-}
 namespace openmarketterminal::screens {
 class LockScreen;
 }
@@ -173,11 +170,6 @@ class WindowFrame : public QMainWindow {
     /// Flip focus mode (chrome hide/show).
     void toggle_focus_mode();
 
-    /// Public entry into the chat-mode toggle the constructor used to wire
-    /// directly. The internal `toggle_chat_mode()` remains private so legacy
-    /// internal callers don't change.
-    void toggle_chat_mode_action();
-
     /// Forward `refresh` to whichever panel currently has focus inside this
     /// frame. No-op if no panel is focused or it doesn't expose `refresh()`.
     void refresh_focused_panel();
@@ -242,7 +234,6 @@ class WindowFrame : public QMainWindow {
 
     // View state
     bool focus_mode_ = false;
-    bool chat_mode_ = false;
     bool always_on_top_ = false;
     bool locked_ = false; ///< True while lock/PIN screen is active — blocks navigation.
     bool guest_mode_ = false; ///< Local demo mode: shell is usable without backend auth/signup.
@@ -259,9 +250,6 @@ class WindowFrame : public QMainWindow {
     bool suppress_layout_save_ = false;
     void schedule_dock_layout_save();
 
-    // Chat mode
-    chat_mode::ChatModeScreen* chat_mode_screen_ = nullptr;
-
     // Lock/PIN screen
     screens::LockScreen* lock_screen_ = nullptr;
 
@@ -274,7 +262,6 @@ class WindowFrame : public QMainWindow {
     /// Honors the local PIN lock as the only gate: shows PIN unlock if one is
     /// configured and not yet cleared this session, otherwise the dashboard.
     void enter_local_shell();
-    void toggle_chat_mode();
     void show_lock_screen();
     /// Apply the lock UI state to THIS window. Idempotent. Wired to
     /// InactivityGuard::terminal_locked_changed so every window in the

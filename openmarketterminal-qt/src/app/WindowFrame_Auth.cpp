@@ -56,7 +56,7 @@ void WindowFrame::on_auth_state_changed() {
 
     if (auth.is_authenticated()) {
         // Don't redirect if user is already on the app stack (dashboard/workspace
-        // at index 1, or chat mode at index 2) — UNLESS the PIN gate hasn't been
+        // at index 1) — UNLESS the PIN gate hasn't been
         // cleared yet (auth completed while loading state showed dashboard early).
         //
         // pin_gate_cleared_ is critical: once the user has entered their PIN this
@@ -64,14 +64,14 @@ void WindowFrame::on_auth_state_changed() {
         // focus-driven applicationStateChanged refresh, subscription_fetched, etc.)
         // must NOT re-lock the terminal. Without this guard, any auth refresh
         // while the user is working on the dashboard will re-show the PIN prompt.
-        if (stack_->currentIndex() == 1 || stack_->currentIndex() == 2) {
+        if (stack_->currentIndex() == 1) {
             if (!pin_gate_cleared_) {
                 if (auth.needs_pin_setup()) {
                     LOG_INFO("WindowFrame", "Authenticated (on app stack) but no PIN — showing PIN setup");
                     lock_screen_->show_setup();
                     locked_ = true;
                     set_shell_visible(false);
-                    stack_->setCurrentIndex(3);
+                    stack_->setCurrentIndex(2);
                     // Raise the process-wide locked flag so SessionGuard's
                     // pulse path and DockScreenRouter both know the user
                     // hasn't passed the PIN gate yet — without this, a
@@ -85,15 +85,14 @@ void WindowFrame::on_auth_state_changed() {
                     lock_screen_->show_unlock();
                     locked_ = true;
                     set_shell_visible(false);
-                    stack_->setCurrentIndex(3);
+                    stack_->setCurrentIndex(2);
                     auth::InactivityGuard::instance().set_terminal_locked(true);
                     return;
                 }
             }
             LOG_DEBUG("WindowFrame", QString("on_auth_state_changed: skipping redirect, "
-                                            "stack index=%1, chat_mode=%2, gate_cleared=%3")
+                                            "stack index=%1, gate_cleared=%2")
                                         .arg(stack_->currentIndex())
-                                        .arg(chat_mode_)
                                         .arg(pin_gate_cleared_));
             return;
         }
@@ -112,14 +111,14 @@ void WindowFrame::on_auth_state_changed() {
         // ── PIN gate: require PIN setup or PIN unlock before proceeding ──
         // On first login (no PIN configured): show mandatory PIN setup.
         // On subsequent launches (PIN exists): show PIN unlock.
-        // Skip if user is already on the lock screen (index 3).
-        if (stack_->currentIndex() != 3) {
+        // Skip if user is already on the lock screen (index 2).
+        if (stack_->currentIndex() != 2) {
             if (auth.needs_pin_setup()) {
                 LOG_INFO("WindowFrame", "Authenticated but no PIN — showing PIN setup");
                 lock_screen_->show_setup();
                 locked_ = true;
                 set_shell_visible(false);
-                stack_->setCurrentIndex(3);
+                stack_->setCurrentIndex(2);
                 auth::InactivityGuard::instance().set_terminal_locked(true);
                 return;
             }
@@ -128,7 +127,7 @@ void WindowFrame::on_auth_state_changed() {
                 lock_screen_->show_unlock();
                 locked_ = true;
                 set_shell_visible(false);
-                stack_->setCurrentIndex(3);
+                stack_->setCurrentIndex(2);
                 auth::InactivityGuard::instance().set_terminal_locked(true);
                 return;
             }
@@ -153,7 +152,7 @@ void WindowFrame::on_auth_state_changed() {
                 lock_screen_->show_setup();
             locked_ = true;
             set_shell_visible(false);
-            stack_->setCurrentIndex(3);
+            stack_->setCurrentIndex(2);
             return;
         }
 
@@ -247,7 +246,7 @@ void WindowFrame::enter_local_shell() {
         locked_ = true;
         lock_screen_->show_unlock();
         set_shell_visible(false);
-        stack_->setCurrentIndex(3);
+        stack_->setCurrentIndex(2);
         auth::InactivityGuard::instance().set_terminal_locked(true);
         return;
     }
@@ -308,7 +307,7 @@ void WindowFrame::show_lock_screen() {
 void WindowFrame::apply_lock_state(bool locked) {
     if (locked) {
         // Idempotent — if already on the lock screen, nothing to do.
-        if (stack_->currentIndex() == 3)
+        if (stack_->currentIndex() == 2)
             return;
         // Skip if this window is currently on the auth stack — login screen
         // is its own gate. Spurious lock during auth transition would push
@@ -322,7 +321,7 @@ void WindowFrame::apply_lock_state(bool locked) {
         locked_ = true;
         pin_gate_cleared_ = false;
         set_shell_visible(false);
-        stack_->setCurrentIndex(3);
+        stack_->setCurrentIndex(2);
         if (chat_bubble_)
             chat_bubble_->setVisible(false);
 
@@ -340,7 +339,7 @@ void WindowFrame::apply_lock_state(bool locked) {
     // windows take this path via terminal_locked_changed(false). For
     // them we just restore the dashboard chrome; PIN gate state is
     // per-window and stays cleared after the originator set it.
-    if (stack_->currentIndex() != 3)
+    if (stack_->currentIndex() != 2)
         return; // already unlocked
     LOG_INFO("WindowFrame", QString("Unlocking window %1 (sibling)").arg(window_id_));
     locked_ = false;

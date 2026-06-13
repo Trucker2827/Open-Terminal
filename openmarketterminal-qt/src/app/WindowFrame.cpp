@@ -34,7 +34,6 @@
 #include "screens/auth/LockScreen.h"
 #include "screens/auth/LoginScreen.h"
 #include "screens/backtesting/BacktestingScreen.h"
-#include "screens/chat_mode/ChatModeScreen.h"
 #include "screens/code_editor/CodeEditorScreen.h"
 #include "screens/crypto_trading/CryptoTradingScreen.h"
 #include "screens/dashboard/DashboardScreen.h"
@@ -274,9 +273,6 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
     setup_auth_screens();
     master_stack->addWidget(auth_stack_);
 
-    // ── Chat Mode ─────────────────────────────────────────────────────────────
-    chat_mode_screen_ = new chat_mode::ChatModeScreen;
-
     // ── Lock Screen ─────────────────────────────────────────────────────────
     // Phase 1c lift: LockOverlayController owns LockScreen widgets. The
     // frame asks for its widget via the controller; master_stack reparents
@@ -289,9 +285,7 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
     // ── ADS Docking mode ─────────────────────────────────────────────────────
     setup_docking_mode();
     master_stack->addWidget(dock_manager_->parentWidget()); // index 1 — dock_wrapper
-    master_stack->addWidget(chat_mode_screen_);             // index 2
-    master_stack->addWidget(lock_screen_);                  // index 3 — lock/PIN screen
-    connect(chat_mode_screen_, &chat_mode::ChatModeScreen::exit_requested, this, &WindowFrame::toggle_chat_mode);
+    master_stack->addWidget(lock_screen_);                  // index 2 — lock/PIN screen
 
     // Lock screen signals
     connect(lock_screen_, &screens::LockScreen::unlocked, this, &WindowFrame::on_terminal_unlocked);
@@ -383,7 +377,6 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
         }
     });
 
-    connect(toolbar, &ui::ToolBar::chat_mode_toggled, this, &WindowFrame::toggle_chat_mode);
     connect(toolbar, &ui::ToolBar::navigate_to, this, [this](const QString& id) {
         if (!locked_) dock_router_->navigate(id, true);
     });
@@ -956,9 +949,9 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
 
 void WindowFrame::set_shell_visible(bool visible) {
     if (dock_toolbar_)
-        dock_toolbar_->setVisible(visible && !focus_mode_ && !chat_mode_);
+        dock_toolbar_->setVisible(visible && !focus_mode_);
     if (dock_status_bar_)
-        dock_status_bar_->setVisible(visible && !focus_mode_ && !chat_mode_);
+        dock_status_bar_->setVisible(visible && !focus_mode_);
     if (!visible) {
         // Reset title to plain app name — no screen suffix while on auth screens
         const QString profile = ProfileManager::instance().active();
