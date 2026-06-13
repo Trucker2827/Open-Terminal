@@ -428,6 +428,16 @@ QWidget* TradeVizScreen::build_filter_bar() {
     connect(period_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, on_filter);
     connect(year_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, on_filter);
 
+    // HONESTY: the table/chord render a fixed illustrative snapshot (see the
+    // provenance note under this bar). There is no live trade-data backend,
+    // so these filters cannot query anything — disable them rather than let
+    // them imply interactivity they don't have.
+    const QString inert_tip = tr("Display-only — not connected to a live trade-data feed.");
+    for (QComboBox* c : {country_combo_, order_combo_, period_combo_, year_combo_}) {
+        c->setEnabled(false);
+        c->setToolTip(inert_tip);
+    }
+
     return bar;
 }
 
@@ -543,6 +553,18 @@ void TradeVizScreen::setup_ui() {
     // ── Filter bar ───────────────────────────────────────────────────────────
     root->addWidget(build_filter_bar());
 
+    // ── Provenance note ──────────────────────────────────────────────────────
+    // HONESTY: the data below is a fixed illustrative snapshot, not a live
+    // feed. State that plainly so the figures and the (disabled) filters are
+    // not mistaken for queryable real-time trade data.
+    provenance_note_ = new QLabel(
+        tr("Static sample — illustrative U.S. goods-trade partners. Not connected to a "
+           "live trade-data feed; the filters above are inactive."));
+    provenance_note_->setWordWrap(true);
+    provenance_note_->setStyleSheet(QString("color: %1; background: %2; padding: 4px 12px; font-size: 11px;")
+                                        .arg(ui::colors::TEXT_TERTIARY(), ui::colors::BG_RAISED()));
+    root->addWidget(provenance_note_);
+
     // ── Main content: chord diagram (left) + partner table (right) ───────────
     auto* splitter = new QSplitter(Qt::Horizontal);
     splitter->setStyleSheet(QString("QSplitter { background: %1; }"
@@ -576,6 +598,10 @@ void TradeVizScreen::retranslateUi() {
         tab_labels_[3]->setText(tr("Notes"));
     }
     if (flow_title_)     flow_title_->setText(tr("Trade Flow"));
+    if (provenance_note_)
+        provenance_note_->setText(
+            tr("Static sample — illustrative U.S. goods-trade partners. Not connected to a "
+               "live trade-data feed; the filters above are inactive."));
     if (browse_label_)   browse_label_->setText(tr("20) Browse"));
     if (order_caption_)  order_caption_->setText(tr("Order by"));
     if (period_caption_) period_caption_->setText(tr("Periodicity"));

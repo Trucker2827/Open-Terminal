@@ -55,6 +55,7 @@ class TradeVizScreen : public QWidget, public IStatefulScreen {
     // Text-bearing widgets cached for retranslateUi.
     QList<QLabel*> tab_labels_;   // Table / Settings / Export / Notes
     QLabel* flow_title_ = nullptr;
+    QLabel* provenance_note_ = nullptr;  // honest "static sample" disclaimer
     QLabel* browse_label_ = nullptr;
     QLabel* order_caption_ = nullptr;
     QLabel* period_caption_ = nullptr;
