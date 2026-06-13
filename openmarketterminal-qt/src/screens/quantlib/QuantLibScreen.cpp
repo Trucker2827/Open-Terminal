@@ -8,6 +8,7 @@
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
 #include "services/quantlib/QuantLibClient.h"
+#include "services/quantlib/QuantLibLocalServer.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
@@ -145,6 +146,7 @@ static QList<QuantModule> build_modules() {
 // ── Constructor ─────────────────────────────────────────────────────────────
 
 QuantLibScreen::QuantLibScreen(QWidget* parent) : QWidget(parent) {
+    openmarketterminal::services::QuantLibLocalServer::instance().ensure_running();
     setObjectName("qlScreen");
     setStyleSheet(kStyle());
     modules_ = build_modules();
@@ -200,7 +202,7 @@ QWidget* QuantLibScreen::create_header() {
     title_col->setSpacing(0);
     header_title_ = new QLabel(tr("QUANTLIB SUITE"));
     header_title_->setObjectName("qlHeaderTitle");
-    header_sub_ = new QLabel(tr("Remote pricing client — requires an external QuantLib server"));
+    header_sub_ = new QLabel(tr("Local QuantLib pricing engine (QuantLib + scipy)"));
     header_sub_->setObjectName("qlHeaderSub");
     title_col->addWidget(header_title_);
     title_col->addWidget(header_sub_);

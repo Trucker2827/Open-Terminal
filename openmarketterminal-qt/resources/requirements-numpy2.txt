@@ -183,3 +183,7 @@ deepgram-sdk>=3.0,<4.0
 # Windows, NSSpeechSynthesizer on macOS, espeak on Linux — same engines
 # Qt's wrapper would have used.
 pyttsx3>=2.90
+
+# QuantLib — powers the local QuantLib pricing server
+# (scripts/quantlib/quantlib_server.py), auto-started by QuantLibLocalServer.
+QuantLib

@@ -1174,6 +1174,7 @@ set(SERVICE_SOURCES
     src/services/portfolio/PortfolioService_ImportExport.cpp
     src/services/portfolio/PortfolioAnalyticsService.cpp
     src/services/quantlib/QuantLibClient.cpp
+    src/services/quantlib/QuantLibLocalServer.cpp
     src/services/economics/EconomicsService.cpp
     src/services/economics/MacroCalendarService.cpp
     # AgentService is split across multiple files; see AgentService.cpp header.
