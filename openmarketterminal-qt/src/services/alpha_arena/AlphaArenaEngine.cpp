@@ -3,6 +3,7 @@
 #include "core/logging/Logger.h"
 #include "services/alpha_arena/ContextBuilder.h"
 #include "storage/secure/SecureStorage.h"
+#include "trading/exchanges/hyperliquid/HyperliquidClient.h"
 #include "trading/exchanges/hyperliquid/HyperliquidVenue.h"
 
 #include <QCryptographicHash>
@@ -38,6 +39,12 @@ void AlphaArenaEngine::init() {
     dispatcher_ = new ModelDispatcher(this);
     router_     = new OrderRouter(this);
     paper_venue_ = new PaperVenue(this);
+
+    // Live mark feed for paper mode (public Hyperliquid prices — no auth).
+    price_client_ = new openmarketterminal::trading::hyperliquid::HyperliquidClient(this);
+    mark_timer_ = new QTimer(this);
+    mark_timer_->setInterval(5000);  // 5s — paper marks; cheap public endpoint
+    connect(mark_timer_, &QTimer::timeout, this, &AlphaArenaEngine::refresh_marks);
 
     // Wire components together. Engine stays in the middle so the UI only
     // ever subscribes to engine signals (one reference per widget).
@@ -218,6 +225,14 @@ Result<void> AlphaArenaEngine::start(const QString& competition_id) {
     clock_->set_cadence_seconds(comp.cadence_seconds);
     clock_->start();
 
+    // Paper mode: start the live mark feed so the venue prices on real marks.
+    // (Live/Hyperliquid mode gets marks straight from the exchange venue.)
+    if (paper_venue_ == venue_) {
+        active_instruments_ = comp.instruments.isEmpty() ? kPerpUniverse() : comp.instruments;
+        refresh_marks();        // seed immediately so the first tick has prices
+        mark_timer_->start();
+    }
+
     AlphaArenaRepo::instance().update_competition_status(competition_id,
                                                          QStringLiteral("running"));
     AlphaArenaRepo::instance().append_event(competition_id, QString(),
@@ -377,10 +392,10 @@ void AlphaArenaEngine::prepare_tick_inputs(const Tick& t,
     const auto comp = *comp_opt;
 
     // Markets — minimal snapshot. In v1 the engine seeds bid/ask/mid from the
-    // venue's last_mark; bars + indicators are populated by a future
-    // MarketDataIngestor (Phase 5c builds the Hyperliquid public-WS feeder).
-    // For paper-mode bring-up, we degrade gracefully: empty bar arrays mean
-    // the model sees only the snapshot fields.
+    // venue's last_mark, which refresh_marks() keeps current from Hyperliquid's
+    // public allMids feed (paper mode) or the exchange venue (live mode).
+    // Bars/indicators are still snapshot-only; if a mark hasn't arrived yet the
+    // snapshot degrades gracefully (empty fields) rather than fabricating data.
     for (const auto& coin : comp.instruments) {
         MarketSnapshot m;
         m.coin = coin;
@@ -433,8 +448,34 @@ void AlphaArenaEngine::prepare_tick_inputs(const Tick& t,
 }
 
 void AlphaArenaEngine::detach_active() {
+    if (mark_timer_) mark_timer_->stop();
+    active_instruments_.clear();
     active_competition_id_.clear();
     venue_ = nullptr;  // we don't delete; PaperVenue stays alive for reuse
+}
+
+void AlphaArenaEngine::refresh_marks() {
+    // Only feed paper competitions; live mode marks come from the exchange.
+    if (active_competition_id_.isEmpty() || venue_ != paper_venue_ || !price_client_)
+        return;
+    price_client_->info(QJsonObject{{"type", "allMids"}}, [this](Result<QJsonDocument> r) {
+        // Guard: competition may have stopped while the request was in flight.
+        if (r.is_err() || active_competition_id_.isEmpty() || venue_ != paper_venue_)
+            return;
+        const QJsonObject mids = r.value().object();
+        if (mids.isEmpty())
+            return;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        for (const QString& coin : active_instruments_) {
+            const auto it = mids.constFind(coin);
+            if (it == mids.constEnd())
+                continue;
+            bool ok = false;
+            const double px = it.value().toString().toDouble(&ok);
+            if (ok && px > 0.0)
+                paper_venue_->push_mark(coin, px, now);
+        }
+    });
 }
 
 IExchangeVenue* AlphaArenaEngine::select_venue_for_kind(const QString& venue_kind) {

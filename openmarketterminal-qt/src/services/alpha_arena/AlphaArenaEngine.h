@@ -23,7 +23,8 @@
 #include "services/alpha_arena/PaperVenue.h"
 #include "services/alpha_arena/TickClock.h"
 
-namespace openmarketterminal::trading::hyperliquid { class HyperliquidVenue; }
+namespace openmarketterminal::trading::hyperliquid { class HyperliquidVenue; class HyperliquidClient; }
+class QTimer;
 
 #include <QHash>
 #include <QObject>
@@ -141,6 +142,9 @@ class AlphaArenaEngine : public QObject {
     void on_tick(openmarketterminal::services::alpha_arena::Tick t);
     void on_tick_skipped(int seq);
     void on_dispatch_complete(int seq);
+    /// Poll Hyperliquid's public allMids and push real prices into the paper
+    /// venue so paper competitions trade on live marks (not a dead feed).
+    void refresh_marks();
     void on_decision_received(QString decision_id, QString agent_id,
                               QVector<openmarketterminal::services::alpha_arena::ProposedAction> actions,
                               QString parse_error);
@@ -179,6 +183,12 @@ class AlphaArenaEngine : public QObject {
     PaperVenue* paper_venue_ = nullptr;
     openmarketterminal::trading::hyperliquid::HyperliquidVenue* hl_venue_ = nullptr;
     IExchangeVenue* venue_ = nullptr;  // alias to active venue
+
+    // Live price feed for paper mode: polls Hyperliquid's public allMids and
+    // pushes marks into paper_venue_. Active only while a paper competition runs.
+    openmarketterminal::trading::hyperliquid::HyperliquidClient* price_client_ = nullptr;
+    QTimer* mark_timer_ = nullptr;
+    QStringList active_instruments_;   // coins to mark for the running competition
 };
 
 } // namespace openmarketterminal::services::alpha_arena
