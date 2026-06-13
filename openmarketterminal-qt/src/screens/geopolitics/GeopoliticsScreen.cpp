@@ -161,6 +161,9 @@ void GeopoliticsScreen::build_ui() {
     // Feed the relationship network with live GDELT actor→actor events.
     connect(&GeopoliticsService::instance(), &GeopoliticsService::event_network_loaded,
             relationship_panel_, &RelationshipPanel::set_event_network);
+    // Manual refresh button re-pulls the latest GDELT exports.
+    connect(relationship_panel_, &RelationshipPanel::refresh_requested, this,
+            []() { GeopoliticsService::instance().fetch_event_network(); });
 
     auto* body_w = new QWidget(this);
     body_w->setLayout(body);

@@ -69,6 +69,23 @@ void RelationshipPanel::build_ui() {
                              .arg(ui::fonts::DATA_FAMILY)
                              .arg(ui::colors::BORDER_DIM()));
     hhl->addWidget(stats_lbl_);
+
+    refresh_btn_ = new QPushButton(tr("⟳ REFRESH"), header);
+    refresh_btn_->setCursor(Qt::PointingHandCursor);
+    refresh_btn_->setStyleSheet(QString("QPushButton { color:%1; font-size:%2px; font-family:%3; font-weight:700;"
+                                        "padding:3px 10px; background:transparent; border:1px solid %4; }"
+                                        "QPushButton:hover { background:rgba(255,255,255,0.06); color:%5; }")
+                                    .arg(ui::colors::TEXT_SECONDARY())
+                                    .arg(ui::fonts::TINY)
+                                    .arg(ui::fonts::DATA_FAMILY)
+                                    .arg(ui::colors::BORDER_DIM())
+                                    .arg(ui::colors::INFO()));
+    connect(refresh_btn_, &QPushButton::clicked, this, [this]() {
+        if (provenance_lbl_)
+            provenance_lbl_->setText(tr("Refreshing live GDELT events…"));
+        emit refresh_requested();
+    });
+    hhl->addWidget(refresh_btn_);
     root->addWidget(header);
 
     // Provenance: real source + freshness, set for real once data arrives.
@@ -326,6 +343,7 @@ void RelationshipPanel::changeEvent(QEvent* event) {
 
 void RelationshipPanel::retranslateUi() {
     if (title_lbl_) title_lbl_->setText(tr("GEOPOLITICAL RELATIONSHIP NETWORK"));
+    if (refresh_btn_) refresh_btn_->setText(tr("⟳ REFRESH"));
     if (stats_lbl_) {
         if (org_count_ > 0)
             stats_lbl_->setText(tr("ACTORS: %1  |  RELATIONSHIPS: %2  |  CONFLICT: %3")

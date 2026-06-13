@@ -5,6 +5,7 @@
 #include <QEvent>
 #include <QJsonObject>
 #include <QLabel>
+#include <QPushButton>
 #include <QVBoxLayout>
 #include <QVector>
 #include <QWidget>
@@ -24,6 +25,10 @@ class RelationshipPanel : public QWidget {
     /// GeopoliticsService::event_network_loaded): {edges:[...], actors, ...}.
     void set_event_network(const QJsonObject& data);
 
+  signals:
+    /// Emitted when the user clicks REFRESH; the screen re-fetches the network.
+    void refresh_requested();
+
   protected:
     void changeEvent(QEvent* event) override;
 
@@ -40,6 +45,7 @@ class RelationshipPanel : public QWidget {
     QLabel* title_lbl_ = nullptr;
     QLabel* stats_lbl_ = nullptr;
     QLabel* provenance_lbl_ = nullptr;
+    QPushButton* refresh_btn_ = nullptr;
     int node_count_ = 0;      // distinct actors
     int conflict_count_ = 0;  // conflict edges
     int org_count_ = 0;       // total relationships
