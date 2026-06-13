@@ -939,6 +939,7 @@ set(STORAGE_SOURCES
 
 # Python runner
 set(PYTHON_SOURCES
+    src/python/NotebookKernel.cpp
     src/python/PythonRunner.cpp
     src/python/PythonSetupManager.cpp
     src/python/PythonWorker.cpp

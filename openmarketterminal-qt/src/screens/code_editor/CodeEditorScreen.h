@@ -197,6 +197,7 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     void on_run_cell(const QString& cell_id);
     void on_run_and_advance(const QString& cell_id);
     void on_run_all();
+    void on_restart_kernel();
     void on_delete_cell(const QString& cell_id);
     void on_move_cell_up(const QString& cell_id);
     void on_move_cell_down(const QString& cell_id);
@@ -259,6 +260,7 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QPushButton* btn_add_cell_ = nullptr;
     QPushButton* btn_clear_out_ = nullptr;
     QPushButton* btn_run_all_ = nullptr;
+    QPushButton* btn_restart_ = nullptr;
     QPushButton* btn_sidebar_ = nullptr;
     QLabel* py_label_ = nullptr;
     QLabel* shortcuts_label_ = nullptr;

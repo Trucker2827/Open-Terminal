@@ -11,6 +11,7 @@
 #include "core/keys/KeyConfigManager.h"
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
+#include "python/NotebookKernel.h"
 #include "python/PythonRunner.h"
 #include "services/file_manager/FileManagerService.h"
 #include "services/notebooks/NotebookLibraryService.h"
@@ -349,6 +350,10 @@ QWidget* CodeEditorScreen::build_toolbar() {
     connect(btn_run_all_, &QPushButton::clicked, this, &CodeEditorScreen::on_run_all);
     hl->addWidget(btn_run_all_);
 
+    btn_restart_ = make_btn(tr("RESTART KERNEL"));
+    connect(btn_restart_, &QPushButton::clicked, this, &CodeEditorScreen::on_restart_kernel);
+    hl->addWidget(btn_restart_);
+
     hl->addStretch();
 
     btn_sidebar_ = make_btn(tr("SIDEBAR"));
@@ -357,16 +362,11 @@ QWidget* CodeEditorScreen::build_toolbar() {
 
     add_sep();
 
-    kernel_label_ = new QLabel(tr("READY"), bar);
+    kernel_label_ = new QLabel(tr("KERNEL: READY"), bar);
     kernel_label_->setStyleSheet(QString("color:%1; font-family:%2; font-size:10px; font-weight:600;"
                                          " letter-spacing:0.5px; padding:0 8px;")
                                      .arg(colors::POSITIVE(), fonts::DATA_FAMILY));
     hl->addWidget(kernel_label_);
-
-    auto* isolation_note = new QLabel(tr("Isolated cells — they do not share variables"), bar);
-    isolation_note->setStyleSheet(QString("color:%1; font-family:%2; font-size:9px; padding-left:8px;")
-                                      .arg(colors::TEXT_TERTIARY(), fonts::DATA_FAMILY));
-    hl->addWidget(isolation_note);
 
     py_label_ = new QLabel(tr("Python"), bar);
     py_label_->setStyleSheet(QString("color:%1; font-family:%2; font-size:10px; padding-left:8px;")
@@ -617,7 +617,7 @@ void CodeEditorScreen::on_run_cell(const QString& cell_id) {
     QPointer<CodeEditorScreen> self = this;
     QString cid = cell_id;
 
-    python::PythonRunner::instance().run_code(code, [self, cid, exec_num](python::PythonResult result) {
+    python::NotebookKernel::instance().execute(code, [self, cid, exec_num](python::NotebookKernel::Result r) {
         if (!self)
             return;
 
@@ -627,31 +627,36 @@ void CodeEditorScreen::on_run_cell(const QString& cell_id) {
 
         QVector<CellOutput> outputs;
 
-        if (result.success) {
-            if (!result.output.isEmpty()) {
+        if (!r.stdout_text.isEmpty()) {
+            CellOutput out;
+            out.type = "stream";
+            out.name = "stdout";
+            out.text = r.stdout_text;
+            outputs.append(out);
+        }
+        if (!r.stderr_text.isEmpty()) {
+            CellOutput out;
+            out.type = "stream";
+            out.name = "stderr";
+            out.text = r.stderr_text;
+            outputs.append(out);
+        }
+        if (r.ok) {
+            if (!r.result_repr.isEmpty()) {
                 CellOutput out;
-                out.type = "stream";
-                out.name = "stdout";
-                out.text = result.output;
+                out.type = "execute_result";
+                out.text = r.result_repr;
                 outputs.append(out);
             }
         } else {
             CellOutput out;
             out.type = "error";
-            out.error_name = "ExecutionError";
-            out.error_value = result.error.isEmpty() ? tr("Process exited with code %1").arg(result.exit_code)
-                                                     : result.error.split('\n').last();
-            out.traceback = result.error.split('\n');
-            out.text = result.error;
+            out.error_name = r.error.section(':', 0, 0).trimmed().isEmpty() ? tr("Error")
+                                                                            : r.error.section(':', 0, 0).trimmed();
+            out.error_value = r.error;
+            out.traceback = r.traceback;
+            out.text = r.traceback.join('\n');
             outputs.append(out);
-
-            if (!result.output.isEmpty()) {
-                CellOutput stdout_out;
-                stdout_out.type = "stream";
-                stdout_out.name = "stdout";
-                stdout_out.text = result.output;
-                outputs.prepend(stdout_out);
-            }
         }
 
         self->cells_[idx].outputs = outputs;
@@ -682,6 +687,18 @@ void CodeEditorScreen::on_run_all() {
         if (cell.cell_type == "code")
             on_run_cell(cell.id);
     }
+}
+
+void CodeEditorScreen::on_restart_kernel() {
+    QPointer<CodeEditorScreen> self = this;
+    python::NotebookKernel::instance().reset([self](python::NotebookKernel::Result) {
+        if (!self)
+            return;
+        self->kernel_busy_ = false;
+        self->refresh_kernel_label();
+    });
+    // Drop cell outputs / exec counts — the namespace is gone, so they're stale.
+    on_clear_outputs();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -962,7 +979,7 @@ void CodeEditorScreen::update_navigator() {
 void CodeEditorScreen::refresh_kernel_label() {
     if (!kernel_label_)
         return;
-    kernel_label_->setText(kernel_busy_ ? tr("RUNNING…") : tr("READY"));
+    kernel_label_->setText(kernel_busy_ ? tr("KERNEL: RUNNING…") : tr("KERNEL: READY"));
     kernel_label_->setStyleSheet(QString("color:%1; font-family:%2; font-size:10px; font-weight:600;"
                                          " letter-spacing:0.5px; padding:0 8px;")
                                      .arg(kernel_busy_ ? colors::WARNING() : colors::POSITIVE(), fonts::DATA_FAMILY));
@@ -1011,6 +1028,7 @@ void CodeEditorScreen::retranslateUi() {
     if (btn_add_cell_) btn_add_cell_->setText(tr("+ CELL"));
     if (btn_clear_out_) btn_clear_out_->setText(tr("CLEAR OUT"));
     if (btn_run_all_) btn_run_all_->setText(tr("▶  RUN ALL"));
+    if (btn_restart_) btn_restart_->setText(tr("RESTART KERNEL"));
     if (btn_sidebar_) btn_sidebar_->setText(tr("SIDEBAR"));
     if (py_label_) py_label_->setText(tr("Python"));
     refresh_kernel_label();
