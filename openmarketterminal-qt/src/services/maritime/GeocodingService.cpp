@@ -29,7 +29,7 @@ constexpr const char* kNominatimEndpoint = "https://nominatim.openstreetmap.org/
 // Nominatim's usage policy mandates a valid identifying User-Agent with
 // contact info; anonymous/library-default UAs are blocked. Matches the
 // convention already used by PortsCatalog for Wikidata.
-constexpr const char* kGeoUserAgent = "OpenTerminal/0.1.0 (https://github.com/your-org/open-terminal)";
+constexpr const char* kGeoUserAgent = "OpenTerminal/0.1.0 (https://github.com/Trucker2827/Open-Terminal)";
 
 // Place geometry is stable; a week keeps repeat searches instant across
 // launches without going stale. Mirrors PortsCatalog's cache horizon.
