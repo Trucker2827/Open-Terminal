@@ -2972,6 +2972,25 @@ if(WIN32)
         )
     endif()
 
+    # ── Force-deploy the OpenSSL TLS backend plugin ──────────────────────────
+    # main.cpp sets QT_TLS_BACKEND=openssl, but windeployqt only deploys
+    # qopensslbackend.dll when it can find the OpenSSL runtime DLLs on PATH at
+    # deploy time. When it doesn't, it ships only schannel/certonly and the app
+    # crashes at startup inside Qt6Network (0xc0000005) trying to use a TLS
+    # backend that isn't present. Copy the plugin from Qt's plugins/tls and the
+    # OpenSSL DLLs (from the vcpkg prefix derived above) next to the exe so the
+    # backend actually loads — for both dev runs and the IFW installer.
+    if(_openmarketterminal_qt_prefix AND
+       EXISTS "${_openmarketterminal_qt_prefix}/plugins/tls/qopensslbackend.dll")
+        add_custom_command(TARGET OpenMarketTerminal POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/tls"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${_openmarketterminal_qt_prefix}/plugins/tls/qopensslbackend.dll"
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/tls/qopensslbackend.dll"
+            COMMENT "Deploying Qt OpenSSL TLS backend plugin...")
+    endif()
+
     # ── Optional: override sqldrivers from a known-consistent Qt install ──────
     # Some local Qt installs end up with Qt6Core/Qt6Sql at one patch level and
     # sqldrivers/qsqlite.dll at an older one (the Qt Maintenance Tool sometimes
@@ -2996,6 +3015,25 @@ if(WIN32)
             "OPENMARKETTERMINAL_QT_CONSISTENT_PLUGINS_DIR set to '${OPENMARKETTERMINAL_QT_CONSISTENT_PLUGINS_DIR}' "
             "but sqldrivers/qsqlite.dll not found there — skipping override.")
     endif()
+endif()
+
+# ── Windows: bundle vcpkg runtime DLLs windeployqt doesn't know about ─────────
+# windeployqt only deploys Qt's own DLLs (and the OpenSSL pair its TLS plugin
+# pulls in). The app also links vcpkg's zlib (z.lib -> z.dll); without it the
+# exe fails to start with "z.dll was not found". Derive the vcpkg bin dir from
+# ZLIB_INCLUDE_DIR (<prefix>/include) and copy the DLL next to the exe so both
+# dev runs and the IFW installer's *.dll capture pick it up.
+if(WIN32 AND ZLIB_INCLUDE_DIR)
+    get_filename_component(_omt_vcpkg_prefix "${ZLIB_INCLUDE_DIR}/.." ABSOLUTE)
+    foreach(_omt_vcpkg_dll z.dll libcrypto-3-x64.dll libssl-3-x64.dll)
+        if(EXISTS "${_omt_vcpkg_prefix}/bin/${_omt_vcpkg_dll}")
+            add_custom_command(TARGET OpenMarketTerminal POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_omt_vcpkg_prefix}/bin/${_omt_vcpkg_dll}"
+                    "$<TARGET_FILE_DIR:OpenMarketTerminal>"
+                COMMENT "Copying vcpkg runtime DLL ${_omt_vcpkg_dll} next to the exe...")
+        endif()
+    endforeach()
 endif()
 
 # ── Copy Python scripts to build output ──────────────────────────────────────
@@ -3340,11 +3378,37 @@ if(OPENMARKETTERMINAL_BUILD_INSTALLER)
 
     # ── Windows: capture windeployqt output for the installer ────────────────
     if(WIN32 AND DEPLOY_QT)
+        # Capture only the deployed runtime DLLs sitting directly beside the
+        # exe. CPack's IFW generator creates its _CPack_Packages staging tree
+        # INSIDE this same build dir; without excluding it the rule recurses
+        # into the staging copy it is itself producing and spirals into an
+        # infinitely nested path. Also prune the other build-internal dirs that
+        # hold DLLs we don't want re-captured (FetchContent builds, CMake's own
+        # scratch). The real runtime DLLs are flat in this dir from windeployqt.
         install(DIRECTORY "$<TARGET_FILE_DIR:OpenMarketTerminal>/"
                 DESTINATION "."
                 COMPONENT core
                 FILES_MATCHING
+                PATTERN "_CPack_Packages" EXCLUDE
+                PATTERN "CMakeFiles" EXCLUDE
+                PATTERN "_deps" EXCLUDE
                 PATTERN "*.dll")
+        # Non-DLL runtime files windeployqt drops beside the exe that the
+        # *.dll capture above misses. Qt WebEngine refuses to start its render
+        # process without QtWebEngineProcess.exe + the *.pak resource blobs +
+        # icudtl.dat + the qtwebengine_locales, so charts / news webviews come
+        # up blank on an installed build. yt-dlp.exe backs dashboard video.
+        install(FILES
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/QtWebEngineProcess.exe"
+                "$<TARGET_FILE_DIR:OpenMarketTerminal>/yt-dlp.exe"
+                DESTINATION "." COMPONENT core OPTIONAL)
+        install(DIRECTORY "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/"
+                DESTINATION "resources" COMPONENT core
+                FILES_MATCHING
+                PATTERN "*.pak"
+                PATTERN "icudtl.dat")
+        install(DIRECTORY "$<TARGET_FILE_DIR:OpenMarketTerminal>/translations"
+                DESTINATION "." COMPONENT core OPTIONAL)
         # Python analytics scripts (4000+ files) — required at runtime by
         # PythonRunner / ExchangeService. Without this the Crypto tab and all
         # Python-backed screens crash on an installed build.
@@ -3537,6 +3601,20 @@ if(OPENMARKETTERMINAL_BUILD_INSTALLER)
             "OpenTerminal-${CMAKE_PROJECT_VERSION}-linux-${_OPENMARKETTERMINAL_PKG_ARCH}-setup")
     endif()
     message(STATUS "  Installer filename: ${CPACK_PACKAGE_FILE_NAME}")
+
+    # ── Restrict the installer to the runtime components ──────────────────────
+    # Several FetchContent dependencies (QGeoView, QXlsx, qtadvanceddocking,
+    # md4c) register their own install() rules for dev artifacts — static libs,
+    # headers, CMake/pkgconfig files — despite CMAKE_SKIP_INSTALL_RULES. CPack
+    # sweeps those into auto-created components (Unspecified / devel / headers /
+    # license) and, left unchecked, bundles ~70 MB of .lib/.h files no end user
+    # needs. Pin the package to just the components we define so the installer
+    # ships the app + Python analytics and nothing else.
+    if(WIN32)
+        set(CPACK_COMPONENTS_ALL core scripts)
+    else()
+        set(CPACK_COMPONENTS_ALL core)
+    endif()
 
     # ── Include CPack + IFW module ───────────────────────────────────────────
     include(CPack)
