@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.openterminal.OpenTerminal</id>
+  <name>Open Terminal</name>
+  <summary>Professional financial intelligence terminal</summary>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Open Terminal is a native C++ desktop financial intelligence terminal
+      featuring real-time market data, AI-powered analytics, multi-broker trading,
+      portfolio management, and 1300+ Python analytics scripts.
+    </p>
+    <ul>
+      <li>Real-time crypto and equity trading (Kraken, HyperLiquid, 18+ brokers)</li>
+      <li>AI chat with multiple LLM providers (OpenAI, Anthropic, Groq, Ollama)</li>
+      <li>Python analytics (equity, derivatives, fixed income, quant)</li>
+      <li>Voice commands via offline Whisper speech recognition</li>
+      <li>Visual workflow node editor with risk management</li>
+      <li>Geopolitics, prediction markets (Polymarket), maritime tracking</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">openmarketterminal.desktop</launchable>
+  <url type="homepage">https://github.com/your-org/open-terminal</url>
+  <url type="bugtracker">https://github.com/your-org/open-terminal/issues</url>
+  <provides>
+    <binary>OpenTerminal</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-06-10">
+      <description>
+        <p>Initial Open Terminal personalization build.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Finance</category>
+    <category>Office</category>
+  </categories>
+</component>

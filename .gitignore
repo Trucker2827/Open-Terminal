@@ -1,0 +1,183 @@
+# .gitignore — Open Terminal (Qt6 / C++20)
+# ============================================================
+
+# ── CMake user presets (local paths — never commit) ─────────
+CMakeUserPresets.json
+openmarketterminal-qt/CMakeUserPresets.json
+
+# ── CMake build output ───────────────────────────────────────
+openmarketterminal-qt/build/
+openmarketterminal-qt/build-*/
+openmarketterminal-qt/build_*/
+openmarketterminal-qt/tmpqt/
+# clangd (.clangd → CompilationDatabase: .) expects compile_commands.json at the
+# openmarketterminal-qt root; it's a local symlink into the active build dir (a build artifact).
+openmarketterminal-qt/compile_commands.json
+tmpqt/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+
+# ── Compiled binaries & libraries ───────────────────────────
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.pyd
+
+# ── Qt generated files ───────────────────────────────────────
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+
+# ── Python artifacts ─────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.pdm-python
+.pdm-build
+
+# ── setup.sh runtime directories ─────────────────────────────
+.qt/
+.aqt-venv/
+
+# ── IDE and editor ───────────────────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+*.ntvs*
+*.njsproj
+*.sw?
+.DS_Store
+Thumbs.db
+agents.md
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Database files (runtime, not source) ─────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# ── Environment & secrets — NEVER commit ─────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pub
+
+# ── Large data / ML model files ──────────────────────────────
+*.csv
+*.bin
+*.pt
+*.onnx
+*.h5
+*.pkl
+*.pickle
+*.model
+*.weights
+
+# ── Archives ─────────────────────────────────────────────────
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ── Legacy / non-C++ build artifacts (defensive ignores) ─────
+openmarketterminal-desktop/
+openmarketterminal-cpp/
+**/target/
+*.rlib
+*.rmeta
+node_modules/
+dist-ssr/
+
+# ── Claude Code — never commit ───────────────────────────────
+.claude/
+CLAUDE.md
+openmarketterminal-qt/DESIGN_SYSTEM.md
+
+# ── Build output (uitest) ─────────────────────────────────────
+openmarketterminal-qt/uitest/build/
+
+# ── ML training artifacts ─────────────────────────────────────
+lightning_logs/
+*.ckpt
+*.yaml
+
+# ── Shell tree output files ───────────────────────────────────
+**/tree
+
+# ── Duplicate nested agents folder ───────────────────────────
+openmarketterminal-qt/scripts/agents/agents/
+
+# ── Firecrawl research artifacts ─────────────────────────────
+.firecrawl/
+
+# ── Clangd cache ─────────────────────────────────────────────
+.cache/
+openmarketterminal-qt/.cache/
+
+# ── Exchange runtime cache ────────────────────────────────────
+openmarketterminal-qt/scripts/exchange/.cache/
+
+# ── Python test + bench caches ────────────────────────────────
+.pytest_cache/
+.benchmarks/
+
+# ── Editor/refactor backups ───────────────────────────────────
+*.bak
+*.orig
+*.deleted
+*.deleted.*
+
+# ── Local SQLite databases ────────────────────────────────────
+# (*.db is already covered above; adding sqlite variants)
+*.sqlite
+*.sqlite3
+
+# ── Internal planning docs ────────────────────────────────────
+openmarketterminal-qt/docs/superpowers/
+docs/superpowers/
+
+# ── Grill-me session notes ────────────────────────────────────
+.grill-me/
+**/.grill-me/
+
+# ── Local planning docs ───────────────────────────────────────
+plans/
+**/plans/
+
+# ── Internal Crypto Center phase notes ────────────────────────
+openmarketterminal-qt/docs/CRYPTO_CENTER_PHASE_2.md
+openmarketterminal-qt/docs/CRYPTO_CENTER_PHASE_3.md
+openmarketterminal-qt/docs/CRYPTO_CENTER_PHASE_4.md
+openmarketterminal-qt/docs/CRYPTO_CENTER_PHASE_5.md
+openmarketterminal-qt/docs/CRYPTO_WALLET_CONNECT.md
+
+# ── Markdown files — README and project docs are tracked ──────
+*.md
+!README.md
+!**/README.md
+!docs/**/*.md
+!openmarketterminal-qt/docs/**/*.md

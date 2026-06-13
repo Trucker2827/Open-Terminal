@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Command search</title>
+  <rect x="8" y="12" width="48" height="40" rx="10" fill="none" stroke="#102027" stroke-width="4"/>
+  <path d="M20 28l8 6-8 6" fill="none" stroke="#1AAE8A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M34 40h12" stroke="#F2B84B" stroke-width="4" stroke-linecap="round"/>
+</svg>
+

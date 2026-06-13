@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">OpenMarketTerminal mark</title>
+  <desc id="desc">Open brackets around a market signal line and terminal cursor.</desc>
+  <path d="M156 92H82v328h74" fill="none" stroke="#102027" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M356 92h74v328h-74" fill="none" stroke="#102027" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M124 330l76-78 64 38 78-116 50 28 72-94" fill="none" stroke="#1AAE8A" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M170 414h112" stroke="#102027" stroke-width="26" stroke-linecap="round"/>
+  <path d="M318 414h44" stroke="#F2B84B" stroke-width="26" stroke-linecap="round"/>
+</svg>
+

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1250 300" role="img" aria-labelledby="title desc">
+  <title id="title">OpenMarketTerminal logo</title>
+  <desc id="desc">OpenMarketTerminal wordmark with open market signal mark.</desc>
+  <rect width="1250" height="300" fill="none"/>
+  <g transform="translate(38 34) scale(.46)">
+    <path d="M156 92H82v328h74" fill="none" stroke="#102027" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M356 92h74v328h-74" fill="none" stroke="#102027" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M124 330l76-78 64 38 78-116 50 28 72-94" fill="none" stroke="#1AAE8A" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M170 414h112" stroke="#102027" stroke-width="26" stroke-linecap="round"/>
+    <path d="M318 414h44" stroke="#F2B84B" stroke-width="26" stroke-linecap="round"/>
+  </g>
+  <text x="302" y="132" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="74" font-weight="760" fill="#102027">OpenMarket</text>
+  <text x="302" y="208" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="560" fill="#47616A">Terminal</text>
+  <path d="M1010 205h110" stroke="#1AAE8A" stroke-width="18" stroke-linecap="round"/>
+  <path d="M1148 205h36" stroke="#F2B84B" stroke-width="18" stroke-linecap="round"/>
+</svg>
+

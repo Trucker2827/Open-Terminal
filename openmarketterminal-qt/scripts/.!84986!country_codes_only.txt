@@ -1,0 +1,29 @@
+    "999": "999",  # Not Applicable
+    "abw": "533",  # Aruba
+    "afg": "004",  # Afghanistan
+    "ago": "024",  # Angola
+    "aia": "660",  # Anguila
+    "alb": "008",  # Albania
+    "and": "020",  # Andorra
+    "ant": "530",  # Netherlands Antilles
+    "are": "784",  # United Arab Emirates
+    "arg": "032",  # Argentina
+    "arm": "051",  # Armenia
+    "asm": "016",  # American Samoa
+    "ata": "010",  # Antarctica
+    "atf": "260",  # Fr. So. Ant. Tr
+    "atg": "028",  # Antigua and Barbuda
+    "aus": "036",  # Australia
+    "aut": "040",  # Austria
+    "aze": "031",  # Azerbaijan
+    "bat": "080",  # Br. Antr. Terr
+    "bdi": "108",  # Burundi
+    "bel": "056",  # Belgium
+    "ben": "204",  # Benin
+    "bes": "535",  # Bonaire
+    "bfa": "854",  # Burkina Faso
+    "bgd": "050",  # Bangladesh
+    "bgr": "100",  # Bulgaria
+    "bhr": "048",  # Bahrain
+    "bhs": "044",  # Bahamas, The
+    "bih": "070",  # Bosnia and Herzegovina

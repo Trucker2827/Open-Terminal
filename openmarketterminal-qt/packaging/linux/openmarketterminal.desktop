@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open Terminal
+GenericName=Financial Intelligence Terminal
+Comment=Professional financial data terminal with AI analytics, trading, and market data
+Exec=OpenTerminal %U
+Icon=openmarketterminal
+Terminal=false
+StartupWMClass=OpenTerminal
+StartupNotify=true
+Categories=Finance;Office;Science;
+MimeType=application/x-openmarketterminal;
+Keywords=finance;trading;stocks;crypto;portfolio;AI;analytics;markets;
+X-GNOME-FullName=Open Terminal

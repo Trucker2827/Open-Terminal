@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Safe AI</title>
+  <path d="M32 8l20 8v14c0 13-8 21-20 26-12-5-20-13-20-26V16l20-8z" fill="none" stroke="#102027" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M23 32l6 6 13-16" fill="none" stroke="#1AAE8A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24 48h16" stroke="#F2B84B" stroke-width="4" stroke-linecap="round"/>
+</svg>
+
