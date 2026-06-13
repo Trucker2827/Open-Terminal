@@ -53,7 +53,8 @@ class DashboardStatusBar : public QWidget {
     QLabel* feeds_caption_lbl_ = nullptr;
     QLabel* ready_lbl_ = nullptr;
     int     layout_count_ = 0;
-    bool    feeds_connected_ = true;
+    bool    feeds_connected_ = false;       // true once data has flowed recently
+    qint64  last_data_ms_ = 0;              // epoch-ms of last DataHub topic_updated
     int     last_latency_ms_ = -2; // -2 = uninitialised, -1 = error
 
     PendingOrdersBadge* pending_badge_ = nullptr;

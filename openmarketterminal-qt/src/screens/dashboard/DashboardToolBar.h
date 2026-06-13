@@ -40,7 +40,8 @@ class DashboardToolBar : public QWidget {
     QWidget* right_container_ = nullptr;
     QPushButton* clock_btn_ = nullptr;
     bool clock_is_utc_ = true;
-    bool connected_ = true;
+    bool connected_ = false;             // true once DataHub delivers data
+    qint64 last_data_ms_ = 0;            // epoch-ms of last DataHub topic_updated
     int  widget_count_value_ = 0;
     QLabel* status_text_ = nullptr;
     QLabel* widget_count_ = nullptr;

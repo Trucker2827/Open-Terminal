@@ -1,6 +1,7 @@
 #include "screens/dashboard/DashboardStatusBar.h"
 
 #include "core/config/AppConfig.h"
+#include "datahub/DataHub.h"
 #include "screens/action_center/PendingOrdersBadge.h"
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
@@ -100,7 +101,12 @@ DashboardStatusBar::DashboardStatusBar(QWidget* parent) : QWidget(parent) {
     ll->addWidget(make_sep());
     feeds_caption_lbl_ = make_lbl(tr("FEEDS:"), "dsLabel");
     ll->addWidget(feeds_caption_lbl_);
-    feeds_label_ = new QLabel(tr("CONNECTED"));
+    // Honest feed indicator: starts IDLE and flips to LIVE only when DataHub
+    // actually delivers data (topic_updated). It is NOT a hardcoded
+    // "CONNECTED" — this app fetches on demand and has no persistent feed
+    // socket, so "LIVE" means "data flowed in the last 20s", "IDLE" means it
+    // hasn't. (See ping_api(): there is no cloud backend to ping.)
+    feeds_label_ = new QLabel(tr("IDLE"));
     feeds_label_->setObjectName("dsFeeds");
     ll->addWidget(feeds_label_);
 
@@ -154,6 +160,16 @@ DashboardStatusBar::DashboardStatusBar(QWidget* parent) : QWidget(parent) {
 
     mem_timer_.setInterval(5000); // 5s — memory probe is cheap; this is just a status hint
     connect(&mem_timer_, &QTimer::timeout, this, &DashboardStatusBar::update_memory);
+
+    // Real feed health: every successful DataHub refresh stamps the clock and
+    // marks feeds LIVE. The 5s mem tick re-checks staleness and drops back to
+    // IDLE when no data has arrived for 20s. (Queued across the hub thread.)
+    connect(&datahub::DataHub::instance(), &datahub::DataHub::topic_updated, this,
+            [this](const QString&, const QVariant&) {
+                last_data_ms_ = QDateTime::currentMSecsSinceEpoch();
+                if (!feeds_connected_)
+                    set_connected(true);
+            });
 
     refresh_theme();
 }
@@ -223,12 +239,17 @@ void DashboardStatusBar::set_widget_count(int count) {
 
 void DashboardStatusBar::set_connected(bool connected) {
     feeds_connected_ = connected;
-    feeds_label_->setText(connected ? tr("CONNECTED") : tr("DISCONNECTED"));
+    feeds_label_->setText(connected ? tr("LIVE") : tr("IDLE"));
     feeds_label_->setStyleSheet(QString("color:%1;font-weight:bold;background:transparent;")
-                                    .arg(connected ? ui::colors::POSITIVE() : ui::colors::NEGATIVE()));
+                                    .arg(connected ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY()));
 }
 
 void DashboardStatusBar::update_memory() {
+    // Feed-staleness check (runs on the same 5s cadence): if no DataHub
+    // update has arrived in 20s, drop the indicator back to IDLE.
+    if (feeds_connected_ && QDateTime::currentMSecsSinceEpoch() - last_data_ms_ > 20000)
+        set_connected(false);
+
     if (!mem_label_)
         return;
     double rss_mb = -1.0;
@@ -303,7 +324,7 @@ void DashboardStatusBar::retranslateUi() {
     if (feeds_caption_lbl_)   feeds_caption_lbl_->setText(tr("FEEDS:"));
     if (ready_lbl_)           ready_lbl_->setText(QString::fromUtf8("● ") + tr("READY"));
     if (layout_label_)        layout_label_->setText(layout_count_ > 0 ? tr("ACTIVE") : tr("EMPTY"));
-    if (feeds_label_)         feeds_label_->setText(feeds_connected_ ? tr("CONNECTED") : tr("DISCONNECTED"));
+    if (feeds_label_)         feeds_label_->setText(feeds_connected_ ? tr("LIVE") : tr("IDLE"));
     if (latency_label_) {
         if (last_latency_ms_ == -2)      latency_label_->setText(tr("LAT: ---"));
         else if (last_latency_ms_ < 0)   latency_label_->setText(tr("LAT: ERR"));

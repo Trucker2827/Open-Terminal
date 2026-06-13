@@ -1,5 +1,6 @@
 #include "screens/dashboard/DashboardToolBar.h"
 
+#include "datahub/DataHub.h"
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
 
@@ -58,7 +59,9 @@ DashboardToolBar::DashboardToolBar(QWidget* parent) : QWidget(parent) {
 
     make_sep(ll);
 
-    status_text_ = new QLabel(tr("LIVE"));
+    // Honest status: starts IDLE, flips to LIVE only when DataHub actually
+    // delivers data. Not a hardcoded "LIVE" — this app fetches on demand.
+    status_text_ = new QLabel(tr("IDLE"));
     status_text_->setObjectName("dtStatus");
     ll->addWidget(status_text_);
 
@@ -142,6 +145,15 @@ DashboardToolBar::DashboardToolBar(QWidget* parent) : QWidget(parent) {
     clock_timer_.setInterval(1000);
     connect(&clock_timer_, &QTimer::timeout, this, &DashboardToolBar::update_clock);
 
+    // Real feed health: each successful DataHub refresh marks LIVE; the 1s
+    // clock tick drops back to IDLE after 20s with no data.
+    connect(&datahub::DataHub::instance(), &datahub::DataHub::topic_updated, this,
+            [this](const QString&, const QVariant&) {
+                last_data_ms_ = QDateTime::currentMSecsSinceEpoch();
+                if (!connected_)
+                    set_connected(true);
+            });
+
     refresh_theme();
 }
 
@@ -212,6 +224,10 @@ void DashboardToolBar::update_clock() {
     const QString suffix = clock_is_utc_ ? tr(" UTC") : tr(" LOC");
     const QDateTime now = clock_is_utc_ ? QDateTime::currentDateTimeUtc() : QDateTime::currentDateTime();
     clock_btn_->setText(now.toString("yyyy-MM-dd HH:mm:ss") + suffix);
+
+    // Drop the feed indicator to IDLE if no DataHub update in 20s.
+    if (connected_ && QDateTime::currentMSecsSinceEpoch() - last_data_ms_ > 20000)
+        set_connected(false);
 }
 
 void DashboardToolBar::set_widget_count(int count) {
@@ -221,7 +237,7 @@ void DashboardToolBar::set_widget_count(int count) {
 
 void DashboardToolBar::set_connected(bool connected) {
     connected_ = connected;
-    status_text_->setText(connected ? tr("LIVE") : tr("OFFLINE"));
+    status_text_->setText(connected ? tr("LIVE") : tr("IDLE"));
     // refresh_theme handles the base color; override just this label dynamically
     status_text_->setStyleSheet(QString("color:%1;font-weight:bold;background:transparent;")
                                     .arg(connected ? ui::colors::POSITIVE() : ui::colors::NEGATIVE()));
@@ -234,7 +250,7 @@ void DashboardToolBar::changeEvent(QEvent* event) {
 }
 
 void DashboardToolBar::retranslateUi() {
-    if (status_text_)   status_text_->setText(connected_ ? tr("LIVE") : tr("OFFLINE"));
+    if (status_text_)   status_text_->setText(connected_ ? tr("LIVE") : tr("IDLE"));
     if (clock_btn_)     clock_btn_->setToolTip(tr("Click to toggle UTC / local time"));
     if (widget_count_)  widget_count_->setText(tr("%1 WIDGETS").arg(widget_count_value_));
     if (compact_btn_)   compact_btn_->setText(tr("COMPACT"));

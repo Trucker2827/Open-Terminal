@@ -126,8 +126,8 @@ QuickTradeWidget::QuickTradeWidget(QWidget* parent) : BaseWidget(tr("QUICK TRADE
     est_total_ = new QLabel(tr("EST. TOTAL  --"));
     vl->addWidget(est_total_);
 
-    // Submit button
-    submit_btn_ = new QPushButton(tr("PLACE ORDER"));
+    // Order-ticket review button (side-aware text set by on_side_changed).
+    submit_btn_ = new QPushButton(tr("REVIEW ORDER"));
     submit_btn_->setFixedHeight(32);
     vl->addWidget(submit_btn_);
 
@@ -276,7 +276,7 @@ void QuickTradeWidget::hub_unsubscribe_all() {
 void QuickTradeWidget::on_side_changed(int idx) {
     // BUY = green, SELL/SHORT = red
     QString color = (idx == 0) ? ui::colors::POSITIVE() : ui::colors::NEGATIVE();
-    submit_btn_->setText(idx == 0 ? tr("PLACE BUY ORDER") : idx == 1 ? tr("PLACE SELL ORDER") : tr("PLACE SHORT ORDER"));
+    submit_btn_->setText(idx == 0 ? tr("REVIEW BUY ORDER") : idx == 1 ? tr("REVIEW SELL ORDER") : tr("REVIEW SHORT ORDER"));
     submit_btn_->setStyleSheet(QString("QPushButton { background: %1; color: %3; border: none; "
                                        "font-size: 11px; font-weight: bold; }"
                                        "QPushButton:hover { background: %2; }")
@@ -297,9 +297,18 @@ void QuickTradeWidget::submit_order() {
     QString price_str = type == "MARKET" ? tr("market price ($%1)").arg(current_price_, 0, 'f', 2)
                                          : QString("$%1").arg(price_input_->text());
 
+    // Honest: this dashboard widget builds an order ticket for review — it
+    // does NOT route orders. Real placement lives in the Equity Trading
+    // screen, which connects to a configured broker (BrokerRegistry) with
+    // credentials and proper ack/error handling. Never claim an order was
+    // sent when it wasn't.
     QMessageBox::information(
-        this, tr("Order Submitted"),
-        tr("%1 %2 %3 @ %4\nOrder sent to trading engine.").arg(side).arg(qty, 0, 'f', 0).arg(sym).arg(price_str));
+        this, tr("Order ticket — not sent"),
+        tr("%1 %2 %3 @ %4\n\n"
+           "Quick Trade builds an order ticket for review; it does not place "
+           "orders. To route this to your broker, use the Equity Trading "
+           "screen. No order has been sent.")
+            .arg(side).arg(qty, 0, 'f', 0).arg(sym).arg(price_str));
 }
 
 void QuickTradeWidget::retranslateUi() {
@@ -308,7 +317,7 @@ void QuickTradeWidget::retranslateUi() {
     if (lookup_btn_)  lookup_btn_->setText(tr("LOOKUP"));
     if (qty_lbl_)     qty_lbl_->setText(tr("QTY"));
     if (price_lbl_)   price_lbl_->setText(tr("PRICE"));
-    // submit_btn_ text is side-aware ("PLACE BUY ORDER" etc.) — let on_side_changed re-derive it.
+    // submit_btn_ text is side-aware ("REVIEW BUY ORDER" etc.) — let on_side_changed re-derive it.
     if (side_combo_) on_side_changed(side_combo_->currentIndex());
 }
 
