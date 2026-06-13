@@ -9,6 +9,8 @@
 
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
+#include "datahub/DataHub.h"
+#include "services/maritime/AisStreamFeed.h"
 #include "services/maritime/GeocodingService.h"
 #include "services/maritime/MaritimeService.h"
 #include "services/maritime/PortsCatalog.h"
@@ -55,6 +57,9 @@ MaritimeScreen::MaritimeScreen(QWidget* parent) : QWidget(parent) {
 
 void MaritimeScreen::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
+    // Start the live AIS feed (no-op without a configured key); it publishes to
+    // maritime:vessels:area, which connect_service() routed into the map.
+    services::maritime::AisStreamFeed::instance().start();
     // Only resume auto-refresh if the user had it enabled (off by default).
     if (auto_refresh_btn_ && auto_refresh_btn_->isChecked())
         refresh_timer_->start();
@@ -89,6 +94,16 @@ void MaritimeScreen::hideEvent(QHideEvent* e) {
 void MaritimeScreen::connect_service() {
     auto& svc = MaritimeService::instance();
     connect(&svc, &MaritimeService::vessels_loaded, this, &MaritimeScreen::on_vessels_loaded);
+
+    // Live AISStream.io feed (free, user key): publishes a rolling vessel page to
+    // maritime:vessels:area. Route it through the same handler that paints the
+    // table + world map, so the map populates with real positions even without a
+    // paid AIS proxy configured.
+    datahub::DataHub::instance().subscribe(
+        this, QStringLiteral("maritime:vessels:area"), [this](const QVariant& v) {
+            if (v.canConvert<services::maritime::VesselsPage>())
+                on_vessels_loaded(v.value<services::maritime::VesselsPage>());
+        });
     connect(&svc, &MaritimeService::vessel_found, this, &MaritimeScreen::on_vessel_found);
     connect(&svc, &MaritimeService::vessel_history_loaded, this, &MaritimeScreen::on_vessel_history);
     connect(&svc, &MaritimeService::health_loaded, this, &MaritimeScreen::on_health_loaded);
