@@ -188,9 +188,9 @@ void OnboardingTour::retranslateUi() {
     if (step_labels_.size() > 3 && step_labels_[3].title) {
         step_labels_[3].title->setText(tr("Settings & shortcuts"));
         step_labels_[3].body->setText(
-            tr("Open Settings (gear icon) to tune theme, hotkeys, telemetry "
-               "opt-in, and broker credentials. Hotkeys are rebindable — "
-               "every action in the registry can be assigned a key."));
+            tr("Open Settings (gear icon) to tune theme, hotkeys, and broker "
+               "credentials. Hotkeys are rebindable — every action in the "
+               "registry can be assigned a key."));
         step_labels_[3].tip->setText(
             tr("Tip: F11 toggles fullscreen on the focused window."));
     }

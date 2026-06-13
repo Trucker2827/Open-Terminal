@@ -29,9 +29,6 @@ namespace ks = openmarketterminal::services::prediction::kalshi_ns;
 
 namespace {
 
-const QString kExistingKalshiKeysPath =
-    QStringLiteral("/Users/haydarevich/Documents/SimplyMoney/Keysandetc/kalshi_keys.rtf");
-
 QString read_secret_text(const QString& path, QString* error) {
     const QFileInfo info(path);
     if (info.suffix().compare(QStringLiteral("rtf"), Qt::CaseInsensitive) == 0) {
@@ -213,7 +210,6 @@ void PredictionAccountDialog::retranslateUi() {
     set_label(ks_form_, ks_api_key_id_, tr("API Key ID:"));
     set_label(ks_form_, ks_private_key_pem_, tr("Private Key (PEM):"));
     if (ks_load_pem_btn_) ks_load_pem_btn_->setText(tr("Load from file…"));
-    if (ks_import_existing_btn_) ks_import_existing_btn_->setText(tr("Import Existing"));
     if (ks_use_demo_)     ks_use_demo_->setText(tr("Use demo (paper trading) environment"));
     if (ks_save_btn_)  ks_save_btn_->setText(tr("Save"));
     if (ks_test_btn_)  ks_test_btn_->setText(tr("Test Connection"));
@@ -313,12 +309,8 @@ void PredictionAccountDialog::build_kalshi_tab() {
     form->addRow(tr("Private Key (PEM):"), ks_private_key_pem_);
 
     ks_load_pem_btn_ = new QPushButton(tr("Load from file…"), page);
-    ks_import_existing_btn_ = new QPushButton(tr("Import Existing"), page);
-    ks_import_existing_btn_->setToolTip(kExistingKalshiKeysPath);
-    ks_import_existing_btn_->setVisible(QFileInfo::exists(kExistingKalshiKeysPath));
     auto* key_btns = new QHBoxLayout;
     key_btns->addWidget(ks_load_pem_btn_);
-    key_btns->addWidget(ks_import_existing_btn_);
     key_btns->addStretch(1);
     form->addRow(QString(), key_btns);
 
@@ -345,8 +337,6 @@ void PredictionAccountDialog::build_kalshi_tab() {
     connect(ks_save_btn_, &QPushButton::clicked, this, &PredictionAccountDialog::on_save_kalshi);
     connect(ks_clear_btn_, &QPushButton::clicked, this, &PredictionAccountDialog::on_clear_kalshi);
     connect(ks_load_pem_btn_, &QPushButton::clicked, this, &PredictionAccountDialog::on_load_kalshi_pem);
-    connect(ks_import_existing_btn_, &QPushButton::clicked,
-            this, &PredictionAccountDialog::on_import_existing_kalshi);
     connect(ks_test_btn_, &QPushButton::clicked, this, [this]() {
         emit test_requested(QStringLiteral("kalshi"));
     });
@@ -478,14 +468,6 @@ void PredictionAccountDialog::on_load_kalshi_pem() {
     if (path.isEmpty()) return;
 
     load_kalshi_secret_file(path);
-}
-
-void PredictionAccountDialog::on_import_existing_kalshi() {
-    if (!load_kalshi_secret_file(kExistingKalshiKeysPath)) return;
-    ks_use_demo_->setChecked(false);
-    ks_status_->setText(
-        tr("<span style='color:#d97706'>Imported existing SimplyMoney Kalshi production credentials. "
-           "Live mode is selected; use Test Connection before trading.</span>"));
 }
 
 bool PredictionAccountDialog::load_kalshi_secret_file(const QString& path) {

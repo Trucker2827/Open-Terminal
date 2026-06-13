@@ -16,9 +16,6 @@
 #include "core/layout/WorkspaceShell.h"
 #include "storage/workspace/WorkspaceFwspImporter.h"
 #include "core/screen/MonitorWatcher.h"
-#include "core/telemetry/CloudTelemetryProvider.h"
-#include "core/telemetry/LocalTelemetrySink.h"
-#include "core/telemetry/TelemetryProvider.h"
 #include "core/window/WindowRegistry.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/workspace/CrashRecovery.h"
@@ -143,38 +140,10 @@ void TerminalShell::initialise() {
         }
     }
 
-    // Phase 10: install telemetry providers per opt-in settings. Defaults
-    // off — no telemetry without consent.
-    //
-    //   telemetry.local_enabled  → LocalTelemetrySink writes to workspace.db
-    //   telemetry.cloud_enabled  → CloudTelemetryProvider also POSTs to
-    //                              telemetry.cloud_endpoint with bearer
-    //                              telemetry.cloud_api_key. Always wraps a
-    //                              LocalTelemetrySink so disk persistence
-    //                              survives network outages.
-    {
-        auto local_r = SettingsRepository::instance().get("telemetry.local_enabled");
-        const bool local_enabled = local_r.is_ok() && local_r.value() == "true";
-        auto cloud_r = SettingsRepository::instance().get("telemetry.cloud_enabled");
-        const bool cloud_enabled = cloud_r.is_ok() && cloud_r.value() == "true";
-
-        // Provider singletons live for the process lifetime; statics keep
-        // them out of the heap-leak audit. Construction order matters:
-        // local first so cloud can chain to it.
-        static telemetry::LocalTelemetrySink local_sink;
-        static telemetry::CloudTelemetryProvider cloud_sink(&local_sink);
-
-        if (cloud_enabled) {
-            cloud_sink.start();
-            telemetry::TelemetrySink::instance().set_provider(&cloud_sink);
-            LOG_INFO(kShellTag, "Cloud telemetry enabled (chains LocalTelemetrySink)");
-        } else if (local_enabled) {
-            telemetry::TelemetrySink::instance().set_provider(&local_sink);
-            LOG_INFO(kShellTag, "Local telemetry enabled");
-        } else {
-            LOG_DEBUG(kShellTag, "Telemetry off");
-        }
-    }
+    // No telemetry. This is a local-first, MIT-licensed app: it never
+    // records, batches, or uploads user actions anywhere. The telemetry
+    // subsystem (local sink + cloud uploader) was removed entirely — there
+    // is no phone-home path to enable.
 
     // Phase 4 Track B: populate the action registry with the built-ins that
     // replaced WindowFrame's hard-coded keyboard wiring. Must happen before

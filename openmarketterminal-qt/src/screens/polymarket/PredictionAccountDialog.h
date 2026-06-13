@@ -49,7 +49,6 @@ class PredictionAccountDialog : public QDialog {
     void on_save_kalshi();
     void on_clear_kalshi();
     void on_load_kalshi_pem();
-    void on_import_existing_kalshi();
 
   protected:
     void changeEvent(QEvent* event) override;
@@ -83,7 +82,6 @@ class PredictionAccountDialog : public QDialog {
     QLineEdit* ks_api_key_id_ = nullptr;
     QTextEdit* ks_private_key_pem_ = nullptr;
     QPushButton* ks_load_pem_btn_ = nullptr;
-    QPushButton* ks_import_existing_btn_ = nullptr;
     QCheckBox* ks_use_demo_ = nullptr;
     QLabel*    ks_status_ = nullptr;
     QPushButton* ks_save_btn_ = nullptr;

@@ -764,9 +764,6 @@ set(CORE_SOURCES
     src/core/profile/ProfilePaths.cpp
     src/core/screen/MonitorTopology.cpp
     src/core/screen/MonitorWatcher.cpp
-    src/core/telemetry/TelemetryProvider.cpp
-    src/core/telemetry/LocalTelemetrySink.cpp
-    src/core/telemetry/CloudTelemetryProvider.cpp
     src/core/debug/StressLoad.cpp
     src/core/session/SessionManager.cpp
     src/core/session/ScreenStateManager.cpp
