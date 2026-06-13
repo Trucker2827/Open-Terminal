@@ -195,15 +195,6 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     void fetch_paper_candles(const QString& symbol);
     QString broker_id_for_focused() const;
 
-    // Mark held F&O option positions to market. Fyers' live HSM tick feed spells
-    // an option ("NIFTY09JUN26C23200") differently from its REST position symbol
-    // ("NIFTY2660923200CE"), so option ticks never match the per-symbol quote
-    // topics. This router reconciles the two by (underlying, strike, side) and
-    // patches the position/holding row + paper P&L. Bound to the focused stream
-    // (opt_quote_conn_) only while an option position is actually held.
-    void route_option_quote(const QString& account_id, const QString& symbol,
-                            const trading::BrokerQuote& quote);
-
     // Named-watchlist controller (WatchlistRepository). load_watchlists() refreshes
     // the combo + seeds a default from the broker's default_watchlist on first run;
     // apply_active_watchlist() pushes the active list's symbols into the view and
@@ -277,9 +268,6 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     // UPDATE per tick. SL/TP + limit matching still run every tick (in-memory).
     QHash<QString, double> pending_paper_prices_;
     bool paper_flush_armed_ = false;
-    // Focused stream → route_option_quote, bound only while an F&O option position
-    // is held (Fyers' HSM tick symbol can't match the per-symbol quote topics).
-    QMetaObject::Connection opt_quote_conn_;
 
     // Async guards
     std::atomic<bool> token_expired_shown_{false};

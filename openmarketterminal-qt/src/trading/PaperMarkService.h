@@ -14,9 +14,7 @@
 // symbols, marks each position to the live quote (coalesced to SQLite, with the
 // repo's zero/garbage-price guard), and drives the OrderMatcher on every tick —
 // regardless of which screen, if any, is visible. It reconciles a broker's quote
-// symbol to the stored position symbol by exact match, falling back to an option
-// (underlying, side, strike) match for brokers whose live spelling differs from
-// the REST/position spelling (the Fyers "…C<strike>" vs "…<strike>CE" case).
+// symbol to the stored position symbol by exact match.
 //
 // Screens observe prices_marked()/portfolio_changed() to refresh their blotter;
 // they no longer need to own the marking loop themselves.
@@ -61,20 +59,12 @@ class PaperMarkService : public QObject {
                   const BrokerQuote& quote);
     void flush_prices();
 
-    // Parsed identity of an option position, for matching a live tick whose
-    // symbol spelling differs from the stored position symbol.
-    struct PosLeg {
-        QString underlying;
-        bool is_call = false;
-        QString symbol; // the stored position symbol (match target)
-    };
     struct Bound {
         QString portfolio_id;
         QObject* stream = nullptr;    // bound AccountDataStream (detect recreation on re-auth)
         QMetaObject::Connection conn; // quote_updated → on_quote
         QSet<QString> symbols;        // currently subscribed on the stream
         QSet<QString> exact;          // position symbols for O(1) exact match
-        QVector<PosLeg> legs;         // option positions for strike/side match
     };
 
     QHash<QString, Bound> bound_;                    // account_id → binding

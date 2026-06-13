@@ -6,7 +6,6 @@
 #include "trading/DataStreamManager.h"
 #include "trading/OrderMatcher.h"
 #include "trading/PaperTrading.h"
-#include "trading/websocket/FyersTickTypes.h"
 
 #include <QTimer>
 
@@ -68,14 +67,10 @@ void PaperMarkService::resync() {
 
         const auto positions = pt_get_positions(acct.paper_portfolio_id);
         QStringList syms;
-        QVector<PosLeg> legs;
         for (const auto& p : positions) {
             if (p.quantity == 0.0 || p.symbol.isEmpty())
                 continue;
             syms << p.symbol;
-            const auto leg = fyers_parse_option(p.symbol);
-            if (leg.valid)
-                legs.push_back({leg.underlying, leg.is_call, p.symbol});
         }
         if (syms.isEmpty())
             continue; // nothing to mark — don't force a stream up for an idle portfolio
@@ -84,7 +79,6 @@ void PaperMarkService::resync() {
         auto& b = bound_[acct.account_id];
         b.portfolio_id = acct.paper_portfolio_id;
         b.exact = QSet<QString>(syms.cbegin(), syms.cend());
-        b.legs = legs;
 
         auto* stream = dsm.stream_for(acct.account_id);
         if (!stream)
@@ -136,31 +130,11 @@ void PaperMarkService::on_quote(const QString& account_id, const QString& portfo
     if (it == bound_.constEnd())
         return;
 
-    // Reconcile the live quote symbol to a stored position symbol.
-    QString pos_sym;
-    if (it->exact.contains(symbol)) {
-        pos_sym = symbol; // exact match (equities + brokers that normalise identically)
-    } else {
-        // Option fallback: the live spelling ("…C<strike>") differs from the
-        // position spelling ("…<strike>CE"). Match by (underlying, side, strike).
-        const auto tick = fyers_parse_option(symbol);
-        if (tick.valid && tick.strike > 0.0) {
-            const QString strike_str = QString::number(qRound64(tick.strike));
-            for (const auto& leg : it->legs) {
-                if (leg.is_call != tick.is_call || leg.underlying != tick.underlying)
-                    continue;
-                QString core = leg.symbol.section(QLatin1Char(':'), -1);
-                if (core.endsWith(QLatin1String("CE")) || core.endsWith(QLatin1String("PE")))
-                    core.chop(2);
-                if (core.endsWith(strike_str)) {
-                    pos_sym = leg.symbol;
-                    break;
-                }
-            }
-        }
-    }
-    if (pos_sym.isEmpty())
+    // Reconcile the live quote symbol to a stored position symbol by exact match
+    // (equities + brokers that normalise the live and REST spellings identically).
+    if (!it->exact.contains(symbol))
         return;
+    const QString pos_sym = symbol;
 
     // Coalesce the SQLite write; the in-memory matcher sees every tick.
     pending_[portfolio_id][pos_sym] = quote.ltp;
