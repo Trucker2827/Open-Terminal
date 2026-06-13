@@ -218,21 +218,17 @@ void SecureStorage::init() {
     QMutexLocker lock(&g_key_mutex);
     if (g_initialized)
         return;
-    // Touch the OS keychain here (main thread, startup). keychain_master_key()
-    // creates + round-trip-verifies a random key on first run, or returns empty
-    // on failure / unsupported platform — in which case we keep the legacy
-    // machine-derived key so behaviour is unchanged and no data is stranded.
-    QByteArray kc = secure_detail::keychain_master_key(kKeyLen);
-    if (kc.size() == kKeyLen) {
-        g_active_key = kc;
-        g_active_is_keychain = true;
-        LOG_INFO(TAG, "SecureStorage master key sourced from the OS keychain");
-    } else {
-        g_active_key = legacy_key();
-        g_active_is_keychain = false;
-        LOG_INFO(TAG, "SecureStorage using machine-derived master key (OS keychain backend unavailable)");
-    }
+    // Local-first: use the machine-derived master key and NEVER touch the OS
+    // keychain. Touching it made macOS prompt for the login-keychain password on
+    // every launch — each rebuilt / ad-hoc-signed binary looks like a "new app"
+    // to the keychain ACL, so "Always Allow" never sticks. That is needless
+    // friction for a local app whose users mostly never store a live credential.
+    // Secrets remain encrypted at rest under the machine-derived key (local-only,
+    // decryptable only as this user on this machine) — no prompt, ever.
+    g_active_key = legacy_key();
+    g_active_is_keychain = false;
     g_initialized = true;
+    LOG_INFO(TAG, "SecureStorage using machine-derived master key (no OS keychain prompt)");
 }
 
 Result<void> SecureStorage::store(const QString& key, const QString& value) {
