@@ -79,6 +79,10 @@ void EquityTradingScreen::hub_subscribe_streaming() {
     // needed, so paper trading works out of the box.
     if (is_paper) {
         hub_subscribe_market_quotes();
+        // Load chart candles here too: on_account_changed gates its candle fetch
+        // behind has_creds (false for paper), so the chart would otherwise stay
+        // empty. focused_is_paper_ is set above, so this routes to yfinance history.
+        load_candles_for(selected_symbol_);
         hub_active_ = true;
         LOG_INFO(TAG, QString("Hub subscribed (paper / free market feed): %1").arg(aid));
         return;
