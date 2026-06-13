@@ -7,8 +7,6 @@
 #include "storage/sqlite/Database.h"
 #include "trading/brokers/alpaca/AlpacaBroker.h"
 #include "trading/brokers/ibkr/IBKRBroker.h"
-#include "trading/brokers/metaapi/MetaApiBroker.h"
-#include "trading/brokers/saxo/SaxoBankBroker.h"
 #include "trading/brokers/tradier/TradierBroker.h"
 
 namespace openmarketterminal::trading {
@@ -97,18 +95,14 @@ BrokerRegistry::BrokerRegistry() {
 }
 
 void BrokerRegistry::register_all() {
-    // Indian brokers
-
-    // US brokers
-    brokers_["alpaca"] = std::make_unique<AlpacaBroker>();
-    brokers_["ibkr"] = std::make_unique<IBKRBroker>();
-    brokers_["tradier"] = std::make_unique<TradierBroker>();
-
-    // EU brokers
-    brokers_["saxobank"] = std::make_unique<SaxoBankBroker>();
-
-    // MetaAPI-bridged
-    brokers_["metatrader4"] = std::make_unique<MetaApiBroker>();
+    // Reputable US equity brokers only — each has a real, working API adapter.
+    // SaxoBank (Danish) and the MetaTrader4 / MetaAPI FX-CFD bridge were removed:
+    // this is a US-equities terminal, and a broker only belongs here if it can
+    // genuinely connect. Free paper trading needs no broker — it runs on the
+    // yfinance market feed.
+    brokers_["alpaca"] = std::make_unique<AlpacaBroker>();   // US equities — free API, paper + live
+    brokers_["ibkr"] = std::make_unique<IBKRBroker>();       // Interactive Brokers
+    brokers_["tradier"] = std::make_unique<TradierBroker>(); // Tradier Brokerage
 
     LOG_INFO("BrokerRegistry", QString("Registered %1 brokers").arg(brokers_.size()));
 }
