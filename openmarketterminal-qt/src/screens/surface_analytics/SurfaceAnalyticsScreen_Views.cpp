@@ -110,6 +110,14 @@ void SurfaceAnalyticsScreen::load_demo_data() {
 
     inflation_data_ = generate_inflation_expectations();
     monetary_data_ = generate_monetary_policy();
+
+    // HONESTY: every surface above is synthetic (generate_*/demo_randf), not
+    // real market data. Flag it on the data-state channel so a realistic-looking
+    // 3D surface is never mistaken for a live one — even on LIVE-capable surface
+    // types, whose tier badge reflects capability, not what's currently shown.
+    // A successful Databento FETCH overrides this with a "loaded" status.
+    if (data_inspector_)
+        data_inspector_->set_status(tr("Synthetic demo data — not from a live source"), false);
 }
 
 // ── Chart routing ─────────────────────────────────────────────────────────────
