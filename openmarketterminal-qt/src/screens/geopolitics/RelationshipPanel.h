@@ -31,6 +31,7 @@ class RelationshipPanel : public QWidget {
     // Static text widgets (cached for retranslateUi)
     QLabel* title_lbl_ = nullptr;
     QLabel* stats_lbl_ = nullptr;
+    QLabel* provenance_lbl_ = nullptr;  // honest "static illustrative" disclaimer
     QLabel* sec_conflicts_ = nullptr;
     QLabel* sec_crisis_ = nullptr;
     QLabel* sec_orgs_ = nullptr;

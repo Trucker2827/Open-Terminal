@@ -99,6 +99,19 @@ void RelationshipPanel::build_ui() {
     hhl->addWidget(stats_lbl_);
     root->addWidget(header);
 
+    // HONESTY: this network — its entities, connections, and the severity/count
+    // figures in the stats bar — is a fixed illustrative example from
+    // build_nodes(), NOT derived from the live GDELT feed shown in the other
+    // tabs. Label it so the hardcoded numbers aren't read as measured data.
+    provenance_lbl_ = new QLabel(
+        tr("Illustrative example — static sample structure and figures, not derived from the live event feed."),
+        this);
+    provenance_lbl_->setWordWrap(true);
+    provenance_lbl_->setStyleSheet(QString("color:%1; background:%2; padding:4px 16px; font-size:%3px;")
+                                       .arg(ui::colors::TEXT_TERTIARY(), ui::colors::BG_RAISED())
+                                       .arg(ui::fonts::TINY));
+    root->addWidget(provenance_lbl_);
+
     // Network view
     auto* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
@@ -286,6 +299,9 @@ void RelationshipPanel::changeEvent(QEvent* event) {
 
 void RelationshipPanel::retranslateUi() {
     if (title_lbl_) title_lbl_->setText(tr("GEOPOLITICAL RELATIONSHIP NETWORK"));
+    if (provenance_lbl_)
+        provenance_lbl_->setText(
+            tr("Illustrative example — static sample structure and figures, not derived from the live event feed."));
     if (stats_lbl_)
         stats_lbl_->setText(tr("NODES: %1  |  CONFLICTS: %2  |  ORGANIZATIONS: %3")
                                 .arg(node_count_)
