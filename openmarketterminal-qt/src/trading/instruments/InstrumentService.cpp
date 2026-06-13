@@ -88,7 +88,7 @@ void InstrumentService::refresh(const QString& broker_id, const BrokerCredential
             }
         }
     }
-    // For AngelOne we need NSE equities to be present — check specifically for NSE count.
+    // For some brokers we need NSE equities to be present — check specifically for NSE count.
     // A partial cache (e.g. only NFO/MCX) means a previous download was incomplete.
     {
         QMutexLocker lock(&mutex_);

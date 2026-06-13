@@ -1,5 +1,5 @@
 // v009_instruments — Broker instrument master contract table.
-// Stores normalised instruments for all brokers (Zerodha, AngelOne, etc.)
+// Stores normalised instruments for all brokers.
 // with O(1)-friendly indices for token lookup, symbol search, and brsymbol mapping.
 
 #include "storage/sqlite/migrations/MigrationRunner.h"
@@ -23,7 +23,7 @@ Result<void> apply_v009(QSqlDatabase& db) {
     auto r = sql(db,
                  "CREATE TABLE IF NOT EXISTS instruments ("
                  "  id               INTEGER PRIMARY KEY AUTOINCREMENT,"
-                 "  instrument_token INTEGER NOT NULL," // Zerodha numeric token
+                 "  instrument_token INTEGER NOT NULL," // broker numeric token
                  "  exchange_token   INTEGER NOT NULL DEFAULT 0,"
                  "  symbol           TEXT    NOT NULL,"            // normalised  e.g. NIFTY28MAR24FUT
                  "  brsymbol         TEXT    NOT NULL,"            // broker native e.g. 'NIFTY 50 MAR24 FUT'
@@ -35,7 +35,7 @@ Result<void> apply_v009(QSqlDatabase& db) {
                  "  lot_size         INTEGER NOT NULL DEFAULT 1,"
                  "  instrument_type  TEXT    NOT NULL DEFAULT 'EQ'," // EQ/FUT/CE/PE/INDEX
                  "  tick_size        REAL    NOT NULL DEFAULT 0.05,"
-                 "  broker_id        TEXT    NOT NULL," // zerodha / angelone / …
+                 "  broker_id        TEXT    NOT NULL," // broker identifier
                  "  updated_at       TEXT    DEFAULT (datetime('now')),"
                  "  UNIQUE(instrument_token, broker_id)"
                  ")");

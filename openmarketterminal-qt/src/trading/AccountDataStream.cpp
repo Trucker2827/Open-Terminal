@@ -228,7 +228,7 @@ bool AccountDataStream::is_token_expired() const {
 
 bool AccountDataStream::check_token_expiry(const QString& error) {
     // All brokers prefix expired-session errors with "[TOKEN_EXPIRED]"
-    // (originated by ZerodhaBroker; generalized here so every broker benefits).
+    // (a shared convention so every broker benefits).
     if (!error.startsWith("[TOKEN_EXPIRED]"))
         return false;
 

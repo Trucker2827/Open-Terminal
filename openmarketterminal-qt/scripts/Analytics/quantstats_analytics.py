@@ -84,7 +84,7 @@ def _resolve_ticker(ticker: str) -> str:
         _ticker_cache[ticker] = ticker
         return ticker
 
-    # Try common exchange suffixes (Indian exchanges first since this app has Indian broker integrations)
+    # Try common exchange suffixes (non-US venues, ordered by likelihood)
     for suffix in ['.NS', '.BO', '.L', '.TO', '.AX', '.HK', '.T']:
         candidate = ticker + suffix
         if _quick_check(candidate):

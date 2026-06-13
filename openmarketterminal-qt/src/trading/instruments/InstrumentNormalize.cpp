@@ -9,8 +9,7 @@ namespace openmarketterminal::trading::norm {
 
 namespace {
 
-// Spaced-name index map (broker tradingsymbol/name → canonical). Mirrors
-// OpenAlgo's index_mapping dict and the existing Zerodha parser. Comprehensive
+// Spaced-name index map (broker tradingsymbol/name → canonical). Comprehensive
 // so index naming is uniform across every broker.
 const QHash<QString, QString>& spaced_index_map() {
     static const QHash<QString, QString> m = {
@@ -212,7 +211,7 @@ qint64 stable_token(const QString& broker_native_token) {
     const QString s = broker_native_token.trimmed();
     if (s.isEmpty())
         return 0;
-    // Leading integer (e.g. Samco "758960_NSE" → 758960).
+    // Leading integer (e.g. a "758960_NSE" token → 758960).
     int i = 0;
     while (i < s.size() && s[i].isDigit())
         ++i;

@@ -1,6 +1,6 @@
 #pragma once
 // InstrumentDecompress — minimal zlib-backed decompression for instrument masters.
-// Upstox ships gzip JSON; Shoonya ships per-exchange .txt.zip (single entry).
+// Some brokers ship gzip JSON; others ship per-exchange .txt.zip (single entry).
 // Qt's qUncompress only handles its own length-prefixed zlib stream, so we use
 // zlib directly.
 

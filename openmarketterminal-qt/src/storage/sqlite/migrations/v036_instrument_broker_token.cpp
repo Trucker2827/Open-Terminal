@@ -1,5 +1,5 @@
 // v036_instrument_broker_token — add a TEXT column carrying each broker's native
-// non-numeric instrument key (Upstox "NSE_EQ|INE…", Samco "758960_NSE"). Numeric-
+// non-numeric instrument key (e.g. "NSE_EQ|INE…", "758960_NSE"). Numeric-
 // token brokers leave it empty and keep using instrument_token. Needed so the
 // catalog can route market-data/orders for string-token brokers, and so those
 // rows get a distinct numeric instrument_token (via norm::stable_token) instead

@@ -17,7 +17,7 @@ namespace {
 constexpr qint64 HDS_CACHE_TTL_MS = 60LL * 1000; // candles append slowly; 60s avoids double-fetch
 
 // Map a user-facing timeframe to the broker resolution string. Brokers accept
-// both this and the "1d"/"5m" forms (verified for Zerodha/Fyers/Upstox); the
+// both this and the "1d"/"5m" forms (verified across brokers); the
 // algo path has used this convention across every broker in production.
 QString timeframe_to_resolution(const QString& tf) {
     if (tf == "1m")  return QStringLiteral("1");

@@ -25,7 +25,7 @@ namespace openmarketterminal::screens {
 /// Data Mapping configuration screen.
 /// 5-step wizard: API Config → Schema Select → Field Mapping → Cache → Test & Save.
 /// Supports predefined schemas (OHLCV, QUOTE, TICK, ORDER, POSITION, PORTFOLIO, INSTRUMENT),
-/// custom schemas, multiple parser engines, and Indian broker templates.
+/// custom schemas, multiple parser engines, and broker templates.
 class DataMappingScreen : public QWidget, public IStatefulScreen {
     Q_OBJECT
   public:

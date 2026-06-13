@@ -390,10 +390,9 @@ int main(int argc, char* argv[]) {
     // safe: the hub's scheduler tick picks up matching subscriptions on the
     // next pass once the producer is registered.
     QTimer::singleShot(0, qApp, []() {
-        // NOTE: The India F&O / options-chain stack (OptionChainService,
-        // OISnapshotter, FiiDiiService and the F&O algo engine) has been removed
-        // entirely — its only data sources were India-region endpoints (Fyers
-        // options chain, blissquants.com FII/DII) and there is no F&O UI.
+        // NOTE: the legacy F&O / options-chain stack (OptionChainService,
+        // OISnapshotter, FiiDiiService and the F&O algo engine) is not part of
+        // this build — there is no F&O UI and those producers are not registered.
         // Multi-broker session manager — `ws:kraken:*` / `ws:hyperliquid:*`.
         openmarketterminal::trading::ExchangeSessionManager::instance().ensure_registered_with_hub();
         // Prediction Markets — `prediction:polymarket:*`.

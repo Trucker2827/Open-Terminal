@@ -146,7 +146,7 @@ std::vector<ToolDef> get_watchlist_tools() {
             "If the user gave a company NAME instead of a ticker — or you are uncertain "
             "about the exchange suffix — call lookup_symbol(query=<company name>) FIRST "
             "to resolve the correct ticker, then pass that ticker here. "
-            "Do NOT guess tickers from prior knowledge: cross-listed names and Indian/Asian "
+            "Do NOT guess tickers from prior knowledge: cross-listed names and non-US "
             "tickers are easy to get wrong, and the watchlist stores whatever you pass. "
             "If watchlist_id is omitted, the first available watchlist is used.";
         t.category = "watchlist";

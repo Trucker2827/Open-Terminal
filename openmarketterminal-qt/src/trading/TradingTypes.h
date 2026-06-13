@@ -288,7 +288,7 @@ struct UnifiedOrder {
     double stop_loss = 0;
     double take_profit = 0;
     bool amo = false;
-    QString instrument_token; // broker-specific numeric token (e.g. Zerodha/AliceBlue/Dhan)
+    QString instrument_token; // broker-specific numeric token
 };
 
 struct BrokerPosition {
@@ -365,7 +365,7 @@ struct BrokerCandle {
     double close = 0;
     double volume = 0;
     // Open Interest — populated when the broker historical endpoint returns it
-    // (Zerodha c[6] when oi=1 is requested; F&O contracts only). Defaults to 0
+    // (when oi=1 is requested; derivatives contracts only). Defaults to 0
     // so existing 6-arg brace-init call sites remain source-compatible.
     double oi = 0;
 };
@@ -456,7 +456,7 @@ struct BasketMargin {
     QVector<OrderMargin> orders; // per-order breakdown
 };
 
-// ── GTT (Good Till Triggered) Orders — Zerodha-specific ──────────────────────
+// ── GTT (Good Till Triggered) Orders — broker-specific ───────────────────────
 
 enum class GttOrderType {
     Single, // fires when price hits one trigger

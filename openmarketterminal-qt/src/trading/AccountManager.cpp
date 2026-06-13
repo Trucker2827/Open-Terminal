@@ -405,7 +405,7 @@ bool AccountManager::has_account(const QString& account_id) const {
 // ── Credentials ─────────────────────────────────────────────────────────────
 
 // NOTE: creds.additional_data is an opaque JSON blob owned by the individual
-// broker dialog. E.g., Zerodha stores {"password":"...","totp_secret":"..."}.
+// broker dialog. E.g., a broker may store {"password":"...","totp_secret":"..."}.
 // AccountManager does not interpret it.
 void AccountManager::save_credentials(const QString& account_id, const BrokerCredentials& creds) {
     auto& secure = SecureStorage::instance();

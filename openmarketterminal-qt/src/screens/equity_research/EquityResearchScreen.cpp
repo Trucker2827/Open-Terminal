@@ -189,7 +189,7 @@ QWidget* EquityResearchScreen::build_title_bar() {
     hl->addWidget(symbol_label_);
 
     // BUY / SELL — visible only when a broker is connected (paper or live) and the
-    // current symbol is tradable via the connected (Indian) broker. Clicking opens
+    // current symbol is tradable via the region-matched broker. Clicking opens
     // the SAME order ticket used in the Equity Trading tab (see on_trade_clicked()).
     auto make_trade_btn = [&](const QString& text, const QString& color) -> QPushButton* {
         auto* b = new QPushButton(text, container);
@@ -386,7 +386,7 @@ void EquityResearchScreen::load_symbol(const QString& symbol) {
     // Trigger quote + info + historical
     services::equity::EquityResearchService::instance().load_symbol(symbol);
 
-    // Subscribe to broker live quote if this is an Indian stock with Fyers connected
+    // Subscribe to broker live quote if this is an NSE/BSE stock with a region-matched broker connected
     if (isVisible())
         hub_subscribe_broker_quote();
 
@@ -666,14 +666,13 @@ void EquityResearchScreen::hub_subscribe_broker_quote() {
 
     if (current_symbol_.isEmpty())
         return;
-    // Only Indian stocks are streamable via Fyers
+    // Only NSE/BSE-listed stocks stream through an IN-region broker
     if (!current_symbol_.endsWith(QStringLiteral(".NS")) && !current_symbol_.endsWith(QStringLiteral(".BO")))
         return;
 
-    // Find a connected Indian-region broker account (any — not only Fyers). NSE/
-    // BSE quotes stream through whichever Indian broker the user has live;
-    // hardcoding "fyers" left every other connected broker (Zerodha, Upstox,
-    // AngelOne, …) without research quotes. Pick the first Connected IN broker.
+    // Find a connected IN-region broker account (any). NSE/BSE quotes stream
+    // through whichever region-matched broker the user has live. Pick the first
+    // Connected IN broker.
     const auto accounts = trading::AccountManager::instance().active_accounts();
     QString quote_broker_id, quote_account_id;
     for (const auto& a : accounts) {
@@ -802,8 +801,8 @@ void EquityResearchScreen::update_trade_buttons() {
         return;
 
     // Show BUY/SELL only when the symbol is routable AND a usable broker actually
-    // trades that market — so SPGI shows for Alpaca/IBKR/Saxo (US venues),
-    // RELIANCE.NS for an Indian broker, and nothing for a forex-only broker.
+    // trades that market — so SPGI shows for US-venue brokers (Alpaca/IBKR),
+    // RELIANCE.NS for an IN-region broker, and nothing for a forex-only broker.
     const auto route = research_trade_route(current_symbol_);
     const bool show = route.routable && any_usable_broker_trades(route.match_exchanges);
     buy_btn_->setVisible(show);

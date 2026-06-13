@@ -1,9 +1,8 @@
 #pragma once
 // BrokerTokenUtil — shared helpers for broker access-token lifetime tracking.
 //
-// Every Indian broker expires its access token on a daily wall-clock boundary
-// in IST (Zerodha ~06:00, Upstox 03:30, etc.) or on a rolling N-hour window
-// (Dhan 24h). Brokers record the computed expiry epoch in their
+// Some brokers expire their access token on a fixed daily wall-clock boundary or
+// on a rolling N-hour window. Brokers record the computed expiry epoch in their
 // TokenExchangeResponse::additional_data JSON under "token_expires_at" so that
 // AccountManager can show an accurate connection state on startup *before* the
 // live validation sweep runs. The stored value is only a hint — the
@@ -14,32 +13,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
-#include <QTime>
-#include <QTimeZone>
 
 namespace openmarketterminal::trading {
-
-// IST is a fixed UTC+5:30 offset (India observes no DST).
-inline QTimeZone ist_zone() {
-    return QTimeZone(5 * 3600 + 30 * 60); // +19800s
-}
-
-// Epoch (seconds) of the next occurrence of HH:MM IST. If that time has already
-// passed today, returns tomorrow's. Used for brokers whose tokens are flushed at
-// a fixed daily IST time.
-inline qint64 next_ist_flush_epoch(int hh, int mm) {
-    const QTimeZone ist = ist_zone();
-    const QDateTime now_ist = QDateTime::currentDateTimeUtc().toTimeZone(ist);
-    QDateTime flush(now_ist.date(), QTime(hh, mm), ist);
-    if (flush <= now_ist)
-        flush = flush.addDays(1);
-    return flush.toSecsSinceEpoch();
-}
-
-// Epoch (seconds) for a rolling window: now + `hours` (e.g. Dhan 24h tokens).
-inline qint64 rolling_expiry_epoch(double hours) {
-    return QDateTime::currentSecsSinceEpoch() + static_cast<qint64>(hours * 3600.0);
-}
 
 // Merge "token_expires_at" into an additional_data JSON string, preserving any
 // existing keys. `base_json` may be empty.

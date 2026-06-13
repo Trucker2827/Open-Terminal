@@ -67,7 +67,7 @@ class EquityResearchScreen : public QWidget, public IStatefulScreen, public IGro
     void hub_subscribe_broker_quote();
     void hub_unsubscribe_broker_quote();
     // Show the BUY/SELL buttons only when a broker is connected (paper or live)
-    // AND the current symbol is tradable via those (Indian) brokers (.NS/.BO).
+    // AND the current symbol is tradable via a region-matched broker.
     void update_trade_buttons();
 
     // Title bar

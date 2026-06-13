@@ -138,7 +138,7 @@ AccountManagementDialog::AccountManagementDialog(QWidget* parent)
     //
     // CRITICAL: update ONLY the affected row's dot + colour IN PLACE. Do NOT
     // clear()/rebuild the list and do NOT touch selection — a background sweep
-    // (or the Dhan feed reconnecting) can fire this signal repeatedly, and a
+    // (or a broker feed reconnecting) can fire this signal repeatedly, and a
     // full rebuild + force-reselect would fight the user's clicks and make it
     // impossible to switch to another broker's card.
     connect(&AccountManager::instance(), &AccountManager::connection_state_changed, this,

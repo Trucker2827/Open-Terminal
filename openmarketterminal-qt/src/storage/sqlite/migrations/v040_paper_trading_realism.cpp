@@ -1,4 +1,4 @@
-// v040_paper_trading_realism — make the paper simulator behave like a real Indian
+// v040_paper_trading_realism — make the paper simulator behave like a real
 // broker. pt_positions gains a `product` column (MIS/CNC/NRML) so the engine can
 // tell intraday from delivery (for the 15:30 MIS auto-square and MIS->CNC convert),
 // and a `held_margin` column so an open position keeps its margin locked from

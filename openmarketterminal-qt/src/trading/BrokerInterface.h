@@ -19,10 +19,10 @@ enum class CredentialField {
     ApiSecret,   // "API Secret" / "Secret Key" / "MPIN"
     AuthCode,    // "Auth Code" / "TOTP secret" (base32)
     Environment, // "Live / Paper" toggle — Alpaca only
-    ClientCode,  // Secondary login ID (AngelOne: client code separate from API key)
-    Password,    // Zerodha login password (auto-login flow)
-    TotpSecret,  // Zerodha Base32 TOTP secret (auto-login flow)
-    UserId,      // Zerodha Kite user id (e.g., AB1234)
+    ClientCode,  // Secondary login ID (client code separate from API key)
+    Password,    // Login password (auto-login flow)
+    TotpSecret,  // Base32 TOTP secret (auto-login flow)
+    UserId,      // Broker user id (e.g., AB1234)
 };
 
 struct CredentialFieldDef {
@@ -116,7 +116,7 @@ struct BrokerProfile {
 //   Expired      → token is definitively dead/invalid (safe to disconnect/purge)
 //   Inconclusive → network/rate-limit/other; caller MUST leave state unchanged
 // expires_at_epoch: the broker's *real* reported expiry when it returns one
-//   (e.g. Dhan /v2/profile tokenValidity). 0 means unknown. On a Valid result
+//   (e.g. a /profile tokenValidity field). 0 means unknown. On a Valid result
 //   AccountManager writes this back to storage so the persisted hint stops being
 //   stale.
 struct SessionCheck {

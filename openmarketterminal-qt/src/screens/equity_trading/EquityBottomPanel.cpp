@@ -1129,7 +1129,7 @@ void EquityBottomPanel::update_quote(const QString& symbol, const trading::Broke
         return;
     }
 
-    // Live broker positions. Quantity may be signed (e.g. Fyers netQty < 0 for
+    // Live broker positions. Quantity may be signed (e.g. netQty < 0 for
     // shorts) or positive-with-side; honor the side flag so direction is correct
     // regardless of broker convention.
     for (int i = 0; i < last_positions_.size(); ++i) {

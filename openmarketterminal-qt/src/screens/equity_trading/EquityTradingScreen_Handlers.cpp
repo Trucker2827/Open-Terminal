@@ -993,8 +993,8 @@ void EquityTradingScreen::open_external_order_ticket(const QString& symbol, cons
         return;
 
     // Route to a usable account whose broker can actually trade this symbol's market
-    // (broker.exchanges ∩ match_exchanges) — so a US ticker goes to Alpaca/IBKR/Saxo
-    // and an NSE ticker to the Indian broker, even with several brokers connected.
+    // (broker.exchanges ∩ match_exchanges) — so a US ticker goes to a US broker
+    // and an NSE ticker to a region-matched broker, even with several brokers connected.
     // When the caller didn't constrain the market, fall back to the credential-aware
     // focused pick (also covers a never-shown screen with no focus yet).
     QString target = pick_account_for_exchanges(match_exchanges);

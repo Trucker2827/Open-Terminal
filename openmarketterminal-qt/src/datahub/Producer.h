@@ -25,8 +25,8 @@ class Producer {
 
     /// Optional cap on outbound requests per second for this producer.
     /// 0 = unlimited. The hub scheduler paces `refresh()` calls to
-    /// respect this limit. Typical values: Zerodha REST 3, Angel One
-    /// REST 1, Polymarket 10.
+    /// respect this limit. Typical values: a broker REST feed 1-3,
+    /// Polymarket 10.
     virtual int max_requests_per_sec() const { return 0; }
 };
 

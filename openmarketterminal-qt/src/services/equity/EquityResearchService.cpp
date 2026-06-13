@@ -52,8 +52,8 @@ QString candle_bare_symbol(const QString& sym) {
 }
 
 // Pick the first *Connected* active account whose broker region matches the
-// symbol's market, so RELIANCE.NS routes through a live Indian broker and a US
-// ticker through a live US broker — never cross-region. Returns false when no
+// symbol's market, so RELIANCE.NS routes through a live IN-region broker and a
+// US ticker through a live US broker — never cross-region. Returns false when no
 // usable broker exists (caller then uses yfinance).
 bool resolve_connected_data_broker(const QString& symbol, QString& broker_id, QString& account_id) {
     const QString region = candle_symbol_region(symbol);
@@ -102,7 +102,7 @@ int candle_lookback_days(const QString& period) {
 
 // trading-layer BrokerCandle[] → the yfinance-shaped JSON array the indicator
 // scripts consume: [{timestamp(sec), open, high, low, close, volume}, …], ascending.
-// Timestamps are normalised to epoch SECONDS (some brokers, e.g. Fyers, return
+// Timestamps are normalised to epoch SECONDS (some brokers return
 // milliseconds — the chart and the indicator engine assume seconds).
 QString broker_candles_to_json(const QVector<openmarketterminal::trading::BrokerCandle>& candles) {
     struct Row {

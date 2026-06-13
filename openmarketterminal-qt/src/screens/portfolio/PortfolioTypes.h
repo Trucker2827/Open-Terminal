@@ -36,7 +36,7 @@ struct PortfolioAsset {
     QString sector;          // empty = not yet resolved; filled from import JSON or SectorResolver
     /// Broker-native ticker (e.g. "RELIANCE", no exchange suffix). Empty for
     /// manually-imported assets. Combined with `exchange` to form the
-    /// EXCHANGE:SYMBOL key brokers like Zerodha need for /quote calls.
+    /// EXCHANGE:SYMBOL key some brokers need for /quote calls.
     QString broker_symbol;
     /// Exchange code (e.g. "NSE", "BSE"). Empty for non-broker imports.
     QString exchange;

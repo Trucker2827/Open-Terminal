@@ -179,8 +179,8 @@ bool PortfolioService::try_broker_quotes(const QString& portfolio_id,
             QHash<QString, QuoteData> quote_map;
             if (resp.success && resp.data.has_value()) {
                 for (const auto& bq : resp.data.value()) {
-                    // bq.symbol is the EXCHANGE:SYMBOL key (Zerodha echoes the
-                    // request key in its response). Translate back to the
+                    // bq.symbol is the EXCHANGE:SYMBOL key (some brokers echo the
+                    // request key in their response). Translate back to the
                     // canonical yfinance key the rest of the pipeline uses.
                     const QString yf_key = key_to_yf.value(bq.symbol);
                     if (yf_key.isEmpty())

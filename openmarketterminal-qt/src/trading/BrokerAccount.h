@@ -10,7 +10,7 @@ namespace openmarketterminal::trading {
 enum class ConnectionState { Disconnected, Connecting, Connected, TokenExpired, Error };
 
 /// One authenticated broker account.
-/// Multiple accounts can share the same broker_id (e.g. two Zerodha accounts).
+/// Multiple accounts can share the same broker_id (e.g. two accounts at one broker).
 /// The IBroker* instance (from BrokerRegistry) is stateless and shared —
 /// different accounts simply pass different BrokerCredentials.
 struct BrokerAccount {

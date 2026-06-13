@@ -120,8 +120,8 @@ class EquityBottomPanel : public QWidget {
 
     // Blank the shared positions/holdings/orders tables (and their row-aligned
     // caches). Called on every account or paper↔live transition so one account's
-    // (or one mode's) data never lingers under another — e.g. Fyers paper orders
-    // showing under a Zerodha live account. The incoming context repaints via
+    // (or one mode's) data never lingers under another — e.g. one account's paper
+    // orders showing under another account's live blotter. The incoming context repaints via
     // refresh_paper_panels() (paper) or the live broker hub topics (live).
     void clear_blotter_tables();
 

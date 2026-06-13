@@ -226,7 +226,7 @@ void DataMappingScreen::retranslateUi() {
     set_row_label(api_headers_row_, tr("HEADERS (one per line)"));
     set_row_label(api_body_row_, tr("REQUEST BODY (JSON)"));
     set_row_label(api_timeout_row_, tr("TIMEOUT"));
-    if (api_name_)    api_name_->setPlaceholderText(tr("e.g. Upstox OHLCV"));
+    if (api_name_)    api_name_->setPlaceholderText(tr("e.g. broker OHLCV"));
     if (api_auth_value_) api_auth_value_->setPlaceholderText(tr("Token / API Key value"));
     if (api_timeout_) api_timeout_->setSuffix(tr(" sec"));
     if (api_test_btn_) api_test_btn_->setText(tr("TEST API REQUEST"));

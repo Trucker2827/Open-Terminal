@@ -63,8 +63,8 @@ QString synthesize_symbol(const QString& name, InstrumentType itype, const QStri
 /// NFO/BFO/CDS/BCD/MCX). For INDEX types the "_INDEX" suffix is ensured.
 QString normalise_exchange(const QString& exchange, InstrumentType itype);
 
-/// Stable numeric token for brokers whose native token is non-numeric (Upstox
-/// "NSE_EQ|INE...", Samco "758960_NSE"). Uses the leading integer when present,
+/// Stable numeric token for brokers whose native token is non-numeric (e.g.
+/// "NSE_EQ|INE...", "758960_NSE"). Uses the leading integer when present,
 /// else a positive 63-bit FNV-1a hash of the full key. Guarantees a non-zero,
 /// per-key-distinct value so UNIQUE(instrument_token, broker_id) never collapses.
 qint64 stable_token(const QString& broker_native_token);

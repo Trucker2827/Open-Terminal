@@ -59,7 +59,7 @@ openmarketterminal::Result<void> InstrumentRepository::replace_all(const QString
 
     // A default-constructed QString is *null*, and QtSql binds a null QString as
     // SQL NULL. Every text column here is NOT NULL, so a null bind (e.g. an unset
-    // broker_token, which numeric-token brokers like Fyers never populate) makes
+    // broker_token, which numeric-token brokers never populate) makes
     // INSERT OR IGNORE silently drop the row — the whole catalog vanishes while the
     // transaction still "succeeds". Coalesce nulls to "" so the row persists.
     auto nn = [](const QString& s) { return s.isNull() ? QStringLiteral("") : s; };

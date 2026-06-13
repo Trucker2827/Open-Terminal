@@ -109,7 +109,7 @@ QString OptionsStrategyBuilder::build_option_symbol(const QString& underlying,
                                                     const QString& opt_type)
 {
     // TODO: Replace with InstrumentService lookup. Real broker tradingsymbols
-    // (e.g. Zerodha "NIFTY25MAR24500CE", Dhan numeric security IDs) must be
+    // (e.g. "NIFTY25MAR24500CE", or numeric security IDs) must be
     // resolved from the instrument master — this placeholder is a human-readable
     // approximation only and is not guaranteed to be tradable as-is.
     return underlying.toUpper() + compact_expiry(expiry) + strike_str(strike) + opt_type.toUpper();

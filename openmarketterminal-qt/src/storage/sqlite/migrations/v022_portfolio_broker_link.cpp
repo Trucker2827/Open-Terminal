@@ -3,7 +3,7 @@
 //
 // Background: PortfolioService::build_summary fetches live prices via
 // MarketDataService → yfinance for every portfolio. For portfolios that
-// were imported from a connected broker (e.g. Zerodha), yfinance is a 15
+// were imported from a connected broker, yfinance is a 15
 // minute-delayed and frequently incomplete fallback when the user has
 // already authenticated with a broker that provides true live ticks.
 //
