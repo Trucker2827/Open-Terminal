@@ -26,12 +26,15 @@ struct PresetChannel {
     const char* accent;
 };
 
+// Use durable channel /live URLs (auto-resolve to the channel's CURRENT live
+// stream) instead of fixed watch?v= IDs, which expire when a stream ends.
+// Handles verified to resolve to a live stream via yt-dlp.
 static const PresetChannel kPresets[] = {
-    {"Bloomberg TV", "https://www.youtube.com/watch?v=iEpJwprxDdk", "Global business & markets", "#9D4EDD"},
-    {"CNBC Live", "https://www.youtube.com/watch?v=rGgBsS3cm7E", "US market coverage", "#2563eb"},
+    {"Bloomberg TV", "https://www.youtube.com/@markets/live", "Global business & markets", "#9D4EDD"},
+    {"CNBC Live", "https://www.youtube.com/@CNBC/live", "US market coverage", "#2563eb"},
     {"Yahoo Finance", "https://www.youtube.com/@YahooFinance/live", "Market analysis", "#16a34a"},
-    {"NDTV Profit", "https://www.youtube.com/watch?v=kf8tVmwfUHI", "India business & markets", "#0891b2"},
-    {"Al Jazeera", "https://www.youtube.com/watch?v=gCNeDWCI0vo", "World news & finance", "#d97706"},
+    {"NDTV Profit", "https://www.youtube.com/@NDTVProfitIndia/live", "India business & markets", "#0891b2"},
+    {"Al Jazeera", "https://www.youtube.com/@aljazeeraenglish/live", "World news & finance", "#d97706"},
 };
 
 static constexpr int kPresetCount = static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
