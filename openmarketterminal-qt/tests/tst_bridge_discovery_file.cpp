@@ -26,6 +26,7 @@ private slots:
         QCOMPARE(out->endpoint, in.endpoint);
         QCOMPARE(out->token, in.token);
         QCOMPARE(out->pid, in.pid);
+        QCOMPARE(out->started_at, in.started_at);
     }
     void file_is_owner_only() {
         QTemporaryDir dir;
@@ -36,6 +37,13 @@ private slots:
     }
     void read_missing_is_nullopt() {
         QTemporaryDir dir;
+        QVERIFY(!read_bridge_file(dir.path()).has_value());
+    }
+    void read_missing_required_fields_is_nullopt() {
+        QTemporaryDir dir;
+        QFile f(bridge_file_path(dir.path()));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"schema":1,"pid":1})"); f.close();
         QVERIFY(!read_bridge_file(dir.path()).has_value());
     }
     void read_malformed_is_nullopt() {

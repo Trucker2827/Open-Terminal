@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <cerrno>
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
@@ -47,9 +48,18 @@ bool write_bridge_file(const QString& profile_root, const BridgeInfo& info) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return false;
-    f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
+    // Lock to owner-only BEFORE writing the token (the file is empty here).
+    if (!QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner)) {
+        f.close();
+        return false;
+    }
+    const QByteArray bytes = QJsonDocument(o).toJson(QJsonDocument::Indented);
+    if (f.write(bytes) != bytes.size()) {
+        f.close();
+        return false;
+    }
     f.close();
-    return QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    return true;
 }
 
 bool remove_bridge_file(const QString& profile_root) {

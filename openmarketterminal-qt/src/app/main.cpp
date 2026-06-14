@@ -338,16 +338,6 @@ int main(int argc, char* argv[]) {
     openmarketterminal::services::RelationshipMapService::instance().ensure_registered_with_hub();
     openmarketterminal::services::ma::MAAnalyticsService::instance().ensure_registered_with_hub();
 
-    // Bridge autostart: make the localhost tool surface available whenever the
-    // GUI is up (not only during an agent run), so openterminalcli can attach.
-    {
-        const auto r = openmarketterminal::SettingsRepository::instance().get(
-            QStringLiteral("bridge.autostart"), QStringLiteral("true"));
-        const QString v = r.is_ok() ? r.value() : QStringLiteral("true");
-        if (v != QStringLiteral("false"))
-            openmarketterminal::mcp::TerminalMcpBridge::instance().start();
-    }
-
     // ── Pre-warm the dashboard topics ────────────────────────────────────────
     // The user spends real time on the login / setup / recovery flow before
     // the dashboard ever paints. Kick the hub now so producers start fetching
@@ -844,6 +834,18 @@ int main(int argc, char* argv[]) {
             return openmarketterminal::trading::run_paper_trading_selftest();
         if (qstrcmp(argv[i], "--selftest-portfolio-replication") == 0)
             return openmarketterminal::trading::replication::run_portfolio_replication_selftest();
+    }
+
+    // Bridge autostart: make the localhost tool surface available whenever the
+    // GUI is up (not only during an agent run), so openterminalcli can attach.
+    // Placed AFTER the --selftest-* dispatch above so a selftest never binds a
+    // socket or leaves a stale bridge.json — selftests return before reaching here.
+    {
+        const auto r = openmarketterminal::SettingsRepository::instance().get(
+            QStringLiteral("bridge.autostart"), QStringLiteral("true"));
+        const QString v = r.is_ok() ? r.value() : QStringLiteral("true");
+        if (v != QStringLiteral("false"))
+            openmarketterminal::mcp::TerminalMcpBridge::instance().start();
     }
 
     // Start the scan-watch background service. Runs after Database::open() (which

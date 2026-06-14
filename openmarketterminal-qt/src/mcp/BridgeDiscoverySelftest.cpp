@@ -9,7 +9,13 @@ namespace openmarketterminal::mcp {
 int run_bridge_discovery_selftest() {
     auto& bridge = TerminalMcpBridge::instance();
     const QString root = ProfileManager::instance().profile_root();
-    bridge.stop();  // reset: boot-time autostart (bridge.autostart) may already be active
+    // This selftest links both worlds, so assert the CLI's standalone path replica
+    // (cli::profile_root_for) still matches the GUI's real ProfileManager path.
+    const QString expect = ProfileManager::instance().profile_root();
+    if (cli::profile_root_for(ProfileManager::instance().active()) != expect) {
+        std::fprintf(stderr, "FAIL: profile_root_for diverged from ProfileManager::profile_root()\n");
+        return 1;
+    }
     cli::remove_bridge_file(root);
 
     if (!bridge.start()) { std::fprintf(stderr, "FAIL: bridge.start()\n"); return 1; }
