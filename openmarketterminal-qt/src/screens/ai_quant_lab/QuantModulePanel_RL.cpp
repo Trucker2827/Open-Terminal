@@ -107,7 +107,7 @@ QWidget* QuantModulePanel::build_rl_trading_panel() {
             .arg(ui::colors::BG_RAISED())
             .arg(ui::colors::BORDER_MED())
             .arg(ui::colors::TEXT_PRIMARY())
-            .arg(module_.color.name()));
+            .arg(QColor(module_.color_hex).name()));
     vl->addWidget(rl_progress_bar_);
 
     // Stats label — hidden until training starts

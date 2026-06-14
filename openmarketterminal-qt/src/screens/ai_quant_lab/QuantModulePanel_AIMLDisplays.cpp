@@ -104,7 +104,7 @@ void QuantModulePanel::display_rl_trading_result(const QString& command, const Q
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     if (payload.contains("algorithm"))
@@ -223,7 +223,7 @@ void QuantModulePanel::display_online_learning_result(const QString& command, co
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -423,7 +423,7 @@ void QuantModulePanel::display_meta_learning_result(const QString& command, cons
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));

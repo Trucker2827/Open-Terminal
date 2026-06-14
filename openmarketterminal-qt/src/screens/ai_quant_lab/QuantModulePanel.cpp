@@ -72,8 +72,8 @@ QPushButton* QuantModulePanel::make_run_button(const QString& text, QWidget* par
                                "padding:0 20px; border-radius:2px; letter-spacing:0.8px; }"
                                "QPushButton:hover { background:%3; }"
                                "QPushButton:pressed { background:%4; }")
-                           .arg(module_.color.name(), ui::colors::BG_BASE(), module_.color.lighter(115).name(),
-                                module_.color.darker(110).name()));
+                           .arg(QColor(module_.color_hex).name(), ui::colors::BG_BASE(), QColor(module_.color_hex).lighter(115).name(),
+                                QColor(module_.color_hex).darker(110).name()));
     return btn;
 }
 
@@ -183,7 +183,7 @@ void QuantModulePanel::refresh_theme() {
 
     if (header_title_)
         header_title_->setStyleSheet(QString("color:%1; font-weight:700; letter-spacing:1px; background:transparent;")
-                                         .arg(module_.color.name()));
+                                         .arg(QColor(module_.color_hex).name()));
 
     if (header_cat_)
         header_cat_->setStyleSheet(QString("color:%1; background:transparent;").arg(ui::colors::TEXT_TERTIARY()));
@@ -467,7 +467,7 @@ void QuantModulePanel::show_loading(const QString& message) {
     spinner->setFixedSize(20, 20);
     spinner->setStyleSheet(QString("color:%1; font-size:18px; font-weight:700; "
                                    "font-family:'Courier New'; background:transparent;")
-                               .arg(module_.color.name()));
+                               .arg(QColor(module_.color_hex).name()));
     static const QStringList kFrames = {"|", "/", "-", "\\"};
     spinner->setText(kFrames[0]);
 

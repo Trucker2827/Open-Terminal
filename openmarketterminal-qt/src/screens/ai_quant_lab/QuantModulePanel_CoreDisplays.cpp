@@ -86,7 +86,7 @@ void QuantModulePanel::display_factor_discovery_result(const QString& command, c
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -267,7 +267,7 @@ void QuantModulePanel::display_model_library_result(const QString& command, cons
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -493,7 +493,7 @@ void QuantModulePanel::display_live_signals_result(const QString& command, const
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));

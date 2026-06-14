@@ -60,7 +60,7 @@ void QuantModulePanel::display_result(const QJsonObject& payload) {
 
     auto* header = new QLabel(tr("RESULTS"));
     header->setStyleSheet(QString("color:%1; font-weight:700; font-family:%2; letter-spacing:1px;")
-                              .arg(module_.color.name())
+                              .arg(QColor(module_.color_hex).name())
                               .arg(ui::fonts::DATA_FAMILY));
     results_layout_->addWidget(header);
 
@@ -115,7 +115,7 @@ void QuantModulePanel::display_result(const QJsonObject& payload) {
     export_btn->setStyleSheet(QString("QPushButton { background:transparent; color:%1; border:1px solid %2; "
                                       "font-size:%3px; font-family:%4; padding:0 12px; }"
                                       "QPushButton:hover { color:%1; background:rgba(255,255,255,0.05); }")
-                                  .arg(module_.color.name(), ui::colors::BORDER_DIM())
+                                  .arg(QColor(module_.color_hex).name(), ui::colors::BORDER_DIM())
                                   .arg(ui::fonts::SMALL)
                                   .arg(ui::fonts::DATA_FAMILY));
     QString json_str = QJsonDocument(payload).toJson(QJsonDocument::Indented);
@@ -816,7 +816,7 @@ void QuantModulePanel::on_result(const QString& module_id, const QString& comman
                             "QWidget{background:%1;border:1px solid %2;border-radius:6px;}"
                             "QWidget:hover{border-color:%3;}")
                             .arg(ui::colors::BG_RAISED(), ui::colors::BORDER_MED(),
-                                 module_.color.name()));
+                                 QColor(module_.color_hex).name()));
 
                         auto* cvl = new QVBoxLayout(card);
                         cvl->setContentsMargins(12, 10, 12, 10);
@@ -873,7 +873,7 @@ void QuantModulePanel::on_result(const QString& module_id, const QString& comman
                             "QPushButton{background:%1;color:%2;border:1px solid %1;"
                             "border-radius:3px;font-size:10px;font-weight:700;padding:3px 10px;}"
                             "QPushButton:hover{background:%3;}")
-                            .arg(module_.color.name(), "#000000", module_.color.lighter(115).name()));
+                            .arg(QColor(module_.color_hex).name(), "#000000", QColor(module_.color_hex).lighter(115).name()));
                         connect(run_btn, &QPushButton::clicked, this, [this, mid]() {
                             if (auto* pb = this->findChild<QProgressBar*>("rr_progress"))
                                 { pb->setValue(0); pb->setFormat(tr("Starting...")); }

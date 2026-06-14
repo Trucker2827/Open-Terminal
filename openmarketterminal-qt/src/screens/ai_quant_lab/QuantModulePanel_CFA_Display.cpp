@@ -109,7 +109,7 @@ void QuantModulePanel::display_cfa_result(const QString& command, const QJsonObj
     const QString method = result.value("method").toString();
     const double calc_time = result.value("calculation_time").toDouble();
     const QString analysis_type = payload.value("analysis_type").toString(command);
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
 
     // ── Section header ──────────────────────────────────────────────────────
     QString header_text = analysis_type.toUpper();
@@ -1006,7 +1006,7 @@ void QuantModulePanel::display_cfa_result(const QString& command, const QJsonObj
     export_btn->setStyleSheet(QString("QPushButton { background:transparent; color:%1; border:1px solid %2; "
                                       "font-size:%3px; font-family:%4; padding:0 12px; }"
                                       "QPushButton:hover { color:%1; background:rgba(255,255,255,0.05); }")
-                                  .arg(module_.color.name(), ui::colors::BORDER_DIM())
+                                  .arg(QColor(module_.color_hex).name(), ui::colors::BORDER_DIM())
                                   .arg(ui::fonts::SMALL)
                                   .arg(ui::fonts::DATA_FAMILY));
     const QString json_str = QJsonDocument(payload).toJson(QJsonDocument::Indented);

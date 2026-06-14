@@ -67,7 +67,7 @@ QWidget* QuantModulePanel::build_cfa_quant_panel() {
     auto* data_lbl = new QLabel(tr("DATA INPUT"), w);
     data_lbl->setStyleSheet(QString("color:%1; font-weight:700; font-family:%2;"
                                     "letter-spacing:1px;")
-                                .arg(module_.color.name())
+                                .arg(QColor(module_.color_hex).name())
                                 .arg(ui::fonts::DATA_FAMILY));
     vl->addWidget(data_lbl);
 
@@ -110,7 +110,7 @@ QWidget* QuantModulePanel::build_cfa_quant_panel() {
     auto* params_lbl = new QLabel(tr("ANALYSIS PARAMETERS"), w);
     params_lbl->setStyleSheet(QString("color:%1; font-weight:700; font-family:%2;"
                                       "letter-spacing:1px; margin-top:8px;")
-                                  .arg(module_.color.name())
+                                  .arg(QColor(module_.color_hex).name())
                                   .arg(ui::fonts::DATA_FAMILY));
     vl->addWidget(params_lbl);
 

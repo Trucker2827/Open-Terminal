@@ -58,7 +58,7 @@ void QuantModulePanel::display_hft_result(const QString& command, const QJsonObj
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     const QString symbol = payload.value("symbol").toString();
     const QString exchange = payload.value("exchange").toString();
     const double latency = payload.value("latency_ms").toDouble();
@@ -298,7 +298,7 @@ void QuantModulePanel::display_rolling_retraining_result(const QString& command,
                 tr("RETRAIN START: %1  |  %2 windows")
                     .arg(payload.value("model_id").toString())
                     .arg(payload.value("total_windows").toInt()),
-                module_.color.name()));
+                QColor(module_.color_hex).name()));
             status_label_->setText(tr("Retraining started…"));
             return;
         }
@@ -313,7 +313,7 @@ void QuantModulePanel::display_rolling_retraining_result(const QString& command,
             lbl->setStyleSheet(QString("color:%1; font-family:'Courier New'; font-size:10px;"
                                        "padding:4px 10px; background:%2; border-left:3px solid %3;")
                                    .arg(ui::colors::TEXT_SECONDARY(), ui::colors::BG_SURFACE(),
-                                        module_.color.name()));
+                                        QColor(module_.color_hex).name()));
             results_layout_->addWidget(lbl);
             status_label_->setText(tr("Window %1/%2")
                                        .arg(payload.value("index").toInt())
@@ -349,7 +349,7 @@ void QuantModulePanel::display_rolling_retraining_result(const QString& command,
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -472,7 +472,7 @@ void QuantModulePanel::display_data_processors_result(const QString& command, co
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));

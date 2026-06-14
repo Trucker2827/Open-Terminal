@@ -53,7 +53,7 @@ void QuantModulePanel::display_advanced_models_result(const QString& command, co
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -295,7 +295,7 @@ void QuantModulePanel::display_feature_engineering_result(const QString& command
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -484,7 +484,7 @@ void QuantModulePanel::display_portfolio_opt_result(const QString& command, cons
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     const QString method = payload.value("method").toString();
     QString header_text = (method.isEmpty() ? command : method).toUpper();
     header_text.replace('_', ' ');

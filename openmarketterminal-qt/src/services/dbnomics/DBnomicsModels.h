@@ -34,7 +34,13 @@ struct DbnDataPoint {
     QString series_id; // "BLS/ln/LNS14000000"
     QString series_name;
     QVector<DbnObservation> observations;
-    QColor color = QColor("#ea580c"); // default: orange; caller should override with chart_color(index)
+    // Plot colour, assigned by the GUI via DBnomicsService::chart_color(index).
+    // Left default-constructed (invalid) rather than QColor("#ea580c"): this
+    // struct is Q_DECLARE_METATYPE'd and DBnomicsService is a core (GUI-free)
+    // lib tool, so its QMetaType default-ctor must not pull QColor::fromString
+    // (Qt6::Gui) into openterminal_core. The GUI always overrides this before
+    // display; nothing in the headless core reads it.
+    QColor color;
 };
 
 // ── Search ───────────────────────────────────────────────────────────────────

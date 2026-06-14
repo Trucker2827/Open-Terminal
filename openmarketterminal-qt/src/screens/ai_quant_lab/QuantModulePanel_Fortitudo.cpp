@@ -130,7 +130,7 @@ QWidget* QuantModulePanel::build_fortitudo_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Portfolio Metrics ────────────────────────────────────────────────────
@@ -469,7 +469,7 @@ void QuantModulePanel::display_fortitudo_result(const QString& command, const QJ
     }
 
     const QJsonObject d = payload.value("data").toObject();
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
 
     // Section header — same shape as other rich displays
     QString header_text = command.toUpper();

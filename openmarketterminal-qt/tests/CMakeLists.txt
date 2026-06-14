@@ -32,3 +32,12 @@ add_executable(tst_datahub_hook tst_datahub_hook.cpp
 target_include_directories(tst_datahub_hook PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_datahub_hook PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_datahub_hook COMMAND tst_datahub_hook)
+
+# Gate B — Core-only link proof: links register_core_tools' reachable closure
+# against a Widgets-free target (openterminal_core + Qt6::Core + Qt6::Test ONLY).
+# If any GUI symbol is still reachable from a core tool getter, this FAILS at
+# link with an undefined Qt6::Widgets/Gui symbol.
+add_executable(tst_mcp_init_split tst_mcp_init_split.cpp)
+target_include_directories(tst_mcp_init_split PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_mcp_init_split PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_mcp_init_split COMMAND tst_mcp_init_split)

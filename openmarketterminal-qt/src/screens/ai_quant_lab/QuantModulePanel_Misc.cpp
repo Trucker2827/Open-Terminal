@@ -145,7 +145,7 @@ QWidget* QuantModulePanel::build_feature_engineering_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Indicators tab ──
@@ -277,7 +277,7 @@ QWidget* QuantModulePanel::build_portfolio_opt_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Shared covariance / returns helper ──
@@ -414,7 +414,7 @@ QWidget* QuantModulePanel::build_factor_evaluation_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── IC Metrics tab ──
@@ -549,7 +549,7 @@ QWidget* QuantModulePanel::build_strategy_builder_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── TopK-Dropout ──
@@ -679,7 +679,7 @@ QWidget* QuantModulePanel::build_data_processors_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── List Processors ──
@@ -777,7 +777,7 @@ QWidget* QuantModulePanel::build_factor_discovery_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Factor Library ──
@@ -915,7 +915,7 @@ QWidget* QuantModulePanel::build_model_library_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Model Browser ──

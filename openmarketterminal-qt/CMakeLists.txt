@@ -2482,24 +2482,162 @@ else()
     set(_OPENMARKETTERMINAL_PLATFORM_SOURCES "")
 endif()
 
+# ── GUI-coupled files pulled OUT of the core groups so openterminal_core stays
+# GUI-free at the LINK boundary. These compile into the GUI exe, not the lib.
+# Placed here (after every source group is defined) so each list(REMOVE_ITEM …)
+# operates on a populated list — SERVICE_SOURCES in particular is defined far
+# below the MCP group, so removing earlier would silently no-op.
+# DataHubPeekHelpers.cpp stays CORE (reachable from register_core_tools'
+# datahub getter); DataHubScreenContext.cpp + McpInitGui.cpp are GUI-side.
+set(CORE_GUI_SOURCES
+    src/core/layout/WorkspaceShell.cpp
+    src/core/layout/DockLayoutSelftest.cpp
+    src/core/symbol/SymbolDragSource.cpp
+    src/core/actions/builtin_actions.cpp
+    src/core/keys/WindowCycler.cpp
+    # Q_OBJECT classes whose moc intrinsically needs Qt6::Gui value types
+    # (KeyConfigManager owns a QAction*/QKeySequence per keybinding;
+    # SymbolGroupRegistry stores a QColor per group). Their moc lands in the
+    # lib's aggregated mocs_compilation.cpp.o; once any core QObject pulls that
+    # object, the Gui metatype symbols (QKeySequence/QColor) go undefined at a
+    # Core-only link. Neither is reachable from register_core_tools' call graph
+    # (only the already-moved builtin_actions/WorkspaceTools use them), so they
+    # belong GUI-side.
+    src/core/keys/KeyConfigManager.cpp
+    src/core/symbol/SymbolGroupRegistry.cpp
+    # ActionRegistry is a Q_OBJECT whose moc exposes a QKeySequence (Qt6::Gui).
+    # Same moc-aggregation leak as above; referenced only by the moved
+    # WorkspaceTools/builtin_actions, so not in register_core_tools' closure.
+    src/core/actions/ActionRegistry.cpp)
+set(AUTH_GUI_SOURCES src/auth/lock/LockOverlayController.cpp)
+# The entire workflow node-automation engine is GUI-side: it is self-contained
+# (referenced only within services/workflow/), has no MCP tool in the core set,
+# and its leaf nodes hard-wire Qt6::Gui/PrintSupport (ServiceBridges' QPrinter
+# PDF node, DataSourceNodes' screens::register_all_connectors). Because the
+# cluster's Q_OBJECT moc is aggregated, a Core-only link over-pulls the whole
+# subtree, so it must move as a unit. Headless (Task 4) dispatches only core
+# tools, so nothing in the GUI-free runtime needs it.
+set(SERVICE_GUI_SOURCES
+    src/services/workflow/NodeRegistry.cpp
+    src/services/workflow/WorkflowService.cpp
+    src/services/workflow/WorkflowExecutor.cpp
+    src/services/workflow/WorkflowHonestySelftest.cpp
+    src/services/workflow/ExpressionEngine.cpp
+    src/services/workflow/nodes/TriggerNodes.cpp
+    src/services/workflow/nodes/ControlFlowNodes.cpp
+    src/services/workflow/nodes/UtilityNodes.cpp
+    src/services/workflow/nodes/UtilityNodes_Tier1Core.cpp
+    src/services/workflow/nodes/UtilityNodes_Tier1Extra.cpp
+    src/services/workflow/nodes/UtilityNodes_Tier2.cpp
+    src/services/workflow/nodes/MarketDataNodes.cpp
+    src/services/workflow/nodes/TradingNodes.cpp
+    src/services/workflow/nodes/AnalyticsNodes.cpp
+    src/services/workflow/nodes/SafetyNodes.cpp
+    src/services/workflow/nodes/NotificationNodes.cpp
+    src/services/workflow/nodes/AgentNodes.cpp
+    src/services/workflow/nodes/DataSourceNodes.cpp
+    src/services/workflow/nodes/FileNodes.cpp
+    src/services/workflow/nodes/DataFormatNodes.cpp
+    src/services/workflow/nodes/IntegrationNodes.cpp
+    src/services/workflow/ExecutionHooks.cpp
+    src/services/workflow/AuditLogger.cpp
+    src/services/workflow/ConfirmationService.cpp
+    src/services/workflow/RiskManager.cpp
+    src/services/workflow/WorkflowCache.cpp
+    src/services/workflow/Extensions.cpp
+    src/services/workflow/ParameterProcessor.cpp
+    src/services/workflow/adapters/ServiceBridges.cpp)
+set(MCP_GUI_SOURCES
+    src/mcp/McpInitGui.cpp
+    src/mcp/tools/DataHubScreenContext.cpp
+    src/mcp/tools/NavigationTools.cpp
+    src/mcp/tools/DashboardTools.cpp
+    src/mcp/tools/ExcelTools.cpp
+    src/mcp/tools/WorkspaceTools.cpp
+    src/mcp/tools/WorkspaceTools_MonitorsWindows.cpp
+    src/mcp/tools/WorkspaceTools_Panels.cpp
+    src/mcp/tools/WorkspaceTools_LayoutsSnapshots.cpp
+    src/mcp/tools/WorkspaceTools_SymbolsActions.cpp)
+list(REMOVE_ITEM CORE_SOURCES ${CORE_GUI_SOURCES})
+list(REMOVE_ITEM AUTH_SOURCES ${AUTH_GUI_SOURCES})
+list(REMOVE_ITEM SERVICE_SOURCES ${SERVICE_GUI_SOURCES})
+list(REMOVE_ITEM MCP_SOURCES ${MCP_GUI_SOURCES})
+
+# ── openterminal_core — GUI-free static library ──────────────────────────────
+# Aggregates the now-core-only source groups. Links Qt6::Core/Network/Sql/
+# Concurrent (NO Widgets/Gui) so a headless CLI can drive register_core_tools'
+# reachable closure. Proven GUI-free by tests/tst_mcp_init_split (links this lib
+# against Qt6::Core + Qt6::Test only). The directory-scoped
+# SKIP_UNITY_BUILD_INCLUSION / UNITY_BUILD_BATCH_SIZE properties set above apply
+# to this target too (they are source-file properties, target-independent).
+add_library(openterminal_core STATIC
+    ${CORE_SOURCES} ${NETWORK_SOURCES} ${DATAHUB_SOURCES} ${AUTH_SOURCES}
+    ${STORAGE_SOURCES} ${PYTHON_SOURCES} ${LLM_SERVICE_SOURCES}
+    ${MCP_SOURCES} ${TRADING_SOURCES} ${ALGO_ENGINE_SOURCES} ${SERVICE_SOURCES})
+# Unity is OFF for the lib so a static-archive link pulls only the object files
+# genuinely reachable from a caller's symbol closure. With unity ON, dozens of
+# core .cpp concatenate into one unity_N.o, so a core tool getter referencing any
+# one symbol would drag in GUI-coupled siblings (MonitorTopology→QScreen,
+# WindowRegistry→QWidget) that it never calls — masking the true GUI-free
+# boundary that Gate B (tst_mcp_init_split) verifies.
+set_target_properties(openterminal_core PROPERTIES AUTOMOC ON AUTORCC ON UNITY_BUILD OFF)
+target_include_directories(openterminal_core PUBLIC src)
+target_link_libraries(openterminal_core PUBLIC
+    Qt6::Core Qt6::Network Qt6::Sql Qt6::Concurrent miniz openmarketterminal_ed25519)
+# Compile defs the core sources need (mirror the GUI target's flags that apply
+# to core groups): VERSION_STRING (SystemTools.cpp) and the WebSockets gate
+# (WebSocketClient.cpp + NewsService*). PUBLIC so exe TUs that include the same
+# headers see an identical HAS_QT_WEBSOCKETS, avoiding an ODR-layout mismatch.
+target_compile_definitions(openterminal_core PUBLIC
+    OPENMARKETTERMINAL_VERSION_STRING="${CMAKE_PROJECT_VERSION}")
+if(HAS_WEBSOCKETS)
+    target_link_libraries(openterminal_core PUBLIC Qt6::WebSockets)
+    target_compile_definitions(openterminal_core PUBLIC HAS_QT_WEBSOCKETS)
+endif()
+# Gui/Widgets/PrintSupport/Charts/Multimedia HEADERS on the compile path — but
+# deliberately NOT linked. Some core data-model headers embed Qt6::Gui value
+# types (QColor in service *Types.h, QAction in KeyConfigManager.h, etc.). The
+# archive compiles with those symbols present-but-unresolved (static archives
+# tolerate this); the REAL GUI-free proof is Gate B (tst_mcp_init_split), which
+# links register_core_tools' reachable closure against Qt6::Core+Test ONLY — if
+# a Gui symbol were reachable from a core tool getter, THAT link would fail.
+# PRIVATE so these include paths never leak to the Gate-B test target.
+target_include_directories(openterminal_core PRIVATE
+    $<TARGET_PROPERTY:Qt6::Gui,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:Qt6::PrintSupport,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:Qt6::Charts,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:Qt6::Multimedia,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:qtadvanceddocking-qt6,INTERFACE_INCLUDE_DIRECTORIES>)
+# Core-only precompiled header. The lib gets no PCH from the exe; without it the
+# exe-PCH-masked transitive includes (QFuture/QJsonArray/QPointer/QSqlQuery)
+# surface as "incomplete type" errors in the unity batches. Headers only.
+target_precompile_headers(openterminal_core PRIVATE
+    <QObject> <QString> <QStringList> <QByteArray> <QList> <QVector> <QMap>
+    <QHash> <QSet> <QVariant> <QPointer>
+    <QJsonObject> <QJsonArray> <QJsonDocument> <QJsonValue>
+    <QTimer> <QDateTime> <QDate> <QTime>
+    <QNetworkAccessManager> <QNetworkRequest> <QNetworkReply> <QUrl> <QUrlQuery>
+    <QProcess> <QThread> <QMutex> <QMutexLocker> <QReadWriteLock> <QAtomicInt>
+    <QFuture> <QFutureWatcher>
+    <QSettings> <QStandardPaths> <QDir> <QFile> <QFileInfo> <QSaveFile>
+    <QTemporaryFile> <QIODevice>
+    <QUuid> <QRegularExpression> <QSqlQuery>
+    <functional> <memory> <vector> <string> <optional> <variant> <atomic>
+    <mutex> <algorithm> <numeric> <cmath> <cstdint> <utility> <tuple> <array> <span>)
+
 add_executable(OpenMarketTerminal ${_OPENMARKETTERMINAL_EXE_FLAGS}
-    ${CORE_SOURCES}
-    ${NETWORK_SOURCES}
-    ${DATAHUB_SOURCES}
-    ${AUTH_SOURCES}
-    ${STORAGE_SOURCES}
-    ${PYTHON_SOURCES}
-    ${LLM_SERVICE_SOURCES}
     ${AI_CHAT_SCREEN_SOURCES}
-    ${MCP_SOURCES}
-    ${TRADING_SOURCES}
-    ${ALGO_ENGINE_SOURCES}
-    ${SERVICE_SOURCES}
+    ${CORE_GUI_SOURCES}
+    ${AUTH_GUI_SOURCES}
+    ${SERVICE_GUI_SOURCES}
+    ${MCP_GUI_SOURCES}
     ${UI_SOURCES}
     ${SCREEN_SOURCES}
     ${APP_SOURCES}
     ${_OPENMARKETTERMINAL_PLATFORM_SOURCES}
 )
+target_link_libraries(OpenMarketTerminal PRIVATE openterminal_core)
 
 set_target_properties(OpenMarketTerminal PROPERTIES
     OUTPUT_NAME "OpenTerminal"
@@ -2866,6 +3004,16 @@ target_link_libraries(OpenMarketTerminal PRIVATE
 # they currently fall back to the machine-derived key, so no extra libs there.
 if(APPLE)
     target_link_libraries(OpenMarketTerminal PRIVATE "-framework Security" "-framework CoreFoundation")
+endif()
+
+# openterminal_core's own non-GUI native deps: OpenSSL (SecureStorage AES-256-GCM,
+# Hyperliquid/Kalshi signing) + zlib (instrument-master decompression). PUBLIC so
+# headless consumers (e.g. tst_mcp_init_split, the future CLI) inherit them. These
+# find_package calls run after the lib's add_library, so the links are wired here.
+target_link_libraries(openterminal_core PUBLIC OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
+if(APPLE)
+    # KeychainKey.cpp (in the lib) uses Apple's Security/CoreFoundation frameworks.
+    target_link_libraries(openterminal_core PUBLIC "-framework Security" "-framework CoreFoundation")
 endif()
 
 # Windows: link dbghelp for the crash-handler minidump writer (see

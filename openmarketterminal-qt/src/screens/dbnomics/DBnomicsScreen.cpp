@@ -24,9 +24,23 @@
 #include <QTextStream>
 #include <QVBoxLayout>
 
+#include <QColor>
 #include <algorithm>
 
 namespace openmarketterminal::screens {
+
+namespace {
+// Chart-series colour palette (moved here from DBnomicsService so the core lib
+// stays Qt6::Gui-free). Cycles through a fixed set per series index.
+QColor chart_color(int index) {
+    static const QColor palette[] = {
+        QColor("#ea580c"), QColor("#3b82f6"), QColor("#22c55e"), QColor("#eab308"),
+        QColor("#a855f7"), QColor("#ec4899"), QColor("#06b6d4"), QColor("#f97316"),
+    };
+    static const int n = static_cast<int>(std::size(palette));
+    return palette[index % n];
+}
+} // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -446,7 +460,7 @@ void DBnomicsScreen::render_single_view() {
 // ─────────────────────────────────────────────────────────────────────────────
 void DBnomicsScreen::assign_series_colors() {
     for (int i = 0; i < single_series_.size(); ++i)
-        single_series_[i].color = services::DBnomicsService::chart_color(i);
+        single_series_[i].color = chart_color(i);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -724,7 +738,7 @@ void DBnomicsScreen::on_add_to_slot(int slot_index) {
 
     // Assign colors for this slot's series
     for (int i = 0; i < slots_[slot_index].series.size(); ++i)
-        slots_[slot_index].series[i].color = services::DBnomicsService::chart_color(i);
+        slots_[slot_index].series[i].color = chart_color(i);
 
     selection_panel_->update_slot_series(slot_index, slots_[slot_index].series);
     rebuild_comparison_view();
@@ -748,7 +762,7 @@ void DBnomicsScreen::on_remove_from_slot(int slot_index, const QString& series_i
 
     // Re-assign colors after removal
     for (int i = 0; i < slot.series.size(); ++i)
-        slot.series[i].color = services::DBnomicsService::chart_color(i);
+        slot.series[i].color = chart_color(i);
 
     selection_panel_->update_slot_series(slot_index, slot.series);
     rebuild_comparison_view();

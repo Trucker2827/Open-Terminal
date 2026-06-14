@@ -189,7 +189,7 @@ void QuantModulePanel::display_backtest_result(const QJsonObject& payload) {
     const QString start_date = payload["start_date"].toString();
     const QString end_date   = payload["end_date"].toString();
 
-    const QColor  accent      = module_.color;
+    const QColor  accent      = QColor(module_.color_hex);
     const QString accent_hex  = accent.name();
     const QString green_hex   = ui::colors::POSITIVE();
     const QString red_hex     = ui::colors::NEGATIVE();

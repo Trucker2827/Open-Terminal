@@ -52,7 +52,7 @@ void QuantModulePanel::display_factor_evaluation_result(const QString& command, 
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     QString header_text = command.toUpper();
     header_text.replace('_', ' ');
     results_layout_->addWidget(gs_section_header(header_text, accent));
@@ -325,7 +325,7 @@ void QuantModulePanel::display_strategy_builder_result(const QString& command, c
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     const QString stype = payload.value("strategy_type").toString();
     QString header_text = (stype.isEmpty() ? command : stype).toUpper();
     header_text.replace('_', ' ');

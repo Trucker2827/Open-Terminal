@@ -55,7 +55,7 @@ QWidget* QuantModulePanel::build_quant_reporting_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // Local LOAD SAMPLE helper — same shape as the other panels.
@@ -68,7 +68,7 @@ QWidget* QuantModulePanel::build_quant_reporting_panel() {
         btn->setStyleSheet(QString("QPushButton { color:%1; background:transparent; border:1px solid %2;"
                                    "padding:0 8px; font-size:9px; font-weight:700; letter-spacing:0.5px; border-radius:2px; }"
                                    "QPushButton:hover { color:%3; border-color:%3; background:rgba(255,255,255,0.04); }")
-                               .arg(ui::colors::TEXT_TERTIARY(), ui::colors::BORDER_DIM(), module_.color.name()));
+                               .arg(ui::colors::TEXT_TERTIARY(), ui::colors::BORDER_DIM(), QColor(module_.color_hex).name()));
         QPointer<QLineEdit> guard(edit);
         connect(btn, &QPushButton::clicked, this, [guard, seed]() {
             if (guard) guard->setText(sample_returns(seed));
@@ -427,7 +427,7 @@ void QuantModulePanel::display_quant_reporting_result(const QString& command, co
     }
 
     const QJsonObject d = payload.value("data").toObject();
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
 
     // Section header
     QString header_text = command.toUpper();

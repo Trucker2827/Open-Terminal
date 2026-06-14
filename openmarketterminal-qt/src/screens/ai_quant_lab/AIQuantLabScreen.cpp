@@ -413,34 +413,36 @@ void AIQuantLabScreen::update_sidebar_selection() {
     for (int i = 0; i < module_buttons_.size(); ++i) {
         const auto& mod = modules_[i];
         const bool active = (i == active_index_);
-        const QString rgb = QString("%1,%2,%3").arg(mod.color.red()).arg(mod.color.green()).arg(mod.color.blue());
+        const QColor mod_color(mod.color_hex);
+        const QString rgb = QString("%1,%2,%3").arg(mod_color.red()).arg(mod_color.green()).arg(mod_color.blue());
 
         module_buttons_[i]->setStyleSheet(QString("QPushButton { text-align:left; padding:6px 12px; border:none;"
                                                   "border-left:2px solid %1; color:%2; font-size:10px;"
                                                   "font-weight:%3; background:%4; }"
                                                   "QPushButton:hover { background:rgba(%5,0.08); color:%6; }")
-                                              .arg(active ? mod.color.name() : "transparent")
-                                              .arg(active ? mod.color.name() : QString(TEXT_SECONDARY()))
+                                              .arg(active ? mod_color.name() : "transparent")
+                                              .arg(active ? mod_color.name() : QString(TEXT_SECONDARY()))
                                               .arg(active ? "700" : "400")
                                               .arg(active ? QString("rgba(%1,0.08)").arg(rgb) : "transparent")
-                                              .arg(rgb, mod.color.name()));
+                                              .arg(rgb, mod_color.name()));
     }
 
     for (int i = 0; i < badge_buttons_.size(); ++i) {
         const auto& mod = modules_[i];
         const bool active = (i == active_index_);
-        const QString rgb = QString("%1,%2,%3").arg(mod.color.red()).arg(mod.color.green()).arg(mod.color.blue());
+        const QColor mod_color(mod.color_hex);
+        const QString rgb = QString("%1,%2,%3").arg(mod_color.red()).arg(mod_color.green()).arg(mod_color.blue());
 
         badge_buttons_[i]->setStyleSheet(
             QString("QPushButton { color:%1; font-size:9px; font-weight:%2;"
                     "padding:0 8px; border:1px solid %3; border-radius:2px; background:%4; }"
                     "QPushButton:hover { color:%5; border-color:rgba(%6,0.4);"
                     "background:rgba(%6,0.08); }")
-                .arg(active ? mod.color.name() : QString(TEXT_TERTIARY()))
+                .arg(active ? mod_color.name() : QString(TEXT_TERTIARY()))
                 .arg(active ? "700" : "400")
                 .arg(active ? QString("rgba(%1,0.35)").arg(rgb) : "transparent")
                 .arg(active ? QString("rgba(%1,0.12)").arg(rgb) : "transparent")
-                .arg(mod.color.name(), rgb));
+                .arg(mod_color.name(), rgb));
     }
 }
 
@@ -448,7 +450,7 @@ void AIQuantLabScreen::update_right_panel() {
     const auto& mod = modules_[active_index_];
     right_title_->setText(mod.label.toUpper());
     right_title_->setStyleSheet(
-        QString("color:%1; font-weight:700; font-size:11px; background:transparent;").arg(mod.color.name()));
+        QString("color:%1; font-weight:700; font-size:11px; background:transparent;").arg(QColor(mod.color_hex).name()));
     right_category_->setText(tr("%1 module").arg(QString(mod.category).replace('_', '/')));
     right_desc_->setText(mod.description);
     right_script_->setText(tr("Script: %1").arg(mod.script));

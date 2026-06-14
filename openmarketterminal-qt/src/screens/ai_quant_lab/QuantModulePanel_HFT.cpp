@@ -64,7 +64,7 @@ using namespace openmarketterminal::screens::quant_gs_helpers;
 // HFT PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
 QWidget* QuantModulePanel::build_hft_panel() {
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
 
     auto* w  = new QWidget(this);
     auto* vl = new QVBoxLayout(w);

@@ -44,8 +44,9 @@ class DBnomicsService : public QObject
     void schedule_series_search(const QString& provider_code, const QString& dataset_code, const QString& query);
     void schedule_global_search(const QString& query);
 
-    // ── Chart color palette ───────────────────────────────────────────────────
-    static QColor chart_color(int index);
+    // Chart colour palette moved GUI-side (DBnomicsScreen). It is a pure
+    // presentation helper, and keeping QColor("#…") construction out of this
+    // core lib service keeps openterminal_core free of Qt6::Gui.
 
   signals:
     void providers_loaded(QVector<DbnProvider> providers);

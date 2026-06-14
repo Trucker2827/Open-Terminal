@@ -72,7 +72,7 @@ QWidget* QuantModulePanel::build_live_signals_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Signal Data ──
@@ -200,7 +200,7 @@ QWidget* QuantModulePanel::build_online_learning_panel() {
     vl->setSpacing(12);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Models ──
@@ -347,7 +347,7 @@ QWidget* QuantModulePanel::build_meta_learning_panel() {
     vl->addWidget(demo);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
     tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     // ── Model Selection ──
@@ -485,7 +485,7 @@ QWidget* QuantModulePanel::build_rolling_retraining_panel() {
     vl->setContentsMargins(16, 16, 16, 16);
     vl->setSpacing(12);
 
-    const QString accent = module_.color.name();
+    const QString accent = QColor(module_.color_hex).name();
     auto* tabs = new QTabWidget(w);
     tabs->setStyleSheet(tab_ss(accent));
 

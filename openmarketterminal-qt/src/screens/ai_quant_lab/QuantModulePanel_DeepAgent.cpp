@@ -56,7 +56,7 @@ QWidget* QuantModulePanel::build_deep_agent_panel() {
     vl->addWidget(llm_bar);
 
     auto* tabs = new QTabWidget(w);
-    tabs->setStyleSheet(tab_ss(module_.color.name()));
+    tabs->setStyleSheet(tab_ss(QColor(module_.color_hex).name()));
 
     // ── Tab 1: LangGraph Deep Analysis ──────────────────────────────────────
     auto* da_w = new QWidget(tabs);
@@ -163,7 +163,7 @@ QWidget* QuantModulePanel::build_rd_agent_tab(QComboBox* llm_combo) {
     // shared styles
 
     auto* sub = new QTabWidget(w);
-    sub->setStyleSheet(sub_tab_ss(module_.color.name()));
+    sub->setStyleSheet(sub_tab_ss(QColor(module_.color_hex).name()));
 
     // ── Status bar ───────────────────────────────────────────────────────────
     auto* status_bar = new QWidget(w);
@@ -188,7 +188,7 @@ QWidget* QuantModulePanel::build_rd_agent_tab(QComboBox* llm_combo) {
     check_btn->setStyleSheet(QString("QPushButton { background:transparent; color:%1; border:1px solid %1;"
                                      "font-family:%2; font-size:%3px; padding:2px 8px; border-radius:2px; }"
                                      "QPushButton:hover { background:%1; color:%4; }")
-                                 .arg(module_.color.name())
+                                 .arg(QColor(module_.color_hex).name())
                                  .arg(ui::fonts::DATA_FAMILY)
                                  .arg(ui::fonts::TINY)
                                  .arg(ui::colors::BG_BASE()));
@@ -226,7 +226,7 @@ QWidget* QuantModulePanel::build_rd_agent_tab(QComboBox* llm_combo) {
                                .arg(ui::colors::TEXT_TERTIARY())
                                .arg(ui::fonts::DATA_FAMILY)
                                .arg(ui::fonts::TINY)
-                               .arg(module_.color.name())
+                               .arg(QColor(module_.color_hex).name())
                                .arg(ui::colors::BG_BASE()));
     connect(mcp_btn, &QPushButton::toggled, this, [mcp_btn, status_txt](bool checked) {
         if (checked) {
@@ -442,11 +442,11 @@ QWidget* QuantModulePanel::build_rd_agent_tab(QComboBox* llm_combo) {
         QString("QPushButton { background:%1; color:%2; border:none;"
                 "font-family:%3; font-size:%4px; font-weight:700; padding:5px 12px; border-radius:2px; }"
                 "QPushButton:hover { background:%5; }")
-            .arg(module_.color.name())
+            .arg(QColor(module_.color_hex).name())
             .arg(ui::colors::BG_BASE())
             .arg(ui::fonts::DATA_FAMILY)
             .arg(ui::fonts::TINY)
-            .arg(module_.color.lighter(120).name()));
+            .arg(QColor(module_.color_hex).lighter(120).name()));
     tm_hl->addWidget(refresh_btn);
 
     auto* task_id_input = new QLineEdit(tm_toolbar);
@@ -487,7 +487,7 @@ QWidget* QuantModulePanel::build_rd_agent_tab(QComboBox* llm_combo) {
         QString("QPushButton { background:transparent; color:%1; border:1px solid %1;"
                 "font-family:%2; font-size:%3px; font-weight:700; padding:5px 10px; border-radius:2px; }"
                 "QPushButton:hover { background:%1; color:%4; }")
-            .arg(module_.color.name())
+            .arg(QColor(module_.color_hex).name())
             .arg(ui::fonts::DATA_FAMILY)
             .arg(ui::fonts::TINY)
             .arg(ui::colors::BG_BASE()));

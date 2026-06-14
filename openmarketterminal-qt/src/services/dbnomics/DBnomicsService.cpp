@@ -319,14 +319,9 @@ void DBnomicsService::schedule_global_search(const QString& query) {
     search_debounce_->start();
 }
 
-QColor DBnomicsService::chart_color(int index) {
-    static const QColor palette[] = {
-        QColor("#ea580c"), QColor("#3b82f6"), QColor("#22c55e"), QColor("#eab308"),
-        QColor("#a855f7"), QColor("#ec4899"), QColor("#06b6d4"), QColor("#f97316"),
-    };
-    static const int n = static_cast<int>(std::size(palette));
-    return palette[index % n];
-}
+// chart_color() moved to DBnomicsScreen (GUI): it is a pure presentation
+// palette and its QColor("#…") construction must not pull Qt6::Gui into the
+// GUI-free openterminal_core lib.
 
 // ── DataHub producer wiring ─────────────────────────────────────────────────
 
