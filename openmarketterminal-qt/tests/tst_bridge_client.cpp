@@ -33,13 +33,21 @@ public:
                 QTcpSocket* s = srv.nextPendingConnection();
                 QObject::connect(s, &QTcpSocket::readyRead, s, [this, s] {
                     const QByteArray req = s->readAll();
+                    // Safety invariant: the read-only CLI must never offer the
+                    // destructive-action token over the wire.
+                    QVERIFY(!req.contains("X-MCP-Allow-Destructive"));
                     const bool authed = req.contains("X-MCP-Token: " + token.toUtf8());
                     QByteArray body; int code = 200;
                     if (!authed) { code = 401; body = R"({"success":false,"error":"bad token"})"; }
                     else if (req.startsWith("GET /tools")) body = R"({"tools":[{"name":"get_quote"}]})";
                     else if (req.startsWith("POST /tool")) {
-                        body = req.contains("\"fail\"") ? R"({"success":false,"error":"nope"})"
-                                                        : R"({"success":true})";
+                        if (req.contains("\"fail\"")) {
+                            body = R"({"success":false,"error":"nope"})";
+                        } else {
+                            const int b = req.indexOf("\r\n\r\n");
+                            const QByteArray sent = req.mid(b + 4);
+                            body = "{\"success\":true,\"echo\":" + sent + "}";
+                        }
                     }
                     QByteArray resp = "HTTP/1.1 " + QByteArray::number(code) + " X\r\n"
                         "Content-Type: application/json\r\n"
@@ -95,6 +103,15 @@ private slots:
     void dead_endpoint_is_transport() {
         BridgeClient c({"http://127.0.0.1:1", "secret", 0, ""});
         QCOMPARE(c.get_tools().status, ClientStatus::Transport);
+    }
+    void call_tool_sends_name_and_args() {
+        FakeBridge fb;
+        BridgeClient c({QString("http://127.0.0.1:%1").arg(fb.port), "secret", 0, ""});
+        auto r = c.call_tool("get_quote", QJsonObject{{"symbol","AAPL"}});
+        QCOMPARE(r.status, ClientStatus::Ok);
+        const QJsonObject echo = r.body.value("echo").toObject();
+        QCOMPARE(echo.value("tool").toString(), QString("get_quote"));
+        QCOMPARE(echo.value("args").toObject().value("symbol").toString(), QString("AAPL"));
     }
 };
 QTEST_MAIN(TstBridgeClient)

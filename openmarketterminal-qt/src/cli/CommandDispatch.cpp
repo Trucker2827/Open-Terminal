@@ -118,7 +118,37 @@ int dispatch(QStringList args) {
         }
         delete c; std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2;
     }
-    // hub / quote wired in Task 8.
+    if (group == "quote") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: quote <SYM...>\n"); return 2; }
+        BridgeClient* c = nullptr; int code = 0;
+        if (!make_client(opts, c, code)) return code;
+        int rc = 0;
+        for (const QString& sym : args) {
+            auto r = c->call_tool("get_quote", QJsonObject{{"symbol", sym}});
+            const int e = emit(opts, r);
+            if (e != 0) rc = e;
+        }
+        delete c; return rc;
+    }
+
+    if (group == "hub") {
+        const QString sub = args.isEmpty() ? QString() : args.takeFirst();
+        if (sub.isEmpty()) { std::fprintf(stderr, "usage: hub topics|peek|request\n"); return 2; }
+        BridgeClient* c = nullptr; int code = 0;
+        if (!make_client(opts, c, code)) return code;
+        ClientResult r;
+        if (sub == "topics") {
+            r = c->call_tool("datahub_list_topics", {});
+        } else if (sub == "peek" || sub == "request") {
+            if (args.isEmpty()) { delete c; std::fprintf(stderr, "usage: hub %s <topic>\n", qUtf8Printable(sub)); return 2; }
+            const QString tool = (sub == "peek") ? "datahub_peek" : "datahub_request";
+            r = c->call_tool(tool, QJsonObject{{"topic", args.first()}});
+        } else {
+            delete c; std::fprintf(stderr, "usage: hub topics|peek|request\n"); return 2;
+        }
+        delete c; return emit(opts, r);
+    }
+
     std::fprintf(stderr, "error: unknown command '%s'\n", qUtf8Printable(group));
     return 2;
 }
