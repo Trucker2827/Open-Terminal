@@ -60,3 +60,13 @@ add_executable(tst_settings_gate tst_settings_gate.cpp)
 target_include_directories(tst_settings_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_settings_gate PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_settings_gate COMMAND tst_settings_gate)
+
+# Phase 2b Task 1 — the shared register_all_data_services() helper must bring up
+# all 11 data services FAST and one-shot-safely (no socket/spawn/hang at
+# registration). Widgets-free link set (Core/Network/Sql/Test) so QTEST_MAIN
+# runs under a QCoreApplication — i.e. the headless mode the helper must be safe
+# in.
+add_executable(tst_data_services tst_data_services.cpp)
+target_include_directories(tst_data_services PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_data_services PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_data_services COMMAND tst_data_services)

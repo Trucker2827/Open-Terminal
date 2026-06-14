@@ -1116,6 +1116,7 @@ set(ALGO_ENGINE_SOURCES
 
 # Services
 set(SERVICE_SOURCES
+    src/services/DataServices.cpp
     src/services/akshare/AkShareService.cpp
     src/services/alpha_arena/AlphaArenaJson.cpp
     src/services/alpha_arena/Indicators.cpp

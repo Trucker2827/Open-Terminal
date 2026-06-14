@@ -81,6 +81,23 @@ AgentService& AgentService::instance() {
 }
 
 AgentService::AgentService(QObject* parent) : QObject(parent) {
+    // ONE-SHOT-SAFETY GUARD (Phase 2b): the constructor side effects below
+    // (binding a localhost TCP server via TerminalMcpBridge, writing a
+    // bridge.json discovery file, and installing the interactive GUI auth
+    // checker) must run ONLY in a real interactive GUI process. A headless
+    // host (HeadlessRuntime / openterminalcli, a QCoreApplication) now
+    // constructs this singleton too — via register_all_data_services() — so
+    // without this gate a one-shot CLI would bind a socket and leave a stale
+    // bridge.json. The agent:* DataHub producer is still wired unconditionally
+    // by ensure_registered_with_hub() (called by the helper); only the
+    // feed/bridge side effects are GUI-gated. In headless, HeadlessRuntime
+    // installs its own (deny-by-default) auth checker, so skipping the GUI one
+    // here is correct. A genuine GUI run (QApplication) keeps the exact prior
+    // behavior. inherits("QApplication") is a runtime metaobject check, so
+    // openterminal_core stays Widgets-free.
+    auto* qcoreapp = QCoreApplication::instance();
+    const bool gui_mode = qcoreapp && qcoreapp->inherits("QApplication");
+    if (gui_mode) {
     // Phase 1/2 wiring — start the local HTTP bridge that exposes internal
     // MCP tools to the Python finagent subprocess, and install the auth
     // checker that gates agent-originated tool calls. Both are idempotent;
@@ -124,6 +141,7 @@ AgentService::AgentService(QObject* parent) : QObject(parent) {
             }
             return true;
         });
+    }  // gui_mode
 }
 
 // ── Cache helpers ────────────────────────────────────────────────────────────

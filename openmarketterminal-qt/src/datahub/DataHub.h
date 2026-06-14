@@ -183,6 +183,12 @@ class DataHub : public QObject {
 
     QVector<TopicStats> stats() const;
 
+    /// Number of producers currently registered (via register_producer()).
+    /// Diagnostic / test introspection — lets a test pin the registered set
+    /// (e.g. the register_all_data_services() drift guard) without depending on
+    /// any topic having published yet.
+    int producer_count() const;
+
     /// Diagnostic: list the QObject owners currently subscribed to `topic`.
     /// Pointers are raw (not QPointer) — only safe to use for identity
     /// comparison, logging, or `QObject::objectName()` lookup on the GUI

@@ -1058,6 +1058,11 @@ QVector<TopicStats> DataHub::stats() const {
     return out;
 }
 
+int DataHub::producer_count() const {
+    QMutexLocker lock(&mutex_);
+    return producers_.size();
+}
+
 QList<QObject*> DataHub::subscribers(const QString& topic) const {
     QMutexLocker lock(&mutex_);
     QList<QObject*> out;

@@ -7,6 +7,7 @@
 #include "mcp/McpProvider.h"
 #include "mcp/ToolConfirmationGate.h"
 #include "mcp/tools/SettingsGate.h"
+#include "services/DataServices.h"
 #include "services/markets/MarketDataService.h"
 #include "storage/secure/SecureStorage.h"
 #include "storage/sqlite/CacheDatabase.h"
@@ -56,10 +57,15 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     // DataHub uses its default owner-active hook (everything active), which is
     // exactly the correct policy for a headless host with no screens/owners.
 
-    // Wire MarketDataService as the `market:quote:*` producer so quote
-    // peek/fetch tools (get_quote, etc.) are backed by the hub (mirrors
-    // main.cpp). Must happen before tools are dispatched.
-    openmarketterminal::services::MarketDataService::instance().ensure_registered_with_hub();
+    // Wire the headless-registerable data-producing services (MarketData, News,
+    // Economics, MacroCalendar, Geopolitics, Maritime, MAAnalytics, DBnomics,
+    // GovData, Agent) as DataHub producers so every data tool (get_quote,
+    // get_news, the economics/geo/maritime/gov tools, etc.) is backed by the
+    // hub. Must happen before tools are dispatched. Registration is cheap
+    // producer-wiring only (no fetch/connect/spawn); see
+    // register_all_data_services() (which documents why the GUI's 11th producer,
+    // RelationshipMapService, is GUI-only and excluded here).
+    openmarketterminal::services::register_all_data_services();
 
     // REAL enforcement of the two CLI capability gates: McpProvider consults the
     // installed AuthChecker for any tool with auth_required != None OR
