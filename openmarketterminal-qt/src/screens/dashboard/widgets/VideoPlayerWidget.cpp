@@ -287,13 +287,58 @@ void VideoPlayerWidget::resolve_youtube_and_play(const QString& youtube_url, con
     const QString ytdlp_program = resolve_ytdlp_program();
     if (ytdlp_program.isEmpty()) {
         set_loading(false);
-        status_label_->setText(tr("yt-dlp not found. Bundle yt-dlp.exe next to OpenMarketTerminal.exe."));
+        status_label_->setText(tr("yt-dlp not found. Bundle yt-dlp next to the app executable."));
         status_label_->show();
         LOG_ERROR("VideoPlayer", "yt-dlp not found in app directory or PATH");
         return;
     }
 
-    // Use yt-dlp to get the best direct stream URL (no downloading, just URL extraction)
+    pending_ytdlp_program_ = ytdlp_program;
+    pending_youtube_url_ = youtube_url;
+    cookie_candidates_ = build_cookie_candidates();
+    cookie_attempt_ = 0;
+    saw_cookie_error_ = false;
+    start_ytdlp_attempt();
+}
+
+// Build the ordered list of cookie-source argument sets yt-dlp should try.
+// YouTube refuses anonymous extraction ("Sign in to confirm you're not a bot"),
+// so we reuse the user's logged-in browser session. We try several browsers and
+// use the first that yields cookies. This is what makes Live TV work on Windows:
+// Chrome/Edge encrypt their cookie store with App-Bound Encryption, which yt-dlp
+// cannot read ("Failed to decrypt with DPAPI"), so the iteration falls through
+// to Firefox (no DPAPI) which succeeds. On macOS Chrome cookies are read via the
+// Keychain and succeed on the first attempt, so behaviour there is unchanged.
+QList<QStringList> VideoPlayerWidget::build_cookie_candidates() const {
+    // Power-user overrides take precedence over auto-detection.
+    const QString cookies_file = QString::fromLocal8Bit(qgetenv("OPENTERMINAL_YTDLP_COOKIES")).trimmed();
+    if (!cookies_file.isEmpty() && QFileInfo::exists(cookies_file))
+        return {QStringList{QStringLiteral("--cookies"), cookies_file}};
+
+    const QString browser = QString::fromLocal8Bit(qgetenv("OPENTERMINAL_YTDLP_BROWSER")).trimmed();
+    if (!browser.isEmpty())
+        return {QStringList{QStringLiteral("--cookies-from-browser"), browser}};
+
+    const QStringList browsers = {
+#ifdef Q_OS_MACOS
+        QStringLiteral("chrome"),  QStringLiteral("brave"),   QStringLiteral("edge"),
+        QStringLiteral("firefox"), QStringLiteral("safari"),  QStringLiteral("vivaldi"),
+        QStringLiteral("chromium"),
+#else
+        QStringLiteral("chrome"),  QStringLiteral("edge"),    QStringLiteral("brave"),
+        QStringLiteral("vivaldi"), QStringLiteral("firefox"), QStringLiteral("chromium"),
+        QStringLiteral("opera"),
+#endif
+    };
+    QList<QStringList> candidates;
+    candidates.reserve(browsers.size());
+    for (const QString& b : browsers)
+        candidates.append(QStringList{QStringLiteral("--cookies-from-browser"), b});
+    return candidates;
+}
+
+void VideoPlayerWidget::start_ytdlp_attempt() {
+    // Use yt-dlp to get the best direct stream URL (no downloading, just URL extraction).
     auto* proc = new QProcess(this);
     connect(proc, &QProcess::finished, this, &VideoPlayerWidget::on_ytdlp_finished);
     connect(proc, &QProcess::finished, proc, &QProcess::deleteLater);
@@ -311,15 +356,17 @@ void VideoPlayerWidget::resolve_youtube_and_play(const QString& youtube_url, con
 #endif
     proc->setProcessEnvironment(env);
 
-    // --cookies-from-browser chrome: YouTube now refuses anonymous extraction
-    // ("Sign in to confirm you're not a bot"); reusing the user's logged-in
-    // Chrome session satisfies that gate. Harmless if Chrome isn't present —
-    // yt-dlp just reports it, and on_ytdlp_finished surfaces a clear message.
+    // cookie args (browser session or cookies file) + format selection.
     // -f best[ext=mp4]/best: best single-file stream (QMediaPlayer takes one URL)
     // --no-playlist: single video only;  -g: print URL only, don't download
-    proc->start(ytdlp_program,
-                {"--cookies-from-browser", "chrome",
-                 "-f", "best[ext=mp4]/best", "--no-playlist", "-g", youtube_url});
+    QStringList args = cookie_candidates_.value(cookie_attempt_);
+    args << QStringLiteral("-f") << QStringLiteral("best[ext=mp4]/best")
+         << QStringLiteral("--no-playlist") << QStringLiteral("-g") << pending_youtube_url_;
+    LOG_INFO("VideoPlayer", QStringLiteral("yt-dlp attempt %1/%2: %3")
+                                .arg(cookie_attempt_ + 1)
+                                .arg(cookie_candidates_.size())
+                                .arg(args.join(QLatin1Char(' '))));
+    proc->start(pending_ytdlp_program_, args);
 }
 
 void VideoPlayerWidget::on_ytdlp_finished(int exit_code, QProcess::ExitStatus /*status*/) {
@@ -340,15 +387,43 @@ void VideoPlayerWidget::on_ytdlp_finished(int exit_code, QProcess::ExitStatus /*
         if (err_line.isEmpty())
             err_line = lines.isEmpty() ? QString() : lines.last().trimmed();
 
+        // Cookie-source failures are retryable: advance to the next browser in
+        // the candidate list. Covers App-Bound Encryption / DPAPI (Chrome and
+        // Edge on Windows), a missing cookie database (browser not installed),
+        // and a locked database (browser running).
+        const bool cookie_failure =
+            err_line.contains(QStringLiteral("DPAPI"), Qt::CaseInsensitive) ||
+            err_line.contains(QStringLiteral("decrypt"), Qt::CaseInsensitive) ||
+            (err_line.contains(QStringLiteral("cookies"), Qt::CaseInsensitive) &&
+             (err_line.contains(QStringLiteral("could not find"), Qt::CaseInsensitive) ||
+              err_line.contains(QStringLiteral("unable to"), Qt::CaseInsensitive) ||
+              err_line.contains(QStringLiteral("could not copy"), Qt::CaseInsensitive) ||
+              err_line.contains(QStringLiteral("database"), Qt::CaseInsensitive)));
+        if (cookie_failure)
+            saw_cookie_error_ = true;
+        if (cookie_failure && cookie_attempt_ + 1 < cookie_candidates_.size()) {
+            LOG_INFO("VideoPlayer", "yt-dlp cookie source failed, trying next: " + err_line.left(140));
+            ++cookie_attempt_;
+            start_ytdlp_attempt();
+            return;
+        }
+
         QString msg;
         if (err_line.contains(QStringLiteral("not a bot")) ||
             err_line.contains(QStringLiteral("Sign in to confirm")))
             msg = tr("YouTube is blocking automated playback (sign-in required). "
-                     "Make sure you're logged into YouTube in Chrome, then try again.");
+                     "Sign into YouTube in your browser, then try again.");
         else if (err_line.contains(QStringLiteral("not currently live")))
             msg = tr("This channel is not live right now.");
-        else if (err_line.contains(QStringLiteral("cookies")) && err_line.contains(QStringLiteral("Chrome")))
-            msg = tr("Couldn't read Chrome cookies for YouTube sign-in. Open Chrome and sign into YouTube, then retry.");
+        else if (saw_cookie_error_)
+#ifdef _WIN32
+            msg = tr("Live TV couldn't read your browser's YouTube cookies. On Windows, Chrome "
+                     "and Edge lock cookies with App-Bound Encryption, so sign into YouTube in "
+                     "Firefox — or set OPENTERMINAL_YTDLP_COOKIES to an exported cookies.txt file.");
+#else
+            msg = tr("Couldn't read your browser's YouTube cookies. Sign into YouTube in a "
+                     "supported browser, or set OPENTERMINAL_YTDLP_COOKIES to a cookies.txt file.");
+#endif
         else
             msg = tr("yt-dlp error: %1").arg(err_line.isEmpty() ? tr("Unknown error") : err_line.left(140));
 

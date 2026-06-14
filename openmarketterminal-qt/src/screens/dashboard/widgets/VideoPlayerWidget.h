@@ -42,6 +42,8 @@ class VideoPlayerWidget : public BaseWidget {
     void build_player_view();
     void play_url(const QString& url, const QString& title);
     void resolve_youtube_and_play(const QString& youtube_url, const QString& title);
+    void start_ytdlp_attempt();
+    QList<QStringList> build_cookie_candidates() const;
     QString resolve_ytdlp_program() const;
     void play_direct(const QString& stream_url);
     void set_loading(bool loading);
@@ -53,7 +55,12 @@ class VideoPlayerWidget : public BaseWidget {
     QLabel* now_playing_ = nullptr;
     QLabel* status_label_ = nullptr; // loading / error indicator
 
-    QString pending_title_; // title while yt-dlp is resolving
+    QString pending_title_;         // title while yt-dlp is resolving
+    QString pending_youtube_url_;   // URL while iterating cookie sources
+    QString pending_ytdlp_program_; // resolved yt-dlp path for the in-flight resolve
+    QList<QStringList> cookie_candidates_; // cookie-source arg sets to try in order
+    int cookie_attempt_ = 0;        // index into cookie_candidates_
+    bool saw_cookie_error_ = false; // any attempt failed reading browser cookies
     QString current_url_;   // currently selected stream URL (original, may be YouTube)
     QString current_title_; // title of current stream for refresh
 
