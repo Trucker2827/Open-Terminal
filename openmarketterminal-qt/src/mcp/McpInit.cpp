@@ -1,4 +1,11 @@
-// McpInit.cpp — Register all internal MCP tools and start the system
+// McpInit.cpp — Register the non-GUI ("core") MCP tools.
+//
+// This translation unit is Core-clean: it references only tool getters whose
+// backing .cpp files are free of QtWidgets/UI/SCREEN/APP coupling, so it can be
+// compiled into the headless `openterminal_core` library and linked into a
+// process with no GUI. The GUI-only registration (register_gui_tools) and the
+// full bring-up (initialize_all_tools) live in McpInitGui.cpp, which references
+// the QtWidgets-coupled tool files and therefore stays in the GUI executable.
 
 #include "mcp/McpInit.h"
 
@@ -9,13 +16,11 @@
 #include "mcp/tools/AiChatTools.h"
 #include "mcp/tools/AltInvestmentsTools.h"
 #include "mcp/tools/CryptoTradingTools.h"
-#include "mcp/tools/DashboardTools.h"
 #include "mcp/tools/DataHubTools.h"
 #include "mcp/tools/DataSourcesTools.h"
 #include "mcp/tools/DBnomicsTools.h"
 #include "mcp/tools/EdgarTools.h"
 #include "mcp/tools/EquityResearchTools.h"
-#include "mcp/tools/ExcelTools.h"
 #include "mcp/tools/FileManagerTools.h"
 #include "mcp/tools/GeopoliticsTools.h"
 #include "mcp/tools/GovDataTools.h"
@@ -24,7 +29,6 @@
 #include "mcp/tools/MarketsTools.h"
 #include "mcp/tools/McpServersTools.h"
 #include "mcp/tools/MetaTools.h"
-#include "mcp/tools/NavigationTools.h"
 #include "mcp/tools/NewsTools.h"
 #include "mcp/tools/AgenticMemoryTools.h"
 #include "mcp/tools/NotesTools.h"
@@ -38,56 +42,18 @@
 #include "mcp/tools/SurfaceAnalyticsTools.h"
 #include "mcp/tools/SystemTools.h"
 #include "mcp/tools/WatchlistTools.h"
-#include "mcp/tools/WorkspaceTools.h"
-
-#include <QJsonDocument>
 
 namespace openmarketterminal::mcp {
 
 static constexpr const char* TAG = "McpInit";
 
-// One-shot diagnostic: walk every registered ToolDef and warn on any whose
-// serialized schema exceeds kSchemaSizeWarnBytes. Common culprits: huge
-// enum lists (e.g. exhaustive country/currency codes), verbose multi-line
-// descriptions, or deeply nested object schemas. Every byte of schema
-// multiplies across every LLM turn that includes the tool.
-//
-// Logs at INFO if all schemas are within budget; logs WARN with offenders
-// (sorted largest-first) otherwise. Runs once at startup; cheap.
-static constexpr int kSchemaSizeWarnBytes = 2048;
-
-static void audit_tool_schema_sizes() {
-    const auto tools = McpProvider::instance().list_all_tools();
-    struct Offender { QString name; int bytes; };
-    QVector<Offender> over_budget;
-    int total_bytes = 0;
-    for (const auto& t : tools) {
-        const int bytes = QJsonDocument(t.input_schema).toJson(QJsonDocument::Compact).size();
-        total_bytes += bytes;
-        if (bytes > kSchemaSizeWarnBytes)
-            over_budget.append({t.name, bytes});
-    }
-    std::sort(over_budget.begin(), over_budget.end(),
-              [](const Offender& a, const Offender& b) { return a.bytes > b.bytes; });
-
-    LOG_INFO(TAG, QString("Tool schema audit: %1 tools, %2 KB total schema bytes")
-                      .arg(tools.size()).arg(total_bytes / 1024));
-    if (over_budget.isEmpty())
-        return;
-
-    LOG_WARN(TAG, QString("Tool schema audit: %1 tools exceed %2 B budget — every "
-                          "byte multiplies across every LLM turn. Consider trimming "
-                          "enums / descriptions / nested objects.")
-                      .arg(over_budget.size()).arg(kSchemaSizeWarnBytes));
-    for (const auto& o : over_budget)
-        LOG_WARN(TAG, QString("  %1 — %2 B").arg(o.name).arg(o.bytes));
-}
-
-void initialize_all_tools() {
+// Register the non-GUI ("core") tool set. Every getter here is backed by a
+// Core-clean .cpp (no QtWidgets) that compiles into openterminal_core, so this
+// function is safe to call from a headless process. The four GUI-coupled tool
+// groups (navigation, dashboard, workspace, excel) are registered separately by
+// register_gui_tools() (see McpInitGui.cpp).
+void register_core_tools() {
     auto& provider = McpProvider::instance();
-
-    // navigation
-    provider.register_tools(tools::get_navigation_tools());
 
     // news
     provider.register_tools(tools::get_news_tools());
@@ -166,17 +132,8 @@ void initialize_all_tools() {
     // equity-research — symbol search, load, financials, technicals, peers, news, sentiment
     provider.register_tools(tools::get_equity_research_tools());
 
-    // workspace — monitors, windows, panels, layouts, snapshots, symbol groups, actions, command-bar
-    provider.register_tools(tools::get_workspace_tools());
-
-    // dashboard — widget catalog, layout CRUD, per-widget config, ticker bar
-    provider.register_tools(tools::get_dashboard_tools());
-
     // geopolitics — events, HDX, trade analysis, geolocations
     provider.register_tools(tools::get_geopolitics_tools());
-
-    // excel — sheets, cells, data, rows/cols, CSV export
-    provider.register_tools(tools::get_excel_tools());
 
     // surface-analytics — 35-surface capability catalog + Databento fetches
     provider.register_tools(tools::get_surface_analytics_tools());
@@ -184,15 +141,6 @@ void initialize_all_tools() {
     // Phase 6: meta tools — tool_list, tool_describe, mcp_health.
     // Always exposed so the LLM can lazy-discover specialised tools.
     provider.register_tools(tools::get_meta_tools());
-
-    LOG_INFO(TAG, QString("Registered %1 internal MCP tools").arg(provider.tool_count()));
-
-    // Audit schema sizes once after registration — surfaces bloated tools
-    // before they bleed prompt tokens on every turn.
-    audit_tool_schema_sizes();
-
-    // Initialize unified service (starts external servers in background)
-    McpService::instance().initialize();
 }
 
 void shutdown_mcp() {

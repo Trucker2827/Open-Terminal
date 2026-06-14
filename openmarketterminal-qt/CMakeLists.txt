@@ -977,6 +977,9 @@ set(MCP_SOURCES
     src/mcp/McpClient.cpp
     src/mcp/McpManager.cpp
     src/mcp/McpInit.cpp
+    # GUI-only registration (register_gui_tools + initialize_all_tools); references
+    # the QtWidgets-coupled tool getters, so Task 3 moves this into MCP_GUI_SOURCES.
+    src/mcp/McpInitGui.cpp
     src/mcp/SchemaValidator.cpp
     src/mcp/ToolRetriever.cpp
     src/mcp/ToolSelfTest.cpp
@@ -2318,6 +2321,7 @@ set_source_files_properties(
     src/mcp/McpClient.cpp
     src/mcp/McpManager.cpp
     src/mcp/McpInit.cpp
+    src/mcp/McpInitGui.cpp
     src/mcp/SchemaValidator.cpp
     src/mcp/ToolRetriever.cpp
     src/mcp/ToolSelfTest.cpp
