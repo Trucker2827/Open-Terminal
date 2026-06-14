@@ -3841,5 +3841,6 @@ endif()
 
 # ── Test suite (opt-in; see openmarketterminal-qt/tests/CMakeLists.txt) ─────────────────
 if(OPENMARKETTERMINAL_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(tests)
 endif()
