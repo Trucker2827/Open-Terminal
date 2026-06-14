@@ -1,0 +1,103 @@
+name: Regression (tests + selftests)
+
+# Deterministic regression gate: builds with the test suite enabled on Linux,
+# runs the QtTest unit suites (ctest) and the headless --selftest-* one-shots as
+# REQUIRED checks, and runs the headless CLI category smoke as a NON-blocking
+# informational step (it depends on live network and is allowed to be flaky).
+#
+# Mark "Tests & Selftests (Linux)" as a required status check in branch
+# protection to gate merges to main.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_QPA_PLATFORM: offscreen   # headless: no display on the runner
+
+jobs:
+  test:
+    name: Tests & Selftests (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: regression-linux
+          max-size: 500M
+          update-package-index: true
+
+      # Mirrors build-cpp.yml's Linux dependency set (Ubuntu 22.04 ships GCC 11;
+      # CMakeLists requires GCC 12.3+, so install + pin gcc-12/g++-12).
+      - name: Install system dependencies
+        run: |
+          sudo add-apt-repository universe -y
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cmake ninja-build gcc-12 g++-12 \
+            libssl-dev libsecret-1-dev \
+            qt6-base-dev qt6-base-private-dev \
+            qt6-tools-dev qt6-tools-dev-tools \
+            libqt6charts6-dev libqt6websockets6-dev \
+            qt6-multimedia-dev libqt6multimediawidgets6 \
+            libqt6svg6-dev libqt6concurrent6 \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-xinerama0 libxcb-xkb1 \
+            pkg-config zip
+          echo "CC=gcc-12"  >> "$GITHUB_ENV"
+          echo "CXX=g++-12" >> "$GITHUB_ENV"
+
+      - name: Configure (tests enabled)
+        working-directory: openmarketterminal-qt
+        run: |
+          cmake -B build-test -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DOPENMARKETTERMINAL_BUILD_TESTS=ON
+
+      - name: Build (GUI + CLI + tests)
+        working-directory: openmarketterminal-qt
+        run: cmake --build build-test --parallel "$(nproc)"
+
+      # ---- REQUIRED: deterministic unit suites ----
+      - name: Unit tests (ctest)
+        working-directory: openmarketterminal-qt
+        run: ctest --test-dir build-test --output-on-failure
+
+      # ---- REQUIRED: headless one-shot selftests (no display, offscreen) ----
+      - name: Headless selftests
+        working-directory: openmarketterminal-qt
+        run: |
+          set -euo pipefail
+          APP="$(find build-test -maxdepth 3 -type f -name OpenTerminal | head -1)"
+          test -n "$APP" || { echo "::error::GUI binary (OpenTerminal) not found under build-test"; exit 1; }
+          echo "selftest binary: $APP"
+          for t in tools datahub-peek feeds dock-layout universe-scan paper portfolio-replication bridge-discovery workflow-honesty; do
+            echo "== --selftest-$t =="
+            "$APP" "--selftest-$t" || { echo "::error::--selftest-$t failed"; exit 1; }
+          done
+          echo "all selftests passed"
+
+      # ---- NON-blocking: headless CLI category smoke (live network; may flake) ----
+      - name: Headless CLI category smoke (informational)
+        working-directory: openmarketterminal-qt
+        continue-on-error: true
+        run: |
+          CLI="$PWD/build-test/openterminalcli"
+          test -x "$CLI" || { echo "openterminalcli not found at $CLI (skipping)"; exit 0; }
+          CLI="$CLI" bash tests/e2e_headless_categories.sh || echo "::warning::headless category smoke had failures (non-blocking)"
