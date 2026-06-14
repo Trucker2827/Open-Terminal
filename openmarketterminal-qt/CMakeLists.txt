@@ -3110,6 +3110,7 @@ endif()
 add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
+    src/cli/ServeCommand.cpp
     src/cli/BridgeDiscovery.cpp
     src/cli/BridgeClient.cpp
     src/cli/BridgeDiscoveryFile.cpp)

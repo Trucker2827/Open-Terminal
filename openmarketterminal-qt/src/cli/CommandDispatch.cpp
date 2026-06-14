@@ -1,6 +1,7 @@
 #include "cli/CommandDispatch.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
+#include "cli/ServeCommand.h"
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpProvider.h"
 #include "mcp/McpTypes.h"
@@ -170,6 +171,13 @@ int dispatch(QStringList args) {
         std::fprintf(stderr, "%s (profile '%s')\n",
                      describe(std::get<DiscoveryError>(r)), qUtf8Printable(opts.profile));
         return 3;
+    }
+    if (group == "serve") {
+        const QString sub = args.isEmpty() ? QString() : args.first();
+        if (sub == "--status") return serve_status(opts.profile, opts.json);
+        if (sub == "--stop")   return serve_stop(opts.profile);
+        if (!args.isEmpty()) { std::fprintf(stderr, "usage: serve [--status|--stop]\n"); return 2; }
+        return serve_run(opts.profile);   // blocks in the event loop
     }
     if (group == "mcp") {
         const QString sub = args.isEmpty() ? QString() : args.takeFirst();
