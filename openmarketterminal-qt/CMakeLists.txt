@@ -2942,6 +2942,18 @@ if(HAS_WEBENGINE)
     target_compile_definitions(OpenMarketTerminal PRIVATE HAS_QT_WEBENGINE)
 endif()
 
+# ── openterminalcli — headless attach client (Qt6::Core + Network only) ──────
+add_executable(openterminalcli
+    src/cli/main.cpp
+    src/cli/CommandDispatch.cpp
+    src/cli/BridgeDiscovery.cpp
+    src/cli/BridgeClient.cpp
+    src/cli/BridgeDiscoveryFile.cpp)
+target_include_directories(openterminalcli PRIVATE src)
+target_compile_definitions(openterminalcli PRIVATE
+    OPENMARKETTERMINAL_VERSION_STRING="${PROJECT_VERSION}")
+target_link_libraries(openterminalcli PRIVATE Qt6::Core Qt6::Network)
+
 # ── Copy qgeoview DLL next to the exe so it's found at runtime ────────────────
 if(WIN32)
     add_custom_command(TARGET OpenMarketTerminal POST_BUILD
