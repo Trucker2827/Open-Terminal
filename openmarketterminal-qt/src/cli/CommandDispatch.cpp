@@ -1,5 +1,8 @@
 #include "cli/CommandDispatch.h"
+#include "cli/BridgeDiscovery.h"
 #include <QCoreApplication>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <cstdio>
 
 namespace openmarketterminal::cli {
@@ -36,7 +39,22 @@ int dispatch(QStringList args) {
         std::printf("openterminalcli %s\n", qUtf8Printable(QCoreApplication::applicationVersion()));
         return 0;
     }
-    // status / mcp / hub / quote wired in Tasks 5,7,8.
+    if (group == "status") {
+        auto r = resolve(opts.profile);
+        if (auto* d = std::get_if<Discovered>(&r)) {
+            if (opts.json) {
+                QJsonObject o{{"attached", true}, {"endpoint", d->info.endpoint}, {"pid", d->info.pid}};
+                std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+            } else {
+                std::printf("attached  endpoint=%s  pid=%lld\n",
+                            qUtf8Printable(d->info.endpoint), static_cast<long long>(d->info.pid));
+            }
+            return 0;
+        }
+        std::fprintf(stderr, "%s\n", describe(std::get<DiscoveryError>(r)));
+        return 3;
+    }
+    // mcp / hub / quote wired in Tasks 7,8.
     std::fprintf(stderr, "error: unknown command '%s'\n", qUtf8Printable(group));
     return 2;
 }
