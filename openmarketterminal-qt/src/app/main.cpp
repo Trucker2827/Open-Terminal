@@ -29,6 +29,7 @@
 #include "mcp/McpInit.h"
 #include "mcp/ToolConfirmationGate.h"
 #include "mcp/ToolSelfTest.h"
+#include "mcp/BridgeDiscoverySelftest.h"
 #include "mcp/DataHubPeekSelftest.h"
 #include "services/feeds/FeedSelfTest.h"
 #include "trading/PaperTradingSelftest.h"
@@ -814,6 +815,8 @@ int main(int argc, char* argv[]) {
             return openmarketterminal::mcp::run_tool_selftest();
         if (qstrcmp(argv[i], "--selftest-datahub-peek") == 0)
             return openmarketterminal::mcp::run_datahub_peek_selftest();
+        if (qstrcmp(argv[i], "--selftest-bridge-discovery") == 0)
+            return openmarketterminal::mcp::run_bridge_discovery_selftest();
         if (qstrcmp(argv[i], "--dump-tools") == 0)
             return openmarketterminal::mcp::dump_tools_json();
         if (qstrcmp(argv[i], "--selftest-feeds") == 0)

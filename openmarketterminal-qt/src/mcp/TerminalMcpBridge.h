@@ -116,6 +116,7 @@ class TerminalMcpBridge : public QObject {
     bool active_ = false;
     QString token_;
     QString destructive_token_;
+    QString discovery_root_;  // profile root where bridge.json was written
     QHash<QTcpSocket*, RequestState> states_;
 };
 

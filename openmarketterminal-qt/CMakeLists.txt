@@ -969,6 +969,7 @@ set(AI_CHAT_SCREEN_SOURCES
 
 # MCP — Model Context Protocol system
 set(MCP_SOURCES
+    src/cli/BridgeDiscoveryFile.cpp
     # Core
     src/mcp/McpProvider.cpp
     src/mcp/ToolConfirmationGate.cpp
@@ -979,6 +980,7 @@ set(MCP_SOURCES
     src/mcp/SchemaValidator.cpp
     src/mcp/ToolRetriever.cpp
     src/mcp/ToolSelfTest.cpp
+    src/mcp/BridgeDiscoverySelftest.cpp
     src/mcp/DataHubPeekSelftest.cpp
     src/mcp/TerminalMcpBridge.cpp
 

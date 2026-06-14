@@ -7,11 +7,15 @@
 
 #include "mcp/TerminalMcpBridge.h"
 
+#include "cli/BridgeDiscoveryFile.h"
+#include "core/config/ProfileManager.h"
 #include "core/logging/Logger.h"
 #include "mcp/McpManager.h"
 #include "mcp/McpProvider.h"
 #include "mcp/McpService.h"
 
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QFutureWatcher>
 #include <QHostAddress>
 #include <QJsonDocument>
@@ -85,6 +89,10 @@ bool TerminalMcpBridge::start() {
     token_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
     destructive_token_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
     active_ = true;
+    discovery_root_ = ProfileManager::instance().profile_root();
+    cli::write_bridge_file(discovery_root_, cli::BridgeInfo{
+        endpoint(), token_, QCoreApplication::applicationPid(),
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODate)});
     LOG_INFO(TAG, QString("Listening on %1 (tokens issued)").arg(endpoint()));
     return true;
 }
@@ -93,6 +101,11 @@ void TerminalMcpBridge::stop() {
     if (!active_)
         return;
     active_ = false;
+
+    if (!discovery_root_.isEmpty()) {
+        cli::remove_bridge_file(discovery_root_);
+        discovery_root_.clear();
+    }
 
     for (auto it = states_.constBegin(); it != states_.constEnd(); ++it) {
         if (it.key()) {
