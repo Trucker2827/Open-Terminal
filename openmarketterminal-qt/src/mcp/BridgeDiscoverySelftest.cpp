@@ -9,6 +9,7 @@ namespace openmarketterminal::mcp {
 int run_bridge_discovery_selftest() {
     auto& bridge = TerminalMcpBridge::instance();
     const QString root = ProfileManager::instance().profile_root();
+    bridge.stop();  // reset: boot-time autostart (bridge.autostart) may already be active
     cli::remove_bridge_file(root);
 
     if (!bridge.start()) { std::fprintf(stderr, "FAIL: bridge.start()\n"); return 1; }

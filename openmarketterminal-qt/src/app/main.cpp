@@ -27,6 +27,7 @@
 #include "core/symbol/SymbolRef.h"
 #include "datahub/DataHubMetaTypes.h"
 #include "mcp/McpInit.h"
+#include "mcp/TerminalMcpBridge.h"
 #include "mcp/ToolConfirmationGate.h"
 #include "mcp/ToolSelfTest.h"
 #include "mcp/BridgeDiscoverySelftest.h"
@@ -294,8 +295,10 @@ int main(int argc, char* argv[]) {
     // Must run BEFORE any service init so future phases that lift services
     // into the shell can rely on it being present.
     openmarketterminal::TerminalShell::instance().initialise();
-    QObject::connect(&app, &QCoreApplication::aboutToQuit,
-                     []() { openmarketterminal::TerminalShell::instance().shutdown(); });
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
+        openmarketterminal::mcp::TerminalMcpBridge::instance().stop();
+        openmarketterminal::TerminalShell::instance().shutdown();
+    });
 
     // Register DataHub payload meta-types (QuoteData, HistoryPoint, InfoData,
     // NewsArticle, EconomicsResult) so they can flow through QVariant-keyed
@@ -334,6 +337,16 @@ int main(int argc, char* argv[]) {
     openmarketterminal::services::maritime::PortsCatalog::instance().ensure_registered_with_hub();
     openmarketterminal::services::RelationshipMapService::instance().ensure_registered_with_hub();
     openmarketterminal::services::ma::MAAnalyticsService::instance().ensure_registered_with_hub();
+
+    // Bridge autostart: make the localhost tool surface available whenever the
+    // GUI is up (not only during an agent run), so openterminalcli can attach.
+    {
+        const auto r = openmarketterminal::SettingsRepository::instance().get(
+            QStringLiteral("bridge.autostart"), QStringLiteral("true"));
+        const QString v = r.is_ok() ? r.value() : QStringLiteral("true");
+        if (v != QStringLiteral("false"))
+            openmarketterminal::mcp::TerminalMcpBridge::instance().start();
+    }
 
     // ── Pre-warm the dashboard topics ────────────────────────────────────────
     // The user spends real time on the login / setup / recovery flow before
