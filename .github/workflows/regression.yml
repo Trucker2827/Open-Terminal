@@ -20,6 +20,9 @@ concurrency:
 
 env:
   QT_QPA_PLATFORM: offscreen   # headless: no display on the runner
+  QT_VERSION: "6.8.3"          # the app requires Qt 6.8.x (apt 22.04 ships 6.2)
+  QT_MODULES: "qtcharts qtwebsockets qtmultimedia qtwebengine qtwebchannel qtpositioning qtserialport"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   test:
@@ -38,8 +41,9 @@ jobs:
           max-size: 500M
           update-package-index: true
 
-      # Mirrors build-cpp.yml's Linux dependency set (Ubuntu 22.04 ships GCC 11;
-      # CMakeLists requires GCC 12.3+, so install + pin gcc-12/g++-12).
+      # Non-Qt system deps only (Qt comes from install-qt-action below — apt
+      # 22.04 ships Qt 6.2, but the app requires 6.8.x). Ubuntu 22.04's default
+      # g++ is 11.4; CMakeLists requires GCC 12.3+, so install + pin gcc-12.
       - name: Install system dependencies
         run: |
           sudo add-apt-repository universe -y
@@ -47,11 +51,6 @@ jobs:
           sudo apt-get install -y \
             cmake ninja-build gcc-12 g++-12 \
             libssl-dev libsecret-1-dev \
-            qt6-base-dev qt6-base-private-dev \
-            qt6-tools-dev qt6-tools-dev-tools \
-            libqt6charts6-dev libqt6websockets6-dev \
-            qt6-multimedia-dev libqt6multimediawidgets6 \
-            libqt6svg6-dev libqt6concurrent6 \
             libgl1-mesa-dev libglu1-mesa-dev \
             libxkbcommon-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
@@ -61,11 +60,21 @@ jobs:
           echo "CC=gcc-12"  >> "$GITHUB_ENV"
           echo "CXX=g++-12" >> "$GITHUB_ENV"
 
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          cache-key-prefix: qt-regression-linux
+
       - name: Configure (tests enabled)
         working-directory: openmarketterminal-qt
         run: |
           cmake -B build-test -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DOPENMARKETTERMINAL_BUILD_TESTS=ON
