@@ -265,6 +265,59 @@ class TstSettingsGate : public QObject {
         mcp::McpProvider::instance().unregister_tool("tst_verified_readonly_probe");
     }
 
+    // ── Phase-2b widening: gating holds over a REAL destructive data tool ────
+    // The synthetic probes above prove the gate BRANCHES, but they'd pass with a
+    // 5-tool catalog too. This asserts a real tool from the now-widened headless
+    // set — `delete_news_monitor` (category "news", is_destructive, auth None) —
+    // is actually subject to the trading gate: a destructive non-settings data
+    // tool routes to cli_trading_allowed() and is denied while it is off. We
+    // assert the denial is the GATE's ("requires … auth", emitted by the
+    // auth-checker BEFORE arg-validation/handler) so the case can't pass
+    // vacuously from a missing-arg or handler failure. Deny-path only — the
+    // allow path would run the real mutation; the synthetic
+    // trading_gate_denies_then_allows above already proves the gate un-denies.
+    void real_destructive_data_tool_gated_by_trading() {
+        set_key("cli.allow_trading", "false");
+        auto res = rt_.call_tool("delete_news_monitor", QJsonObject{{"id", "nonexistent"}});
+        QVERIFY2(!res.success,
+                 "real destructive data tool must be denied while cli.allow_trading=false");
+        QVERIFY2(res.error.contains("requires") && res.error.contains("auth"),
+                 qPrintable("denial must be the capability gate's, not a handler/validation error: "
+                            + res.error));
+    }
+
+    // ── Phase-2b floor: ExplicitConfirm (the highest tier) denied outright ────
+    // The verified_* cases above cover the AuthLevel::Verified boundary; this
+    // covers the TOP of the `>= Verified` floor — an ExplicitConfirm tool, which
+    // a headless host (no interactive human) can never satisfy. It must be denied
+    // regardless of BOTH toggles being on.
+    void explicit_confirm_denied_regardless_of_toggles() {
+        static bool ran = false;
+        mcp::ToolDef probe;
+        probe.name = "tst_explicit_confirm_probe";
+        probe.description = "test-only ExplicitConfirm tool";
+        probe.category = "trading";
+        probe.is_destructive = true;
+        probe.auth_required = mcp::AuthLevel::ExplicitConfirm;
+        probe.handler = [](const QJsonObject&) -> mcp::ToolResult {
+            ran = true;
+            return mcp::ToolResult::ok("ran");
+        };
+        mcp::McpProvider::instance().register_tool(std::move(probe));
+
+        set_key("cli.allow_trading", "true");
+        set_key("cli.allow_settings_write", "true");
+        ran = false;
+        auto res = rt_.call_tool("tst_explicit_confirm_probe", {});
+        QVERIFY2(!res.success,
+                 "ExplicitConfirm tool must be denied even with both CLI toggles on");
+        QVERIFY2(!ran, "denied ExplicitConfirm handler must not have run");
+
+        set_key("cli.allow_trading", "false");
+        set_key("cli.allow_settings_write", "false");
+        mcp::McpProvider::instance().unregister_tool("tst_explicit_confirm_probe");
+    }
+
     void cleanupTestCase() { rt_.shutdown(); }
 };
 
