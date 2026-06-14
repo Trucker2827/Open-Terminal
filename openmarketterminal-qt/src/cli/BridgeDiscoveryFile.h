@@ -5,10 +5,13 @@
 namespace openmarketterminal::cli {
 
 struct BridgeInfo {
-    QString endpoint;    // "http://127.0.0.1:<port>"
-    QString token;       // X-MCP-Token value
-    qint64  pid = 0;     // PID of the GUI that owns the bridge
-    QString started_at;  // ISO-8601 UTC
+    QString endpoint;          // "http://127.0.0.1:<port>"
+    QString token;             // X-MCP-Token value
+    qint64  pid = 0;           // PID of the GUI that owns the bridge
+    QString started_at;        // ISO-8601 UTC
+    QString destructive_token; // X-MCP-Allow-Destructive value — emitted ONLY
+                               // when cli.allow_trading is on. Empty/absent =
+                               // the CLI structurally cannot do destructive ops.
 };
 
 /// Replicates AppPaths::root()+ProfileManager::profile_root() WITHOUT linking

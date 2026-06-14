@@ -106,6 +106,11 @@ class TerminalMcpBridge : public QObject {
     bool parse_headers(RequestState& st);
     void try_dispatch(QTcpSocket* sock);
 
+    /// (Re)write bridge.json. The destructive_token field is included ONLY when
+    /// cli.allow_trading is on, so revoking the GUI toggle disarms the attached
+    /// CLI on the next settings.changed event (and at start()).
+    void write_discovery_file();
+
     void handle_post_tool(QTcpSocket* sock, const QJsonObject& body);
     void handle_get_tools(QTcpSocket* sock);
 
@@ -117,6 +122,7 @@ class TerminalMcpBridge : public QObject {
     QString token_;
     QString destructive_token_;
     QString discovery_root_;  // profile root where bridge.json was written
+    int settings_changed_sub_ = -1;  // EventBus "settings.changed" subscription
     QHash<QTcpSocket*, RequestState> states_;
 };
 

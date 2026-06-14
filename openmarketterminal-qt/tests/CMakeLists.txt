@@ -52,3 +52,11 @@ add_executable(tst_headless_runtime tst_headless_runtime.cpp)
 target_include_directories(tst_headless_runtime PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_headless_runtime PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_headless_runtime COMMAND tst_headless_runtime)
+
+# Task 6 — the two CLI capability gates (cli.allow_settings_write,
+# cli.allow_trading): helper unit tests + HeadlessRuntime live-path enforcement.
+# Same Widgets-free link set as tst_headless_runtime.
+add_executable(tst_settings_gate tst_settings_gate.cpp)
+target_include_directories(tst_settings_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_settings_gate PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_settings_gate COMMAND tst_settings_gate)

@@ -6,6 +6,7 @@
 #include "mcp/McpInit.h"
 #include "mcp/McpProvider.h"
 #include "mcp/ToolConfirmationGate.h"
+#include "mcp/tools/SettingsGate.h"
 #include "services/markets/MarketDataService.h"
 #include "storage/secure/SecureStorage.h"
 #include "storage/sqlite/CacheDatabase.h"
@@ -60,19 +61,34 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     // main.cpp). Must happen before tools are dispatched.
     openmarketterminal::services::MarketDataService::instance().ensure_registered_with_hub();
 
-    // REAL enforcement of the destructive-tool gate: McpProvider consults the
+    // REAL enforcement of the two CLI capability gates: McpProvider consults the
     // installed AuthChecker for any tool with auth_required != None OR
-    // is_destructive=true, and fails the call closed when the checker returns
-    // false. Headless default: allow non-destructive tools, deny destructive
-    // ones. Task 6 will refine this to honor cli.allow_trading.
+    // is_destructive=true, and fails the call CLOSED when the checker returns
+    // false. When the checker returns true the tool RUNS regardless of its
+    // auth_required level (the provider's fail-closed branch only fires when no
+    // checker is installed; set_setting is Authenticated < Verified). So the
+    // checker decision is the single authoritative gate — flipping a setting
+    // genuinely enables the corresponding tool headless.
+    //
+    // Classification (default-deny):
+    //   • settings-WRITE tool (category "settings" && is_destructive, e.g.
+    //     set_setting) → allow iff cli_settings_write_allowed().
+    //   • any other destructive / trading-execution tool → allow iff
+    //     cli_trading_allowed().
+    //   • everything else reaching the checker (non-destructive, incl. settings
+    //     READS) → allowed (the user owns the read tool).
     //
     // NOTE: the ToolConfirmationGate presenter below is NOT the enforcement
     // floor for MCP tool calls — McpProvider never consults it on this path.
-    // It only matters to call sites that explicitly query the gate. The
-    // auth-checker is what actually blocks destructive tools headless.
     mcp::McpProvider::instance().set_auth_checker(
-        [](const QString& /*tool*/, const QJsonObject& /*args*/, mcp::AuthLevel /*required*/,
-           bool is_destructive) { return !is_destructive; });
+        [](const QString& tool, const QJsonObject& /*args*/, mcp::AuthLevel /*required*/,
+           bool is_destructive) {
+            if (mcp::is_settings_write_tool(tool))
+                return mcp::cli_settings_write_allowed();
+            if (is_destructive)
+                return mcp::cli_trading_allowed();
+            return true;
+        });
 
     // Belt-and-suspenders deny-all presenter for any code path that DOES consult
     // the gate directly. Not the MCP enforcement floor (see note above).

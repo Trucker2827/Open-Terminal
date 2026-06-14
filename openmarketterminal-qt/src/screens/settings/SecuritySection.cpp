@@ -5,6 +5,7 @@
 #include "auth/InactivityGuard.h"
 #include "auth/PinManager.h"
 #include "auth/SecurityAuditLog.h"
+#include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
 #include "screens/settings/SettingsRowHelpers.h"
 #include "screens/settings/SettingsStyles.h"
@@ -265,6 +266,36 @@ void SecuritySection::build_ui() {
     capture_row_labels(row_minimize, &row_minimize_lbl_, &row_minimize_desc_);
     vl->addWidget(row_minimize);
 
+    vl->addSpacing(8);
+    vl->addWidget(make_sep());
+    vl->addSpacing(8);
+
+    // ── CLI ACCESS ──────────────────────────────────────────────────────────────
+    // Both default OFF. These are the canonical, human-owned gates the headless
+    // CLI / attached client read and obey (cli.allow_settings_write,
+    // cli.allow_trading). They lift only the CLI's own gate — never the app's
+    // deterministic risk limits / kill-switch.
+    title_cli_ = new QLabel(tr("CLI ACCESS"));
+    title_cli_->setStyleSheet(sub_title_ss());
+    vl->addWidget(title_cli_);
+    vl->addSpacing(4);
+
+    cli_settings_write_toggle_ = new QCheckBox(tr("Allow CLI to write settings"));
+    cli_settings_write_toggle_->setStyleSheet(check_ss());
+    auto* row_cli_write = make_row(
+        tr("CLI Settings Write"), cli_settings_write_toggle_,
+        tr("When on, the command-line interface may change app settings (config-write tools). Reads are always allowed."));
+    capture_row_labels(row_cli_write, &row_cli_write_lbl_, &row_cli_write_desc_);
+    vl->addWidget(row_cli_write);
+
+    cli_trading_toggle_ = new QCheckBox(tr("Allow CLI trading / destructive actions"));
+    cli_trading_toggle_->setStyleSheet(check_ss());
+    auto* row_cli_trade = make_row(
+        tr("CLI Trading / Destructive"), cli_trading_toggle_,
+        tr("When on, the command-line interface may run destructive / trading-execution tools (live orders, Python exec, agent mutation). The app's risk limits and kill-switch still apply."));
+    capture_row_labels(row_cli_trade, &row_cli_trade_lbl_, &row_cli_trade_desc_);
+    vl->addWidget(row_cli_trade);
+
     vl->addSpacing(16);
 
     // ── SAVE ──────────────────────────────────────────────────────────────────
@@ -285,6 +316,20 @@ void SecuritySection::build_ui() {
             repo.set("security.lock_on_minimize",
                      sec_lock_on_minimize_->isChecked() ? "true" : "false", "security");
         }
+
+        // CLI capability gates — canonical, human-owned. Persisted under the
+        // exact keys the CLI/headless runtime reads (default-deny on absence).
+        if (cli_settings_write_toggle_) {
+            repo.set("cli.allow_settings_write",
+                     cli_settings_write_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        if (cli_trading_toggle_) {
+            repo.set("cli.allow_trading",
+                     cli_trading_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        // Notify listeners (the MCP bridge re-writes bridge.json so revoking
+        // cli.allow_trading here disarms an attached CLI without a restart).
+        EventBus::instance().publish("settings.changed", QVariantMap{{"key", "cli.*"}});
 
         // Always update interval; only flip enabled if a PIN is configured
         // (otherwise the timer fires but show_lock_screen suppresses the
@@ -356,6 +401,7 @@ void SecuritySection::retranslateUi() {
     if (title_pin_)    title_pin_->setText(tr("PIN AUTHENTICATION"));
     if (title_change_) title_change_->setText(tr("CHANGE PIN"));
     if (title_lock_)   title_lock_->setText(tr("AUTO-LOCK"));
+    if (title_cli_)    title_cli_->setText(tr("CLI ACCESS"));
     if (title_audit_)  title_audit_->setText(tr("AUDIT LOG"));
     if (audit_note_)   audit_note_->setText(tr("Recent security events (PIN setup, failed unlocks, inactivity locks)."));
 
@@ -373,10 +419,16 @@ void SecuritySection::retranslateUi() {
     if (row_timeout_desc_)    row_timeout_desc_->setText(tr("Time of inactivity before the terminal locks."));
     if (row_minimize_lbl_)    row_minimize_lbl_->setText(tr("Lock on Minimize"));
     if (row_minimize_desc_)   row_minimize_desc_->setText(tr("When on, minimizing the terminal immediately shows the PIN screen."));
+    if (row_cli_write_lbl_)   row_cli_write_lbl_->setText(tr("CLI Settings Write"));
+    if (row_cli_write_desc_)  row_cli_write_desc_->setText(tr("When on, the command-line interface may change app settings (config-write tools). Reads are always allowed."));
+    if (row_cli_trade_lbl_)   row_cli_trade_lbl_->setText(tr("CLI Trading / Destructive"));
+    if (row_cli_trade_desc_)  row_cli_trade_desc_->setText(tr("When on, the command-line interface may run destructive / trading-execution tools (live orders, Python exec, agent mutation). The app's risk limits and kill-switch still apply."));
 
     // Checkbox texts.
     if (sec_autolock_toggle_)  sec_autolock_toggle_->setText(tr("Enable auto-lock on inactivity"));
     if (sec_lock_on_minimize_) sec_lock_on_minimize_->setText(tr("Lock when the window is minimized"));
+    if (cli_settings_write_toggle_) cli_settings_write_toggle_->setText(tr("Allow CLI to write settings"));
+    if (cli_trading_toggle_)        cli_trading_toggle_->setText(tr("Allow CLI trading / destructive actions"));
 
     // PIN field placeholders.
     if (sec_current_pin_) sec_current_pin_->setPlaceholderText(tr("Current PIN"));
@@ -452,6 +504,18 @@ void SecuritySection::reload() {
         const QSignalBlocker b(sec_lock_on_minimize_);
         auto r = repo.get("security.lock_on_minimize");
         sec_lock_on_minimize_->setChecked(r.is_ok() && r.value() == "true");
+    }
+
+    // CLI gates default OFF — only a literal "true" checks the box.
+    if (cli_settings_write_toggle_) {
+        const QSignalBlocker b(cli_settings_write_toggle_);
+        auto r = repo.get("cli.allow_settings_write", "false");
+        cli_settings_write_toggle_->setChecked(r.is_ok() && r.value() == "true");
+    }
+    if (cli_trading_toggle_) {
+        const QSignalBlocker b(cli_trading_toggle_);
+        auto r = repo.get("cli.allow_trading", "false");
+        cli_trading_toggle_->setChecked(r.is_ok() && r.value() == "true");
     }
 
     refresh_audit_log();

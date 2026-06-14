@@ -990,6 +990,7 @@ set(MCP_SOURCES
     src/mcp/TerminalMcpBridge.cpp
 
     # Tool modules
+    src/mcp/tools/SettingsGate.cpp
     src/mcp/tools/DataHubPeekHelpers.cpp
     # GUI screen-context helpers + get_terminal_context tool (QtWidgets-coupled);
     # Task 3 partitions this into MCP_GUI_SOURCES.
@@ -2332,6 +2333,7 @@ set_source_files_properties(
     src/mcp/ToolSelfTest.cpp
     src/mcp/DataHubPeekSelftest.cpp
     src/mcp/TerminalMcpBridge.cpp
+    src/mcp/tools/SettingsGate.cpp
     src/mcp/tools/DataHubPeekHelpers.cpp
     src/mcp/tools/DataHubScreenContext.cpp
     src/mcp/tools/NavigationTools.cpp

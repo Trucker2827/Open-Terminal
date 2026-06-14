@@ -9,10 +9,12 @@
 
 #include "cli/BridgeDiscoveryFile.h"
 #include "core/config/ProfileManager.h"
+#include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
 #include "mcp/McpManager.h"
 #include "mcp/McpProvider.h"
 #include "mcp/McpService.h"
+#include "mcp/tools/SettingsGate.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -90,17 +92,40 @@ bool TerminalMcpBridge::start() {
     destructive_token_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
     active_ = true;
     discovery_root_ = ProfileManager::instance().profile_root();
-    cli::write_bridge_file(discovery_root_, cli::BridgeInfo{
-        endpoint(), token_, QCoreApplication::applicationPid(),
-        QDateTime::currentDateTimeUtc().toString(Qt::ISODate)});
+    write_discovery_file();
+    // Re-write bridge.json whenever a setting changes so flipping
+    // cli.allow_trading off DISARMS the attached CLI without an app restart
+    // (the destructive_token is dropped from the file on the next change).
+    if (settings_changed_sub_ < 0) {
+        settings_changed_sub_ = EventBus::instance().subscribe(
+            "settings.changed", [this](const QVariantMap&) { write_discovery_file(); });
+    }
     LOG_INFO(TAG, QString("Listening on %1 (tokens issued)").arg(endpoint()));
     return true;
+}
+
+void TerminalMcpBridge::write_discovery_file() {
+    if (discovery_root_.isEmpty())
+        return;
+    // destructive_token is emitted ONLY when the GUI gate is on. When off, the
+    // field is absent and the CLI structurally cannot present a matching
+    // X-MCP-Allow-Destructive header.
+    cli::write_bridge_file(
+        discovery_root_,
+        cli::BridgeInfo{endpoint(), token_, QCoreApplication::applicationPid(),
+                        QDateTime::currentDateTimeUtc().toString(Qt::ISODate),
+                        cli_trading_allowed() ? destructive_token_ : QString()});
 }
 
 void TerminalMcpBridge::stop() {
     if (!active_)
         return;
     active_ = false;
+
+    if (settings_changed_sub_ >= 0) {
+        EventBus::instance().unsubscribe(settings_changed_sub_);
+        settings_changed_sub_ = -1;
+    }
 
     if (!discovery_root_.isEmpty()) {
         cli::remove_bridge_file(discovery_root_);
