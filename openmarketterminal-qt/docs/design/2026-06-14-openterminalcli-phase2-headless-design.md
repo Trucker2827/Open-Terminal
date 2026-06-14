@@ -75,17 +75,32 @@ A `HeadlessRuntime` in the core lib performs, under a `QCoreApplication`: open `
 | `workspace` | ✅ default on — **attach only** | panels/layouts; attach only |
 | `dashboard` | ✅ default on — **attach only** | attach only |
 | `system` | ✅ default on | version, migrate, logs, health |
-| `settings` | ✅ default on | read **and write** config |
-| **`destructive` / `trading-execution`** | ⛔ **off unless explicitly enabled** | live orders, Python exec, workflow/agent mutation |
+| `settings` (read) | ✅ default on | read config |
+| `settings` (write) | ⛔ **off unless GUI toggle on** | write config — gated by `cli.allow_settings_write` |
+| **`destructive` / `trading-execution`** | ⛔ **off unless GUI toggle on** | live orders, Python exec, workflow/agent mutation — gated by `cli.allow_trading` |
 
-Reads and writes are both on by default — the user owns the tool. GUI-control categories simply don't apply headless. The single gate is destructive/trading-execution.
+Reads are always on (the user owns the tool). GUI-control categories simply don't apply headless. Two capabilities are gated behind GUI setting toggles: **config writes** and **trading/destructive**.
 
-### The destructive / trading-execution gate (decision: persistent opt-in)
-- Governed by a persistent setting **`cli.allow_trading`** (default **false**) in the settings DB. Toggle via `openterminalcli config set cli.allow_trading true|false`.
-- **Attach mode:** the GUI bridge includes the `destructive_token` in `bridge.json` **only when `cli.allow_trading` is true** (so when false, the CLI cannot obtain it and is structurally read+safe-write only; when true, the CLI reads it and sends `X-MCP-Allow-Destructive`). The token is added/removed from `bridge.json` when the setting changes (and on bridge `start()`).
-- **Headless mode:** when `cli.allow_trading` is true, the runtime installs a `ToolConfirmationGate` presenter that **allows** destructive tools (and arms `is_destructive_allowed`); when false, it installs the **deny-all** presenter, so destructive tools are registered-but-denied.
-- **Hard constraint (preserved):** `cli.allow_trading` lifts only the CLI's own gate. It does **NOT** bypass the app's deterministic risk limits, the live-enable flag, or the kill-switch (`PositionManager` / `DeploymentRunner` / `UnifiedTrading` paper-default) — the established "AI/CLI can't lift its own leash" safety floor stays intact.
-- **Standing-capability note (accepted by user):** because the opt-in is persistent, while it's on a compromised shell or agent could invoke destructive tools without a fresh confirmation. Mitigations: default false; `status` surfaces whether trading is enabled; recommend turning it off when not in use. (A per-invocation flag was considered and not chosen.)
+### The two gated capabilities (GUI setting toggles)
+
+Two persistent settings, **both default `false`**, are the authoritative gates. They are flipped by the user **in the GUI Settings screen** (toggle switches); the CLI *reads* them and obeys, and may also surface/flip them via `openterminalcli config get/set` — but the GUI toggle is the canonical control surface the human owns.
+
+| Setting | Gates | Default |
+|---|---|---|
+| `cli.allow_settings_write` | CLI writing config (`settings` write tools) | false |
+| `cli.allow_trading` | CLI destructive / trading-execution tools | false |
+
+**Settings read** is never gated.
+
+**Enforcement point** (same model for both, so a raw HTTP client can't bypass it):
+- **Headless mode:** the `HeadlessRuntime` checks the settings and installs/configures the dispatch gate accordingly — destructive tools allowed only when `cli.allow_trading`; settings-write tools allowed only when `cli.allow_settings_write`; otherwise the gate denies (exit 5 with an "enable in GUI Settings (or `config set …`)" message).
+- **Attach mode:**
+  - *Trading/destructive* — the GUI bridge includes the `destructive_token` in `bridge.json` **only when `cli.allow_trading` is true** (so when false the CLI structurally cannot do destructive; when true it reads the token and sends `X-MCP-Allow-Destructive`). The token is added/removed when the setting changes and on bridge `start()`.
+  - *Settings write* — settings-write tools are gated server-side (bridge/`McpProvider`) on `cli.allow_settings_write`, so the running GUI itself refuses CLI-originated config writes when the toggle is off.
+
+**Hard constraint (preserved):** `cli.allow_trading` lifts only the CLI's own gate. It does **NOT** bypass the app's deterministic risk limits, live-enable flag, or kill-switch (`PositionManager` / `DeploymentRunner` / `UnifiedTrading` paper-default) — the "AI/CLI can't lift its own leash" safety floor stays intact.
+
+**Standing-capability note (accepted by user):** these opt-ins are persistent — while a toggle is on, a compromised shell/agent could use that capability without a fresh confirmation. Mitigations: both default false, flipped only by a deliberate human GUI action; `status` surfaces both toggle states; recommend turning them off when not in use.
 
 ## CMake extraction details
 - New `add_library(openterminal_core STATIC ...)` aggregating the in-lib source groups; `set_target_properties(... AUTOMOC ON)`; carry over `SKIP_UNITY_BUILD_INCLUSION` items (e.g. `KeychainKey.cpp`) and all `target_compile_definitions` feature flags that the moved sources need.
@@ -116,7 +131,9 @@ This may be split into two implementation plans (2a foundation, 2b widen); each 
 - **Service init ordering headless** — a service that assumes GUI-time init order could misbehave; foundation-first + per-service smoke surfaces this early.
 - **Standing `cli.allow_trading`** — accepted; mitigated by default-off + `status` visibility + the untouched deterministic risk floor.
 
+## GUI Settings additions (required for the toggles)
+The GUI Settings screen gains two toggle switches — **"Allow CLI to write settings"** (`cli.allow_settings_write`) and **"Allow CLI trading / destructive actions"** (`cli.allow_trading`) — both default off. These are the canonical control surface; the CLI reads the same keys.
+
 ## Open questions (non-blocking)
-- Whether `settings` *writes* via the CLI should themselves be gated (currently default-on per the table).
 - Exact lazy-vs-eager service bring-up per command (perf tuning, decided during 2b).
-- Whether to add a per-invocation `--allow-trading` override later in addition to the persistent setting.
+- Whether to add a per-invocation `--allow-trading` override later in addition to the persistent toggle.
