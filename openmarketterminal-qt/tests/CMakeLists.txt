@@ -41,3 +41,12 @@ add_executable(tst_mcp_init_split tst_mcp_init_split.cpp)
 target_include_directories(tst_mcp_init_split PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_mcp_init_split PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_mcp_init_split COMMAND tst_mcp_init_split)
+
+# HeadlessRuntime e2e — brings up DB+DataHub+core tools under QCoreApplication
+# and round-trips a pure-local core tool (get_app_info). Links the Widgets-free
+# core lib + Qt6::Core/Network/Test only (no Widgets) — proving the runtime is
+# GUI-free.
+add_executable(tst_headless_runtime tst_headless_runtime.cpp)
+target_include_directories(tst_headless_runtime PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_headless_runtime PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME tst_headless_runtime COMMAND tst_headless_runtime)

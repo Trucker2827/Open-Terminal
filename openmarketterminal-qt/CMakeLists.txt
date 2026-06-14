@@ -749,6 +749,7 @@ set(CORE_SOURCES
     src/core/config/AppConfig.cpp
     src/core/config/AppPaths.cpp
     src/core/config/ProfileManager.cpp
+    src/core/headless/HeadlessRuntime.cpp
     src/core/logging/Logger.cpp
     src/core/events/EventBus.cpp
     src/core/HealthMonitor.cpp
