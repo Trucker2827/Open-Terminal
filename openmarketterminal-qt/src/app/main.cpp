@@ -96,6 +96,8 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUuid>
+#include <QVariant>
+#include <QWidget>
 
 #include <algorithm>
 #include <memory>
@@ -240,6 +242,26 @@ int main(int argc, char* argv[]) {
     // "OpenTerminal --profile work" and "OpenTerminal --profile personal"
     // run as two independent primaries.
     QApplication app(argc, argv);
+
+    // Restore widget-visibility work-gating for the GUI (headless leaves the
+    // default all-active hook). Walks the owner to its top-level window and
+    // reads the `openmarketterminal.active_for_work` dynamic property that
+    // WindowFrame maintains (== !isMinimized()). This is the exact decision
+    // DataHub used to make inline before the QtWidgets decoupling — note we
+    // deliberately read the property rather than isVisible(): isVisible() is
+    // false during window construction (WindowStateChange fires before show()
+    // returns) and would starve newly-subscribed dashboard widgets. See
+    // WindowFrame::is_active_for_work().
+    openmarketterminal::datahub::DataHub::set_owner_active_hook([](QObject* owner) -> bool {
+        auto* w = qobject_cast<QWidget*>(owner);
+        if (!w) return true; // non-widget owner (a service) — always active
+        QWidget* top = w->window();
+        if (!top) return true;
+        const QVariant v = top->property("openmarketterminal.active_for_work");
+        if (!v.isValid()) return true; // top isn't a frame that reports — assume active
+        return v.toBool();
+    });
+
     app.setApplicationName("Open Terminal");
     app.setOrganizationName("Open Terminal");
 #ifndef OPENMARKETTERMINAL_VERSION_STRING

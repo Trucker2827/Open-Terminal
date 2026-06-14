@@ -7,7 +7,6 @@
 #include <QMutexLocker>
 #include <QThread>
 #include <QVariant>
-#include <QWidget>
 
 #include <algorithm>
 
@@ -25,31 +24,18 @@ inline int effective_ttl_ms(const TopicStateT& st) {
     return st.ttl_override_ms > 0 ? st.ttl_override_ms : st.policy.ttl_ms;
 }
 
-// Phase 8 / decision 9.2: walk up from the owner to its top-level widget
-// and read the `openmarketterminal.active_for_work` dynamic property that WindowFrame
-// sets in its constructor + changeEvent. If the owner is not a QWidget or
-// has no top-level ancestor (rare — module-level singletons that subscribe),
-// treat as active (better to over-deliver than starve a legitimate consumer).
-//
-// We look at QWidget::window() rather than walking QObject::parent() chain
-// because the latter can stop at an intermediate QObject that isn't a
-// widget. window() handles widget-graph reparenting correctly and is what
-// Qt itself uses for "the top-level for this widget."
-//
-// No caching — the lookup is one virtual call + one property read, both
-// cheap. Caching adds cache-invalidation work that'd run on every
-// subscribe/unsubscribe and on Phase 5 cross-frame panel reparenting.
+std::function<bool(QObject*)> g_owner_active_hook; // empty = default (all active)
 bool is_owner_active_for_work(QObject* owner) {
     if (!owner) return true;
-    auto* widget = qobject_cast<QWidget*>(owner);
-    if (!widget) return true; // non-widget owner (a service) — always active
-    QWidget* top = widget->window();
-    if (!top) return true;
-    const QVariant v = top->property("openmarketterminal.active_for_work");
-    if (!v.isValid()) return true; // top isn't a frame that reports — assume active
-    return v.toBool();
+    if (g_owner_active_hook) return g_owner_active_hook(owner);
+    return true; // headless / no hook: never pause for visibility
 }
 } // namespace
+
+void DataHub::set_owner_active_hook(std::function<bool(QObject*)> hook) {
+    g_owner_active_hook = std::move(hook);
+}
+bool DataHub::owner_active_for_test(QObject* owner) { return is_owner_active_for_work(owner); }
 
 // ── Singleton ──────────────────────────────────────────────────────────────
 

@@ -45,6 +45,13 @@ class DataHub : public QObject {
   public:
     static DataHub& instance();
 
+    /// Visibility/work-gating hook. The GUI installs a version that walks the
+    /// owner's top-level QWidget; headless leaves the default (all owners active).
+    /// Passing nullptr resets to the default.
+    static void set_owner_active_hook(std::function<bool(QObject*)> hook);
+    /// Test-only accessor for the resolved hook decision.
+    static bool owner_active_for_test(QObject* owner);
+
     // ── Subscribing ─────────────────────────────────────────────────────────
 
     /// Subscribe to a single topic. `owner` is the lifetime guard —

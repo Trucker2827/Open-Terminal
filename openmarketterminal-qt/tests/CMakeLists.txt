@@ -25,3 +25,10 @@ add_executable(tst_bridge_client
 target_include_directories(tst_bridge_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_bridge_client PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME tst_bridge_client COMMAND tst_bridge_client)
+
+add_executable(tst_datahub_hook tst_datahub_hook.cpp
+    ${CMAKE_SOURCE_DIR}/src/datahub/DataHub.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/logging/Logger.cpp)
+target_include_directories(tst_datahub_hook PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_datahub_hook PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_datahub_hook COMMAND tst_datahub_hook)
