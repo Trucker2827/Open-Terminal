@@ -198,6 +198,73 @@ class TstSettingsGate : public QObject {
         mcp::McpProvider::instance().unregister_tool("tst_settings_write_probe");
     }
 
+    // ── Phase-2b hardening: elevated-auth (>= Verified) floor ────────────────
+    // Headless can never satisfy verified-email / subscription / explicit-confirm
+    // auth, so any tool tagged auth_required >= Verified must be denied OUTRIGHT —
+    // independent of the trading / settings-write toggles.
+    //
+    // Case A: a DESTRUCTIVE Verified+ tool. With cli.allow_trading=true the trading
+    // gate would otherwise allow it (this is the path every real core Verified+
+    // tool — mcp-server mgmt, agent-config saves — takes today). The floor must win.
+    void verified_destructive_denied_even_when_trading_on() {
+        static bool ran = false;
+        mcp::ToolDef probe;
+        probe.name = "tst_verified_destructive_probe";
+        probe.description = "test-only Verified+ destructive tool";
+        probe.category = "trading";
+        probe.is_destructive = true;
+        probe.auth_required = mcp::AuthLevel::Verified;
+        probe.handler = [](const QJsonObject&) -> mcp::ToolResult {
+            ran = true;
+            return mcp::ToolResult::ok("ran");
+        };
+        mcp::McpProvider::instance().register_tool(std::move(probe));
+
+        // Trading ON: pre-fix the destructive path → cli_trading_allowed()=true →
+        // ALLOWED (handler ran). Post-fix the Verified+ floor denies first.
+        set_key("cli.allow_trading", "true");
+        ran = false;
+        auto res = rt_.call_tool("tst_verified_destructive_probe", {});
+        QVERIFY2(!res.success,
+                 "Verified+ tool must be denied even with cli.allow_trading=true");
+        QVERIFY2(!ran, "denied Verified+ handler must not have run");
+
+        set_key("cli.allow_trading", "false");
+        mcp::McpProvider::instance().unregister_tool("tst_verified_destructive_probe");
+    }
+
+    // Case B: the actual latent bug the floor closes — a NON-destructive Verified+
+    // tool. Pre-fix it hits neither the settings-write nor the destructive branch,
+    // so the checker falls through to `return true` and the tool RUNS
+    // unauthenticated headless. The floor must deny it.
+    void verified_nondestructive_denied() {
+        static bool ran = false;
+        mcp::ToolDef probe;
+        probe.name = "tst_verified_readonly_probe";
+        probe.description = "test-only Verified+ non-destructive tool";
+        probe.category = "data";
+        probe.is_destructive = false;
+        probe.auth_required = mcp::AuthLevel::Verified;
+        probe.handler = [](const QJsonObject&) -> mcp::ToolResult {
+            ran = true;
+            return mcp::ToolResult::ok("ran");
+        };
+        mcp::McpProvider::instance().register_tool(std::move(probe));
+
+        // Both toggles ON to prove the floor is independent of every gate.
+        set_key("cli.allow_trading", "true");
+        set_key("cli.allow_settings_write", "true");
+        ran = false;
+        auto res = rt_.call_tool("tst_verified_readonly_probe", {});
+        QVERIFY2(!res.success,
+                 "non-destructive Verified+ tool must be denied (no auth-bypass via fall-through)");
+        QVERIFY2(!ran, "denied Verified+ handler must not have run");
+
+        set_key("cli.allow_trading", "false");
+        set_key("cli.allow_settings_write", "false");
+        mcp::McpProvider::instance().unregister_tool("tst_verified_readonly_probe");
+    }
+
     void cleanupTestCase() { rt_.shutdown(); }
 };
 

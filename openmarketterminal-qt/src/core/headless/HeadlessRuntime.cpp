@@ -64,15 +64,21 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     // REAL enforcement of the two CLI capability gates: McpProvider consults the
     // installed AuthChecker for any tool with auth_required != None OR
     // is_destructive=true, and fails the call CLOSED when the checker returns
-    // false. When the checker returns true the tool RUNS regardless of its
-    // auth_required level (the provider's fail-closed branch only fires when no
-    // checker is installed; set_setting is Authenticated < Verified). So the
-    // checker decision is the single authoritative gate — flipping a setting
-    // genuinely enables the corresponding tool headless.
+    // false. When the checker returns true the tool RUNS. So the checker decision
+    // is the single authoritative gate — flipping a setting genuinely enables the
+    // corresponding tool headless.
     //
     // Classification (default-deny):
+    //   • ELEVATED AUTH (auth_required >= Verified, i.e. verified-email /
+    //     subscription / explicit-confirm) → ALWAYS deny. A headless host has no
+    //     interactive human and no session, so it can never satisfy these — deny
+    //     outright, regardless of the trading / settings-write toggles. This floor
+    //     is checked FIRST so it cannot be bypassed by the gates below. (Every
+    //     real core Verified+ tool today is also is_destructive, but a future
+    //     non-destructive Verified+ tool would otherwise fall through to the
+    //     `return true` below and run unauthenticated — this closes that gap.)
     //   • settings-WRITE tool (category "settings" && is_destructive, e.g.
-    //     set_setting) → allow iff cli_settings_write_allowed().
+    //     set_setting; Authenticated) → allow iff cli_settings_write_allowed().
     //   • any other destructive / trading-execution tool → allow iff
     //     cli_trading_allowed().
     //   • everything else reaching the checker (non-destructive, incl. settings
@@ -81,8 +87,10 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     // NOTE: the ToolConfirmationGate presenter below is NOT the enforcement
     // floor for MCP tool calls — McpProvider never consults it on this path.
     mcp::McpProvider::instance().set_auth_checker(
-        [](const QString& tool, const QJsonObject& /*args*/, mcp::AuthLevel /*required*/,
+        [](const QString& tool, const QJsonObject& /*args*/, mcp::AuthLevel required,
            bool is_destructive) {
+            if (required >= mcp::AuthLevel::Verified)
+                return false;
             if (mcp::is_settings_write_tool(tool))
                 return mcp::cli_settings_write_allowed();
             if (is_destructive)

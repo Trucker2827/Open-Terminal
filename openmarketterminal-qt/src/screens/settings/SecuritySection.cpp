@@ -327,8 +327,11 @@ void SecuritySection::build_ui() {
             repo.set("cli.allow_trading",
                      cli_trading_toggle_->isChecked() ? "true" : "false", "cli");
         }
-        // Notify listeners (the MCP bridge re-writes bridge.json so revoking
-        // cli.allow_trading here disarms an attached CLI without a restart).
+        // Notify listeners. These cli.* flags are read directly from the DB by
+        // the CLI's headless auth-checker on every tool call, so revoking
+        // cli.allow_trading here takes effect on the next call with no restart and
+        // no token hand-off (there is no destructive token in bridge.json — that
+        // mechanism was removed; the toggles are now the authoritative gate).
         EventBus::instance().publish("settings.changed", QVariantMap{{"key", "cli.*"}});
 
         // Always update interval; only flip enabled if a PIN is configured
