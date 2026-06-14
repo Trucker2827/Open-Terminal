@@ -14,7 +14,7 @@
 
 #include "screens/ai_chat/AiChatBubble.h"
 
-#include "mcp/tools/DataHubPeekHelpers.h"
+#include "mcp/tools/DataHubScreenContext.h"
 #include "screens/ai_chat/ChatBubbleFactory.h"
 #include "services/stt/SpeechService.h"
 #include "services/tts/TtsService.h"

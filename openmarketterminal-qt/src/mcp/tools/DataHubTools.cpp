@@ -9,7 +9,6 @@
 #include "core/logging/Logger.h"
 #include "datahub/DataHub.h"
 #include "mcp/ToolSchemaBuilder.h"
-#include "mcp/tools/DataHubPeekHelpers.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -214,29 +213,9 @@ std::vector<ToolDef> get_datahub_tools() {
         tools.push_back(std::move(t));
     }
 
-    // ── get_terminal_context ────────────────────────────────────────────
-    {
-        ToolDef t;
-        t.name = "get_terminal_context";
-        t.description =
-            "Snapshot of what the user is looking at: focused screen id/title plus "
-            "live DataHub topics (quotes, news) currently streaming on visible widgets. "
-            "Call this when the user asks to summarize what's on screen, or before "
-            "fetching data that may already be cached in the hub.";
-        t.category = "datahub";
-        t.handler = [](const QJsonObject&) -> ToolResult {
-            const QJsonObject ctx = detail::build_terminal_context_json();
-            const auto screen = ctx.value(QStringLiteral("current_screen")).toObject();
-            const QString id = screen.value(QStringLiteral("id")).toString();
-            const QString msg =
-                id.isEmpty()
-                    ? QStringLiteral("Terminal context (no focused screen yet)")
-                    : QStringLiteral("Focused screen: %1").arg(
-                          screen.value(QStringLiteral("title")).toString(id));
-            return ToolResult::ok(msg, ctx);
-        };
-        tools.push_back(std::move(t));
-    }
+    // NOTE: get_terminal_context moved to DataHubScreenContext.cpp
+    // (get_terminal_context_tools, registered via register_gui_tools) because it
+    // reads the active WindowFrame / focused screen and must stay GUI-only.
 
     LOG_INFO(TAG, QString("Defined %1 DataHub introspection tools").arg(tools.size()));
     return tools;

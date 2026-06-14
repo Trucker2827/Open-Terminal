@@ -22,10 +22,4 @@ QJsonObject quote_to_json(const openmarketterminal::services::QuoteData& q);
 /// Fresh cached general news feed from `news:general`.
 std::optional<QVector<openmarketterminal::services::NewsArticle>> peek_news_general();
 
-/// Compact prefix injected into Quick Chat when hub has live quote topics.
-QString build_screen_context_brief();
-
-/// JSON snapshot for the `get_terminal_context` MCP tool.
-QJsonObject build_terminal_context_json();
-
 } // namespace openmarketterminal::mcp::tools::detail

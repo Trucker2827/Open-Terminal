@@ -3,6 +3,7 @@
 #include "datahub/DataHub.h"
 #include "datahub/DataHubMetaTypes.h"
 #include "mcp/tools/DataHubPeekHelpers.h"
+#include "mcp/tools/DataHubScreenContext.h"
 #include "services/markets/MarketDataService.h"
 
 #include <QCoreApplication>

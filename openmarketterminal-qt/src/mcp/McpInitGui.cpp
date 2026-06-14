@@ -17,8 +17,10 @@
 #include "mcp/McpProvider.h"
 #include "mcp/McpService.h"
 #include "mcp/tools/DashboardTools.h"
+#include "mcp/tools/DataHubScreenContext.h"
 #include "mcp/tools/ExcelTools.h"
 #include "mcp/tools/NavigationTools.h"
+#include "mcp/tools/ReportBuilderTools.h"
 #include "mcp/tools/WorkspaceTools.h"
 
 #include <QJsonDocument>
@@ -82,6 +84,12 @@ void register_gui_tools() {
 
     // excel — sheets, cells, data, rows/cols, CSV export
     provider.register_tools(tools::get_excel_tools());
+
+    // report builder tab — live LLM-driven report authoring (uses ReportBuilderScreen)
+    provider.register_tools(tools::get_report_builder_tools());
+
+    // terminal context — reads the active WindowFrame / focused screen
+    provider.register_tools(tools::get_terminal_context_tools());
 }
 
 void initialize_all_tools() {
