@@ -9,9 +9,11 @@ struct BridgeInfo {
     QString token;             // X-MCP-Token value
     qint64  pid = 0;           // PID of the GUI that owns the bridge
     QString started_at;        // ISO-8601 UTC
-    QString destructive_token; // X-MCP-Allow-Destructive value — emitted ONLY
-                               // when cli.allow_trading is on. Empty/absent =
-                               // the CLI structurally cannot do destructive ops.
+    // NOTE: bridge.json carries NO destructive token. In attach mode the CLI is
+    // read + non-destructive: it has no consumer for a destructive token and
+    // never sends X-MCP-Allow-Destructive. CLI destructive/trading is a future
+    // phase. (The in-process destructive_token_ used by in-app Python agents
+    // lives only in TerminalMcpBridge and is never written to disk.)
 };
 
 /// Replicates AppPaths::root()+ProfileManager::profile_root() WITHOUT linking

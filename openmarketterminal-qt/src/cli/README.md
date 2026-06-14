@@ -19,5 +19,6 @@ localhost bridge. Read-only / non-destructive.
 ## Notes
 - Requires the GUI running with `bridge.autostart` on (default).
 - stdout = data; stderr = diagnostics. Use `--json … | jq`.
-- The CLI never sends the destructive token; live/destructive actions are
-  out of scope for Phase 1 (see docs/design/2026-06-14-openterminalcli-design.md).
+- The CLI never sends the destructive token, and bridge.json carries no
+  destructive token; live/destructive actions in attach mode are out of scope
+  (a future phase). See docs/design/2026-06-14-openterminalcli-design.md.

@@ -44,10 +44,8 @@ bool write_bridge_file(const QString& profile_root, const BridgeInfo& info) {
     o["token"] = info.token;
     o["pid"] = info.pid;
     o["started_at"] = info.started_at;
-    // Capability token: present only when the GUI gate (cli.allow_trading) is on.
-    // Absent field ⇒ destructive ops are structurally unavailable to the CLI.
-    if (!info.destructive_token.isEmpty())
-        o["destructive_token"] = info.destructive_token;
+    // NOTE: no destructive_token is written. attach-mode CLI is read +
+    // non-destructive; it has no consumer for such a token.
     const QString path = bridge_file_path(profile_root);
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
@@ -88,7 +86,6 @@ std::optional<BridgeInfo> read_bridge_file(const QString& profile_root) {
     info.token = o.value("token").toString();
     info.pid = static_cast<qint64>(o.value("pid").toDouble());
     info.started_at = o.value("started_at").toString();
-    info.destructive_token = o.value("destructive_token").toString(); // absent ⇒ empty
     if (info.endpoint.isEmpty() || info.token.isEmpty())
         return std::nullopt;
     return info;

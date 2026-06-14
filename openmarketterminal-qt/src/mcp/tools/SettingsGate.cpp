@@ -26,7 +26,12 @@ bool cli_settings_write_allowed() {
 }
 
 bool is_settings_write_tool(const QString& name) {
-    auto t = McpProvider::instance().find_tool(name);
+    // The headless auth-checker classifies on the caller-supplied name, which may
+    // be a legacy alias, while `is_destructive` comes from the resolved def.
+    // Resolve to the canonical name first so an aliased settings-write tool can't
+    // dodge the settings-write gate and fall through to the trading gate.
+    const QString canonical = McpProvider::instance().resolve_canonical_name(name);
+    auto t = McpProvider::instance().find_tool(canonical);
     return t && t->category == QLatin1String("settings") && t->is_destructive;
 }
 

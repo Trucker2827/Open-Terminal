@@ -118,6 +118,17 @@ std::optional<UnifiedTool> McpProvider::find_tool(const QString& name) const {
     return it.value();
 }
 
+QString McpProvider::resolve_canonical_name(const QString& name) const {
+    QMutexLocker lock(&mutex_);
+    if (tools_.contains(name))
+        return name;
+    for (auto it = tools_.constBegin(); it != tools_.constEnd(); ++it) {
+        if (it.value().legacy_aliases.contains(name))
+            return it.key();
+    }
+    return name; // unknown — return as-is
+}
+
 std::vector<McpProvider::ToolAuditInfo> McpProvider::audit_all_tools() const {
     QMutexLocker lock(&mutex_);
     std::vector<ToolAuditInfo> result;

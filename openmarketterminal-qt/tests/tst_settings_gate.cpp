@@ -149,6 +149,55 @@ class TstSettingsGate : public QObject {
         mcp::McpProvider::instance().unregister_tool("tst_destructive_probe");
     }
 
+    // Regression (Task 6 hardening): a settings-WRITE tool called by a LEGACY
+    // ALIAS must still be classified as settings-write — i.e. gated on
+    // cli.allow_settings_write, NOT allowed to fall through to the trading gate.
+    // is_settings_write_tool() classifies on the caller-supplied name; without
+    // canonical-name resolution the alias misses the settings lookup and the
+    // call routes to cli_trading_allowed() (the bug). Here we set trading ON +
+    // settings_write OFF so the misclassification would WRONGLY allow the call.
+    void aliased_settings_write_routes_to_settings_gate() {
+        static bool ran = false;
+        mcp::ToolDef probe;
+        probe.name = "tst_settings_write_probe";
+        probe.description = "test-only settings-write tool";
+        probe.category = "settings";
+        probe.is_destructive = true;
+        probe.legacy_aliases = QStringList{"tst_settings_write_alias"};
+        probe.handler = [](const QJsonObject&) -> mcp::ToolResult {
+            ran = true;
+            return mcp::ToolResult::ok("ran");
+        };
+        mcp::McpProvider::instance().register_tool(std::move(probe));
+
+        // Classification follows the alias to the canonical settings-write tool.
+        QVERIFY2(mcp::is_settings_write_tool("tst_settings_write_alias"),
+                 "alias must classify as a settings-write tool (canonical resolution)");
+
+        // trading ON, settings-write OFF: the settings gate must still DENY the
+        // aliased call. (Pre-fix this leaked through the trading gate = allowed.)
+        set_key("cli.allow_trading", "true");
+        set_key("cli.allow_settings_write", "false");
+        ran = false;
+        auto denied = rt_.call_tool("tst_settings_write_alias", {});
+        QVERIFY2(!denied.success,
+                 "aliased settings-write must be denied while cli.allow_settings_write=false");
+        QVERIFY2(!ran, "denied settings-write handler must not have run");
+
+        // settings-write ON: the aliased call now runs (proves real resolution,
+        // not a blanket deny).
+        set_key("cli.allow_settings_write", "true");
+        ran = false;
+        auto allowed = rt_.call_tool("tst_settings_write_alias", {});
+        QVERIFY2(allowed.success,
+                 qPrintable("aliased settings-write must run when gate on: " + allowed.error));
+        QVERIFY2(ran, "permitted settings-write handler must have run");
+
+        set_key("cli.allow_trading", "false");
+        set_key("cli.allow_settings_write", "false");
+        mcp::McpProvider::instance().unregister_tool("tst_settings_write_probe");
+    }
+
     void cleanupTestCase() { rt_.shutdown(); }
 };
 

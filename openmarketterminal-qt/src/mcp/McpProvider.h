@@ -47,6 +47,14 @@ class McpProvider {
     /// list_tools()+linear-scan (was ~3 ms p95 across the 583-tool catalog).
     std::optional<UnifiedTool> find_tool(const QString& name) const;
 
+    /// Resolve `name` to its canonical registered name, following a legacy_alias
+    /// if `name` is one. Returns `name` unchanged when it is already canonical or
+    /// unknown. Mirrors the alias resolution inside call_tool_async so callers
+    /// that classify a tool BEFORE dispatch (e.g. the headless settings-write
+    /// gate) see the same canonical name the dispatcher will. Takes mutex_
+    /// internally — do NOT call while already holding it.
+    QString resolve_canonical_name(const QString& name) const;
+
     /// Audit-friendly snapshot of one tool. Carries the bits the self-test /
     /// management UI need to verify wiring — crucially handler-presence, which
     /// the LLM-facing UnifiedTool snapshot omits. Does not expose the handler
