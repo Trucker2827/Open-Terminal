@@ -7,11 +7,15 @@
 #include "mcp/tools/SettingsGate.h"
 #include <QCoreApplication>
 #include <QSocketNotifier>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <cstdio>
 #include <csignal>
 #include <optional>
 #ifndef _WIN32
 #  include <unistd.h>
+#  include <fcntl.h>
+#  include <sys/types.h>
 #endif
 
 namespace openmarketterminal::cli {
@@ -41,6 +45,9 @@ int serve_run(const QString& profile) {
     // Read-only over the bridge: deny destructive AND settings-write regardless
     // of toggles (writes/destructive over a long-lived daemon need the revocable
     // -token design — deferred). Reads + the >=Verified floor unchanged.
+    // NOTE: this gate covers only McpProvider (internal) tool calls. If a future
+    // task initializes McpService (external MCP servers) in the daemon, those
+    // calls would bypass this checker and need their own read-only gate.
     mcp::McpProvider::instance().set_auth_checker(
         [](const QString& tool, const QJsonObject&, mcp::AuthLevel required, bool is_destructive) {
             if (required >= mcp::AuthLevel::Verified) return false;
@@ -48,6 +55,30 @@ int serve_run(const QString& profile) {
             if (mcp::is_settings_write_tool(tool)) return false;
             return true;
         });
+
+#ifndef _WIN32
+    // Clean shutdown on SIGTERM/SIGINT via the self-pipe trick (async-signal-safe).
+    // Install the handlers BEFORE bridge.start() so a signal arriving during/after
+    // start() routes through the notifier (clean stop) rather than killing the
+    // process with a stale bridge.json on disk. The pipe + std::signal install do
+    // not depend on the bridge; the QSocketNotifier needs qApp, which exists.
+    // O_CLOEXEC keeps the self-pipe fds out of any child processes the daemon spawns.
+    bool sig_ready = false;
+#  if defined(__linux__)
+    sig_ready = (::pipe2(g_sigfd, O_CLOEXEC) == 0);       // Linux: atomic CLOEXEC
+#  endif
+    if (!sig_ready && ::pipe(g_sigfd) == 0) {             // macOS fallback: pipe + fcntl
+        ::fcntl(g_sigfd[0], F_SETFD, FD_CLOEXEC);
+        ::fcntl(g_sigfd[1], F_SETFD, FD_CLOEXEC);
+        sig_ready = true;
+    }
+    if (sig_ready) {
+        auto* sn = new QSocketNotifier(g_sigfd[0], QSocketNotifier::Read, qApp);
+        QObject::connect(sn, &QSocketNotifier::activated, qApp, []() { QCoreApplication::quit(); });
+        std::signal(SIGTERM, on_signal);
+        std::signal(SIGINT, on_signal);
+    }
+#endif
 
     auto& bridge = mcp::TerminalMcpBridge::instance();
     bridge.set_owner_kind("daemon");
@@ -59,24 +90,47 @@ int serve_run(const QString& profile) {
                  qUtf8Printable(bridge.endpoint()), qUtf8Printable(profile),
                  static_cast<long long>(QCoreApplication::applicationPid()));
 
-#ifndef _WIN32
-    // Clean shutdown on SIGTERM/SIGINT via the self-pipe trick (async-signal-safe).
-    if (::pipe(g_sigfd) == 0) {
-        auto* sn = new QSocketNotifier(g_sigfd[0], QSocketNotifier::Read, qApp);
-        QObject::connect(sn, &QSocketNotifier::activated, qApp, []() { QCoreApplication::quit(); });
-        std::signal(SIGTERM, on_signal);
-        std::signal(SIGINT, on_signal);
-    }
-#endif
-
     const int rc = QCoreApplication::exec();              // feeds/subscriptions live here
     bridge.stop();                                        // removes bridge.json
     return rc;
 }
 
-// status()/stop() are implemented in Task 3; stubbed here so the dispatch routes
-// link. (Returning 2 = usage/not-implemented.)
-int serve_status(const QString&, bool) { return 2; }
-int serve_stop(const QString&) { return 2; }
+int serve_status(const QString& profile, bool json) {
+    auto info = read_bridge_file(profile_root_for(profile));
+    const bool live = info && is_pid_alive(info->pid);
+    if (json) {
+        QJsonObject o{{"running", live}};
+        if (live) { o["endpoint"]=info->endpoint; o["pid"]=info->pid; o["kind"]=info->kind; }
+        std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+    } else if (live) {
+        std::printf("running  kind=%s  endpoint=%s  pid=%lld\n",
+                    qUtf8Printable(info->kind), qUtf8Printable(info->endpoint),
+                    static_cast<long long>(info->pid));
+    } else {
+        std::fprintf(stderr, "no running instance for profile '%s'\n", qUtf8Printable(profile));
+    }
+    return live ? 0 : 3;
+}
+
+int serve_stop(const QString& profile) {
+    auto info = read_bridge_file(profile_root_for(profile));
+    if (!info || !is_pid_alive(info->pid)) {
+        std::fprintf(stderr, "no running instance for profile '%s'\n", qUtf8Printable(profile));
+        return 3;
+    }
+    if (info->kind != "daemon") {
+        std::fprintf(stderr, "owner is a %s, not a daemon — refusing to stop it (quit it directly)\n",
+                     qUtf8Printable(info->kind));
+        return 3;
+    }
+#ifndef _WIN32
+    if (::kill(static_cast<pid_t>(info->pid), SIGTERM) != 0) {
+        std::fprintf(stderr, "failed to signal daemon pid %lld\n", static_cast<long long>(info->pid));
+        return 7;
+    }
+#endif
+    std::printf("sent SIGTERM to daemon pid %lld\n", static_cast<long long>(info->pid));
+    return 0;
+}
 
 } // namespace openmarketterminal::cli

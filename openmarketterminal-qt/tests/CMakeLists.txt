@@ -70,3 +70,16 @@ add_executable(tst_data_services tst_data_services.cpp)
 target_include_directories(tst_data_services PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_data_services PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_data_services COMMAND tst_data_services)
+
+# Phase 3 Task 3 — serve --status / --stop decision logic. Compiles ServeCommand
+# (the daemon + status/stop helpers) + BridgeDiscoveryFile and links the core lib
+# (HeadlessRuntime/McpProvider/TerminalMcpBridge live there). The test redirects
+# HOME to a QTemporaryDir and asserts the refuse-gui / not-running / live-daemon
+# branches without ever SIGTERM-ing itself.
+add_executable(tst_serve_command
+    tst_serve_command.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
+target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_serve_command PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_serve_command COMMAND tst_serve_command)
