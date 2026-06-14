@@ -821,6 +821,7 @@ set(STORAGE_SOURCES
 
     # Migration system
     src/storage/sqlite/migrations/MigrationRunner.cpp
+    src/storage/sqlite/migrations/RegisterAllMigrations.cpp
     src/storage/sqlite/migrations/v001_initial.cpp
     src/storage/sqlite/migrations/v002_llm_chat.cpp
     src/storage/sqlite/migrations/v003_data_mcp_agents.cpp

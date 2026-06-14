@@ -48,5 +48,5 @@ add_test(NAME tst_mcp_init_split COMMAND tst_mcp_init_split)
 # GUI-free.
 add_executable(tst_headless_runtime tst_headless_runtime.cpp)
 target_include_directories(tst_headless_runtime PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_headless_runtime PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Test)
+target_link_libraries(tst_headless_runtime PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_headless_runtime COMMAND tst_headless_runtime)

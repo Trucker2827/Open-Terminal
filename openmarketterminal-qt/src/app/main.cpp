@@ -595,54 +595,11 @@ int main(int argc, char* argv[]) {
     // Note: auth tokens are managed by AuthManager::initialize() which loads
     // from SecureStorage (DPAPI) and SQLite — not from QSettings/Registry.
 
-    // Register migrations explicitly (avoids MSVC /OPT:REF stripping static-init TUs)
-    openmarketterminal::register_migration_v001();
-    openmarketterminal::register_migration_v002();
-    openmarketterminal::register_migration_v003();
-    openmarketterminal::register_migration_v004();
-    openmarketterminal::register_migration_v005();
-    openmarketterminal::register_migration_v006();
-    openmarketterminal::register_migration_v007();
-    openmarketterminal::register_migration_v008();
-    openmarketterminal::register_migration_v009();
-    openmarketterminal::register_migration_v010();
-    openmarketterminal::register_migration_v011();
-    openmarketterminal::register_migration_v012();
-    openmarketterminal::register_migration_v013();
-    openmarketterminal::register_migration_v014();
-    openmarketterminal::register_migration_v015();
-    openmarketterminal::register_migration_v016();
-    openmarketterminal::register_migration_v017();
-    openmarketterminal::register_migration_v018();
-    openmarketterminal::register_migration_v019();
-    openmarketterminal::register_migration_v020();
-    openmarketterminal::register_migration_v021();
-    openmarketterminal::register_migration_v022();
-    openmarketterminal::register_migration_v023();
-    openmarketterminal::register_migration_v024();
-    openmarketterminal::register_migration_v025();
-    openmarketterminal::register_migration_v026();
-    openmarketterminal::register_migration_v027();
-    openmarketterminal::register_migration_v028();
-    openmarketterminal::register_migration_v029();
-    openmarketterminal::register_migration_v030();
-    openmarketterminal::register_migration_v031();
-    openmarketterminal::register_migration_v032();
-    openmarketterminal::register_migration_v033();
-    openmarketterminal::register_migration_v034();
-    openmarketterminal::register_migration_v035();
-    openmarketterminal::register_migration_v036();
-    openmarketterminal::register_migration_v038();
-    openmarketterminal::register_migration_v039();
-    openmarketterminal::register_migration_v040();
-    openmarketterminal::register_migration_v041();
-    openmarketterminal::register_migration_v042();
-    openmarketterminal::register_migration_v043();
-    openmarketterminal::register_migration_v044();
-    openmarketterminal::register_migration_v045();
-    openmarketterminal::register_migration_v046();
-    openmarketterminal::register_migration_v047();
-    openmarketterminal::register_migration_v048();
+    // Register migrations explicitly (avoids MSVC /OPT:REF stripping static-init
+    // TUs). The ordered list lives in register_all_migrations() so the GUI and
+    // the headless host (HeadlessRuntime) share one source of truth and cannot
+    // drift. Must run BEFORE Database::open().
+    openmarketterminal::register_all_migrations();
 
     // Apply a staged data restore (from a user backup) BEFORE opening any
     // database — restores are swapped in on launch so live, open DBs are never

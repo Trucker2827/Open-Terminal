@@ -95,4 +95,9 @@ void register_migration_v046();
 void register_migration_v047();
 void register_migration_v048();
 
+/// Register every migration above, in version order, in one place. Both the GUI
+/// (main.cpp) and the headless host (HeadlessRuntime) call this before
+/// Database::open() so they can never drift. Defined in RegisterAllMigrations.cpp.
+void register_all_migrations();
+
 } // namespace openmarketterminal
