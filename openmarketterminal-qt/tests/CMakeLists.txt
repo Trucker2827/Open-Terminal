@@ -15,7 +15,9 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
 target_include_directories(tst_command_dispatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(tst_command_dispatch PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+# CommandDispatch.cpp now references openterminal_core (HeadlessRuntime +
+# McpProvider) for --headless support, so the test links the core lib too.
+target_link_libraries(tst_command_dispatch PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME tst_command_dispatch COMMAND tst_command_dispatch)
 
 add_executable(tst_bridge_client

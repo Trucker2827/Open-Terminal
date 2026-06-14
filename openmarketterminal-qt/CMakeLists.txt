@@ -3100,7 +3100,10 @@ if(HAS_WEBENGINE)
     target_compile_definitions(OpenMarketTerminal PRIVATE HAS_QT_WEBENGINE)
 endif()
 
-# ── openterminalcli — headless attach client (Qt6::Core + Network only) ──────
+# ── openterminalcli — attach client + in-process headless host ───────────────
+# Attach mode talks to a running GUI over the bridge (Qt6::Core + Network).
+# --headless mode runs commands in-process via openterminal_core's
+# HeadlessRuntime (no GUI), reusing the same core MCP tool tree.
 add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
@@ -3110,7 +3113,7 @@ add_executable(openterminalcli
 target_include_directories(openterminalcli PRIVATE src)
 target_compile_definitions(openterminalcli PRIVATE
     OPENMARKETTERMINAL_VERSION_STRING="${PROJECT_VERSION}")
-target_link_libraries(openterminalcli PRIVATE Qt6::Core Qt6::Network)
+target_link_libraries(openterminalcli PRIVATE openterminal_core Qt6::Core Qt6::Network)
 
 # ── Copy qgeoview DLL next to the exe so it's found at runtime ────────────────
 if(WIN32)

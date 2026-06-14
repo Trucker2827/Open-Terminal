@@ -5,6 +5,7 @@ namespace openmarketterminal::cli {
 
 struct GlobalOpts {
     bool json = false;
+    bool headless = false; // run commands in-process via HeadlessRuntime (no GUI)
     QString profile = "default";
 };
 
