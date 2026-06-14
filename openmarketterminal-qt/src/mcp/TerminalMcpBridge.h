@@ -41,6 +41,10 @@ class TerminalMcpBridge : public QObject {
     /// Close the server and drop all live connections.
     void stop();
 
+    /// Tag the bridge.json this process writes as "gui" or "daemon". Defaults
+    /// to "gui"; the daemon (ServeCommand) calls this with "daemon" before start().
+    void set_owner_kind(const QString& kind);
+
     bool is_active() const { return active_; }
 
     /// "http://127.0.0.1:<port>" — no path, no query. Empty when not active.
@@ -121,6 +125,7 @@ class TerminalMcpBridge : public QObject {
     QString token_;
     QString destructive_token_;
     QString discovery_root_;  // profile root where bridge.json was written
+    QString owner_kind_ = "gui";  // tag written to bridge.json: "gui" | "daemon"
     QHash<QTcpSocket*, RequestState> states_;
 };
 

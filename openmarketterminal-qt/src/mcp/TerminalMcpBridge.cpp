@@ -106,10 +106,14 @@ void TerminalMcpBridge::write_discovery_file() {
     // bridge.json carries endpoint/token/pid/started_at only — no destructive
     // token. The attach-mode CLI never sends X-MCP-Allow-Destructive; CLI
     // destructive/trading is a future phase.
-    cli::write_bridge_file(
-        discovery_root_,
-        cli::BridgeInfo{endpoint(), token_, QCoreApplication::applicationPid(),
-                        QDateTime::currentDateTimeUtc().toString(Qt::ISODate)});
+    cli::BridgeInfo info{endpoint(), token_, QCoreApplication::applicationPid(),
+                         QDateTime::currentDateTimeUtc().toString(Qt::ISODate)};
+    info.kind = owner_kind_;
+    cli::write_bridge_file(discovery_root_, info);
+}
+
+void TerminalMcpBridge::set_owner_kind(const QString& kind) {
+    owner_kind_ = kind;
 }
 
 void TerminalMcpBridge::stop() {

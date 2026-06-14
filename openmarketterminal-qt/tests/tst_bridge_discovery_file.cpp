@@ -20,6 +20,7 @@ private slots:
     void write_then_read_roundtrips() {
         QTemporaryDir dir;
         BridgeInfo in{"http://127.0.0.1:54923", "tok-123", 4242, "2026-06-14T00:00:00Z"};
+        in.kind = "daemon";
         QVERIFY(write_bridge_file(dir.path(), in));
         auto out = read_bridge_file(dir.path());
         QVERIFY(out.has_value());
@@ -27,6 +28,17 @@ private slots:
         QCOMPARE(out->token, in.token);
         QCOMPARE(out->pid, in.pid);
         QCOMPARE(out->started_at, in.started_at);
+        QCOMPARE(out->kind, QStringLiteral("daemon"));
+    }
+    void read_without_kind_defaults_to_gui() {
+        QTemporaryDir dir;
+        QFile f(bridge_file_path(dir.path()));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"schema":1,"endpoint":"e","token":"t","pid":1,"started_at":"x"})");
+        f.close();
+        auto out = read_bridge_file(dir.path());
+        QVERIFY(out.has_value());
+        QCOMPARE(out->kind, QStringLiteral("gui"));
     }
     void file_is_owner_only() {
         QTemporaryDir dir;

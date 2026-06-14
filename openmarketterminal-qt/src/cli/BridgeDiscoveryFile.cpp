@@ -44,6 +44,7 @@ bool write_bridge_file(const QString& profile_root, const BridgeInfo& info) {
     o["token"] = info.token;
     o["pid"] = info.pid;
     o["started_at"] = info.started_at;
+    o["kind"] = info.kind.isEmpty() ? QStringLiteral("gui") : info.kind;
     // NOTE: no destructive_token is written. attach-mode CLI is read +
     // non-destructive; it has no consumer for such a token.
     const QString path = bridge_file_path(profile_root);
@@ -86,6 +87,7 @@ std::optional<BridgeInfo> read_bridge_file(const QString& profile_root) {
     info.token = o.value("token").toString();
     info.pid = static_cast<qint64>(o.value("pid").toDouble());
     info.started_at = o.value("started_at").toString();
+    info.kind = o.value("kind").toString("gui");
     if (info.endpoint.isEmpty() || info.token.isEmpty())
         return std::nullopt;
     return info;

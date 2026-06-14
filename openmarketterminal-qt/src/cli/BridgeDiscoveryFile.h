@@ -9,6 +9,7 @@ struct BridgeInfo {
     QString token;             // X-MCP-Token value
     qint64  pid = 0;           // PID of the GUI that owns the bridge
     QString started_at;        // ISO-8601 UTC
+    QString kind;              // "gui" | "daemon"
     // NOTE: bridge.json carries NO destructive token. In attach mode the CLI is
     // read + non-destructive: it has no consumer for a destructive token and
     // never sends X-MCP-Allow-Destructive. CLI destructive/trading is a future
