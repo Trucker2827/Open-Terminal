@@ -171,7 +171,7 @@ void wire_trading_bridges(NodeRegistry& registry) {
             QString mode = params.value("mode").toString("paper");
             QString broker = params.value("broker").toString("alpaca");
             QString symbol = params.value("symbol").toString();
-            QString exchange = params.value("exchange").toString("NSE");
+            QString exchange = params.value("exchange").toString("NASDAQ");
             QString side = params.value("side").toString("buy");
             QString product_str = params.value("product_type").toString("delivery");
             QString order_type_str = params.value("order_type").toString("market");
@@ -659,7 +659,7 @@ void wire_trading_bridges(NodeRegistry& registry) {
             QString mode = params.value("mode").toString("paper");
             QString broker = params.value("broker").toString("alpaca");
             QString symbol = params.value("symbol").toString();
-            QString exchange = params.value("exchange").toString("NSE");
+            QString exchange = params.value("exchange").toString("NASDAQ");
             QString product_str = params.value("product_type").toString("delivery");
             double qty = params.value("quantity").toDouble(0);
 
@@ -814,7 +814,7 @@ void wire_trading_bridges(NodeRegistry& registry) {
             QString mode = params.value("mode").toString("paper");
             QString broker = params.value("broker").toString("alpaca");
             QString symbol = params.value("symbol").toString();
-            QString exchange = params.value("exchange").toString("NSE");
+            QString exchange = params.value("exchange").toString("NASDAQ");
             QString product_str = params.value("product_type").toString("intraday");
             QString trail_type = params.value("trail_type").toString("percent");
             double trail_value = params.value("trail_value").toDouble(5.0);
@@ -877,7 +877,7 @@ void wire_trading_bridges(NodeRegistry& registry) {
             QString mode = params.value("mode").toString("paper");
             QString broker = params.value("broker").toString("alpaca");
             QString symbol = params.value("symbol").toString();
-            QString exchange = params.value("exchange").toString("NSE");
+            QString exchange = params.value("exchange").toString("NASDAQ");
             QString product_str = params.value("product_type").toString("delivery");
             QString side = params.value("side").toString("buy");
             double total_qty = params.value("total_quantity").toDouble(100);
@@ -987,7 +987,7 @@ void wire_trading_bridges(NodeRegistry& registry) {
             QString account_id_param = params.value("account_id").toString();
             QString broker = params.value("broker").toString("alpaca");
             QString symbol = params.value("symbol").toString();
-            QString exchange = params.value("exchange").toString("NSE");
+            QString exchange = params.value("exchange").toString("NASDAQ");
             if (symbol.isEmpty()) {
                 cb(false, {}, "Symbol is required");
                 return;
@@ -1099,7 +1099,7 @@ void wire_trading_bridges(NodeRegistry& registry) {
             QString account_id_param = params.value("account_id").toString();
             QString broker = params.value("broker").toString("alpaca");
             QString symbol = params.value("symbol").toString();
-            QString exchange = params.value("exchange").toString("NSE");
+            QString exchange = params.value("exchange").toString("NASDAQ");
             double position_size = params.value("position_size").toDouble(0);
             QString order_type_str = params.value("order_type").toString("market");
             double price = params.value("price").toDouble(0);

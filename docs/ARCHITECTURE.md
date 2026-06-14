@@ -19,7 +19,7 @@ Open Terminal is a native C++20/Qt6 desktop application — a multi-window finan
 | Python scripts | ~1,423 |
 | Screens | 54 (lazy-instantiated) |
 | Services | ~50 (data, trading, AI, workflow) |
-| Brokers | 16 (equity/F&O) + 2 crypto exchanges |
+| Brokers | 3 US equity (Alpaca, IBKR, Tradier) + 14 crypto exchanges + built-in paper trading |
 | Repositories | 26 (typed via `BaseRepository<T>`) |
 | MCP tools | 40+ |
 | Build target | one Qt6 desktop binary, per OS |
@@ -145,7 +145,7 @@ openmarketterminal-qt/
     ├── python/                     # PythonRunner (subprocess bridge)
     ├── datahub/                    # DataHub pub/sub data plane
     ├── mcp/                        # Model Context Protocol bridge + tool registry
-    ├── trading/                    # BrokerInterface, 16 brokers, exchanges, matching
+    ├── trading/                    # BrokerInterface, 3 US equity brokers, crypto exchanges, matching
     ├── services/                   # ~50 bounded-context services
     └── screens/                    # 54 screens (Presentation)
 ```
@@ -226,8 +226,8 @@ openmarketterminal-qt/
 - `BrokerInterface.h` — base contract (32 virtual methods). **Shallow-but-wide today; refactor target is a deep `BrokerAdapter` with shared OAuth/mapping/parsing infrastructure.**
 - `BrokerRegistry` — broker discovery.
 - `brokers/BrokerHttp` — shared synchronous-blocking HTTP helper (uses `QEventLoop`; **must be called from a worker thread**).
-- `brokers/<name>/` — 16 implementations (Zerodha, Fyers, Upstox, IBKR, Alpaca, Saxo, Kotak, Angel One, Dhan, AliceBlue, FivePaisa, Groww, IIFL, Motilal, Shoonya, Tradier).
-- `exchanges/` — Hyperliquid, Kraken (crypto WebSocket).
+- `brokers/<name>/` — **3 registered adapters** (Alpaca, IBKR, Tradier). Source also exists for Saxo Bank and MetaTrader 4 (MetaAPI) but they are not registered in `BrokerRegistry` (US-only broker picker).
+- `exchanges/` — 14 crypto exchanges via `ExchangeSessionManager` (Kraken native WS, Hyperliquid, Binance, Coinbase, OKX, …).
 - `instruments/`, `auth/` — symbol parsing, broker OAuth flows.
 - `OrderMatcher`, `PaperTrading`, `UnifiedTrading` — three coherent engines: live routing, paper simulation, matching/SL/TP triggers.
 - `TradingTypes.h` — stable shared vocabulary (`UnifiedOrder`, `BrokerOrderInfo`, `BrokerPosition`, enums).
@@ -410,7 +410,7 @@ These are the surfaces external contributors and AI assistants should treat as s
 | DataHub topic format | `datahub/DataHub.h` + `DATAHUB_ARCHITECTURE.md` | Topic strings are versioned by their contents (e.g. `:1d` vs `:1m`). |
 | `Producer` interface | `datahub/Producer.h` | New data sources implement this. |
 | `IBroker` (`BrokerInterface.h`) | `trading/BrokerInterface.h` | Target: deepen into `BrokerAdapter` base. |
-| `BrokerEnumMap<T>` (typed wire-value tables) | `trading/adapter/BrokerEnumMap.h` | Replaces per-broker `<broker>_order_type/side/product` switches with a data table. First adopted by Zerodha; other brokers migrate broker-by-broker. |
+| `BrokerEnumMap<T>` (typed wire-value tables) | `trading/adapter/BrokerEnumMap.h` | Replaces per-broker `<broker>_order_type/side/product` switches with a data table. Used by IBKR and Tradier; Alpaca maps inline. |
 | `Instrument` (canonical symbol vocabulary) | `trading/instruments/InstrumentTypes.h` | All cross-broker code uses this — never raw broker strings. `Instrument::canonical_topic_id()` builds DataHub keys. |
 | `InstrumentSource` + `SymbolResolver` | `trading/instruments/InstrumentSource.h`, `SymbolResolver.h` | New brokers register a source; `InstrumentService` dispatches through the resolver, never an if-chain. |
 | `IStatefulScreen` | `screens/common/IStatefulScreen.h` | Screens that need to persist UI state. |
@@ -454,7 +454,7 @@ These are the deltas between current and target state. Each has a phase in [`REF
 
 | Weakness | Impact | Phase |
 |---|---|---|
-| 60–75% duplication across 16 broker implementations — `BrokerEnumMap` migration **complete for 14 of 16** (Alpaca + FivePaisa pending; they never had named helpers). Envelope/parse helpers still to come | Reduced; bigger wins still ahead in Phase 4.3+ | 4.x |
+| Duplication across broker adapters — `BrokerEnumMap` in place for IBKR/Tradier; shared envelope/parse helpers still to come | Reduced; bigger wins still ahead in Phase 4.3+ | 4.x |
 | ~~Symbol/Instrument model fragmented across 3 representations~~ — canonical `Instrument` already existed; `SymbolResolver` seam added Phase 3 | Down to per-broker migration (Phase 4) | 3 |
 | ~~4 screens call `HttpClient` directly~~ ✅ resolved Phase 2 (via `MarketSearchService` + `DataMappingTestClient`) | — | 2 |
 | ~~Wallet/Update services expose `QWidget*`~~ — reclassified as UI-coordinator services (intentional) | — | 2 |

@@ -3,22 +3,23 @@
 **Status:** Not started
 **Depends on:** Phase 1 (hub primitive) and Phase 4 (WebSocket producer
 pattern + `coalesce_within_ms` + `active_subscriber_delta` signal).
-**Nominal duration:** 1–2 weeks (16 adapters × moderate touch each)
-**Rough size:** Large — the most surface-area phase in the rollout.
+**Nominal duration:** 1 week (3 registered adapters × moderate touch each)
+**Rough size:** Medium — significant surface area, but only three equity
+brokers are registered today.
 
 ---
 
 ## Goal
 
-Unify live account data from all 16 broker integrations behind a
+Unify live account data from all registered broker integrations behind a
 single topic family: `broker:<id>:positions`, `broker:<id>:orders`,
 `broker:<id>:balance`, `broker:<id>:ticks:<sym>`. Two accounts on the
 same broker stay isolated via the multi-account topic extension
 `broker:<id>:<account_id>:<channel>`.
 
-The payoff: a user with three brokers (Zerodha + IBKR + Kraken) and
+The payoff: a user with three connections (Alpaca + IBKR + Kraken) and
 two screens open (dashboard portfolio summary + equity trading
-screen) gets **one** WS connection per broker, not six. Today each
+screen) gets **one** WS connection per broker/exchange, not six. Today each
 screen owns its own connection; removing the duplication is one of
 the largest wins in this refactor.
 
@@ -26,16 +27,21 @@ the largest wins in this refactor.
 
 ## Targets
 
-### 16 broker adapters (from memory: `project_broker_infra.md`)
+### Registered equity broker adapters
 
-Indian brokers (IndianBrokers base):
-Zerodha, Angel One, Upstox, Fyers, Dhan, Groww, Kotak, IIFL, 5paisa,
-AliceBlue, Shoonya, Motilal.
+Open Terminal registers **three** US equity brokers in `BrokerRegistry`:
 
-Global brokers (GlobalBrokers base):
-IBKR, Alpaca, Tradier, Saxo.
+| ID | Broker | Notes |
+|----|--------|-------|
+| `alpaca` | Alpaca | API key/secret; native paper + live; `AlpacaWebSocket` for market data |
+| `ibkr` | Interactive Brokers | Client Portal Gateway (local); bracket orders |
+| `tradier` | Tradier | Access token; live + sandbox |
 
 Each lives under `src/trading/brokers/<broker>/`.
+
+**Dormant adapter source (not in picker):** Saxo Bank (`saxobank`) and
+MetaTrader 4 via MetaAPI (`metatrader4`) — re-enable by registering them
+in `BrokerRegistry::register_all()`.
 
 ### Cross-cutting infrastructure
 - `BrokerInterface` — abstract base, contract unchanged.
@@ -65,11 +71,11 @@ Each lives under `src/trading/brokers/<broker>/`.
 
 - `broker:<id>:positions` — TTL 5 s, poll fallback if WS not
   available. `<id>` is the canonical lower-case broker slug
-  (`zerodha`, `angel_one`, `ibkr`, ...).
+  (`alpaca`, `ibkr`, `tradier`, …).
 - `broker:<id>:orders` — TTL 5 s. Live order book for the account.
 - `broker:<id>:balance` — TTL 30 s. Cash + margin.
 - `broker:<id>:ticks:<sym>` — push-only. Per-broker market tick feed
-  (Zerodha Kite's binary WS, Angel SmartStream, Fyers ticker).
+  (Alpaca data WebSocket, IBKR gateway stream, Tradier quotes).
 
 Multi-account extension (for users with multiple accounts on the
 same broker): `broker:<id>:<account_id>:<channel>`. If a broker
@@ -83,7 +89,7 @@ Add `src/trading/brokers/base/BrokerProducer.{h,cpp}`. Implements
 `Producer` on behalf of a broker adapter. Responsibilities:
 
 - `topic_patterns()` returns the four patterns for this broker's
-  slug (`broker:zerodha:*`, etc.).
+  slug (`broker:alpaca:*`, etc.).
 - `refresh(topics)` routes by channel:
   - `broker:<id>:<acct>:positions` → call
     `BrokerInterface::fetch_positions(acct)` inside
@@ -98,9 +104,9 @@ Add `src/trading/brokers/base/BrokerProducer.{h,cpp}`. Implements
 
 `BrokerProducer` subclasses — one per broker — so each broker can
 override `start_tick_feed(account, symbol)` / `stop_tick_feed` in the
-broker's native way (Kite WS protocol is binary; Alpaca uses
-Server-Sent Events; Saxo has streaming via OpenAPI). The Producer
-base handles the hub-facing side; the subclass handles the
+broker's native way (Alpaca uses JSON over WebSocket; IBKR uses the
+Client Portal streaming API; Tradier falls back to REST quote polling).
+The Producer base handles the hub-facing side; the subclass handles the
 broker-specific protocol.
 
 ### `AccountDataStream` / `DataStreamManager` refactor
@@ -108,7 +114,7 @@ broker-specific protocol.
 These classes currently emit Qt signals per-account. Change them to
 publish per-account topics. Consumers no longer subscribe to
 `AccountDataStream` signals — they subscribe to
-`broker:zerodha:my_account:positions` directly.
+`broker:alpaca:my_account:positions` directly.
 
 `AccountManager` gains an `active_account_id(broker_id)` getter; the
 equity trading screen uses it to build the correct topic string for
@@ -127,23 +133,22 @@ subscribe.
   own.
 
 ### Cross-thread marshaling audit
-Every broker SDK has its own threading model (Zerodha uses a
-background thread; Alpaca emits on the Network thread; IBKR's own
-thread pool for the TWS API). Every `hub.publish(...)` call from a
-broker callback must be safe. The hub guarantees this via
-`QueuedConnection` (Phase 1 cross-thread test covers it). Per-broker
-smoke test added to verify ticks from the broker's thread arrive on
-the UI.
+Every broker SDK has its own threading model (Alpaca emits on the
+network thread; IBKR uses the gateway's thread pool). Every
+`hub.publish(...)` call from a broker callback must be safe. The hub
+guarantees this via `QueuedConnection` (Phase 1 cross-thread test
+covers it). Per-broker smoke test added to verify ticks from the
+broker's thread arrive on the UI.
 
 ---
 
 ## Success check
 
-- Open EquityTradingScreen with Zerodha connected **and** dashboard
-  portfolio summary visible. Log shows one active Zerodha WS
+- Open EquityTradingScreen with Alpaca connected **and** dashboard
+  portfolio summary visible. Log shows one active Alpaca data
   subscription, not two. `hub.stats()` for
-  `broker:zerodha:default:positions` shows subscriber_count = 2.
-- Connect a second Zerodha account (multi-account). Both accounts'
+  `broker:alpaca:default:positions` shows subscriber_count = 2.
+- Connect a second Alpaca account (multi-account). Both accounts'
   positions stream independently under distinct topics; switching
   the "active account" selector swaps the visible panel without
   dropping the other account's stream (it's still alive for
@@ -153,23 +158,22 @@ the UI.
   adding a temporary `Q_ASSERT(QThread::currentThread() != qApp->thread())`
   at the top of `BrokerHttp::execute` for smoke testing (removed
   before merge).
-- Every broker adapter's smoke test: place a paper order, expect
+- Every registered broker adapter's smoke test: place a paper order, expect
   `broker:<id>:<acct>:orders` to publish within 2 s. Verified across
-  all 16 brokers.
+  Alpaca, IBKR, and Tradier.
 - Tick feed consolidation: open CryptoWidget (Kraken via
-  `ws:kraken:*`, Phase 4) alongside a Zerodha-powered equity widget
-  streaming `broker:zerodha:<acct>:ticks:NIFTY`. Two distinct WS
+  `ws:kraken:*`, Phase 4) alongside an Alpaca equity widget
+  streaming `broker:alpaca:<acct>:ticks:AAPL`. Two distinct WS
   connections (one per broker/exchange), not four.
 
 ---
 
 ## Risk
 
-- **16 brokers × varying SDK quality.** Not all broker SDKs expose
-  clean first-subscriber / last-unsubscriber hooks. Mitigation: for
-  the problem brokers, fall back to continuous polling of
-  `fetch_positions` etc. on a long interval (10 s); the hub's TTL
-  already gates outbound calls.
+- **Broker SDK quality varies.** Not all adapters expose clean
+  first-subscriber / last-unsubscriber hooks. Mitigation: for problem
+  brokers, fall back to continuous polling of `fetch_positions` etc.
+  on a long interval (10 s); the hub's TTL already gates outbound calls.
 - **Per-account isolation bugs.** If `<account_id>` isn't threaded
   through every code path, two accounts could collide (account B
   sees A's positions). Mitigation: mandatory account_id parameter
@@ -187,11 +191,9 @@ the UI.
   subclass can't accidentally call blocking HTTP on the UI thread.
 - **Large diff, long integration window.** Mitigation: migrate
   brokers one-by-one in separate PRs; finance-critical flows get
-  extra manual testing per broker. This matches the existing
-  broker-refactor cadence from memory
-  (`feedback_broker_work.md` — one broker at a time).
-- **Tick coalescing on broker feeds.** Zerodha's "full mode" tick
-  can stream 5+ updates per symbol per second. Apply
+  extra manual testing per broker.
+- **Tick coalescing on broker feeds.** High-frequency tick streams
+  can deliver many updates per symbol per second. Apply
   `coalesce_within_ms = 100` on `broker:*:*:ticks:*` by default.
 
 ---
@@ -199,7 +201,7 @@ the UI.
 ## Rollback
 
 - **Per-broker revert.** Each broker's adapter migration is a
-  separate PR; revert the broken broker, the other 15 still work.
+  separate PR; revert the broken broker, the others still work.
 - **Producer-off switch.** If a broker's hub publishing misfires,
   unregister the Producer — consumers fall back to the legacy
   `AccountDataStream` signal path, which stays alive for the
@@ -222,7 +224,7 @@ the UI.
 - Broker-specific screens beyond the generic equity/portfolio flow
   (e.g. IBKR advanced options chain) — assess per-broker in Phase
   9 or defer.
-- Paper trading engine (`src/trading/paper/`) — uses its own
-  deterministic "broker" and doesn't need hub publishing until an
-  explicit request.
+- Paper trading engine (`src/trading/PaperTrading.cpp`) — uses its own
+  deterministic engine and yfinance marks; no live broker connection.
+  Hub publishing for paper portfolios is a separate follow-up.
 - Deleting the legacy `AccountDataStream` signal API — Phase 10.

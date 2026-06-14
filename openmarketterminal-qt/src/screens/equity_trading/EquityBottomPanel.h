@@ -61,7 +61,7 @@ class EquityBottomPanel : public QWidget {
 
     // Show/hide the US-market-only tabs (Time & Sales, Auctions, Calendar). These
     // carry tape/condition/auction data that only US brokers (Alpaca etc.) provide,
-    // so they're hidden for Indian and other non-US brokers.
+    // so they're hidden for non-US brokers (no US tape/calendar/auction feeds).
     void set_us_market_tabs_visible(bool visible);
 
     // Collapse the sheet down to just its tab-bar header (and back).
@@ -83,7 +83,7 @@ class EquityBottomPanel : public QWidget {
     // Paper: convert an open position's product in place (MIS -> CNC), identified
     // by its paper position id.
     void convert_position_requested(const QString& position_id, const QString& symbol, const QString& new_product);
-    // Orders tab date-selector changed — request that IST day's order book.
+    // Orders tab date-selector changed — request that calendar day's order book.
     void orders_day_changed(const QDate& day);
     // Square off the subset of open positions by P&L sign (+1 winners, -1 losers).
     void square_off_group_requested(const QString& account_id, int sign);

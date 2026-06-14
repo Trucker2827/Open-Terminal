@@ -151,7 +151,7 @@ src/
 ├── python/           # Embedded Python bridge, PythonRunner
 ├── datahub/          # DataHub producers/consumers (see DATAHUB_ARCHITECTURE.md)
 ├── services/         # 18 service domains — market data, news, agents, workflow, etc.
-├── trading/          # Trading core + 18 broker integrations
+├── trading/          # Trading core + 3 US equity broker adapters (Alpaca, IBKR, Tradier)
 ├── mcp/              # Model Context Protocol infrastructure (24 tool modules)
 ├── ai_chat/          # AI chat UI + LlmService
 └── screens/          # 50+ terminal screens, one subdirectory each

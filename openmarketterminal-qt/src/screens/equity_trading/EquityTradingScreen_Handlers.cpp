@@ -163,7 +163,7 @@ void EquityTradingScreen::on_account_changed(const QString& account_id) {
             stream->set_selected_symbol(selected_symbol_, selected_exchange_);
             stream->subscribe_symbols(QStringLiteral("equity:watchlist"), effective_symbols());
             stream->fetch_orderbook(selected_symbol_);
-            // US-only market data — skip for Indian/other brokers (no tape/calendar).
+            // US-only market data — skip for non-US brokers (no tape/calendar).
             if (focused_is_us_market_) {
                 stream->fetch_time_sales(selected_symbol_);
                 stream->fetch_calendar();

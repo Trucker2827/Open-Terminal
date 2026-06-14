@@ -14,6 +14,7 @@
 
 #include "screens/ai_chat/AiChatBubble.h"
 
+#include "mcp/tools/DataHubPeekHelpers.h"
 #include "screens/ai_chat/ChatBubbleFactory.h"
 #include "services/stt/SpeechService.h"
 #include "services/tts/TtsService.h"
@@ -507,16 +508,22 @@ void AiChatBubble::on_send() {
     // delayed network failure.
     if (!ai_chat::LlmService::instance().is_configured()) {
         add_bubble("assistant",
-                   tr("AI chat is not configured. Open **Settings → LLM Config** "
-                      "and add an API key or pick the OpenMarketTerminal provider."));
+                   tr("AI chat needs an LLM provider.\n\n"
+                      "Open Settings → LLM Config and either:\n"
+                      "• Choose Ollama (local, no API key) — run `ollama serve` and select an installed model\n"
+                      "• Or add an API key for OpenAI, Anthropic, Gemini, etc."));
         return;
     }
 
     input_box_->clear();
     hide_welcome();
 
+    const QString context_prefix = openmarketterminal::mcp::tools::detail::build_screen_context_brief();
+    const QString prompt_text =
+        context_prefix.isEmpty() ? text : (context_prefix + QStringLiteral("\n\n") + text);
+
     add_bubble("user", text);
-    chat_history_.push_back({"user", text});
+    chat_history_.push_back({"user", prompt_text});
 
     streaming_ = true;
     error_msg_.clear();
@@ -531,7 +538,7 @@ void AiChatBubble::on_send() {
     // category so the model can't yank the user out of their current screen
     // by calling navigate_to_tab / list_tabs / get_current_tab.
     ai_chat::LlmService::instance().chat_streaming(
-        text, chat_history_,
+        prompt_text, chat_history_,
         [self, first_chunk](const QString& chunk, bool done) {
             QMetaObject::invokeMethod(
                 qApp,

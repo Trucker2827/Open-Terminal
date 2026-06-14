@@ -21,8 +21,8 @@ namespace openmarketterminal::trading {
 /// Mirrors OpenAlgo's sandbox leverage config (fund_manager.py::_get_leverage).
 /// All fields have sane defaults so existing portfolios keep working unchanged.
 struct PtLeverageConfig {
-    double equity_mis = 5.0;   // intraday equity (NSE/BSE MIS)
-    double equity_cnc = 1.0;   // delivery equity (NSE/BSE CNC/NRML)
+    double equity_mis = 5.0;   // intraday equity
+    double equity_cnc = 1.0;   // delivery equity
     double futures = 10.0;     // futures (FUT suffix on NFO/BFO/MCX/CDS)
     double options_buy = 1.0;  // option buy (premium only)
     double options_sell = 1.0; // option sell (margin estimate)
@@ -228,9 +228,9 @@ inline const char* product_type_str(ProductType p) {
     return "intraday";
 }
 
-/// Indian-broker product mnemonic (MIS/CNC/NRML/...) for a ProductType. Used by
-/// the paper engine to tag positions/orders so intraday (MIS) can be told apart
-/// from delivery (CNC) for auto-square-off, product conversion and leverage.
+/// Legacy intraday/delivery product tags (MIS/CNC/NRML/...) for a ProductType.
+/// Used by the paper engine to tag positions/orders so intraday (MIS) can be told
+/// apart from delivery (CNC) for auto-square-off, product conversion and leverage.
 inline const char* product_to_broker_str(ProductType p) {
     switch (p) {
         case ProductType::Intraday:

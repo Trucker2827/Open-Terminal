@@ -402,6 +402,11 @@ inline QStringList us_tech_symbols() {
             "AMD",  "CRM",  "ORCL", "ADBE",  "NFLX", "INTC", "CSCO", "QCOM"};
 }
 
+inline QStringList us_mega_cap_symbols() {
+    return {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "JPM",  "V",    "JNJ",
+            "WMT",  "XOM",  "UNH",  "MA",    "HD",   "PG",   "COST", "BAC",  "KO",   "PEP"};
+}
+
 inline QStringList nifty50_symbols() {
     return {"RELIANCE",   "TCS",   "HDFCBANK",  "INFY",       "ICICIBANK", "HINDUNILVR", "SBIN",
             "BHARTIARTL", "ITC",   "KOTAKBANK", "LT",         "AXISBANK",  "BAJFINANCE", "ASIANPAINT",

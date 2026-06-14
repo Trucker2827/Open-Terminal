@@ -1,25 +1,6 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="id_ID" sourcelanguage="en">
-<context>
-    <name>ActivityTab</name>
-    <message>
-        <source>SWAP</source>
-        <translation>TUKAR</translation>
-    </message>
-    <message>
-        <source>RECEIVE</source>
-        <translation>TERIMA</translation>
-    </message>
-    <message>
-        <source>SEND</source>
-        <translation>KIRIM</translation>
-    </message>
-    <message>
-        <source>OTHER</source>
-        <translation>LAINNYA</translation>
-    </message>
-</context>
 <context>
     <name>AgentChatPanel</name>
     <message>
@@ -33,29 +14,6 @@
     <message>
         <source>Agent</source>
         <translation>Agen</translation>
-    </message>
-</context>
-<context>
-    <name>EquitySentimentTab</name>
-    <message>
-        <source>ALIGNED</source>
-        <translation>SELARAS</translation>
-    </message>
-    <message>
-        <source>MIXED</source>
-        <translation>BERAGAM</translation>
-    </message>
-    <message>
-        <source>DIVERGENT</source>
-        <translation>DIVERGEN</translation>
-    </message>
-    <message>
-        <source>SINGLE SOURCE</source>
-        <translation>SUMBER TUNGGAL</translation>
-    </message>
-    <message>
-        <source>UNAVAILABLE</source>
-        <translation>TIDAK TERSEDIA</translation>
     </message>
 </context>
 <context>
@@ -86,82 +44,6 @@
     <message>
         <source>OPEN</source>
         <translation>BUKA</translation>
-    </message>
-</context>
-<context>
-    <name>ForumFeedPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 dtk lalu</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 mnt lalu</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 jam lalu</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 hr lalu</translation>
-    </message>
-</context>
-<context>
-    <name>ForumPostListPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 dtk lalu</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 mnt lalu</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 jam lalu</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 hr lalu</translation>
-    </message>
-</context>
-<context>
-    <name>ForumPostReaderPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 dtk lalu</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 mnt lalu</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 jam lalu</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 hr lalu</translation>
-    </message>
-</context>
-<context>
-    <name>ForumThreadPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 dtk lalu</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 mnt lalu</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 jam lalu</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 hr lalu</translation>
     </message>
 </context>
 <context>
@@ -212,29 +94,6 @@
     </message>
 </context>
 <context>
-    <name>MultiStraddleSubTab</name>
-    <message>
-        <source>Straddle (ATM)</source>
-        <translation>Straddle (ATM)</translation>
-    </message>
-    <message>
-        <source>Strangle ±1</source>
-        <translation>Strangle ±1</translation>
-    </message>
-    <message>
-        <source>Strangle ±2</source>
-        <translation>Strangle ±2</translation>
-    </message>
-    <message>
-        <source>Strangle ±3</source>
-        <translation>Strangle ±3</translation>
-    </message>
-    <message>
-        <source>(ATM)</source>
-        <translation>(ATM)</translation>
-    </message>
-</context>
-<context>
     <name>NotesScreen</name>
     <message>
         <source>ALL NOTES</source>
@@ -267,13 +126,6 @@
     <message>
         <source>GENERAL</source>
         <translation>UMUM</translation>
-    </message>
-</context>
-<context>
-    <name>OISubTab</name>
-    <message>
-        <source>(ATM)</source>
-        <translation>(ATM)</translation>
     </message>
 </context>
 <context>
@@ -331,8 +183,8 @@
         <translation>Segarkan daftar alat</translation>
     </message>
     <message>
-        <source>All Open Terminal internal tools. Input JSON flows in as arguments.</source>
-        <translation>Semua alat internal Open Terminal. JSON masukan mengalir sebagai argumen.</translation>
+        <source>All OpenMarketTerminal internal tools. Input JSON flows in as arguments.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Loading connections...</source>
@@ -356,118 +208,6 @@
 </context>
 <context>
     <name>QObject</name>
-    <message>
-        <source>No confirmation after 60 s. Check Solscan.</source>
-        <translation>Tidak ada konfirmasi setelah 60 dtk. Periksa Solscan.</translation>
-    </message>
-    <message>
-        <source>Timed out.</source>
-        <translation>Waktu habis.</translation>
-    </message>
-    <message>
-        <source>Tx failed on-chain: %1</source>
-        <translation>Tx gagal on-chain: %1</translation>
-    </message>
-    <message>
-        <source>Reverted.</source>
-        <translation>Dikembalikan.</translation>
-    </message>
-    <message>
-        <source>Confirmed: %1…</source>
-        <translation>Dikonfirmasi: %1…</translation>
-    </message>
-    <message>
-        <source>build_swap failed: %1</source>
-        <translation>build_swap gagal: %1</translation>
-    </message>
-    <message>
-        <source>Failed.</source>
-        <translation>Gagal.</translation>
-    </message>
-    <message>
-        <source>Validating with RPC…</source>
-        <translation>Memvalidasi dengan RPC…</translation>
-    </message>
-    <message>
-        <source>Simulation failed: %1. Refusing to sign.</source>
-        <translation>Simulasi gagal: %1. Menolak untuk menandatangani.</translation>
-    </message>
-    <message>
-        <source>Aborted.</source>
-        <translation>Dibatalkan.</translation>
-    </message>
-    <message>
-        <source>This swap would fail on-chain: %1. Refusing to sign.</source>
-        <translation>Swap ini akan gagal on-chain: %1. Menolak untuk menandatangani.</translation>
-    </message>
-    <message>
-        <source>Approve in your wallet to forward this transaction to the network. The terminal does not hold any funds.</source>
-        <translation>Setujui di dompet Anda untuk meneruskan transaksi ini ke jaringan. Terminal tidak menyimpan dana apa pun.</translation>
-    </message>
-    <message>
-        <source>≈ %1 $FNCPT (PumpSwap fills at execution)</source>
-        <translation>≈ %1 $FNCPT (PumpSwap mengisi saat eksekusi)</translation>
-    </message>
-    <message>
-        <source>≈ %1 SOL (PumpSwap fills at execution)</source>
-        <translation>≈ %1 SOL (PumpSwap mengisi saat eksekusi)</translation>
-    </message>
-    <message>
-        <source>PumpSwap will reject the trade if execution drifts more than the slippage tolerance above. Your funds stay in your wallet.</source>
-        <translation>PumpSwap akan menolak transaksi jika eksekusi menyimpang melebihi toleransi slippage di atas. Dana Anda tetap di dompet Anda.</translation>
-    </message>
-    <message>
-        <source>Re-checking freshness…</source>
-        <translation>Memeriksa ulang kesegaran…</translation>
-    </message>
-    <message>
-        <source>Could not verify freshness: %1. Try the swap again.</source>
-        <translation>Tidak dapat memverifikasi kesegaran: %1. Coba swap lagi.</translation>
-    </message>
-    <message>
-        <source>This swap is no longer fresh: %1. Click SWAP again to rebuild.</source>
-        <translation>Swap ini tidak lagi segar: %1. Klik SWAP lagi untuk membangun ulang.</translation>
-    </message>
-    <message>
-        <source>Stale.</source>
-        <translation>Usang.</translation>
-    </message>
-    <message>
-        <source>Awaiting wallet signature…</source>
-        <translation>Menunggu tanda tangan dompet…</translation>
-    </message>
-    <message>
-        <source>Sign swap</source>
-        <translation>Tanda tangani swap</translation>
-    </message>
-    <message>
-        <source>Approve the swap in your wallet to complete the trade.</source>
-        <translation>Setujui swap di dompet Anda untuk menyelesaikan transaksi.</translation>
-    </message>
-    <message>
-        <source>Signing failed: %1</source>
-        <translation>Penandatanganan gagal: %1</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>Dibatalkan.</translation>
-    </message>
-    <message>
-        <source>Sent. Waiting for confirmation…</source>
-        <translation>Terkirim. Menunggu konfirmasi…</translation>
-    </message>
-    <message>
-        <source>Sign lock</source>
-        <translation>Tanda tangani penguncian</translation>
-    </message>
-    <message>
-        <source>Approve the lock in your wallet.</source>
-        <translation>Setujui penguncian di dompet Anda.</translation>
-    </message>
-    <message>
-        <source>Sent: %1…</source>
-        <translation>Terkirim: %1…</translation>
-    </message>
     <message>
         <source>Dow Jones style — sum of prices / divisor</source>
         <translation>Gaya Dow Jones — jumlah harga / pembagi</translation>
@@ -685,36 +425,72 @@ Pastikan kolom wajib (URL, host, atau API key) telah diisi.</translation>
         <translation>Simpan Template Konektor</translation>
     </message>
     <message>
-        <source>SWAP</source>
-        <translation>TUKAR</translation>
+        <source>Confirm AI action</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROUTE</source>
-        <translation>RUTE</translation>
+        <source>Approve</source>
+        <translation type="unfinished">Setujui</translation>
     </message>
     <message>
-        <source>YOU PAY</source>
-        <translation>ANDA BAYAR</translation>
+        <source>Deny</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>YOU RECEIVE</source>
-        <translation>ANDA TERIMA</translation>
+        <source>Place a LIVE order with REAL money?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>MAX SLIPPAGE</source>
-        <translation>SLIPPAGE MAKS</translation>
+        <source>%1 %2 %3 on %4 (%5).
+This sends a real order to your broker.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>PRIORITY FEE</source>
-        <translation>BIAYA PRIORITAS</translation>
+        <source>Run a Python script on your machine?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>RPC SIMULATION</source>
-        <translation>SIMULASI RPC</translation>
+        <source>script: %1
+args: %2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OK · %1 CU</source>
-        <translation>OK · %1 CU</translation>
+        <source>Let the AI save an agent/workflow config?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 — a saved workflow/agent can later run code or place orders.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Approve AI action: %1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Approve external MCP tool &apos;%1&apos;?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Server: %1
+Runs in an external MCP server you added.
+args: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>~%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPEN</source>
+        <translation type="unfinished">BUKA</translation>
+    </message>
+    <message>
+        <source>Exchange adapter is not registered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 balance: %2 %3</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -746,60 +522,6 @@ Pastikan kolom wajib (URL, host, atau API key) telah diisi.</translation>
     <message>
         <source>Computation failed: </source>
         <translation>Komputasi gagal: </translation>
-    </message>
-</context>
-<context>
-    <name>ScreenerSubTab</name>
-    <message>
-        <source>IV Min</source>
-        <translation>IV Min</translation>
-    </message>
-    <message>
-        <source>IV Max</source>
-        <translation>IV Max</translation>
-    </message>
-    <message>
-        <source>± Strikes</source>
-        <translation>± Strike</translation>
-    </message>
-    <message>
-        <source>CE OI ≥</source>
-        <translation>CE OI ≥</translation>
-    </message>
-    <message>
-        <source>PE OI ≥</source>
-        <translation>PE OI ≥</translation>
-    </message>
-    <message>
-        <source>0 of 0 strikes match</source>
-        <translation>0 dari 0 strike cocok</translation>
-    </message>
-    <message>
-        <source>%1 of %2 strikes match</source>
-        <translation>%1 dari %2 strike cocok</translation>
-    </message>
-</context>
-<context>
-    <name>TemplatePickerPanel</name>
-    <message>
-        <source>BULLISH</source>
-        <translation>BULLISH</translation>
-    </message>
-    <message>
-        <source>BEARISH</source>
-        <translation>BEARISH</translation>
-    </message>
-    <message>
-        <source>NEUTRAL</source>
-        <translation>NETRAL</translation>
-    </message>
-    <message>
-        <source>VOLATILE</source>
-        <translation>VOLATIL</translation>
-    </message>
-    <message>
-        <source>OTHERS</source>
-        <translation>LAINNYA</translation>
     </message>
 </context>
 <context>
@@ -882,8 +604,8 @@ For long-form chats use the AI Chat tab.</source>
 Untuk obrolan panjang, gunakan tab AI Chat.</translation>
     </message>
     <message>
-        <source>AI chat is not configured. Open **Settings → LLM Config** and add an API key or pick the Open Terminal provider.</source>
-        <translation>Obrolan AI belum dikonfigurasi. Buka **Settings → LLM Config** dan tambahkan API key atau pilih penyedia Open Terminal.</translation>
+        <source>AI chat is not configured. Open **Settings → LLM Config** and add an API key or pick the OpenMarketTerminal provider.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Error: %1</source>
@@ -955,14 +677,6 @@ Untuk obrolan panjang, gunakan tab AI Chat.</translation>
     <message>
         <source>Notes</source>
         <translation>Catatan</translation>
-    </message>
-    <message>
-        <source>Forum</source>
-        <translation>Forum</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Dukungan</translation>
     </message>
     <message>
         <source>About</source>
@@ -1100,10 +814,6 @@ Untuk obrolan panjang, gunakan tab AI Chat.</translation>
         <source>Trademarks</source>
         <translation>Merek Dagang</translation>
     </message>
-    <message>
-        <source>Action Center</source>
-        <translation>Pusat Tindakan</translation>
-    </message>
 </context>
 <context>
     <name>openmarketterminal::MonitorMapWidget</name>
@@ -1142,8 +852,12 @@ Untuk obrolan panjang, gunakan tab AI Chat.</translation>
         <translation>Impor Tata Letak</translation>
     </message>
     <message>
-        <source>Open Terminal Layout (*.flayout *.fwsp);;All Files (*)</source>
-        <translation>Tata Letak Open Terminal (*.flayout *.fwsp);;Semua Berkas (*)</translation>
+        <source>OpenMarketTerminal Layout (*.flayout *.fwsp);;All Files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Layout (*.flayout)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Import Failed</source>
@@ -1156,10 +870,6 @@ Untuk obrolan panjang, gunakan tab AI Chat.</translation>
     <message>
         <source>Open or save a layout first, then export it.</source>
         <translation>Buka atau simpan tata letak dulu, lalu ekspor.</translation>
-    </message>
-    <message>
-        <source>Open Terminal Layout (*.flayout)</source>
-        <translation>Tata Letak Open Terminal (*.flayout)</translation>
     </message>
     <message>
         <source>Export Failed</source>
@@ -1175,646 +885,196 @@ Untuk obrolan panjang, gunakan tab AI Chat.</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::chat_mode::ChatAgentPanel</name>
+    <name>openmarketterminal::feeds::FeedConfigDialog</name>
     <message>
-        <source>Mem</source>
-        <translation>Mem</translation>
+        <source>Add Feed</source>
+        <translation type="unfinished">Tambah Umpan</translation>
     </message>
     <message>
-        <source>Sched</source>
-        <translation>Jadwal</translation>
+        <source>Edit Feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Tasks</source>
-        <translation>Tugas</translation>
+        <source> s</source>
+        <translation type="unfinished"> dtk</translation>
     </message>
     <message>
-        <source>MCP</source>
-        <translation>MCP</translation>
+        <source>Cards</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Monitor</source>
-        <translation>Monitor</translation>
+        <source>Table</source>
+        <translation type="unfinished">Tabel</translation>
     </message>
     <message>
-        <source>AGENT MEMORY</source>
-        <translation>MEMORI AGEN</translation>
+        <source>Auto</source>
+        <translation type="unfinished">Otomatis</translation>
     </message>
     <message>
-        <source>+ Add</source>
-        <translation>+ Tambah</translation>
+        <source>Manual</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Add memory entry</source>
-        <translation>Tambah entri memori</translation>
+        <source>Store history (offline cache + past items)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete</source>
-        <translation>Hapus</translation>
+        <source>Keep fetched items in the local database so they show when the feed is unreachable, and can be queried later.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete selected</source>
-        <translation>Hapus yang dipilih</translation>
+        <source>Name</source>
+        <translation type="unfinished">Nama</translation>
     </message>
     <message>
-        <source>Clear</source>
-        <translation>Hapus</translation>
-    </message>
-    <message>
-        <source>Clear all memory</source>
-        <translation>Hapus semua memori</translation>
-    </message>
-    <message>
-        <source>SCHEDULED QUERIES</source>
-        <translation>KUERI TERJADWAL</translation>
-    </message>
-    <message>
-        <source>Cron-based agent queries (e.g. daily 9 AM).</source>
-        <translation>Kueri agen berbasis Cron (mis. setiap hari pukul 9 pagi).</translation>
-    </message>
-    <message>
-        <source>Create schedule</source>
-        <translation>Buat jadwal</translation>
-    </message>
-    <message>
-        <source>Pause</source>
-        <translation>Jeda</translation>
-    </message>
-    <message>
-        <source>Pause/resume</source>
-        <translation>Jeda/lanjutkan</translation>
-    </message>
-    <message>
-        <source>BACKGROUND TASKS</source>
-        <translation>TUGAS LATAR BELAKANG</translation>
-    </message>
-    <message>
-        <source>Long-running agent queries.</source>
-        <translation>Kueri agen yang berjalan lama.</translation>
+        <source>URL</source>
+        <translation type="unfinished">URL</translation>
     </message>
     <message>
         <source>Refresh</source>
-        <translation>Segarkan</translation>
+        <translation type="unfinished">Segarkan</translation>
     </message>
     <message>
-        <source>Refresh task list</source>
-        <translation>Segarkan daftar tugas</translation>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Detail</source>
-        <translation>Detail</translation>
+        <source>Parse</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>View task result</source>
-        <translation>Lihat hasil tugas</translation>
+        <source>Format</source>
+        <translation type="unfinished">Format</translation>
     </message>
     <message>
-        <source>Feedback</source>
-        <translation>Umpan Balik</translation>
+        <source>Records</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Send feedback</source>
-        <translation>Kirim umpan balik</translation>
+        <source>The repeating tag/element that marks one entry (auto-filled by Discover).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel</source>
-        <translation>Batal</translation>
+        <source>🔍 Discover fields from feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel task</source>
-        <translation>Batalkan tugas</translation>
+        <source>Pick what each tag is, rename it, or remove it. Add your own with “+ Add field”.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>MCP SERVERS</source>
-        <translation>SERVER MCP</translation>
+        <source>+ Add field</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Model Context Protocol tool servers.</source>
-        <translation>Server alat Model Context Protocol.</translation>
-    </message>
-    <message>
-        <source>Add MCP server</source>
-        <translation>Tambah server MCP</translation>
-    </message>
-    <message>
-        <source>Remove selected</source>
-        <translation>Hapus yang dipilih</translation>
-    </message>
-    <message>
-        <source>Refresh all</source>
-        <translation>Segarkan semua</translation>
-    </message>
-    <message>
-        <source>DATA MONITORS</source>
-        <translation>MONITOR DATA</translation>
-    </message>
-    <message>
-        <source>Watch sources, trigger agent analysis.</source>
-        <translation>Pantau sumber, picu analisis agen.</translation>
-    </message>
-    <message>
-        <source>Create monitor</source>
-        <translation>Buat monitor</translation>
-    </message>
-    <message>
-        <source>Not available.</source>
-        <translation>Tidak tersedia.</translation>
-    </message>
-    <message>
-        <source>No entries yet.</source>
-        <translation>Belum ada entri.</translation>
-    </message>
-    <message>
-        <source>No schedules yet.</source>
-        <translation>Belum ada jadwal.</translation>
-    </message>
-    <message>
-        <source>%1 task(s)</source>
-        <translation>%1 tugas</translation>
-    </message>
-    <message>
-        <source>No tasks yet.</source>
-        <translation>Belum ada tugas.</translation>
-    </message>
-    <message>
-        <source>MCP not available.</source>
-        <translation>MCP tidak tersedia.</translation>
-    </message>
-    <message>
-        <source>%1 server(s) | %2 tools</source>
-        <translation>%1 server | %2 alat</translation>
-    </message>
-    <message>
-        <source>No servers connected.</source>
-        <translation>Tidak ada server yang terhubung.</translation>
-    </message>
-    <message>
-        <source>%1
-  %2 | %3 tools</source>
-        <translation>%1
-  %2 | %3 alat</translation>
-    </message>
-    <message>
-        <source>No monitors configured.</source>
-        <translation>Tidak ada monitor yang dikonfigurasi.</translation>
-    </message>
-    <message>
-        <source>Add Memory</source>
-        <translation>Tambah Memori</translation>
-    </message>
-    <message>
-        <source>Key:</source>
-        <translation>Kunci:</translation>
-    </message>
-    <message>
-        <source>Value for "%1":</source>
-        <translation>Nilai untuk "%1":</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Jenis</translation>
-    </message>
-    <message>
-        <source>Memory type:</source>
-        <translation>Jenis memori:</translation>
-    </message>
-    <message>
-        <source>Delete Memory</source>
-        <translation>Hapus Memori</translation>
-    </message>
-    <message>
-        <source>Delete "%1"?</source>
-        <translation>Hapus "%1"?</translation>
-    </message>
-    <message>
-        <source>Clear Memory</source>
-        <translation>Hapus Memori</translation>
-    </message>
-    <message>
-        <source>Delete ALL memory entries?</source>
-        <translation>Hapus SEMUA entri memori?</translation>
-    </message>
-    <message>
-        <source>New Schedule</source>
-        <translation>Jadwal Baru</translation>
-    </message>
-    <message>
-        <source>Query:</source>
-        <translation>Kueri:</translation>
-    </message>
-    <message>
-        <source>Cron (e.g. 0 9 * * 1-5):</source>
-        <translation>Cron (mis. 0 9 * * 1-5):</translation>
-    </message>
-    <message>
-        <source>Task</source>
-        <translation>Tugas</translation>
-    </message>
-    <message>
-        <source>Failed: %1</source>
-        <translation>Gagal: %1</translation>
-    </message>
-    <message>
-        <source>ID: %1
-Query: %2
-Status: %3
-Created: %4
-Started: %5
-Completed: %6
-
-Result:
-%7</source>
-        <translation>ID: %1
-Kueri: %2
-Status: %3
-Dibuat: %4
-Dimulai: %5
-Selesai: %6
-
-Hasil:
-%7</translation>
-    </message>
-    <message>
-        <source>(none)</source>
-        <translation>(tidak ada)</translation>
-    </message>
-    <message>
-        <source>Task Detail</source>
-        <translation>Detail Tugas</translation>
-    </message>
-    <message>
-        <source>Task Feedback</source>
-        <translation>Umpan Balik Tugas</translation>
-    </message>
-    <message>
-        <source>Feedback:</source>
-        <translation>Umpan balik:</translation>
-    </message>
-    <message>
-        <source>Sent.</source>
-        <translation>Terkirim.</translation>
-    </message>
-    <message>
-        <source>Add MCP Server</source>
-        <translation>Tambah Server MCP</translation>
-    </message>
-    <message>
-        <source>Name:</source>
-        <translation>Nama:</translation>
-    </message>
-    <message>
-        <source>Transport</source>
-        <translation>Transport</translation>
-    </message>
-    <message>
-        <source>Type:</source>
-        <translation>Jenis:</translation>
-    </message>
-    <message>
-        <source>Command</source>
-        <translation>Perintah</translation>
-    </message>
-    <message>
-        <source>Command (e.g. uvx, npx):</source>
-        <translation>Perintah (mis. uvx, npx):</translation>
-    </message>
-    <message>
-        <source>Arguments</source>
-        <translation>Argumen</translation>
-    </message>
-    <message>
-        <source>Args (space-separated):</source>
-        <translation>Args (dipisahkan spasi):</translation>
-    </message>
-    <message>
-        <source>SSE URL</source>
-        <translation>SSE URL</translation>
-    </message>
-    <message>
-        <source>URL:</source>
-        <translation>URL:</translation>
-    </message>
-    <message>
-        <source>MCP Server</source>
-        <translation>Server MCP</translation>
-    </message>
-    <message>
-        <source>'%1' added with errors.</source>
-        <translation>'%1' ditambahkan dengan kesalahan.</translation>
-    </message>
-    <message>
-        <source>Remove Server</source>
-        <translation>Hapus Server</translation>
-    </message>
-    <message>
-        <source>Remove "%1"?</source>
-        <translation>Hapus "%1"?</translation>
-    </message>
-    <message>
-        <source>New Monitor</source>
-        <translation>Monitor Baru</translation>
-    </message>
-    <message>
-        <source>Source</source>
-        <translation>Sumber</translation>
-    </message>
-    <message>
-        <source>Data source:</source>
-        <translation>Sumber data:</translation>
-    </message>
-    <message>
-        <source>Analysis</source>
-        <translation>Analisis</translation>
-    </message>
-    <message>
-        <source>What should the agent analyze?:</source>
-        <translation>Apa yang harus dianalisis agen?:</translation>
-    </message>
-    <message>
-        <source>Interval</source>
-        <translation>Interval</translation>
-    </message>
-    <message>
-        <source>Check interval (seconds):</source>
-        <translation>Interval pemeriksaan (detik):</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>Simbol</translation>
-    </message>
-    <message>
-        <source>Symbol:</source>
-        <translation>Simbol:</translation>
-    </message>
-    <message>
-        <source>Indicator</source>
-        <translation>Indikator</translation>
-    </message>
-    <message>
-        <source>Indicator:</source>
-        <translation>Indikator:</translation>
-    </message>
-    <message>
-        <source>Query</source>
-        <translation>Kueri</translation>
-    </message>
-    <message>
-        <source>News query:</source>
-        <translation>Kueri berita:</translation>
-    </message>
-    <message>
-        <source>Trigger</source>
-        <translation>Pemicu</translation>
-    </message>
-    <message>
-        <source>Condition:</source>
-        <translation>Kondisi:</translation>
-    </message>
-    <message>
-        <source>Delete Monitor</source>
-        <translation>Hapus Monitor</translation>
-    </message>
-    <message>
-        <source>Delete?</source>
-        <translation>Hapus?</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatMessagePanel</name>
-    <message>
-        <source>New Conversation</source>
-        <translation>Percakapan Baru</translation>
-    </message>
-    <message>
-        <source>Toggle Lite / Deep mode</source>
-        <translation>Alihkan mode Lite / Deep</translation>
-    </message>
-    <message>
-        <source>%1 tokens</source>
-        <translation>%1 token</translation>
-    </message>
-    <message>
-        <source>OPENMARKETTERMINAL AGENT</source>
-        <translation>OPENMARKETTERMINAL AGENT</translation>
-    </message>
-    <message>
-        <source>AI-powered financial intelligence.
-Markets, equities, portfolio, macro insights.</source>
-        <translation>Intelijen finansial bertenaga AI.
-Pasar, ekuitas, portofolio, wawasan makro.</translation>
-    </message>
-    <message>
-        <source>Outlook for AAPL?</source>
-        <translation>Prospek untuk AAPL?</translation>
-    </message>
-    <message>
-        <source>Today's market news</source>
-        <translation>Berita pasar hari ini</translation>
-    </message>
-    <message>
-        <source>Portfolio risk analysis</source>
-        <translation>Analisis risiko portofolio</translation>
-    </message>
-    <message>
-        <source>Key indicators this week</source>
-        <translation>Indikator utama minggu ini</translation>
-    </message>
-    <message>
-        <source>Agent</source>
-        <translation>Agen</translation>
-    </message>
-    <message>
-        <source>Ask anything... (Enter to send, Shift+Enter for new line)</source>
-        <translation>Tanyakan apa saja... (Enter untuk kirim, Shift+Enter untuk baris baru)</translation>
-    </message>
-    <message>
-        <source>Optimize</source>
-        <translation>Optimalkan</translation>
-    </message>
-    <message>
-        <source>Optimize prompt with AI</source>
-        <translation>Optimalkan prompt dengan AI</translation>
-    </message>
-    <message>
-        <source>Stop</source>
-        <translation>Hentikan</translation>
-    </message>
-    <message>
-        <source>Send</source>
-        <translation>Kirim</translation>
-    </message>
-    <message>
-        <source>You</source>
-        <translation>Anda</translation>
-    </message>
-    <message>
-        <source>&gt; %1 thinking steps | tools: %2</source>
-        <translation>&gt; %1 langkah berpikir | alat: %2</translation>
-    </message>
-    <message>
-        <source>&gt; %1 thinking steps</source>
-        <translation>&gt; %1 langkah berpikir</translation>
-    </message>
-    <message>
-        <source>used %1</source>
-        <translation>memakai %1</translation>
-    </message>
-    <message>
-        <source>step %1</source>
-        <translation>langkah %1</translation>
-    </message>
-    <message>
-        <source>thinking...</source>
-        <translation>berpikir...</translation>
-    </message>
-    <message>
-        <source>Insufficient credits. Top up to continue.</source>
-        <translation>Kredit tidak cukup. Isi ulang untuk melanjutkan.</translation>
-    </message>
-    <message>
-        <source>%1 tools</source>
-        <translation>%1 alat</translation>
-    </message>
-    <message>
-        <source>%1 credits</source>
-        <translation>%1 kredit</translation>
-    </message>
-    <message>
-        <source>0 credits</source>
-        <translation>0 kredit</translation>
-    </message>
-    <message>
-        <source>Optimize failed: %1</source>
-        <translation>Optimasi gagal: %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatModeScreen</name>
-    <message>
-        <source>New Conversation</source>
-        <translation>Percakapan Baru</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatModeService</name>
-    <message>
-        <source>Insufficient credits</source>
-        <translation>Kredit tidak cukup</translation>
-    </message>
-    <message>
-        <source>Optimize prompt request failed</source>
-        <translation>Permintaan optimasi prompt gagal</translation>
-    </message>
-    <message>
-        <source>JSON parse error</source>
-        <translation>Kesalahan penguraian JSON</translation>
-    </message>
-    <message>
-        <source>Agent chat request failed</source>
-        <translation>Permintaan obrolan agen gagal</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatSessionPanel</name>
-    <message>
-        <source>CONVERSATIONS</source>
-        <translation>PERCAKAPAN</translation>
-    </message>
-    <message>
-        <source>TERMINAL</source>
-        <translation>TERMINAL</translation>
-    </message>
-    <message>
-        <source>Switch to Terminal Mode (F9)</source>
-        <translation>Beralih ke Mode Terminal (F9)</translation>
-    </message>
-    <message>
-        <source>Search...</source>
-        <translation>Cari...</translation>
-    </message>
-    <message>
-        <source>+ New</source>
-        <translation>+ Baru</translation>
-    </message>
-    <message>
-        <source>New conversation</source>
-        <translation>Percakapan baru</translation>
-    </message>
-    <message>
-        <source>Rename</source>
-        <translation>Ganti nama</translation>
-    </message>
-    <message>
-        <source>Rename selected</source>
-        <translation>Ganti nama yang dipilih</translation>
+        <source>Test / Preview</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Delete</source>
-        <translation>Hapus</translation>
+        <translation type="unfinished">Hapus</translation>
     </message>
     <message>
-        <source>Delete selected</source>
-        <translation>Hapus yang dipilih</translation>
+        <source>Delete feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export</source>
-        <translation>Ekspor</translation>
+        <source>Delete this feed and its stored history? This cannot be undone.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export conversations</source>
-        <translation>Ekspor percakapan</translation>
+        <source>Column</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>(Untitled)</source>
-        <translation>(Tanpa judul)</translation>
+        <source>Title</source>
+        <translation type="unfinished">Judul</translation>
     </message>
     <message>
-        <source>%1 msg</source>
-        <translation>%1 pesan</translation>
+        <source>Summary</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 sessions | %2 messages</source>
-        <translation>%1 sesi | %2 pesan</translation>
+        <source>Link</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete Conversation</source>
-        <translation>Hapus Percakapan</translation>
+        <source>Time</source>
+        <translation type="unfinished">Waktu</translation>
     </message>
     <message>
-        <source>Delete "%1"?</source>
-        <translation>Hapus "%1"?</translation>
+        <source>Title/Summary/Link/Time feed the card view; Column shows only in the table.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Rename Conversation</source>
-        <translation>Ganti Nama Percakapan</translation>
+        <source>Display name</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>New title:</source>
-        <translation>Judul baru:</translation>
+        <source>Which feed tag to read this from.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No conversations to export.</source>
-        <translation>Tidak ada percakapan untuk diekspor.</translation>
+        <source>Remove</source>
+        <translation type="unfinished">Hapus</translation>
     </message>
     <message>
-        <source>Export Conversations</source>
-        <translation>Ekspor Percakapan</translation>
+        <source>Discovering…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>JSON (*.json)</source>
-        <translation>JSON (*.json)</translation>
+        <source>e.g. %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export Failed</source>
-        <translation>Ekspor Gagal</translation>
+        <source>Testing…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedPanel</name>
+    <message>
+        <source>FEEDS</source>
+        <translation type="unfinished">UMPAN</translation>
     </message>
     <message>
-        <source>Could not write file.</source>
-        <translation>Tidak dapat menulis file.</translation>
+        <source>+ Add Feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exported %1 conversations.</source>
-        <translation>%1 percakapan diekspor.</translation>
+        <source>No feeds configured.
+Click “+ Add Feed”.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedTableView</name>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">Waktu</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation type="unfinished">Judul</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedView</name>
+    <message>
+        <source>Refresh now</source>
+        <translation type="unfinished">Segarkan sekarang</translation>
+    </message>
+    <message>
+        <source>Pop out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock back into panel</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1935,16 +1195,8 @@ Pasar, ekuitas, portofolio, wawasan makro.</translation>
         <translation>Modul</translation>
     </message>
     <message>
-        <source>ML Models</source>
-        <translation>Model ML</translation>
-    </message>
-    <message>
         <source>RL Algorithms</source>
         <translation>Algoritma RL</translation>
-    </message>
-    <message>
-        <source>Python Scripts</source>
-        <translation>Skrip Python</translation>
     </message>
     <message>
         <source>ENGINE:</source>
@@ -1966,24 +1218,44 @@ Pasar, ekuitas, portofolio, wawasan makro.</translation>
         <translation>TERMINAL INTELIJEN KEUANGAN DESKTOP NATIVE</translation>
     </message>
     <message>
-        <source>Check for Updates</source>
-        <translation>Periksa Pembaruan</translation>
-    </message>
-    <message>
-        <source>Checking…</source>
-        <translation>Memeriksa…</translation>
-    </message>
-    <message>
-        <source>© 2024-2026 Open Terminal contributors. All rights reserved.</source>
-        <translation>© 2024-2026 Open Terminal contributors. Hak cipta dilindungi.</translation>
-    </message>
-    <message>
         <source>OPEN SOURCE LICENSE</source>
         <translation>LISENSI SUMBER TERBUKA</translation>
     </message>
     <message>
-        <source>Custom integration options available</source>
-        <translation>Tersedia opsi integrasi khusus</translation>
+        <source>© 2026 Open Terminal contributors. MIT License.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free for personal, educational, and commercial use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fork, modify, redistribute, and package your own builds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep copyright and license notices with redistributed copies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPEN SOURCE RIGHTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No separate commercial license required</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Private customizations are allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contributions are welcome, not mandatory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You control your local data and configuration</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DIAGNOSTICS</source>
@@ -2002,8 +1274,32 @@ Pasar, ekuitas, portofolio, wawasan makro.</translation>
         <translation>MEREK DAGANG</translation>
     </message>
     <message>
-        <source>"OpenMarket", "Open Terminal", and associated logos are trademarks of Open Terminal contributors. Use of these marks requires explicit written permission.</source>
-        <translation>"OpenMarket", "Open Terminal", dan logo terkait adalah merek dagang Open Terminal contributors. Penggunaan merek ini memerlukan izin tertulis yang tegas.</translation>
+        <source>&quot;Open Terminal&quot; and associated community-created logos identify this open-source project and its contributors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Documentation</source>
+        <translation type="unfinished">Dokumentasi</translation>
+    </message>
+    <message>
+        <source>Issue Tracker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release Notes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source Code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PROJECT</source>
+        <translation type="unfinished">DUKUNGAN UMUM</translation>
+    </message>
+    <message>
+        <source>LICENSE</source>
+        <translation type="unfinished">LISENSI</translation>
     </message>
     <message>
         <source>Permission is granted to use the Open Terminal name and logos to identify, discuss, fork, package, and redistribute this open-source project, provided the use is truthful and does not misrepresent affiliation or endorsement.</source>
@@ -2022,16 +1318,8 @@ Pasar, ekuitas, portofolio, wawasan makro.</translation>
         <translation>Lisensi (MIT)</translation>
     </message>
     <message>
-        <source>Open Source Rights</source>
-        <translation>Open Source Rights</translation>
-    </message>
-    <message>
         <source>CONTACT</source>
         <translation>KONTAK</translation>
-    </message>
-    <message>
-        <source>GENERAL</source>
-        <translation>UMUM</translation>
     </message>
     <message>
         <source>ISSUES</source>
@@ -2040,224 +1328,6 @@ Pasar, ekuitas, portofolio, wawasan makro.</translation>
     <message>
         <source>SECURITY</source>
         <translation>KEAMANAN</translation>
-    </message>
-    <message>
-        <source>LEGAL</source>
-        <translation>HUKUM</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ActionCenterScreen</name>
-    <message>
-        <source>ACTION CENTER</source>
-        <translation>PUSAT TINDAKAN</translation>
-    </message>
-    <message>
-        <source>Account:</source>
-        <translation>Akun:</translation>
-    </message>
-    <message>
-        <source>Show:</source>
-        <translation>Tampilkan:</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>Tertunda</translation>
-    </message>
-    <message>
-        <source>Approved</source>
-        <translation>Disetujui</translation>
-    </message>
-    <message>
-        <source>Rejected</source>
-        <translation>Ditolak</translation>
-    </message>
-    <message>
-        <source>All</source>
-        <translation>Semua</translation>
-    </message>
-    <message>
-        <source>Mode:</source>
-        <translation>Mode:</translation>
-    </message>
-    <message>
-        <source>Auto</source>
-        <translation>Otomatis</translation>
-    </message>
-    <message>
-        <source>Semi-Auto</source>
-        <translation>Semi-Otomatis</translation>
-    </message>
-    <message>
-        <source>PENDING</source>
-        <translation>TERTUNDA</translation>
-    </message>
-    <message>
-        <source>APPROVED</source>
-        <translation>DISETUJUI</translation>
-    </message>
-    <message>
-        <source>REJECTED</source>
-        <translation>DITOLAK</translation>
-    </message>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>APPROVE ALL</source>
-        <translation>SETUJUI SEMUA</translation>
-    </message>
-    <message>
-        <source>REJECT ALL</source>
-        <translation>TOLAK SEMUA</translation>
-    </message>
-    <message>
-        <source>Time</source>
-        <translation>Waktu</translation>
-    </message>
-    <message>
-        <source>Account</source>
-        <translation>Akun</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Jenis</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>Simbol</translation>
-    </message>
-    <message>
-        <source>Side</source>
-        <translation>Sisi</translation>
-    </message>
-    <message>
-        <source>Qty</source>
-        <translation>Qty</translation>
-    </message>
-    <message>
-        <source>Price Type</source>
-        <translation>Jenis Harga</translation>
-    </message>
-    <message>
-        <source>Status</source>
-        <translation>Status</translation>
-    </message>
-    <message>
-        <source>Actions</source>
-        <translation>Tindakan</translation>
-    </message>
-    <message>
-        <source>Approve All</source>
-        <translation>Setujui Semua</translation>
-    </message>
-    <message>
-        <source>Execute ALL pending orders now?</source>
-        <translation>Eksekusi SEMUA order tertunda sekarang?</translation>
-    </message>
-    <message>
-        <source>Reject All</source>
-        <translation>Tolak Semua</translation>
-    </message>
-    <message>
-        <source>Select a specific account to reject all its pending orders.</source>
-        <translation>Pilih akun tertentu untuk menolak semua order tertundanya.</translation>
-    </message>
-    <message>
-        <source>Rejection reason:</source>
-        <translation>Alasan penolakan:</translation>
-    </message>
-    <message>
-        <source>Rejected by user</source>
-        <translation>Ditolak oleh pengguna</translation>
-    </message>
-    <message>
-        <source>All Accounts</source>
-        <translation>Semua Akun</translation>
-    </message>
-    <message>
-        <source>Approve</source>
-        <translation>Setujui</translation>
-    </message>
-    <message>
-        <source>Reject</source>
-        <translation>Tolak</translation>
-    </message>
-    <message>
-        <source>Reject Order</source>
-        <translation>Tolak Order</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ActivityTab</name>
-    <message>
-        <source>ALL</source>
-        <translation>SEMUA</translation>
-    </message>
-    <message>
-        <source>SWAP</source>
-        <translation>SWAP</translation>
-    </message>
-    <message>
-        <source>SEND</source>
-        <translation>KIRIM</translation>
-    </message>
-    <message>
-        <source>RECEIVE</source>
-        <translation>TERIMA</translation>
-    </message>
-    <message>
-        <source>OTHER</source>
-        <translation>LAINNYA</translation>
-    </message>
-    <message>
-        <source>No transactions yet.</source>
-        <translation>Belum ada transaksi.</translation>
-    </message>
-    <message>
-        <source>Activity fetch failed: %1</source>
-        <translation>Gagal mengambil aktivitas: %1</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to view activity.</source>
-        <translation>Hubungkan dompet untuk melihat aktivitas.</translation>
-    </message>
-    <message>
-        <source>%1 of %2 events</source>
-        <translation>%1 dari %2 peristiwa</translation>
-    </message>
-    <message>
-        <source>  ·  Add a Helius API key in Settings for parsed swap and transfer details.</source>
-        <translation>  ·  Tambahkan API key Helius di Pengaturan untuk detail swap dan transfer yang terurai.</translation>
-    </message>
-    <message>
-        <source>TIMESTAMP</source>
-        <translation>STEMPEL WAKTU</translation>
-    </message>
-    <message>
-        <source>EVENT</source>
-        <translation>PERISTIWA</translation>
-    </message>
-    <message>
-        <source>ASSET</source>
-        <translation>ASET</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>JUMLAH</translation>
-    </message>
-    <message>
-        <source>STATUS</source>
-        <translation>STATUS</translation>
-    </message>
-    <message>
-        <source>SIGNATURE</source>
-        <translation>TANDA TANGAN</translation>
     </message>
 </context>
 <context>
@@ -2587,16 +1657,16 @@ Pilih agen di atas, atau gunakan Rute Otomatis agar sistem yang memutuskan.</tra
         <translation>Rute otomatis gagal — menggunakan agen default.</translation>
     </message>
     <message>
-        <source>Analyze my portfolio '%1' — give key metrics and recommendations.</source>
-        <translation>Analisis portofolio saya '%1' — berikan metrik utama dan rekomendasi.</translation>
+        <source>Analyze my portfolio &apos;%1&apos; — give key metrics and recommendations.</source>
+        <translation>Analisis portofolio saya &apos;%1&apos; — berikan metrik utama dan rekomendasi.</translation>
     </message>
     <message>
-        <source>Suggest rebalancing for portfolio '%1' to optimize risk-return.</source>
-        <translation>Sarankan penyeimbangan ulang untuk portofolio '%1' guna mengoptimalkan risiko-imbal hasil.</translation>
+        <source>Suggest rebalancing for portfolio &apos;%1&apos; to optimize risk-return.</source>
+        <translation>Sarankan penyeimbangan ulang untuk portofolio &apos;%1&apos; guna mengoptimalkan risiko-imbal hasil.</translation>
     </message>
     <message>
-        <source>Perform risk analysis on portfolio '%1' — VaR, drawdown, stress test.</source>
-        <translation>Lakukan analisis risiko pada portofolio '%1' — VaR, drawdown, uji tekanan.</translation>
+        <source>Perform risk analysis on portfolio &apos;%1&apos; — VaR, drawdown, stress test.</source>
+        <translation>Lakukan analisis risiko pada portofolio &apos;%1&apos; — VaR, drawdown, uji tekanan.</translation>
     </message>
     <message>
         <source>No LLM configured</source>
@@ -3107,8 +2177,8 @@ Pilih agen di atas, atau gunakan Rute Otomatis agar sistem yang memutuskan.</tra
         <translation>Model aktif — ubah di Pengaturan &gt; Konfigurasi LLM</translation>
     </message>
     <message>
-        <source>Message Open Terminal AI...</source>
-        <translation>Kirim pesan ke Open Terminal AI...</translation>
+        <source>Message OpenMarketTerminal AI...</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Attach a file to this message</source>
@@ -3125,6 +2195,14 @@ Pilih agen di atas, atau gunakan Rute Otomatis agar sistem yang memutuskan.</tra
     <message>
         <source>No model</source>
         <translation>Tidak ada model</translation>
+    </message>
+    <message>
+        <source>⚙  Configure LLM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add an API provider (OpenAI, Anthropic, …) or pick a model</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>New Conversation</source>
@@ -3149,7 +2227,7 @@ Percakapan disimpan otomatis.</translation>
         <translation>Pasar</translation>
     </message>
     <message>
-        <source>Show me today's top market movers</source>
+        <source>Show me today&apos;s top market movers</source>
         <translation>Tampilkan penggerak pasar teratas hari ini</translation>
     </message>
     <message>
@@ -3209,8 +2287,8 @@ Percakapan disimpan otomatis.</translation>
         <translation>Lampirkan File ke Pesan</translation>
     </message>
     <message>
-        <source>All Files (*);;Text Files (*.txt *.md *.csv *.json);;Notebooks (*.ipynb);;PDF (*.pdf)</source>
-        <translation>Semua File (*);;File Teks (*.txt *.md *.csv *.json);;Notebook (*.ipynb);;PDF (*.pdf)</translation>
+        <source>Text Files (*.txt *.md *.csv *.json *.py *.log *.yaml *.yml);;All Files (*)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>AI is thinking·</source>
@@ -3253,6 +2331,14 @@ Percakapan disimpan otomatis.</translation>
         <translation>(respons kosong — model tidak mengembalikan konten)</translation>
     </message>
     <message>
+        <source>Thinking…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Thoughts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Send</source>
         <translation>Kirim</translation>
     </message>
@@ -3269,24 +2355,22 @@ Percakapan disimpan otomatis.</translation>
         <translation>%1k token</translation>
     </message>
     <message>
-        <source>Open Terminal LLM</source>
-        <translation>Open Terminal LLM</translation>
+        <source>Local LLM</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Managed by Open Terminal</source>
-        <translation>Dikelola oleh Open Terminal</translation>
+        <source>Local model</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal LLM — managed AI service</source>
-        <translation>Open Terminal LLM — layanan AI terkelola</translation>
+        <source>Local LLM (Ollama) — runs on your machine</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal managed AI service
+        <source>Local LLM (Ollama) — runs on your machine
 
 Change in Settings &gt; LLM Configuration</source>
-        <translation>Layanan AI terkelola Open Terminal
-
-Ubah di Pengaturan &gt; Konfigurasi LLM</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Provider: %1
@@ -3452,6 +2536,161 @@ untuk memuat endpoint yang tersedia</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::AlertsPanel</name>
+    <message>
+        <source>ALERT CONDITIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYMBOLS &amp; FEED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIMEFRAME</source>
+        <translation type="unfinished">RENTANG WAKTU</translation>
+    </message>
+    <message>
+        <source>DATA SOURCE</source>
+        <translation type="unfinished">SUMBER DATA</translation>
+    </message>
+    <message>
+        <source>Broker Only</source>
+        <translation type="unfinished">Hanya Broker</translation>
+    </message>
+    <message>
+        <source>Auto (Broker → YFinance)</source>
+        <translation type="unfinished">Otomatis (Broker → YFinance)</translation>
+    </message>
+    <message>
+        <source>YFinance Only</source>
+        <translation type="unfinished">Hanya YFinance</translation>
+    </message>
+    <message>
+        <source>BROKER ACCOUNT</source>
+        <translation type="unfinished">AKUN BROKER</translation>
+    </message>
+    <message>
+        <source>None (use YFinance fallback)</source>
+        <translation type="unfinished">Tidak ada (gunakan cadangan YFinance)</translation>
+    </message>
+    <message>
+        <source>POLL INTERVAL (SEC)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOLDOWN (MIN)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send to external providers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WATCH NAME</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>My Volume Watch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SAVE WATCH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE WATCHES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NAME</source>
+        <translation type="unfinished">NAMA</translation>
+    </message>
+    <message>
+        <source>SYMBOLS</source>
+        <translation type="unfinished">SIMBOL</translation>
+    </message>
+    <message>
+        <source>STATUS</source>
+        <translation type="unfinished">STATUS</translation>
+    </message>
+    <message>
+        <source>ACTIVE</source>
+        <translation type="unfinished">AKTIF</translation>
+    </message>
+    <message>
+        <source>ACTIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ALERT HISTORY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIME</source>
+        <translation type="unfinished">WAKTU</translation>
+    </message>
+    <message>
+        <source>SYMBOL</source>
+        <translation type="unfinished">SIMBOL</translation>
+    </message>
+    <message>
+        <source>DETAIL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add at least one condition before saving a watch.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter at least one symbol.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch &apos;%1&apos; updated and re-watching.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch &apos;%1&apos; saved and monitoring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UPDATE WATCH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Editing &apos;%1&apos; — change conditions/symbols and press UPDATE WATCH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished">Edit</translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished">Uji</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished">Hapus</translation>
+    </message>
+    <message>
+        <source>Pre-filled from Scanner — name it and SAVE WATCH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::AlgoDeployDialog</name>
     <message>
         <source>Deploy Strategy</source>
@@ -3530,6 +2769,14 @@ untuk memuat endpoint yang tersedia</translation>
         <translation>TERAPKAN</translation>
     </message>
     <message>
+        <source>Broker (orders + data):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broker (data source):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No connected accounts</source>
         <translation>Tidak ada akun terhubung</translation>
     </message>
@@ -3579,6 +2826,14 @@ untuk memuat endpoint yang tersedia</translation>
     <message>
         <source>DASHBOARD</source>
         <translation>DASBOR</translation>
+    </message>
+    <message>
+        <source>ALERTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UNIVERSE</source>
+        <translation type="unfinished">UNIVERSE</translation>
     </message>
     <message>
         <source>ENGINE:</source>
@@ -3804,6 +3059,10 @@ sektor</translation>
         <translation>ANTARMUKA</translation>
     </message>
     <message>
+        <source>Live price ticker on the dashboard.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Save Settings</source>
         <translation>Simpan Pengaturan</translation>
     </message>
@@ -3834,22 +3093,6 @@ sektor</translation>
     <message>
         <source>Ticker Bar</source>
         <translation>Bilah Ticker</translation>
-    </message>
-    <message>
-        <source>Live price ticker at the bottom of the screen.</source>
-        <translation>Ticker harga langsung di bagian bawah layar.</translation>
-    </message>
-    <message>
-        <source>Enable Animations</source>
-        <translation>Aktifkan Animasi</translation>
-    </message>
-    <message>
-        <source>Animations</source>
-        <translation>Animasi</translation>
-    </message>
-    <message>
-        <source>Fade and transition effects throughout the UI.</source>
-        <translation>Efek pudar dan transisi di seluruh UI.</translation>
     </message>
 </context>
 <context>
@@ -3988,12 +3231,9 @@ sektor</translation>
     <message>
         <source>Select a provider, command, and strategy, then click RUN to execute.
 
-Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, Open Terminal
+Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, OpenMarketTerminal
 Commands: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Returns</source>
-        <translation>Pilih penyedia, perintah, dan strategi, lalu klik RUN untuk mengeksekusi.
-
-Penyedia yang didukung: VectorBT, Backtesting.py, FastTrade, Zipline, BT, Open Terminal
-Perintah: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Returns</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Run a backtest to see the equity curve.</source>
@@ -4372,8 +3612,8 @@ Perintah: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Re
         <translation>Memuat...</translation>
     </message>
     <message>
-        <source>Command '%1' is not supported by provider '%2'</source>
-        <translation>Perintah '%1' tidak didukung oleh penyedia '%2'</translation>
+        <source>Command &apos;%1&apos; is not supported by provider &apos;%2&apos;</source>
+        <translation>Perintah &apos;%1&apos; tidak didukung oleh penyedia &apos;%2&apos;</translation>
     </message>
     <message>
         <source>Please enter at least one symbol (e.g. SPY, AAPL)</source>
@@ -4758,16 +3998,16 @@ Data CFTC gratis — tidak perlu API key</translation>
         <translation>Net: —</translation>
     </message>
     <message>
-        <source>ISSUES TRADERS</source>
-        <translation>TRADER KOMERSIAL</translation>
-    </message>
-    <message>
         <source>Hedgers &amp; producers — usually contrarian signal</source>
         <translation>Hedger &amp; produsen — biasanya sinyal kontrarian</translation>
     </message>
     <message>
-        <source>NON-ISSUES (SPECULATORS)</source>
-        <translation>NON-KOMERSIAL (SPEKULATOR)</translation>
+        <source>COMMERCIAL TRADERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NON-COMMERCIAL (SPECULATORS)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Managed money &amp; funds — trend-following signal</source>
@@ -4831,69 +4071,26 @@ Data CFTC gratis — tidak perlu API key</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::CloudSyncSection</name>
-    <message>
-        <source>Open Terminal Cloud Sync</source>
-        <translation>Open Terminal Cloud Sync</translation>
-    </message>
-    <message>
-        <source>Mirror your data to your Open Terminal account. Your local copy stays the working copy — sync runs in the background, on this device and across your devices.</source>
-        <translation>Cerminkan data Anda ke akun Open Terminal. Salinan lokal tetap menjadi salinan kerja — sinkronisasi berjalan di latar belakang, pada perangkat ini dan di seluruh perangkat Anda.</translation>
-    </message>
-    <message>
-        <source>Out of credits — top up to resume cloud sync.</source>
-        <translation>Kredit habis — isi ulang untuk melanjutkan cloud sync.</translation>
-    </message>
-    <message>
-        <source>Enable cloud sync</source>
-        <translation>Aktifkan cloud sync</translation>
-    </message>
-    <message>
-        <source>Cloud Sync</source>
-        <translation>Cloud Sync</translation>
-    </message>
-    <message>
-        <source>When on, changes mirror to your account and pull on this device.</source>
-        <translation>Saat aktif, perubahan dicerminkan ke akun Anda dan ditarik ke perangkat ini.</translation>
-    </message>
-    <message>
-        <source>Sign in to enable cloud sync.</source>
-        <translation>Masuk untuk mengaktifkan cloud sync.</translation>
-    </message>
-    <message>
-        <source>ADVANCED — DOMAINS</source>
-        <translation>LANJUTAN — DOMAIN</translation>
-    </message>
-    <message>
-        <source>Sync this domain</source>
-        <translation>Sinkronkan domain ini</translation>
-    </message>
-    <message>
-        <source>Refresh now</source>
-        <translation>Segarkan sekarang</translation>
-    </message>
-    <message>
-        <source>You have local data and existing cloud data for "%1".</source>
-        <translation>Anda memiliki data lokal dan data cloud yang ada untuk "%1".</translation>
-    </message>
-    <message>
-        <source>Upload &amp; merge keeps your local items (recommended). Use cloud replaces this device's copy with your cloud account — a local backup is saved first.</source>
-        <translation>Unggah &amp; gabungkan mempertahankan item lokal Anda (disarankan). Gunakan cloud mengganti salinan perangkat ini dengan akun cloud Anda — cadangan lokal disimpan terlebih dahulu.</translation>
-    </message>
-    <message>
-        <source>Upload &amp;&amp; merge</source>
-        <translation>Unggah &amp;&amp; gabungkan</translation>
-    </message>
-    <message>
-        <source>Use cloud</source>
-        <translation>Gunakan cloud</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::CodeEditorScreen</name>
     <message>
-        <source>PYTHON NOTEBOOK</source>
-        <translation>PYTHON NOTEBOOK</translation>
+        <source>OPENMARKETTERMINAL NOTEBOOK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIBRARY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EDITOR</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search notebooks...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>＋  NEW NOTEBOOK</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>NEW</source>
@@ -4916,20 +4113,44 @@ Data CFTC gratis — tidak perlu API key</translation>
         <translation>HAPUS OUTPUT</translation>
     </message>
     <message>
-        <source>RUN ALL</source>
-        <translation>JALANKAN SEMUA</translation>
+        <source>▶  RUN ALL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RESTART KERNEL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KERNEL: READY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Python</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation type="unfinished">Kesalahan</translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Notebooks (*.ipynb);;All Files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Notebooks (*.ipynb)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KERNEL: RUNNING…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPENMARKETTERMINAL NOTEBOOK LIBRARY — curated finance, economics, trading, investing, portfolio &amp; quant notebooks</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SIDEBAR</source>
         <translation>BILAH SISI</translation>
-    </message>
-    <message>
-        <source>KERNEL: IDLE</source>
-        <translation>KERNEL: IDLE</translation>
-    </message>
-    <message>
-        <source>Python 3.11</source>
-        <translation>Python 3.11</translation>
     </message>
     <message>
         <source>READY</source>
@@ -4952,32 +4173,68 @@ Data CFTC gratis — tidak perlu API key</translation>
         <translation>Nama sel:</translation>
     </message>
     <message>
-        <source>Process exited with code %1</source>
-        <translation>Proses keluar dengan kode %1</translation>
-    </message>
-    <message>
         <source>Open Notebook</source>
         <translation>Buka Notebook</translation>
-    </message>
-    <message>
-        <source>Jupyter Notebooks (*.ipynb);;All Files (*)</source>
-        <translation>Jupyter Notebooks (*.ipynb);;Semua File (*)</translation>
     </message>
     <message>
         <source>Save Notebook</source>
         <translation>Simpan Notebook</translation>
     </message>
     <message>
-        <source>Jupyter Notebooks (*.ipynb)</source>
-        <translation>Jupyter Notebooks (*.ipynb)</translation>
-    </message>
-    <message>
         <source>CELLS: %1 CODE  %2 MD  |  EXECUTED: %3</source>
         <translation>SEL: %1 KODE  %2 MD  |  DIJALANKAN: %3</translation>
     </message>
     <message>
-        <source>KERNEL: BUSY</source>
-        <translation>KERNEL: SIBUK</translation>
+        <source>All</source>
+        <translation type="unfinished">Semua</translation>
+    </message>
+    <message>
+        <source>Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Economics</source>
+        <translation type="unfinished">Ekonomi</translation>
+    </message>
+    <message>
+        <source>Trading</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Investing</source>
+        <translation type="unfinished">Investasi</translation>
+    </message>
+    <message>
+        <source>Portfolio</source>
+        <translation type="unfinished">Portofolio</translation>
+    </message>
+    <message>
+        <source>Quant</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beginner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Intermediate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notebook library not found. Rebuild the app to bundle the notebooks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No notebooks match your filters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 notebooks  ·  %2 beginner · %3 intermediate · %4 hard</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -4991,13 +4248,6 @@ Data CFTC gratis — tidak perlu API key</translation>
 It will be available in a future update.</source>
         <translation>Modul ini sedang dalam pengembangan aktif.
 Akan tersedia pada pembaruan mendatang.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ComingSoonTab</name>
-    <message>
-        <source>STATUS  ·  COMING SOON</source>
-        <translation>STATUS  ·  SEGERA HADIR</translation>
     </message>
 </context>
 <context>
@@ -5134,9 +4384,9 @@ Akan tersedia pada pembaruan mendatang.</translation>
         <translation>⚠  HAPUS PORTOFOLIO</translation>
     </message>
     <message>
-        <source>Are you sure you want to delete "%1"?
+        <source>Are you sure you want to delete &quot;%1&quot;?
 This will remove all holdings and transactions.</source>
-        <translation>Yakin ingin menghapus "%1"?
+        <translation>Yakin ingin menghapus &quot;%1&quot;?
 Ini akan menghapus semua kepemilikan dan transaksi.</translation>
     </message>
     <message>
@@ -5150,6 +4400,14 @@ Ini akan menghapus semua kepemilikan dan transaksi.</translation>
 </context>
 <context>
     <name>openmarketterminal::screens::ConflictMonitorPanel</name>
+    <message>
+        <source>CONFLICT MAP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BASEMAP</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Category</source>
         <translation>Kategori</translation>
@@ -5264,60 +4522,24 @@ Ini akan menghapus semua kepemilikan dan transaksi.</translation>
         <translation>Hubungi tim kami</translation>
     </message>
     <message>
-        <source>CONTACT INFORMATION</source>
-        <translation>INFORMASI KONTAK</translation>
-    </message>
-    <message>
         <source>REPOSITORY</source>
         <translation>DUKUNGAN EMAIL</translation>
-    </message>
-    <message>
-        <source>Response within 4-6 hours</source>
-        <translation>Respons dalam 4-6 jam</translation>
     </message>
     <message>
         <source>ISSUE TRACKER</source>
         <translation>DUKUNGAN TELEPON</translation>
     </message>
     <message>
-        <source>Mon-Fri, 9AM-6PM EST</source>
-        <translation>Sen-Jum, 09.00-18.00 EST</translation>
-    </message>
-    <message>
         <source>SECURITY</source>
         <translation>JAM DUKUNGAN</translation>
-    </message>
-    <message>
-        <source>Mon-Fri 9AM-6PM EST</source>
-        <translation>Sen-Jum 09.00-18.00 EST</translation>
-    </message>
-    <message>
-        <source>Saturday 10AM-4PM EST</source>
-        <translation>Sabtu 10.00-16.00 EST</translation>
-    </message>
-    <message>
-        <source>OFFICE</source>
-        <translation>KANTOR</translation>
-    </message>
-    <message>
-        <source>New York, United States</source>
-        <translation>New York, Amerika Serikat</translation>
     </message>
     <message>
         <source>QUICK ACTIONS</source>
         <translation>TINDAKAN CEPAT</translation>
     </message>
     <message>
-        <source>Send Email</source>
-        <translation>Kirim Email</translation>
-    </message>
-    <message>
         <source>View Source</source>
         <translation>Gabung Discord</translation>
-    </message>
-    <message>
-        <source>GitHub Issues</source>
-        <translation>GitHub Issues</translation>
     </message>
     <message>
         <source>COMMON ISSUES</source>
@@ -5328,8 +4550,36 @@ Ini akan menghapus semua kepemilikan dan transaksi.</translation>
         <translation>Tidak bisa masuk atau lupa kata sandi</translation>
     </message>
     <message>
-        <source>Use the Forgot Password option on the login screen, or contact github.com/your-org/open-terminal/issues</source>
-        <translation>Gunakan opsi Lupa Kata Sandi di layar masuk, atau hubungi github.com/your-org/open-terminal/issues</translation>
+        <source>PROJECT INFORMATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source code and releases</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bugs and feature requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Responsible disclosure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PROJECT</source>
+        <translation type="unfinished">DUKUNGAN UMUM</translation>
+    </message>
+    <message>
+        <source>Open-source community project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Issues</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use guest mode for local exploration, or reset credentials from the login screen.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Python setup fails or times out</source>
@@ -5351,8 +4601,8 @@ Ini akan menghapus semua kepemilikan dan transaksi.</translation>
 <context>
     <name>openmarketterminal::screens::CrashRecoveryDialog</name>
     <message>
-        <source>Open Terminal — Recover Previous Session</source>
-        <translation>Open Terminal — Pulihkan Sesi Sebelumnya</translation>
+        <source>OpenMarketTerminal — Recover Previous Session</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>RECOVER PREVIOUS SESSION</source>
@@ -5467,10 +4717,10 @@ Ini akan menghapus semua kepemilikan dan transaksi.</translation>
         <translation>Hapus snapshot</translation>
     </message>
     <message>
-        <source>Delete "%1"?
+        <source>Delete &quot;%1&quot;?
 
 This cannot be undone.</source>
-        <translation>Hapus "%1"?
+        <translation>Hapus &quot;%1&quot;?
 
 Tindakan ini tidak dapat dibatalkan.</translation>
     </message>
@@ -5865,79 +5115,6 @@ Tindakan ini tidak dapat dibatalkan.</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::CryptoCenterScreen</name>
-    <message>
-        <source>No wallet connected</source>
-        <translation>Tidak ada dompet terhubung</translation>
-    </message>
-    <message>
-        <source>Connect a Solana wallet to view your $FNCPT balance, SOL holdings, and live USD valuation. Your private keys never leave your wallet.</source>
-        <translation>Hubungkan dompet Solana untuk melihat saldo $FNCPT, kepemilikan SOL, dan valuasi USD langsung Anda. Kunci privat Anda tidak pernah meninggalkan dompet.</translation>
-    </message>
-    <message>
-        <source>· public address read-only
-· no private keys, no seed phrases
-· local handshake on 127.0.0.1, single-use token
-· cryptographic signature challenge before connect</source>
-        <translation>· alamat publik hanya-baca
-· tanpa kunci privat, tanpa seed phrase
-· handshake lokal di 127.0.0.1, token sekali pakai
-· tantangan tanda tangan kriptografis sebelum koneksi</translation>
-    </message>
-    <message>
-        <source>CONNECT WALLET</source>
-        <translation>HUBUNGKAN DOMPET</translation>
-    </message>
-    <message>
-        <source>HOME</source>
-        <translation>BERANDA</translation>
-    </message>
-    <message>
-        <source>TRADE</source>
-        <translation>TRADING</translation>
-    </message>
-    <message>
-        <source>ACTIVITY</source>
-        <translation>AKTIVITAS</translation>
-    </message>
-    <message>
-        <source>SETTINGS</source>
-        <translation>PENGATURAN</translation>
-    </message>
-    <message>
-        <source>STAKE</source>
-        <translation>STAKING</translation>
-    </message>
-    <message>
-        <source>MARKETS</source>
-        <translation>PASAR</translation>
-    </message>
-    <message>
-        <source>ROADMAP</source>
-        <translation>ROADMAP</translation>
-    </message>
-    <message>
-        <source>CRYPTO CENTER</source>
-        <translation>PUSAT KRIPTO</translation>
-    </message>
-    <message>
-        <source>● DISCONNECTED</source>
-        <translation>● TERPUTUS</translation>
-    </message>
-    <message>
-        <source>READY</source>
-        <translation>SIAP</translation>
-    </message>
-    <message>
-        <source>SECURITY</source>
-        <translation>KEAMANAN</translation>
-    </message>
-    <message>
-        <source>● CONNECTED</source>
-        <translation>● TERHUBUNG</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::CryptoTradingScreen</name>
     <message>
         <source>CONNECTING</source>
@@ -5948,16 +5125,8 @@ Tindakan ini tidak dapat dibatalkan.</translation>
         <translation>Status feed WebSocket — hijau=langsung, kuning=menghubungkan, merah=offline (polling REST)</translation>
     </message>
     <message>
-        <source>NATIVE</source>
-        <translation>NATIVE</translation>
-    </message>
-    <message>
         <source>DAEMON</source>
         <translation>DAEMON</translation>
-    </message>
-    <message>
-        <source>Native C++ WebSocket — direct connection, no Python subprocess</source>
-        <translation>WebSocket C++ native — koneksi langsung, tanpa subproses Python</translation>
     </message>
     <message>
         <source>ws_stream.py via ccxt.pro — Python subprocess</source>
@@ -6097,8 +5266,8 @@ Buka tab BUAT INDEKS untuk membangunnya dari portofolio Anda.</translation>
         <translation>Kesalahan: %1</translation>
     </message>
     <message>
-        <source>Index '%1' created successfully.</source>
-        <translation>Indeks '%1' berhasil dibuat.</translation>
+        <source>Index &apos;%1&apos; created successfully.</source>
+        <translation>Indeks &apos;%1&apos; berhasil dibuat.</translation>
     </message>
     <message>
         <source>PERFORMANCE — %1  (no data)</source>
@@ -6406,8 +5575,12 @@ Klik  + TAMBAH SLOT  di panel kiri untuk memulai</translation>
         <translation>UMPAN:</translation>
     </message>
     <message>
-        <source>CONNECTED</source>
-        <translation>TERHUBUNG</translation>
+        <source>IDLE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>MEM: ---</source>
@@ -6426,12 +5599,12 @@ Klik  + TAMBAH SLOT  di panel kiri untuk memulai</translation>
         <translation>KOSONG</translation>
     </message>
     <message>
-        <source>DISCONNECTED</source>
-        <translation>TERPUTUS</translation>
-    </message>
-    <message>
         <source>MEM: %1 MB</source>
         <translation>MEM: %1 MB</translation>
+    </message>
+    <message>
+        <source>LAT: LOCAL</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LAT: ERR</source>
@@ -6504,6 +5677,10 @@ Klik  + TAMBAH SLOT  di panel kiri untuk memulai</translation>
         <translation>Klik untuk beralih UTC / waktu lokal</translation>
     </message>
     <message>
+        <source>IDLE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 WIDGETS</source>
         <translation>%1 WIDGET</translation>
     </message>
@@ -6542,10 +5719,6 @@ Klik  + TAMBAH SLOT  di panel kiri untuk memulai</translation>
     <message>
         <source> LOC</source>
         <translation> LOC</translation>
-    </message>
-    <message>
-        <source>OFFLINE</source>
-        <translation>LURING</translation>
     </message>
 </context>
 <context>
@@ -6695,8 +5868,8 @@ Klik  + TAMBAH SLOT  di panel kiri untuk memulai</translation>
         <translation>TIMEOUT</translation>
     </message>
     <message>
-        <source>e.g. Upstox OHLCV</source>
-        <translation>mis. Upstox OHLCV</translation>
+        <source>e.g. broker OHLCV</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Token / API Key value</source>
@@ -7034,6 +6207,58 @@ TAG: %12</translation>
         <translation>Manajemen cepat untuk koneksi yang dikonfigurasi. Untuk penjelajahan, penambahan, pengujian, dan impor/ekspor lengkap, gunakan layar penuh.</translation>
     </message>
     <message>
+        <source>CONNECTOR ENDPOINTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FRED API KEY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. abcd1234…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free key from fredaccount.stlouisfed.org — powers the economic calendar + FRED data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>QUANTLIB SERVER URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. http://127.0.0.1:8800</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional self-hosted QuantLib REST server. Blank = pricing disabled (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MARITIME / AIS URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. http://127.0.0.1:8900</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional self-hosted AIS/maritime proxy. Blank = disabled (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AISSTREAM.IO API KEY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>free key from aisstream.io</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free key from aisstream.io — enables the live vessel feed (positions/speed/course). Blank = maritime stays empty (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>TOTAL</source>
         <translation>TOTAL</translation>
     </message>
@@ -7078,10 +6303,10 @@ TAG: %12</translation>
         <translation>Hapus Koneksi</translation>
     </message>
     <message>
-        <source>Delete connection "%1"?
+        <source>Delete connection &quot;%1&quot;?
 
 This cannot be undone.</source>
-        <translation>Hapus koneksi "%1"?
+        <translation>Hapus koneksi &quot;%1&quot;?
 
 Ini tidak dapat dibatalkan.</translation>
     </message>
@@ -7133,6 +6358,26 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
         <translation>LTP</translation>
     </message>
     <message>
+        <source>CONNECTED</source>
+        <translation type="unfinished">TERHUBUNG</translation>
+    </message>
+    <message>
+        <source>OFFLINE</source>
+        <translation type="unfinished">LURING</translation>
+    </message>
+    <message>
+        <source>Broker connected — sourcing live quotes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broker not connected — connect it in Equity Trading to get live data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>waiting for data…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>WIN RATE</source>
         <translation>WIN RATE</translation>
     </message>
@@ -7151,6 +6396,10 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
     <message>
         <source>MAX DD</source>
         <translation>MAX DD</translation>
+    </message>
+    <message>
+        <source>CONDITIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>STOP</source>
@@ -7207,6 +6456,26 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
     <message>
         <source>%1 deployment(s)</source>
         <translation>%1 deployment</translation>
+    </message>
+    <message>
+        <source>  ⚠ already above — can&apos;t cross up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>  ⚠ already below — can&apos;t cross down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>  · executed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>updated just now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>updated %1s ago</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Error [%1]: %2</source>
@@ -7543,8 +6812,8 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
         <translation>Mode Agentik (Eksperimental)</translation>
     </message>
     <message>
-        <source>Enable durable, long-running autonomous tasks. When on, AGENT STUDIO shows an extra AGENTIC tab listing in-flight tasks (plan, step log, pause/resume/cancel) and the chat panel offers a "Run as background task" checkbox. All state is checkpointed to SQLite so tasks survive process restarts. Leave off for standard chatbot behavior.</source>
-        <translation>Aktifkan tugas otonom jangka panjang yang tahan lama. Saat aktif, AGENT STUDIO menampilkan tab AGENTIC tambahan yang mencantumkan tugas yang sedang berjalan (rencana, log langkah, jeda/lanjutkan/batalkan) dan panel obrolan menawarkan kotak centang "Jalankan sebagai tugas latar belakang". Semua status disimpan sebagai checkpoint ke SQLite sehingga tugas tetap ada setelah proses dimulai ulang. Biarkan nonaktif untuk perilaku chatbot standar.</translation>
+        <source>Enable durable, long-running autonomous tasks. When on, AGENT STUDIO shows an extra AGENTIC tab listing in-flight tasks (plan, step log, pause/resume/cancel) and the chat panel offers a &quot;Run as background task&quot; checkbox. All state is checkpointed to SQLite so tasks survive process restarts. Leave off for standard chatbot behavior.</source>
+        <translation>Aktifkan tugas otonom jangka panjang yang tahan lama. Saat aktif, AGENT STUDIO menampilkan tab AGENTIC tambahan yang mencantumkan tugas yang sedang berjalan (rencana, log langkah, jeda/lanjutkan/batalkan) dan panel obrolan menawarkan kotak centang &quot;Jalankan sebagai tugas latar belakang&quot;. Semua status disimpan sebagai checkpoint ke SQLite sehingga tugas tetap ada setelah proses dimulai ulang. Biarkan nonaktif untuk perilaku chatbot standar.</translation>
     </message>
     <message>
         <source>Enable Agentic Mode</source>
@@ -7557,6 +6826,61 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
     <message>
         <source>Live view over the in-process pub/sub layer. Shows every active topic, its subscriber count, total publishes, and time since last publish. Refreshes once per second while this tab is visible.</source>
         <translation>Tampilan langsung atas lapisan pub/sub dalam proses. Menampilkan setiap topik aktif, jumlah pelanggannya, total publikasi, dan waktu sejak publikasi terakhir. Menyegarkan sekali per detik selama tab ini terlihat.</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::DineroScreen</name>
+    <message>
+        <source>DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Post-quantum money for free people — a no-premine, open-source PoW chain. Read-only overview; OpenMarket Terminal does not buy, sell, or trade DIN.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Height</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Circulating Supply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Reward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero is the maker of OpenMarket Terminal&apos;s own blockchain project: a post-quantum-native chain (ML-DSA signatures from genesis), proof-of-work with tail emission, no premine and no token sale. You participate by running a node or mining — not by buying. The data below is public chain information from the project&apos;s own explorer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Explorer  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloads &amp; Releases  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Project Site  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Embedded explorer needs Qt WebEngine.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Explorer in Browser  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -7598,6 +6922,14 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
         <translation>Pintasan Keyboard</translation>
     </message>
     <message>
+        <source>DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About Dinero</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>CORE SCREENS</source>
         <translation>LAYAR INTI</translation>
     </message>
@@ -7624,6 +6956,10 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
     <message>
         <source>Crypto Trading</source>
         <translation>Trading Kripto</translation>
+    </message>
+    <message>
+        <source>Equity Trading</source>
+        <translation type="unfinished">Trading Saham</translation>
     </message>
     <message>
         <source>Paper Trading</source>
@@ -7782,52 +7118,12 @@ Ini tidak dapat dibatalkan. Anda dapat menambahkannya kembali dari layar Sumber 
         <translation>OPENMARKETTERMINAL  —  DOKUMENTASI</translation>
     </message>
     <message>
-        <source>v4.0.0  |  Native C++ Financial Intelligence Terminal</source>
-        <translation>v4.0.0  |  Terminal Intelijen Keuangan C++ Native</translation>
-    </message>
-    <message>
         <source>WHAT IS OPENMARKETTERMINAL?</source>
         <translation>APA ITU OPENMARKETTERMINAL?</translation>
     </message>
     <message>
-        <source>Open Terminal is a professional-grade desktop financial intelligence platform built in native C++ with Qt6. It provides institutional-quality market data, trading capabilities, quantitative research tools, and AI-powered analytics — all in a single unified terminal interface.
-
-With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, and support for 15+ broker integrations, Open Terminal bridges the gap between retail and institutional tooling.</source>
-        <translation>Open Terminal adalah platform intelijen keuangan desktop berkelas profesional yang dibangun dengan C++ native dan Qt6. Platform ini menyediakan data pasar berkualitas institusional, kemampuan trading, alat riset kuantitatif, dan analitik bertenaga AI — semuanya dalam satu antarmuka terminal terpadu.
-
-Dengan 45+ layar terintegrasi, umpan WebSocket real-time, analitik Python tertanam, dan dukungan untuk 15+ integrasi broker, Open Terminal menjembatani kesenjangan antara perkakas ritel dan institusional.</translation>
-    </message>
-    <message>
         <source>KEY CAPABILITIES</source>
         <translation>KEMAMPUAN UTAMA</translation>
-    </message>
-    <message>
-        <source>■  Real-time market data across equities, crypto, forex, commodities
-■  Multi-exchange crypto trading (Kraken, HyperLiquid, Binance, etc.)
-■  Paper trading engine with simulated order matching
-■  100+ Python analytics scripts (equity, portfolio, derivatives)
-■  18-module QuantLib quantitative analysis suite (590+ endpoints)
-■  AI Quant Lab with ML models, factor discovery, HFT, RL trading
-■  Multiple AI agent frameworks (Geopolitics, Economic, Hedge Fund)
-■  Visual node editor for workflow automation
-■  DBnomics access to 100+ data providers, 500K+ datasets
-■  Surface analytics for derivatives, fixed income, credit, risk
-■  Report builder with drag-and-drop components
-■  Backtesting with 6 providers and 50+ strategies
-■  Algorithmic trading with strategy builder and scanner</source>
-        <translation>■  Data pasar real-time di seluruh ekuitas, kripto, forex, komoditas
-■  Trading kripto multi-bursa (Kraken, HyperLiquid, Binance, dll.)
-■  Mesin paper trading dengan pencocokan order simulasi
-■  100+ skrip analitik Python (ekuitas, portofolio, derivatif)
-■  Suite analisis kuantitatif QuantLib 18 modul (590+ endpoint)
-■  AI Quant Lab dengan model ML, penemuan faktor, HFT, RL trading
-■  Beberapa kerangka kerja agen AI (Geopolitik, Ekonomi, Hedge Fund)
-■  Editor node visual untuk otomatisasi alur kerja
-■  Akses DBnomics ke 100+ penyedia data, 500K+ dataset
-■  Analitik surface untuk derivatif, pendapatan tetap, kredit, risiko
-■  Pembuat laporan dengan komponen seret-dan-lepas
-■  Backtesting dengan 6 penyedia dan 50+ strategi
-■  Trading algoritmik dengan pembuat strategi dan pemindai</translation>
     </message>
     <message>
         <source>WHO IS THIS FOR?</source>
@@ -7868,28 +7164,8 @@ Dengan 45+ layar terintegrasi, umpan WebSocket real-time, analitik Python tertan
 ■  Tingkat Keahlian — panduan dari Pemula hingga Pro</translation>
     </message>
     <message>
-        <source>Your first steps with Open Terminal</source>
-        <translation>Langkah pertama Anda dengan Open Terminal</translation>
-    </message>
-    <message>
         <source>LAUNCH &amp; LOGIN</source>
         <translation>LUNCURKAN &amp; MASUK</translation>
-    </message>
-    <message>
-        <source>When you first launch Open Terminal, you'll see the login screen. You can either:
-
-■  Register a new account with email and password
-■  Continue as Guest (limited features)
-■  Log in with existing credentials
-
-After login, you'll land on the Dashboard — your home base.</source>
-        <translation>Saat pertama kali meluncurkan Open Terminal, Anda akan melihat layar masuk. Anda dapat:
-
-■  Mendaftarkan akun baru dengan email dan kata sandi
-■  Lanjutkan sebagai Tamu (fitur terbatas)
-■  Masuk dengan kredensial yang ada
-
-Setelah masuk, Anda akan tiba di Dasbor — markas Anda.</translation>
     </message>
     <message>
         <source>THE INTERFACE</source>
@@ -7928,26 +7204,6 @@ F5   — Segarkan layar saat ini
 Ctrl+P — Ambil tangkapan layar (disimpan ke direktori home)</translation>
     </message>
     <message>
-        <source>SUBSCRIPTION PLANS</source>
-        <translation>PAKET LANGGANAN</translation>
-    </message>
-    <message>
-        <source>Open Terminal offers tiered access:
-
-■  FREE — Basic market data, limited screens, paper trading
-■  PRO — Full market data, all screens, real trading, AI chat
-■  ENTERPRISE — Everything + API access, priority support
-
-Manage your plan from Settings or the Pricing screen.</source>
-        <translation>Open Terminal menawarkan akses berjenjang:
-
-■  GRATIS — Data pasar dasar, layar terbatas, paper trading
-■  PRO — Data pasar lengkap, semua layar, trading nyata, obrolan AI
-■  ENTERPRISE — Semuanya + akses API, dukungan prioritas
-
-Kelola paket Anda dari Pengaturan atau layar Harga.</translation>
-    </message>
-    <message>
         <source>Explore the Dashboard, set up a watchlist, browse market data</source>
         <translation>Jelajahi Dasbor, siapkan watchlist, telusuri data pasar</translation>
     </message>
@@ -7972,14 +7228,51 @@ Kelola paket Anda dari Pengaturan atau layar Harga.</translation>
         <translation>PINTASAN GLOBAL</translation>
     </message>
     <message>
+        <source>v0.1.0  |  Native C++ Financial Intelligence Terminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal is a professional-grade desktop financial intelligence platform built in native C++ with Qt6. It provides institutional-quality market data, trading capabilities, quantitative research tools, and AI-powered analytics — all in a single unified terminal interface.
+
+With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, and US equity broker support (Alpaca, IBKR, Tradier) plus 14 crypto exchanges, Open Terminal bridges the gap between retail and institutional tooling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Real-time market data across equities, crypto, forex, commodities
+■  Multi-exchange crypto trading (Kraken, HyperLiquid, Binance, etc.)
+■  Paper trading engine with simulated order matching
+■  100+ Python analytics scripts (equity, portfolio, derivatives)
+■  18-module QuantLib client (requires an external QuantLib server)
+■  AI Quant Lab with ML models, factor discovery, HFT, RL trading
+■  Multiple AI agent frameworks (Geopolitics, Economic, Hedge Fund)
+■  Visual node editor for workflow automation
+■  DBnomics access to 100+ data providers, 500K+ datasets
+■  Surface analytics for derivatives, fixed income, credit, risk
+■  Report builder with drag-and-drop components
+■  Backtesting with 6 providers and 50+ strategies
+■  Algorithmic trading with strategy builder and scanner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your first steps with OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When you first launch OpenMarketTerminal, you&apos;ll see the login screen. You can either:
+
+■  Register a new account with email and password
+■  Continue as Guest (limited features)
+■  Log in with existing credentials
+
+After login, you&apos;ll land on the Dashboard — your home base.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>F11  — Toggle fullscreen mode
 F10  — Toggle focus mode (hides tab bar and status bar)
 F5   — Refresh the current screen data
-Ctrl+P — Capture screenshot (saved to ~/Open TerminalScreenshot_*.png)</source>
-        <translation>F11  — Alihkan mode layar penuh
-F10  — Alihkan mode fokus (sembunyikan bilah tab dan bilah status)
-F5   — Segarkan data layar saat ini
-Ctrl+P — Ambil tangkapan layar (disimpan ke ~/Open TerminalScreenshot_*.png)</translation>
+Ctrl+P — Capture screenshot (saved to ~/OpenMarketTerminalScreenshot_*.png)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>FILE MENU</source>
@@ -8268,6 +7561,55 @@ LANJUTAN: Gunakan daftar pantau sebagai universe yang telah disaring untuk pemin
 PRO: Daftar pantau dinamis yang digerakkan oleh keluaran screener dan filter kuantitatif</translation>
     </message>
     <message>
+        <source>Post-quantum money for free people — the open blockchain built by OpenMarket Terminal&apos;s maker (read-only, no trading)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WHAT IS DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero is an independent, open-source proof-of-work blockchain built by the team behind OpenMarket Terminal. It is post-quantum-native — ML-DSA signatures are active from the genesis block — with ~120-second blocks, tail emission, no premine, no token sale, and no ICO. The smallest unit is one &quot;una&quot; (1 DIN = 100,000,000 una).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HONEST DISCLOSURE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarket Terminal&apos;s maker also builds Dinero, so you should know exactly what these features are. The Dinero widget and Dinero screen are purely informational. OpenMarket Terminal does NOT buy, sell, trade, or take any fee on DIN, and never asks you to. There is no &quot;buy&quot; button anywhere. You can use OpenMarket Terminal fully and ignore Dinero entirely — nothing depends on it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HOW TO PARTICIPATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  You participate by running a node or mining — not by buying.
+■  Download the wallet and node software from dinerolabs.org.
+■  Browse the live chain at explorer.realmoneyforfreepeople.org.
+■  Anyone can run a node; there is no gatekeeper and no cost beyond your own hardware.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WHY POST-QUANTUM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Most blockchains sign transactions with elliptic-curve keys that a large quantum computer could one day break, exposing funds. Dinero ships ML-DSA (a NIST post-quantum signature standard) and P2MR outputs from block zero, so the chain is built to resist that threat from the start rather than retrofitting it later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IN OPENMARKET TERMINAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Dinero Network widget — add it on the Dashboard; it embeds the block explorer (top) and the dinerolabs.org download site (bottom).
+■  Dinero screen — open the command bar and type &quot;dinero&quot; for the network overview, project background, links, and the embedded explorer.
+■  Everything is read-only and degrades gracefully — if the network can&apos;t be reached, the rest of the app is unaffected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>CRYPTO TRADING</source>
         <translation>TRADING KRIPTO</translation>
     </message>
@@ -8346,6 +7688,55 @@ Setiap bursa mendukung: trading spot, order book real-time, candle OHLC, data ti
     <message>
         <source>Run simultaneous positions across exchanges. Use order flow data for scalping. Combine with algo strategies.</source>
         <translation>Jalankan posisi simultan di berbagai bursa. Gunakan data order flow untuk scalping. Gabungkan dengan strategi algo.</translation>
+    </message>
+    <message>
+        <source>EQUITY TRADING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>US equities via Alpaca, IBKR, and Tradier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Equity Trading screen provides order entry, positions, orders, and balances for connected US equity broker accounts. Use the ACCOUNTS panel to add Alpaca, Interactive Brokers (IBKR), or Tradier credentials.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SUPPORTED BROKERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Alpaca — API key + secret; native paper and live (PK* / AK* keys)
+■  IBKR — Client Portal Gateway on localhost:5000 + account ID
+■  Tradier — access token from developer.tradier.com (live or sandbox)
+
+Built-in paper trading (no broker) uses the yfinance market feed for simulated US equity portfolios.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HOW TO CONNECT A BROKER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How do I connect a broker?
+
+Open Equity Trading → ACCOUNTS → Manage Broker Accounts. Click + ADD, pick Alpaca, IBKR, or Tradier, name the account, and enter the credentials shown for that broker. Click CONNECT to validate.
+
+Paper trading and crypto exchanges do not require an equity broker.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Paper trade first, then connect Alpaca paper keys to validate the flow
+■  Route live US orders through your preferred supported broker
+■  Track brokerage positions alongside portfolio and dashboard widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BEGINNER: Connect Alpaca paper keys and place a small market order
+INTERMEDIATE: Use limit orders, stop-loss, and multi-account switching
+ADVANCED: Combine with algo trading and portfolio replication
+PRO: Multi-monitor equity + crypto workflows with unified command bar</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Risk-free simulated trading engine</source>
@@ -8455,7 +7846,7 @@ PRO: Terapkan portofolio multi-strategi, optimalkan parameter, jalankan live den
     </message>
     <message>
         <source>■  Backtrader — Python-based, full-featured backtesting engine
-■  Zipline — Quantopian's backtesting library
+■  Zipline — Quantopian&apos;s backtesting library
 ■  VectorBT — Vectorized backtesting for high performance
 ■  QuantConnect (Lean) — Cloud-based institutional backtesting
 ■  Custom Python — Write your own backtesting scripts
@@ -8806,12 +8197,12 @@ PRO: Agen RL trading produksi, riset sinyal HFT, penerapan model kustom</transla
         <translation>SUITE QUANTLIB</translation>
     </message>
     <message>
-        <source>18 quantitative analysis modules with 590+ endpoints</source>
-        <translation>18 modul analisis kuantitatif dengan 590+ endpoint</translation>
+        <source>18-module client for an external QuantLib pricing server</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The QuantLib Suite provides access to 590+ quantitative analysis endpoints organized into 18 modules. Powered by a REST API backend, it covers everything from basic statistics to complex derivative pricing and risk modeling.</source>
-        <translation>Suite QuantLib menyediakan akses ke 590+ endpoint analisis kuantitatif yang diatur dalam 18 modul. Didukung oleh backend REST API, mencakup segala hal mulai dari statistik dasar hingga penetapan harga derivatif kompleks dan pemodelan risiko.</translation>
+        <source>The QuantLib Suite is a thin client that forwards requests to an external, self-hosted QuantLib REST server (set connectors.quantlib_url in Settings). It performs no pricing locally; with no server configured it does nothing. When connected, it covers everything from basic statistics to derivative pricing and risk modeling.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>■  Core — Fundamental quantitative operations
@@ -8896,14 +8287,14 @@ PRO: Pengembangan model kustom, penetapan harga multi-kurva, perhitungan XVA</tr
 ■  Penyedia dan model LLM yang dapat dikonfigurasi</translation>
     </message>
     <message>
-        <source>■  Quick analysis: "What's driving NVDA today?"
-■  Strategy help: "Write a mean reversion strategy for crypto"
-■  Learning: "Explain how VaR is calculated"
-■  Data queries: "Compare AAPL and MSFT P/E ratios over 5 years"</source>
-        <translation>■  Analisis cepat: "Apa yang menggerakkan NVDA hari ini?"
-■  Bantuan strategi: "Tulis strategi mean reversion untuk kripto"
-■  Pembelajaran: "Jelaskan bagaimana VaR dihitung"
-■  Kueri data: "Bandingkan rasio P/E AAPL dan MSFT selama 5 tahun"</translation>
+        <source>■  Quick analysis: &quot;What&apos;s driving NVDA today?&quot;
+■  Strategy help: &quot;Write a mean reversion strategy for crypto&quot;
+■  Learning: &quot;Explain how VaR is calculated&quot;
+■  Data queries: &quot;Compare AAPL and MSFT P/E ratios over 5 years&quot;</source>
+        <translation>■  Analisis cepat: &quot;Apa yang menggerakkan NVDA hari ini?&quot;
+■  Bantuan strategi: &quot;Tulis strategi mean reversion untuk kripto&quot;
+■  Pembelajaran: &quot;Jelaskan bagaimana VaR dihitung&quot;
+■  Kueri data: &quot;Bandingkan rasio P/E AAPL dan MSFT selama 5 tahun&quot;</translation>
     </message>
     <message>
         <source>BEGINNER: Ask basic market questions, get explanations of financial concepts
@@ -9030,7 +8421,7 @@ PRO: Pengiriman multi-strategi, analisis peluruhan alfa, pendekatan ensemble</tr
         <translation>Akses 100+ penyedia data dengan 500K+ dataset ekonomi</translation>
     </message>
     <message>
-        <source>DBnomics provides access to the world's largest open economic database. Browse 100+ data providers (IMF, World Bank, OECD, ECB, Fed, etc.) with 500K+ datasets covering macroeconomics, finance, demographics, and trade.</source>
+        <source>DBnomics provides access to the world&apos;s largest open economic database. Browse 100+ data providers (IMF, World Bank, OECD, ECB, Fed, etc.) with 500K+ datasets covering macroeconomics, finance, demographics, and trade.</source>
         <translation>DBnomics menyediakan akses ke basis data ekonomi terbuka terbesar di dunia. Jelajahi 100+ penyedia data (IMF, World Bank, OECD, ECB, Fed, dll.) dengan 500K+ dataset yang mencakup makroekonomi, keuangan, demografi, dan perdagangan.</translation>
     </message>
     <message>
@@ -9587,7 +8978,7 @@ PRO: Pembaruan model otomatis dengan feed data langsung</translation>
         <source>■  Trade journal: Record entry/exit rationale for every trade
 ■  Research notes: Document investment theses and analysis
 ■  Meeting notes: Record calls with management or analysts
-■  Watchlist notes: Add context to symbols you're tracking</source>
+■  Watchlist notes: Add context to symbols you&apos;re tracking</source>
         <translation>■  Jurnal perdagangan: Catat alasan masuk/keluar untuk setiap transaksi
 ■  Catatan riset: Dokumentasikan tesis investasi dan analisis
 ■  Catatan rapat: Catat panggilan dengan manajemen atau analis
@@ -9754,40 +9145,27 @@ PRO: Konfigurasi infrastruktur penuh, integrasi kustom</translation>
         <translation>Akun pengguna, langganan, dan pelacakan penggunaan</translation>
     </message>
     <message>
-        <source>The Profile screen displays your account information, subscription status, usage statistics, and billing history.</source>
-        <translation>Layar Profil menampilkan informasi akun, status langganan, statistik penggunaan, dan riwayat tagihan Anda.</translation>
+        <source>The Profile screen displays your account information and security settings. OpenMarketTerminal is free and open-source — there are no plans, credits, or billing.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>■  Account details — Name, email, registration date
-■  Subscription status — Current plan, expiry, features
-■  Usage statistics — API calls, data consumed, trades placed
-■  Credit balance — Remaining AI/compute credits
-■  Billing history — Past invoices and payments</source>
-        <translation>■  Detail akun — Nama, email, tanggal registrasi
-■  Status langganan — Paket saat ini, kedaluwarsa, fitur
-■  Statistik penggunaan — Panggilan API, data terpakai, transaksi yang ditempatkan
-■  Saldo kredit — Sisa kredit AI/komputasi
-■  Riwayat tagihan — Faktur dan pembayaran sebelumnya</translation>
+■  Security — Two-factor auth and email verification status
+■  Support — Open and track help tickets</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>■  Monitor your subscription and credit usage
-■  Upgrade or change your plan
-■  Track API usage to stay within limits
-■  Download billing records for expense tracking</source>
-        <translation>■  Pantau langganan dan penggunaan kredit Anda
-■  Tingkatkan atau ubah paket Anda
-■  Lacak penggunaan API agar tetap dalam batas
-■  Unduh catatan tagihan untuk pelacakan pengeluaran</translation>
+        <source>■  Review and edit your account details
+■  Enable two-factor authentication
+■  Reach support when you need help</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BEGINNER: Check your account status and plan
-INTERMEDIATE: Monitor credit usage, plan API call budget
-ADVANCED: Optimize usage patterns for cost efficiency
-PRO: Enterprise account management, team usage tracking</source>
-        <translation>PEMULA: Periksa status akun dan paket Anda
-MENENGAH: Pantau penggunaan kredit, rencanakan anggaran panggilan API
-LANJUTAN: Optimalkan pola penggunaan untuk efisiensi biaya
-PRO: Manajemen akun enterprise, pelacakan penggunaan tim</translation>
+        <source>BEGINNER: Review your account details
+INTERMEDIATE: Enable 2FA for stronger security
+ADVANCED: Manage sessions and API keys
+PRO: Script account actions via the MCP profile tools</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -10211,88 +9589,353 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>MEMUAT ANALISIS…</translation>
     </message>
     <message>
+        <source>VALUATION</source>
+        <translation type="unfinished">VALUASI</translation>
+    </message>
+    <message>
         <source>FINANCIAL HEALTH</source>
         <translation>KESEHATAN KEUANGAN</translation>
     </message>
     <message>
-        <source>TOTAL CASH</source>
-        <translation>TOTAL KAS</translation>
+        <source>CASH FLOW</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TOTAL DEBT</source>
-        <translation>TOTAL UTANG</translation>
+        <source>PROFITABILITY</source>
+        <translation type="unfinished">PROFITABILITAS</translation>
     </message>
     <message>
-        <source>FREE CASHFLOW</source>
-        <translation>ARUS KAS BEBAS</translation>
+        <source>GROWTH</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OPERATING CF</source>
-        <translation>ARUS KAS OPERASI</translation>
+        <source>RISK / SENTIMENT</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ENTERPRISE VALUE</source>
-        <translation>NILAI PERUSAHAAN</translation>
+        <source>ANALYST PRICE TARGET</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EV/REVENUE</source>
-        <translation>EV/PENDAPATAN</translation>
+        <source>No analyst coverage available.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EV/EBITDA</source>
-        <translation>EV/EBITDA</translation>
+        <source> now</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BOOK VALUE</source>
-        <translation>NILAI BUKU</translation>
+        <source>to mean target</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>REVENUE &amp; PROFITS</source>
-        <translation>PENDAPATAN &amp; LABA</translation>
+        <source>target range shown</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TOTAL REVENUE</source>
-        <translation>TOTAL PENDAPATAN</translation>
+        <source>STRONG BUY</source>
+        <translation type="unfinished">BELI KUAT</translation>
     </message>
     <message>
-        <source>REVENUE/SHARE</source>
-        <translation>PENDAPATAN/SAHAM</translation>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
     </message>
     <message>
-        <source>GROSS PROFITS</source>
-        <translation>LABA KOTOR</translation>
+        <source>HOLD</source>
+        <translation type="unfinished">TAHAN</translation>
     </message>
     <message>
-        <source>EBITDA MARGINS</source>
-        <translation>MARGIN EBITDA</translation>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
     </message>
     <message>
-        <source>KEY RATIOS</source>
-        <translation>RASIO UTAMA</translation>
+        <source>STRONG SELL</source>
+        <translation type="unfinished">JUAL KUAT</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n analyst(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message>
-        <source>P/E RATIO</source>
-        <translation>RASIO P/E</translation>
+        <source>N/A</source>
+        <translation type="unfinished">N/A</translation>
     </message>
     <message>
-        <source>PEG RATIO</source>
-        <translation>RASIO PEG</translation>
+        <source>No earnings-based valuation available (may be unprofitable).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROE</source>
-        <translation>ROE</translation>
+        <source>UNDERVALUED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROA</source>
-        <translation>ROA</translation>
+        <source>FAIRLY VALUED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BETA</source>
-        <translation>BETA</translation>
+        <source>EXPENSIVE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SHORT RATIO</source>
-        <translation>RASIO SHORT</translation>
+        <source>Forward P/E below trailing — earnings expected to grow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trades at a premium; priced for growth or quality.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low multiple relative to earnings/growth.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Valuation in line with broad-market norms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Balance-sheet cash/debt not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cash %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Debt %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STRONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net cash position — more cash than total debt.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STABLE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manageable leverage relative to cash on hand.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STRETCHED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Debt is high relative to available cash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cash-flow figures not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FCF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Op CF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FCF margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Generates positive free cash flow after capex.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REINVESTING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operating cash is positive but FCF is negative (heavy investment).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BURNING CASH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operations are consuming cash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profitability ratios not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Oper. margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOSS-MAKING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Currently unprofitable on a net basis.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EXCELLENT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High returns on equity and strong net margins.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SOLID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Healthy, consistent profitability.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>THIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profitable, but margins and returns are slim.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Growth rates not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revenue %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Earnings %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HIGH GROWTH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top line expanding rapidly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MODERATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Steady single-to-double-digit growth.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FLAT</source>
+        <translation type="unfinished">FLAT</translation>
+    </message>
+    <message>
+        <source>Revenue is roughly unchanged year over year.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DECLINING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revenue is contracting year over year.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Risk metrics not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beta %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Short %1 of float</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>52w position %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ELEVATED</source>
+        <translation type="unfinished">MENINGKAT</translation>
+    </message>
+    <message>
+        <source>Heavy short interest signals bearish positioning.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High beta — amplifies market moves.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Moves roughly in line with, or above, the market.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOW</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lower volatility than the broad market.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beta unavailable; based on limited risk signals.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::EquityFilingsTab</name>
+    <message>
+        <source>SEC FILINGS — select a symbol</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Form</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation type="unfinished">Tanggal</translation>
+    </message>
+    <message>
+        <source>Accession</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1 (loading…)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1 (%2)</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -10613,8 +10256,20 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>MEMUAT BERITA…</translation>
     </message>
     <message>
+        <source>Add a NewsAPI key in the Data Sources tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>LATEST NEWS</source>
         <translation>BERITA TERBARU</translation>
+    </message>
+    <message>
+        <source>Auto (GNews → Yahoo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>News source</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>REFRESH</source>
@@ -10648,7 +10303,7 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>MEMUAT IKHTISAR…</translation>
     </message>
     <message>
-        <source>TODAY'S TRADING</source>
+        <source>TODAY&apos;S TRADING</source>
         <translation>PERDAGANGAN HARI INI</translation>
     </message>
     <message>
@@ -10982,6 +10637,100 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>KAP PASAR: %1</translation>
     </message>
     <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>↓ CSV</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download price history (CSV) from Yahoo Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT CAP: %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Price Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load a symbol first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Price Data — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Yahoo Finance price history for &lt;b&gt;%1&lt;/b&gt; as CSV.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Period:</source>
+        <translation type="unfinished">Periode:</translation>
+    </message>
+    <message>
+        <source>Interval:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note: intraday intervals (below 1d) are only available for roughly the last 60 days.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">Batal</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fetching from Yahoo Finance…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data returned for %1 (%2). Try a longer period or a daily interval.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Price Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CSV Files (*.csv)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation type="unfinished">Ekspor gagal</translation>
+    </message>
+    <message>
+        <source>Could not open the file for writing:
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved %1 rows for %2 to:
+%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
         <translation>Ikhtisar</translation>
     </message>
@@ -11010,6 +10759,10 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>Sentimen</translation>
     </message>
     <message>
+        <source>Filings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>BACKTEST</source>
         <translation>BACKTEST</translation>
     </message>
@@ -11017,8 +10770,8 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
 <context>
     <name>openmarketterminal::screens::EquitySentimentTab</name>
     <message>
-        <source>Loading market sentiment…</source>
-        <translation>Memuat sentimen pasar…</translation>
+        <source>Loading sentiment…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LOADING SENTIMENT…</source>
@@ -11033,123 +10786,52 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>SEGARKAN</translation>
     </message>
     <message>
-        <source>Refreshing market sentiment…</source>
-        <translation>Menyegarkan sentimen pasar…</translation>
+        <source>Open a symbol to compute sentiment from news and price momentum.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>REFRESHING SENTIMENT…</source>
-        <translation>MENYEGARKAN SENTIMEN…</translation>
+        <source>OVERALL</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open a symbol and enable Adanos Market Sentiment in Data Sources to load a snapshot.</source>
-        <translation>Buka sebuah simbol dan aktifkan Adanos Market Sentiment di Sumber Data untuk memuat snapshot.</translation>
+        <source>SIGNAL SOURCES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SOURCE BREAKDOWN</source>
-        <translation>RINCIAN SUMBER</translation>
+        <source>HEADLINES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SUMMARY</source>
-        <translation>RINGKASAN</translation>
+        <source>Confidence %1%</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>AVERAGE BUZZ</source>
-        <translation>BUZZ RATA-RATA</translation>
+        <source>%1 bullish · %2 neutral · %3 bearish  (%4 headlines)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BULLISH %</source>
-        <translation>BULLISH %</translation>
+        <source>wt %1%</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>COVERAGE</source>
-        <translation>CAKUPAN</translation>
+        <source>n/a</source>
+        <translation type="unfinished">tidak ada</translation>
     </message>
     <message>
-        <source>ALIGNMENT</source>
-        <translation>KESELARASAN</translation>
+        <source>No headlines available for this symbol.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Buzz</source>
-        <translation>Perbincangan</translation>
+        <source>engine: %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Bullish</source>
-        <translation>Bullish</translation>
+        <source>self-computed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Activity</source>
-        <translation>Aktivitas</translation>
-    </message>
-    <message>
-        <source>Sentiment</source>
-        <translation>Sentimen</translation>
-    </message>
-    <message>
-        <source>No snapshot available.</source>
-        <translation>Tidak ada snapshot tersedia.</translation>
-    </message>
-    <message>
-        <source>%1 sources live</source>
-        <translation>%1 sumber aktif</translation>
-    </message>
-    <message>
-        <source>Optional alternative data</source>
-        <translation>Data alternatif opsional</translation>
-    </message>
-    <message>
-        <source>No market sentiment snapshot is available for this symbol.</source>
-        <translation>Tidak ada snapshot sentimen pasar untuk simbol ini.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::EquityTalippTab</name>
-    <message>
-        <source>—  data points  |  TALIpp Engine</source>
-        <translation>—  titik data  |  Mesin TALIpp</translation>
-    </message>
-    <message>
-        <source>Select an indicator and click CALCULATE.</source>
-        <translation>Pilih indikator lalu klik CALCULATE.</translation>
-    </message>
-    <message>
-        <source>▶  CALCULATE</source>
-        <translation>▶  HITUNG</translation>
-    </message>
-    <message>
-        <source>Select an indicator and click CALCULATE</source>
-        <translation>Pilih indikator lalu klik CALCULATE</translation>
-    </message>
-    <message>
-        <source>50+ indicators across 6 categories — powered by TALIpp incremental engine</source>
-        <translation>50+ indikator dalam 6 kategori — didukung mesin inkremental TALIpp</translation>
-    </message>
-    <message>
-        <source>No symbol loaded. Search for a symbol first.</source>
-        <translation>Tidak ada simbol dimuat. Cari simbol terlebih dahulu.</translation>
-    </message>
-    <message>
-        <source>COMPUTING…</source>
-        <translation>MENGHITUNG…</translation>
-    </message>
-    <message>
-        <source>Computing %1…</source>
-        <translation>Menghitung %1…</translation>
-    </message>
-    <message>
-        <source>COMPUTING %1…</source>
-        <translation>MENGHITUNG %1…</translation>
-    </message>
-    <message>
-        <source>LAST</source>
-        <translation>TERAKHIR</translation>
-    </message>
-    <message>
-        <source>N/A</source>
-        <translation>N/A</translation>
-    </message>
-    <message>
-        <source>No data returned for %1</source>
-        <translation>Tidak ada data untuk %1</translation>
+        <source>No sentiment is available for this symbol.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -11522,6 +11204,10 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>SIMULASI</translation>
     </message>
     <message>
+        <source>FEEDS</source>
+        <translation type="unfinished">UMPAN</translation>
+    </message>
+    <message>
         <source>LIVE</source>
         <translation>LANGSUNG</translation>
     </message>
@@ -11570,36 +11256,8 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>Order gagal: %1</translation>
     </message>
     <message>
-        <source>Order queued for approval in Action Center</source>
-        <translation>Order diantrekan untuk persetujuan di Action Center</translation>
-    </message>
-    <message>
-        <source>Failed to queue order</source>
-        <translation>Gagal mengantrekan order</translation>
-    </message>
-    <message>
-        <source>Order placed: %1</source>
-        <translation>Order ditempatkan: %1</translation>
-    </message>
-    <message>
-        <source>Cancelled %1 order(s)%2</source>
-        <translation>Membatalkan %1 order%2</translation>
-    </message>
-    <message>
-        <source>, %1 failed</source>
-        <translation>, %1 gagal</translation>
-    </message>
-    <message>
-        <source>Closed %1 position(s)%2</source>
-        <translation>Menutup %1 posisi%2</translation>
-    </message>
-    <message>
         <source>Strategy has no legs to place</source>
         <translation>Strategi tidak memiliki leg untuk ditempatkan</translation>
-    </message>
-    <message>
-        <source>Strategy: %1/%2 legs placed%3</source>
-        <translation>Strategi: %1/%2 leg ditempatkan%3</translation>
     </message>
     <message>
         <source>Import Holdings</source>
@@ -11698,10 +11356,6 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
         <translation>Nama portofolio wajib diisi.</translation>
     </message>
     <message>
-        <source>Imported %1 holdings into portfolio "%2".</source>
-        <translation>Mengimpor %1 kepemilikan ke portofolio "%2".</translation>
-    </message>
-    <message>
         <source>Select a portfolio first.</source>
         <translation>Pilih portofolio terlebih dahulu.</translation>
     </message>
@@ -11716,6 +11370,124 @@ Kunci gratis di: www.eia.gov/opendata/register.php</translation>
     <message>
         <source>Order cancelled</source>
         <translation>Order dibatalkan</translation>
+    </message>
+    <message>
+        <source>Buy %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Market</source>
+        <translation type="unfinished">Pasar</translation>
+    </message>
+    <message>
+        <source>Limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Jenis</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Limit price</source>
+        <translation type="unfinished">Harga limit</translation>
+    </message>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Product conversion is available for paper accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert %1 to %2 (delivery)?
+
+This locks the full position value as cash and carries it overnight instead of auto-squaring at 15:30.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 converted to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No %1 positions to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>winning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>losing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trade %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No connected broker can trade %1. Add or connect a broker for this market in the ACCOUNTS panel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SHORT</source>
+        <translation type="unfinished">SHORT</translation>
+    </message>
+    <message>
+        <source>LONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit %1 %2 %3 at market?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No open positions to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No holdings to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off %1 at market?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Strategy queued for approval (%1 legs)</source>
@@ -11872,8 +11644,8 @@ Ekspor CSV masih tersedia melalui toolbar.</translation>
         <translation>Hapus Sheet</translation>
     </message>
     <message>
-        <source>Delete "%1"? This cannot be undone.</source>
-        <translation>Hapus "%1"? Tindakan ini tidak dapat dibatalkan.</translation>
+        <source>Delete &quot;%1&quot;? This cannot be undone.</source>
+        <translation>Hapus &quot;%1&quot;? Tindakan ini tidak dapat dibatalkan.</translation>
     </message>
     <message>
         <source>Rename Sheet</source>
@@ -11990,8 +11762,8 @@ Tidak perlu API key</translation>
         <translation>Hapus File</translation>
     </message>
     <message>
-        <source>Delete "%1"? This cannot be undone.</source>
-        <translation>Hapus "%1"? Tindakan ini tidak dapat dibatalkan.</translation>
+        <source>Delete &quot;%1&quot;? This cannot be undone.</source>
+        <translation>Hapus &quot;%1&quot;? Tindakan ini tidak dapat dibatalkan.</translation>
     </message>
     <message>
         <source>Delete Files</source>
@@ -12097,43 +11869,6 @@ dari layar mana pun. Anda juga dapat mengunggah file secara manual menggunakan t
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::Open TerminalMacroPanel</name>
-    <message>
-        <source>Open Terminal Macro — Coming Soon
-
-Planned data:
-  · Central bank rates (40+ countries)
-  · Sovereign debt metrics
-  · Open Terminal proprietary macro indices
-  · Global inflation dashboard
-  · Emerging market indicators
-
-Requires Open Terminal subscription + API key
-Check back in a future release</source>
-        <translation>Open Terminal Macro — Segera Hadir
-
-Data yang direncanakan:
-  · Suku bunga bank sentral (40+ negara)
-  · Metrik utang negara
-  · Indeks makro proprietary Open Terminal
-  · Dasbor inflasi global
-  · Indikator pasar berkembang
-
-Memerlukan langganan Open Terminal + API key
-Periksa kembali pada rilis mendatang</translation>
-    </message>
-    <message>
-        <source>OPENMARKETTERMINAL MACRO — COMING SOON</source>
-        <translation>OPENMARKETTERMINAL MACRO — SEGERA HADIR</translation>
-    </message>
-    <message>
-        <source>Open Terminal Macro data script is not yet available.
-This panel will be enabled in a future release.</source>
-        <translation>Skrip data Open Terminal Macro belum tersedia.
-Panel ini akan diaktifkan pada rilis mendatang.</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::FiscalDataPanel</name>
     <message>
         <source>Select a dataset and click FETCH
@@ -12154,423 +11889,6 @@ Tidak perlu API key</translation>
     <message>
         <source>No data returned</source>
         <translation>Tidak ada data yang dikembalikan</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForgotPasswordScreen</name>
-    <message>
-        <source>RESET PASSWORD</source>
-        <translation>ATUR ULANG KATA SANDI</translation>
-    </message>
-    <message>
-        <source>Enter your email and we'll send a verification code.</source>
-        <translation>Masukkan email Anda dan kami akan mengirimkan kode verifikasi.</translation>
-    </message>
-    <message>
-        <source>EMAIL</source>
-        <translation>EMAIL</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>  SEND CODE  </source>
-        <translation>  KIRIM KODE  </translation>
-    </message>
-    <message>
-        <source>REMEMBER YOUR PASSWORD? SIGN IN</source>
-        <translation>INGAT KATA SANDI ANDA? MASUK</translation>
-    </message>
-    <message>
-        <source>CHECK YOUR EMAIL</source>
-        <translation>PERIKSA EMAIL ANDA</translation>
-    </message>
-    <message>
-        <source>We've sent a verification code. Enter it on the next screen to reset your password.</source>
-        <translation>Kami telah mengirimkan kode verifikasi. Masukkan pada layar berikutnya untuk mengatur ulang kata sandi.</translation>
-    </message>
-    <message>
-        <source>  I HAVE THE CODE  </source>
-        <translation>  SAYA SUDAH MEMILIKI KODE  </translation>
-    </message>
-    <message>
-        <source>DIDN'T RECEIVE? RESEND</source>
-        <translation>BELUM MENERIMA? KIRIM ULANG</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>KODE VERIFIKASI</translation>
-    </message>
-    <message>
-        <source>NEW PASSWORD</source>
-        <translation>KATA SANDI BARU</translation>
-    </message>
-    <message>
-        <source>CONFIRM PASSWORD</source>
-        <translation>KONFIRMASI KATA SANDI</translation>
-    </message>
-    <message>
-        <source>enter code from email</source>
-        <translation>masukkan kode dari email</translation>
-    </message>
-    <message>
-        <source>min 8 characters</source>
-        <translation>min. 8 karakter</translation>
-    </message>
-    <message>
-        <source>re-enter password</source>
-        <translation>masukkan ulang kata sandi</translation>
-    </message>
-    <message>
-        <source>  RESET PASSWORD  </source>
-        <translation>  ATUR ULANG KATA SANDI  </translation>
-    </message>
-    <message>
-        <source>PASSWORD RESET</source>
-        <translation>KATA SANDI DIATUR ULANG</translation>
-    </message>
-    <message>
-        <source>SUCCESS</source>
-        <translation>BERHASIL</translation>
-    </message>
-    <message>
-        <source>Your password has been reset. You can now sign in with your new password.</source>
-        <translation>Kata sandi Anda telah diatur ulang. Anda sekarang dapat masuk dengan kata sandi baru.</translation>
-    </message>
-    <message>
-        <source>  CONTINUE TO LOGIN  </source>
-        <translation>  LANJUTKAN KE MASUK  </translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumFeedPanel</name>
-    <message>
-        <source>DISCUSSIONS</source>
-        <translation>DISKUSI</translation>
-    </message>
-    <message>
-        <source>+ NEW POST</source>
-        <translation>+ POS BARU</translation>
-    </message>
-    <message>
-        <source>%1 posts</source>
-        <translation>%1 pos</translation>
-    </message>
-    <message>
-        <source>NO DISCUSSIONS YET</source>
-        <translation>BELUM ADA DISKUSI</translation>
-    </message>
-    <message>
-        <source>Be the first to start a conversation</source>
-        <translation>Jadilah yang pertama memulai percakapan</translation>
-    </message>
-    <message>
-        <source>%1 replies</source>
-        <translation>%1 balasan</translation>
-    </message>
-    <message>
-        <source>%1 views</source>
-        <translation>%1 tampilan</translation>
-    </message>
-    <message>
-        <source>✓ VOTED</source>
-        <translation>✓ TELAH MEMILIH</translation>
-    </message>
-    <message>
-        <source>● HOT</source>
-        <translation>● POPULER</translation>
-    </message>
-    <message>
-        <source>● ACTIVE</source>
-        <translation>● AKTIF</translation>
-    </message>
-    <message>
-        <source>Load %1 more posts</source>
-        <translation>Muat %1 pos lagi</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumPostListPanel</name>
-    <message>
-        <source>%1 posts</source>
-        <translation>%1 pos</translation>
-    </message>
-    <message>
-        <source>NO POSTS YET</source>
-        <translation>BELUM ADA POS</translation>
-    </message>
-    <message>
-        <source>Be the first to start a discussion</source>
-        <translation>Jadilah yang pertama memulai diskusi</translation>
-    </message>
-    <message>
-        <source>● HOT</source>
-        <translation>● POPULER</translation>
-    </message>
-    <message>
-        <source>Load %1 more posts</source>
-        <translation>Muat %1 pos lagi</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumPostReaderPanel</name>
-    <message>
-        <source>SELECT A POST</source>
-        <translation>PILIH SEBUAH POS</translation>
-    </message>
-    <message>
-        <source>Click any post from the feed to read it</source>
-        <translation>Klik pos mana pun dari feed untuk membacanya</translation>
-    </message>
-    <message>
-        <source>Loading...</source>
-        <translation>Memuat...</translation>
-    </message>
-    <message>
-        <source>▲  Upvote</source>
-        <translation>▲  Upvote</translation>
-    </message>
-    <message>
-        <source>◆ %1 replies</source>
-        <translation>◆ %1 balasan</translation>
-    </message>
-    <message>
-        <source>◉ %1 views</source>
-        <translation>◉ %1 tampilan</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>BALASAN</translation>
-    </message>
-    <message>
-        <source>Write a reply...</source>
-        <translation>Tulis balasan...</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>Balas</translation>
-    </message>
-    <message>
-        <source>◆ %1 reply</source>
-        <translation>◆ %1 balasan</translation>
-    </message>
-    <message>
-        <source>NO REPLIES YET</source>
-        <translation>BELUM ADA BALASAN</translation>
-    </message>
-    <message>
-        <source>▲ upvote</source>
-        <translation>▲ upvote</translation>
-    </message>
-    <message>
-        <source>▼ downvote</source>
-        <translation>▼ downvote</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumScreen</name>
-    <message>
-        <source>USER PROFILE</source>
-        <translation>PROFIL PENGGUNA</translation>
-    </message>
-    <message>
-        <source>REP</source>
-        <translation>REP</translation>
-    </message>
-    <message>
-        <source>POSTS</source>
-        <translation>POS</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>BALASAN</translation>
-    </message>
-    <message>
-        <source>LIKES</source>
-        <translation>SUKA</translation>
-    </message>
-    <message>
-        <source>EDIT MY PROFILE</source>
-        <translation>EDIT PROFIL SAYA</translation>
-    </message>
-    <message>
-        <source>SEARCH: %1</source>
-        <translation>CARI: %1</translation>
-    </message>
-    <message>
-        <source>TRENDING</source>
-        <translation>SEDANG TREN</translation>
-    </message>
-    <message>
-        <source>NEW POST</source>
-        <translation>POS BARU</translation>
-    </message>
-    <message>
-        <source>CREATE NEW POST</source>
-        <translation>BUAT POS BARU</translation>
-    </message>
-    <message>
-        <source>Share your insights with the community</source>
-        <translation>Bagikan wawasan Anda dengan komunitas</translation>
-    </message>
-    <message>
-        <source>TITLE</source>
-        <translation>JUDUL</translation>
-    </message>
-    <message>
-        <source>Give your post a descriptive title...</source>
-        <translation>Beri judul deskriptif untuk pos Anda...</translation>
-    </message>
-    <message>
-        <source>CONTENT</source>
-        <translation>KONTEN</translation>
-    </message>
-    <message>
-        <source>Write your thoughts...</source>
-        <translation>Tuliskan pemikiran Anda...</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>BATAL</translation>
-    </message>
-    <message>
-        <source>PUBLISH POST</source>
-        <translation>TERBITKAN POS</translation>
-    </message>
-    <message>
-        <source>EDIT PROFILE</source>
-        <translation>EDIT PROFIL</translation>
-    </message>
-    <message>
-        <source>DISPLAY NAME</source>
-        <translation>NAMA TAMPILAN</translation>
-    </message>
-    <message>
-        <source>BIO</source>
-        <translation>BIO</translation>
-    </message>
-    <message>
-        <source>SIGNATURE</source>
-        <translation>TANDA TANGAN</translation>
-    </message>
-    <message>
-        <source>AVATAR COLOR (HEX)</source>
-        <translation>WARNA AVATAR (HEX)</translation>
-    </message>
-    <message>
-        <source>SAVE CHANGES</source>
-        <translation>SIMPAN PERUBAHAN</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumSidebarPanel</name>
-    <message>
-        <source>COMMUNITY</source>
-        <translation>KOMUNITAS</translation>
-    </message>
-    <message>
-        <source>Loading...</source>
-        <translation>Memuat...</translation>
-    </message>
-    <message>
-        <source>Search discussions...</source>
-        <translation>Cari diskusi...</translation>
-    </message>
-    <message>
-        <source>ACTIVITY</source>
-        <translation>AKTIVITAS</translation>
-    </message>
-    <message>
-        <source>POSTS</source>
-        <translation>POS</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>BALASAN</translation>
-    </message>
-    <message>
-        <source>TODAY</source>
-        <translation>HARI INI</translation>
-    </message>
-    <message>
-        <source>  ▲  TRENDING POSTS</source>
-        <translation>  ▲  POS SEDANG TREN</translation>
-    </message>
-    <message>
-        <source>CHANNELS</source>
-        <translation>SALURAN</translation>
-    </message>
-    <message>
-        <source>New post</source>
-        <translation>Pos baru</translation>
-    </message>
-    <message>
-        <source>LEADERBOARD</source>
-        <translation>PAPAN PERINGKAT</translation>
-    </message>
-    <message>
-        <source>  loading...</source>
-        <translation>  memuat...</translation>
-    </message>
-    <message>
-        <source>  No contributors yet</source>
-        <translation>  Belum ada kontributor</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumThreadPanel</name>
-    <message>
-        <source>Loading thread...</source>
-        <translation>Memuat utas...</translation>
-    </message>
-    <message>
-        <source>←  Back to Feed</source>
-        <translation>←  Kembali ke Feed</translation>
-    </message>
-    <message>
-        <source>▲  Upvote</source>
-        <translation>▲  Upvote</translation>
-    </message>
-    <message>
-        <source>◆ %1 replies</source>
-        <translation>◆ %1 balasan</translation>
-    </message>
-    <message>
-        <source>◉ %1 views</source>
-        <translation>◉ %1 tampilan</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>BALASAN</translation>
-    </message>
-    <message>
-        <source>Write a reply...</source>
-        <translation>Tulis balasan...</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>Balas</translation>
-    </message>
-    <message>
-        <source>◆ %1 reply</source>
-        <translation>◆ %1 balasan</translation>
-    </message>
-    <message>
-        <source>NO REPLIES YET</source>
-        <translation>BELUM ADA BALASAN</translation>
-    </message>
-    <message>
-        <source>Be the first to share your thoughts</source>
-        <translation>Jadilah yang pertama membagikan pendapat Anda</translation>
-    </message>
-    <message>
-        <source>▲ upvote</source>
-        <translation>▲ suka</translation>
-    </message>
-    <message>
-        <source>▼ downvote</source>
-        <translation>▼ tidak suka</translation>
     </message>
 </context>
 <context>
@@ -12684,8 +12002,8 @@ fred.stlouisfed.org/docs/api/api_key.html</translation>
         <translation>Bahasa antarmuka</translation>
     </message>
     <message>
-        <source>Default is Quit. Choose 'Show Launchpad' if you want a small portal window to stay open after closing your last terminal window.</source>
-        <translation>Default-nya adalah Keluar. Pilih 'Tampilkan Launchpad' jika Anda ingin jendela portal kecil tetap terbuka setelah menutup jendela terminal terakhir.</translation>
+        <source>Default is Quit. Choose &apos;Show Launchpad&apos; if you want a small portal window to stay open after closing your last terminal window.</source>
+        <translation>Default-nya adalah Keluar. Pilih &apos;Tampilkan Launchpad&apos; jika Anda ingin jendela portal kecil tetap terbuka setelah menutup jendela terminal terakhir.</translation>
     </message>
     <message>
         <source>Changes apply immediately. English is the source language; all other translations are embedded with the build.</source>
@@ -12949,12 +12267,12 @@ Tidak memerlukan kunci API untuk sumber mana pun</translation>
         <translation>%1 berkas</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>Memuat dataset untuk "%1"…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>Memuat dataset untuk &quot;%1&quot;…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>Mencari "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>Mencari &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading recent datasets…</source>
@@ -13255,24 +12573,24 @@ Tidak memerlukan kunci API untuk sumber mana pun</translation>
         <translation>Memuat layanan data…</translation>
     </message>
     <message>
-        <source>Searching datasets for "%1"…</source>
-        <translation>Mencari dataset untuk "%1"…</translation>
+        <source>Searching datasets for &quot;%1&quot;…</source>
+        <translation>Mencari dataset untuk &quot;%1&quot;…</translation>
     </message>
     <message>
-        <source>Searching municipalities for "%1"…</source>
-        <translation>Mencari kotamadya untuk "%1"…</translation>
+        <source>Searching municipalities for &quot;%1&quot;…</source>
+        <translation>Mencari kotamadya untuk &quot;%1&quot;…</translation>
     </message>
     <message>
-        <source>Loading column schema for "%1"…</source>
-        <translation>Memuat skema kolom untuk "%1"…</translation>
+        <source>Loading column schema for &quot;%1&quot;…</source>
+        <translation>Memuat skema kolom untuk &quot;%1&quot;…</translation>
     </message>
     <message>
-        <source>Datasets  ›  "%1"</source>
-        <translation>Dataset  ›  "%1"</translation>
+        <source>Datasets  ›  &quot;%1&quot;</source>
+        <translation>Dataset  ›  &quot;%1&quot;</translation>
     </message>
     <message>
-        <source>Municipalities  ›  "%1"</source>
-        <translation>Kotamadya  ›  "%1"</translation>
+        <source>Municipalities  ›  &quot;%1&quot;</source>
+        <translation>Kotamadya  ›  &quot;%1&quot;</translation>
     </message>
     <message>
         <source>%1 results</source>
@@ -13370,22 +12688,22 @@ Tidak memerlukan kunci API untuk sumber mana pun</translation>
         <translation>Memuat daftar lengkap dataset untuk pemfilteran…</translation>
     </message>
     <message>
-        <source>No datasets matched "%1" in the HK catalogue.
+        <source>No datasets matched &quot;%1&quot; in the HK catalogue.
 HK DATA — Categories may have limited datasets</source>
-        <translation>Tidak ada dataset yang cocok dengan "%1" di katalog HK.
+        <translation>Tidak ada dataset yang cocok dengan &quot;%1&quot; di katalog HK.
 HK DATA — Kategori mungkin memiliki dataset terbatas</translation>
     </message>
     <message>
-        <source>Datasets  ›  Filter: "%1"</source>
-        <translation>Dataset  ›  Filter: "%1"</translation>
+        <source>Datasets  ›  Filter: &quot;%1&quot;</source>
+        <translation>Dataset  ›  Filter: &quot;%1&quot;</translation>
     </message>
     <message>
         <source>%1 matched</source>
         <translation>%1 cocok</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>Memuat dataset untuk "%1"…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>Memuat dataset untuk &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading resources…</source>
@@ -13398,11 +12716,11 @@ HK DATA — Kategori mungkin memiliki dataset terbatas</translation>
     <message>
         <source>HK DATA — Categories may have limited datasets
 
-No datasets found for "%1".
+No datasets found for &quot;%1&quot;.
 Try searching by name using the search box above.</source>
         <translation>HK DATA — Kategori mungkin memiliki dataset terbatas
 
-Tidak ada dataset ditemukan untuk "%1".
+Tidak ada dataset ditemukan untuk &quot;%1&quot;.
 Coba cari berdasarkan nama menggunakan kotak pencarian di atas.</translation>
     </message>
     <message>
@@ -13565,8 +12883,8 @@ Coba cari berdasarkan nama menggunakan kotak pencarian di atas.</translation>
         <translation>Memuat sumber daya…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>Mencari "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>Mencari &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Resources</source>
@@ -13896,16 +13214,16 @@ Pemilih menampilkan semua portal CKAN yang dicakup oleh penyedia universal.</tra
         <translation>%1 berkas</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>Memuat dataset untuk "%1"…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>Memuat dataset untuk &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading resources…</source>
         <translation>Memuat sumber daya…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>Mencari "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>Mencari &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading popular publishers…</source>
@@ -14014,358 +13332,20 @@ Pemilih menampilkan semua portal CKAN yang dicakup oleh penyedia universal.</tra
 <context>
     <name>openmarketterminal::screens::HelpScreen</name>
     <message>
-        <source>HELP CENTER</source>
-        <translation>PUSAT BANTUAN</translation>
+        <source>Open Terminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Find answers, get support, and connect with the Open Terminal community.</source>
-        <translation>Temukan jawaban, dapatkan dukungan, dan terhubung dengan komunitas Open Terminal.</translation>
+        <source>Version v%1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mon-Fri  9AM–6PM EST</source>
-        <translation>Sen-Jum  09.00–18.00 EST</translation>
+        <source>Open Terminal is a local-first, open source market terminal for personal research, watchlists, portfolios, charts, news, and analytics.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>QUICK ACTIONS</source>
-        <translation>TINDAKAN CEPAT</translation>
-    </message>
-    <message>
-        <source>Common tasks you can do right now</source>
-        <translation>Tugas umum yang dapat Anda lakukan sekarang</translation>
-    </message>
-    <message>
-        <source>Create Account</source>
-        <translation>Buat Akun</translation>
-    </message>
-    <message>
-        <source>Register for full access</source>
-        <translation>Daftar untuk akses penuh</translation>
-    </message>
-    <message>
-        <source>Reset Password</source>
-        <translation>Atur Ulang Kata Sandi</translation>
-    </message>
-    <message>
-        <source>Recover your account</source>
-        <translation>Pulihkan akun Anda</translation>
-    </message>
-    <message>
-        <source>Documentation</source>
-        <translation>Dokumentasi</translation>
-    </message>
-    <message>
-        <source>Guides, tutorials &amp; API ref</source>
-        <translation>Panduan, tutorial &amp; referensi API</translation>
-    </message>
-    <message>
-        <source>Report a Bug</source>
-        <translation>Laporkan Bug</translation>
-    </message>
-    <message>
-        <source>Open a bug report ticket</source>
-        <translation>Buka tiket laporan bug</translation>
-    </message>
-    <message>
-        <source>View Source</source>
-        <translation>Gabung Discord</translation>
-    </message>
-    <message>
-        <source>Community &amp; live support</source>
-        <translation>Komunitas &amp; dukungan langsung</translation>
-    </message>
-    <message>
-        <source>Support Tickets</source>
-        <translation>Tiket Dukungan</translation>
-    </message>
-    <message>
-        <source>View or open a support ticket</source>
-        <translation>Lihat atau buka tiket dukungan</translation>
-    </message>
-    <message>
-        <source>FREQUENTLY ASKED QUESTIONS</source>
-        <translation>PERTANYAAN YANG SERING DIAJUKAN</translation>
-    </message>
-    <message>
-        <source>Click a question to expand the answer</source>
-        <translation>Klik pertanyaan untuk membuka jawaban</translation>
-    </message>
-    <message>
-        <source>How do I reset my password?</source>
-        <translation>Bagaimana cara mengatur ulang kata sandi saya?</translation>
-    </message>
-    <message>
-        <source>Click "Forgot Password" on the login screen. Enter your email address and we'll send you a reset link. The link expires in 24 hours.</source>
-        <translation>Klik "Lupa Kata Sandi" pada layar masuk. Masukkan alamat email Anda dan kami akan mengirimkan tautan pengaturan ulang. Tautan tersebut kedaluwarsa dalam 24 jam.</translation>
-    </message>
-    <message>
-        <source>What is Guest Access?</source>
-        <translation>Apa itu Akses Tamu?</translation>
-    </message>
-    <message>
-        <source>Guest access lets you explore the terminal without creating an account. Features like trading, portfolio management, and AI analytics require a registered account.</source>
-        <translation>Akses tamu memungkinkan Anda menjelajahi terminal tanpa membuat akun. Fitur seperti trading, manajemen portofolio, dan analitik AI memerlukan akun terdaftar.</translation>
-    </message>
-    <message>
-        <source>What is a Credit?</source>
-        <translation>Apa itu Kredit?</translation>
-    </message>
-    <message>
-        <source>Credits are the in-app currency used for premium features such as AI analysis, advanced data feeds, and quantitative analytics. Free accounts receive a limited number of credits on signup. Additional credits can be purchased in Settings → Billing.</source>
-        <translation>Kredit adalah mata uang dalam aplikasi yang digunakan untuk fitur premium seperti analisis AI, umpan data lanjutan, dan analitik kuantitatif. Akun gratis menerima sejumlah kredit terbatas saat pendaftaran. Kredit tambahan dapat dibeli di Pengaturan → Penagihan.</translation>
-    </message>
-    <message>
-        <source>How do I connect a broker?</source>
-        <translation>Bagaimana cara menghubungkan broker?</translation>
-    </message>
-    <message>
-        <source>Navigate to Settings → Brokers, select your broker from the list, and enter your API key and secret. Open Terminal supports 18+ brokers including Zerodha, Angel One, Upstox, Interactive Brokers, and more.</source>
-        <translation>Buka Pengaturan → Broker, pilih broker Anda dari daftar, lalu masukkan API key dan secret Anda. Open Terminal mendukung 18+ broker termasuk Zerodha, Angel One, Upstox, Interactive Brokers, dan lainnya.</translation>
-    </message>
-    <message>
-        <source>Why does Python install at first launch?</source>
-        <translation>Mengapa Python terinstal saat peluncuran pertama?</translation>
-    </message>
-    <message>
-        <source>Open Terminal embeds Python for 1300+ analytics scripts covering equity, portfolio, derivatives, and quant analysis. The one-time install is ~150 MB and happens automatically in the background.</source>
-        <translation>Open Terminal menyematkan Python untuk 1300+ skrip analitik yang mencakup analisis ekuitas, portofolio, derivatif, dan kuantitatif. Pemasangan sekali jalan ini berukuran ~150 MB dan berlangsung otomatis di latar belakang.</translation>
-    </message>
-    <message>
-        <source>What are the system requirements?</source>
-        <translation>Apa saja persyaratan sistemnya?</translation>
-    </message>
-    <message>
-        <source>Windows 10+ (x64), macOS 12+, or Linux (glibc 2.31+). 8 GB RAM recommended. Active internet required for data feeds. Python 3.11 is installed automatically during first-time setup.</source>
-        <translation>Windows 10+ (x64), macOS 12+, atau Linux (glibc 2.31+). RAM 8 GB direkomendasikan. Koneksi internet aktif diperlukan untuk umpan data. Python 3.11 dipasang otomatis selama penyiapan pertama.</translation>
-    </message>
-    <message>
-        <source>Is my data secure?</source>
-        <translation>Apakah data saya aman?</translation>
-    </message>
-    <message>
-        <source>Credentials are stored encrypted via SecureStorage (OS keychain on each platform). API keys are never logged or sent to Open Terminal servers — they are used only for direct broker connections from your machine.</source>
-        <translation>Kredensial disimpan terenkripsi melalui SecureStorage (keychain OS di setiap platform). API key tidak pernah dicatat atau dikirim ke server Open Terminal — hanya digunakan untuk koneksi broker langsung dari perangkat Anda.</translation>
-    </message>
-    <message>
-        <source>How do I report a bug?</source>
-        <translation>Bagaimana cara melaporkan bug?</translation>
-    </message>
-    <message>
-        <source>Open a support ticket with category "bug report" (Help → Support Tickets → + New Ticket). Include your OS, version, steps to reproduce, and any error messages you see. Screenshots are helpful.</source>
-        <translation>Buka tiket dukungan dengan kategori "laporan bug" (Bantuan → Tiket Dukungan → + Tiket Baru). Sertakan OS, versi, langkah untuk mereproduksi, dan pesan kesalahan apa pun yang Anda lihat. Tangkapan layar akan membantu.</translation>
-    </message>
-    <message>
-        <source>GETTING STARTED</source>
-        <translation>MEMULAI</translation>
-    </message>
-    <message>
-        <source>New to Open Terminal? Start here</source>
-        <translation>Baru di Open Terminal? Mulai di sini</translation>
-    </message>
-    <message>
-        <source>Create an account</source>
-        <translation>Buat akun</translation>
-    </message>
-    <message>
-        <source>Register at example.com or use the in-app sign-up.</source>
-        <translation>Daftar di example.com atau gunakan pendaftaran dalam aplikasi.</translation>
-    </message>
-    <message>
-        <source>Complete setup</source>
-        <translation>Selesaikan penyiapan</translation>
-    </message>
-    <message>
-        <source>The setup wizard installs Python and configures your paths.</source>
-        <translation>Wizard penyiapan memasang Python dan mengonfigurasi jalur Anda.</translation>
-    </message>
-    <message>
-        <source>Connect a data source</source>
-        <translation>Hubungkan sumber data</translation>
-    </message>
-    <message>
-        <source>Add a broker or enable free data feeds in Data Sources.</source>
-        <translation>Tambahkan broker atau aktifkan umpan data gratis di Sumber Data.</translation>
-    </message>
-    <message>
-        <source>Explore the terminal</source>
-        <translation>Jelajahi terminal</translation>
-    </message>
-    <message>
-        <source>Browse Markets, Research, AI Chat, and QuantLib tabs.</source>
-        <translation>Jelajahi tab Pasar, Riset, AI Chat, dan QuantLib.</translation>
-    </message>
-    <message>
-        <source>CONTACT &amp; RESOURCES</source>
-        <translation>KONTAK &amp; SUMBER DAYA</translation>
-    </message>
-    <message>
-        <source>Email Support</source>
-        <translation>Dukungan Email</translation>
-    </message>
-    <message>
-        <source>Discord Server</source>
-        <translation>Server Discord</translation>
-    </message>
-    <message>
-        <source>Website</source>
-        <translation>Situs Web</translation>
-    </message>
-    <message>
-        <source>GitHub</source>
-        <translation>GitHub</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::HoldingsBar</name>
-    <message>
-        <source>Holding ≥ %1 $FNCPT — you qualify for the fee discount.</source>
-        <translation>Kepemilikan ≥ %1 $FNCPT — Anda memenuhi syarat diskon biaya.</translation>
-    </message>
-    <message>
-        <source>%1 holding(s) excluded — no live price.</source>
-        <translation>%1 kepemilikan dikecualikan — tidak ada harga langsung.</translation>
-    </message>
-    <message>
-        <source>Public Solana RPC. STREAM may degrade — add a Helius API key in Settings for reliable WebSocket subscriptions.</source>
-        <translation>RPC Solana publik. STREAM mungkin menurun — tambahkan Helius API key di Pengaturan untuk langganan WebSocket yang andal.</translation>
-    </message>
-    <message>
-        <source>Helius RPC — STREAM fully supported.</source>
-        <translation>Helius RPC — STREAM didukung penuh.</translation>
-    </message>
-    <message>
-        <source>Custom RPC override active.</source>
-        <translation>Penggantian RPC kustom aktif.</translation>
-    </message>
-    <message>
-        <source>SOL</source>
-        <translation>SOL</translation>
-    </message>
-    <message>
-        <source>$FNCPT</source>
-        <translation>$FNCPT</translation>
-    </message>
-    <message>
-        <source>TOTAL</source>
-        <translation>TOTAL</translation>
-    </message>
-    <message>
-        <source>$FNCPT PRICE</source>
-        <translation>HARGA $FNCPT</translation>
-    </message>
-    <message>
-        <source>UPDATED</source>
-        <translation>DIPERBARUI</translation>
-    </message>
-    <message>
-        <source>○ IDLE</source>
-        <translation>○ DIAM</translation>
-    </message>
-    <message>
-        <source>waiting…</source>
-        <translation>menunggu…</translation>
-    </message>
-    <message>
-        <source>◌ CONNECTING</source>
-        <translation>◌ MENGHUBUNGKAN</translation>
-    </message>
-    <message>
-        <source>● LIVE</source>
-        <translation>● LANGSUNG</translation>
-    </message>
-    <message>
-        <source>◐ STALE</source>
-        <translation>◐ USANG</translation>
-    </message>
-    <message>
-        <source>✕ ERROR</source>
-        <translation>✕ KESALAHAN</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::HomeTab</name>
-    <message>
-        <source>COPY ADDRESS</source>
-        <translation>SALIN ALAMAT</translation>
-    </message>
-    <message>
-        <source>DISCONNECT</source>
-        <translation>PUTUSKAN</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>SEGARKAN</translation>
-    </message>
-    <message>
-        <source>COPIED</source>
-        <translation>DISALIN</translation>
-    </message>
-    <message>
-        <source>Solana wallet</source>
-        <translation>Dompet Solana</translation>
-    </message>
-    <message>
-        <source>restored from storage</source>
-        <translation>dipulihkan dari penyimpanan</translation>
-    </message>
-    <message>
-        <source>Balance fetch failed: %1</source>
-        <translation>Gagal mengambil saldo: %1</translation>
-    </message>
-    <message>
-        <source>WALLET</source>
-        <translation>DOMPET</translation>
-    </message>
-    <message>
-        <source>● CONNECTED</source>
-        <translation>● TERHUBUNG</translation>
-    </message>
-    <message>
-        <source>PROVIDER</source>
-        <translation>PENYEDIA</translation>
-    </message>
-    <message>
-        <source>ADDRESS</source>
-        <translation>ALAMAT</translation>
-    </message>
-    <message>
-        <source>CONNECTED</source>
-        <translation>TERHUBUNG</translation>
-    </message>
-    <message>
-        <source>HOLDINGS</source>
-        <translation>KEPEMILIKAN</translation>
-    </message>
-    <message>
-        <source>POLL</source>
-        <translation>POLL</translation>
-    </message>
-    <message>
-        <source>STREAM</source>
-        <translation>STREAM</translation>
-    </message>
-    <message>
-        <source>MAINNET</source>
-        <translation>MAINNET</translation>
-    </message>
-    <message>
-        <source>$FNCPT ROADMAP</source>
-        <translation>PETA JALAN $FNCPT</translation>
-    </message>
-    <message>
-        <source>PHASE 2</source>
-        <translation>FASE 2</translation>
-    </message>
-    <message>
-        <source>PHASE 1   WALLET &amp; BALANCE        SHIPPED        connect Solana wallet, view $FNCPT + SOL
-PHASE 2   SWAP &amp; FEE DISCOUNT     IN PROGRESS    buy $FNCPT via PumpPortal, fee discount
-PHASE 3   STAKING &amp; TIERS         UPCOMING       lock $FNCPT for bronze / silver / gold tiers
-PHASE 4   PREDICTION MARKETS      UPCOMING       earnings, fed, weather — settled in $FNCPT
-PHASE 5   BUYBACK &amp; BURN          UPCOMING       terminal revenue auto-buys &amp; burns $FNCPT</source>
-        <translation>FASE 1   DOMPET &amp; SALDO          DIRILIS        hubungkan dompet Solana, lihat $FNCPT + SOL
-FASE 2   SWAP &amp; DISKON BIAYA     BERLANGSUNG    beli $FNCPT via PumpPortal, diskon biaya
-FASE 3   STAKING &amp; TINGKAT       MENDATANG      kunci $FNCPT untuk tingkat bronze / silver / gold
-FASE 4   PASAR PREDIKSI          MENDATANG      laba, the Fed, cuaca — diselesaikan dalam $FNCPT
-FASE 5   BUYBACK &amp; BURN          MENDATANG      pendapatan terminal otomatis membeli &amp; membakar $FNCPT</translation>
+        <source>This build is yours to inspect, modify, and personalize.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -14558,8 +13538,8 @@ Anda sekarang dapat mengimpornya menggunakan tombol JELAJAHI.</translation>
         <translation>Batal</translation>
     </message>
     <message>
-        <source>Warning: already used by "%1"</source>
-        <translation>Peringatan: sudah digunakan oleh "%1"</translation>
+        <source>Warning: already used by &quot;%1&quot;</source>
+        <translation>Peringatan: sudah digunakan oleh &quot;%1&quot;</translation>
     </message>
 </context>
 <context>
@@ -14580,8 +13560,8 @@ Anda sekarang dapat mengimpornya menggunakan tombol JELAJAHI.</translation>
 <context>
     <name>openmarketterminal::screens::LaunchpadScreen</name>
     <message>
-        <source>Open Terminal Launchpad</source>
-        <translation>Open Terminal Launchpad</translation>
+        <source>OpenMarketTerminal Launchpad</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Type to filter layouts…</source>
@@ -14596,8 +13576,8 @@ Anda sekarang dapat mengimpornya menggunakan tombol JELAJAHI.</translation>
         <translation>Semua jendela ditutup. Buka jendela baru atau pilih tata letak di bawah.</translation>
     </message>
     <message>
-        <source>Last session ended unexpectedly — your work was auto-saved. Click "Continue from last session" to restore.</source>
-        <translation>Sesi terakhir berakhir tak terduga — pekerjaan Anda tersimpan otomatis. Klik "Lanjutkan dari sesi terakhir" untuk memulihkan.</translation>
+        <source>Last session ended unexpectedly — your work was auto-saved. Click &quot;Continue from last session&quot; to restore.</source>
+        <translation>Sesi terakhir berakhir tak terduga — pekerjaan Anda tersimpan otomatis. Klik &quot;Lanjutkan dari sesi terakhir&quot; untuk memulihkan.</translation>
     </message>
     <message>
         <source>Continue from last session</source>
@@ -14644,8 +13624,8 @@ Anda sekarang dapat mengimpornya menggunakan tombol JELAJAHI.</translation>
         <translation>Nama profil baru:</translation>
     </message>
     <message>
-        <source>(No saved layouts yet — use 'layout save "&lt;name&gt;"' to save the current state)</source>
-        <translation>(Belum ada tata letak tersimpan — gunakan 'layout save "&lt;name&gt;"' untuk menyimpan keadaan saat ini)</translation>
+        <source>(No saved layouts yet — use &apos;layout save &quot;&lt;name&gt;&quot;&apos; to save the current state)</source>
+        <translation>(Belum ada tata letak tersimpan — gunakan &apos;layout save &quot;&lt;name&gt;&quot;&apos; untuk menyimpan keadaan saat ini)</translation>
     </message>
 </context>
 <context>
@@ -14841,18 +13821,6 @@ Rentang 1-200. Naikkan untuk alur kerja panjang (mis. mengisi laporan multi-bagi
         <translation>Penyedia sudah dikonfigurasi</translation>
     </message>
     <message>
-        <source>Open Terminal LLM</source>
-        <translation>Open Terminal LLM</translation>
-    </message>
-    <message>
-        <source>Linked to your Open Terminal account: %1</source>
-        <translation>Tertaut ke akun Open Terminal Anda: %1</translation>
-    </message>
-    <message>
-        <source>Login to your Open Terminal account to enable</source>
-        <translation>Masuk ke akun Open Terminal Anda untuk mengaktifkan</translation>
-    </message>
-    <message>
         <source>Not required — local provider</source>
         <translation>Tidak diperlukan — penyedia lokal</translation>
     </message>
@@ -14877,8 +13845,8 @@ Rentang 1-200. Naikkan untuk alur kerja panjang (mis. mengisi laporan multi-bagi
         <translation>Gagal mengaktifkan: </translation>
     </message>
     <message>
-        <source>active is '%1' not '%2'</source>
-        <translation>yang aktif adalah '%1' bukan '%2'</translation>
+        <source>active is &apos;%1&apos; not &apos;%2&apos;</source>
+        <translation>yang aktif adalah &apos;%1&apos; bukan &apos;%2&apos;</translation>
     </message>
     <message>
         <source>Save verification failed: </source>
@@ -14889,16 +13857,20 @@ Rentang 1-200. Naikkan untuk alur kerja panjang (mis. mengisi laporan multi-bagi
         <translation>Disimpan dan diatur sebagai penyedia aktif</translation>
     </message>
     <message>
-        <source>Cannot remove built-in Open Terminal provider</source>
-        <translation>Tidak dapat menghapus penyedia bawaan Open Terminal</translation>
+        <source>Cannot remove built-in OpenMarketTerminal provider</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal manages models automatically</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Delete Provider</source>
         <translation>Hapus Penyedia</translation>
     </message>
     <message>
-        <source>Remove '%1' configuration?</source>
-        <translation>Hapus konfigurasi '%1'?</translation>
+        <source>Remove &apos;%1&apos; configuration?</source>
+        <translation>Hapus konfigurasi &apos;%1&apos;?</translation>
     </message>
     <message>
         <source>Failed to save global settings</source>
@@ -14911,14 +13883,6 @@ Rentang 1-200. Naikkan untuk alur kerja panjang (mis. mengisi laporan multi-bagi
     <message>
         <source>Select a provider first</source>
         <translation>Pilih penyedia terlebih dahulu</translation>
-    </message>
-    <message>
-        <source>Open Terminal connected — API key active</source>
-        <translation>Open Terminal terhubung — API key aktif</translation>
-    </message>
-    <message>
-        <source>Not connected — login to your Open Terminal account first</source>
-        <translation>Tidak terhubung — masuk ke akun Open Terminal Anda terlebih dahulu</translation>
     </message>
     <message>
         <source>API key required for test</source>
@@ -14935,10 +13899,6 @@ Rentang 1-200. Naikkan untuk alur kerja panjang (mis. mengisi laporan multi-bagi
     <message>
         <source>Connection failed: </source>
         <translation>Koneksi gagal: </translation>
-    </message>
-    <message>
-        <source>Open Terminal manages models automatically</source>
-        <translation>Open Terminal mengelola model secara otomatis</translation>
     </message>
     <message>
         <source>Enter API key first, then fetch models</source>
@@ -15160,104 +14120,16 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
 <context>
     <name>openmarketterminal::screens::LoginScreen</name>
     <message>
-        <source>SIGN IN</source>
-        <translation>MASUK</translation>
+        <source>WELCOME</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Access your terminal account</source>
-        <translation>Akses akun terminal Anda</translation>
+        <source>Your local-first markets terminal. No account required.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EMAIL</source>
-        <translation>EMAIL</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>KATA SANDI</translation>
-    </message>
-    <message>
-        <source>enter password</source>
-        <translation>masukkan kata sandi</translation>
-    </message>
-    <message>
-        <source>SHOW</source>
-        <translation>TAMPIL</translation>
-    </message>
-    <message>
-        <source>HIDE</source>
-        <translation>SEMBUNYI</translation>
-    </message>
-    <message>
-        <source>FORGOT PASSWORD?</source>
-        <translation>LUPA KATA SANDI?</translation>
-    </message>
-    <message>
-        <source>  SIGN IN  </source>
-        <translation>  MASUK  </translation>
-    </message>
-    <message>
-        <source>  SIGNING IN...  </source>
-        <translation>  MASUK...  </translation>
-    </message>
-    <message>
-        <source>No account?</source>
-        <translation>Belum punya akun?</translation>
-    </message>
-    <message>
-        <source>SIGN UP</source>
-        <translation>DAFTAR</translation>
-    </message>
-    <message>
-        <source>TWO-FACTOR AUTH</source>
-        <translation>AUTENTIKASI DUA FAKTOR</translation>
-    </message>
-    <message>
-        <source>SECURE</source>
-        <translation>AMAN</translation>
-    </message>
-    <message>
-        <source>Enter the 6-digit code from your authenticator</source>
-        <translation>Masukkan kode 6 digit dari aplikasi autentikator Anda</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>KODE VERIFIKASI</translation>
-    </message>
-    <message>
-        <source>  VERIFY  </source>
-        <translation>  VERIFIKASI  </translation>
-    </message>
-    <message>
-        <source>BACK TO LOGIN</source>
-        <translation>KEMBALI KE MASUK</translation>
-    </message>
-    <message>
-        <source>SESSION CONFLICT</source>
-        <translation>SESI BERTENTANGAN</translation>
-    </message>
-    <message>
-        <source>WARNING</source>
-        <translation>PERINGATAN</translation>
-    </message>
-    <message>
-        <source>  LOG OUT OTHER SESSION &amp; CONTINUE  </source>
-        <translation>  KELUAR DARI SESI LAIN &amp; LANJUTKAN  </translation>
-    </message>
-    <message>
-        <source>  CANCEL  </source>
-        <translation>  BATAL  </translation>
-    </message>
-    <message>
-        <source>Please enter your password</source>
-        <translation>Silakan masukkan kata sandi Anda</translation>
-    </message>
-    <message>
-        <source>Please enter the code</source>
-        <translation>Silakan masukkan kodenya</translation>
+        <source>  CONTINUE AS GUEST  </source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -15702,7 +14574,7 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>Sumber &amp; Penggunaan</translation>
     </message>
     <message>
-        <source>Calculates each party's % contribution to the combined entity.</source>
+        <source>Calculates each party&apos;s % contribution to the combined entity.</source>
         <translation>Menghitung kontribusi % masing-masing pihak terhadap entitas gabungan.</translation>
     </message>
     <message>
@@ -16338,8 +15210,8 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>Regresi</translation>
     </message>
     <message>
-        <source>Enter deal data as JSON array. Each deal: {"acquirer":"...","target":"...","deal_value":N,"premium":N,"ev_revenue":N,"ev_ebitda":N}</source>
-        <translation>Masukkan data kesepakatan sebagai array JSON. Setiap kesepakatan: {"acquirer":"...","target":"...","deal_value":N,"premium":N,"ev_revenue":N,"ev_ebitda":N}</translation>
+        <source>Enter deal data as JSON array. Each deal: {&quot;acquirer&quot;:&quot;...&quot;,&quot;target&quot;:&quot;...&quot;,&quot;deal_value&quot;:N,&quot;premium&quot;:N,&quot;ev_revenue&quot;:N,&quot;ev_ebitda&quot;:N}</source>
+        <translation>Masukkan data kesepakatan sebagai array JSON. Setiap kesepakatan: {&quot;acquirer&quot;:&quot;...&quot;,&quot;target&quot;:&quot;...&quot;,&quot;deal_value&quot;:N,&quot;premium&quot;:N,&quot;ev_revenue&quot;:N,&quot;ev_ebitda&quot;:N}</translation>
     </message>
     <message>
         <source>COMPARE DEALS</source>
@@ -16465,20 +15337,16 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>✕ HAPUS</translation>
     </message>
     <message>
-        <source>INTELLIGENCE</source>
-        <translation>INTELIJEN</translation>
-    </message>
-    <message>
-        <source>TOTAL IN AREA</source>
-        <translation>TOTAL DI AREA</translation>
-    </message>
-    <message>
-        <source>DISPLAYED</source>
-        <translation>DITAMPILKAN</translation>
-    </message>
-    <message>
         <source>ROUTES</source>
         <translation>RUTE</translation>
+    </message>
+    <message>
+        <source>LIVE VESSEL MAP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BASEMAP</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>PORTS</source>
@@ -16487,6 +15355,30 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
     <message>
         <source>TRADE CORRIDORS</source>
         <translation>KORIDOR PERDAGANGAN</translation>
+    </message>
+    <message>
+        <source>FLEET INTELLIGENCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOADED</source>
+        <translation type="unfinished">DIMUAT</translation>
+    </message>
+    <message>
+        <source>IN REGION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MOVING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AVG SPEED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEST PORTS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Route</source>
@@ -16499,10 +15391,6 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
     <message>
         <source>Status</source>
         <translation>Status</translation>
-    </message>
-    <message>
-        <source>VESSEL TRACKING</source>
-        <translation>PELACAKAN KAPAL</translation>
     </message>
     <message>
         <source>Name</source>
@@ -16653,16 +15541,24 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>REKAMAN:</translation>
     </message>
     <message>
-        <source>REFRESH:</source>
-        <translation>SEGARKAN:</translation>
-    </message>
-    <message>
-        <source>5 MIN</source>
-        <translation>5 MNT</translation>
+        <source>UPDATED:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>— VESSELS</source>
         <translation>— KAPAL</translation>
+    </message>
+    <message>
+        <source>⟳ REFRESH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO ⟳ OFF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO ⟳ 5m</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>IMO: %1</source>
@@ -16813,6 +15709,14 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>%1 — POSISI SAAT INI</translation>
     </message>
     <message>
+        <source>ORIGIN: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEST: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>HISTORY: %1 (%2 positions)</source>
         <translation>RIWAYAT: %1 (%2 posisi)</translation>
     </message>
@@ -16882,6 +15786,14 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
     <message>
         <source>TICKER</source>
         <translation>TICKER</translation>
+    </message>
+    <message>
+        <source>No data (rate-limited) — auto-retrying…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data — press [RETRY] or wait for refresh</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Copy Symbol</source>
@@ -17268,10 +16180,6 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>LOG</translation>
     </message>
     <message>
-        <source>No output yet. Start the server to see logs here.</source>
-        <translation>Belum ada keluaran. Mulai server untuk melihat log di sini.</translation>
-    </message>
-    <message>
         <source>REMOVE</source>
         <translation>HAPUS</translation>
     </message>
@@ -17280,9 +16188,9 @@ untuk mengatur ulang PIN dan mendapatkan kembali akses.</translation>
         <translation>Hapus Server</translation>
     </message>
     <message>
-        <source>Remove "%1"?
+        <source>Remove &quot;%1&quot;?
 This cannot be undone.</source>
-        <translation>Hapus "%1"?
+        <translation>Hapus &quot;%1&quot;?
 Ini tidak dapat dibatalkan.</translation>
     </message>
     <message>
@@ -17500,9 +16408,9 @@ Gunakan MARKETPLACE untuk menambah, atau klik TAMBAH SERVER MCP KUSTOM di bawah.
     </message>
     <message>
         <source>No external servers configured.
-Click '+ Add' to add one.</source>
+Click &apos;+ Add&apos; to add one.</source>
         <translation>Tidak ada server eksternal yang dikonfigurasi.
-Klik '+ Tambah' untuk menambahkan.</translation>
+Klik &apos;+ Tambah&apos; untuk menambahkan.</translation>
     </message>
     <message>
         <source>internal</source>
@@ -17867,10 +16775,6 @@ Klik '+ Tambah' untuk menambahkan.</translation>
         <translation>LOK  </translation>
     </message>
     <message>
-        <source>Credits used: %1  •  remaining: %2</source>
-        <translation>Kredit terpakai: %1  •  tersisa: %2</translation>
-    </message>
-    <message>
         <source>Country: %1 (%2)</source>
         <translation>Negara: %1 (%2)</translation>
     </message>
@@ -18137,6 +17041,14 @@ Klik '+ Tambah' untuk menambahkan.</translation>
         <translation>PENYEDIA NOTIFIKASI</translation>
     </message>
     <message>
+        <source>OpenMarketTerminal Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This is a test notification from OpenMarketTerminal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>ALERT TRIGGERS</source>
         <translation>PEMICU PERINGATAN</translation>
     </message>
@@ -18147,14 +17059,6 @@ Klik '+ Tambah' untuk menambahkan.</translation>
     <message>
         <source>Sending...</source>
         <translation>Mengirim…</translation>
-    </message>
-    <message>
-        <source>Open Terminal Test</source>
-        <translation>Uji Open Terminal</translation>
-    </message>
-    <message>
-        <source>This is a test notification from Open Terminal.</source>
-        <translation>Ini adalah notifikasi uji dari Open Terminal.</translation>
     </message>
     <message>
         <source>✓ Sent successfully</source>
@@ -18267,10 +17171,6 @@ Klik '+ Tambah' untuk menambahkan.</translation>
 <context>
     <name>openmarketterminal::screens::OnboardingTour</name>
     <message>
-        <source>Welcome to Open Terminal</source>
-        <translation>Selamat datang di Open Terminal</translation>
-    </message>
-    <message>
         <source>A 30-second tour</source>
         <translation>Tur 30 detik</translation>
     </message>
@@ -18279,12 +17179,12 @@ Klik '+ Tambah' untuk menambahkan.</translation>
         <translation>Bilah perintah (Ctrl+\)</translation>
     </message>
     <message>
-        <source>Type a function code or verb to do anything in the terminal — e.g. "AAPL", "layout switch \"Morning\"", or "link panel red". Press Ctrl+K for a fuzzy palette of every action.</source>
-        <translation>Ketik kode fungsi atau kata kerja untuk melakukan apa pun di terminal — mis. "AAPL", "layout switch \"Morning\"", atau "link panel red". Tekan Ctrl+K untuk palet fuzzy berisi setiap tindakan.</translation>
+        <source>Type a function code or verb to do anything in the terminal — e.g. &quot;AAPL&quot;, &quot;layout switch \&quot;Morning\&quot;&quot;, or &quot;link panel red&quot;. Press Ctrl+K for a fuzzy palette of every action.</source>
+        <translation>Ketik kode fungsi atau kata kerja untuk melakukan apa pun di terminal — mis. &quot;AAPL&quot;, &quot;layout switch \&quot;Morning\&quot;&quot;, atau &quot;link panel red&quot;. Tekan Ctrl+K untuk palet fuzzy berisi setiap tindakan.</translation>
     </message>
     <message>
-        <source>Tip: type "?" to list available actions for whatever you type next.</source>
-        <translation>Tip: ketik "?" untuk menampilkan tindakan yang tersedia untuk apa pun yang Anda ketik selanjutnya.</translation>
+        <source>Tip: type &quot;?&quot; to list available actions for whatever you type next.</source>
+        <translation>Tip: ketik &quot;?&quot; untuk menampilkan tindakan yang tersedia untuk apa pun yang Anda ketik selanjutnya.</translation>
     </message>
     <message>
         <source>Link panels with a colour</source>
@@ -18303,8 +17203,8 @@ Klik '+ Tambah' untuk menambahkan.</translation>
         <translation>Lepaskan panel ke jendela baru</translation>
     </message>
     <message>
-        <source>Right-click a panel tab → "Tear off into new window" to spawn a fresh frame on the next monitor. Or drag a panel to another frame's tab bar to move it. Each frame keeps its own dock layout — save the whole arrangement as a named layout when you've got it the way you like.</source>
-        <translation>Klik kanan tab panel → "Lepaskan ke jendela baru" untuk membuat bingkai baru di monitor berikutnya. Atau seret panel ke bilah tab bingkai lain untuk memindahkannya. Setiap bingkai mempertahankan tata letak dok-nya sendiri — simpan seluruh susunan sebagai tata letak bernama saat sudah sesuai keinginan Anda.</translation>
+        <source>Right-click a panel tab → &quot;Tear off into new window&quot; to spawn a fresh frame on the next monitor. Or drag a panel to another frame&apos;s tab bar to move it. Each frame keeps its own dock layout — save the whole arrangement as a named layout when you&apos;ve got it the way you like.</source>
+        <translation>Klik kanan tab panel → &quot;Lepaskan ke jendela baru&quot; untuk membuat bingkai baru di monitor berikutnya. Atau seret panel ke bilah tab bingkai lain untuk memindahkannya. Setiap bingkai mempertahankan tata letak dok-nya sendiri — simpan seluruh susunan sebagai tata letak bernama saat sudah sesuai keinginan Anda.</translation>
     </message>
     <message>
         <source>Tip: Ctrl+Shift+N opens a fresh window on your next monitor.</source>
@@ -18315,10 +17215,6 @@ Klik '+ Tambah' untuk menambahkan.</translation>
         <translation>Pengaturan &amp; pintasan</translation>
     </message>
     <message>
-        <source>Open Settings (gear icon) to tune theme, hotkeys, telemetry opt-in, and broker credentials. Hotkeys are rebindable — every action in the registry can be assigned a key.</source>
-        <translation>Buka Pengaturan (ikon roda gigi) untuk menyetel tema, hotkey, keikutsertaan telemetri, dan kredensial broker. Hotkey dapat dipetakan ulang — setiap tindakan di registri dapat diberi tombol.</translation>
-    </message>
-    <message>
         <source>Tip: F11 toggles fullscreen on the focused window.</source>
         <translation>Tip: F11 mengaktifkan/menonaktifkan layar penuh pada jendela yang sedang fokus.</translation>
     </message>
@@ -18327,12 +17223,20 @@ Klik '+ Tambah' untuk menambahkan.</translation>
         <translation>Lewati</translation>
     </message>
     <message>
+        <source>Welcome to OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation>Kembali</translation>
     </message>
     <message>
         <source>Next</source>
         <translation>Berikutnya</translation>
+    </message>
+    <message>
+        <source>Open Settings (gear icon) to tune theme, hotkeys, and broker credentials. Hotkeys are rebindable — every action in the registry can be assigned a key.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Got it!</source>
@@ -18364,6 +17268,80 @@ Data via api.beta.ons.gov.uk — GDP, CPI, pasar tenaga kerja, perumahan</transl
     <message>
         <source>No data returned</source>
         <translation>Tidak ada data yang dikembalikan</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::OpenMarketTerminalMacroPanel</name>
+    <message>
+        <source>INDICATOR</source>
+        <translation type="unfinished">INDIKATOR</translation>
+    </message>
+    <message>
+        <source>Fetching %1 …</source>
+        <translation type="unfinished">Mengambil %1 …</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::OrderConfirmDialog</name>
+    <message>
+        <source>Confirm Order</source>
+        <translation>Konfirmasi Order</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">Akun</translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Simbol</translation>
+    </message>
+    <message>
+        <source>Exchange</source>
+        <translation type="unfinished">Bursa</translation>
+    </message>
+    <message>
+        <source>Quantity</source>
+        <translation type="unfinished">Kuantitas</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Jenis</translation>
+    </message>
+    <message>
+        <source>Price</source>
+        <translation type="unfinished">Harga</translation>
+    </message>
+    <message>
+        <source>Trigger</source>
+        <translation type="unfinished">Pemicu</translation>
+    </message>
+    <message>
+        <source>Est. value</source>
+        <translation>Est. nilai</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">Batal</translation>
+    </message>
+    <message>
+        <source>Send Order</source>
+        <translation>Kirim Order</translation>
+    </message>
+    <message>
+        <source>⚠  SEMI-AUTO — review before sending</source>
+        <translation>⚠  SEMI-OTOMATIS — tinjau sebelum mengirim</translation>
     </message>
 </context>
 <context>
@@ -18407,6 +17385,148 @@ Contoh negara: United States, China, Germany, India, Japan, World</translation>
     <message>
         <source>No data returned — try a different country or year range</source>
         <translation>Tidak ada data yang dikembalikan — coba negara atau rentang tahun lain</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::PendingOrdersBadge</name>
+    <message>
+        <source>Orders awaiting approval — click to review</source>
+        <translation>Order menunggu persetujuan — klik untuk meninjau</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::PendingOrdersPanel</name>
+    <message>
+        <source>PENDING ORDERS</source>
+        <translation>ORDER TERTUNDA</translation>
+    </message>
+    <message>
+        <source>Account:</source>
+        <translation type="unfinished">Akun:</translation>
+    </message>
+    <message>
+        <source>Show:</source>
+        <translation type="unfinished">Tampilkan:</translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation type="unfinished">Tertunda</translation>
+    </message>
+    <message>
+        <source>Approved</source>
+        <translation type="unfinished">Disetujui</translation>
+    </message>
+    <message>
+        <source>Rejected</source>
+        <translation type="unfinished">Ditolak</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished">Semua</translation>
+    </message>
+    <message>
+        <source>PENDING</source>
+        <translation type="unfinished">TERTUNDA</translation>
+    </message>
+    <message>
+        <source>APPROVED</source>
+        <translation type="unfinished">DISETUJUI</translation>
+    </message>
+    <message>
+        <source>REJECTED</source>
+        <translation type="unfinished">DITOLAK</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>APPROVE ALL</source>
+        <translation type="unfinished">SETUJUI SEMUA</translation>
+    </message>
+    <message>
+        <source>REJECT ALL</source>
+        <translation type="unfinished">TOLAK SEMUA</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">Waktu</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">Akun</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Jenis</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Simbol</translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">Sisi</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Price Type</source>
+        <translation type="unfinished">Jenis Harga</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished">Status</translation>
+    </message>
+    <message>
+        <source>Actions</source>
+        <translation type="unfinished">Tindakan</translation>
+    </message>
+    <message>
+        <source>Approve All</source>
+        <translation type="unfinished">Setujui Semua</translation>
+    </message>
+    <message>
+        <source>Execute ALL pending orders now?</source>
+        <translation type="unfinished">Eksekusi SEMUA order tertunda sekarang?</translation>
+    </message>
+    <message>
+        <source>Reject All</source>
+        <translation type="unfinished">Tolak Semua</translation>
+    </message>
+    <message>
+        <source>Select a specific account to reject all its pending orders.</source>
+        <translation type="unfinished">Pilih akun tertentu untuk menolak semua order tertundanya.</translation>
+    </message>
+    <message>
+        <source>Rejection reason:</source>
+        <translation type="unfinished">Alasan penolakan:</translation>
+    </message>
+    <message>
+        <source>Rejected by user</source>
+        <translation type="unfinished">Ditolak oleh pengguna</translation>
+    </message>
+    <message>
+        <source>All Accounts</source>
+        <translation type="unfinished">Semua Akun</translation>
+    </message>
+    <message>
+        <source>Approve</source>
+        <translation type="unfinished">Setujui</translation>
+    </message>
+    <message>
+        <source>Reject</source>
+        <translation type="unfinished">Tolak</translation>
+    </message>
+    <message>
+        <source>Reject Order</source>
+        <translation type="unfinished">Tolak Order</translation>
     </message>
 </context>
 <context>
@@ -18476,7 +17596,7 @@ Contoh negara: United States, China, Germany, India, Japan, World</translation>
         <translation>Expected shortfall (95%)</translation>
     </message>
     <message>
-        <source>Jensen's alpha vs benchmark (CAPM)</source>
+        <source>Jensen&apos;s alpha vs benchmark (CAPM)</source>
         <translation>Alpha Jensen vs tolok ukur (CAPM)</translation>
     </message>
     <message>
@@ -18858,8 +17978,8 @@ Contoh negara: United States, China, Germany, India, Japan, World</translation>
         <translation>⚠ Kurang dari %1. Dengan %2 %3/bulan Anda mencapai %2 %4 (%5%). Tabung %2 %6/bulan untuk mencapai target %2 %7 dalam %8 tahun.</translation>
     </message>
     <message>
-        <source>Monte Carlo: &lt;b&gt;&lt;span style='color:%1'&gt;%2%% chance&lt;/span&gt;&lt;/b&gt; of reaching %3 %4 — likely %3 %5 – %3 %6.</source>
-        <translation>Monte Carlo: &lt;b&gt;&lt;span style='color:%1'&gt;peluang %2%%&lt;/span&gt;&lt;/b&gt; mencapai %3 %4 — kemungkinan %3 %5 – %3 %6.</translation>
+        <source>Monte Carlo: &lt;b&gt;&lt;span style=&apos;color:%1&apos;&gt;%2%% chance&lt;/span&gt;&lt;/b&gt; of reaching %3 %4 — likely %3 %5 – %3 %6.</source>
+        <translation>Monte Carlo: &lt;b&gt;&lt;span style=&apos;color:%1&apos;&gt;peluang %2%%&lt;/span&gt;&lt;/b&gt; mencapai %3 %4 — kemungkinan %3 %5 – %3 %6.</translation>
     </message>
     <message>
         <source>  (current)</source>
@@ -18882,8 +18002,8 @@ Contoh negara: United States, China, Germany, India, Japan, World</translation>
         <translation>(tanpa nama)</translation>
     </message>
     <message>
-        <source>Monte Carlo (2000 runs, %1% vol): &lt;b&gt;&lt;span style='color:%2'&gt;%3%% chance&lt;/span&gt;&lt;/b&gt; of reaching your target. Likely range %4 %5 – %6 %7 (median %4 %8).</source>
-        <translation>Monte Carlo (2000 simulasi, vol %1%): &lt;b&gt;&lt;span style='color:%2'&gt;peluang %3%%&lt;/span&gt;&lt;/b&gt; mencapai target Anda. Kisaran kemungkinan %4 %5 – %6 %7 (median %4 %8).</translation>
+        <source>Monte Carlo (2000 runs, %1% vol): &lt;b&gt;&lt;span style=&apos;color:%2&apos;&gt;%3%% chance&lt;/span&gt;&lt;/b&gt; of reaching your target. Likely range %4 %5 – %6 %7 (median %4 %8).</source>
+        <translation>Monte Carlo (2000 simulasi, vol %1%): &lt;b&gt;&lt;span style=&apos;color:%2&apos;&gt;peluang %3%%&lt;/span&gt;&lt;/b&gt; mencapai target Anda. Kisaran kemungkinan %4 %5 – %6 %7 (median %4 %8).</translation>
     </message>
     <message>
         <source>Stress: a %1%% drawdown (your historical max) near retirement would cut the projection to %2 %3 — %4%% of target.</source>
@@ -19521,7 +18641,7 @@ untuk melacak korelasi rolling 60-hari.</translation>
     <message>
         <source>Agent completed but returned no content.
 
-Check the agent's LLM profile in Agent Config → Agents, and make sure an API key is set in Settings → LLM Configuration.</source>
+Check the agent&apos;s LLM profile in Agent Config → Agents, and make sure an API key is set in Settings → LLM Configuration.</source>
         <translation>Agent selesai tetapi tidak mengembalikan konten.
 
 Periksa profil LLM agent di Agent Config → Agents, dan pastikan kunci API telah diatur di Settings → LLM Configuration.</translation>
@@ -19902,8 +19022,8 @@ Pilih portofolio untuk melihat estimasi dampak per skenario.</translation>
         <translation>EST. KERUGIAN</translation>
     </message>
     <message>
-        <source>Market-implied equilibrium returns (π = δ·Σ·w_market) shown below. Select 'B-L Model' as the METHOD on the OPTIMIZE tab to also compute B-L weights.</source>
-        <translation>Imbal hasil ekuilibrium tersirat pasar (π = δ·Σ·w_market) ditampilkan di bawah. Pilih 'B-L Model' sebagai METHOD pada tab OPTIMIZE untuk juga menghitung bobot B-L.</translation>
+        <source>Market-implied equilibrium returns (π = δ·Σ·w_market) shown below. Select &apos;B-L Model&apos; as the METHOD on the OPTIMIZE tab to also compute B-L weights.</source>
+        <translation>Imbal hasil ekuilibrium tersirat pasar (π = δ·Σ·w_market) ditampilkan di bawah. Pilih &apos;B-L Model&apos; sebagai METHOD pada tab OPTIMIZE untuk juga menghitung bobot B-L.</translation>
     </message>
     <message>
         <source>Run optimization on the OPTIMIZE tab to compute market-implied returns and Black-Litterman weights.</source>
@@ -20013,6 +19133,140 @@ periode yang dipilih. Gunakan saat membandingkan mata uang yang berbeda.</transl
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::PortfolioReplicationDialog</name>
+    <message>
+        <source>Replicate Portfolio → Paper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target (paper)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holdings</source>
+        <translation type="unfinished">Kepemilikan</translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished">Posisi</translation>
+    </message>
+    <message>
+        <source>Include:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source></source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Jenis</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation type="unfinished">Sumber</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished">Target</translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">Sisi</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Est Price</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Est Value / Note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up paper balance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished">Tutup</translation>
+    </message>
+    <message>
+        <source>REPLICATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No paper accounts found. Create one via ACCOUNTS first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading source portfolio…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No credentials for source account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source account has no holdings or positions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 stock(s) selected  •  Required %2  vs  Paper available %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up paper balance to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paper balance set to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm replication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Place %1 paper order(s) into the target account?
+This is paper trading — no real money.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1  •  Failed %2  •  Skipped %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Replication results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1, failed %2, skipped %3.
+
+%4</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::PortfolioScreen</name>
     <message>
         <source>Export CSV</source>
@@ -20051,24 +19305,24 @@ periode yang dipilih. Gunakan saat membandingkan mata uang yang berbeda.</transl
 
 Expected format:
 {
-  "portfolio_name": "My Portfolio",
-  "currency": "USD",
-  "owner": "...",
-  "transactions": [
-    {"date": "YYYY-MM-DD", "symbol": "AAPL", "type": "BUY",
-     "quantity": 10, "price": 150.0}
+  &quot;portfolio_name&quot;: &quot;My Portfolio&quot;,
+  &quot;currency&quot;: &quot;USD&quot;,
+  &quot;owner&quot;: &quot;...&quot;,
+  &quot;transactions&quot;: [
+    {&quot;date&quot;: &quot;YYYY-MM-DD&quot;, &quot;symbol&quot;: &quot;AAPL&quot;, &quot;type&quot;: &quot;BUY&quot;,
+     &quot;quantity&quot;: 10, &quot;price&quot;: 150.0}
   ]
 }</source>
         <translation>
 
 Expected format:
 {
-  "portfolio_name": "My Portfolio",
-  "currency": "USD",
-  "owner": "...",
-  "transactions": [
-    {"date": "YYYY-MM-DD", "symbol": "AAPL", "type": "BUY",
-     "quantity": 10, "price": 150.0}
+  &quot;portfolio_name&quot;: &quot;My Portfolio&quot;,
+  &quot;currency&quot;: &quot;USD&quot;,
+  &quot;owner&quot;: &quot;...&quot;,
+  &quot;transactions&quot;: [
+    {&quot;date&quot;: &quot;YYYY-MM-DD&quot;, &quot;symbol&quot;: &quot;AAPL&quot;, &quot;type&quot;: &quot;BUY&quot;,
+     &quot;quantity&quot;: 10, &quot;price&quot;: 150.0}
   ]
 }</translation>
     </message>
@@ -20121,8 +19375,8 @@ Expected format:
         <translation>Portofolio Demo</translation>
     </message>
     <message>
-        <source>Open Terminal User</source>
-        <translation>Pengguna Open Terminal</translation>
+        <source>OpenMarketTerminal User</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Sample portfolio for demonstration</source>
@@ -20274,93 +19528,6 @@ Expected format:
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::PricingScreen</name>
-    <message>
-        <source>PLANS &amp; PRICING</source>
-        <translation>PAKET DAN HARGA</translation>
-    </message>
-    <message>
-        <source>Unlock the full power of Open Terminal</source>
-        <translation>Buka semua kekuatan Open Terminal</translation>
-    </message>
-    <message>
-        <source>Loading plans...</source>
-        <translation>Memuat paket...</translation>
-    </message>
-    <message>
-        <source>Updating plan status...</source>
-        <translation>Memperbarui status paket...</translation>
-    </message>
-    <message>
-        <source>Failed to load plans</source>
-        <translation>Gagal memuat paket</translation>
-    </message>
-    <message>
-        <source>No plans available.</source>
-        <translation>Tidak ada paket tersedia.</translation>
-    </message>
-    <message>
-        <source>RECOMMENDED</source>
-        <translation>DIREKOMENDASIKAN</translation>
-    </message>
-    <message>
-        <source>FREE</source>
-        <translation>GRATIS</translation>
-    </message>
-    <message>
-        <source>/ %1 days</source>
-        <translation>/ %1 hari</translation>
-    </message>
-    <message>
-        <source>%1 credits</source>
-        <translation>%1 kredit</translation>
-    </message>
-    <message>
-        <source>ACTIVE</source>
-        <translation>AKTIF</translation>
-    </message>
-    <message>
-        <source>FREE TIER</source>
-        <translation>TINGKAT GRATIS</translation>
-    </message>
-    <message>
-        <source>CONTINUE FREE</source>
-        <translation>LANJUTKAN GRATIS</translation>
-    </message>
-    <message>
-        <source>SELECT PLAN</source>
-        <translation>PILIH PAKET</translation>
-    </message>
-    <message>
-        <source>PROCESSING...</source>
-        <translation>MEMPROSES...</translation>
-    </message>
-    <message>
-        <source>Back to Dashboard</source>
-        <translation>Kembali ke Dasbor</translation>
-    </message>
-    <message>
-        <source>Continue with Free Plan</source>
-        <translation>Lanjutkan dengan Paket Gratis</translation>
-    </message>
-    <message>
-        <source>%1 support</source>
-        <translation>Dukungan %1</translation>
-    </message>
-    <message>
-        <source>Failed to generate checkout token</source>
-        <translation>Gagal membuat token checkout</translation>
-    </message>
-    <message>
-        <source>No checkout token received from server</source>
-        <translation>Tidak ada token checkout yang diterima dari server</translation>
-    </message>
-    <message>
-        <source>Want to explore first?</source>
-        <translation>Ingin menjelajah dulu?</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::PrivacyScreen</name>
     <message>
         <source>&lt; BACK</source>
@@ -20371,200 +19538,144 @@ Expected format:
         <translation>KEBIJAKAN PRIVASI</translation>
     </message>
     <message>
-        <source>Last updated: January 1, 2026</source>
-        <translation>Terakhir diperbarui: 1 Januari 2026</translation>
+        <source>Applies to the open-source release.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OUR COMMITMENT TO PRIVACY</source>
-        <translation>KOMITMEN KAMI TERHADAP PRIVASI</translation>
+        <source>LOCAL-FIRST BY DESIGN</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>At Open Terminal contributors, we are committed to protecting your privacy. This policy describes how we collect, use, and safeguard your personal information when you use Open Terminal.</source>
-        <translation>Di Open Terminal contributors, kami berkomitmen untuk melindungi privasi Anda. Kebijakan ini menjelaskan bagaimana kami mengumpulkan, menggunakan, dan menjaga informasi pribadi Anda saat Anda menggunakan Open Terminal.</translation>
+        <source>Open Terminal is a local-first desktop app that runs entirely on your computer. There is no Open Terminal server. We do not collect, transmit, sell, or share your personal data, and the app contains no analytics, telemetry, or phone-home of any kind.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>INFORMATION WE COLLECT</source>
-        <translation>INFORMASI YANG KAMI KUMPULKAN</translation>
+        <source>YOUR DATA STAYS ON YOUR DEVICE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Personal Information:</source>
-        <translation>Informasi Pribadi:</translation>
+        <source>Everything you create in the app is stored locally on your machine:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Name and email address</source>
-        <translation>Nama dan alamat email</translation>
+        <source>Watchlists, portfolios, notes, and settings — in local SQLite databases</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Account credentials (encrypted)</source>
-        <translation>Kredensial akun (terenkripsi)</translation>
+        <source>Secrets such as API keys — in your operating system&apos;s keychain</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Payment information (processed by third-party providers)</source>
-        <translation>Informasi pembayaran (diproses oleh penyedia pihak ketiga)</translation>
+        <source>Nothing is uploaded to us; there is no account to register and no cloud sync</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Phone number (optional)</source>
-        <translation>Nomor telepon (opsional)</translation>
+        <source>API KEYS AND THIRD-PARTY SERVICES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Country and region</source>
-        <translation>Negara dan wilayah</translation>
+        <source>STORED LOCALLY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Usage Information:</source>
-        <translation>Informasi Penggunaan:</translation>
+        <source>API keys you configure are kept on your device and are never sent to us</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Feature usage and navigation patterns</source>
-        <translation>Penggunaan fitur dan pola navigasi</translation>
+        <source>DIRECT CONNECTIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Device and browser information</source>
-        <translation>Informasi perangkat dan browser</translation>
+        <source>Keys are used only to connect directly from your machine to the brokers and data providers you choose</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IP address and approximate location</source>
-        <translation>Alamat IP dan lokasi perkiraan</translation>
+        <source>THEIR POLICIES APPLY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Error logs and performance metrics</source>
-        <translation>Log kesalahan dan metrik kinerja</translation>
+        <source>Those third parties handle your requests under their own privacy policies — review them separately</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Session duration and frequency</source>
-        <translation>Durasi dan frekuensi sesi</translation>
+        <source>YOU DECIDE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>HOW WE USE YOUR INFORMATION</source>
-        <translation>BAGAIMANA KAMI MENGGUNAKAN INFORMASI ANDA</translation>
+        <source>No connection is made unless you add a key and choose to use that service</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SERVICE DELIVERY</source>
-        <translation>PENYEDIAAN LAYANAN</translation>
+        <source>NO COLLECTION, NO SHARING</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Provide and maintain terminal features, process transactions, and deliver data feeds</source>
-        <translation>Menyediakan dan memelihara fitur terminal, memproses transaksi, dan menyalurkan umpan data</translation>
+        <source>Because there is no server and no telemetry:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SECURITY</source>
-        <translation>KEAMANAN</translation>
+        <source>We do not collect names, emails, phone numbers, payment details, or location</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Protect accounts, detect fraud, enforce terms of service, and ensure platform integrity</source>
-        <translation>Melindungi akun, mendeteksi penipuan, menegakkan ketentuan layanan, dan menjamin integritas platform</translation>
+        <source>We do not track feature usage, navigation, or session activity</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>COMMUNICATION</source>
-        <translation>KOMUNIKASI</translation>
+        <source>We have no data to sell, share with partners, or hand over</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Send service updates, security alerts, support responses, and optional marketing</source>
-        <translation>Mengirim pembaruan layanan, peringatan keamanan, tanggapan dukungan, dan pemasaran opsional</translation>
+        <source>KEEPING YOUR DATA SAFE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IMPROVEMENT</source>
-        <translation>PENINGKATAN</translation>
+        <source>Your data&apos;s security rests with your own machine:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Analyze usage to improve features, fix bugs, and develop new capabilities</source>
-        <translation>Menganalisis penggunaan untuk meningkatkan fitur, memperbaiki bug, dan mengembangkan kemampuan baru</translation>
+        <source>Secrets are stored in the OS keychain rather than plain text</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>INFORMATION SHARING</source>
-        <translation>BERBAGI INFORMASI</translation>
+        <source>Local databases live under your user profile, protected by your OS account</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>We may share your information with:</source>
-        <translation>Kami dapat membagikan informasi Anda dengan:</translation>
+        <source>Keeping your device and operating system secure protects your data</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Service Providers — third-party services that help operate the platform</source>
-        <translation>Penyedia Layanan — layanan pihak ketiga yang membantu mengoperasikan platform</translation>
+        <source>OPEN AND INSPECTABLE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Legal Requirements — when required by law or to protect our rights</source>
-        <translation>Persyaratan Hukum — bila diwajibkan oleh hukum atau untuk melindungi hak kami</translation>
+        <source>Open Terminal is open-source software:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Business Transfer — in connection with a merger, acquisition, or sale</source>
-        <translation>Pengalihan Bisnis — terkait dengan merger, akuisisi, atau penjualan</translation>
+        <source>You can read the source to see exactly how your data is handled</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>With Your Consent — when you explicitly authorize sharing</source>
-        <translation>Dengan Persetujuan Anda — saat Anda secara eksplisit mengizinkan berbagi</translation>
+        <source>You control your local data — back it up, export it, or delete it at any time</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DATA SECURITY</source>
-        <translation>KEAMANAN DATA</translation>
+        <source>Removing the app&apos;s data folders removes your data completely</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>We implement industry-standard security measures:</source>
-        <translation>Kami menerapkan langkah-langkah keamanan standar industri:</translation>
+        <source>QUESTIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>End-to-end encryption for sensitive data</source>
-        <translation>Enkripsi ujung ke ujung untuk data sensitif</translation>
+        <source>Privacy questions can be raised in the public issue tracker:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Secure credential storage (encrypted at rest)</source>
-        <translation>Penyimpanan kredensial yang aman (terenkripsi saat disimpan)</translation>
-    </message>
-    <message>
-        <source>Regular security audits and penetration testing</source>
-        <translation>Audit keamanan berkala dan pengujian penetrasi</translation>
-    </message>
-    <message>
-        <source>Access controls and authentication requirements</source>
-        <translation>Kontrol akses dan persyaratan autentikasi</translation>
-    </message>
-    <message>
-        <source>Automatic session expiry and logout</source>
-        <translation>Kedaluwarsa sesi dan keluar otomatis</translation>
-    </message>
-    <message>
-        <source>HTTPS/TLS for all data transmission</source>
-        <translation>HTTPS/TLS untuk semua transmisi data</translation>
-    </message>
-    <message>
-        <source>YOUR RIGHTS</source>
-        <translation>HAK ANDA</translation>
-    </message>
-    <message>
-        <source>You have the right to:</source>
-        <translation>Anda berhak untuk:</translation>
-    </message>
-    <message>
-        <source>Access — Request a copy of your personal data</source>
-        <translation>Akses — Meminta salinan data pribadi Anda</translation>
-    </message>
-    <message>
-        <source>Correction — Update inaccurate or incomplete data</source>
-        <translation>Koreksi — Memperbarui data yang tidak akurat atau tidak lengkap</translation>
-    </message>
-    <message>
-        <source>Deletion — Request deletion of your account and data</source>
-        <translation>Penghapusan — Meminta penghapusan akun dan data Anda</translation>
-    </message>
-    <message>
-        <source>Portability — Export your data in a machine-readable format</source>
-        <translation>Portabilitas — Mengekspor data Anda dalam format yang dapat dibaca mesin</translation>
-    </message>
-    <message>
-        <source>Opt-out — Unsubscribe from marketing communications</source>
-        <translation>Berhenti — Berhenti berlangganan komunikasi pemasaran</translation>
-    </message>
-    <message>
-        <source>CONTACT US</source>
-        <translation>HUBUNGI KAMI</translation>
-    </message>
-    <message>
-        <source>Privacy Officer: github.com/your-org/open-terminal/issues</source>
-        <translation>Petugas Privasi: github.com/your-org/open-terminal/issues</translation>
-    </message>
-    <message>
-        <source>For privacy-related inquiries, write to the address above.</source>
-        <translation>Untuk pertanyaan terkait privasi, tuliskan ke alamat di atas.</translation>
+        <source>github.com/Trucker2827/Open-Terminal/issues</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Terms of Service</source>
@@ -20580,10 +19691,6 @@ Expected format:
     <message>
         <source>PROFILE &amp; ACCOUNT</source>
         <translation>PROFIL DAN AKUN</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>SEGARKAN</translation>
     </message>
     <message>
         <source>SECURITY</source>
@@ -20610,12 +19717,8 @@ Expected format:
         <translation>NEGARA</translation>
     </message>
     <message>
-        <source>EDIT PROFILE</source>
-        <translation>EDIT PROFIL</translation>
-    </message>
-    <message>
-        <source>CREDITS &amp; BALANCE</source>
-        <translation>KREDIT DAN SALDO</translation>
+        <source>LICENSE</source>
+        <translation type="unfinished">LISENSI</translation>
     </message>
     <message>
         <source>QUICK ACTIONS</source>
@@ -20624,10 +19727,6 @@ Expected format:
     <message>
         <source>LOGOUT</source>
         <translation>KELUAR</translation>
-    </message>
-    <message>
-        <source>DELETE ACCOUNT</source>
-        <translation>HAPUS AKUN</translation>
     </message>
     <message>
         <source>API KEY</source>
@@ -20650,10 +19749,6 @@ Expected format:
         <translation>DISALIN</translation>
     </message>
     <message>
-        <source>REGENERATE</source>
-        <translation>BUAT ULANG</translation>
-    </message>
-    <message>
         <source>YES</source>
         <translation>YA</translation>
     </message>
@@ -20670,14 +19765,6 @@ Expected format:
         <translation>NONAKTIF</translation>
     </message>
     <message>
-        <source>CANCEL</source>
-        <translation>BATAL</translation>
-    </message>
-    <message>
-        <source>SAVE</source>
-        <translation>SIMPAN</translation>
-    </message>
-    <message>
         <source>Confirm Logout</source>
         <translation>Konfirmasi Keluar</translation>
     </message>
@@ -20686,20 +19773,8 @@ Expected format:
         <translation>Apakah Anda yakin ingin keluar?</translation>
     </message>
     <message>
-        <source>Delete Account</source>
-        <translation>Hapus Akun</translation>
-    </message>
-    <message>
-        <source>DELETE MY ACCOUNT</source>
-        <translation>HAPUS AKUN SAYA</translation>
-    </message>
-    <message>
         <source>USER TYPE</source>
         <translation>TIPE PENGGUNA</translation>
-    </message>
-    <message>
-        <source>ACCOUNT TYPE</source>
-        <translation>TIPE AKUN</translation>
     </message>
     <message>
         <source>EMAIL VERIFIED</source>
@@ -20710,108 +19785,12 @@ Expected format:
         <translation>2FA AKTIF</translation>
     </message>
     <message>
-        <source>AVAILABLE CREDITS</source>
-        <translation>KREDIT TERSEDIA</translation>
-    </message>
-    <message>
-        <source>PLAN</source>
-        <translation>PAKET</translation>
-    </message>
-    <message>
-        <source>CREDIT BALANCE</source>
-        <translation>SALDO KREDIT</translation>
-    </message>
-    <message>
-        <source>RATE LIMIT/HR</source>
-        <translation>BATAS LAJU/JAM</translation>
-    </message>
-    <message>
-        <source>USAGE SUMMARY — LAST 30 DAYS</source>
-        <translation>RINGKASAN PENGGUNAAN — 30 HARI TERAKHIR</translation>
-    </message>
-    <message>
-        <source>TOTAL REQUESTS</source>
-        <translation>TOTAL PERMINTAAN</translation>
-    </message>
-    <message>
-        <source>CREDITS USED</source>
-        <translation>KREDIT TERPAKAI</translation>
-    </message>
-    <message>
-        <source>AVG CR/REQ</source>
-        <translation>RATA2 CR/PERMINTAAN</translation>
-    </message>
-    <message>
-        <source>AVG RESP (ms)</source>
-        <translation>RATA2 RESP (ms)</translation>
-    </message>
-    <message>
-        <source>DAILY USAGE</source>
-        <translation>PENGGUNAAN HARIAN</translation>
-    </message>
-    <message>
-        <source>DATE</source>
-        <translation>TANGGAL</translation>
-    </message>
-    <message>
-        <source>REQUESTS</source>
-        <translation>PERMINTAAN</translation>
-    </message>
-    <message>
-        <source>CREDITS</source>
-        <translation>KREDIT</translation>
-    </message>
-    <message>
-        <source>TOP ENDPOINTS</source>
-        <translation>ENDPOINT TERATAS</translation>
-    </message>
-    <message>
-        <source>ENDPOINT</source>
-        <translation>ENDPOINT</translation>
-    </message>
-    <message>
-        <source>AVG MS</source>
-        <translation>RATA2 MS</translation>
-    </message>
-    <message>
         <source>SECURITY STATUS</source>
         <translation>STATUS KEAMANAN</translation>
     </message>
     <message>
         <source>2FA (MFA)</source>
         <translation>2FA (MFA)</translation>
-    </message>
-    <message>
-        <source>LOGIN HISTORY</source>
-        <translation>RIWAYAT LOGIN</translation>
-    </message>
-    <message>
-        <source>TIMESTAMP</source>
-        <translation>STEMPEL WAKTU</translation>
-    </message>
-    <message>
-        <source>IP ADDRESS</source>
-        <translation>ALAMAT IP</translation>
-    </message>
-    <message>
-        <source>STATUS</source>
-        <translation>STATUS</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION</source>
-        <translation>LANGGANAN</translation>
-    </message>
-    <message>
-        <source>SUPPORT TYPE</source>
-        <translation>TIPE DUKUNGAN</translation>
-    </message>
-    <message>
-        <source>PAYMENT HISTORY</source>
-        <translation>RIWAYAT PEMBAYARAN</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>JUMLAH</translation>
     </message>
     <message>
         <source>CONTACT US</source>
@@ -20826,10 +19805,6 @@ Expected format:
         <translation>KOMERSIAL</translation>
     </message>
     <message>
-        <source>LEGAL</source>
-        <translation>HUKUM</translation>
-    </message>
-    <message>
         <source>RESOURCES</source>
         <translation>SUMBER DAYA</translation>
     </message>
@@ -20842,68 +19817,12 @@ Expected format:
         <translation>FAQ</translation>
     </message>
     <message>
-        <source>CR %1</source>
-        <translation>CR %1</translation>
-    </message>
-    <message>
         <source>N/A</source>
         <translation>N/A</translation>
     </message>
     <message>
         <source>REGISTERED</source>
         <translation>TERDAFTAR</translation>
-    </message>
-    <message>
-        <source>Edit Profile</source>
-        <translation>Edit Profil</translation>
-    </message>
-    <message>
-        <source>PHONE (with country code)</source>
-        <translation>TELEPON (dengan kode negara)</translation>
-    </message>
-    <message>
-        <source>Regenerate API Key</source>
-        <translation>Buat Ulang Kunci API</translation>
-    </message>
-    <message>
-        <source>Your current API key will be invalidated. Continue?</source>
-        <translation>Kunci API Anda saat ini akan dibatalkan. Lanjutkan?</translation>
-    </message>
-    <message>
-        <source>This will permanently delete your Open Terminal account (%1) and all associated data.
-
-This action CANNOT be undone. Are you sure?</source>
-        <translation>Tindakan ini akan menghapus permanen akun Open Terminal Anda (%1) dan semua data terkait.
-
-Tindakan ini TIDAK DAPAT dibatalkan. Apakah Anda yakin?</translation>
-    </message>
-    <message>
-        <source>Confirm Account Deletion</source>
-        <translation>Konfirmasi Penghapusan Akun</translation>
-    </message>
-    <message>
-        <source>TYPE YOUR EMAIL ADDRESS TO CONFIRM:</source>
-        <translation>KETIK ALAMAT EMAIL ANDA UNTUK MENGONFIRMASI:</translation>
-    </message>
-    <message>
-        <source>ENTER YOUR PASSWORD:</source>
-        <translation>MASUKKAN KATA SANDI ANDA:</translation>
-    </message>
-    <message>
-        <source>Current password</source>
-        <translation>Kata sandi saat ini</translation>
-    </message>
-    <message>
-        <source>Delete Failed</source>
-        <translation>Penghapusan Gagal</translation>
-    </message>
-    <message>
-        <source>Account deletion failed: %1
-
-Open an issue in the project repository if this persists</source>
-        <translation>Penghapusan akun gagal: %1
-
-Silakan hubungi github.com/your-org/open-terminal/issues</translation>
     </message>
 </context>
 <context>
@@ -21276,12 +20195,16 @@ komponen Judul.</translation>
         <translation>SUITE QUANTLIB</translation>
     </message>
     <message>
-        <source>18 MODULES | 590+ QUANTITATIVE ENDPOINTS</source>
-        <translation>18 MODUL | 590+ ENDPOINT KUANTITATIF</translation>
+        <source>Local QuantLib pricing engine (QuantLib + scipy)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>API POWERED</source>
-        <translation>DIDUKUNG API</translation>
+        <source>SERVER CONFIGURED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NOT CONFIGURED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>MODULES</source>
@@ -21328,14 +20251,18 @@ komponen Judul.</translation>
         <translation>MODUL: %1</translation>
     </message>
     <message>
+        <source>Remote pricing client — requires an external QuantLib server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>ERROR: Invalid JSON in request body.
 
-Expected format: {"key": value, ...}
-Example: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</source>
+Expected format: {&quot;key&quot;: value, ...}
+Example: {&quot;spot&quot;: 100, &quot;strike&quot;: 105, &quot;risk_free_rate&quot;: 0.05}</source>
         <translation>KESALAHAN: JSON tidak valid di bodi permintaan.
 
-Format yang diharapkan: {"key": value, ...}
-Contoh: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
+Format yang diharapkan: {&quot;key&quot;: value, ...}
+Contoh: {&quot;spot&quot;: 100, &quot;strike&quot;: 105, &quot;risk_free_rate&quot;: 0.05}</translation>
     </message>
     <message>
         <source>Computing...</source>
@@ -21393,6 +20320,14 @@ Contoh: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
 <context>
     <name>openmarketterminal::screens::QuantModulePanel</name>
     <message>
+        <source>DEMO (synthetic data)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off = train on real qlib market data. On = clearly-labeled synthetic data for testing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No LLM profiles — configure in Settings → LLM Config</source>
         <translation>Tidak ada profil LLM — konfigurasikan di Pengaturan → Konfigurasi LLM</translation>
     </message>
@@ -21414,9 +20349,9 @@ Contoh: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
     </message>
     <message>
         <source>JSON parameters (optional)
-e.g. {"ticker":"AAPL"}</source>
+e.g. {&quot;ticker&quot;:&quot;AAPL&quot;}</source>
         <translation>Parameter JSON (opsional)
-mis. {"ticker":"AAPL"}</translation>
+mis. {&quot;ticker&quot;:&quot;AAPL&quot;}</translation>
     </message>
     <message>
         <source>EXECUTE</source>
@@ -22662,9 +21597,9 @@ mis. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Describe your analysis task...
-e.g. "Conduct a full investment analysis of NVDA: research fundamentals, assess risks, and give a buy/sell/hold recommendation with price target"</source>
+e.g. &quot;Conduct a full investment analysis of NVDA: research fundamentals, assess risks, and give a buy/sell/hold recommendation with price target&quot;</source>
         <translation>Jelaskan tugas analisis Anda...
-mis. "Lakukan analisis investasi lengkap NVDA: teliti fundamental, nilai risiko, dan beri rekomendasi beli/jual/tahan dengan target harga"</translation>
+mis. &quot;Lakukan analisis investasi lengkap NVDA: teliti fundamental, nilai risiko, dan beri rekomendasi beli/jual/tahan dengan target harga&quot;</translation>
     </message>
     <message>
         <source>Task</source>
@@ -22731,14 +21666,6 @@ mis. "Lakukan analisis investasi lengkap NVDA: teliti fundamental, nilai risiko,
         <translation>ALAT MCP</translation>
     </message>
     <message>
-        <source>Start/stop the Open Terminal MCP tool server
-Gives RD-Agent loops access to market data,
-financial news and economics tools.</source>
-        <translation>Mulai/hentikan server alat MCP Open Terminal
-Memberi loop RD-Agent akses ke data pasar,
-berita keuangan, dan alat ekonomi.</translation>
-    </message>
-    <message>
         <source>Starting MCP tool server...</source>
         <translation>Memulai server alat MCP...</translation>
     </message>
@@ -22752,9 +21679,9 @@ berita keuangan, dan alat ekonomi.</translation>
     </message>
     <message>
         <source>Describe the factor hypothesis...
-e.g. "Discover momentum-based alpha factors for US equities"</source>
+e.g. &quot;Discover momentum-based alpha factors for US equities&quot;</source>
         <translation>Jelaskan hipotesis faktor...
-mis. "Temukan faktor alpha berbasis momentum untuk ekuitas AS"</translation>
+mis. &quot;Temukan faktor alpha berbasis momentum untuk ekuitas AS&quot;</translation>
     </message>
     <message>
         <source>Task Description</source>
@@ -22783,6 +21710,12 @@ mis. "Temukan faktor alpha berbasis momentum untuk ekuitas AS"</translation>
     <message>
         <source>Starting...</source>
         <translation>Memulai...</translation>
+    </message>
+    <message>
+        <source>Start/stop the OpenMarketTerminal MCP tool server
+Gives RD-Agent loops access to market data,
+financial news and economics tools.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Factor mining started...</source>
@@ -22818,9 +21751,9 @@ mis. "Temukan faktor alpha berbasis momentum untuk ekuitas AS"</translation>
     </message>
     <message>
         <source>Research goal...
-e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
+e.g. &quot;Build a quantitative equity strategy for mid-cap US stocks&quot;</source>
         <translation>Tujuan riset...
-mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
+mis. &quot;Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS&quot;</translation>
     </message>
     <message>
         <source>Research Goal</source>
@@ -22947,8 +21880,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>Masukkan minimal 2 ticker (mis. AAPL,MSFT,GOOG).</translation>
     </message>
     <message>
-        <source>Weights: '%1' is not numeric.</source>
-        <translation>Bobot: '%1' bukan angka.</translation>
+        <source>Weights: &apos;%1&apos; is not numeric.</source>
+        <translation>Bobot: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
         <source>Fetching %1 from yfinance and computing metrics...</source>
@@ -23047,7 +21980,7 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>Waktu Paruh (observasi)</translation>
     </message>
     <message>
-        <source>Builds exponentially-decayed scenario weights so recent observations dominate. ESS (Kish effective sample size) tells you how much of the history you're effectively using.</source>
+        <source>Builds exponentially-decayed scenario weights so recent observations dominate. ESS (Kish effective sample size) tells you how much of the history you&apos;re effectively using.</source>
         <translation>Membangun bobot skenario yang meluruh secara eksponensial sehingga observasi terbaru mendominasi. ESS (ukuran sampel efektif Kish) menunjukkan seberapa banyak histori yang benar-benar Anda gunakan.</translation>
     </message>
     <message>
@@ -23319,8 +22252,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>JALANKAN PRAKIRAAN PROBABILISTIK</translation>
     </message>
     <message>
-        <source>Series Values: '%1' is not numeric.</source>
-        <translation>Nilai Seri: '%1' bukan angka.</translation>
+        <source>Series Values: &apos;%1&apos; is not numeric.</source>
+        <translation>Nilai Seri: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
         <source>Need at least 30 obs; you provided %1.</source>
@@ -23355,8 +22288,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>JALANKAN PRAKIRAAN KUANTIL</translation>
     </message>
     <message>
-        <source>Quantiles: '%1' is not numeric.</source>
-        <translation>Kuantil: '%1' bukan angka.</translation>
+        <source>Quantiles: &apos;%1&apos; is not numeric.</source>
+        <translation>Kuantil: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
         <source>Provide at least one quantile in (0, 1).</source>
@@ -23395,8 +22328,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>HITUNG METRIK RISIKO</translation>
     </message>
     <message>
-        <source>Daily Returns: '%1' is not a number. Use comma-, space-, or newline-separated decimals (e.g. 0.01, -0.02, 0.005).</source>
-        <translation>Return Harian: '%1' bukan angka. Gunakan desimal yang dipisahkan koma, spasi, atau baris baru (mis. 0.01, -0.02, 0.005).</translation>
+        <source>Daily Returns: &apos;%1&apos; is not a number. Use comma-, space-, or newline-separated decimals (e.g. 0.01, -0.02, 0.005).</source>
+        <translation>Return Harian: &apos;%1&apos; bukan angka. Gunakan desimal yang dipisahkan koma, spasi, atau baris baru (mis. 0.01, -0.02, 0.005).</translation>
     </message>
     <message>
         <source>Need at least 5 daily returns; you provided %1. Click LOAD SAMPLE to insert 252 synthetic values.</source>
@@ -23439,12 +22372,12 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>ANALISIS PORTOFOLIO</translation>
     </message>
     <message>
-        <source>Portfolio Returns: '%1' is not numeric.</source>
-        <translation>Return Portofolio: '%1' bukan angka.</translation>
+        <source>Portfolio Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Return Portofolio: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
-        <source>Benchmark Returns: '%1' is not numeric.</source>
-        <translation>Return Benchmark: '%1' bukan angka.</translation>
+        <source>Benchmark Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Return Benchmark: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
         <source>Need at least 5 observations for both portfolio and benchmark returns.</source>
@@ -23507,8 +22440,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>HITUNG VaR</translation>
     </message>
     <message>
-        <source>Daily Returns: '%1' is not numeric.</source>
-        <translation>Return Harian: '%1' bukan angka.</translation>
+        <source>Daily Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Return Harian: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
         <source>VaR needs at least 30 observations for a stable estimate; you provided %1.</source>
@@ -23599,8 +22532,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>HITUNG STATISTIK</translation>
     </message>
     <message>
-        <source>Values: '%1' is not numeric.</source>
-        <translation>Nilai: '%1' bukan angka.</translation>
+        <source>Values: &apos;%1&apos; is not numeric.</source>
+        <translation>Nilai: &apos;%1&apos; bukan angka.</translation>
     </message>
     <message>
         <source>Need at least 2 values; you provided %1.</source>
@@ -24499,8 +23432,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>Indikator</translation>
     </message>
     <message>
-        <source>Feature values JSON: {"rsi":[...],"macd":[...]}</source>
-        <translation>JSON nilai fitur: {"rsi":[...],"macd":[...]}</translation>
+        <source>Feature values JSON: {&quot;rsi&quot;:[...],&quot;macd&quot;:[...]}</source>
+        <translation>JSON nilai fitur: {&quot;rsi&quot;:[...],&quot;macd&quot;:[...]}</translation>
     </message>
     <message>
         <source>Target returns (comma-separated)</source>
@@ -24523,8 +23456,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>Pemilihan Fitur</translation>
     </message>
     <message>
-        <source>{"close":[100,102,...],"volume":[1000,1200,...]}</source>
-        <translation>{"close":[100,102,...],"volume":[1000,1200,...]}</translation>
+        <source>{&quot;close&quot;:[100,102,...],&quot;volume&quot;:[1000,1200,...]}</source>
+        <translation>{&quot;close&quot;:[100,102,...],&quot;volume&quot;:[1000,1200,...]}</translation>
     </message>
     <message>
         <source>OHLCV Data (JSON)</source>
@@ -24795,8 +23728,8 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
         <translation>ID Pipeline</translation>
     </message>
     <message>
-        <source>[{"type":"zscore"},{"type":"winsorize","lower":0.01,"upper":0.99}]</source>
-        <translation>[{"type":"zscore"},{"type":"winsorize","lower":0.01,"upper":0.99}]</translation>
+        <source>[{&quot;type&quot;:&quot;zscore&quot;},{&quot;type&quot;:&quot;winsorize&quot;,&quot;lower&quot;:0.01,&quot;upper&quot;:0.99}]</source>
+        <translation>[{&quot;type&quot;:&quot;zscore&quot;},{&quot;type&quot;:&quot;winsorize&quot;,&quot;lower&quot;:0.01,&quot;upper&quot;:0.99}]</translation>
     </message>
     <message>
         <source>Processors (JSON)</source>
@@ -24837,6 +23770,10 @@ mis. "Bangun strategi ekuitas kuantitatif untuk saham mid-cap AS"</translation>
     <message>
         <source>RESULTS</source>
         <translation>HASIL</translation>
+    </message>
+    <message>
+        <source>DEMO · SYNTHETIC DATA — not real results</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Metric</source>
@@ -24970,14 +23907,14 @@ Instal: %2</translation>
 Available tools:
   %2
 
-Enable 'enable_mcp: true' in factor/model/quant research params
+Enable &apos;enable_mcp: true&apos; in factor/model/quant research params
 to give RD-Agent loops access to these tools.</source>
         <translation>Server alat MCP berjalan di %1
 
 Alat tersedia:
   %2
 
-Aktifkan 'enable_mcp: true' di parameter riset factor/model/quant
+Aktifkan &apos;enable_mcp: true&apos; di parameter riset factor/model/quant
 untuk memberi loop RD-Agent akses ke alat ini.</translation>
     </message>
     <message>
@@ -25285,8 +24222,8 @@ Frek: %2  |  Jendela: %3 hari  |  Berikutnya: %4%5</translation>
         <translation>Aktual</translation>
     </message>
     <message>
-        <source>100-pt synthetic 'actual' series (level ~50)</source>
-        <translation>Deret 'aktual' sintetis 100 titik (level ~50)</translation>
+        <source>100-pt synthetic &apos;actual&apos; series (level ~50)</source>
+        <translation>Deret &apos;aktual&apos; sintetis 100 titik (level ~50)</translation>
     </message>
     <message>
         <source>Predicted values (same length as actual)</source>
@@ -25297,20 +24234,20 @@ Frek: %2  |  Jendela: %3 hari  |  Berikutnya: %4%5</translation>
         <translation>Prediksi</translation>
     </message>
     <message>
-        <source>100-pt synthetic 'predicted' series (similar shape, mild noise)</source>
-        <translation>Deret 'prediksi' sintetis 100 titik (bentuk serupa, derau ringan)</translation>
+        <source>100-pt synthetic &apos;predicted&apos; series (similar shape, mild noise)</source>
+        <translation>Deret &apos;prediksi&apos; sintetis 100 titik (bentuk serupa, derau ringan)</translation>
     </message>
     <message>
         <source>CALCULATE METRICS</source>
         <translation>HITUNG METRIK</translation>
     </message>
     <message>
-        <source>Actual: '%1' is not numeric.</source>
-        <translation>Aktual: '%1' bukan numerik.</translation>
+        <source>Actual: &apos;%1&apos; is not numeric.</source>
+        <translation>Aktual: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
-        <source>Predicted: '%1' is not numeric.</source>
-        <translation>Prediksi: '%1' bukan numerik.</translation>
+        <source>Predicted: &apos;%1&apos; is not numeric.</source>
+        <translation>Prediksi: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>Need at least 2 observations in both actual and predicted.</source>
@@ -25709,12 +24646,12 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>JALANKAN REGRESI OLS</translation>
     </message>
     <message>
-        <source>y: '%1' is not numeric.</source>
-        <translation>y: '%1' bukan numerik.</translation>
+        <source>y: &apos;%1&apos; is not numeric.</source>
+        <translation>y: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
-        <source>x: '%1' is not numeric.</source>
-        <translation>x: '%1' bukan numerik.</translation>
+        <source>x: &apos;%1&apos; is not numeric.</source>
+        <translation>x: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>OLS needs at least 10 observations; you provided %1.</source>
@@ -25825,8 +24762,8 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>ACF / PACF</translation>
     </message>
     <message>
-        <source>Effect series y (the one we ask: 'is this caused by x?')</source>
-        <translation>Deret efek y (yang kita tanyakan: 'apakah ini disebabkan oleh x?')</translation>
+        <source>Effect series y (the one we ask: &apos;is this caused by x?&apos;)</source>
+        <translation>Deret efek y (yang kita tanyakan: &apos;apakah ini disebabkan oleh x?&apos;)</translation>
     </message>
     <message>
         <source>y (Effect)</source>
@@ -26289,12 +25226,12 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>EVALUASI PRAKIRAAN</translation>
     </message>
     <message>
-        <source>Actuals: '%1' is not numeric.</source>
-        <translation>Aktual: '%1' bukan numerik.</translation>
+        <source>Actuals: &apos;%1&apos; is not numeric.</source>
+        <translation>Aktual: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
-        <source>Point: '%1' is not numeric.</source>
-        <translation>Titik: '%1' bukan numerik.</translation>
+        <source>Point: &apos;%1&apos; is not numeric.</source>
+        <translation>Titik: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>Need at least 5 actuals; you provided %1.</source>
@@ -26305,20 +25242,20 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>Aktual (%1) dan titik (%2) harus memiliki panjang yang sama.</translation>
     </message>
     <message>
-        <source>Lower band: '%1' is not numeric.</source>
-        <translation>Pita bawah: '%1' bukan numerik.</translation>
+        <source>Lower band: &apos;%1&apos; is not numeric.</source>
+        <translation>Pita bawah: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
-        <source>Upper band: '%1' is not numeric.</source>
-        <translation>Pita atas: '%1' bukan numerik.</translation>
+        <source>Upper band: &apos;%1&apos; is not numeric.</source>
+        <translation>Pita atas: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>Lower and upper bands must match actuals length.</source>
         <translation>Pita bawah dan atas harus sesuai dengan panjang aktual.</translation>
     </message>
     <message>
-        <source>Training: '%1' is not numeric.</source>
-        <translation>Pelatihan: '%1' bukan numerik.</translation>
+        <source>Training: &apos;%1&apos; is not numeric.</source>
+        <translation>Pelatihan: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>Evaluating forecast on %1 obs...</source>
@@ -26337,8 +25274,8 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>Panjang Musim (1 = naif murni)</translation>
     </message>
     <message>
-        <source>Baseline forecaster everyone compares against. season_length=1 is the pure naive 'repeat last value'. Larger values cycle through the most recent N observations.</source>
-        <translation>Peramal baseline yang menjadi pembanding semua orang. season_length=1 adalah naif murni 'ulangi nilai terakhir'. Nilai yang lebih besar mengulang N observasi terkini.</translation>
+        <source>Baseline forecaster everyone compares against. season_length=1 is the pure naive &apos;repeat last value&apos;. Larger values cycle through the most recent N observations.</source>
+        <translation>Peramal baseline yang menjadi pembanding semua orang. season_length=1 adalah naif murni &apos;ulangi nilai terakhir&apos;. Nilai yang lebih besar mengulang N observasi terkini.</translation>
     </message>
     <message>
         <source>RUN SEASONAL NAIVE</source>
@@ -26989,12 +25926,12 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>JALANKAN ANALISIS IC</translation>
     </message>
     <message>
-        <source>Predictions: '%1' is not numeric.</source>
-        <translation>Prediksi: '%1' bukan numerik.</translation>
+        <source>Predictions: &apos;%1&apos; is not numeric.</source>
+        <translation>Prediksi: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
-        <source>Returns: '%1' is not numeric.</source>
-        <translation>Imbal hasil: '%1' bukan numerik.</translation>
+        <source>Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Imbal hasil: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>IC analysis needs at least 10 predictions; you provided %1.</source>
@@ -27053,8 +25990,8 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>Memerlukan setidaknya 5 imbal hasil; Anda memberikan %1.</translation>
     </message>
     <message>
-        <source>Benchmark: '%1' is not numeric.</source>
-        <translation>Tolok ukur: '%1' bukan numerik.</translation>
+        <source>Benchmark: &apos;%1&apos; is not numeric.</source>
+        <translation>Tolok ukur: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>Benchmark (%1) and returns (%2) must have the same length.</source>
@@ -27169,8 +26106,8 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>ANALISIS KUANTIL FAKTOR</translation>
     </message>
     <message>
-        <source>Factor: '%1' is not numeric.</source>
-        <translation>Faktor: '%1' bukan numerik.</translation>
+        <source>Factor: &apos;%1&apos; is not numeric.</source>
+        <translation>Faktor: &apos;%1&apos; bukan numerik.</translation>
     </message>
     <message>
         <source>Quantile analysis needs at least 20 obs; you provided %1.</source>
@@ -28017,8 +26954,8 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
         <translation>ID Pipeline (harus dibuat dahulu)</translation>
     </message>
     <message>
-        <source>{"feature_close":[100,102,...],"feature_volume":[1000,1200,...]}</source>
-        <translation>{"feature_close":[100,102,...],"feature_volume":[1000,1200,...]}</translation>
+        <source>{&quot;feature_close&quot;:[100,102,...],&quot;feature_volume&quot;:[1000,1200,...]}</source>
+        <translation>{&quot;feature_close&quot;:[100,102,...],&quot;feature_volume&quot;:[1000,1200,...]}</translation>
     </message>
     <message>
         <source>Data (JSON)</source>
@@ -28059,14 +26996,6 @@ Kesimpulan menuntut KEDUA uji sepakat.</translation>
     <message>
         <source>Fields (comma-separated, e.g. $close,$volume,$open)</source>
         <translation>Field (dipisahkan koma, mis. $close,$volume,$open)</translation>
-    </message>
-    <message>
-        <source>Start date (YYYY-MM-DD, e.g. 2019-01-01)</source>
-        <translation>Tanggal mulai (YYYY-MM-DD, mis. 2019-01-01)</translation>
-    </message>
-    <message>
-        <source>End date (YYYY-MM-DD, e.g. 2020-11-10)</source>
-        <translation>Tanggal akhir (YYYY-MM-DD, mis. 2020-11-10)</translation>
     </message>
     <message>
         <source>FETCH DATA</source>
@@ -28455,137 +27384,6 @@ imbal hasil masa depan, drawdown, dan kekayaan akhir.</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::RegisterScreen</name>
-    <message>
-        <source>CREATE ACCOUNT</source>
-        <translation>BUAT AKUN</translation>
-    </message>
-    <message>
-        <source>FIRST NAME</source>
-        <translation>NAMA DEPAN</translation>
-    </message>
-    <message>
-        <source>LAST NAME</source>
-        <translation>NAMA BELAKANG</translation>
-    </message>
-    <message>
-        <source>EMAIL</source>
-        <translation>EMAIL</translation>
-    </message>
-    <message>
-        <source>CODE</source>
-        <translation>KODE</translation>
-    </message>
-    <message>
-        <source>PHONE</source>
-        <translation>TELEPON</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>KATA SANDI</translation>
-    </message>
-    <message>
-        <source>CONFIRM PASSWORD</source>
-        <translation>KONFIRMASI KATA SANDI</translation>
-    </message>
-    <message>
-        <source>First</source>
-        <translation>Depan</translation>
-    </message>
-    <message>
-        <source>Last</source>
-        <translation>Belakang</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>+1</source>
-        <translation>+62</translation>
-    </message>
-    <message>
-        <source>234 567 8900</source>
-        <translation>812 3456 7890</translation>
-    </message>
-    <message>
-        <source>min 8 characters</source>
-        <translation>min. 8 karakter</translation>
-    </message>
-    <message>
-        <source>re-enter password</source>
-        <translation>masukkan ulang kata sandi</translation>
-    </message>
-    <message>
-        <source>  CREATE ACCOUNT  </source>
-        <translation>  BUAT AKUN  </translation>
-    </message>
-    <message>
-        <source>  CREATING...  </source>
-        <translation>  MEMBUAT...  </translation>
-    </message>
-    <message>
-        <source>Already have an account?</source>
-        <translation>Sudah punya akun?</translation>
-    </message>
-    <message>
-        <source>SIGN IN</source>
-        <translation>MASUK</translation>
-    </message>
-    <message>
-        <source>VERIFY EMAIL</source>
-        <translation>VERIFIKASI EMAIL</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>KODE VERIFIKASI</translation>
-    </message>
-    <message>
-        <source>enter code from email</source>
-        <translation>masukkan kode dari email</translation>
-    </message>
-    <message>
-        <source>  VERIFY  </source>
-        <translation>  VERIFIKASI  </translation>
-    </message>
-    <message>
-        <source>  VERIFYING...  </source>
-        <translation>  MEMVERIFIKASI...  </translation>
-    </message>
-    <message>
-        <source>DIDN'T RECEIVE? RESEND</source>
-        <translation>BELUM MENERIMA? KIRIM ULANG</translation>
-    </message>
-    <message>
-        <source>BACK TO FORM</source>
-        <translation>KEMBALI KE FORMULIR</translation>
-    </message>
-    <message>
-        <source>All fields are required</source>
-        <translation>Semua kolom wajib diisi</translation>
-    </message>
-    <message>
-        <source>Country code is required (e.g. +1, +91)</source>
-        <translation>Kode negara wajib diisi (mis. +62, +1)</translation>
-    </message>
-    <message>
-        <source>Passwords do not match</source>
-        <translation>Kata sandi tidak cocok</translation>
-    </message>
-    <message>
-        <source>Password must be at least 8 characters</source>
-        <translation>Kata sandi minimal harus 8 karakter</translation>
-    </message>
-    <message>
-        <source>Username must be 3-50 characters</source>
-        <translation>Nama pengguna harus 3-50 karakter</translation>
-    </message>
-    <message>
-        <source>Enter the verification code</source>
-        <translation>Masukkan kode verifikasi</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::RelationshipMapScreen</name>
     <message>
         <source>CORPORATE INTELLIGENCE MAP</source>
@@ -28755,24 +27553,56 @@ imbal hasil masa depan, drawdown, dan kekayaan akhir.</translation>
         <translation>JARINGAN HUBUNGAN GEOPOLITIK</translation>
     </message>
     <message>
-        <source>NODES: %1  |  CONFLICTS: %2  |  ORGANIZATIONS: %3</source>
-        <translation>NODE: %1  |  KONFLIK: %2  |  ORGANISASI: %3</translation>
+        <source>ACTORS: —  |  RELATIONSHIPS: —</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACTIVE CONFLICTS</source>
-        <translation>KONFLIK AKTIF</translation>
+        <source>⟳ REFRESH</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>CRISIS TYPES</source>
-        <translation>JENIS KRISIS</translation>
+        <source>Refreshing live GDELT events…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ORGANIZATIONS</source>
-        <translation>ORGANISASI</translation>
+        <source>Live actor→actor events from GDELT (CAMEO-coded).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>datasets</source>
-        <translation>set data</translation>
+        <source>Loading live GDELT events…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MATERIAL CONFLICT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOPERATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Goldstein %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 mentions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ACTORS: %1  |  RELATIONSHIPS: %2  |  CONFLICT: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live actor→actor events from GDELT (CAMEO-coded) — %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>recent exports</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>events</source>
+        <translation type="unfinished">peristiwa</translation>
     </message>
 </context>
 <context>
@@ -29080,8 +27910,8 @@ imbal hasil masa depan, drawdown, dan kekayaan akhir.</translation>
         <translation>Buat laporan baru? Perubahan yang belum disimpan akan hilang.</translation>
     </message>
     <message>
-        <source>Open Terminal Report (*.openmarketterminal);;JSON (*.json)</source>
-        <translation>Laporan Open Terminal (*.openmarketterminal);;JSON (*.json)</translation>
+        <source>OpenMarketTerminal Report (*.openmarketterminal);;JSON (*.json)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save Report</source>
@@ -29562,7 +28392,7 @@ imbal hasil masa depan, drawdown, dan kekayaan akhir.</translation>
         <translation>✗ Server mengembalikan HTML — kemungkinan halaman login atau pemblokiran, bukan RSS.</translation>
     </message>
     <message>
-        <source>⚠ Response doesn't look like RSS/Atom XML (%1 bytes).</source>
+        <source>⚠ Response doesn&apos;t look like RSS/Atom XML (%1 bytes).</source>
         <translation>⚠ Respons tidak tampak seperti XML RSS/Atom (%1 byte).</translation>
     </message>
     <message>
@@ -29594,7 +28424,7 @@ imbal hasil masa depan, drawdown, dan kekayaan akhir.</translation>
         <translation>Server mengembalikan HTML, bukan RSS.</translation>
     </message>
     <message>
-        <source>Response doesn't look like RSS/Atom XML.</source>
+        <source>Response doesn&apos;t look like RSS/Atom XML.</source>
         <translation>Respons tidak tampak seperti XML RSS/Atom.</translation>
     </message>
     <message>
@@ -29602,7 +28432,7 @@ imbal hasil masa depan, drawdown, dan kekayaan akhir.</translation>
         <translation>⚠ %1 Tetap simpan?</translation>
     </message>
     <message>
-        <source>URL didn't validate</source>
+        <source>URL didn&apos;t validate</source>
         <translation>URL tidak tervalidasi</translation>
     </message>
     <message>
@@ -29614,7 +28444,7 @@ Save the feed anyway?</source>
 Tetap simpan umpan ini?</translation>
     </message>
     <message>
-        <source>The last URL test didn't return valid RSS. Save anyway?</source>
+        <source>The last URL test didn&apos;t return valid RSS. Save anyway?</source>
         <translation>Uji URL terakhir tidak mengembalikan RSS yang valid. Tetap simpan?</translation>
     </message>
 </context>
@@ -29717,12 +28547,12 @@ Tetap simpan umpan ini?</translation>
         <translation>Tidak dapat menyimpan umpan. Lihat log untuk detailnya.</translation>
     </message>
     <message>
-        <source>Reset built-in feed "%1" to its default settings? Your edits will be lost.</source>
-        <translation>Atur ulang umpan bawaan "%1" ke pengaturan default-nya? Suntingan Anda akan hilang.</translation>
+        <source>Reset built-in feed &quot;%1&quot; to its default settings? Your edits will be lost.</source>
+        <translation>Atur ulang umpan bawaan &quot;%1&quot; ke pengaturan default-nya? Suntingan Anda akan hilang.</translation>
     </message>
     <message>
-        <source>Delete user feed "%1"?</source>
-        <translation>Hapus umpan pengguna "%1"?</translation>
+        <source>Delete user feed &quot;%1&quot;?</source>
+        <translation>Hapus umpan pengguna &quot;%1&quot;?</translation>
     </message>
     <message>
         <source>Confirm</source>
@@ -29777,7 +28607,7 @@ Tetap simpan umpan ini?</translation>
         <translation>Pengujian mengembalikan HTML.</translation>
     </message>
     <message>
-        <source>Response doesn't look like RSS/Atom XML (%1 bytes).</source>
+        <source>Response doesn&apos;t look like RSS/Atom XML (%1 bytes).</source>
         <translation>Respons tidak tampak seperti XML RSS/Atom (%1 byte).</translation>
     </message>
     <message>
@@ -29800,14 +28630,6 @@ Tetap simpan umpan ini?</translation>
         <translation>Kustom</translation>
     </message>
     <message>
-        <source>LOGIC:</source>
-        <translation>LOGIKA:</translation>
-    </message>
-    <message>
-        <source>+ ADD CONDITION</source>
-        <translation>+ TAMBAH KONDISI</translation>
-    </message>
-    <message>
         <source>SYMBOLS &amp; PARAMETERS</source>
         <translation>SIMBOL &amp; PARAMETER</translation>
     </message>
@@ -29820,8 +28642,8 @@ Tetap simpan umpan ini?</translation>
         <translation>RENTANG WAKTU</translation>
     </message>
     <message>
-        <source>LOOKBACK (DAYS)</source>
-        <translation>PERIODE LIHAT-BALIK (HARI)</translation>
+        <source>RANGE</source>
+        <translation type="unfinished">RENTANG</translation>
     </message>
     <message>
         <source>DATA SOURCE</source>
@@ -29850,6 +28672,14 @@ Tetap simpan umpan ini?</translation>
     <message>
         <source>SCAN MARKET</source>
         <translation>PINDAI PASAR</translation>
+    </message>
+    <message>
+        <source>+ CREATE ALERT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a condition first.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SCAN RESULTS</source>
@@ -30133,105 +28963,6 @@ Tetap simpan umpan ini?</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::SettingsTab</name>
-    <message>
-        <source>POLL refreshes balances on a TTL via the configured RPC. STREAM opens a WebSocket account subscription — requires Helius or a private RPC.</source>
-        <translation>POLL menyegarkan saldo berdasarkan TTL melalui RPC yang dikonfigurasi. STREAM membuka langganan akun WebSocket — memerlukan Helius atau RPC privat.</translation>
-    </message>
-    <message>
-        <source>Paste a Helius API key for reliable account-subscribe streaming and parsed transaction history. Stored in SecureStorage; never transmitted off-machine except in RPC requests to api.helius.xyz.</source>
-        <translation>Tempelkan kunci API Helius untuk streaming account-subscribe yang andal dan riwayat transaksi yang terurai. Disimpan di SecureStorage; tidak pernah dikirim ke luar mesin kecuali dalam permintaan RPC ke api.helius.xyz.</translation>
-    </message>
-    <message>
-        <source>paste API key…</source>
-        <translation>tempel kunci API…</translation>
-    </message>
-    <message>
-        <source>SAVE</source>
-        <translation>SIMPAN</translation>
-    </message>
-    <message>
-        <source>CLEAR</source>
-        <translation>HAPUS</translation>
-    </message>
-    <message>
-        <source>Default slippage tolerance for swaps. Quotes whose route impact exceeds this value are blocked. Adjustable per-swap on the TRADE tab.</source>
-        <translation>Toleransi slippage default untuk swap. Kuotasi yang dampak rute-nya melebihi nilai ini akan diblokir. Dapat disesuaikan per-swap di tab TRADE.</translation>
-    </message>
-    <message>
-        <source>Pump.fun-launched wallets accumulate airdropped junk over time. By default the holdings panel hides tokens that aren't in Jupiter's verified-tagged list. Toggle this on to see every SPL token account in the wallet.</source>
-        <translation>Dompet yang diluncurkan via Pump.fun mengakumulasi sampah airdrop seiring waktu. Secara default, panel kepemilikan menyembunyikan token yang tidak ada dalam daftar bertag-terverifikasi Jupiter. Aktifkan ini untuk melihat setiap akun token SPL di dompet.</translation>
-    </message>
-    <message>
-        <source>Show unverified tokens in the holdings panel</source>
-        <translation>Tampilkan token yang belum terverifikasi di panel kepemilikan</translation>
-    </message>
-    <message>
-        <source>Stored — input is hidden. Type to replace.</source>
-        <translation>Tersimpan — input disembunyikan. Ketik untuk mengganti.</translation>
-    </message>
-    <message>
-        <source>No key stored. Public RPC will be used.</source>
-        <translation>Tidak ada kunci tersimpan. RPC publik akan digunakan.</translation>
-    </message>
-    <message>
-        <source>Empty input — use CLEAR to remove a stored key.</source>
-        <translation>Input kosong — gunakan HAPUS untuk menghapus kunci tersimpan.</translation>
-    </message>
-    <message>
-        <source>Failed: %1</source>
-        <translation>Gagal: %1</translation>
-    </message>
-    <message>
-        <source>Saved. Restart streaming to use the new key.</source>
-        <translation>Tersimpan. Mulai ulang streaming untuk menggunakan kunci baru.</translation>
-    </message>
-    <message>
-        <source>Cleared. Public RPC will be used.</source>
-        <translation>Dihapus. RPC publik akan digunakan.</translation>
-    </message>
-    <message>
-        <source>BALANCE REFRESH</source>
-        <translation>PENYEGARAN SALDO</translation>
-    </message>
-    <message>
-        <source>Mirrored on HOME</source>
-        <translation>Dicerminkan di HOME</translation>
-    </message>
-    <message>
-        <source>POLL</source>
-        <translation>POLL</translation>
-    </message>
-    <message>
-        <source>STREAM</source>
-        <translation>STREAM</translation>
-    </message>
-    <message>
-        <source>HELIUS API KEY</source>
-        <translation>KUNCI API HELIUS</translation>
-    </message>
-    <message>
-        <source>optional</source>
-        <translation>opsional</translation>
-    </message>
-    <message>
-        <source>DEFAULT SLIPPAGE</source>
-        <translation>SLIPPAGE DEFAULT</translation>
-    </message>
-    <message>
-        <source>1% – 5%</source>
-        <translation>1% – 5%</translation>
-    </message>
-    <message>
-        <source>ASSET FILTERS</source>
-        <translation>FILTER ASET</translation>
-    </message>
-    <message>
-        <source>affects holdings</source>
-        <translation>memengaruhi kepemilikan</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::SetupScreen</name>
     <message>
         <source>We need to download a few tools and data libraries once.
@@ -30320,6 +29051,10 @@ Hanya terjadi saat pertama kali — peluncuran selanjutnya akan langsung.</trans
         <translation>SUDAH SELESAI</translation>
     </message>
     <message>
+        <source>Everything is ready! Launching OpenMarketTerminal...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>SKIP &amp; CONTINUE</source>
         <translation>LEWATI &amp; LANJUT</translation>
     </message>
@@ -30330,10 +29065,6 @@ Hanya terjadi saat pertama kali — peluncuran selanjutnya akan langsung.</trans
     <message>
         <source>Setup in progress — please keep the application open</source>
         <translation>Pemasangan sedang berlangsung — harap biarkan aplikasi tetap terbuka</translation>
-    </message>
-    <message>
-        <source>Everything is ready! Launching Open Terminal...</source>
-        <translation>Semua siap! Meluncurkan Open Terminal...</translation>
     </message>
     <message>
         <source>Only the missing pieces will be downloaded. Needs an internet connection.</source>
@@ -30392,10 +29123,6 @@ Anda dapat menunggu atau melewati dan melanjutkan dengan fungsi terbatas.</trans
     <message>
         <source>analytics library list</source>
         <translation>daftar pustaka analitik</translation>
-    </message>
-    <message>
-        <source>Everything is installed and ready to go.</source>
-        <translation>Semua telah terpasang dan siap digunakan.</translation>
     </message>
 </context>
 <context>
@@ -30693,6 +29420,72 @@ Data will be re-fetched on next access.</source>
 Data akan diambil kembali pada akses berikutnya.</translation>
     </message>
     <message>
+        <source>Backup &amp; Restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export all your data (databases, workspaces, files) to a single .zip file you can copy to another machine or a drive. Nothing is uploaded. Secrets in the OS keychain are not included — re-enter them after restoring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Backup…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a folder for the backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your data was backed up to:
+
+%1
+
+Keep it somewhere safe — it is unencrypted personal data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore Backup…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a backup .zip to restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal backup (*.zip)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restoring will REPLACE all current data with the backup. Your current data is moved to a &apos;pre-restore&apos; folder first (so you can undo).
+
+The app must restart to finish. Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart to finish</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The backup is staged. OpenMarketTerminal will now close — reopen it to complete the restore.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Clear ALL User Data</source>
         <translation>Bersihkan SEMUA Data Pengguna</translation>
     </message>
@@ -30754,36 +29547,128 @@ Apakah Anda benar-benar yakin?</translation>
         <translation>Deskripsi (opsional)</translation>
     </message>
     <message>
+        <source>Bar timeframe the entry/exit rules evaluate on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Templates…</source>
         <translation>Templat…</translation>
+    </message>
+    <message>
+        <source>Load a ready-made strategy as a starting point</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Equity</source>
+        <translation type="unfinished">Ekuitas</translation>
+    </message>
+    <message>
+        <source>Instrument type this strategy trades</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NEW DRAFT</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save</source>
         <translation>Simpan</translation>
     </message>
     <message>
-        <source>Backtest</source>
-        <translation>Backtest</translation>
+        <source>Save this strategy to My Strategies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deploy ▸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go live (paper or real) with this strategy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NAME</source>
+        <translation type="unfinished">NAMA</translation>
+    </message>
+    <message>
+        <source>DESC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TYPE</source>
+        <translation type="unfinished">JENIS</translation>
+    </message>
+    <message>
+        <source>BACKTEST SETUP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Simbol</translation>
+    </message>
+    <message>
+        <source>From</source>
+        <translation type="unfinished">Dari</translation>
+    </message>
+    <message>
+        <source>To</source>
+        <translation type="unfinished">Ke</translation>
+    </message>
+    <message>
+        <source>▶  RUN BACKTEST</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RESULTS</source>
+        <translation type="unfinished">HASIL</translation>
+    </message>
+    <message>
+        <source>Enter a strategy name before deploying.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Entry</source>
+        <translation type="unfinished">Masuk</translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">Keluar</translation>
+    </message>
+    <message>
+        <source>Deploy — check conditions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is at %2, but some rules may never trigger:
+
+%3
+
+Deploy anyway?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already deployed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An identical deployment is already running:
+
+%1 · %2 · %3 · %4
+
+Deploy another copy anyway?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Deploy</source>
         <translation>Terapkan</translation>
     </message>
     <message>
-        <source>BACKTEST</source>
-        <translation>BACKTEST</translation>
-    </message>
-    <message>
         <source>Capital</source>
         <translation>Modal</translation>
-    </message>
-    <message>
-        <source>Start</source>
-        <translation>Mulai</translation>
-    </message>
-    <message>
-        <source>End</source>
-        <translation>Akhir</translation>
     </message>
     <message>
         <source>Strategy saved: %1</source>
@@ -30798,10 +29683,6 @@ Apakah Anda benar-benar yakin?</translation>
         <translation>Menyimpan strategi...</translation>
     </message>
     <message>
-        <source>Save strategy first.</source>
-        <translation>Simpan strategi terlebih dahulu.</translation>
-    </message>
-    <message>
         <source>Start date must be before end date.</source>
         <translation>Tanggal mulai harus sebelum tanggal akhir.</translation>
     </message>
@@ -30810,12 +29691,12 @@ Apakah Anda benar-benar yakin?</translation>
         <translation>Menjalankan backtest...</translation>
     </message>
     <message>
-        <source>Deploying strategy...</source>
-        <translation>Menerapkan strategi...</translation>
-    </message>
-    <message>
         <source>Loaded template: %1</source>
         <translation>Templat dimuat: %1</translation>
+    </message>
+    <message>
+        <source>EDITING</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Editing: %1</source>
@@ -30949,305 +29830,8 @@ Apakah Anda benar-benar yakin?</translation>
         <translation>Hapus Strategi</translation>
     </message>
     <message>
-        <source>Delete "%1"?</source>
-        <translation>Hapus "%1"?</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::SupportScreen</name>
-    <message>
-        <source>Select a ticket to view details</source>
-        <translation>Pilih tiket untuk melihat detail</translation>
-    </message>
-    <message>
-        <source>or create a new support request</source>
-        <translation>atau buat permintaan dukungan baru</translation>
-    </message>
-    <message>
-        <source>＋  Create New Ticket</source>
-        <translation>＋  Buat Tiket Baru</translation>
-    </message>
-    <message>
-        <source>← Back</source>
-        <translation>← Kembali</translation>
-    </message>
-    <message>
-        <source>Create Support Ticket</source>
-        <translation>Buat Tiket Dukungan</translation>
-    </message>
-    <message>
-        <source>Describe your issue in detail. We typically respond within 24 hours.</source>
-        <translation>Jelaskan masalah Anda secara rinci. Kami biasanya merespons dalam 24 jam.</translation>
-    </message>
-    <message>
-        <source>Brief summary of your issue</source>
-        <translation>Ringkasan singkat masalah Anda</translation>
-    </message>
-    <message>
-        <source>Subject</source>
-        <translation>Subjek</translation>
-    </message>
-    <message>
-        <source>Category</source>
-        <translation>Kategori</translation>
-    </message>
-    <message>
-        <source>Technical</source>
-        <translation>Teknis</translation>
-    </message>
-    <message>
-        <source>Billing</source>
-        <translation>Penagihan</translation>
-    </message>
-    <message>
-        <source>Feature Request</source>
-        <translation>Permintaan Fitur</translation>
-    </message>
-    <message>
-        <source>Bug Report</source>
-        <translation>Laporan Bug</translation>
-    </message>
-    <message>
-        <source>Account</source>
-        <translation>Akun</translation>
-    </message>
-    <message>
-        <source>Other</source>
-        <translation>Lainnya</translation>
-    </message>
-    <message>
-        <source>Priority</source>
-        <translation>Prioritas</translation>
-    </message>
-    <message>
-        <source>Low</source>
-        <translation>Rendah</translation>
-    </message>
-    <message>
-        <source>Medium</source>
-        <translation>Sedang</translation>
-    </message>
-    <message>
-        <source>High</source>
-        <translation>Tinggi</translation>
-    </message>
-    <message>
-        <source>Description</source>
-        <translation>Deskripsi</translation>
-    </message>
-    <message>
-        <source>%1 / 2000</source>
-        <translation>%1 / 2000</translation>
-    </message>
-    <message>
-        <source>Please describe:
-• What were you doing?
-• What did you expect to happen?
-• What actually happened?
-• Steps to reproduce (if applicable)</source>
-        <translation>Harap jelaskan:
-• Apa yang sedang Anda lakukan?
-• Apa yang Anda harapkan terjadi?
-• Apa yang sebenarnya terjadi?
-• Langkah-langkah untuk mereproduksi (jika ada)</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Batal</translation>
-    </message>
-    <message>
-        <source>Submit Ticket →</source>
-        <translation>Kirim Tiket →</translation>
-    </message>
-    <message>
-        <source>Tips for a faster response</source>
-        <translation>Tips untuk respons lebih cepat</translation>
-    </message>
-    <message>
-        <source>✓  One issue per ticket — easier to track and resolve</source>
-        <translation>✓  Satu masalah per tiket — lebih mudah dilacak dan diselesaikan</translation>
-    </message>
-    <message>
-        <source>✓  Include your OS, version, and any error messages</source>
-        <translation>✓  Sertakan OS, versi, dan pesan kesalahan apa pun</translation>
-    </message>
-    <message>
-        <source>✓  Describe steps to reproduce if it's a bug</source>
-        <translation>✓  Jelaskan langkah-langkah untuk mereproduksi jika ini adalah bug</translation>
-    </message>
-    <message>
-        <source>✓  Billing questions resolved within 4 hours</source>
-        <translation>✓  Pertanyaan penagihan diselesaikan dalam 4 jam</translation>
-    </message>
-    <message>
-        <source>Close Ticket</source>
-        <translation>Tutup Tiket</translation>
-    </message>
-    <message>
-        <source>Reopen</source>
-        <translation>Buka Kembali</translation>
-    </message>
-    <message>
-        <source>This is a demo ticket. Open a real ticket to get support from our team.</source>
-        <translation>Ini adalah tiket demo. Buat tiket asli untuk mendapatkan dukungan dari tim kami.</translation>
-    </message>
-    <message>
-        <source>New Ticket</source>
-        <translation>Tiket Baru</translation>
-    </message>
-    <message>
-        <source>✓  This ticket is closed.</source>
-        <translation>✓  Tiket ini sudah ditutup.</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>Balas</translation>
-    </message>
-    <message>
-        <source>Ctrl+Enter to send</source>
-        <translation>Ctrl+Enter untuk mengirim</translation>
-    </message>
-    <message>
-        <source>Type your reply…</source>
-        <translation>Ketik balasan Anda…</translation>
-    </message>
-    <message>
-        <source>Send Reply →</source>
-        <translation>Kirim Balasan →</translation>
-    </message>
-    <message>
-        <source>Updating…</source>
-        <translation>Memperbarui…</translation>
-    </message>
-    <message>
-        <source>Ready</source>
-        <translation>Siap</translation>
-    </message>
-    <message>
-        <source>Welcome to Open Terminal Support</source>
-        <translation>Selamat datang di Dukungan Open Terminal</translation>
-    </message>
-    <message>
-        <source>No tickets yet</source>
-        <translation>Belum ada tiket</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DEMO</translation>
-    </message>
-    <message>
-        <source>Ticket #%1</source>
-        <translation>Tiket #%1</translation>
-    </message>
-    <message>
-        <source>%1  ·  %2  ·  Opened %3</source>
-        <translation>%1  ·  %2  ·  Dibuka %3</translation>
-    </message>
-    <message>
-        <source>No description provided.</source>
-        <translation>Tidak ada deskripsi yang diberikan.</translation>
-    </message>
-    <message>
-        <source>Support Team</source>
-        <translation>Tim Dukungan</translation>
-    </message>
-    <message>
-        <source>1 Jan 2026</source>
-        <translation>1 Jan 2026</translation>
-    </message>
-    <message>
-        <source>Welcome to Open Terminal! This demo ticket shows how the support system works.
-Create a real ticket and our team will respond within 24 hours.</source>
-        <translation>Selamat datang di Open Terminal! Tiket demo ini menunjukkan cara kerja sistem dukungan.
-Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
-    </message>
-    <message>
-        <source>You</source>
-        <translation>Anda</translation>
-    </message>
-    <message>
-        <source>No messages yet — be the first to reply.</source>
-        <translation>Belum ada pesan — jadilah yang pertama membalas.</translation>
-    </message>
-    <message>
-        <source>Submitting…</source>
-        <translation>Mengirim…</translation>
-    </message>
-    <message>
-        <source>Sending…</source>
-        <translation>Mengirim…</translation>
-    </message>
-    <message>
-        <source>OPEN</source>
-        <translation>BUKA</translation>
-    </message>
-    <message>
-        <source>IN PROGRESS</source>
-        <translation>SEDANG DIPROSES</translation>
-    </message>
-    <message>
-        <source>RESOLVED</source>
-        <translation>TERSELESAIKAN</translation>
-    </message>
-    <message>
-        <source>CLOSED</source>
-        <translation>TUTUP</translation>
-    </message>
-    <message>
-        <source>PENDING</source>
-        <translation>TERTUNDA</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Dukungan</translation>
-    </message>
-    <message>
-        <source>Tickets</source>
-        <translation>Tiket</translation>
-    </message>
-    <message>
-        <source>Refresh tickets</source>
-        <translation>Segarkan tiket</translation>
-    </message>
-    <message>
-        <source>＋  New Ticket</source>
-        <translation>＋  Tiket Baru</translation>
-    </message>
-    <message>
-        <source>🔍  Search tickets…</source>
-        <translation>🔍  Cari tiket…</translation>
-    </message>
-    <message>
-        <source>All Tickets</source>
-        <translation>Semua Tiket</translation>
-    </message>
-    <message>
-        <source>Open</source>
-        <translation>Terbuka</translation>
-    </message>
-    <message>
-        <source>In Progress</source>
-        <translation>Sedang Diproses</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>Tertunda</translation>
-    </message>
-    <message>
-        <source>Resolved</source>
-        <translation>Terselesaikan</translation>
-    </message>
-    <message>
-        <source>Closed</source>
-        <translation>Ditutup</translation>
-    </message>
-    <message>
-        <source>Total</source>
-        <translation>Total</translation>
-    </message>
-    <message>
-        <source>Done</source>
-        <translation>Selesai</translation>
+        <source>Delete &quot;%1&quot;?</source>
+        <translation>Hapus &quot;%1&quot;?</translation>
     </message>
 </context>
 <context>
@@ -31478,108 +30062,68 @@ Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
         <translation>KETENTUAN LAYANAN</translation>
     </message>
     <message>
-        <source>Last updated: January 1, 2026</source>
-        <translation>Terakhir diperbarui: 1 Januari 2026</translation>
+        <source>Applies to the open-source release.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACCEPTANCE OF TERMS</source>
-        <translation>PENERIMAAN KETENTUAN</translation>
+        <source>FREE AND OPEN SOURCE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>By accessing or using Open Terminal ("the Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, do not use the Service.</source>
-        <translation>Dengan mengakses atau menggunakan Open Terminal ("Layanan"), Anda setuju untuk terikat oleh Ketentuan Layanan ini. Jika Anda tidak menyetujui ketentuan ini, jangan gunakan Layanan.</translation>
+        <source>Open Terminal is free, open-source software released under the MIT License. There is no subscription, fee, or billing of any kind. You may use, copy, modify, and redistribute it under the terms of that license.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DESCRIPTION OF SERVICE</source>
-        <translation>DESKRIPSI LAYANAN</translation>
+        <source>WHAT OPEN TERMINAL IS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal is a desktop financial intelligence terminal providing market data, analytics, trading tools, and AI-powered research capabilities.</source>
-        <translation>Open Terminal adalah terminal kecerdasan finansial desktop yang menyediakan data pasar, analitik, alat trading, dan kemampuan riset bertenaga AI.</translation>
+        <source>Open Terminal is a local-first desktop application that runs entirely on your own computer. It is a research and educational tool — it does not provide financial advice, brokerage services, or any guarantee about the data it displays.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>USER ACCOUNTS AND REGISTRATION</source>
-        <translation>AKUN PENGGUNA DAN PENDAFTARAN</translation>
+        <source>PROVIDED &quot;AS IS&quot;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>To access certain features, you must create an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities under your account.</source>
-        <translation>Untuk mengakses fitur tertentu, Anda harus membuat akun. Anda bertanggung jawab menjaga kerahasiaan kredensial akun Anda dan atas semua aktivitas di bawah akun Anda.</translation>
+        <source>As stated in the MIT License, the software is provided &quot;AS IS&quot;, without warranty of any kind, express or implied. The authors and contributors are not liable for any claim, damages, or other liability arising from the use of the software.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACCEPTABLE USE POLICY</source>
-        <translation>KEBIJAKAN PENGGUNAAN YANG DAPAT DITERIMA</translation>
+        <source>NOT FINANCIAL ADVICE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>You agree not to:</source>
-        <translation>Anda setuju untuk tidak:</translation>
+        <source>Market data, analytics, and AI-generated output are for informational and educational purposes only and do not constitute investment advice. You are solely responsible for your own trading and investment decisions and their outcomes.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use the Service for any unlawful purpose</source>
-        <translation>Menggunakan Layanan untuk tujuan yang melanggar hukum</translation>
+        <source>THIRD-PARTY SERVICES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Attempt to gain unauthorized access to any part of the Service</source>
-        <translation>Mencoba memperoleh akses tidak sah ke bagian mana pun dari Layanan</translation>
+        <source>When you configure API keys, the app connects directly from your machine to the brokers and data providers you choose. You are responsible for complying with the terms, fees, and usage policies of any third-party service you connect, and for any orders you place through them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Interfere with or disrupt the Service or its servers</source>
-        <translation>Mengganggu atau merusak Layanan atau servernya</translation>
+        <source>PRIVACY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reverse engineer, decompile, or disassemble any part of the Service</source>
-        <translation>Merekayasa balik, mendekompilasi, atau membongkar bagian mana pun dari Layanan</translation>
+        <source>Open Terminal has no server and collects no personal data. Your data stays on your device. See the Privacy Policy for details.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use automated means to access the Service without permission</source>
-        <translation>Menggunakan cara otomatis untuk mengakses Layanan tanpa izin</translation>
+        <source>CONTACT</source>
+        <translation type="unfinished">KONTAK</translation>
     </message>
     <message>
-        <source>DATA AND PRIVACY</source>
-        <translation>DATA DAN PRIVASI</translation>
+        <source>For questions about these Terms, open an issue in the project repository:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your use of the Service is also governed by our Privacy Policy. By using the Service, you consent to the collection and use of information as described therein.</source>
-        <translation>Penggunaan Layanan oleh Anda juga diatur oleh Kebijakan Privasi kami. Dengan menggunakan Layanan, Anda menyetujui pengumpulan dan penggunaan informasi sebagaimana dijelaskan di dalamnya.</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION AND BILLING</source>
-        <translation>LANGGANAN DAN PENAGIHAN</translation>
-    </message>
-    <message>
-        <source>Certain features require a paid subscription. Subscriptions are billed in advance. Refunds are handled according to our refund policy. Credits expire according to plan terms.</source>
-        <translation>Fitur tertentu memerlukan langganan berbayar. Langganan ditagih di muka. Pengembalian dana ditangani sesuai dengan kebijakan pengembalian dana kami. Kredit kedaluwarsa sesuai dengan ketentuan paket.</translation>
-    </message>
-    <message>
-        <source>DISCLAIMERS AND LIMITATIONS</source>
-        <translation>PENYANGKALAN DAN BATASAN</translation>
-    </message>
-    <message>
-        <source>The Service is provided "as is" without warranty of any kind. Open Terminal contributors shall not be liable for any indirect, incidental, special, or consequential damages. Financial data and analytics are for informational purposes only and do not constitute investment advice.</source>
-        <translation>Layanan disediakan "sebagaimana adanya" tanpa jaminan apa pun. Open Terminal contributors tidak bertanggung jawab atas kerugian tidak langsung, insidental, khusus, atau konsekuensial apa pun. Data dan analitik finansial hanya untuk tujuan informasi dan bukan merupakan nasihat investasi.</translation>
-    </message>
-    <message>
-        <source>TERMINATION</source>
-        <translation>PENGHENTIAN</translation>
-    </message>
-    <message>
-        <source>We may terminate or suspend your account at any time for violation of these terms. Upon termination, your right to use the Service will immediately cease.</source>
-        <translation>Kami dapat menghentikan atau menangguhkan akun Anda kapan saja jika melanggar ketentuan ini. Setelah penghentian, hak Anda untuk menggunakan Layanan akan segera berakhir.</translation>
-    </message>
-    <message>
-        <source>CHANGES TO TERMS</source>
-        <translation>PERUBAHAN KETENTUAN</translation>
-    </message>
-    <message>
-        <source>We reserve the right to modify these terms at any time. Continued use of the Service after changes constitutes acceptance of the modified terms.</source>
-        <translation>Kami berhak mengubah ketentuan ini kapan saja. Penggunaan Layanan yang berlanjut setelah perubahan merupakan penerimaan atas ketentuan yang telah diubah.</translation>
-    </message>
-    <message>
-        <source>CONTACT INFORMATION</source>
-        <translation>INFORMASI KONTAK</translation>
-    </message>
-    <message>
-        <source>For questions about these Terms, contact us at github.com/your-org/open-terminal/issues</source>
-        <translation>Untuk pertanyaan tentang Ketentuan ini, hubungi kami di github.com/your-org/open-terminal/issues</translation>
+        <source>github.com/Trucker2827/Open-Terminal/issues</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Privacy Policy</source>
@@ -32062,12 +30606,20 @@ Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
         <translation>Bulanan</translation>
     </message>
     <message>
+        <source>Display-only — not connected to a live trade-data feed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Trading Partner</source>
         <translation>Mitra Dagang</translation>
     </message>
     <message>
         <source>Total Trade ($M)</source>
         <translation>Total Perdagangan ($ Juta)</translation>
+    </message>
+    <message>
+        <source>Static sample — illustrative U.S. goods-trade partners. Not connected to a live trade-data feed; the filters above are inactive.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Table</source>
@@ -32101,14 +30653,6 @@ Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
         <translation>Terakhir diperbarui: 1 Januari 2026</translation>
     </message>
     <message>
-        <source>OPENMARKETTERMINAL TRADEMARKS</source>
-        <translation>MEREK DAGANG OPENMARKETTERMINAL</translation>
-    </message>
-    <message>
-        <source>Open Terminal Logo and associated visual identities</source>
-        <translation>Logo Open Terminal dan identitas visual terkait</translation>
-    </message>
-    <message>
         <source>THIRD-PARTY TRADEMARKS</source>
         <translation>MEREK DAGANG PIHAK KETIGA</translation>
     </message>
@@ -32125,48 +30669,52 @@ Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
         <translation>Penggunaan yang Diizinkan:</translation>
     </message>
     <message>
-        <source>Referring to Open Terminal products in editorial or descriptive contexts</source>
-        <translation>Merujuk produk Open Terminal dalam konteks editorial atau deskriptif</translation>
-    </message>
-    <message>
-        <source>Linking to official Open Terminal resources</source>
-        <translation>Menautkan ke sumber daya resmi Open Terminal</translation>
-    </message>
-    <message>
-        <source>Academic or research references</source>
-        <translation>Rujukan akademis atau penelitian</translation>
-    </message>
-    <message>
         <source>Prohibited Uses:</source>
         <translation>Penggunaan yang Dilarang:</translation>
-    </message>
-    <message>
-        <source>Using Open Terminal marks to imply endorsement or affiliation</source>
-        <translation>Menggunakan merek Open Terminal untuk menyiratkan dukungan atau afiliasi</translation>
-    </message>
-    <message>
-        <source>Modifying or altering any Open Terminal trademark</source>
-        <translation>Memodifikasi atau mengubah merek dagang Open Terminal apa pun</translation>
-    </message>
-    <message>
-        <source>Using Open Terminal marks in domain names or product names</source>
-        <translation>Menggunakan merek Open Terminal dalam nama domain atau nama produk</translation>
-    </message>
-    <message>
-        <source>Creating confusingly similar marks</source>
-        <translation>Membuat merek yang sangat mirip dan membingungkan</translation>
     </message>
     <message>
         <source>COPYRIGHT NOTICE</source>
         <translation>PEMBERITAHUAN HAK CIPTA</translation>
     </message>
     <message>
-        <source>Copyright 2024-2026 Open Terminal contributors. All rights reserved.</source>
-        <translation>Hak Cipta 2024-2026 Open Terminal contributors. Hak cipta dilindungi undang-undang.</translation>
+        <source>OPEN TERMINAL TRADEMARKS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This software is licensed under MIT License for open-source use, including personal, educational, and commercial use.</source>
-        <translation>This software is licensed under MIT License for open-source use, including personal, educational, and commercial use.</translation>
+        <source>Open Terminal logos and associated visual identities</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Referring to Open Terminal in editorial or descriptive contexts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identifying forks, packages, and redistributed builds truthfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Academic, research, and community references</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using Open Terminal marks to falsely imply endorsement or official affiliation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Misrepresenting a modified build as the official project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Creating confusingly similar marks for deceptive use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copyright 2026 Open Terminal contributors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This software is licensed under the MIT License for open-source use, including personal, educational, and commercial use.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DATA PROVIDER ACKNOWLEDGMENTS</source>
@@ -32197,8 +30745,12 @@ Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
         <translation>MELAPORKAN PELANGGARAN</translation>
     </message>
     <message>
-        <source>To report trademark infringement, contact: github.com/your-org/open-terminal/issues</source>
-        <translation>Untuk melaporkan pelanggaran merek dagang, hubungi: github.com/your-org/open-terminal/issues</translation>
+        <source>To report trademark infringement, open an issue in the project repository.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repository: github.com/your-org/open-terminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LEGAL DEPARTMENT</source>
@@ -32207,10 +30759,6 @@ Buat tiket asli dan tim kami akan merespons dalam 24 jam.</translation>
     <message>
         <source>Open Terminal contributors — Legal Department</source>
         <translation>Open Terminal contributors — Departemen Hukum</translation>
-    </message>
-    <message>
-        <source>Email: github.com/your-org/open-terminal/issues</source>
-        <translation>Email: github.com/your-org/open-terminal/issues</translation>
     </message>
 </context>
 <context>
@@ -32377,6 +30925,125 @@ Coba kode negara lain atau periksa apakah indikator tersedia</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::UniverseScannerPanel</name>
+    <message>
+        <source>STRATEGY</source>
+        <translation type="unfinished">STRATEGI</translation>
+    </message>
+    <message>
+        <source>UNIVERSE</source>
+        <translation type="unfinished">UNIVERSE</translation>
+    </message>
+    <message>
+        <source>US mega-cap preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>US tech preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom symbols</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CUSTOM SYMBOLS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BROKER ACCOUNT</source>
+        <translation type="unfinished">AKUN BROKER</translation>
+    </message>
+    <message>
+        <source>EVAL SWEEP (ms)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOLDOWN (min)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>START SCAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE MATCHES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYMBOL</source>
+        <translation type="unfinished">SIMBOL</translation>
+    </message>
+    <message>
+        <source>SIGNAL</source>
+        <translation type="unfinished">SINYAL</translation>
+    </message>
+    <message>
+        <source>PRICE</source>
+        <translation type="unfinished">HARGA</translation>
+    </message>
+    <message>
+        <source>MATCHED RULES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEPLOY</source>
+        <translation type="unfinished">TERAPKAN</translation>
+    </message>
+    <message>
+        <source>Stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a strategy first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected strategy has no entry conditions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a connected broker account (live feed required).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter custom symbols or pick a universe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not save scan: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STOP SCAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scanning live — warming history, matches will appear below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MATCH</source>
+        <translation type="unfinished">COCOK</translation>
+    </message>
+    <message>
+        <source>BULLISH</source>
+        <translation type="unfinished">BULLISH</translation>
+    </message>
+    <message>
+        <source>BEARISH</source>
+        <translation type="unfinished">BEARISH</translation>
+    </message>
+    <message>
+        <source>Strategy no longer selected — cannot deploy.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deployed %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::VoiceConfigSection</name>
     <message>
         <source>VOICE — SPEECH-TO-TEXT &amp; TEXT-TO-SPEECH</source>
@@ -32451,8 +31118,8 @@ Coba kode negara lain atau periksa apakah indikator tersedia</translation>
         <translation>Penguatan mik (naikkan jika mik terlalu pelan)</translation>
     </message>
     <message>
-        <source>e.g. 'Headset' (substring match, blank = system default)</source>
-        <translation>mis. 'Headset' (kecocokan substring, kosong = default sistem)</translation>
+        <source>e.g. &apos;Headset&apos; (substring match, blank = system default)</source>
+        <translation>mis. &apos;Headset&apos; (kecocokan substring, kosong = default sistem)</translation>
     </message>
     <message>
         <source>Mic device</source>
@@ -32597,25 +31264,6 @@ Coba kode negara lain atau periksa apakah indikator tersedia</translation>
     <message>
         <source>Test failed: HTTP %1 — %2</source>
         <translation>Pengujian gagal: HTTP %1 — %2</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::WalletActionConfirmDialog</name>
-    <message>
-        <source>Confirm</source>
-        <translation>Konfirmasi</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>BATAL</translation>
-    </message>
-    <message>
-        <source>AWAITING CONFIRMATION</source>
-        <translation>MENUNGGU KONFIRMASI</translation>
-    </message>
-    <message>
-        <source>%1 in %2</source>
-        <translation>%1 dalam %2</translation>
     </message>
 </context>
 <context>
@@ -32990,6 +31638,18 @@ Coba kode negara lain atau periksa apakah indikator tersedia</translation>
     <message>
         <source>Live Kraken / HyperLiquid ticker strip — configurable pair list</source>
         <translation>Strip ticker Kraken / HyperLiquid langsung — daftar pasangan yang dapat dikonfigurasi</translation>
+    </message>
+    <message>
+        <source>Dinero Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Dinero chain stats + a GET DINERO download button (read-only, no trading)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Polymarket</source>
@@ -33407,7 +32067,7 @@ Verifikasi juga WTO_API_KEY telah diatur dengan benar</translation>
         <translation>Pilih setidaknya satu model.</translation>
     </message>
     <message>
-        <source>Close every agent's positions and stop the competition?
+        <source>Close every agent&apos;s positions and stop the competition?
 This cannot be undone.</source>
         <translation>Tutup semua posisi setiap agen dan hentikan kompetisi?
 Ini tidak dapat dibatalkan.</translation>
@@ -33788,6 +32448,101 @@ Kesalahan penguraian: %3</translation>
     <message>
         <source>AVG LEV</source>
         <translation>LEV RATA</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::common::PaperBlotterPanel</name>
+    <message>
+        <source>No open paper positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SQUARE OFF ALL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">Akun</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Simbol</translation>
+    </message>
+    <message>
+        <source>Product</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">Sisi</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Avg</source>
+        <translation type="unfinished">Rata2</translation>
+    </message>
+    <message>
+        <source>LTP</source>
+        <translation type="unfinished">LTP</translation>
+    </message>
+    <message>
+        <source>P&amp;L</source>
+        <translation type="unfinished">P&amp;L</translation>
+    </message>
+    <message>
+        <source>P&amp;L %</source>
+        <translation type="unfinished">P&amp;L %</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Jenis</translation>
+    </message>
+    <message>
+        <source>Price</source>
+        <translation type="unfinished">Harga</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished">Status</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">Waktu</translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished">Posisi</translation>
+    </message>
+    <message>
+        <source>Orders</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trades</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">Keluar</translation>
+    </message>
+    <message>
+        <source>%1 open · unrealized %2%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT</source>
+        <translation type="unfinished">MKT</translation>
+    </message>
+    <message>
+        <source>Square off all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close all %1 open paper position(s) at market?</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -34348,6 +33103,10 @@ Kunci disimpan secara lokal dalam penyimpanan aman terenkripsi.</translation>
         <translation>LANGSUNG</translation>
     </message>
     <message>
+        <source>SENDING…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>⚠ Enter a valid quantity</source>
         <translation>⚠ Masukkan kuantitas yang valid</translation>
     </message>
@@ -34783,11 +33542,11 @@ Kunci disimpan secara lokal dalam penyimpanan aman terenkripsi.</translation>
         <translation>Hapus Akun</translation>
     </message>
     <message>
-        <source>Are you sure you want to remove "%1"?
+        <source>Are you sure you want to remove &quot;%1&quot;?
 
 This will delete all saved credentials and the linked paper portfolio.
 This action cannot be undone.</source>
-        <translation>Yakin ingin menghapus "%1"?
+        <translation>Yakin ingin menghapus &quot;%1&quot;?
 
 Ini akan menghapus semua kredensial tersimpan dan portofolio kertas yang tertaut.
 Tindakan ini tidak dapat dibatalkan.</translation>
@@ -34797,240 +33556,24 @@ Tindakan ini tidak dapat dibatalkan.</translation>
         <translation>Menghubungkan...</translation>
     </message>
     <message>
-        <source>Error: %1</source>
-        <translation>Kesalahan: %1</translation>
-    </message>
-    <message>
-        <source>Connected as %1</source>
-        <translation>Terhubung sebagai %1</translation>
-    </message>
-    <message>
-        <source> First-time setup (4 steps)</source>
-        <translation> Penyiapan pertama kali (4 langkah)</translation>
-    </message>
-    <message>
-        <source>1. Create a Kite Connect app at &lt;a href='https://developers.kite.trade/apps'&gt;developers.kite.trade/apps&lt;/a&gt;.</source>
-        <translation>1. Buat aplikasi Kite Connect di &lt;a href='https://developers.kite.trade/apps'&gt;developers.kite.trade/apps&lt;/a&gt;.</translation>
-    </message>
-    <message>
-        <source>2. Register redirect URL &lt;b&gt;http://127.0.0.1:5010/&lt;/b&gt; on that app.</source>
-        <translation>2. Daftarkan URL pengalihan &lt;b&gt;http://127.0.0.1:5010/&lt;/b&gt; pada aplikasi tersebut.</translation>
-    </message>
-    <message>
-        <source>3. Enable TOTP 2FA on your Zerodha account (&lt;a href='https://support.zerodha.com/category/your-zerodha-account/login-credentials/articles/time-based-otp'&gt;support.zerodha.com&lt;/a&gt;).</source>
-        <translation>3. Aktifkan 2FA TOTP pada akun Zerodha Anda (&lt;a href='https://support.zerodha.com/category/your-zerodha-account/login-credentials/articles/time-based-otp'&gt;support.zerodha.com&lt;/a&gt;).</translation>
-    </message>
-    <message>
-        <source>4. For auto-login, copy the Base32 TOTP secret during 2FA setup ("Can't scan?" link).</source>
-        <translation>4. Untuk login otomatis, salin secret TOTP Base32 selama penyiapan 2FA (tautan "Can't scan?").</translation>
-    </message>
-    <message>
-        <source>Auto-login (TOTP)</source>
-        <translation>Login otomatis (TOTP)</translation>
-    </message>
-    <message>
-        <source>Browser login</source>
-        <translation>Login browser</translation>
-    </message>
-    <message>
-        <source>API KEY</source>
-        <translation>KUNCI API</translation>
-    </message>
-    <message>
-        <source>Enter API Key...</source>
-        <translation>Masukkan API Key...</translation>
-    </message>
-    <message>
-        <source>from developers.kite.trade -&gt; My Apps</source>
-        <translation>dari developers.kite.trade -&gt; My Apps</translation>
-    </message>
-    <message>
-        <source>API SECRET</source>
-        <translation>API SECRET</translation>
-    </message>
-    <message>
-        <source>Enter API Secret...</source>
-        <translation>Masukkan API Secret...</translation>
-    </message>
-    <message>
-        <source>same console, shown once - regenerate if lost</source>
-        <translation>konsol yang sama, ditampilkan sekali - buat ulang jika hilang</translation>
-    </message>
-    <message>
-        <source>KITE USER ID</source>
-        <translation>KITE USER ID</translation>
-    </message>
-    <message>
-        <source>e.g. AB1234</source>
-        <translation>mis. AB1234</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>KATA SANDI</translation>
-    </message>
-    <message>
-        <source>Zerodha login password</source>
-        <translation>Kata sandi login Zerodha</translation>
-    </message>
-    <message>
-        <source>TOTP SECRET</source>
-        <translation>TOTP SECRET</translation>
-    </message>
-    <message>
-        <source>Base32 string</source>
-        <translation>String Base32</translation>
-    </message>
-    <message>
-        <source>Base32 secret from Zerodha 2FA setup</source>
-        <translation>Secret Base32 dari penyiapan 2FA Zerodha</translation>
-    </message>
-    <message>
-        <source>Open Kite login in browser</source>
-        <translation>Buka login Kite di browser</translation>
-    </message>
-    <message>
-        <source>Redirect didn't work? Paste request_token manually</source>
-        <translation>Pengalihan tidak berfungsi? Tempel request_token secara manual</translation>
-    </message>
-    <message>
-        <source>Paste request_token here</source>
-        <translation>Tempel request_token di sini</translation>
-    </message>
-    <message>
-        <source>Connect with pasted token</source>
-        <translation>Hubungkan dengan token yang ditempel</translation>
-    </message>
-    <message>
-        <source>Missing field: API Key</source>
-        <translation>Bidang tidak ada: API Key</translation>
-    </message>
-    <message>
-        <source>Missing field: API Secret</source>
-        <translation>Bidang tidak ada: API Secret</translation>
-    </message>
-    <message>
-        <source>Missing field: Kite User ID</source>
-        <translation>Bidang tidak ada: Kite User ID</translation>
-    </message>
-    <message>
-        <source>Missing field: Password</source>
-        <translation>Bidang tidak ada: Kata Sandi</translation>
-    </message>
-    <message>
-        <source>Missing field: TOTP Secret</source>
-        <translation>Bidang tidak ada: TOTP Secret</translation>
-    </message>
-    <message>
-        <source>Logging in...</source>
-        <translation>Sedang login...</translation>
-    </message>
-    <message>
-        <source>Enter API Key and API Secret first</source>
-        <translation>Masukkan API Key dan API Secret terlebih dahulu</translation>
-    </message>
-    <message>
-        <source>Port 5010 busy - use manual paste fallback</source>
-        <translation>Port 5010 sibuk - gunakan opsi tempel manual</translation>
-    </message>
-    <message>
-        <source>Exchanging token...</source>
-        <translation>Menukar token...</translation>
-    </message>
-    <message>
-        <source>Browser login timed out - try again or paste manually</source>
-        <translation>Login browser kehabisan waktu - coba lagi atau tempel manual</translation>
-    </message>
-    <message>
-        <source>Waiting for browser login on port %1 (120s)...</source>
-        <translation>Menunggu login browser di port %1 (120 dtk)...</translation>
-    </message>
-    <message>
-        <source>Enter API Key, API Secret, and paste request_token</source>
-        <translation>Masukkan API Key, API Secret, dan tempel request_token</translation>
-    </message>
-    <message>
-        <source>Could not find request_token in pasted text</source>
-        <translation>Tidak dapat menemukan request_token di teks yang ditempel</translation>
-    </message>
-    <message>
         <source> First-time setup (3 steps)</source>
         <translation> Penyiapan pertama kali (3 langkah)</translation>
     </message>
     <message>
-        <source>1. Create an API app at &lt;a href='https://myapi.fyers.in/dashboard/'&gt;myapi.fyers.in/dashboard&lt;/a&gt;.</source>
-        <translation>1. Buat aplikasi API di &lt;a href='https://myapi.fyers.in/dashboard/'&gt;myapi.fyers.in/dashboard&lt;/a&gt;.</translation>
+        <source>Rename Account</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>2. Set &lt;b&gt;Redirect URL&lt;/b&gt; to &lt;b&gt;http://127.0.0.1:5011/&lt;/b&gt; in app settings.</source>
-        <translation>2. Atur &lt;b&gt;Redirect URL&lt;/b&gt; ke &lt;b&gt;http://127.0.0.1:5011/&lt;/b&gt; di pengaturan aplikasi.</translation>
+        <source>Select an account first, then rename it.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>3. Note your &lt;b&gt;Client ID&lt;/b&gt; (e.g. ABCXYZ-100) and &lt;b&gt;Secret Key&lt;/b&gt;.</source>
-        <translation>3. Catat &lt;b&gt;Client ID&lt;/b&gt; Anda (mis. ABCXYZ-100) dan &lt;b&gt;Secret Key&lt;/b&gt;.</translation>
+        <source>New account name:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>CLIENT ID</source>
-        <translation>CLIENT ID</translation>
-    </message>
-    <message>
-        <source>e.g. ABCXYZ-100</source>
-        <translation>mis. ABCXYZ-100</translation>
-    </message>
-    <message>
-        <source>from myapi.fyers.in -&gt; My Apps</source>
-        <translation>dari myapi.fyers.in -&gt; My Apps</translation>
-    </message>
-    <message>
-        <source>SECRET KEY</source>
-        <translation>SECRET KEY</translation>
-    </message>
-    <message>
-        <source>Enter Secret Key...</source>
-        <translation>Masukkan Secret Key...</translation>
-    </message>
-    <message>
-        <source>shown once during app creation - regenerate if lost</source>
-        <translation>ditampilkan sekali saat pembuatan aplikasi - buat ulang jika hilang</translation>
-    </message>
-    <message>
-        <source>Open Fyers login in browser</source>
-        <translation>Buka login Fyers di browser</translation>
-    </message>
-    <message>
-        <source>Redirect didn't work? Paste auth_code manually</source>
-        <translation>Pengalihan tidak berfungsi? Tempel auth_code secara manual</translation>
-    </message>
-    <message>
-        <source>Paste auth_code or full redirect URL here</source>
-        <translation>Tempel auth_code atau URL pengalihan lengkap di sini</translation>
-    </message>
-    <message>
-        <source>Connect with pasted auth code</source>
-        <translation>Hubungkan dengan auth code yang ditempel</translation>
-    </message>
-    <message>
-        <source>Enter Client ID and Secret Key first</source>
-        <translation>Masukkan Client ID dan Secret Key terlebih dahulu</translation>
-    </message>
-    <message>
-        <source>Port 5011 busy — use manual paste fallback below</source>
-        <translation>Port 5011 sibuk — gunakan opsi tempel manual di bawah</translation>
-    </message>
-    <message>
-        <source>Exchanging auth code...</source>
-        <translation>Menukar kode auth...</translation>
-    </message>
-    <message>
-        <source>Browser login timed out — try again or paste manually</source>
-        <translation>Login browser kehabisan waktu — coba lagi atau tempel manual</translation>
-    </message>
-    <message>
-        <source>Enter Client ID, Secret Key, and paste auth code</source>
-        <translation>Masukkan Client ID, Secret Key, dan tempel kode auth</translation>
-    </message>
-    <message>
-        <source>1. Create a free account at &lt;a href='https://app.metaapi.cloud'&gt;app.metaapi.cloud&lt;/a&gt;.</source>
-        <translation>1. Buat akun gratis di &lt;a href='https://app.metaapi.cloud'&gt;app.metaapi.cloud&lt;/a&gt;.</translation>
+        <source>1. Create a free account at &lt;a href=&apos;https://app.metaapi.cloud&apos;&gt;app.metaapi.cloud&lt;/a&gt;.</source>
+        <translation>1. Buat akun gratis di &lt;a href=&apos;https://app.metaapi.cloud&apos;&gt;app.metaapi.cloud&lt;/a&gt;.</translation>
     </message>
     <message>
         <source>2. Generate an auth token from the API Access section.</source>
@@ -35049,8 +33592,8 @@ Tindakan ini tidak dapat dibatalkan.</translation>
         <translation>Masukkan token auth MetaAPI...</translation>
     </message>
     <message>
-        <source>&lt;a href='https://app.metaapi.cloud/api-access/generate-token' style='color:%1;font-size:10px;'&gt;Get Token →&lt;/a&gt;</source>
-        <translation>&lt;a href='https://app.metaapi.cloud/api-access/generate-token' style='color:%1;font-size:10px;'&gt;Dapatkan Token →&lt;/a&gt;</translation>
+        <source>&lt;a href=&apos;https://app.metaapi.cloud/api-access/generate-token&apos; style=&apos;color:%1;font-size:10px;&apos;&gt;Get Token →&lt;/a&gt;</source>
+        <translation>&lt;a href=&apos;https://app.metaapi.cloud/api-access/generate-token&apos; style=&apos;color:%1;font-size:10px;&apos;&gt;Dapatkan Token →&lt;/a&gt;</translation>
     </message>
     <message>
         <source>MT4 LOGIN</source>
@@ -35123,10 +33666,6 @@ Tindakan ini tidak dapat dibatalkan.</translation>
     <message>
         <source>Creating MT4 bridge...</source>
         <translation>Membuat bridge MT4...</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>Terhubung</translation>
     </message>
     <message>
         <source>Auto — execute immediately</source>
@@ -35267,6 +33806,10 @@ Tindakan ini tidak dapat dibatalkan.</translation>
         <translation>Qty</translation>
     </message>
     <message>
+        <source>Product</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Avg Price</source>
         <translation>Harga Rata-rata</translation>
     </message>
@@ -35311,8 +33854,156 @@ Tindakan ini tidak dapat dibatalkan.</translation>
         <translation>Waktu</translation>
     </message>
     <message>
+        <source>AVAILABLE BALANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USED MARGIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOTAL EQUITY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REALIZED P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UNREALIZED P&amp;L</source>
+        <translation type="unfinished">P&amp;L BELUM DIREALISASI</translation>
+    </message>
+    <message>
+        <source>HOLDINGS VALUE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPENING BALANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MARGIN USED %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COLLATERAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NET P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TODAY&apos;S P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WIN RATE</source>
+        <translation type="unfinished">WIN RATE</translation>
+    </message>
+    <message>
+        <source>PROFIT FACTOR</source>
+        <translation type="unfinished">FAKTOR LABA</translation>
+    </message>
+    <message>
+        <source>TOTAL TRADES</source>
+        <translation type="unfinished">TOTAL TRADE</translation>
+    </message>
+    <message>
+        <source>AVG WIN</source>
+        <translation type="unfinished">RATA-RATA MENANG</translation>
+    </message>
+    <message>
+        <source>AVG LOSS</source>
+        <translation type="unfinished">RATA-RATA RUGI</translation>
+    </message>
+    <message>
+        <source>TURNOVER</source>
+        <translation type="unfinished">TURNOVER</translation>
+    </message>
+    <message>
+        <source>LARGEST WIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LARGEST LOSS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOTAL CHARGES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total P&amp;L  --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off all winning positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Winning Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will close ALL positions currently in profit.
+
+Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off all losing positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Losing Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will close ALL positions currently in loss.
+
+Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total P&amp;L  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT</source>
+        <translation type="unfinished">MKT</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Sell / exit %1 — opens an order ticket pre-filled with the held quantity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>→ CNC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert to CNC delivery (carry overnight, locks full cash)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off %1 — sells the full holding at market</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Action</source>
         <translation>Aksi</translation>
+    </message>
+    <message>
+        <source>Collapse panel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expand panel</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Date</source>
@@ -35379,42 +34070,6 @@ Tindakan ini tidak dapat dibatalkan.</translation>
         <translation>RETURN %</translation>
     </message>
     <message>
-        <source>Available Balance</source>
-        <translation>Saldo Tersedia</translation>
-    </message>
-    <message>
-        <source>Used Margin</source>
-        <translation>Margin Terpakai</translation>
-    </message>
-    <message>
-        <source>Total Balance</source>
-        <translation>Total Saldo</translation>
-    </message>
-    <message>
-        <source>Collateral</source>
-        <translation>Agunan</translation>
-    </message>
-    <message>
-        <source>Total P&amp;L</source>
-        <translation>Total P&amp;L</translation>
-    </message>
-    <message>
-        <source>Win Rate</source>
-        <translation>Win Rate</translation>
-    </message>
-    <message>
-        <source>Total Trades</source>
-        <translation>Total Transaksi</translation>
-    </message>
-    <message>
-        <source>Largest Win</source>
-        <translation>Keuntungan Terbesar</translation>
-    </message>
-    <message>
-        <source>Largest Loss</source>
-        <translation>Kerugian Terbesar</translation>
-    </message>
-    <message>
         <source>Square Off All Positions</source>
         <translation>Tutup Semua Posisi</translation>
     </message>
@@ -35427,6 +34082,32 @@ Are you sure?</source>
 Anda yakin?</translation>
     </message>
     <message>
+        <source>Buy / Add  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell / Reduce  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REPLICATE → PAPER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off All Holdings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will place MARKET SELL orders to exit ALL %1 holding(s).
+
+Positions are NOT affected. Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DATE</source>
+        <translation type="unfinished">TANGGAL</translation>
+    </message>
+    <message>
         <source>Cancel All Orders</source>
         <translation>Batalkan Semua Order</translation>
     </message>
@@ -35437,10 +34118,6 @@ Are you sure?</source>
         <translation>Ini akan membatalkan SEMUA order tertunda.
 
 Anda yakin?</translation>
-    </message>
-    <message>
-        <source>--- RECENT TRADES ---</source>
-        <translation>--- TRANSAKSI TERBARU ---</translation>
     </message>
     <message>
         <source>EDIT</source>
@@ -35501,6 +34178,41 @@ Anda yakin?</translation>
         <source>CHART</source>
         <translation>GRAFIK</translation>
     </message>
+    <message>
+        <source>Buy @ %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell @ %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::equity::EquityChartPanel</name>
+    <message>
+        <source>EXIT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SHORT</source>
+        <translation type="unfinished">SHORT</translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::screens::equity::EquityOrderBook</name>
@@ -35509,12 +34221,31 @@ Anda yakin?</translation>
         <translation>KEDALAMAN PASAR</translation>
     </message>
     <message>
-        <source>Spread: --</source>
-        <translation>Spread: --</translation>
+        <source>L1 · synthetic</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Spread: %1 (%2%)</source>
-        <translation>Spread: %1 (%2%)</translation>
+        <source>L2 · %1×%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1  %2
+Size  %3
+Cumulative  %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASK</source>
+        <translation type="unfinished">ASK</translation>
+    </message>
+    <message>
+        <source>BID</source>
+        <translation type="unfinished">BID</translation>
+    </message>
+    <message>
+        <source>
+Orders  %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No depth data</source>
@@ -35525,12 +34256,20 @@ Anda yakin?</translation>
         <translation>HARGA</translation>
     </message>
     <message>
-        <source>QTY</source>
-        <translation>QTY</translation>
+        <source>SIZE</source>
+        <translation type="unfinished">UKURAN</translation>
     </message>
     <message>
-        <source>ORDERS</source>
-        <translation>ORDER</translation>
+        <source>TOTAL</source>
+        <translation type="unfinished">TOTAL</translation>
+    </message>
+    <message>
+        <source>SPREAD</source>
+        <translation type="unfinished">SPREAD</translation>
+    </message>
+    <message>
+        <source>%1% %2</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -35568,28 +34307,32 @@ Anda yakin?</translation>
         <translation>SL-L</translation>
     </message>
     <message>
+        <source>LTP --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bal --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>PRODUCT</source>
         <translation>PRODUK</translation>
-    </message>
-    <message>
-        <source>Intraday (MIS)</source>
-        <translation>Intraday (MIS)</translation>
-    </message>
-    <message>
-        <source>Delivery (CNC)</source>
-        <translation>Delivery (CNC)</translation>
-    </message>
-    <message>
-        <source>Margin (NRML)</source>
-        <translation>Margin (NRML)</translation>
     </message>
     <message>
         <source>EXCHANGE</source>
         <translation>BURSA</translation>
     </message>
     <message>
-        <source>MKT: --</source>
-        <translation>MKT: --</translation>
+        <source>Intraday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delivery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Margin</source>
+        <translation type="unfinished">Margin</translation>
     </message>
     <message>
         <source>QTY</source>
@@ -35736,8 +34479,12 @@ Anda yakin?</translation>
         <translation>JUAL %1</translation>
     </message>
     <message>
-        <source>MKT: %1%2</source>
-        <translation>MKT: %1%2</translation>
+        <source>Bal %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LTP %1%2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LIVE</source>
@@ -35746,10 +34493,6 @@ Anda yakin?</translation>
     <message>
         <source>Est: %1%2</source>
         <translation>Est: %1%2</translation>
-    </message>
-    <message>
-        <source>Margin: %1%2</source>
-        <translation>Margin: %1%2</translation>
     </message>
     <message>
         <source>Enter expiry, ATM strike (and width where required).</source>
@@ -35771,6 +34514,14 @@ Anda yakin?</translation>
         <translation>Filter...</translation>
     </message>
     <message>
+        <source>Active watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New / Rename / Delete watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add symbol...</source>
         <translation>Tambah simbol...</translation>
     </message>
@@ -35786,1456 +34537,41 @@ Anda yakin?</translation>
         <source>CHG%</source>
         <translation>CHG%</translation>
     </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::BuilderAnalyticsRibbon</name>
     <message>
-        <source>Premium</source>
-        <translation>Premi</translation>
+        <source>New watchlist…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Max Profit</source>
-        <translation>Profit Maks</translation>
+        <source>Rename…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Max Loss</source>
-        <translation>Rugi Maks</translation>
+        <source>Delete</source>
+        <translation type="unfinished">Hapus</translation>
     </message>
     <message>
-        <source>Breakevens</source>
-        <translation>Titik Impas</translation>
+        <source>New Watchlist</source>
+        <translation type="unfinished">Daftar Pantau Baru</translation>
     </message>
     <message>
-        <source>POP</source>
-        <translation>POP</translation>
+        <source>Name:</source>
+        <translation type="unfinished">Nama:</translation>
     </message>
     <message>
-        <source>Delta</source>
-        <translation>Delta</translation>
+        <source>Rename Watchlist</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Gamma</source>
-        <translation>Gamma</translation>
+        <source>Delete Watchlist</source>
+        <translation type="unfinished">Hapus Daftar Pantau</translation>
     </message>
     <message>
-        <source>Theta</source>
-        <translation>Theta</translation>
+        <source>Delete &quot;%1&quot;?</source>
+        <translation type="unfinished">Hapus &quot;%1&quot;?</translation>
     </message>
     <message>
-        <source>Vega</source>
-        <translation>Vega</translation>
-    </message>
-    <message>
-        <source>Margin</source>
-        <translation>Margin</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::BuilderSubTab</name>
-    <message>
-        <source>SAVE</source>
-        <translation>SIMPAN</translation>
-    </message>
-    <message>
-        <source>LOAD</source>
-        <translation>MUAT</translation>
-    </message>
-    <message>
-        <source>TARGET +</source>
-        <translation>TARGET +</translation>
-    </message>
-    <message>
-        <source>Days from today for the dashed target-day P/L curve. 0 = T+0.</source>
-        <translation>Jumlah hari dari hari ini untuk kurva P/L hari target bergaris putus-putus. 0 = T+0.</translation>
-    </message>
-    <message>
-        <source>PCR</source>
-        <translation>PCR</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>TRADE ALL (PAPER)</source>
-        <translation>TRANSAKSIKAN SEMUA (KERTAS)</translation>
-    </message>
-    <message>
-        <source>Build a strategy first — Trade All needs at least one active leg.</source>
-        <translation>Bangun strategi dulu — Transaksikan Semua memerlukan minimal satu kaki aktif.</translation>
-    </message>
-    <message>
-        <source>No chain yet</source>
-        <translation>Belum ada rantai</translation>
-    </message>
-    <message>
-        <source>Open the Chain tab first so a chain snapshot is loaded.</source>
-        <translation>Buka tab Rantai dulu agar snapshot rantai dimuat.</translation>
-    </message>
-    <message>
-        <source>Could not build strategy</source>
-        <translation>Tidak dapat membangun strategi</translation>
-    </message>
-    <message>
-        <source>Custom</source>
-        <translation>Kustom</translation>
-    </message>
-    <message>
-        <source>Place all active legs as paper orders.</source>
-        <translation>Tempatkan semua kaki aktif sebagai order kertas.</translation>
-    </message>
-    <message>
-        <source>Placed %1 paper orders for %2 (%3).</source>
-        <translation>Menempatkan %1 order kertas untuk %2 (%3).</translation>
-    </message>
-    <message>
-        <source>Placed %1 of %2 paper orders. %3 failed:
-%4</source>
-        <translation>Menempatkan %1 dari %2 order kertas. %3 gagal:
-%4</translation>
-    </message>
-    <message>
-        <source>Paper orders dispatched</source>
-        <translation>Order kertas dikirim</translation>
-    </message>
-    <message>
-        <source>Nothing to save</source>
-        <translation>Tidak ada yang disimpan</translation>
-    </message>
-    <message>
-        <source>Build a strategy first.</source>
-        <translation>Bangun strategi dulu.</translation>
-    </message>
-    <message>
-        <source>Save failed</source>
-        <translation>Gagal menyimpan</translation>
-    </message>
-    <message>
-        <source>Save strategy</source>
-        <translation>Simpan strategi</translation>
-    </message>
-    <message>
-        <source>Name</source>
-        <translation>Nama</translation>
-    </message>
-    <message>
-        <source>My strategy</source>
-        <translation>Strategi saya</translation>
-    </message>
-    <message>
-        <source>(no saved strategies)</source>
-        <translation>(tidak ada strategi tersimpan)</translation>
-    </message>
-    <message>
-        <source>Load failed</source>
-        <translation>Gagal memuat</translation>
-    </message>
-    <message>
-        <source>Delete: %1</source>
-        <translation>Hapus: %1</translation>
-    </message>
-    <message>
-        <source>Delete saved strategy</source>
-        <translation>Hapus strategi tersimpan</translation>
-    </message>
-    <message>
-        <source>Delete '%1'? This can't be undone.</source>
-        <translation>Hapus '%1'? Tindakan ini tidak dapat dibatalkan.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::ChainSubTab</name>
-    <message>
-        <source>Connect a broker to load F&amp;O data.</source>
-        <translation>Hubungkan broker untuk memuat data F&amp;O.</translation>
-    </message>
-    <message>
-        <source>Failed to load %1 instruments: %2</source>
-        <translation>Gagal memuat %1 instrumen: %2</translation>
-    </message>
-    <message>
-        <source>No broker accounts or data sources configured.</source>
-        <translation>Tidak ada akun broker atau sumber data yang dikonfigurasi.</translation>
-    </message>
-    <message>
-        <source>Select a broker.</source>
-        <translation>Pilih broker.</translation>
-    </message>
-    <message>
-        <source>Databento selected — enter your API key in Settings &gt; Credentials to load US options data.</source>
-        <translation>Databento dipilih — masukkan API key Anda di Pengaturan &gt; Kredensial untuk memuat data opsi AS.</translation>
-    </message>
-    <message>
-        <source>Databento configuration error.</source>
-        <translation>Kesalahan konfigurasi Databento.</translation>
-    </message>
-    <message>
-        <source>Loading %1 instruments...</source>
-        <translation>Memuat %1 instrumen...</translation>
-    </message>
-    <message>
-        <source>No account configured for %1. Connect one in Equity Trading.</source>
-        <translation>Tidak ada akun yang dikonfigurasi untuk %1. Hubungkan satu di Equity Trading.</translation>
-    </message>
-    <message>
-        <source>Downloading %1 instruments from broker...</source>
-        <translation>Mengunduh %1 instrumen dari broker...</translation>
-    </message>
-    <message>
-        <source>No NFO instruments cached for %1.</source>
-        <translation>Tidak ada instrumen NFO yang di-cache untuk %1.</translation>
-    </message>
-    <message>
-        <source>Loading expiries for %1 from Databento...</source>
-        <translation>Memuat tanggal kedaluwarsa untuk %1 dari Databento...</translation>
-    </message>
-    <message>
-        <source>No expiries found for %1. Check Databento API key and OPRA access.</source>
-        <translation>Tidak ada tanggal kedaluwarsa ditemukan untuk %1. Periksa API key Databento dan akses OPRA.</translation>
-    </message>
-    <message>
-        <source>No expiries cached for %1.</source>
-        <translation>Tidak ada tanggal kedaluwarsa yang di-cache untuk %1.</translation>
-    </message>
-    <message>
-        <source>Pick a broker, underlying, and expiry.</source>
-        <translation>Pilih broker, underlying, dan tanggal kedaluwarsa.</translation>
-    </message>
-    <message>
-        <source>Chain unavailable: %1</source>
-        <translation>Rantai tidak tersedia: %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FiiDiiChart</name>
-    <message>
-        <source>Daily Net Flows (₹ Cr)</source>
-        <translation>Arus Bersih Harian (₹ Cr)</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FiiDiiSubTab</name>
-    <message>
-        <source>FII / DII flows — fetching…</source>
-        <translation>Arus FII / DII — mengambil…</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>SEGARKAN</translation>
-    </message>
-    <message>
-        <source>Date</source>
-        <translation>Tanggal</translation>
-    </message>
-    <message>
-        <source>FII Buy</source>
-        <translation>Beli FII</translation>
-    </message>
-    <message>
-        <source>FII Sell</source>
-        <translation>Jual FII</translation>
-    </message>
-    <message>
-        <source>FII Net</source>
-        <translation>Bersih FII</translation>
-    </message>
-    <message>
-        <source>DII Buy</source>
-        <translation>Beli DII</translation>
-    </message>
-    <message>
-        <source>DII Sell</source>
-        <translation>Jual DII</translation>
-    </message>
-    <message>
-        <source>DII Net</source>
-        <translation>Bersih DII</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — error: %1</source>
-        <translation>Arus FII / DII — kesalahan: %1</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — refreshing…</source>
-        <translation>Arus FII / DII — menyegarkan…</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — no data yet. Try refreshing after 6 PM IST.</source>
-        <translation>Arus FII / DII — belum ada data. Coba segarkan setelah pukul 18.00 IST.</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — last update: %1   ·   %2 days cached</source>
-        <translation>Arus FII / DII — pembaruan terakhir: %1   ·   %2 hari di-cache</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FnoHeaderBar</name>
-    <message>
-        <source>REFRESH</source>
-        <translation>SEGARKAN</translation>
-    </message>
-    <message>
-        <source>Broker:</source>
-        <translation>Broker:</translation>
-    </message>
-    <message>
-        <source>Underlying:</source>
-        <translation>Underlying:</translation>
-    </message>
-    <message>
-        <source>Expiry:</source>
-        <translation>Kedaluwarsa:</translation>
-    </message>
-    <message>
-        <source>Spot</source>
-        <translation>Spot</translation>
-    </message>
-    <message>
-        <source>Day Change</source>
-        <translation>Perubahan Harian</translation>
-    </message>
-    <message>
-        <source>ATM</source>
-        <translation>ATM</translation>
-    </message>
-    <message>
-        <source>PCR</source>
-        <translation>PCR</translation>
-    </message>
-    <message>
-        <source>Max Pain</source>
-        <translation>Max Pain</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>IV Pctile</source>
-        <translation>Persentil IV</translation>
-    </message>
-    <message>
-        <source>Current ATM IV %1 ranks at %2th percentile of %3 days of history.</source>
-        <translation>ATM IV %1 saat ini berada pada persentil ke-%2 dari %3 hari riwayat.</translation>
-    </message>
-    <message>
-        <source>Needs ≥30 days of data — have %1.</source>
-        <translation>Memerlukan ≥30 hari data — tersedia %1.</translation>
-    </message>
-    <message>
-        <source>Updated %1</source>
-        <translation>Diperbarui %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FnoScreen</name>
-    <message>
-        <source>Chain</source>
-        <translation>Rantai</translation>
-    </message>
-    <message>
-        <source>Builder</source>
-        <translation>Builder</translation>
-    </message>
-    <message>
-        <source>OI</source>
-        <translation>OI</translation>
-    </message>
-    <message>
-        <source>Multi-Stra</source>
-        <translation>Multi-Stra</translation>
-    </message>
-    <message>
-        <source>FII / DII</source>
-        <translation>FII / DII</translation>
-    </message>
-    <message>
-        <source>Screener</source>
-        <translation>Screener</translation>
-    </message>
-    <message>
-        <source>Live option chain (Phase 2)</source>
-        <translation>Rantai opsi langsung (Fase 2)</translation>
-    </message>
-    <message>
-        <source>Strategy builder + payoff (Phase 5)</source>
-        <translation>Builder strategi + payoff (Fase 5)</translation>
-    </message>
-    <message>
-        <source>Open Interest analytics (Phase 7)</source>
-        <translation>Analitik Open Interest (Fase 7)</translation>
-    </message>
-    <message>
-        <source>Multi straddle / strangle charts (Phase 9)</source>
-        <translation>Grafik multi straddle / strangle (Fase 9)</translation>
-    </message>
-    <message>
-        <source>Institutional flows (Phase 8)</source>
-        <translation>Arus institusional (Fase 8)</translation>
-    </message>
-    <message>
-        <source>Chain screener (Phase 9)</source>
-        <translation>Screener rantai (Fase 9)</translation>
-    </message>
-    <message>
-        <source>%1 — coming in a later phase</source>
-        <translation>%1 — hadir pada fase berikutnya</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::IntradayOIChart</name>
-    <message>
-        <source>Intraday OI</source>
-        <translation>OI Intraday</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::LegEditorModel</name>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>On</source>
-        <translation>Aktif</translation>
-    </message>
-    <message>
-        <source>B/S</source>
-        <translation>B/S</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Jenis</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-    <message>
-        <source>Lots</source>
-        <translation>Lot</translation>
-    </message>
-    <message>
-        <source>Entry</source>
-        <translation>Entry</translation>
-    </message>
-    <message>
-        <source>IV</source>
-        <translation>IV</translation>
-    </message>
-    <message>
-        <source>LTP</source>
-        <translation>LTP</translation>
-    </message>
-    <message>
-        <source>Delta</source>
-        <translation>Delta</translation>
-    </message>
-    <message>
-        <source>P&amp;L</source>
-        <translation>P&amp;L</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MaxPainChart</name>
-    <message>
-        <source>Max Pain Profile</source>
-        <translation>Profil Max Pain</translation>
-    </message>
-    <message>
-        <source>Pain</source>
-        <translation>Pain</translation>
-    </message>
-    <message>
-        <source>Max Pain</source>
-        <translation>Max Pain</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStraddleChart</name>
-    <message>
-        <source>Synthetic Premium (intraday)</source>
-        <translation>Premi Sintetis (intraday)</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStraddleSubTab</name>
-    <message>
-        <source>Type</source>
-        <translation>Jenis</translation>
-    </message>
-    <message>
-        <source>Anchor</source>
-        <translation>Jangkar</translation>
-    </message>
-    <message>
-        <source>ADD</source>
-        <translation>TAMBAH</translation>
-    </message>
-    <message>
-        <source>Double-click an entry to remove it.</source>
-        <translation>Klik dua kali entri untuk menghapusnya.</translation>
-    </message>
-    <message>
-        <source>Straddle %1</source>
-        <translation>Straddle %1</translation>
-    </message>
-    <message>
-        <source>Strangle %1C / %2P</source>
-        <translation>Strangle %1C / %2P</translation>
-    </message>
-    <message>
-        <source>Double-click to remove.</source>
-        <translation>Klik dua kali untuk menghapus.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStrikeOIChart</name>
-    <message>
-        <source>Open Interest by Strike</source>
-        <translation>Open Interest per Strike</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OIBuildupModel</name>
-    <message>
-        <source>Long Build-up</source>
-        <translation>Long Build-up</translation>
-    </message>
-    <message>
-        <source>Short Build-up</source>
-        <translation>Short Build-up</translation>
-    </message>
-    <message>
-        <source>Short Covering</source>
-        <translation>Short Covering</translation>
-    </message>
-    <message>
-        <source>Long Unwinding</source>
-        <translation>Long Unwinding</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-    <message>
-        <source>CE Action</source>
-        <translation>Aksi CE</translation>
-    </message>
-    <message>
-        <source>CE Δ%</source>
-        <translation>CE Δ%</translation>
-    </message>
-    <message>
-        <source>CE ΔOI%</source>
-        <translation>CE ΔOI%</translation>
-    </message>
-    <message>
-        <source>PE Action</source>
-        <translation>Aksi PE</translation>
-    </message>
-    <message>
-        <source>PE Δ%</source>
-        <translation>PE Δ%</translation>
-    </message>
-    <message>
-        <source>PE ΔOI%</source>
-        <translation>PE ΔOI%</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OISubTab</name>
-    <message>
-        <source>STRIKE</source>
-        <translation>STRIKE</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OptionChainModel</name>
-    <message>
-        <source>OI</source>
-        <translation>OI</translation>
-    </message>
-    <message>
-        <source>Chg OI</source>
-        <translation>Perub OI</translation>
-    </message>
-    <message>
-        <source>Volume</source>
-        <translation>Volume</translation>
-    </message>
-    <message>
-        <source>IV</source>
-        <translation>IV</translation>
-    </message>
-    <message>
-        <source>LTP</source>
-        <translation>LTP</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OrderConfirmDialog</name>
-    <message>
-        <source>Confirm Paper Orders</source>
-        <translation>Konfirmasi Order Kertas</translation>
-    </message>
-    <message>
-        <source>%1  —  paper trade preview</source>
-        <translation>%1  —  pratinjau paper trade</translation>
-    </message>
-    <message>
-        <source>%1   ·   Expiry %2   ·   Spot %3</source>
-        <translation>%1   ·   Kedaluwarsa %2   ·   Spot %3</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>Simbol</translation>
-    </message>
-    <message>
-        <source>B/S</source>
-        <translation>B/S</translation>
-    </message>
-    <message>
-        <source>Qty</source>
-        <translation>Qty</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Jenis</translation>
-    </message>
-    <message>
-        <source>Entry</source>
-        <translation>Entry</translation>
-    </message>
-    <message>
-        <source>Net Premium</source>
-        <translation>Premi Bersih</translation>
-    </message>
-    <message>
-        <source>Max Profit / Loss</source>
-        <translation>Profit / Rugi Maks</translation>
-    </message>
-    <message>
-        <source>Basket Margin</source>
-        <translation>Margin Keranjang</translation>
-    </message>
-    <message>
-        <source>Loading…</source>
-        <translation>Memuat…</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>BATAL</translation>
-    </message>
-    <message>
-        <source>PLACE PAPER ORDERS</source>
-        <translation>TEMPATKAN ORDER KERTAS</translation>
-    </message>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>Broker %1 not registered</source>
-        <translation>Broker %1 tidak terdaftar</translation>
-    </message>
-    <message>
-        <source>no active legs</source>
-        <translation>tidak ada kaki aktif</translation>
-    </message>
-    <message>
-        <source>— (timeout)</source>
-        <translation>— (waktu habis)</translation>
-    </message>
-    <message>
-        <source>Initial: ₹ %1   ·   Final (after netting): ₹ %2</source>
-        <translation>Awal: ₹ %1   ·   Akhir (setelah netting): ₹ %2</translation>
-    </message>
-    <message>
-        <source>Margin unavailable</source>
-        <translation>Margin tidak tersedia</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::PayoffChartWidget</name>
-    <message>
-        <source>Spot: %1
-Expiry P/L: %2
-Target P/L: %3</source>
-        <translation>Spot: %1
-P/L Kedaluwarsa: %2
-P/L Target: %3</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::ScreenedChainModel</name>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-    <message>
-        <source>CE IV</source>
-        <translation>CE IV</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>CE Δ%</source>
-        <translation>CE Δ%</translation>
-    </message>
-    <message>
-        <source>PE Δ%</source>
-        <translation>PE Δ%</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>PE IV</source>
-        <translation>PE IV</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::TemplatePickerPanel</name>
-    <message>
-        <source>WIDTH</source>
-        <translation>LEBAR</translation>
-    </message>
-    <message>
-        <source>SHIFT</source>
-        <translation>GESER</translation>
-    </message>
-    <message>
-        <source>LOTS</source>
-        <translation>LOT</translation>
-    </message>
-    <message>
-        <source>USE</source>
-        <translation>GUNAKAN</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::TemplateToolbar</name>
-    <message>
-        <source>TEMPLATE</source>
-        <translation>TEMPLAT</translation>
-    </message>
-    <message>
-        <source>W:</source>
-        <translation>W:</translation>
-    </message>
-    <message>
-        <source>S:</source>
-        <translation>S:</translation>
-    </message>
-    <message>
-        <source>L:</source>
-        <translation>L:</translation>
-    </message>
-    <message>
-        <source>+ ADD LEG</source>
-        <translation>+ TAMBAH LEG</translation>
-    </message>
-    <message>
-        <source>USE</source>
-        <translation>GUNAKAN</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::ActiveLocksPanel</name>
-    <message>
-        <source>No active locks. Lock $FNCPT above to start earning yield.</source>
-        <translation>Tidak ada kunci aktif. Kunci $FNCPT di atas untuk mulai memperoleh imbal hasil.</translation>
-    </message>
-    <message>
-        <source>Locks feed error: %1</source>
-        <translation>Galat umpan kunci: %1</translation>
-    </message>
-    <message>
-        <source>Extend lock…</source>
-        <translation>Perpanjang kunci…</translation>
-    </message>
-    <message>
-        <source>Withdraw</source>
-        <translation>Tarik</translation>
-    </message>
-    <message>
-        <source>Available after %1</source>
-        <translation>Tersedia setelah %1</translation>
-    </message>
-    <message>
-        <source>openmarketterminal_lock not deployed — Settings &gt; Lock program ID</source>
-        <translation>openmarketterminal_lock belum di-deploy — Pengaturan &gt; ID program Lock</translation>
-    </message>
-    <message>
-        <source>Extend flow lands with the Anchor program.</source>
-        <translation>Alur perpanjangan akan hadir bersama program Anchor.</translation>
-    </message>
-    <message>
-        <source>Withdraw flow lands with the Anchor program.</source>
-        <translation>Alur penarikan akan hadir bersama program Anchor.</translation>
-    </message>
-    <message>
-        <source>ACTIVE LOCKS</source>
-        <translation>KUNCI AKTIF</translation>
-    </message>
-    <message>
-        <source>0 positions · 0 veFNCPT</source>
-        <translation>0 posisi · 0 veFNCPT</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>LANGSUNG</translation>
-    </message>
-    <message>
-        <source>LOCKED</source>
-        <translation>TERKUNCI</translation>
-    </message>
-    <message>
-        <source>DURATION</source>
-        <translation>DURASI</translation>
-    </message>
-    <message>
-        <source>UNLOCKS</source>
-        <translation>BUKA KUNCI</translation>
-    </message>
-    <message>
-        <source>WEIGHT</source>
-        <translation>BOBOT</translation>
-    </message>
-    <message>
-        <source>YIELD (LIFETIME)</source>
-        <translation>IMBAL HASIL (SEUMUR HIDUP)</translation>
-    </message>
-    <message>
-        <source>TOTAL</source>
-        <translation>TOTAL</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DEMO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::BuybackBurnPanel</name>
-    <message>
-        <source>Open burn transaction in Solscan</source>
-        <translation>Buka transaksi burn di Solscan</translation>
-    </message>
-    <message>
-        <source>subs %1 · pred-mkt %2 · misc %3</source>
-        <translation>langganan %1 · pasar prediksi %2 · lainnya %3</translation>
-    </message>
-    <message>
-        <source>Treasury feed error: %1</source>
-        <translation>Galat umpan treasury: %1</translation>
-    </message>
-    <message>
-        <source>Demo signature — connect a treasury endpoint for a real burn tx.</source>
-        <translation>Tanda tangan demo — sambungkan endpoint treasury untuk tx burn nyata.</translation>
-    </message>
-    <message>
-        <source>BUYBACK &amp; BURN</source>
-        <translation>BUYBACK &amp; BURN</translation>
-    </message>
-    <message>
-        <source>epoch — · — → —</source>
-        <translation>epoch — · — → —</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>LANGSUNG</translation>
-    </message>
-    <message>
-        <source>THIS EPOCH</source>
-        <translation>EPOCH INI</translation>
-    </message>
-    <message>
-        <source>REVENUE</source>
-        <translation>PENDAPATAN</translation>
-    </message>
-    <message>
-        <source>BUYBACK (50%)</source>
-        <translation>BUYBACK (50%)</translation>
-    </message>
-    <message>
-        <source>STAKER YIELD (25%)</source>
-        <translation>IMBAL HASIL STAKER (25%)</translation>
-    </message>
-    <message>
-        <source>TREASURY TOPUP (25%)</source>
-        <translation>ISI ULANG TREASURY (25%)</translation>
-    </message>
-    <message>
-        <source>$FNCPT BOUGHT</source>
-        <translation>$FNCPT DIBELI</translation>
-    </message>
-    <message>
-        <source>$FNCPT BURNED</source>
-        <translation>$FNCPT DIBAKAR</translation>
-    </message>
-    <message>
-        <source>BURN TX</source>
-        <translation>TX BURN</translation>
-    </message>
-    <message>
-        <source>ALL-TIME</source>
-        <translation>SEPANJANG MASA</translation>
-    </message>
-    <message>
-        <source>BURNED</source>
-        <translation>DIBAKAR</translation>
-    </message>
-    <message>
-        <source>SUPPLY REMAINING</source>
-        <translation>PASOKAN TERSISA</translation>
-    </message>
-    <message>
-        <source>SPENT ON BUYBACK</source>
-        <translation>DIBELANJAKAN UNTUK BUYBACK</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DEMO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::FeeDiscountPanel</name>
-    <message>
-        <source>PROJECTED SAVINGS  ·  reference $%1 SKU</source>
-        <translation>PERKIRAAN PENGHEMATAN  ·  referensi SKU $%1</translation>
-    </message>
-    <message>
-        <source>Hold ≥ %1 $FNCPT to qualify for the discount on premium screens, AI reports, and deep backtests.</source>
-        <translation>Pegang ≥ %1 $FNCPT untuk memenuhi syarat diskon pada layar premium, laporan AI, dan backtest mendalam.</translation>
-    </message>
-    <message>
-        <source>Acquire %1 more $FNCPT to unlock %2% off.</source>
-        <translation>Dapatkan %1 $FNCPT lagi untuk membuka diskon %2%.</translation>
-    </message>
-    <message>
-        <source>FEE DISCOUNT</source>
-        <translation>DISKON BIAYA</translation>
-    </message>
-    <message>
-        <source>HOLDING</source>
-        <translation>KEPEMILIKAN</translation>
-    </message>
-    <message>
-        <source>THRESHOLD</source>
-        <translation>AMBANG</translation>
-    </message>
-    <message>
-        <source>APPLIED TO</source>
-        <translation>DITERAPKAN PADA</translation>
-    </message>
-    <message>
-        <source>● %1% OFF ACTIVE</source>
-        <translation>● DISKON %1% AKTIF</translation>
-    </message>
-    <message>
-        <source>LOCKED</source>
-        <translation>TERKUNCI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::HoldingsTable</name>
-    <message>
-        <source>Hide unverified</source>
-        <translation>Sembunyikan yang belum terverifikasi</translation>
-    </message>
-    <message>
-        <source>Show all</source>
-        <translation>Tampilkan semua</translation>
-    </message>
-    <message>
-        <source>Unverified mint: %1</source>
-        <translation>Mint belum terverifikasi: %1</translation>
-    </message>
-    <message>
-        <source>TOTAL %1  ·  %2 verified</source>
-        <translation>TOTAL %1  ·  %2 terverifikasi</translation>
-    </message>
-    <message>
-        <source>  ·  %1 unverified%2</source>
-        <translation>  ·  %1 belum terverifikasi%2</translation>
-    </message>
-    <message>
-        <source> hidden</source>
-        <translation> disembunyikan</translation>
-    </message>
-    <message>
-        <source>  ·  %1 without price</source>
-        <translation>  ·  %1 tanpa harga</translation>
-    </message>
-    <message>
-        <source>TOKEN</source>
-        <translation>TOKEN</translation>
-    </message>
-    <message>
-        <source>BALANCE</source>
-        <translation>SALDO</translation>
-    </message>
-    <message>
-        <source>PRICE</source>
-        <translation>HARGA</translation>
-    </message>
-    <message>
-        <source>USD VALUE</source>
-        <translation>NILAI USD</translation>
-    </message>
-    <message>
-        <source>% OF PORT</source>
-        <translation>% PORTOFOLIO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::LockPanel</name>
-    <message>
-        <source>MAX</source>
-        <translation>MAKS</translation>
-    </message>
-    <message>
-        <source>Available: —</source>
-        <translation>Tersedia: —</translation>
-    </message>
-    <message>
-        <source>Choose an amount and duration.</source>
-        <translation>Pilih jumlah dan durasi.</translation>
-    </message>
-    <message>
-        <source>LOCK</source>
-        <translation>KUNCI</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to lock $FNCPT.</source>
-        <translation>Sambungkan dompet untuk mengunci $FNCPT.</translation>
-    </message>
-    <message>
-        <source>Available: %1 $FNCPT</source>
-        <translation>Tersedia: %1 $FNCPT</translation>
-    </message>
-    <message>
-        <source>%1 / week (USDC) — %2% weekly real yield at %3 stake</source>
-        <translation>%1 / minggu (USDC) — imbal hasil riil mingguan %2% pada stake %3</translation>
-    </message>
-    <message>
-        <source>waiting for revenue + spot price…</source>
-        <translation>menunggu pendapatan + harga spot…</translation>
-    </message>
-    <message>
-        <source>DEMO — openmarketterminal_lock not deployed; configure SecureStorage openmarketterminal.lock_program_id to enable real locks.</source>
-        <translation>DEMO — openmarketterminal_lock belum di-deploy; konfigurasikan openmarketterminal.lock_program_id di SecureStorage untuk mengaktifkan kunci nyata.</translation>
-    </message>
-    <message>
-        <source>Ready. Click LOCK to build the transaction.</source>
-        <translation>Siap. Klik KUNCI untuk membangun transaksi.</translation>
-    </message>
-    <message>
-        <source>Amount exceeds available $FNCPT.</source>
-        <translation>Jumlah melebihi $FNCPT yang tersedia.</translation>
-    </message>
-    <message>
-        <source>Building lock transaction…</source>
-        <translation>Membangun transaksi kunci…</translation>
-    </message>
-    <message>
-        <source>Aborted.</source>
-        <translation>Dibatalkan.</translation>
-    </message>
-    <message>
-        <source>Approve in your wallet to escrow $FNCPT under the openmarketterminal_lock program. The terminal does not hold your funds — the on-chain program does, and only releases them after the unlock date.</source>
-        <translation>Setujui di dompet Anda untuk meng-escrow $FNCPT di bawah program openmarketterminal_lock. Terminal tidak menyimpan dana Anda — program on-chain yang menyimpannya, dan hanya melepaskannya setelah tanggal buka kunci.</translation>
-    </message>
-    <message>
-        <source>Locked $FNCPT cannot be withdrawn before the unlock date. If you need liquidity sooner, do not lock.</source>
-        <translation>$FNCPT yang terkunci tidak dapat ditarik sebelum tanggal buka kunci. Jika Anda butuh likuiditas lebih cepat, jangan mengunci.</translation>
-    </message>
-    <message>
-        <source>Awaiting wallet signature…</source>
-        <translation>Menunggu tanda tangan dompet…</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>Dibatalkan.</translation>
-    </message>
-    <message>
-        <source>STAKE / LOCK</source>
-        <translation>STAKE / KUNCI</translation>
-    </message>
-    <message>
-        <source>veFNCPT — locked $FNCPT earns USDC yield</source>
-        <translation>veFNCPT — $FNCPT terkunci memperoleh imbal hasil USDC</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>JUMLAH</translation>
-    </message>
-    <message>
-        <source>TOKEN</source>
-        <translation>TOKEN</translation>
-    </message>
-    <message>
-        <source>$FNCPT</source>
-        <translation>$FNCPT</translation>
-    </message>
-    <message>
-        <source>DURATION</source>
-        <translation>DURASI</translation>
-    </message>
-    <message>
-        <source>3 MO</source>
-        <translation>3 BLN</translation>
-    </message>
-    <message>
-        <source>6 MO</source>
-        <translation>6 BLN</translation>
-    </message>
-    <message>
-        <source>1 YR</source>
-        <translation>1 THN</translation>
-    </message>
-    <message>
-        <source>2 YR</source>
-        <translation>2 THN</translation>
-    </message>
-    <message>
-        <source>4 YR</source>
-        <translation>4 THN</translation>
-    </message>
-    <message>
-        <source>WEIGHT</source>
-        <translation>BOBOT</translation>
-    </message>
-    <message>
-        <source>EST. YIELD</source>
-        <translation>PERKIRAAN IMBAL HASIL</translation>
-    </message>
-    <message>
-        <source>TIER</source>
-        <translation>TINGKAT</translation>
-    </message>
-    <message>
-        <source>LOCK $FNCPT</source>
-        <translation>KUNCI $FNCPT</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::MarketsListPanel</name>
-    <message>
-        <source>MARKET</source>
-        <translation>PASAR</translation>
-    </message>
-    <message>
-        <source>YES</source>
-        <translation>YA</translation>
-    </message>
-    <message>
-        <source>NO</source>
-        <translation>TIDAK</translation>
-    </message>
-    <message>
-        <source>24h VOL</source>
-        <translation>VOL 24j</translation>
-    </message>
-    <message>
-        <source>EXPIRES</source>
-        <translation>KEDALUWARSA</translation>
-    </message>
-    <message>
-        <source>Demo dataset. Set `openmarketterminal.markets_endpoint` in SecureStorage and deploy the openmarketterminal_market Anchor program for live trading.</source>
-        <translation>Dataset demo. Setel `openmarketterminal.markets_endpoint` di SecureStorage dan deploy program Anchor openmarketterminal_market untuk perdagangan langsung.</translation>
-    </message>
-    <message>
-        <source>Open TerminalInternalAdapter not registered</source>
-        <translation>Open TerminalInternalAdapter tidak terdaftar</translation>
-    </message>
-    <message>
-        <source>MARKETS</source>
-        <translation>PASAR</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DEMO</translation>
-    </message>
-    <message>
-        <source>ERROR</source>
-        <translation>KESALAHAN</translation>
-    </message>
-    <message>
-        <source>● LIVE</source>
-        <translation>● LANGSUNG</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::SupplyChartPanel</name>
-    <message>
-        <source>Supply history feed error: %1</source>
-        <translation>Galat umpan riwayat pasokan: %1</translation>
-    </message>
-    <message>
-        <source>SUPPLY CHART · 12 MONTHS</source>
-        <translation>GRAFIK PASOKAN · 12 BULAN</translation>
-    </message>
-    <message>
-        <source>● TOTAL  ● CIRCULATING  ● BURNED</source>
-        <translation>● TOTAL  ● BEREDAR  ● DIBAKAR</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>LANGSUNG</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DEMO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::SwapPanel</name>
-    <message>
-        <source>MAX</source>
-        <translation>MAKS</translation>
-    </message>
-    <message>
-        <source>Balance: —</source>
-        <translation>Saldo: —</translation>
-    </message>
-    <message>
-        <source>Quotes refresh as you type.</source>
-        <translation>Kuotasi disegarkan saat Anda mengetik.</translation>
-    </message>
-    <message>
-        <source>SWAP</source>
-        <translation>SWAP</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to swap.</source>
-        <translation>Sambungkan dompet untuk melakukan swap.</translation>
-    </message>
-    <message>
-        <source>Price unavailable: %1. Try again in a moment.</source>
-        <translation>Harga tidak tersedia: %1. Coba lagi sebentar.</translation>
-    </message>
-    <message>
-        <source>Balance: 0 %1</source>
-        <translation>Saldo: 0 %1</translation>
-    </message>
-    <message>
-        <source>Balance: %1 %2</source>
-        <translation>Saldo: %1 %2</translation>
-    </message>
-    <message>
-        <source>Waiting for spot prices…</source>
-        <translation>Menunggu harga spot…</translation>
-    </message>
-    <message>
-        <source>set by PumpSwap; capped by slippage</source>
-        <translation>ditetapkan oleh PumpSwap; dibatasi oleh slippage</translation>
-    </message>
-    <message>
-        <source>Ready. Click SWAP to build the transaction.</source>
-        <translation>Siap. Klik SWAP untuk membangun transaksi.</translation>
-    </message>
-    <message>
-        <source>This pair isn't routable in Phase 2. PumpPortal supports SOL ↔ $FNCPT only; a generalised router lands in Phase 3.</source>
-        <translation>Pasangan ini tidak dapat di-rute pada Fase 2. PumpPortal hanya mendukung SOL ↔ $FNCPT; router umum hadir di Fase 3.</translation>
-    </message>
-    <message>
-        <source>Swap service unavailable.</source>
-        <translation>Layanan swap tidak tersedia.</translation>
-    </message>
-    <message>
-        <source>Building swap transaction…</source>
-        <translation>Membangun transaksi swap…</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>Dibatalkan.</translation>
-    </message>
-    <message>
-        <source>via PumpPortal · pool=auto</source>
-        <translation>via PumpPortal · pool=auto</translation>
-    </message>
-    <message>
-        <source>YOU PAY</source>
-        <translation>ANDA BAYAR</translation>
-    </message>
-    <message>
-        <source>FROM</source>
-        <translation>DARI</translation>
-    </message>
-    <message>
-        <source>YOU RECEIVE (EST.)</source>
-        <translation>ANDA TERIMA (PERKIRAAN)</translation>
-    </message>
-    <message>
-        <source>TO</source>
-        <translation>KE</translation>
-    </message>
-    <message>
-        <source>ROUTE</source>
-        <translation>RUTE</translation>
-    </message>
-    <message>
-        <source>PRICE IMPACT</source>
-        <translation>DAMPAK HARGA</translation>
-    </message>
-    <message>
-        <source>MAX SLIPPAGE</source>
-        <translation>SLIPPAGE MAKS</translation>
-    </message>
-    <message>
-        <source>estimate unavailable</source>
-        <translation>perkiraan tidak tersedia</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::TierPanel</name>
-    <message>
-        <source>basic API quota</source>
-        <translation>kuota API dasar</translation>
-    </message>
-    <message>
-        <source>premium screens</source>
-        <translation>layar premium</translation>
-    </message>
-    <message>
-        <source>all agents + arena</source>
-        <translation>semua agen + arena</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to see your tier.</source>
-        <translation>Sambungkan dompet untuk melihat tingkat Anda.</translation>
-    </message>
-    <message>
-        <source>Next: lock %1 to reach the next tier.</source>
-        <translation>Berikutnya: kunci %1 untuk mencapai tingkat berikutnya.</translation>
-    </message>
-    <message>
-        <source>All Open Terminal features unlocked.</source>
-        <translation>Semua fitur Open Terminal terbuka.</translation>
-    </message>
-    <message>
-        <source>TIER</source>
-        <translation>TINGKAT</translation>
-    </message>
-    <message>
-        <source>current FREE</source>
-        <translation>saat ini GRATIS</translation>
-    </message>
-    <message>
-        <source>[locked]</source>
-        <translation>[terkunci]</translation>
-    </message>
-    <message>
-        <source>BRONZE</source>
-        <translation>PERUNGGU</translation>
-    </message>
-    <message>
-        <source>100+ veFNCPT</source>
-        <translation>100+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>SILVER</source>
-        <translation>PERAK</translation>
-    </message>
-    <message>
-        <source>1,000+ veFNCPT</source>
-        <translation>1.000+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>GOLD</source>
-        <translation>EMAS</translation>
-    </message>
-    <message>
-        <source>10,000+ veFNCPT</source>
-        <translation>10.000+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>[achieved]</source>
-        <translation>[tercapai]</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::TreasuryPanel</name>
-    <message>
-        <source>Open Squads vault in browser</source>
-        <translation>Buka vault Squads di browser</translation>
-    </message>
-    <message>
-        <source>Treasury feed error: %1</source>
-        <translation>Galat feed treasury: %1</translation>
-    </message>
-    <message>
-        <source>TREASURY</source>
-        <translation>TREASURY</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>LANGSUNG</translation>
-    </message>
-    <message>
-        <source>USDC RESERVES</source>
-        <translation>CADANGAN USDC</translation>
-    </message>
-    <message>
-        <source>SOL RESERVES</source>
-        <translation>CADANGAN SOL</translation>
-    </message>
-    <message>
-        <source>TOTAL USD</source>
-        <translation>TOTAL USD</translation>
-    </message>
-    <message>
-        <source>RUNWAY @ CURRENT</source>
-        <translation>RUNWAY @ SAAT INI</translation>
-    </message>
-    <message>
-        <source>MULTI-SIG</source>
-        <translation>MULTI-SIG</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DEMO</translation>
+        <source>Remove %1</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37721,10 +35057,6 @@ untuk memasang order</translation>
         <translation>Polymarket</translation>
     </message>
     <message>
-        <source>&lt;b&gt;Kalshi (CFTC-regulated)&lt;/b&gt;&lt;br&gt;Generate an API key + RSA private key in your Kalshi dashboard (&lt;code&gt;api.elections.kalshi.com&lt;/code&gt;). Requests are signed with RSA-PSS (key stays local, encrypted in your OS credential manager).&lt;br&gt;&lt;br&gt;Use &lt;b&gt;Demo mode&lt;/b&gt; to target &lt;code&gt;demo-api.kalshi.co&lt;/code&gt; for testing.</source>
-        <translation>&lt;b&gt;Kalshi (diatur CFTC)&lt;/b&gt;&lt;br&gt;Buat kunci API + kunci privat RSA di dashboard Kalshi Anda (&lt;code&gt;api.elections.kalshi.com&lt;/code&gt;). Permintaan ditandatangani dengan RSA-PSS (kunci tetap lokal, terenkripsi di pengelola kredensial OS Anda).&lt;br&gt;&lt;br&gt;Gunakan &lt;b&gt;mode Demo&lt;/b&gt; untuk menargetkan &lt;code&gt;demo-api.kalshi.co&lt;/code&gt; untuk pengujian.</translation>
-    </message>
-    <message>
         <source>00000000-0000-0000-0000-000000000000</source>
         <translation>00000000-0000-0000-0000-000000000000</translation>
     </message>
@@ -37757,6 +35089,22 @@ untuk memasang order</translation>
         <translation>Kalshi</translation>
     </message>
     <message>
+        <source>Testing connection...</source>
+        <translation type="unfinished">Menguji koneksi...</translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Connection OK. %1&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Connection test failed: %1&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Kalshi (CFTC-regulated)&lt;/b&gt;&lt;br&gt;Generate an API key + RSA private key in your Kalshi dashboard (&lt;code&gt;external-api.kalshi.com&lt;/code&gt;). Requests are signed with RSA-PSS (key stays local, encrypted in your OS credential manager).&lt;br&gt;&lt;br&gt;Keep &lt;b&gt;Demo mode&lt;/b&gt; on to target &lt;code&gt;external-api.demo.kalshi.co&lt;/code&gt; for testing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>L2 API credentials: derived (%1…)</source>
         <translation>Kredensial API L2: diturunkan (%1…)</translation>
     </message>
@@ -37769,20 +35117,20 @@ untuk memasang order</translation>
         <translation>Kredensial Kalshi dimuat dari penyimpanan aman.</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key is required.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Kunci privat wajib diisi.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key is required.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;Kunci privat wajib diisi.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key should be 0x + 64 hex chars.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Kunci privat harus 0x + 64 karakter heksadesimal.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key should be 0x + 64 hex chars.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;Kunci privat harus 0x + 64 karakter heksadesimal.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#16a34a'&gt;Polymarket credentials saved.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#16a34a'&gt;Kredensial Polymarket disimpan.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Polymarket credentials saved.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#16a34a&apos;&gt;Kredensial Polymarket disimpan.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Save failed — see logs.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Penyimpanan gagal — lihat log.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Save failed — see logs.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;Penyimpanan gagal — lihat log.&lt;/span&gt;</translation>
     </message>
     <message>
         <source>Clear Polymarket credentials?</source>
@@ -37797,16 +35145,16 @@ untuk memasang order</translation>
         <translation>Kredensial Polymarket dihapus.</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Both API Key ID and PEM private key are required.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;ID Kunci API dan kunci privat PEM keduanya wajib diisi.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Both API Key ID and PEM private key are required.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;ID Kunci API dan kunci privat PEM keduanya wajib diisi.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key must be a PEM-encoded RSA key.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Kunci privat harus berupa kunci RSA berformat PEM.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key must be a PEM-encoded RSA key.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;Kunci privat harus berupa kunci RSA berformat PEM.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#16a34a'&gt;Kalshi credentials saved.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#16a34a'&gt;Kredensial Kalshi disimpan.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Kalshi credentials saved.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#16a34a&apos;&gt;Kredensial Kalshi disimpan.&lt;/span&gt;</translation>
     </message>
     <message>
         <source>Clear Kalshi credentials?</source>
@@ -37821,24 +35169,28 @@ untuk memasang order</translation>
         <translation>Kredensial Kalshi dihapus.</translation>
     </message>
     <message>
-        <source>Select Kalshi private key (PEM)</source>
-        <translation>Pilih kunci privat Kalshi (PEM)</translation>
+        <source>Select Kalshi credential file</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>PEM files (*.pem *.key);;All files (*)</source>
-        <translation>File PEM (*.pem *.key);;Semua file (*)</translation>
+        <source>Kalshi credential files (*.rtf *.pem *.key);;All files (*)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Could not read %1.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Tidak dapat membaca %1.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Could not read %1: %2&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;%1 does not look like a PEM file.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;%1 sepertinya bukan file PEM.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;%1 does not contain a PEM private key.&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Loaded PEM from %1.</source>
-        <translation>PEM dimuat dari %1.</translation>
+        <source>Loaded private key from %1. Enter the API Key ID, then save.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Imported Kalshi API Key ID and private key from %1. Demo mode is on.&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37898,6 +35250,10 @@ untuk memasang order</translation>
         <translation>KEPEMILIKAN</translation>
     </message>
     <message>
+        <source>SQUARE OFF ALL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Symbol</source>
         <translation>Simbol</translation>
     </message>
@@ -37922,12 +35278,55 @@ untuk memasang order</translation>
         <translation>Tidak ada akun aktif — klik ikon roda gigi untuk konfigurasi</translation>
     </message>
     <message>
+        <source>Exit</source>
+        <translation type="unfinished">Keluar</translation>
+    </message>
+    <message>
         <source>Configure — Holdings</source>
         <translation>Konfigurasi — Kepemilikan</translation>
     </message>
     <message>
         <source>Broker account</source>
         <translation>Akun broker</translation>
+    </message>
+    <message>
+        <source>Square Off Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Place a MARKET SELL order for %1 %2 (CNC)?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell order placed for %1 (order %2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to square off %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off All Holdings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No holdings to square off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will place MARKET SELL orders to exit ALL %1 holding(s) in this account.
+
+Positions are NOT affected. Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1 sell order(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1 order(s). %2 failed:
+%3</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37977,6 +35376,41 @@ untuk memasang order</translation>
     <message>
         <source>Symbol</source>
         <translation>Simbol</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::widgets::DineroNetworkWidget</name>
+    <message>
+        <source>DINERO NETWORK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK HEIGHT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MONEY SUPPLY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK TIME</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK REWARD</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GET DINERO  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Block Explorer  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -38562,9 +35996,9 @@ Create one from the Portfolio tab.</source>
 Buat satu dari tab Portofolio.</translation>
     </message>
     <message>
-        <source>'%1' has no holdings.
+        <source>&apos;%1&apos; has no holdings.
 Add positions from the Portfolio tab.</source>
-        <translation>'%1' tidak memiliki kepemilikan.
+        <translation>&apos;%1&apos; tidak memiliki kepemilikan.
 Tambahkan posisi dari tab Portofolio.</translation>
     </message>
     <message>
@@ -38643,8 +36077,30 @@ Tambahkan posisi dari tab Portofolio.</translation>
         <translation>EST. TOTAL  --</translation>
     </message>
     <message>
-        <source>PLACE ORDER</source>
-        <translation>PASANG ORDER</translation>
+        <source>REVIEW ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW BUY ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW SELL ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW SHORT ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Order ticket — not sent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 %3 @ %4
+
+Quick Trade builds an order ticket for review; it does not place orders. To route this to your broker, use the Equity Trading screen. No order has been sent.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>EST. TOTAL  $%1</source>
@@ -38659,18 +36115,6 @@ Tambahkan posisi dari tab Portofolio.</translation>
         <translation>ASK  —</translation>
     </message>
     <message>
-        <source>PLACE BUY ORDER</source>
-        <translation>PASANG ORDER BELI</translation>
-    </message>
-    <message>
-        <source>PLACE SELL ORDER</source>
-        <translation>PASANG ORDER JUAL</translation>
-    </message>
-    <message>
-        <source>PLACE SHORT ORDER</source>
-        <translation>PASANG ORDER SHORT</translation>
-    </message>
-    <message>
         <source>Quick Trade</source>
         <translation>Trading Cepat</translation>
     </message>
@@ -38681,16 +36125,6 @@ Tambahkan posisi dari tab Portofolio.</translation>
     <message>
         <source>market price ($%1)</source>
         <translation>harga pasar ($%1)</translation>
-    </message>
-    <message>
-        <source>Order Submitted</source>
-        <translation>Order Terkirim</translation>
-    </message>
-    <message>
-        <source>%1 %2 %3 @ %4
-Order sent to trading engine.</source>
-        <translation>%1 %2 %3 @ %4
-Order dikirim ke mesin trading.</translation>
     </message>
 </context>
 <context>
@@ -38710,22 +36144,6 @@ Order dikirim ke mesin trading.</translation>
     <message>
         <source>CHG%</source>
         <translation>CHG%</translation>
-    </message>
-    <message>
-        <source>COMMODITIES</source>
-        <translation>KOMODITAS</translation>
-    </message>
-    <message>
-        <source>CRYPTOCURRENCY</source>
-        <translation>MATA UANG KRIPTO</translation>
-    </message>
-    <message>
-        <source>FOREX - MAJOR PAIRS</source>
-        <translation>FOREX - PASANGAN UTAMA</translation>
-    </message>
-    <message>
-        <source>GLOBAL INDICES</source>
-        <translation>INDEKS GLOBAL</translation>
     </message>
 </context>
 <context>
@@ -39088,8 +36506,20 @@ Build dengan Qt6 Multimedia untuk pemutaran inline.</translation>
         <translation>TV LANGSUNG — %1</translation>
     </message>
     <message>
-        <source>yt-dlp not found. Bundle yt-dlp.exe next to Open Terminal.exe.</source>
-        <translation>yt-dlp tidak ditemukan. Sertakan yt-dlp.exe di samping Open Terminal.exe.</translation>
+        <source>yt-dlp not found. Bundle yt-dlp.exe next to OpenMarketTerminal.exe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>YouTube is blocking automated playback (sign-in required). Make sure you&apos;re logged into YouTube in Chrome, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This channel is not live right now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t read Chrome cookies for YouTube sign-in. Open Chrome and sign into YouTube, then retry.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>yt-dlp error: %1</source>
@@ -39261,6 +36691,17 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::services::dinero::DineroRpcClient</name>
+    <message>
+        <source>Dinero network unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bad response from Dinero RPC</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::surface::Surface3DWidget</name>
     <message>
         <source>3D NOT APPLICABLE</source>
@@ -39356,6 +36797,10 @@ X-API-Key: xyz</translation>
     <message>
         <source>Fetch failed</source>
         <translation>Pengambilan gagal</translation>
+    </message>
+    <message>
+        <source>Synthetic demo data — not from a live source</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -39602,20 +37047,12 @@ X-API-Key: xyz</translation>
         <translation>Pengaturan</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>Forum</translation>
-    </message>
-    <message>
         <source>Equity Trading</source>
         <translation>Trading Saham</translation>
     </message>
     <message>
         <source>Algo Trading</source>
         <translation>Trading Algo</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>Pusat Tindakan</translation>
     </message>
     <message>
         <source>Alpha Arena</source>
@@ -39628,10 +37065,6 @@ X-API-Key: xyz</translation>
     <message>
         <source>Derivatives</source>
         <translation>Derivatif</translation>
-    </message>
-    <message>
-        <source>F&amp;O</source>
-        <translation>F&amp;O</translation>
     </message>
     <message>
         <source>Equity Research</source>
@@ -39734,10 +37167,6 @@ X-API-Key: xyz</translation>
         <translation>Tentang</translation>
     </message>
     <message>
-        <source>Support</source>
-        <translation>Dukungan</translation>
-    </message>
-    <message>
         <source>Stock</source>
         <translation>Saham</translation>
     </message>
@@ -39824,6 +37253,14 @@ X-API-Key: xyz</translation>
         <source>Search actions, layouts… (Esc to cancel, Enter to run)</source>
         <translation>Cari tindakan, tata letak… (Esc untuk batal, Enter untuk jalankan)</translation>
     </message>
+    <message>
+        <source>Open %1 in Equity Research</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ticker shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::ui::ComponentBrowserDialog</name>
@@ -39893,6 +37330,21 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::ui::KLineChartWidget</name>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::ui::LayoutOpenDialog</name>
     <message>
         <source>Open Layout</source>
@@ -39937,6 +37389,13 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::ui::ProvenanceBadge</name>
+    <message>
+        <source>no data source</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::ui::PushpinBar</name>
     <message>
         <source>Drag any symbol here to pin</source>
@@ -39946,16 +37405,16 @@ X-API-Key: xyz</translation>
 <context>
     <name>openmarketterminal::ui::QuickCommandBar</name>
     <message>
-        <source>Type a command (e.g. 'layout switch "Morning"', AAPL, ?). Esc to dismiss.</source>
-        <translation>Ketik perintah (mis. 'layout switch "Morning"', AAPL, ?). Esc untuk menutup.</translation>
+        <source>Type a command (e.g. &apos;layout switch &quot;Morning&quot;&apos;, AAPL, ?). Esc to dismiss.</source>
+        <translation>Ketik perintah (mis. &apos;layout switch &quot;Morning&quot;&apos;, AAPL, ?). Esc untuk menutup.</translation>
     </message>
     <message>
-        <source>Help: type any verb (e.g. 'layout switch') or a ticker (AAPL).</source>
-        <translation>Bantuan: ketik kata kerja apa pun (mis. 'layout switch') atau ticker (AAPL).</translation>
+        <source>Help: type any verb (e.g. &apos;layout switch&apos;) or a ticker (AAPL).</source>
+        <translation>Bantuan: ketik kata kerja apa pun (mis. &apos;layout switch&apos;) atau ticker (AAPL).</translation>
     </message>
     <message>
-        <source>Published %1 to group A</source>
-        <translation>%1 dipublikasikan ke grup A</translation>
+        <source>Opened %1 in Equity Research</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Unknown command</source>
@@ -40010,10 +37469,6 @@ X-API-Key: xyz</translation>
         <translation>KELUAR</translation>
     </message>
     <message>
-        <source>FREE</source>
-        <translation>GRATIS</translation>
-    </message>
-    <message>
         <source>File</source>
         <translation>Berkas</translation>
     </message>
@@ -40028,6 +37483,14 @@ X-API-Key: xyz</translation>
     <message>
         <source>(single monitor)</source>
         <translation>(monitor tunggal)</translation>
+    </message>
+    <message>
+        <source>Close Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close All Windows</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>New Layout</source>
@@ -40078,10 +37541,6 @@ X-API-Key: xyz</translation>
         <translation>Daftar Pantauan</translation>
     </message>
     <message>
-        <source>Crypto</source>
-        <translation>Kripto</translation>
-    </message>
-    <message>
         <source>Research &amp; Intelligence</source>
         <translation>Riset &amp; Intelijen</translation>
     </message>
@@ -40096,14 +37555,6 @@ X-API-Key: xyz</translation>
     <message>
         <source>Notes</source>
         <translation>Catatan</translation>
-    </message>
-    <message>
-        <source>Forum</source>
-        <translation>Forum</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Dukungan</translation>
     </message>
     <message>
         <source>About</source>
@@ -40138,28 +37589,8 @@ X-API-Key: xyz</translation>
         <translation>Bantuan</translation>
     </message>
     <message>
-        <source>Logout</source>
-        <translation>Keluar</translation>
-    </message>
-    <message>
         <source>  |  PROFESSIONAL RESEARCH DESK</source>
         <translation>  |  MEJA RISET PROFESIONAL</translation>
-    </message>
-    <message>
-        <source>View Plans &amp; Pricing</source>
-        <translation>Lihat Paket &amp; Harga</translation>
-    </message>
-    <message>
-        <source>CHAT</source>
-        <translation>OBROLAN</translation>
-    </message>
-    <message>
-        <source>Switch to Chat Mode (F9)</source>
-        <translation>Beralih ke Mode Chat (F9)</translation>
-    </message>
-    <message>
-        <source>%1 CR</source>
-        <translation>%1 CR</translation>
     </message>
     <message>
         <source>Open Layout…</source>
@@ -40200,14 +37631,6 @@ X-API-Key: xyz</translation>
     <message>
         <source>Derivatives</source>
         <translation>Derivatif</translation>
-    </message>
-    <message>
-        <source>F&amp;&amp;O</source>
-        <translation>F&amp;&amp;O</translation>
-    </message>
-    <message>
-        <source>Crypto Center</source>
-        <translation>Pusat Kripto</translation>
     </message>
     <message>
         <source>Equity Research</source>
@@ -40350,36 +37773,8 @@ X-API-Key: xyz</translation>
         <translation>Ambil Tangkapan Layar	Ctrl+P</translation>
     </message>
     <message>
-        <source>About Open Terminal</source>
-        <translation>Tentang Open Terminal</translation>
-    </message>
-    <message>
-        <source>Help Center</source>
-        <translation>Pusat Bantuan</translation>
-    </message>
-    <message>
-        <source>Contact Us</source>
-        <translation>Hubungi Kami</translation>
-    </message>
-    <message>
-        <source>Terms of Service</source>
-        <translation>Ketentuan Layanan</translation>
-    </message>
-    <message>
-        <source>Privacy Policy</source>
-        <translation>Kebijakan Privasi</translation>
-    </message>
-    <message>
-        <source>Trademarks</source>
-        <translation>Merek Dagang</translation>
-    </message>
-    <message>
-        <source>Check for Updates</source>
-        <translation>Periksa Pembaruan</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>Pusat Tindakan</translation>
+        <source>About OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -40461,12 +37856,12 @@ X-API-Key: xyz</translation>
         <translation>Keluar</translation>
     </message>
     <message>
-        <source>Entry $</source>
-        <translation>Harga Masuk $</translation>
+        <source>Entry %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exit $</source>
-        <translation>Harga Keluar $</translation>
+        <source>Final %1%2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Qty</source>
@@ -40481,16 +37876,16 @@ X-API-Key: xyz</translation>
         <translation>P&amp;L %</translation>
     </message>
     <message>
+        <source>Exit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bars</source>
         <translation>Bar</translation>
     </message>
     <message>
         <source>Reason</source>
         <translation>Alasan</translation>
-    </message>
-    <message>
-        <source>Final $%1</source>
-        <translation>Akhir $%1</translation>
     </message>
     <message>
         <source>Excellent</source>
@@ -40733,77 +38128,10 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::wallet::ConnectWalletDialog</name>
+    <name>openmarketterminal::ui::algo::SymbolChipInput</name>
     <message>
-        <source>Connect Wallet</source>
-        <translation>Hubungkan Dompet</translation>
-    </message>
-    <message>
-        <source>Connect your Solana wallet</source>
-        <translation>Hubungkan dompet Solana Anda</translation>
-    </message>
-    <message>
-        <source>Opening your browser to complete the handshake…</source>
-        <translation>Membuka browser Anda untuk menyelesaikan handshake…</translation>
-    </message>
-    <message>
-        <source>Reopen browser</source>
-        <translation>Buka kembali browser</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Batal</translation>
-    </message>
-    <message>
-        <source>cancelled by user</source>
-        <translation>dibatalkan oleh pengguna</translation>
-    </message>
-    <message>
-        <source>could not start local bridge server</source>
-        <translation>tidak dapat memulai server bridge lokal</translation>
-    </message>
-    <message>
-        <source>Browser opened. Approve the connection and the signature in your wallet.</source>
-        <translation>Browser terbuka. Setujui koneksi dan tanda tangan di dompet Anda.</translation>
-    </message>
-    <message>
-        <source>signature verification failed</source>
-        <translation>verifikasi tanda tangan gagal</translation>
-    </message>
-    <message>
-        <source>timed out waiting for browser callback</source>
-        <translation>waktu habis menunggu callback browser</translation>
-    </message>
-    <message>
-        <source>bridge error: %1</source>
-        <translation>kesalahan bridge: %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::wallet::SignTransactionDialog</name>
-    <message>
-        <source>Sign transaction</source>
-        <translation>Tanda tangani transaksi</translation>
-    </message>
-    <message>
-        <source>Approve the transaction in your wallet to complete this action.</source>
-        <translation>Setujui transaksi di dompet Anda untuk menyelesaikan tindakan ini.</translation>
-    </message>
-    <message>
-        <source>Opening your browser to relay the transaction…</source>
-        <translation>Membuka browser Anda untuk meneruskan transaksi…</translation>
-    </message>
-    <message>
-        <source>Reopen browser</source>
-        <translation>Buka kembali browser</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Batal</translation>
-    </message>
-    <message>
-        <source>Browser opened. Approve the transaction in your wallet. The terminal is waiting on a single-use loopback bridge — this dialog will close automatically when the wallet returns the signature.</source>
-        <translation>Browser terbuka. Setujui transaksi di dompet Anda. Terminal sedang menunggu bridge loopback sekali pakai — dialog ini akan tertutup otomatis saat dompet mengembalikan tanda tangan.</translation>
+        <source>type a ticker…</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -41165,46 +38493,6 @@ untuk mengedit properti</translation>
     <message>
         <source>Continue on Fail</source>
         <translation>Lanjutkan saat Gagal</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::OrderConfirmDialog</name>
-    <message>
-        <source>Confirm Order</source>
-        <translation>Konfirmasi Order</translation>
-    </message>
-    <message>
-        <source>Est. value</source>
-        <translation>Est. nilai</translation>
-    </message>
-    <message>
-        <source>Send Order</source>
-        <translation>Kirim Order</translation>
-    </message>
-    <message>
-        <source>⚠  SEMI-AUTO — review before sending</source>
-        <translation>⚠  SEMI-OTOMATIS — tinjau sebelum mengirim</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::PendingOrdersBadge</name>
-    <message>
-        <source>Orders awaiting approval — click to review</source>
-        <translation>Order menunggu persetujuan — klik untuk meninjau</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::PendingOrdersPanel</name>
-    <message>
-        <source>PENDING ORDERS</source>
-        <translation>ORDER TERTUNDA</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::ui::PhoneCodeComboBox</name>
-    <message>
-        <source>Search country…</source>
-        <translation>Cari negara…</translation>
     </message>
 </context>
 </TS>

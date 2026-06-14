@@ -979,9 +979,11 @@ set(MCP_SOURCES
     src/mcp/SchemaValidator.cpp
     src/mcp/ToolRetriever.cpp
     src/mcp/ToolSelfTest.cpp
+    src/mcp/DataHubPeekSelftest.cpp
     src/mcp/TerminalMcpBridge.cpp
 
     # Tool modules
+    src/mcp/tools/DataHubPeekHelpers.cpp
     src/mcp/tools/NavigationTools.cpp
     src/mcp/tools/MarketsTools.cpp
     src/mcp/tools/WatchlistTools.cpp
@@ -2317,7 +2319,9 @@ set_source_files_properties(
     src/mcp/SchemaValidator.cpp
     src/mcp/ToolRetriever.cpp
     src/mcp/ToolSelfTest.cpp
+    src/mcp/DataHubPeekSelftest.cpp
     src/mcp/TerminalMcpBridge.cpp
+    src/mcp/tools/DataHubPeekHelpers.cpp
     src/mcp/tools/NavigationTools.cpp
     src/mcp/tools/MarketsTools.cpp
     src/mcp/tools/WatchlistTools.cpp

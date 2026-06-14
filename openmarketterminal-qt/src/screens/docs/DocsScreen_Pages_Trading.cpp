@@ -85,6 +85,33 @@ QWidget* DocsScreen::page_crypto_trading() {
     return scroll;
 }
 
+QWidget* DocsScreen::page_equity_trading() {
+    return make_page(
+        tr("EQUITY TRADING"), tr("US equities via Alpaca, IBKR, and Tradier"),
+        {
+            {tr("OVERVIEW"), tr("The Equity Trading screen provides order entry, positions, orders, and balances "
+                                "for connected US equity broker accounts. Use the ACCOUNTS panel to add Alpaca, "
+                                "Interactive Brokers (IBKR), or Tradier credentials.")},
+            {tr("SUPPORTED BROKERS"), tr("■  Alpaca — API key + secret; native paper and live (PK* / AK* keys)\n"
+                                        "■  IBKR — Client Portal Gateway on localhost:5000 + account ID\n"
+                                        "■  Tradier — access token from developer.tradier.com (live or sandbox)\n\n"
+                                        "Built-in paper trading (no broker) uses the yfinance market feed for "
+                                        "simulated US equity portfolios.")},
+            {tr("HOW TO CONNECT A BROKER"), tr("How do I connect a broker?\n\n"
+                                               "Open Equity Trading → ACCOUNTS → Manage Broker Accounts. Click "
+                                               "+ ADD, pick Alpaca, IBKR, or Tradier, name the account, and enter "
+                                               "the credentials shown for that broker. Click CONNECT to validate.\n\n"
+                                               "Paper trading and crypto exchanges do not require an equity broker.")},
+            {tr("REAL-WORLD USAGE"), tr("■  Paper trade first, then connect Alpaca paper keys to validate the flow\n"
+                                        "■  Route live US orders through your preferred supported broker\n"
+                                        "■  Track brokerage positions alongside portfolio and dashboard widgets")},
+            {tr("SKILL LEVELS"), tr("BEGINNER: Connect Alpaca paper keys and place a small market order\n"
+                                    "INTERMEDIATE: Use limit orders, stop-loss, and multi-account switching\n"
+                                    "ADVANCED: Combine with algo trading and portfolio replication\n"
+                                    "PRO: Multi-monitor equity + crypto workflows with unified command bar")},
+        });
+}
+
 QWidget* DocsScreen::page_paper_trading() {
     return make_page(
         tr("PAPER TRADING"), tr("Risk-free simulated trading engine"),

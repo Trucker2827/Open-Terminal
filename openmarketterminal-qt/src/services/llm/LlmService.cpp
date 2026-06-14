@@ -107,14 +107,27 @@ void LlmService::ensure_config() const {
     // (e.g. a provider row left by a prior build) to local. provider_ is the single
     // dispatch key for the URL/headers/async/streaming paths, so this guarantees no
     // prompt, chat history, or tool result can ever be sent to api.example.com.
-    // With no local model installed the assistant simply stays idle until the user
-    // configures a provider (Ollama, or OpenAI/Anthropic/etc. with their own key).
     if (provider_.isEmpty() || provider_ == "openmarketterminal") {
         provider_ = "ollama";
         base_url_ = {};
         api_key_.clear();
         LOG_INFO(kLlmSvcTag, "No external LLM provider configured — defaulting to local Ollama");
     }
+
+    // Active row points at a cloud provider but the API key is blank (common after v048
+    // deactivates the hosted proxy row, or when the user added a provider without saving
+    // a key). Fall back to local Ollama so Quick Chat / AI tab aren't hard-blocked.
+    if (provider_requires_api_key(provider_) && api_key_.isEmpty()) {
+        LOG_INFO(kLlmSvcTag,
+                 QString("Provider '%1' has no API key — falling back to local Ollama").arg(provider_));
+        provider_ = "ollama";
+        base_url_ = {};
+        api_key_.clear();
+    }
+
+    if (provider_ == "ollama" &&
+        (model_.isEmpty() || model_ == QLatin1String("openmarketterminal-llm")))
+        model_.clear(); // Ollama: model picked in Settings or left for server default
 
     auto gs = LlmConfigRepository::instance().get_global_settings();
     if (gs.is_ok()) {

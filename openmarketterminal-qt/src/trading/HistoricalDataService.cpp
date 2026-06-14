@@ -57,7 +57,7 @@ QString hds_resolve_broker_symbol(const QString& broker_id, const QString& bare_
     if (bare_symbol.contains(':')) // already fully qualified by caller
         return bare_symbol;
     const QString sym = bare_symbol.trimmed().toUpper();
-    const QString exch = exchange.isEmpty() ? QStringLiteral("NSE") : exchange.toUpper();
+    const QString exch = exchange.isEmpty() ? QStringLiteral("NASDAQ") : exchange.toUpper();
 
     if (hds_brokers_needing_token().contains(broker_id)) { // EXCHANGE:SYMBOL:TOKEN
         if (!hds_ensure_instruments_loaded_blocking(broker_id))
@@ -116,7 +116,7 @@ void HistoricalDataService::fetch(const QString& symbol, const QString& timefram
             const QString resolution = timeframe_to_resolution(timeframe);
             const QString from_s = from.toString("yyyy-MM-dd");
             const QString to_s = to.toString("yyyy-MM-dd");
-            const QString resolved = hds_resolve_broker_symbol(broker_id, symbol, QStringLiteral("NSE"));
+            const QString resolved = hds_resolve_broker_symbol(broker_id, symbol, QString());
 
             auto has_data = [](const ApiResponse<QVector<BrokerCandle>>& r) {
                 return r.success && r.data.value_or(QVector<BrokerCandle>{}).size() > 0;

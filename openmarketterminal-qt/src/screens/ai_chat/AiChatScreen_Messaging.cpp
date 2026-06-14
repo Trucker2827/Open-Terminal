@@ -95,7 +95,9 @@ void AiChatScreen::on_send() {
     }
     if (!ai_chat::LlmService::instance().is_configured()) {
         add_message_bubble("system",
-                           tr("No LLM provider configured. Go to Settings > LLM Configuration to set up a provider."));
+                           tr("No LLM provider configured.\n\n"
+                              "Open Settings → LLM Config and set up Ollama (local) or add an API key "
+                              "for a cloud provider (OpenAI, Anthropic, Gemini, …)."));
         return;
     }
 

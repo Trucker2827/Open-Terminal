@@ -150,19 +150,14 @@ void ScanMonitor::on_candles(const QString& id,
 
 QStringList ScanMonitor::resolve_universe(const ScanWatch& w) {
     const QString u = w.universe;
-    if (u == QStringLiteral("NSE_EQ") || u == QStringLiteral("BSE_EQ")) {
-        const QString exch = (u == QStringLiteral("NSE_EQ")) ? QStringLiteral("NSE")
-                                                             : QStringLiteral("BSE");
-        const auto rows = openmarketterminal::trading::InstrumentRepository::instance().list(
-            exch, w.broker_id, openmarketterminal::trading::InstrumentType::EQ);
-        QStringList out;
-        out.reserve(rows.size());
-        for (const auto& inst : rows)
-            out.append(inst.symbol);
-        return out;
-    }
-    if (u == QStringLiteral("NIFTY50"))
-        return openmarketterminal::services::algo::nifty50_symbols();
+    if (u == QStringLiteral("US_MEGA"))
+        return openmarketterminal::services::algo::us_mega_cap_symbols();
+    if (u == QStringLiteral("US_TECH"))
+        return openmarketterminal::services::algo::us_tech_symbols();
+    // Legacy India universe keys — no instrument master loaded; treat as empty.
+    if (u == QStringLiteral("NSE_EQ") || u == QStringLiteral("BSE_EQ") ||
+        u == QStringLiteral("NIFTY50"))
+        return {};
     return w.symbols; // '' / CUSTOM
 }
 

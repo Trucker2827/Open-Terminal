@@ -14,9 +14,8 @@
 
 namespace openmarketterminal::screens {
 
-/// Universe tab — run a saved strategy live across all NSE/BSE equities (or NIFTY 50
-/// / a custom list). Alerts on every match; each match row has a Deploy button that
-/// opens the existing single-symbol AlgoDeployDialog.
+/// Universe tab — run a saved strategy live across a US symbol preset or a
+/// custom list. Alerts on every match; each match row has a Deploy button.
 class UniverseScannerPanel : public QWidget {
     Q_OBJECT
   public:

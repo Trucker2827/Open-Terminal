@@ -341,12 +341,18 @@ void PortfolioBlotter::hub_resubscribe_broker_quotes(const QString& broker_accou
     const QString aid = broker_account_id;
 
     for (const auto& h : holdings_) {
-        // Indian stocks in yfinance format end with .NS or .BO
+        // yfinance holdings may use exchange suffixes (.NS/.BO); US tickers are bare.
         QString broker_sym;
-        if (h.symbol.endsWith(QStringLiteral(".NS")) || h.symbol.endsWith(QStringLiteral(".BO")))
-            broker_sym = h.symbol.left(h.symbol.length() - 3);
-        else
-            continue; // not an Indian stock — skip broker subscription
+        if (h.symbol.contains(QLatin1Char('.'))) {
+            if (h.symbol.endsWith(QStringLiteral(".NS")) || h.symbol.endsWith(QStringLiteral(".BO")))
+                broker_sym = h.symbol.left(h.symbol.length() - 3);
+            else
+                continue; // non-US yfinance suffix — no live broker quote wired
+        } else {
+            broker_sym = h.symbol; // US listing
+        }
+        if (broker_sym.isEmpty())
+            continue;
 
         const QString topic = trading::broker_topic(bid, aid, QStringLiteral("quote"), broker_sym);
         const QString yf_sym = h.symbol;

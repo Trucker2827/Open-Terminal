@@ -51,8 +51,8 @@ QWidget* DocsScreen::page_welcome() {
                               "trading capabilities, quantitative research tools, and AI-powered analytics — "
                               "all in a single unified terminal interface.\n\n"
                               "With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, "
-                              "and support for 15+ broker integrations, OpenMarketTerminal bridges the gap between "
-                              "retail and institutional tooling."),
+                              "and US equity broker support (Alpaca, IBKR, Tradier) plus 14 crypto exchanges, "
+                              "Open Terminal bridges the gap between retail and institutional tooling."),
                            ui::colors::AMBER));
 
     vl->addWidget(make_section_panel("■", tr("KEY CAPABILITIES"),

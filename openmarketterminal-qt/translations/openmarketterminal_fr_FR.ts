@@ -1,25 +1,6 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="fr_FR" sourcelanguage="en">
-<context>
-    <name>ActivityTab</name>
-    <message>
-        <source>SWAP</source>
-        <translation>ÉCHANGE</translation>
-    </message>
-    <message>
-        <source>RECEIVE</source>
-        <translation>RECEVOIR</translation>
-    </message>
-    <message>
-        <source>SEND</source>
-        <translation>ENVOYER</translation>
-    </message>
-    <message>
-        <source>OTHER</source>
-        <translation>AUTRE</translation>
-    </message>
-</context>
 <context>
     <name>AgentChatPanel</name>
     <message>
@@ -33,29 +14,6 @@
     <message>
         <source>Agent</source>
         <translation>Agent</translation>
-    </message>
-</context>
-<context>
-    <name>EquitySentimentTab</name>
-    <message>
-        <source>ALIGNED</source>
-        <translation>ALIGNÉ</translation>
-    </message>
-    <message>
-        <source>MIXED</source>
-        <translation>MITIGÉ</translation>
-    </message>
-    <message>
-        <source>DIVERGENT</source>
-        <translation>DIVERGENT</translation>
-    </message>
-    <message>
-        <source>SINGLE SOURCE</source>
-        <translation>SOURCE UNIQUE</translation>
-    </message>
-    <message>
-        <source>UNAVAILABLE</source>
-        <translation>INDISPONIBLE</translation>
     </message>
 </context>
 <context>
@@ -89,82 +47,6 @@
     </message>
 </context>
 <context>
-    <name>ForumFeedPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>il y a %1 s</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>il y a %1 min</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>il y a %1 h</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>il y a %1 j</translation>
-    </message>
-</context>
-<context>
-    <name>ForumPostListPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>il y a %1 s</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>il y a %1 min</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>il y a %1 h</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>il y a %1 j</translation>
-    </message>
-</context>
-<context>
-    <name>ForumPostReaderPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>il y a %1 s</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>il y a %1 min</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>il y a %1 h</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>il y a %1 j</translation>
-    </message>
-</context>
-<context>
-    <name>ForumThreadPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>il y a %1 s</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>il y a %1 min</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>il y a %1 h</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>il y a %1 j</translation>
-    </message>
-</context>
-<context>
     <name>GovDataProviderPanel</name>
     <message>
         <source>Export CSV</source>
@@ -176,11 +58,11 @@
     </message>
     <message>
         <source>Export failed</source>
-        <translation>Échec de l'exportation</translation>
+        <translation>Échec de l&apos;exportation</translation>
     </message>
     <message>
         <source>Unable to open file for writing.</source>
-        <translation>Impossible d'ouvrir le fichier en écriture.</translation>
+        <translation>Impossible d&apos;ouvrir le fichier en écriture.</translation>
     </message>
 </context>
 <context>
@@ -210,29 +92,6 @@
             <numerusform>%n action</numerusform>
             <numerusform>%n actions</numerusform>
         </translation>
-    </message>
-</context>
-<context>
-    <name>MultiStraddleSubTab</name>
-    <message>
-        <source>Straddle (ATM)</source>
-        <translation>Straddle (ATM)</translation>
-    </message>
-    <message>
-        <source>Strangle ±1</source>
-        <translation>Strangle ±1</translation>
-    </message>
-    <message>
-        <source>Strangle ±2</source>
-        <translation>Strangle ±2</translation>
-    </message>
-    <message>
-        <source>Strangle ±3</source>
-        <translation>Strangle ±3</translation>
-    </message>
-    <message>
-        <source>(ATM)</source>
-        <translation>(ATM)</translation>
     </message>
 </context>
 <context>
@@ -271,13 +130,6 @@
     </message>
 </context>
 <context>
-    <name>OISubTab</name>
-    <message>
-        <source>(ATM)</source>
-        <translation>(ATM)</translation>
-    </message>
-</context>
-<context>
     <name>ParameterWidgetFactory</name>
     <message>
         <source>— select file —</source>
@@ -313,11 +165,11 @@
     </message>
     <message>
         <source>— agent default —</source>
-        <translation>— par défaut de l'agent —</translation>
+        <translation>— par défaut de l&apos;agent —</translation>
     </message>
     <message>
         <source>Leave blank to use the LLM assigned to the agent in Agent Config</source>
-        <translation>Laisser vide pour utiliser le LLM attribué à l'agent dans Agent Config</translation>
+        <translation>Laisser vide pour utiliser le LLM attribué à l&apos;agent dans Agent Config</translation>
     </message>
     <message>
         <source>— select tool —</source>
@@ -332,8 +184,8 @@
         <translation>Actualiser la liste des outils</translation>
     </message>
     <message>
-        <source>All Open Terminal internal tools. Input JSON flows in as arguments.</source>
-        <translation>Tous les outils internes Open Terminal. Le JSON d'entrée est transmis comme arguments.</translation>
+        <source>All OpenMarketTerminal internal tools. Input JSON flows in as arguments.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Loading connections...</source>
@@ -357,118 +209,6 @@
 </context>
 <context>
     <name>QObject</name>
-    <message>
-        <source>No confirmation after 60 s. Check Solscan.</source>
-        <translation>Aucune confirmation après 60 s. Vérifiez Solscan.</translation>
-    </message>
-    <message>
-        <source>Timed out.</source>
-        <translation>Délai expiré.</translation>
-    </message>
-    <message>
-        <source>Tx failed on-chain: %1</source>
-        <translation>Échec de la Tx on-chain : %1</translation>
-    </message>
-    <message>
-        <source>Reverted.</source>
-        <translation>Annulé.</translation>
-    </message>
-    <message>
-        <source>Confirmed: %1…</source>
-        <translation>Confirmé : %1…</translation>
-    </message>
-    <message>
-        <source>build_swap failed: %1</source>
-        <translation>Échec de build_swap : %1</translation>
-    </message>
-    <message>
-        <source>Failed.</source>
-        <translation>Échec.</translation>
-    </message>
-    <message>
-        <source>Validating with RPC…</source>
-        <translation>Validation avec RPC…</translation>
-    </message>
-    <message>
-        <source>Simulation failed: %1. Refusing to sign.</source>
-        <translation>Échec de la simulation : %1. Signature refusée.</translation>
-    </message>
-    <message>
-        <source>Aborted.</source>
-        <translation>Abandonné.</translation>
-    </message>
-    <message>
-        <source>This swap would fail on-chain: %1. Refusing to sign.</source>
-        <translation>Cet échange échouerait on-chain : %1. Signature refusée.</translation>
-    </message>
-    <message>
-        <source>Approve in your wallet to forward this transaction to the network. The terminal does not hold any funds.</source>
-        <translation>Approuvez dans votre portefeuille pour transmettre cette transaction au réseau. Le terminal ne détient aucun fonds.</translation>
-    </message>
-    <message>
-        <source>≈ %1 $FNCPT (PumpSwap fills at execution)</source>
-        <translation>≈ %1 $FNCPT (PumpSwap exécute à l'exécution)</translation>
-    </message>
-    <message>
-        <source>≈ %1 SOL (PumpSwap fills at execution)</source>
-        <translation>≈ %1 SOL (PumpSwap exécute à l'exécution)</translation>
-    </message>
-    <message>
-        <source>PumpSwap will reject the trade if execution drifts more than the slippage tolerance above. Your funds stay in your wallet.</source>
-        <translation>PumpSwap rejettera la transaction si l'exécution dérive au-delà de la tolérance de slippage ci-dessus. Vos fonds restent dans votre portefeuille.</translation>
-    </message>
-    <message>
-        <source>Re-checking freshness…</source>
-        <translation>Nouvelle vérification de la fraîcheur…</translation>
-    </message>
-    <message>
-        <source>Could not verify freshness: %1. Try the swap again.</source>
-        <translation>Impossible de vérifier la fraîcheur : %1. Réessayez l'échange.</translation>
-    </message>
-    <message>
-        <source>This swap is no longer fresh: %1. Click SWAP again to rebuild.</source>
-        <translation>Cet échange n'est plus à jour : %1. Cliquez à nouveau sur SWAP pour reconstruire.</translation>
-    </message>
-    <message>
-        <source>Stale.</source>
-        <translation>Obsolète.</translation>
-    </message>
-    <message>
-        <source>Awaiting wallet signature…</source>
-        <translation>En attente de la signature du portefeuille…</translation>
-    </message>
-    <message>
-        <source>Sign swap</source>
-        <translation>Signer l'échange</translation>
-    </message>
-    <message>
-        <source>Approve the swap in your wallet to complete the trade.</source>
-        <translation>Approuvez l'échange dans votre portefeuille pour finaliser la transaction.</translation>
-    </message>
-    <message>
-        <source>Signing failed: %1</source>
-        <translation>Échec de la signature : %1</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>Annulé.</translation>
-    </message>
-    <message>
-        <source>Sent. Waiting for confirmation…</source>
-        <translation>Envoyé. En attente de confirmation…</translation>
-    </message>
-    <message>
-        <source>Sign lock</source>
-        <translation>Signer le verrouillage</translation>
-    </message>
-    <message>
-        <source>Approve the lock in your wallet.</source>
-        <translation>Approuvez le verrouillage dans votre portefeuille.</translation>
-    </message>
-    <message>
-        <source>Sent: %1…</source>
-        <translation>Envoyé : %1…</translation>
-    </message>
     <message>
         <source>Dow Jones style — sum of prices / divisor</source>
         <translation>Style Dow Jones — somme des prix / diviseur</translation>
@@ -598,7 +338,7 @@
     </message>
     <message>
         <source>Fields marked with * are required.</source>
-        <translation>Les champs marqués d'un * sont obligatoires.</translation>
+        <translation>Les champs marqués d&apos;un * sont obligatoires.</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -618,7 +358,7 @@
     </message>
     <message>
         <source>Failed to save: %1</source>
-        <translation>Échec de l'enregistrement : %1</translation>
+        <translation>Échec de l&apos;enregistrement : %1</translation>
     </message>
     <message>
         <source>Close</source>
@@ -638,7 +378,7 @@
     </message>
     <message>
         <source>Note: TCP reachability confirmed. API key validity is not verified here.</source>
-        <translation>Remarque : accessibilité TCP confirmée. La validité de l'API key n'est pas vérifiée ici.</translation>
+        <translation>Remarque : accessibilité TCP confirmée. La validité de l&apos;API key n&apos;est pas vérifiée ici.</translation>
     </message>
     <message>
         <source>This connector does not support connectivity testing.</source>
@@ -687,36 +427,72 @@ Assurez-vous que les champs obligatoires (URL, hôte ou API key) sont remplis.</
         <translation>Enregistrer le modèle de connecteur</translation>
     </message>
     <message>
-        <source>SWAP</source>
-        <translation>ÉCHANGE</translation>
+        <source>Confirm AI action</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROUTE</source>
-        <translation>ROUTE</translation>
+        <source>Approve</source>
+        <translation type="unfinished">Approuver</translation>
     </message>
     <message>
-        <source>YOU PAY</source>
-        <translation>VOUS PAYEZ</translation>
+        <source>Deny</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>YOU RECEIVE</source>
-        <translation>VOUS RECEVEZ</translation>
+        <source>Place a LIVE order with REAL money?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>MAX SLIPPAGE</source>
-        <translation>SLIPPAGE MAX</translation>
+        <source>%1 %2 %3 on %4 (%5).
+This sends a real order to your broker.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>PRIORITY FEE</source>
-        <translation>FRAIS DE PRIORITÉ</translation>
+        <source>Run a Python script on your machine?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>RPC SIMULATION</source>
-        <translation>SIMULATION RPC</translation>
+        <source>script: %1
+args: %2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OK · %1 CU</source>
-        <translation>OK · %1 CU</translation>
+        <source>Let the AI save an agent/workflow config?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 — a saved workflow/agent can later run code or place orders.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Approve AI action: %1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Approve external MCP tool &apos;%1&apos;?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Server: %1
+Runs in an external MCP server you added.
+args: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>~%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPEN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exchange adapter is not registered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 balance: %2 %3</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -751,60 +527,6 @@ Assurez-vous que les champs obligatoires (URL, hôte ou API key) sont remplis.</
     </message>
 </context>
 <context>
-    <name>ScreenerSubTab</name>
-    <message>
-        <source>IV Min</source>
-        <translation>IV Min</translation>
-    </message>
-    <message>
-        <source>IV Max</source>
-        <translation>IV Max</translation>
-    </message>
-    <message>
-        <source>± Strikes</source>
-        <translation>± Strikes</translation>
-    </message>
-    <message>
-        <source>CE OI ≥</source>
-        <translation>CE OI ≥</translation>
-    </message>
-    <message>
-        <source>PE OI ≥</source>
-        <translation>PE OI ≥</translation>
-    </message>
-    <message>
-        <source>0 of 0 strikes match</source>
-        <translation>0 sur 0 strikes correspondent</translation>
-    </message>
-    <message>
-        <source>%1 of %2 strikes match</source>
-        <translation>%1 sur %2 strikes correspondent</translation>
-    </message>
-</context>
-<context>
-    <name>TemplatePickerPanel</name>
-    <message>
-        <source>BULLISH</source>
-        <translation>HAUSSIER</translation>
-    </message>
-    <message>
-        <source>BEARISH</source>
-        <translation>BAISSIER</translation>
-    </message>
-    <message>
-        <source>NEUTRAL</source>
-        <translation>NEUTRE</translation>
-    </message>
-    <message>
-        <source>VOLATILE</source>
-        <translation>VOLATIL</translation>
-    </message>
-    <message>
-        <source>OTHERS</source>
-        <translation>AUTRES</translation>
-    </message>
-</context>
-<context>
     <name>TradeFlowChordWidget</name>
     <message>
         <source>Imports ($M)</source>
@@ -819,7 +541,7 @@ Assurez-vous que les champs obligatoires (URL, hôte ou API key) sont remplis.</
     <name>openmarketterminal::AiChatBubble</name>
     <message>
         <source>Quick Chat (separate from AI Chat tab)</source>
-        <translation>Chat rapide (distinct de l'onglet AI Chat)</translation>
+        <translation>Chat rapide (distinct de l&apos;onglet AI Chat)</translation>
     </message>
     <message>
         <source>Quick Chat</source>
@@ -827,7 +549,7 @@ Assurez-vous que les champs obligatoires (URL, hôte ou API key) sont remplis.</
     </message>
     <message>
         <source>Not saved · separate from AI Chat tab</source>
-        <translation>Non enregistré · distinct de l'onglet AI Chat</translation>
+        <translation>Non enregistré · distinct de l&apos;onglet AI Chat</translation>
     </message>
     <message>
         <source>Voice</source>
@@ -851,7 +573,7 @@ Assurez-vous que les champs obligatoires (URL, hôte ou API key) sont remplis.</
     </message>
     <message>
         <source>Ask anything…  (Enter to send, Shift+Enter for newline)</source>
-        <translation>Posez n'importe quelle question…  (Entrée pour envoyer, Maj+Entrée pour un saut de ligne)</translation>
+        <translation>Posez n&apos;importe quelle question…  (Entrée pour envoyer, Maj+Entrée pour un saut de ligne)</translation>
     </message>
     <message>
         <source>Push-to-talk: click to dictate one message</source>
@@ -880,12 +602,12 @@ Assurez-vous que les champs obligatoires (URL, hôte ou API key) sont remplis.</
     <message>
         <source>Ask a quick question. Nothing here is saved.
 For long-form chats use the AI Chat tab.</source>
-        <translation>Posez une question rapide. Rien n'est enregistré ici.
-Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
+        <translation>Posez une question rapide. Rien n&apos;est enregistré ici.
+Pour les conversations longues, utilisez l&apos;onglet AI Chat.</translation>
     </message>
     <message>
-        <source>AI chat is not configured. Open **Settings → LLM Config** and add an API key or pick the Open Terminal provider.</source>
-        <translation>Le chat IA n'est pas configuré. Ouvrez **Settings → LLM Config** et ajoutez une API key ou choisissez le fournisseur Open Terminal.</translation>
+        <source>AI chat is not configured. Open **Settings → LLM Config** and add an API key or pick the OpenMarketTerminal provider.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Error: %1</source>
@@ -893,15 +615,15 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
     </message>
     <message>
         <source>Listening — speak now</source>
-        <translation>À l'écoute — parlez maintenant</translation>
+        <translation>À l&apos;écoute — parlez maintenant</translation>
     </message>
     <message>
         <source>AI is thinking…</source>
-        <translation>L'IA réfléchit…</translation>
+        <translation>L&apos;IA réfléchit…</translation>
     </message>
     <message>
         <source>AI speaking…</source>
-        <translation>L'IA parle…</translation>
+        <translation>L&apos;IA parle…</translation>
     </message>
 </context>
 <context>
@@ -920,7 +642,7 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
     </message>
     <message>
         <source>Equity Trading</source>
-        <translation>Trading d'Actions</translation>
+        <translation>Trading d&apos;Actions</translation>
     </message>
     <message>
         <source>Algo Trading</source>
@@ -948,7 +670,7 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
     </message>
     <message>
         <source>Equity Research</source>
-        <translation>Recherche d'Actions</translation>
+        <translation>Recherche d&apos;Actions</translation>
     </message>
     <message>
         <source>Economics</source>
@@ -1043,16 +765,8 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
         <translation>Notes</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>Forum</translation>
-    </message>
-    <message>
         <source>Docs</source>
         <translation>Docs</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Support</translation>
     </message>
     <message>
         <source>About</source>
@@ -1102,10 +816,6 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
         <source>Excel</source>
         <translation>Excel</translation>
     </message>
-    <message>
-        <source>Action Center</source>
-        <translation>Centre d'actions</translation>
-    </message>
 </context>
 <context>
     <name>openmarketterminal::MonitorMapWidget</name>
@@ -1118,7 +828,7 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
     <name>openmarketterminal::MonitorPickerDialog</name>
     <message>
         <source>Choose Monitor</source>
-        <translation>Choisir l'écran</translation>
+        <translation>Choisir l&apos;écran</translation>
     </message>
     <message>
         <source>Open new window on:</source>
@@ -1144,12 +854,16 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
         <translation>Importer une Disposition</translation>
     </message>
     <message>
-        <source>Open Terminal Layout (*.flayout *.fwsp);;All Files (*)</source>
-        <translation>Disposition Open Terminal (*.flayout *.fwsp);;Tous les fichiers (*)</translation>
+        <source>OpenMarketTerminal Layout (*.flayout *.fwsp);;All Files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Layout (*.flayout)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Import Failed</source>
-        <translation>Échec de l'Importation</translation>
+        <translation>Échec de l&apos;Importation</translation>
     </message>
     <message>
         <source>Export Layout</source>
@@ -1157,15 +871,11 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
     </message>
     <message>
         <source>Open or save a layout first, then export it.</source>
-        <translation>Ouvrez ou enregistrez d'abord une disposition, puis exportez-la.</translation>
-    </message>
-    <message>
-        <source>Open Terminal Layout (*.flayout)</source>
-        <translation>Disposition Open Terminal (*.flayout)</translation>
+        <translation>Ouvrez ou enregistrez d&apos;abord une disposition, puis exportez-la.</translation>
     </message>
     <message>
         <source>Export Failed</source>
-        <translation>Échec de l'Exportation</translation>
+        <translation>Échec de l&apos;Exportation</translation>
     </message>
     <message>
         <source>Save Screenshot</source>
@@ -1177,646 +887,196 @@ Pour les conversations longues, utilisez l'onglet AI Chat.</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::chat_mode::ChatAgentPanel</name>
+    <name>openmarketterminal::feeds::FeedConfigDialog</name>
     <message>
-        <source>Mem</source>
-        <translation>Mém</translation>
+        <source>Add Feed</source>
+        <translation type="unfinished">Ajouter un flux</translation>
     </message>
     <message>
-        <source>Sched</source>
-        <translation>Planif</translation>
+        <source>Edit Feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Tasks</source>
-        <translation>Tâches</translation>
+        <source> s</source>
+        <translation type="unfinished"> s</translation>
     </message>
     <message>
-        <source>MCP</source>
-        <translation>MCP</translation>
+        <source>Cards</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Monitor</source>
-        <translation>Surveillance</translation>
+        <source>Table</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>AGENT MEMORY</source>
-        <translation>MÉMOIRE DE L'AGENT</translation>
+        <source>Auto</source>
+        <translation type="unfinished">Automatique</translation>
     </message>
     <message>
-        <source>+ Add</source>
-        <translation>+ Ajouter</translation>
+        <source>Manual</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Add memory entry</source>
-        <translation>Ajouter une entrée mémoire</translation>
+        <source>Store history (offline cache + past items)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete</source>
-        <translation>Supprimer</translation>
+        <source>Keep fetched items in the local database so they show when the feed is unreachable, and can be queried later.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete selected</source>
-        <translation>Supprimer la sélection</translation>
+        <source>Name</source>
+        <translation type="unfinished">Nom</translation>
     </message>
     <message>
-        <source>Clear</source>
-        <translation>Effacer</translation>
-    </message>
-    <message>
-        <source>Clear all memory</source>
-        <translation>Effacer toute la mémoire</translation>
-    </message>
-    <message>
-        <source>SCHEDULED QUERIES</source>
-        <translation>REQUÊTES PLANIFIÉES</translation>
-    </message>
-    <message>
-        <source>Cron-based agent queries (e.g. daily 9 AM).</source>
-        <translation>Requêtes de l'agent basées sur Cron (ex. tous les jours à 9 h).</translation>
-    </message>
-    <message>
-        <source>Create schedule</source>
-        <translation>Créer une planification</translation>
-    </message>
-    <message>
-        <source>Pause</source>
-        <translation>Pause</translation>
-    </message>
-    <message>
-        <source>Pause/resume</source>
-        <translation>Pause/reprendre</translation>
-    </message>
-    <message>
-        <source>BACKGROUND TASKS</source>
-        <translation>TÂCHES EN ARRIÈRE-PLAN</translation>
-    </message>
-    <message>
-        <source>Long-running agent queries.</source>
-        <translation>Requêtes de l'agent de longue durée.</translation>
+        <source>URL</source>
+        <translation type="unfinished">URL</translation>
     </message>
     <message>
         <source>Refresh</source>
-        <translation>Actualiser</translation>
+        <translation type="unfinished">Actualiser</translation>
     </message>
     <message>
-        <source>Refresh task list</source>
-        <translation>Actualiser la liste des tâches</translation>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Detail</source>
-        <translation>Détail</translation>
+        <source>Parse</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>View task result</source>
-        <translation>Afficher le résultat de la tâche</translation>
+        <source>Format</source>
+        <translation type="unfinished">Format</translation>
     </message>
     <message>
-        <source>Feedback</source>
-        <translation>Commentaires</translation>
+        <source>Records</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Send feedback</source>
-        <translation>Envoyer un commentaire</translation>
+        <source>The repeating tag/element that marks one entry (auto-filled by Discover).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel</source>
-        <translation>Annuler</translation>
+        <source>🔍 Discover fields from feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel task</source>
-        <translation>Annuler la tâche</translation>
+        <source>Pick what each tag is, rename it, or remove it. Add your own with “+ Add field”.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>MCP SERVERS</source>
-        <translation>SERVEURS MCP</translation>
+        <source>+ Add field</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Model Context Protocol tool servers.</source>
-        <translation>Serveurs d'outils Model Context Protocol.</translation>
-    </message>
-    <message>
-        <source>Add MCP server</source>
-        <translation>Ajouter un serveur MCP</translation>
-    </message>
-    <message>
-        <source>Remove selected</source>
-        <translation>Retirer la sélection</translation>
-    </message>
-    <message>
-        <source>Refresh all</source>
-        <translation>Tout actualiser</translation>
-    </message>
-    <message>
-        <source>DATA MONITORS</source>
-        <translation>MONITEURS DE DONNÉES</translation>
-    </message>
-    <message>
-        <source>Watch sources, trigger agent analysis.</source>
-        <translation>Surveillez les sources, déclenchez l'analyse de l'agent.</translation>
-    </message>
-    <message>
-        <source>Create monitor</source>
-        <translation>Créer un moniteur</translation>
-    </message>
-    <message>
-        <source>Not available.</source>
-        <translation>Non disponible.</translation>
-    </message>
-    <message>
-        <source>No entries yet.</source>
-        <translation>Aucune entrée pour le moment.</translation>
-    </message>
-    <message>
-        <source>No schedules yet.</source>
-        <translation>Aucune planification pour le moment.</translation>
-    </message>
-    <message>
-        <source>%1 task(s)</source>
-        <translation>%1 tâche(s)</translation>
-    </message>
-    <message>
-        <source>No tasks yet.</source>
-        <translation>Aucune tâche pour le moment.</translation>
-    </message>
-    <message>
-        <source>MCP not available.</source>
-        <translation>MCP non disponible.</translation>
-    </message>
-    <message>
-        <source>%1 server(s) | %2 tools</source>
-        <translation>%1 serveur(s) | %2 outils</translation>
-    </message>
-    <message>
-        <source>No servers connected.</source>
-        <translation>Aucun serveur connecté.</translation>
-    </message>
-    <message>
-        <source>%1
-  %2 | %3 tools</source>
-        <translation>%1
-  %2 | %3 outils</translation>
-    </message>
-    <message>
-        <source>No monitors configured.</source>
-        <translation>Aucun moniteur configuré.</translation>
-    </message>
-    <message>
-        <source>Add Memory</source>
-        <translation>Ajouter une mémoire</translation>
-    </message>
-    <message>
-        <source>Key:</source>
-        <translation>Clé :</translation>
-    </message>
-    <message>
-        <source>Value for "%1":</source>
-        <translation>Valeur pour « %1 » :</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Type</translation>
-    </message>
-    <message>
-        <source>Memory type:</source>
-        <translation>Type de mémoire :</translation>
-    </message>
-    <message>
-        <source>Delete Memory</source>
-        <translation>Supprimer la mémoire</translation>
-    </message>
-    <message>
-        <source>Delete "%1"?</source>
-        <translation>Supprimer « %1 » ?</translation>
-    </message>
-    <message>
-        <source>Clear Memory</source>
-        <translation>Effacer la mémoire</translation>
-    </message>
-    <message>
-        <source>Delete ALL memory entries?</source>
-        <translation>Supprimer TOUTES les entrées mémoire ?</translation>
-    </message>
-    <message>
-        <source>New Schedule</source>
-        <translation>Nouvelle planification</translation>
-    </message>
-    <message>
-        <source>Query:</source>
-        <translation>Requête :</translation>
-    </message>
-    <message>
-        <source>Cron (e.g. 0 9 * * 1-5):</source>
-        <translation>Cron (ex. 0 9 * * 1-5) :</translation>
-    </message>
-    <message>
-        <source>Task</source>
-        <translation>Tâche</translation>
-    </message>
-    <message>
-        <source>Failed: %1</source>
-        <translation>Échec : %1</translation>
-    </message>
-    <message>
-        <source>ID: %1
-Query: %2
-Status: %3
-Created: %4
-Started: %5
-Completed: %6
-
-Result:
-%7</source>
-        <translation>ID : %1
-Requête : %2
-Statut : %3
-Créé : %4
-Démarré : %5
-Terminé : %6
-
-Résultat :
-%7</translation>
-    </message>
-    <message>
-        <source>(none)</source>
-        <translation>(aucun)</translation>
-    </message>
-    <message>
-        <source>Task Detail</source>
-        <translation>Détail de la tâche</translation>
-    </message>
-    <message>
-        <source>Task Feedback</source>
-        <translation>Commentaire sur la tâche</translation>
-    </message>
-    <message>
-        <source>Feedback:</source>
-        <translation>Commentaire :</translation>
-    </message>
-    <message>
-        <source>Sent.</source>
-        <translation>Envoyé.</translation>
-    </message>
-    <message>
-        <source>Add MCP Server</source>
-        <translation>Ajouter un serveur MCP</translation>
-    </message>
-    <message>
-        <source>Name:</source>
-        <translation>Nom :</translation>
-    </message>
-    <message>
-        <source>Transport</source>
-        <translation>Transport</translation>
-    </message>
-    <message>
-        <source>Type:</source>
-        <translation>Type :</translation>
-    </message>
-    <message>
-        <source>Command</source>
-        <translation>Commande</translation>
-    </message>
-    <message>
-        <source>Command (e.g. uvx, npx):</source>
-        <translation>Commande (ex. uvx, npx) :</translation>
-    </message>
-    <message>
-        <source>Arguments</source>
-        <translation>Arguments</translation>
-    </message>
-    <message>
-        <source>Args (space-separated):</source>
-        <translation>Args (séparés par des espaces) :</translation>
-    </message>
-    <message>
-        <source>SSE URL</source>
-        <translation>URL SSE</translation>
-    </message>
-    <message>
-        <source>URL:</source>
-        <translation>URL :</translation>
-    </message>
-    <message>
-        <source>MCP Server</source>
-        <translation>Serveur MCP</translation>
-    </message>
-    <message>
-        <source>'%1' added with errors.</source>
-        <translation>« %1 » ajouté avec des erreurs.</translation>
-    </message>
-    <message>
-        <source>Remove Server</source>
-        <translation>Retirer le serveur</translation>
-    </message>
-    <message>
-        <source>Remove "%1"?</source>
-        <translation>Retirer « %1 » ?</translation>
-    </message>
-    <message>
-        <source>New Monitor</source>
-        <translation>Nouveau moniteur</translation>
-    </message>
-    <message>
-        <source>Source</source>
-        <translation>Source</translation>
-    </message>
-    <message>
-        <source>Data source:</source>
-        <translation>Source de données :</translation>
-    </message>
-    <message>
-        <source>Analysis</source>
-        <translation>Analyse</translation>
-    </message>
-    <message>
-        <source>What should the agent analyze?:</source>
-        <translation>Que doit analyser l'agent ? :</translation>
-    </message>
-    <message>
-        <source>Interval</source>
-        <translation>Intervalle</translation>
-    </message>
-    <message>
-        <source>Check interval (seconds):</source>
-        <translation>Intervalle de vérification (secondes) :</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>Symbole</translation>
-    </message>
-    <message>
-        <source>Symbol:</source>
-        <translation>Symbole :</translation>
-    </message>
-    <message>
-        <source>Indicator</source>
-        <translation>Indicateur</translation>
-    </message>
-    <message>
-        <source>Indicator:</source>
-        <translation>Indicateur :</translation>
-    </message>
-    <message>
-        <source>Query</source>
-        <translation>Requête</translation>
-    </message>
-    <message>
-        <source>News query:</source>
-        <translation>Requête d'actualités :</translation>
-    </message>
-    <message>
-        <source>Trigger</source>
-        <translation>Déclencheur</translation>
-    </message>
-    <message>
-        <source>Condition:</source>
-        <translation>Condition :</translation>
-    </message>
-    <message>
-        <source>Delete Monitor</source>
-        <translation>Supprimer le moniteur</translation>
-    </message>
-    <message>
-        <source>Delete?</source>
-        <translation>Supprimer ?</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatMessagePanel</name>
-    <message>
-        <source>New Conversation</source>
-        <translation>Nouvelle conversation</translation>
-    </message>
-    <message>
-        <source>Toggle Lite / Deep mode</source>
-        <translation>Basculer le mode Lite / Deep</translation>
-    </message>
-    <message>
-        <source>%1 tokens</source>
-        <translation>%1 tokens</translation>
-    </message>
-    <message>
-        <source>OPENMARKETTERMINAL AGENT</source>
-        <translation>OPENMARKETTERMINAL AGENT</translation>
-    </message>
-    <message>
-        <source>AI-powered financial intelligence.
-Markets, equities, portfolio, macro insights.</source>
-        <translation>Intelligence financière propulsée par l'IA.
-Marchés, actions, portefeuille, analyses macro.</translation>
-    </message>
-    <message>
-        <source>Outlook for AAPL?</source>
-        <translation>Perspectives pour AAPL ?</translation>
-    </message>
-    <message>
-        <source>Today's market news</source>
-        <translation>Actualités du marché du jour</translation>
-    </message>
-    <message>
-        <source>Portfolio risk analysis</source>
-        <translation>Analyse du risque de portefeuille</translation>
-    </message>
-    <message>
-        <source>Key indicators this week</source>
-        <translation>Indicateurs clés de cette semaine</translation>
-    </message>
-    <message>
-        <source>Agent</source>
-        <translation>Agent</translation>
-    </message>
-    <message>
-        <source>Ask anything... (Enter to send, Shift+Enter for new line)</source>
-        <translation>Posez n'importe quelle question... (Entrée pour envoyer, Maj+Entrée pour un saut de ligne)</translation>
-    </message>
-    <message>
-        <source>Optimize</source>
-        <translation>Optimiser</translation>
-    </message>
-    <message>
-        <source>Optimize prompt with AI</source>
-        <translation>Optimiser le prompt avec l'IA</translation>
-    </message>
-    <message>
-        <source>Stop</source>
-        <translation>Arrêter</translation>
-    </message>
-    <message>
-        <source>Send</source>
-        <translation>Envoyer</translation>
-    </message>
-    <message>
-        <source>You</source>
-        <translation>Vous</translation>
-    </message>
-    <message>
-        <source>&gt; %1 thinking steps | tools: %2</source>
-        <translation>&gt; %1 étapes de raisonnement | outils : %2</translation>
-    </message>
-    <message>
-        <source>&gt; %1 thinking steps</source>
-        <translation>&gt; %1 étapes de raisonnement</translation>
-    </message>
-    <message>
-        <source>used %1</source>
-        <translation>%1 utilisé</translation>
-    </message>
-    <message>
-        <source>step %1</source>
-        <translation>étape %1</translation>
-    </message>
-    <message>
-        <source>thinking...</source>
-        <translation>réflexion...</translation>
-    </message>
-    <message>
-        <source>Insufficient credits. Top up to continue.</source>
-        <translation>Crédits insuffisants. Rechargez pour continuer.</translation>
-    </message>
-    <message>
-        <source>%1 tools</source>
-        <translation>%1 outils</translation>
-    </message>
-    <message>
-        <source>%1 credits</source>
-        <translation>%1 crédits</translation>
-    </message>
-    <message>
-        <source>0 credits</source>
-        <translation>0 crédit</translation>
-    </message>
-    <message>
-        <source>Optimize failed: %1</source>
-        <translation>Échec de l'optimisation : %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatModeScreen</name>
-    <message>
-        <source>New Conversation</source>
-        <translation>Nouvelle conversation</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatModeService</name>
-    <message>
-        <source>Insufficient credits</source>
-        <translation>Crédits insuffisants</translation>
-    </message>
-    <message>
-        <source>Optimize prompt request failed</source>
-        <translation>Échec de la demande d'optimisation du prompt</translation>
-    </message>
-    <message>
-        <source>JSON parse error</source>
-        <translation>Erreur d'analyse JSON</translation>
-    </message>
-    <message>
-        <source>Agent chat request failed</source>
-        <translation>Échec de la requête de chat de l'agent</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatSessionPanel</name>
-    <message>
-        <source>CONVERSATIONS</source>
-        <translation>CONVERSATIONS</translation>
-    </message>
-    <message>
-        <source>TERMINAL</source>
-        <translation>TERMINAL</translation>
-    </message>
-    <message>
-        <source>Switch to Terminal Mode (F9)</source>
-        <translation>Passer en mode Terminal (F9)</translation>
-    </message>
-    <message>
-        <source>Search...</source>
-        <translation>Rechercher...</translation>
-    </message>
-    <message>
-        <source>+ New</source>
-        <translation>+ Nouveau</translation>
-    </message>
-    <message>
-        <source>New conversation</source>
-        <translation>Nouvelle conversation</translation>
-    </message>
-    <message>
-        <source>Rename</source>
-        <translation>Renommer</translation>
-    </message>
-    <message>
-        <source>Rename selected</source>
-        <translation>Renommer la sélection</translation>
+        <source>Test / Preview</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Delete</source>
-        <translation>Supprimer</translation>
+        <translation type="unfinished">Supprimer</translation>
     </message>
     <message>
-        <source>Delete selected</source>
-        <translation>Supprimer la sélection</translation>
+        <source>Delete feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export</source>
-        <translation>Exporter</translation>
+        <source>Delete this feed and its stored history? This cannot be undone.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export conversations</source>
-        <translation>Exporter les conversations</translation>
+        <source>Column</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>(Untitled)</source>
-        <translation>(Sans titre)</translation>
+        <source>Title</source>
+        <translation type="unfinished">Titre</translation>
     </message>
     <message>
-        <source>%1 msg</source>
-        <translation>%1 msg</translation>
+        <source>Summary</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 sessions | %2 messages</source>
-        <translation>%1 sessions | %2 messages</translation>
+        <source>Link</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete Conversation</source>
-        <translation>Supprimer la conversation</translation>
+        <source>Time</source>
+        <translation type="unfinished">Heure</translation>
     </message>
     <message>
-        <source>Delete "%1"?</source>
-        <translation>Supprimer « %1 » ?</translation>
+        <source>Title/Summary/Link/Time feed the card view; Column shows only in the table.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Rename Conversation</source>
-        <translation>Renommer la conversation</translation>
+        <source>Display name</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>New title:</source>
-        <translation>Nouveau titre :</translation>
+        <source>Which feed tag to read this from.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No conversations to export.</source>
-        <translation>Aucune conversation à exporter.</translation>
+        <source>Remove</source>
+        <translation type="unfinished">Supprimer</translation>
     </message>
     <message>
-        <source>Export Conversations</source>
-        <translation>Exporter les conversations</translation>
+        <source>Discovering…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>JSON (*.json)</source>
-        <translation>JSON (*.json)</translation>
+        <source>e.g. %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export Failed</source>
-        <translation>Échec de l'Exportation</translation>
+        <source>Testing…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedPanel</name>
+    <message>
+        <source>FEEDS</source>
+        <translation type="unfinished">FLUX</translation>
     </message>
     <message>
-        <source>Could not write file.</source>
-        <translation>Impossible d'écrire le fichier.</translation>
+        <source>+ Add Feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exported %1 conversations.</source>
-        <translation>%1 conversations exportées.</translation>
+        <source>No feeds configured.
+Click “+ Add Feed”.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedTableView</name>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">Heure</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation type="unfinished">Titre</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedView</name>
+    <message>
+        <source>Refresh now</source>
+        <translation type="unfinished">Actualiser maintenant</translation>
+    </message>
+    <message>
+        <source>Pop out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock back into panel</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1937,16 +1197,8 @@ Marchés, actions, portefeuille, analyses macro.</translation>
         <translation>Modules</translation>
     </message>
     <message>
-        <source>ML Models</source>
-        <translation>Modèles ML</translation>
-    </message>
-    <message>
         <source>RL Algorithms</source>
         <translation>Algorithmes RL</translation>
-    </message>
-    <message>
-        <source>Python Scripts</source>
-        <translation>Scripts Python</translation>
     </message>
     <message>
         <source>ENGINE:</source>
@@ -1965,27 +1217,47 @@ Marchés, actions, portefeuille, analyses macro.</translation>
     </message>
     <message>
         <source>NATIVE DESKTOP FINANCIAL INTELLIGENCE TERMINAL</source>
-        <translation>TERMINAL NATIF D'INTELLIGENCE FINANCIÈRE POUR ORDINATEUR</translation>
-    </message>
-    <message>
-        <source>Check for Updates</source>
-        <translation>Rechercher des Mises à Jour</translation>
-    </message>
-    <message>
-        <source>Checking…</source>
-        <translation>Vérification…</translation>
-    </message>
-    <message>
-        <source>© 2024-2026 Open Terminal contributors. All rights reserved.</source>
-        <translation>© 2024-2026 Open Terminal contributors. Tous droits réservés.</translation>
+        <translation>TERMINAL NATIF D&apos;INTELLIGENCE FINANCIÈRE POUR ORDINATEUR</translation>
     </message>
     <message>
         <source>OPEN SOURCE LICENSE</source>
         <translation>LICENCE OPEN SOURCE</translation>
     </message>
     <message>
-        <source>Custom integration options available</source>
-        <translation>Options d'intégration personnalisée disponibles</translation>
+        <source>© 2026 Open Terminal contributors. MIT License.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free for personal, educational, and commercial use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fork, modify, redistribute, and package your own builds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep copyright and license notices with redistributed copies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPEN SOURCE RIGHTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No separate commercial license required</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Private customizations are allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contributions are welcome, not mandatory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You control your local data and configuration</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DIAGNOSTICS</source>
@@ -2004,12 +1276,36 @@ Marchés, actions, portefeuille, analyses macro.</translation>
         <translation>MARQUES</translation>
     </message>
     <message>
-        <source>"OpenMarket", "Open Terminal", and associated logos are trademarks of Open Terminal contributors. Use of these marks requires explicit written permission.</source>
-        <translation>« Open Terminal », « Open Terminal » et les logos associés sont des marques de Open Terminal contributors. L'utilisation de ces marques nécessite une autorisation écrite explicite.</translation>
+        <source>&quot;Open Terminal&quot; and associated community-created logos identify this open-source project and its contributors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Documentation</source>
+        <translation type="unfinished">Documentation</translation>
+    </message>
+    <message>
+        <source>Issue Tracker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release Notes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source Code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PROJECT</source>
+        <translation type="unfinished">SUPPORT GÉNÉRAL</translation>
+    </message>
+    <message>
+        <source>LICENSE</source>
+        <translation type="unfinished">LICENCE</translation>
     </message>
     <message>
         <source>Permission is granted to use the Open Terminal name and logos to identify, discuss, fork, package, and redistribute this open-source project, provided the use is truthful and does not misrepresent affiliation or endorsement.</source>
-        <translation>Aucune autorisation n'est accordée pour utiliser les marques Open Terminal d'une manière suggérant une affiliation avec Open Terminal contributors ou son approbation sans consentement écrit préalable.</translation>
+        <translation>Aucune autorisation n&apos;est accordée pour utiliser les marques Open Terminal d&apos;une manière suggérant une affiliation avec Open Terminal contributors ou son approbation sans consentement écrit préalable.</translation>
     </message>
     <message>
         <source>RESOURCES</source>
@@ -2024,16 +1320,8 @@ Marchés, actions, portefeuille, analyses macro.</translation>
         <translation>Licence (MIT)</translation>
     </message>
     <message>
-        <source>Open Source Rights</source>
-        <translation>Open Source Rights</translation>
-    </message>
-    <message>
         <source>CONTACT</source>
         <translation>CONTACT</translation>
-    </message>
-    <message>
-        <source>GENERAL</source>
-        <translation>GÉNÉRAL</translation>
     </message>
     <message>
         <source>ISSUES</source>
@@ -2043,224 +1331,6 @@ Marchés, actions, portefeuille, analyses macro.</translation>
         <source>SECURITY</source>
         <translation>SÉCURITÉ</translation>
     </message>
-    <message>
-        <source>LEGAL</source>
-        <translation>JURIDIQUE</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ActionCenterScreen</name>
-    <message>
-        <source>ACTION CENTER</source>
-        <translation>CENTRE D'ACTIONS</translation>
-    </message>
-    <message>
-        <source>Account:</source>
-        <translation>Compte :</translation>
-    </message>
-    <message>
-        <source>Show:</source>
-        <translation>Afficher :</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>En attente</translation>
-    </message>
-    <message>
-        <source>Approved</source>
-        <translation>Approuvé</translation>
-    </message>
-    <message>
-        <source>Rejected</source>
-        <translation>Rejeté</translation>
-    </message>
-    <message>
-        <source>All</source>
-        <translation>Tous</translation>
-    </message>
-    <message>
-        <source>Mode:</source>
-        <translation>Mode :</translation>
-    </message>
-    <message>
-        <source>Auto</source>
-        <translation>Automatique</translation>
-    </message>
-    <message>
-        <source>Semi-Auto</source>
-        <translation>Semi-automatique</translation>
-    </message>
-    <message>
-        <source>PENDING</source>
-        <translation>EN ATTENTE</translation>
-    </message>
-    <message>
-        <source>APPROVED</source>
-        <translation>APPROUVÉ</translation>
-    </message>
-    <message>
-        <source>REJECTED</source>
-        <translation>REJETÉ</translation>
-    </message>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>APPROVE ALL</source>
-        <translation>TOUT APPROUVER</translation>
-    </message>
-    <message>
-        <source>REJECT ALL</source>
-        <translation>TOUT REJETER</translation>
-    </message>
-    <message>
-        <source>Time</source>
-        <translation>Heure</translation>
-    </message>
-    <message>
-        <source>Account</source>
-        <translation>Compte</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Type</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>Symbole</translation>
-    </message>
-    <message>
-        <source>Side</source>
-        <translation>Sens</translation>
-    </message>
-    <message>
-        <source>Qty</source>
-        <translation>Qty</translation>
-    </message>
-    <message>
-        <source>Price Type</source>
-        <translation>Type de prix</translation>
-    </message>
-    <message>
-        <source>Status</source>
-        <translation>Statut</translation>
-    </message>
-    <message>
-        <source>Actions</source>
-        <translation>Actions</translation>
-    </message>
-    <message>
-        <source>Approve All</source>
-        <translation>Tout approuver</translation>
-    </message>
-    <message>
-        <source>Execute ALL pending orders now?</source>
-        <translation>Exécuter TOUS les ordres en attente maintenant ?</translation>
-    </message>
-    <message>
-        <source>Reject All</source>
-        <translation>Tout rejeter</translation>
-    </message>
-    <message>
-        <source>Select a specific account to reject all its pending orders.</source>
-        <translation>Sélectionnez un compte spécifique pour rejeter tous ses ordres en attente.</translation>
-    </message>
-    <message>
-        <source>Rejection reason:</source>
-        <translation>Motif du rejet :</translation>
-    </message>
-    <message>
-        <source>Rejected by user</source>
-        <translation>Rejeté par l'utilisateur</translation>
-    </message>
-    <message>
-        <source>All Accounts</source>
-        <translation>Tous les comptes</translation>
-    </message>
-    <message>
-        <source>Approve</source>
-        <translation>Approuver</translation>
-    </message>
-    <message>
-        <source>Reject</source>
-        <translation>Rejeter</translation>
-    </message>
-    <message>
-        <source>Reject Order</source>
-        <translation>Rejeter l'ordre</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ActivityTab</name>
-    <message>
-        <source>ALL</source>
-        <translation>TOUT</translation>
-    </message>
-    <message>
-        <source>SWAP</source>
-        <translation>SWAP</translation>
-    </message>
-    <message>
-        <source>SEND</source>
-        <translation>ENVOYER</translation>
-    </message>
-    <message>
-        <source>RECEIVE</source>
-        <translation>RECEVOIR</translation>
-    </message>
-    <message>
-        <source>OTHER</source>
-        <translation>AUTRE</translation>
-    </message>
-    <message>
-        <source>No transactions yet.</source>
-        <translation>Aucune transaction pour le moment.</translation>
-    </message>
-    <message>
-        <source>Activity fetch failed: %1</source>
-        <translation>Échec de récupération de l'activité : %1</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to view activity.</source>
-        <translation>Connectez un portefeuille pour voir l'activité.</translation>
-    </message>
-    <message>
-        <source>%1 of %2 events</source>
-        <translation>%1 sur %2 événements</translation>
-    </message>
-    <message>
-        <source>  ·  Add a Helius API key in Settings for parsed swap and transfer details.</source>
-        <translation>  ·  Ajoutez une clé API Helius dans les Paramètres pour obtenir les détails analysés des swaps et transferts.</translation>
-    </message>
-    <message>
-        <source>TIMESTAMP</source>
-        <translation>HORODATAGE</translation>
-    </message>
-    <message>
-        <source>EVENT</source>
-        <translation>ÉVÉNEMENT</translation>
-    </message>
-    <message>
-        <source>ASSET</source>
-        <translation>ACTIF</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>MONTANT</translation>
-    </message>
-    <message>
-        <source>STATUS</source>
-        <translation>STATUT</translation>
-    </message>
-    <message>
-        <source>SIGNATURE</source>
-        <translation>SIGNATURE</translation>
-    </message>
 </context>
 <context>
     <name>openmarketterminal::screens::AdbPanel</name>
@@ -2268,7 +1338,7 @@ Marchés, actions, portefeuille, analyses macro.</translation>
         <source>Select an economy and data category, then click FETCH
 ADB data is free — no API key required</source>
         <translation>Sélectionnez une économie et une catégorie de données, puis cliquez sur FETCH
-Les données de l'ADB sont gratuites — aucune clé API requise</translation>
+Les données de l&apos;ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>Start year</source>
@@ -2304,7 +1374,7 @@ Les données de l'ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>Enter an indicator code (e.g. %1)</source>
-        <translation>Saisir un code d'indicateur (p. ex. %1)</translation>
+        <translation>Saisir un code d&apos;indicateur (p. ex. %1)</translation>
     </message>
     <message>
         <source>Fetching ADB %1 for %2…</source>
@@ -2312,7 +1382,7 @@ Les données de l'ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>Unknown error from ADB API</source>
-        <translation>Erreur inconnue de l'API ADB</translation>
+        <translation>Erreur inconnue de l&apos;API ADB</translation>
     </message>
     <message>
         <source>No data returned — try a different economy, indicator or date range</source>
@@ -2331,7 +1401,7 @@ Les données de l'ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>Type a ticker or company name to search</source>
-        <translation>Saisir un ticker ou un nom d'entreprise pour rechercher</translation>
+        <translation>Saisir un ticker ou un nom d&apos;entreprise pour rechercher</translation>
     </message>
     <message>
         <source>e.g. AAPL, Apple, Reliance…</source>
@@ -2452,19 +1522,19 @@ Les données de l'ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>Agent is thinking</source>
-        <translation>L'agent réfléchit</translation>
+        <translation>L&apos;agent réfléchit</translation>
     </message>
     <message>
         <source>Agent is thinking.</source>
-        <translation>L'agent réfléchit.</translation>
+        <translation>L&apos;agent réfléchit.</translation>
     </message>
     <message>
         <source>Agent is thinking..</source>
-        <translation>L'agent réfléchit..</translation>
+        <translation>L&apos;agent réfléchit..</translation>
     </message>
     <message>
         <source>Agent is thinking...</source>
-        <translation>L'agent réfléchit...</translation>
+        <translation>L&apos;agent réfléchit...</translation>
     </message>
     <message>
         <source>Default (global LLM)</source>
@@ -2500,7 +1570,7 @@ Les données de l'ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>When ON, the system picks the best agent for each query.</source>
-        <translation>Lorsqu'il est ACTIVÉ, le système choisit le meilleur agent pour chaque requête.</translation>
+        <translation>Lorsqu&apos;il est ACTIVÉ, le système choisit le meilleur agent pour chaque requête.</translation>
     </message>
     <message>
         <source>RUN AS TASK</source>
@@ -2508,7 +1578,7 @@ Les données de l'ADB sont gratuites — aucune clé API requise</translation>
     </message>
     <message>
         <source>When ON, this query runs as a durable background task with per-step progress.</source>
-        <translation>Lorsqu'il est ACTIVÉ, cette requête s'exécute comme une tâche d'arrière-plan durable avec une progression par étape.</translation>
+        <translation>Lorsqu&apos;il est ACTIVÉ, cette requête s&apos;exécute comme une tâche d&apos;arrière-plan durable avec une progression par étape.</translation>
     </message>
     <message>
         <source>CLEAR</source>
@@ -2546,7 +1616,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>Message agent... (Shift+Enter for new line, Enter to send)</source>
-        <translation>Message à l'agent... (Maj+Entrée pour une nouvelle ligne, Entrée pour envoyer)</translation>
+        <translation>Message à l&apos;agent... (Maj+Entrée pour une nouvelle ligne, Entrée pour envoyer)</translation>
     </message>
     <message>
         <source>Send</source>
@@ -2574,7 +1644,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>Agent execution failed</source>
-        <translation>Échec de l'exécution de l'agent</translation>
+        <translation>Échec de l&apos;exécution de l&apos;agent</translation>
     </message>
     <message>
         <source>Error</source>
@@ -2586,19 +1656,19 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>Auto-routing failed — using default agent.</source>
-        <translation>Échec du routage auto — utilisation de l'agent par défaut.</translation>
+        <translation>Échec du routage auto — utilisation de l&apos;agent par défaut.</translation>
     </message>
     <message>
-        <source>Analyze my portfolio '%1' — give key metrics and recommendations.</source>
-        <translation>Analyse mon portefeuille '%1' — donne les indicateurs clés et des recommandations.</translation>
+        <source>Analyze my portfolio &apos;%1&apos; — give key metrics and recommendations.</source>
+        <translation>Analyse mon portefeuille &apos;%1&apos; — donne les indicateurs clés et des recommandations.</translation>
     </message>
     <message>
-        <source>Suggest rebalancing for portfolio '%1' to optimize risk-return.</source>
-        <translation>Suggère un rééquilibrage du portefeuille '%1' pour optimiser le rapport risque-rendement.</translation>
+        <source>Suggest rebalancing for portfolio &apos;%1&apos; to optimize risk-return.</source>
+        <translation>Suggère un rééquilibrage du portefeuille &apos;%1&apos; pour optimiser le rapport risque-rendement.</translation>
     </message>
     <message>
-        <source>Perform risk analysis on portfolio '%1' — VaR, drawdown, stress test.</source>
-        <translation>Effectue une analyse de risque du portefeuille '%1' — VaR, drawdown, test de résistance.</translation>
+        <source>Perform risk analysis on portfolio &apos;%1&apos; — VaR, drawdown, stress test.</source>
+        <translation>Effectue une analyse de risque du portefeuille &apos;%1&apos; — VaR, drawdown, test de résistance.</translation>
     </message>
     <message>
         <source>No LLM configured</source>
@@ -2622,7 +1692,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>Task started. Open the AGENTIC tab to watch progress.</source>
-        <translation>Tâche démarrée. Ouvrez l'onglet AGENTIC pour suivre la progression.</translation>
+        <translation>Tâche démarrée. Ouvrez l&apos;onglet AGENTIC pour suivre la progression.</translation>
     </message>
     <message>
         <source>Agent</source>
@@ -2716,7 +1786,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>AGENT NEEDS INPUT</source>
-        <translation>L'AGENT A BESOIN D'UNE ENTRÉE</translation>
+        <translation>L&apos;AGENT A BESOIN D&apos;UNE ENTRÉE</translation>
     </message>
     <message>
         <source>Type your reply…</source>
@@ -2856,7 +1926,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>Archival memory</source>
-        <translation>Mémoire d'archive</translation>
+        <translation>Mémoire d&apos;archive</translation>
     </message>
     <message>
         <source>decision</source>
@@ -2923,7 +1993,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>RUN AGENT</source>
-        <translation>EXÉCUTER L'AGENT</translation>
+        <translation>EXÉCUTER L&apos;AGENT</translation>
     </message>
     <message>
         <source>FAILED</source>
@@ -2943,7 +2013,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>+ ADD TO TEAM</source>
-        <translation>+ AJOUTER À L'ÉQUIPE</translation>
+        <translation>+ AJOUTER À L&apos;ÉQUIPE</translation>
     </message>
     <message>
         <source>Select an agent</source>
@@ -3109,8 +2179,8 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
         <translation>Modèle actif — modifiez dans Paramètres &gt; Configuration LLM</translation>
     </message>
     <message>
-        <source>Message Open Terminal AI...</source>
-        <translation>Message à Open Terminal AI...</translation>
+        <source>Message OpenMarketTerminal AI...</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Attach a file to this message</source>
@@ -3118,7 +2188,7 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     </message>
     <message>
         <source>AI is thinking</source>
-        <translation>L'IA réfléchit</translation>
+        <translation>L&apos;IA réfléchit</translation>
     </message>
     <message>
         <source>No provider</source>
@@ -3127,6 +2197,14 @@ Sélectionnez un agent ci-dessus, ou utilisez le Routage Auto pour laisser le sy
     <message>
         <source>No model</source>
         <translation>Aucun modèle</translation>
+    </message>
+    <message>
+        <source>⚙  Configure LLM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add an API provider (OpenAI, Anthropic, …) or pick a model</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>New Conversation</source>
@@ -3151,8 +2229,8 @@ Les conversations sont enregistrées automatiquement.</translation>
         <translation>Marchés</translation>
     </message>
     <message>
-        <source>Show me today's top market movers</source>
-        <translation>Afficher les plus fortes variations du marché aujourd'hui</translation>
+        <source>Show me today&apos;s top market movers</source>
+        <translation>Afficher les plus fortes variations du marché aujourd&apos;hui</translation>
     </message>
     <message>
         <source>News</source>
@@ -3176,7 +2254,7 @@ Les conversations sont enregistrées automatiquement.</translation>
     </message>
     <message>
         <source>Calculate valuation for AAPL</source>
-        <translation>Calculer la valorisation d'AAPL</translation>
+        <translation>Calculer la valorisation d&apos;AAPL</translation>
     </message>
     <message>
         <source>Economics</source>
@@ -3184,7 +2262,7 @@ Les conversations sont enregistrées automatiquement.</translation>
     </message>
     <message>
         <source>Current GDP and inflation data</source>
-        <translation>Données actuelles du PIB et de l'inflation</translation>
+        <translation>Données actuelles du PIB et de l&apos;inflation</translation>
     </message>
     <message>
         <source>Research</source>
@@ -3211,20 +2289,20 @@ Les conversations sont enregistrées automatiquement.</translation>
         <translation>Joindre un fichier au message</translation>
     </message>
     <message>
-        <source>All Files (*);;Text Files (*.txt *.md *.csv *.json);;Notebooks (*.ipynb);;PDF (*.pdf)</source>
-        <translation>Tous les fichiers (*);;Fichiers texte (*.txt *.md *.csv *.json);;Notebooks (*.ipynb);;PDF (*.pdf)</translation>
+        <source>Text Files (*.txt *.md *.csv *.json *.py *.log *.yaml *.yml);;All Files (*)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>AI is thinking·</source>
-        <translation>L'IA réfléchit·</translation>
+        <translation>L&apos;IA réfléchit·</translation>
     </message>
     <message>
         <source>AI is thinking··</source>
-        <translation>L'IA réfléchit··</translation>
+        <translation>L&apos;IA réfléchit··</translation>
     </message>
     <message>
         <source>AI is thinking···</source>
-        <translation>L'IA réfléchit···</translation>
+        <translation>L&apos;IA réfléchit···</translation>
     </message>
     <message>
         <source>Failed to create chat session. Please try again.</source>
@@ -3240,7 +2318,7 @@ Les conversations sont enregistrées automatiquement.</translation>
     </message>
     <message>
         <source>Calling tool...</source>
-        <translation>Appel de l'outil...</translation>
+        <translation>Appel de l&apos;outil...</translation>
     </message>
     <message>
         <source>Error: request failed</source>
@@ -3252,7 +2330,15 @@ Les conversations sont enregistrées automatiquement.</translation>
     </message>
     <message>
         <source>(empty response — model returned no content)</source>
-        <translation>(réponse vide — le modèle n'a renvoyé aucun contenu)</translation>
+        <translation>(réponse vide — le modèle n&apos;a renvoyé aucun contenu)</translation>
+    </message>
+    <message>
+        <source>Thinking…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Thoughts</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Send</source>
@@ -3271,24 +2357,22 @@ Les conversations sont enregistrées automatiquement.</translation>
         <translation>%1k tokens</translation>
     </message>
     <message>
-        <source>Open Terminal LLM</source>
-        <translation>Open Terminal LLM</translation>
+        <source>Local LLM</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Managed by Open Terminal</source>
-        <translation>Géré par Open Terminal</translation>
+        <source>Local model</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal LLM — managed AI service</source>
-        <translation>Open Terminal LLM — service d'IA géré</translation>
+        <source>Local LLM (Ollama) — runs on your machine</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal managed AI service
+        <source>Local LLM (Ollama) — runs on your machine
 
 Change in Settings &gt; LLM Configuration</source>
-        <translation>Service d'IA géré par Open Terminal
-
-Modifier dans Paramètres &gt; Configuration LLM</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Provider: %1
@@ -3325,7 +2409,7 @@ Remarque : les en-têtes de colonnes sont en chinois, tels que fournis par la so
     </message>
     <message>
         <source>Fetching AkShare China: %1…</source>
-        <translation>Récupération d'AkShare China : %1…</translation>
+        <translation>Récupération d&apos;AkShare China : %1…</translation>
     </message>
     <message>
         <source>No data returned</source>
@@ -3454,6 +2538,161 @@ pour charger les endpoints disponibles</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::AlertsPanel</name>
+    <message>
+        <source>ALERT CONDITIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYMBOLS &amp; FEED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIMEFRAME</source>
+        <translation type="unfinished">PÉRIODE</translation>
+    </message>
+    <message>
+        <source>DATA SOURCE</source>
+        <translation type="unfinished">SOURCE DE DONNÉES</translation>
+    </message>
+    <message>
+        <source>Broker Only</source>
+        <translation type="unfinished">Courtier uniquement</translation>
+    </message>
+    <message>
+        <source>Auto (Broker → YFinance)</source>
+        <translation type="unfinished">Auto (Courtier → YFinance)</translation>
+    </message>
+    <message>
+        <source>YFinance Only</source>
+        <translation type="unfinished">YFinance uniquement</translation>
+    </message>
+    <message>
+        <source>BROKER ACCOUNT</source>
+        <translation type="unfinished">COMPTE COURTIER</translation>
+    </message>
+    <message>
+        <source>None (use YFinance fallback)</source>
+        <translation type="unfinished">Aucun (utiliser YFinance en secours)</translation>
+    </message>
+    <message>
+        <source>POLL INTERVAL (SEC)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOLDOWN (MIN)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send to external providers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WATCH NAME</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>My Volume Watch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SAVE WATCH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE WATCHES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NAME</source>
+        <translation type="unfinished">NOM</translation>
+    </message>
+    <message>
+        <source>SYMBOLS</source>
+        <translation type="unfinished">SYMBOLES</translation>
+    </message>
+    <message>
+        <source>STATUS</source>
+        <translation type="unfinished">STATUT</translation>
+    </message>
+    <message>
+        <source>ACTIVE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ACTIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ALERT HISTORY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIME</source>
+        <translation type="unfinished">HEURE</translation>
+    </message>
+    <message>
+        <source>SYMBOL</source>
+        <translation type="unfinished">SYMBOLE</translation>
+    </message>
+    <message>
+        <source>DETAIL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add at least one condition before saving a watch.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter at least one symbol.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch &apos;%1&apos; updated and re-watching.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch &apos;%1&apos; saved and monitoring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UPDATE WATCH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Editing &apos;%1&apos; — change conditions/symbols and press UPDATE WATCH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished">Modifier</translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished">Tester</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished">Supprimer</translation>
+    </message>
+    <message>
+        <source>Pre-filled from Scanner — name it and SAVE WATCH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::AlgoDeployDialog</name>
     <message>
         <source>Deploy Strategy</source>
@@ -3493,7 +2732,7 @@ pour charger les endpoints disponibles</translation>
     </message>
     <message>
         <source>Entry Side:</source>
-        <translation>Sens d'entrée :</translation>
+        <translation>Sens d&apos;entrée :</translation>
     </message>
     <message>
         <source>Account:</source>
@@ -3521,7 +2760,7 @@ pour charger les endpoints disponibles</translation>
     </message>
     <message>
         <source>Max Order Value:</source>
-        <translation>Valeur max. d'ordre :</translation>
+        <translation>Valeur max. d&apos;ordre :</translation>
     </message>
     <message>
         <source>Max Daily Loss:</source>
@@ -3530,6 +2769,14 @@ pour charger les endpoints disponibles</translation>
     <message>
         <source>DEPLOY</source>
         <translation>DÉPLOYER</translation>
+    </message>
+    <message>
+        <source>Broker (orders + data):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broker (data source):</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No connected accounts</source>
@@ -3583,6 +2830,14 @@ pour charger les endpoints disponibles</translation>
         <translation>TABLEAU DE BORD</translation>
     </message>
     <message>
+        <source>ALERTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UNIVERSE</source>
+        <translation type="unfinished">UNIVERS</translation>
+    </message>
+    <message>
         <source>ENGINE:</source>
         <translation>MOTEUR :</translation>
     </message>
@@ -3599,15 +2854,15 @@ pour charger les endpoints disponibles</translation>
     </message>
     <message>
         <source>27 ANALYZERS  �  10 ASSET CLASSES  �  MULTI-ASSET ANALYTICS</source>
-        <translation>27 ANALYSEURS  �  10 CLASSES D'ACTIFS  �  ANALYSE MULTI-ACTIFS</translation>
+        <translation>27 ANALYSEURS  �  10 CLASSES D&apos;ACTIFS  �  ANALYSE MULTI-ACTIFS</translation>
     </message>
     <message>
         <source>PYTHON ANALYTICS ENGINE</source>
-        <translation>MOTEUR D'ANALYSE PYTHON</translation>
+        <translation>MOTEUR D&apos;ANALYSE PYTHON</translation>
     </message>
     <message>
         <source>ASSET CLASSES</source>
-        <translation>CLASSES D'ACTIFS</translation>
+        <translation>CLASSES D&apos;ACTIFS</translation>
     </message>
     <message>
         <source>ANALYZER</source>
@@ -3615,11 +2870,11 @@ pour charger les endpoints disponibles</translation>
     </message>
     <message>
         <source>INPUT PARAMETERS</source>
-        <translation>PARAMÈTRES D'ENTRÉE</translation>
+        <translation>PARAMÈTRES D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>ANALYSIS RESULTS</source>
-        <translation>RÉSULTATS D'ANALYSE</translation>
+        <translation>RÉSULTATS D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>ANALYZE</source>
@@ -3643,7 +2898,7 @@ pour charger les endpoints disponibles</translation>
     </message>
     <message>
         <source>AWAITING ANALYSIS</source>
-        <translation>EN ATTENTE D'ANALYSE</translation>
+        <translation>EN ATTENTE D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>CATEGORY: %1</source>
@@ -3651,7 +2906,7 @@ pour charger les endpoints disponibles</translation>
     </message>
     <message>
         <source>Analysis failed</source>
-        <translation>Échec de l'analyse</translation>
+        <translation>Échec de l&apos;analyse</translation>
     </message>
 </context>
 <context>
@@ -3772,15 +3027,15 @@ secteurs</translation>
     </message>
     <message>
         <source>Need 2+ holdings for correlation analysis</source>
-        <translation>Nécessite au moins 2 titres pour l'analyse de corrélation</translation>
+        <translation>Nécessite au moins 2 titres pour l&apos;analyse de corrélation</translation>
     </message>
     <message>
         <source>Top-10 holdings by weight. Pearson correlation of daily returns over the trailing 30 trading days (from real price history).</source>
-        <translation>10 principales positions par pondération. Corrélation de Pearson des rendements quotidiens sur les 30 derniers jours de bourse (à partir de l'historique réel des cours).</translation>
+        <translation>10 principales positions par pondération. Corrélation de Pearson des rendements quotidiens sur les 30 derniers jours de bourse (à partir de l&apos;historique réel des cours).</translation>
     </message>
     <message>
         <source>Computing correlations from price history…</source>
-        <translation>Calcul des corrélations à partir de l'historique des cours…</translation>
+        <translation>Calcul des corrélations à partir de l&apos;historique des cours…</translation>
     </message>
 </context>
 <context>
@@ -3818,8 +3073,8 @@ secteurs</translation>
         <translation>Barre de Cours</translation>
     </message>
     <message>
-        <source>Animations</source>
-        <translation>Animations</translation>
+        <source>Live price ticker on the dashboard.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save Settings</source>
@@ -3827,7 +3082,7 @@ secteurs</translation>
     </message>
     <message>
         <source>Controls padding and spacing throughout the UI.</source>
-        <translation>Contrôle l'espacement et les marges dans toute l'UI.</translation>
+        <translation>Contrôle l&apos;espacement et les marges dans toute l&apos;UI.</translation>
     </message>
     <message>
         <source>Show AI Chat Bubble</source>
@@ -3841,18 +3096,6 @@ secteurs</translation>
         <source>Show Ticker Bar</source>
         <translation>Afficher la barre de cotation</translation>
     </message>
-    <message>
-        <source>Live price ticker at the bottom of the screen.</source>
-        <translation>Téléscripteur de prix en direct en bas de l'écran.</translation>
-    </message>
-    <message>
-        <source>Enable Animations</source>
-        <translation>Activer les animations</translation>
-    </message>
-    <message>
-        <source>Fade and transition effects throughout the UI.</source>
-        <translation>Effets de fondu et de transition dans toute l'UI.</translation>
-    </message>
 </context>
 <context>
     <name>openmarketterminal::screens::AsiaMarketsScreen</name>
@@ -3862,7 +3105,7 @@ secteurs</translation>
     </message>
     <message>
         <source>398+ STOCK ENDPOINTS | CN A/B, HK, US</source>
-        <translation>398+ ENDPOINTS D'ACTIONS | CN A/B, HK, US</translation>
+        <translation>398+ ENDPOINTS D&apos;ACTIONS | CN A/B, HK, US</translation>
     </message>
     <message>
         <source>Search endpoints...</source>
@@ -3990,12 +3233,9 @@ secteurs</translation>
     <message>
         <source>Select a provider, command, and strategy, then click RUN to execute.
 
-Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, Open Terminal
+Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, OpenMarketTerminal
 Commands: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Returns</source>
-        <translation>Sélectionnez un fournisseur, une commande et une stratégie, puis cliquez sur RUN pour exécuter.
-
-Fournisseurs pris en charge : VectorBT, Backtesting.py, FastTrade, Zipline, BT, Open Terminal
-Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Returns</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Run a backtest to see the equity curve.</source>
@@ -4167,7 +3407,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>TRAIN RATIO</source>
-        <translation>RATIO D'ENTRAÎNEMENT</translation>
+        <translation>RATIO D&apos;ENTRAÎNEMENT</translation>
     </message>
     <message>
         <source>INDICATOR</source>
@@ -4175,7 +3415,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>INDICATOR TYPE</source>
-        <translation>TYPE D'INDICATEUR</translation>
+        <translation>TYPE D&apos;INDICATEUR</translation>
     </message>
     <message>
         <source>PERIOD</source>
@@ -4183,7 +3423,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>INDICATOR SIGNALS</source>
-        <translation>SIGNAUX D'INDICATEUR</translation>
+        <translation>SIGNAUX D&apos;INDICATEUR</translation>
     </message>
     <message>
         <source>SIGNAL MODE</source>
@@ -4243,7 +3483,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>LABEL TYPE</source>
-        <translation>TYPE D'ÉTIQUETTE</translation>
+        <translation>TYPE D&apos;ÉTIQUETTE</translation>
     </message>
     <message>
         <source>HORIZON (bars)</source>
@@ -4275,7 +3515,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>MIN TRAIN LENGTH</source>
-        <translation>LONGUEUR MIN. D'ENTRAÎNEMENT</translation>
+        <translation>LONGUEUR MIN. D&apos;ENTRAÎNEMENT</translation>
     </message>
     <message>
         <source>TEST LENGTH</source>
@@ -4295,7 +3535,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>EMBARGO LENGTH</source>
-        <translation>LONGUEUR D'EMBARGO</translation>
+        <translation>LONGUEUR D&apos;EMBARGO</translation>
     </message>
     <message>
         <source>RETURNS ANALYSIS</source>
@@ -4303,7 +3543,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>ANALYSIS TYPE</source>
-        <translation>TYPE D'ANALYSE</translation>
+        <translation>TYPE D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>ROLLING WINDOW</source>
@@ -4327,7 +3567,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>ENTRY PROB</source>
-        <translation>PROB. D'ENTRÉE</translation>
+        <translation>PROB. D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>EXIT PROB</source>
@@ -4347,7 +3587,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>ENTRY LABEL</source>
-        <translation>ÉTIQUETTE D'ENTRÉE</translation>
+        <translation>ÉTIQUETTE D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>EXIT LABEL</source>
@@ -4355,7 +3595,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>INDICATOR SWEEP</source>
-        <translation>BALAYAGE D'INDICATEUR</translation>
+        <translation>BALAYAGE D&apos;INDICATEUR</translation>
     </message>
     <message>
         <source>MIN</source>
@@ -4374,8 +3614,8 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
         <translation>Chargement...</translation>
     </message>
     <message>
-        <source>Command '%1' is not supported by provider '%2'</source>
-        <translation>La commande '%1' n'est pas prise en charge par le fournisseur '%2'</translation>
+        <source>Command &apos;%1&apos; is not supported by provider &apos;%2&apos;</source>
+        <translation>La commande &apos;%1&apos; n&apos;est pas prise en charge par le fournisseur &apos;%2&apos;</translation>
     </message>
     <message>
         <source>Please enter at least one symbol (e.g. SPY, AAPL)</source>
@@ -4403,7 +3643,7 @@ Commandes : Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, 
     </message>
     <message>
         <source>Enable Indicator 3</source>
-        <translation>Activer l'indicateur 3</translation>
+        <translation>Activer l&apos;indicateur 3</translation>
     </message>
     <message>
         <source>INDICATOR 3</source>
@@ -4526,12 +3766,12 @@ Toutes les données sont les comptes nationaux américains (NIPA)</translation>
 Set BEA_API_KEY environment variable.
 Free registration at: www.bea.gov/data/api/register</source>
         <translation>Clé API BEA non configurée.
-Définissez la variable d'environnement BEA_API_KEY.
+Définissez la variable d&apos;environnement BEA_API_KEY.
 Inscription gratuite sur : www.bea.gov/data/api/register</translation>
     </message>
     <message>
         <source>No data returned — check API key and year range</source>
-        <translation>Aucune donnée renvoyée — vérifiez la clé API et la plage d'années</translation>
+        <translation>Aucune donnée renvoyée — vérifiez la clé API et la plage d&apos;années</translation>
     </message>
     <message>
         <source>Indicator</source>
@@ -4612,7 +3852,7 @@ Les données BIS sont gratuites — aucune clé API requise</translation>
     <message>
         <source>Set BLS_API_KEY environment variable, then select a series and click FETCH
 Get a free key at: data.bls.gov/registrationEngine/</source>
-        <translation>Définissez la variable d'environnement BLS_API_KEY, puis sélectionnez une série et cliquez sur FETCH
+        <translation>Définissez la variable d&apos;environnement BLS_API_KEY, puis sélectionnez une série et cliquez sur FETCH
 Obtenez une clé gratuite sur : data.bls.gov/registrationEngine/</translation>
     </message>
     <message>
@@ -4644,7 +3884,7 @@ Obtenez une clé gratuite sur : data.bls.gov/registrationEngine/</translation>
 Set BLS_API_KEY environment variable.
 Free key at: data.bls.gov/registrationEngine/</source>
         <translation>Clé API BLS non configurée.
-Définissez la variable d'environnement BLS_API_KEY.
+Définissez la variable d&apos;environnement BLS_API_KEY.
 Clé gratuite sur : data.bls.gov/registrationEngine/</translation>
     </message>
     <message>
@@ -4760,16 +4000,16 @@ Les données de la CFTC sont gratuites — aucune API key requise</translation>
         <translation>Net : —</translation>
     </message>
     <message>
-        <source>ISSUES TRADERS</source>
-        <translation>OPÉRATEURS COMMERCIAUX</translation>
-    </message>
-    <message>
         <source>Hedgers &amp; producers — usually contrarian signal</source>
         <translation>Hedgers et producteurs — généralement signal contraire</translation>
     </message>
     <message>
-        <source>NON-ISSUES (SPECULATORS)</source>
-        <translation>NON COMMERCIAUX (SPÉCULATEURS)</translation>
+        <source>COMMERCIAL TRADERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NON-COMMERCIAL (SPECULATORS)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Managed money &amp; funds — trend-following signal</source>
@@ -4833,69 +4073,26 @@ Les données de la CFTC sont gratuites — aucune API key requise</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::CloudSyncSection</name>
-    <message>
-        <source>Open Terminal Cloud Sync</source>
-        <translation>Synchronisation cloud Open Terminal</translation>
-    </message>
-    <message>
-        <source>Mirror your data to your Open Terminal account. Your local copy stays the working copy — sync runs in the background, on this device and across your devices.</source>
-        <translation>Reflétez vos données dans votre compte Open Terminal. Votre copie locale reste la copie de travail — la synchronisation s'exécute en arrière-plan, sur cet appareil et sur tous vos appareils.</translation>
-    </message>
-    <message>
-        <source>Out of credits — top up to resume cloud sync.</source>
-        <translation>Plus de crédits — rechargez pour reprendre la synchronisation cloud.</translation>
-    </message>
-    <message>
-        <source>Enable cloud sync</source>
-        <translation>Activer la synchronisation cloud</translation>
-    </message>
-    <message>
-        <source>Cloud Sync</source>
-        <translation>Synchronisation cloud</translation>
-    </message>
-    <message>
-        <source>When on, changes mirror to your account and pull on this device.</source>
-        <translation>Lorsqu'elle est activée, les modifications sont reflétées dans votre compte et récupérées sur cet appareil.</translation>
-    </message>
-    <message>
-        <source>Sign in to enable cloud sync.</source>
-        <translation>Connectez-vous pour activer la synchronisation cloud.</translation>
-    </message>
-    <message>
-        <source>ADVANCED — DOMAINS</source>
-        <translation>AVANCÉ — DOMAINES</translation>
-    </message>
-    <message>
-        <source>Sync this domain</source>
-        <translation>Synchroniser ce domaine</translation>
-    </message>
-    <message>
-        <source>Refresh now</source>
-        <translation>Actualiser maintenant</translation>
-    </message>
-    <message>
-        <source>You have local data and existing cloud data for "%1".</source>
-        <translation>Vous avez des données locales et des données cloud existantes pour « %1 ».</translation>
-    </message>
-    <message>
-        <source>Upload &amp; merge keeps your local items (recommended). Use cloud replaces this device's copy with your cloud account — a local backup is saved first.</source>
-        <translation>Téléverser et fusionner conserve vos éléments locaux (recommandé). Utiliser le cloud remplace la copie de cet appareil par votre compte cloud — une sauvegarde locale est enregistrée au préalable.</translation>
-    </message>
-    <message>
-        <source>Upload &amp;&amp; merge</source>
-        <translation>Téléverser &amp;&amp; fusionner</translation>
-    </message>
-    <message>
-        <source>Use cloud</source>
-        <translation>Utiliser le cloud</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::CodeEditorScreen</name>
     <message>
-        <source>PYTHON NOTEBOOK</source>
-        <translation>PYTHON NOTEBOOK</translation>
+        <source>OPENMARKETTERMINAL NOTEBOOK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIBRARY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EDITOR</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search notebooks...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>＋  NEW NOTEBOOK</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>NEW</source>
@@ -4918,20 +4115,44 @@ Les données de la CFTC sont gratuites — aucune API key requise</translation>
         <translation>EFFACER SORTIE</translation>
     </message>
     <message>
-        <source>RUN ALL</source>
-        <translation>TOUT EXÉCUTER</translation>
+        <source>▶  RUN ALL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RESTART KERNEL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KERNEL: READY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Python</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation type="unfinished">Erreur</translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Notebooks (*.ipynb);;All Files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Notebooks (*.ipynb)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KERNEL: RUNNING…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPENMARKETTERMINAL NOTEBOOK LIBRARY — curated finance, economics, trading, investing, portfolio &amp; quant notebooks</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SIDEBAR</source>
         <translation>BARRE LATÉRALE</translation>
-    </message>
-    <message>
-        <source>KERNEL: IDLE</source>
-        <translation>KERNEL : INACTIF</translation>
-    </message>
-    <message>
-        <source>Python 3.11</source>
-        <translation>Python 3.11</translation>
     </message>
     <message>
         <source>READY</source>
@@ -4954,32 +4175,68 @@ Les données de la CFTC sont gratuites — aucune API key requise</translation>
         <translation>Nom de la cellule :</translation>
     </message>
     <message>
-        <source>Process exited with code %1</source>
-        <translation>Le processus s'est terminé avec le code %1</translation>
-    </message>
-    <message>
         <source>Open Notebook</source>
         <translation>Ouvrir le Notebook</translation>
-    </message>
-    <message>
-        <source>Jupyter Notebooks (*.ipynb);;All Files (*)</source>
-        <translation>Jupyter Notebooks (*.ipynb);;Tous les fichiers (*)</translation>
     </message>
     <message>
         <source>Save Notebook</source>
         <translation>Enregistrer le Notebook</translation>
     </message>
     <message>
-        <source>Jupyter Notebooks (*.ipynb)</source>
-        <translation>Jupyter Notebooks (*.ipynb)</translation>
-    </message>
-    <message>
         <source>CELLS: %1 CODE  %2 MD  |  EXECUTED: %3</source>
         <translation>CELLULES : %1 CODE  %2 MD  |  EXÉCUTÉES : %3</translation>
     </message>
     <message>
-        <source>KERNEL: BUSY</source>
-        <translation>KERNEL : OCCUPÉ</translation>
+        <source>All</source>
+        <translation type="unfinished">Tous</translation>
+    </message>
+    <message>
+        <source>Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Economics</source>
+        <translation type="unfinished">Économie</translation>
+    </message>
+    <message>
+        <source>Trading</source>
+        <translation type="unfinished">Trading</translation>
+    </message>
+    <message>
+        <source>Investing</source>
+        <translation type="unfinished">Investissement</translation>
+    </message>
+    <message>
+        <source>Portfolio</source>
+        <translation type="unfinished">Portefeuille</translation>
+    </message>
+    <message>
+        <source>Quant</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beginner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Intermediate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notebook library not found. Rebuild the app to bundle the notebooks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No notebooks match your filters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 notebooks  ·  %2 beginner · %3 intermediate · %4 hard</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -4993,13 +4250,6 @@ Les données de la CFTC sont gratuites — aucune API key requise</translation>
 It will be available in a future update.</source>
         <translation>Ce module est en cours de développement actif.
 Il sera disponible dans une future mise à jour.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ComingSoonTab</name>
-    <message>
-        <source>STATUS  ·  COMING SOON</source>
-        <translation>STATUT  ·  BIENTÔT DISPONIBLE</translation>
     </message>
 </context>
 <context>
@@ -5136,7 +4386,7 @@ Il sera disponible dans une future mise à jour.</translation>
         <translation>⚠  SUPPRIMER LE PORTEFEUILLE</translation>
     </message>
     <message>
-        <source>Are you sure you want to delete "%1"?
+        <source>Are you sure you want to delete &quot;%1&quot;?
 This will remove all holdings and transactions.</source>
         <translation>Voulez-vous vraiment supprimer « %1 » ?
 Cela supprimera toutes les positions et transactions.</translation>
@@ -5152,6 +4402,14 @@ Cela supprimera toutes les positions et transactions.</translation>
 </context>
 <context>
     <name>openmarketterminal::screens::ConflictMonitorPanel</name>
+    <message>
+        <source>CONFLICT MAP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BASEMAP</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Category</source>
         <translation>Catégorie</translation>
@@ -5206,7 +4464,7 @@ Cela supprimera toutes les positions et transactions.</translation>
     </message>
     <message>
         <source>Waiting for events…</source>
-        <translation>En attente d'événements…</translation>
+        <translation>En attente d&apos;événements…</translation>
     </message>
     <message>
         <source>HOTSPOTS</source>
@@ -5214,7 +4472,7 @@ Cela supprimera toutes les positions et transactions.</translation>
     </message>
     <message>
         <source>EVENT DETAILS</source>
-        <translation>DÉTAILS DE L'ÉVÉNEMENT</translation>
+        <translation>DÉTAILS DE L&apos;ÉVÉNEMENT</translation>
     </message>
     <message>
         <source>⌖  Select an event from the map or table
@@ -5266,60 +4524,24 @@ Cela supprimera toutes les positions et transactions.</translation>
         <translation>Contactez notre équipe</translation>
     </message>
     <message>
-        <source>CONTACT INFORMATION</source>
-        <translation>COORDONNÉES</translation>
-    </message>
-    <message>
         <source>REPOSITORY</source>
         <translation>ASSISTANCE PAR E-MAIL</translation>
-    </message>
-    <message>
-        <source>Response within 4-6 hours</source>
-        <translation>Réponse sous 4 à 6 heures</translation>
     </message>
     <message>
         <source>ISSUE TRACKER</source>
         <translation>ASSISTANCE TÉLÉPHONIQUE</translation>
     </message>
     <message>
-        <source>Mon-Fri, 9AM-6PM EST</source>
-        <translation>Lun-Ven, 9h-18h EST</translation>
-    </message>
-    <message>
         <source>SECURITY</source>
-        <translation>HEURES D'ASSISTANCE</translation>
-    </message>
-    <message>
-        <source>Mon-Fri 9AM-6PM EST</source>
-        <translation>Lun-Ven 9h-18h EST</translation>
-    </message>
-    <message>
-        <source>Saturday 10AM-4PM EST</source>
-        <translation>Samedi 10h-16h EST</translation>
-    </message>
-    <message>
-        <source>OFFICE</source>
-        <translation>BUREAU</translation>
-    </message>
-    <message>
-        <source>New York, United States</source>
-        <translation>New York, États-Unis</translation>
+        <translation>HEURES D&apos;ASSISTANCE</translation>
     </message>
     <message>
         <source>QUICK ACTIONS</source>
         <translation>ACTIONS RAPIDES</translation>
     </message>
     <message>
-        <source>Send Email</source>
-        <translation>Envoyer un e-mail</translation>
-    </message>
-    <message>
         <source>View Source</source>
         <translation>Rejoindre Discord</translation>
-    </message>
-    <message>
-        <source>GitHub Issues</source>
-        <translation>GitHub Issues</translation>
     </message>
     <message>
         <source>COMMON ISSUES</source>
@@ -5330,16 +4552,44 @@ Cela supprimera toutes les positions et transactions.</translation>
         <translation>Connexion impossible ou mot de passe oublié</translation>
     </message>
     <message>
-        <source>Use the Forgot Password option on the login screen, or contact github.com/your-org/open-terminal/issues</source>
-        <translation>Utilisez l'option Mot de passe oublié sur l'écran de connexion, ou contactez github.com/your-org/open-terminal/issues</translation>
+        <source>PROJECT INFORMATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source code and releases</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bugs and feature requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Responsible disclosure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PROJECT</source>
+        <translation type="unfinished">SUPPORT GÉNÉRAL</translation>
+    </message>
+    <message>
+        <source>Open-source community project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Issues</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use guest mode for local exploration, or reset credentials from the login screen.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Python setup fails or times out</source>
-        <translation>L'installation de Python échoue ou expire</translation>
+        <translation>L&apos;installation de Python échoue ou expire</translation>
     </message>
     <message>
         <source>Ensure you have a stable internet connection. Retry setup or check firewall settings.</source>
-        <translation>Assurez-vous de disposer d'une connexion Internet stable. Réessayez l'installation ou vérifiez les paramètres du pare-feu.</translation>
+        <translation>Assurez-vous de disposer d&apos;une connexion Internet stable. Réessayez l&apos;installation ou vérifiez les paramètres du pare-feu.</translation>
     </message>
     <message>
         <source>Data not loading or showing stale</source>
@@ -5347,14 +4597,14 @@ Cela supprimera toutes les positions et transactions.</translation>
     </message>
     <message>
         <source>Check your internet connection. Try refreshing the screen or restarting the terminal.</source>
-        <translation>Vérifiez votre connexion Internet. Essayez d'actualiser l'écran ou de redémarrer le terminal.</translation>
+        <translation>Vérifiez votre connexion Internet. Essayez d&apos;actualiser l&apos;écran ou de redémarrer le terminal.</translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::CrashRecoveryDialog</name>
     <message>
-        <source>Open Terminal — Recover Previous Session</source>
-        <translation>Open Terminal — Récupérer la session précédente</translation>
+        <source>OpenMarketTerminal — Recover Previous Session</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>RECOVER PREVIOUS SESSION</source>
@@ -5406,7 +4656,7 @@ Cela supprimera toutes les positions et transactions.</translation>
     </message>
     <message>
         <source>just now</source>
-        <translation>à l'instant</translation>
+        <translation>à l&apos;instant</translation>
     </message>
     <message>
         <source>1 minute ago</source>
@@ -5466,10 +4716,10 @@ Cela supprimera toutes les positions et transactions.</translation>
     </message>
     <message>
         <source>Delete snapshot</source>
-        <translation>Supprimer l'instantané</translation>
+        <translation>Supprimer l&apos;instantané</translation>
     </message>
     <message>
-        <source>Delete "%1"?
+        <source>Delete &quot;%1&quot;?
 
 This cannot be undone.</source>
         <translation>Supprimer « %1 » ?
@@ -5625,11 +4875,11 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Include external MCP servers (Notion, Slack, etc., from MCP Servers tab)</source>
-        <translation>Inclure les serveurs MCP externes (Notion, Slack, etc., depuis l'onglet MCP Servers)</translation>
+        <translation>Inclure les serveurs MCP externes (Notion, Slack, etc., depuis l&apos;onglet MCP Servers)</translation>
     </message>
     <message>
         <source>Dry-run mode (return synthetic results — no real execution)</source>
-        <translation>Mode simulation (renvoie des résultats synthétiques — pas d'exécution réelle)</translation>
+        <translation>Mode simulation (renvoie des résultats synthétiques — pas d&apos;exécution réelle)</translation>
     </message>
     <message>
         <source>Category whitelist (none checked = all enabled categories except UI-only)</source>
@@ -5641,11 +4891,11 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Tool name include regex (optional, e.g. ^get_)</source>
-        <translation>Regex d'inclusion de nom d'outil (facultatif, p. ex. ^get_)</translation>
+        <translation>Regex d&apos;inclusion de nom d&apos;outil (facultatif, p. ex. ^get_)</translation>
     </message>
     <message>
         <source>Tool name exclude regex (optional, e.g. ^delete_)</source>
-        <translation>Regex d'exclusion de nom d'outil (facultatif, p. ex. ^delete_)</translation>
+        <translation>Regex d&apos;exclusion de nom d&apos;outil (facultatif, p. ex. ^delete_)</translation>
     </message>
     <message>
         <source>Max tools (0 = no cap)</source>
@@ -5741,7 +4991,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>SAVE AGENT</source>
-        <translation>ENREGISTRER L'AGENT</translation>
+        <translation>ENREGISTRER L&apos;AGENT</translation>
     </message>
     <message>
         <source>CLEAR</source>
@@ -5757,7 +5007,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Agent name is required</source>
-        <translation>Le nom de l'agent est obligatoire</translation>
+        <translation>Le nom de l&apos;agent est obligatoire</translation>
     </message>
     <message>
         <source>RUNNING...</source>
@@ -5769,7 +5019,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Export Agent Config</source>
-        <translation>Exporter la configuration de l'agent</translation>
+        <translation>Exporter la configuration de l&apos;agent</translation>
     </message>
     <message>
         <source>JSON (*.json)</source>
@@ -5781,7 +5031,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Import Agent Config</source>
-        <translation>Importer la configuration de l'agent</translation>
+        <translation>Importer la configuration de l&apos;agent</translation>
     </message>
     <message>
         <source>Imported from file</source>
@@ -5855,88 +5105,15 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Save failed</source>
-        <translation>Échec de l'enregistrement</translation>
+        <translation>Échec de l&apos;enregistrement</translation>
     </message>
     <message>
         <source>Store API keys securely in the OS keychain. Keys are never written to disk in plain text.</source>
-        <translation>Stockez les clés API en toute sécurité dans le trousseau du système d'exploitation. Les clés ne sont jamais écrites sur le disque en texte clair.</translation>
+        <translation>Stockez les clés API en toute sécurité dans le trousseau du système d&apos;exploitation. Les clés ne sont jamais écrites sur le disque en texte clair.</translation>
     </message>
     <message>
         <source>•••••••• (saved)</source>
         <translation>•••••••• (enregistré)</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::CryptoCenterScreen</name>
-    <message>
-        <source>No wallet connected</source>
-        <translation>Aucun portefeuille connecté</translation>
-    </message>
-    <message>
-        <source>Connect a Solana wallet to view your $FNCPT balance, SOL holdings, and live USD valuation. Your private keys never leave your wallet.</source>
-        <translation>Connectez un portefeuille Solana pour afficher votre solde $FNCPT, vos avoirs en SOL et la valorisation USD en direct. Vos clés privées ne quittent jamais votre portefeuille.</translation>
-    </message>
-    <message>
-        <source>· public address read-only
-· no private keys, no seed phrases
-· local handshake on 127.0.0.1, single-use token
-· cryptographic signature challenge before connect</source>
-        <translation>· adresse publique en lecture seule
-· aucune clé privée, aucune phrase de récupération
-· handshake local sur 127.0.0.1, jeton à usage unique
-· défi de signature cryptographique avant la connexion</translation>
-    </message>
-    <message>
-        <source>CONNECT WALLET</source>
-        <translation>CONNECTER LE PORTEFEUILLE</translation>
-    </message>
-    <message>
-        <source>HOME</source>
-        <translation>ACCUEIL</translation>
-    </message>
-    <message>
-        <source>TRADE</source>
-        <translation>TRADER</translation>
-    </message>
-    <message>
-        <source>ACTIVITY</source>
-        <translation>ACTIVITÉ</translation>
-    </message>
-    <message>
-        <source>SETTINGS</source>
-        <translation>PARAMÈTRES</translation>
-    </message>
-    <message>
-        <source>STAKE</source>
-        <translation>STAKER</translation>
-    </message>
-    <message>
-        <source>MARKETS</source>
-        <translation>MARCHÉS</translation>
-    </message>
-    <message>
-        <source>ROADMAP</source>
-        <translation>FEUILLE DE ROUTE</translation>
-    </message>
-    <message>
-        <source>CRYPTO CENTER</source>
-        <translation>CENTRE CRYPTO</translation>
-    </message>
-    <message>
-        <source>● DISCONNECTED</source>
-        <translation>● DÉCONNECTÉ</translation>
-    </message>
-    <message>
-        <source>READY</source>
-        <translation>PRÊT</translation>
-    </message>
-    <message>
-        <source>SECURITY</source>
-        <translation>SÉCURITÉ</translation>
-    </message>
-    <message>
-        <source>● CONNECTED</source>
-        <translation>● CONNECTÉ</translation>
     </message>
 </context>
 <context>
@@ -5950,16 +5127,8 @@ Cette action est irréversible.</translation>
         <translation>État du flux WebSocket — vert=en direct, ambre=connexion, rouge=hors ligne (interrogation REST)</translation>
     </message>
     <message>
-        <source>NATIVE</source>
-        <translation>NATIF</translation>
-    </message>
-    <message>
         <source>DAEMON</source>
         <translation>DAEMON</translation>
-    </message>
-    <message>
-        <source>Native C++ WebSocket — direct connection, no Python subprocess</source>
-        <translation>WebSocket C++ natif — connexion directe, aucun sous-processus Python</translation>
     </message>
     <message>
         <source>ws_stream.py via ccxt.pro — Python subprocess</source>
@@ -6076,11 +5245,11 @@ Cette action est irréversible.</translation>
         <source>No custom indices created yet.
 Go to CREATE INDEX tab to build one from your portfolio.</source>
         <translation>Aucun indice personnalisé créé.
-Allez à l'onglet CRÉER UN INDICE pour en construire un à partir de votre portefeuille.</translation>
+Allez à l&apos;onglet CRÉER UN INDICE pour en construire un à partir de votre portefeuille.</translation>
     </message>
     <message>
         <source>INDEX PERFORMANCE</source>
-        <translation>PERFORMANCE DE L'INDICE</translation>
+        <translation>PERFORMANCE DE L&apos;INDICE</translation>
     </message>
     <message>
         <source>Select an index from MY INDICES to see its performance.</source>
@@ -6099,7 +5268,7 @@ Allez à l'onglet CRÉER UN INDICE pour en construire un à partir de votre port
         <translation>Erreur : %1</translation>
     </message>
     <message>
-        <source>Index '%1' created successfully.</source>
+        <source>Index &apos;%1&apos; created successfully.</source>
         <translation>Indice « %1 » créé avec succès.</translation>
     </message>
     <message>
@@ -6126,7 +5295,7 @@ Allez à l'onglet CRÉER UN INDICE pour en construire un à partir de votre port
     <name>openmarketterminal::screens::DBnomicsDataTable</name>
     <message>
         <source>OBSERVATION DATA</source>
-        <translation>DONNÉES D'OBSERVATION</translation>
+        <translation>DONNÉES D&apos;OBSERVATION</translation>
     </message>
     <message>
         <source>%1  LOADING OBSERVATIONS...</source>
@@ -6251,7 +5420,7 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>Failed to open file: %1</source>
-        <translation>Échec de l'ouverture du fichier : %1</translation>
+        <translation>Échec de l&apos;ouverture du fichier : %1</translation>
     </message>
     <message>
         <source>Exported CSV: %1</source>
@@ -6271,7 +5440,7 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>No data loaded — click a series first</source>
-        <translation>Aucune donnée chargée — cliquez d'abord sur une série</translation>
+        <translation>Aucune donnée chargée — cliquez d&apos;abord sur une série</translation>
     </message>
     <message>
         <source>Series already in view</source>
@@ -6291,11 +5460,11 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>Added %1 to slot %2</source>
-        <translation>%1 ajouté à l'emplacement %2</translation>
+        <translation>%1 ajouté à l&apos;emplacement %2</translation>
     </message>
     <message>
         <source>Removed series from slot %1</source>
-        <translation>Série retirée de l'emplacement %1</translation>
+        <translation>Série retirée de l&apos;emplacement %1</translation>
     </message>
     <message>
         <source>Slot removed. %1 slot(s) remaining</source>
@@ -6408,8 +5577,12 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
         <translation>FLUX :</translation>
     </message>
     <message>
-        <source>CONNECTED</source>
-        <translation>CONNECTE</translation>
+        <source>IDLE</source>
+        <translation type="unfinished">INACTIF</translation>
+    </message>
+    <message>
+        <source>LIVE</source>
+        <translation type="unfinished">EN DIRECT</translation>
     </message>
     <message>
         <source>MEM: ---</source>
@@ -6428,12 +5601,12 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
         <translation>VIDE</translation>
     </message>
     <message>
-        <source>DISCONNECTED</source>
-        <translation>DECONNECTE</translation>
-    </message>
-    <message>
         <source>MEM: %1 MB</source>
         <translation>MEM : %1 Mo</translation>
+    </message>
+    <message>
+        <source>LAT: LOCAL</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LAT: ERR</source>
@@ -6506,6 +5679,10 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
         <translation>Cliquez pour basculer UTC / heure locale</translation>
     </message>
     <message>
+        <source>IDLE</source>
+        <translation type="unfinished">INACTIF</translation>
+    </message>
+    <message>
         <source>%1 WIDGETS</source>
         <translation>%1 WIDGETS</translation>
     </message>
@@ -6523,7 +5700,7 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>Force-refresh all live data on the dashboard</source>
-        <translation>Forcer l'actualisation de toutes les donnees en direct</translation>
+        <translation>Forcer l&apos;actualisation de toutes les donnees en direct</translation>
     </message>
     <message>
         <source>+ ADD</source>
@@ -6544,10 +5721,6 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     <message>
         <source> LOC</source>
         <translation> LOC</translation>
-    </message>
-    <message>
-        <source>OFFLINE</source>
-        <translation>HORS LIGNE</translation>
     </message>
 </context>
 <context>
@@ -6598,7 +5771,7 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>WIZARD STEPS</source>
-        <translation>ÉTAPES DE L'ASSISTANT</translation>
+        <translation>ÉTAPES DE L&apos;ASSISTANT</translation>
     </message>
     <message>
         <source>API Configuration</source>
@@ -6646,7 +5819,7 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>PARSER ENGINES</source>
-        <translation>MOTEURS D'ANALYSE</translation>
+        <translation>MOTEURS D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>SECURITY</source>
@@ -6682,7 +5855,7 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>AUTH VALUE</source>
-        <translation>VALEUR D'AUTH</translation>
+        <translation>VALEUR D&apos;AUTH</translation>
     </message>
     <message>
         <source>HEADERS (one per line)</source>
@@ -6694,11 +5867,11 @@ Cliquez sur  + AJOUTER UN EMPLACEMENT  dans le panneau de gauche pour commencer<
     </message>
     <message>
         <source>TIMEOUT</source>
-        <translation>DÉLAI D'EXPIRATION</translation>
+        <translation>DÉLAI D&apos;EXPIRATION</translation>
     </message>
     <message>
-        <source>e.g. Upstox OHLCV</source>
-        <translation>p. ex. Upstox OHLCV</translation>
+        <source>e.g. broker OHLCV</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Token / API Key value</source>
@@ -6918,7 +6091,7 @@ Cliquez sur CRÉER pour créer votre premier mappage de données.</translation>
     </message>
     <message>
         <source>Enter a URL first</source>
-        <translation>Saisissez d'abord une URL</translation>
+        <translation>Saisissez d&apos;abord une URL</translation>
     </message>
     <message>
         <source>Testing...</source>
@@ -6926,7 +6099,7 @@ Cliquez sur CRÉER pour créer votre premier mappage de données.</translation>
     </message>
     <message>
         <source>SUCCESS — Sample data received</source>
-        <translation>SUCCÈS — Données d'exemple reçues</translation>
+        <translation>SUCCÈS — Données d&apos;exemple reçues</translation>
     </message>
     <message>
         <source>FAILED — %1</source>
@@ -6934,7 +6107,7 @@ Cliquez sur CRÉER pour créer votre premier mappage de données.</translation>
     </message>
     <message>
         <source>No sample data — test API first (Step 1)</source>
-        <translation>Aucune donnée d'exemple — testez d'abord l'API (Étape 1)</translation>
+        <translation>Aucune donnée d&apos;exemple — testez d&apos;abord l&apos;API (Étape 1)</translation>
     </message>
     <message>
         <source>Running test...</source>
@@ -6958,11 +6131,11 @@ Cliquez sur CRÉER pour créer votre premier mappage de données.</translation>
     </message>
     <message>
         <source>Enter a mapping name first</source>
-        <translation>Saisissez d'abord un nom de mappage</translation>
+        <translation>Saisissez d&apos;abord un nom de mappage</translation>
     </message>
     <message>
         <source>Save failed — database error</source>
-        <translation>Échec de l'enregistrement — erreur de base de données</translation>
+        <translation>Échec de l&apos;enregistrement — erreur de base de données</translation>
     </message>
     <message>
         <source>RUN OK — %1 fields extracted</source>
@@ -6970,7 +6143,7 @@ Cliquez sur CRÉER pour créer votre premier mappage de données.</translation>
     </message>
     <message>
         <source>RUN FAILED — %1</source>
-        <translation>ÉCHEC DE L'EXÉCUTION — %1</translation>
+        <translation>ÉCHEC DE L&apos;EXÉCUTION — %1</translation>
     </message>
     <message>
         <source>NAME: %1
@@ -7061,11 +6234,63 @@ ANALYSEUR : %11
     </message>
     <message>
         <source>Quick management of configured connections. For full browsing, adding, testing, and import/export use the full screen.</source>
-        <translation>Gestion rapide des connexions configurées. Pour la navigation, l'ajout, les tests et l'import/export complets, utilisez l'écran complet.</translation>
+        <translation>Gestion rapide des connexions configurées. Pour la navigation, l&apos;ajout, les tests et l&apos;import/export complets, utilisez l&apos;écran complet.</translation>
+    </message>
+    <message>
+        <source>CONNECTOR ENDPOINTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FRED API KEY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. abcd1234…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free key from fredaccount.stlouisfed.org — powers the economic calendar + FRED data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>QUANTLIB SERVER URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. http://127.0.0.1:8800</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional self-hosted QuantLib REST server. Blank = pricing disabled (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MARITIME / AIS URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. http://127.0.0.1:8900</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional self-hosted AIS/maritime proxy. Blank = disabled (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AISSTREAM.IO API KEY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>free key from aisstream.io</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free key from aisstream.io — enables the live vessel feed (positions/speed/course). Blank = maritime stays empty (no network).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No data sources configured. Open the full Data Sources screen to browse and add connectors.</source>
-        <translation>Aucune source de données configurée. Ouvrez l'écran complet Sources de données pour parcourir et ajouter des connecteurs.</translation>
+        <translation>Aucune source de données configurée. Ouvrez l&apos;écran complet Sources de données pour parcourir et ajouter des connecteurs.</translation>
     </message>
     <message>
         <source>SOURCE</source>
@@ -7092,7 +6317,7 @@ ANALYSEUR : %11
         <translation>Supprimer la connexion</translation>
     </message>
     <message>
-        <source>Delete connection "%1"?
+        <source>Delete connection &quot;%1&quot;?
 
 This cannot be undone.</source>
         <translation>Supprimer la connexion « %1 » ?
@@ -7117,11 +6342,11 @@ Cette action est irréversible.</translation>
 This cannot be undone. You can re-add them from the full Data Sources screen.</source>
         <translation>Supprimer définitivement TOUTES les connexions aux sources de données ?
 
-Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet Sources de données.</translation>
+Cette action est irréversible. Vous pouvez les rajouter depuis l&apos;écran complet Sources de données.</translation>
     </message>
     <message>
         <source>For adding new connections, testing connectivity, and import/export, use the full Data Sources screen.</source>
-        <translation>Pour ajouter de nouvelles connexions, tester la connectivité et importer/exporter, utilisez l'écran complet Sources de données.</translation>
+        <translation>Pour ajouter de nouvelles connexions, tester la connectivité et importer/exporter, utilisez l&apos;écran complet Sources de données.</translation>
     </message>
 </context>
 <context>
@@ -7133,6 +6358,26 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     <message>
         <source>LTP</source>
         <translation>LTP</translation>
+    </message>
+    <message>
+        <source>CONNECTED</source>
+        <translation type="unfinished">CONNECTÉ</translation>
+    </message>
+    <message>
+        <source>OFFLINE</source>
+        <translation type="unfinished">HORS LIGNE</translation>
+    </message>
+    <message>
+        <source>Broker connected — sourcing live quotes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broker not connected — connect it in Equity Trading to get live data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>waiting for data…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>WIN RATE</source>
@@ -7153,6 +6398,10 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     <message>
         <source>MAX DD</source>
         <translation>MAX DD</translation>
+    </message>
+    <message>
+        <source>CONDITIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>STOP</source>
@@ -7211,6 +6460,26 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
         <translation>%1 déploiement(s)</translation>
     </message>
     <message>
+        <source>  ⚠ already above — can&apos;t cross up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>  ⚠ already below — can&apos;t cross down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>  · executed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>updated just now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>updated %1s ago</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Error [%1]: %2</source>
         <translation>Erreur [%1] : %2</translation>
     </message>
@@ -7251,7 +6520,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>BOND PRICE CALCULATOR</source>
-        <translation>CALCULATEUR DE PRIX D'OBLIGATION</translation>
+        <translation>CALCULATEUR DE PRIX D&apos;OBLIGATION</translation>
     </message>
     <message>
         <source>Annual</source>
@@ -7267,7 +6536,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>ISSUE DATE</source>
-        <translation>DATE D'ÉMISSION</translation>
+        <translation>DATE D&apos;ÉMISSION</translation>
     </message>
     <message>
         <source>SETTLEMENT DATE</source>
@@ -7275,7 +6544,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>MATURITY DATE</source>
-        <translation>DATE D'ÉCHÉANCE</translation>
+        <translation>DATE D&apos;ÉCHÉANCE</translation>
     </message>
     <message>
         <source>COUPON RATE (%)</source>
@@ -7291,11 +6560,11 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>CALCULATE BOND PRICE</source>
-        <translation>CALCULER LE PRIX DE L'OBLIGATION</translation>
+        <translation>CALCULER LE PRIX DE L&apos;OBLIGATION</translation>
     </message>
     <message>
         <source>YIELD TO MATURITY</source>
-        <translation>RENDEMENT À L'ÉCHÉANCE</translation>
+        <translation>RENDEMENT À L&apos;ÉCHÉANCE</translation>
     </message>
     <message>
         <source>CLEAN PRICE</source>
@@ -7315,11 +6584,11 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>STRIKE PRICE</source>
-        <translation>PRIX D'EXERCICE</translation>
+        <translation>PRIX D&apos;EXERCICE</translation>
     </message>
     <message>
         <source>TIME TO EXPIRY (years)</source>
-        <translation>TEMPS JUSQU'À L'ÉCHÉANCE (années)</translation>
+        <translation>TEMPS JUSQU&apos;À L&apos;ÉCHÉANCE (années)</translation>
     </message>
     <message>
         <source>VOLATILITY (%)</source>
@@ -7335,7 +6604,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>OPTION TYPE</source>
-        <translation>TYPE D'OPTION</translation>
+        <translation>TYPE D&apos;OPTION</translation>
     </message>
     <message>
         <source>CALCULATE PRICE &amp; GREEKS</source>
@@ -7347,7 +6616,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>MARKET OPTION PRICE</source>
-        <translation>PRIX DE MARCHÉ DE L'OPTION</translation>
+        <translation>PRIX DE MARCHÉ DE L&apos;OPTION</translation>
     </message>
     <message>
         <source>CALCULATE IMPLIED VOL</source>
@@ -7355,7 +6624,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>FX VANILLA OPTION PRICING</source>
-        <translation>ÉVALUATION D'OPTION VANILLE FX</translation>
+        <translation>ÉVALUATION D&apos;OPTION VANILLE FX</translation>
     </message>
     <message>
         <source>SPOT FX RATE</source>
@@ -7363,7 +6632,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>STRIKE FX RATE</source>
-        <translation>TAUX DE CHANGE D'EXERCICE</translation>
+        <translation>TAUX DE CHANGE D&apos;EXERCICE</translation>
     </message>
     <message>
         <source>DOMESTIC RATE (%)</source>
@@ -7379,7 +6648,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>CALCULATE FX OPTION PRICE</source>
-        <translation>CALCULER LE PRIX DE L'OPTION FX</translation>
+        <translation>CALCULER LE PRIX DE L&apos;OPTION FX</translation>
     </message>
     <message>
         <source>INTEREST RATE SWAP PRICING</source>
@@ -7387,7 +6656,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>EFFECTIVE DATE</source>
-        <translation>DATE D'EFFET</translation>
+        <translation>DATE D&apos;EFFET</translation>
     </message>
     <message>
         <source>FIXED RATE (%)</source>
@@ -7399,7 +6668,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>DISCOUNT RATE (%)</source>
-        <translation>TAUX D'ACTUALISATION (%)</translation>
+        <translation>TAUX D&apos;ACTUALISATION (%)</translation>
     </message>
     <message>
         <source>NOTIONAL AMOUNT</source>
@@ -7447,7 +6716,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>Pricing failed</source>
-        <translation>Échec de l'évaluation</translation>
+        <translation>Échec de l&apos;évaluation</translation>
     </message>
     <message>
         <source>ERROR</source>
@@ -7471,7 +6740,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>OPTION PRICE</source>
-        <translation>PRIX DE L'OPTION</translation>
+        <translation>PRIX DE L&apos;OPTION</translation>
     </message>
     <message>
         <source>DELTA</source>
@@ -7527,7 +6796,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>BREAKEVEN SPREAD</source>
-        <translation>SPREAD D'ÉQUILIBRE</translation>
+        <translation>SPREAD D&apos;ÉQUILIBRE</translation>
     </message>
     <message>
         <source>HAZARD RATE</source>
@@ -7553,12 +6822,67 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
         <translation>Inspecteur DataHub</translation>
     </message>
     <message>
-        <source>Enable durable, long-running autonomous tasks. When on, AGENT STUDIO shows an extra AGENTIC tab listing in-flight tasks (plan, step log, pause/resume/cancel) and the chat panel offers a "Run as background task" checkbox. All state is checkpointed to SQLite so tasks survive process restarts. Leave off for standard chatbot behavior.</source>
-        <translation>Active les tâches autonomes durables et de longue durée. Lorsqu'il est activé, AGENT STUDIO affiche un onglet AGENTIC supplémentaire répertoriant les tâches en cours (plan, journal des étapes, pause/reprise/annulation) et le panneau de chat propose une case « Exécuter en tâche de fond ». Tout l'état est sauvegardé par point de contrôle dans SQLite, de sorte que les tâches survivent aux redémarrages du processus. Laissez désactivé pour un comportement de chatbot standard.</translation>
+        <source>Enable durable, long-running autonomous tasks. When on, AGENT STUDIO shows an extra AGENTIC tab listing in-flight tasks (plan, step log, pause/resume/cancel) and the chat panel offers a &quot;Run as background task&quot; checkbox. All state is checkpointed to SQLite so tasks survive process restarts. Leave off for standard chatbot behavior.</source>
+        <translation>Active les tâches autonomes durables et de longue durée. Lorsqu&apos;il est activé, AGENT STUDIO affiche un onglet AGENTIC supplémentaire répertoriant les tâches en cours (plan, journal des étapes, pause/reprise/annulation) et le panneau de chat propose une case « Exécuter en tâche de fond ». Tout l&apos;état est sauvegardé par point de contrôle dans SQLite, de sorte que les tâches survivent aux redémarrages du processus. Laissez désactivé pour un comportement de chatbot standard.</translation>
     </message>
     <message>
         <source>Live view over the in-process pub/sub layer. Shows every active topic, its subscriber count, total publishes, and time since last publish. Refreshes once per second while this tab is visible.</source>
-        <translation>Vue en direct de la couche pub/sub intra-processus. Affiche chaque sujet actif, son nombre d'abonnés, le total des publications et le temps écoulé depuis la dernière publication. Actualisée une fois par seconde tant que cet onglet est visible.</translation>
+        <translation>Vue en direct de la couche pub/sub intra-processus. Affiche chaque sujet actif, son nombre d&apos;abonnés, le total des publications et le temps écoulé depuis la dernière publication. Actualisée une fois par seconde tant que cet onglet est visible.</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::DineroScreen</name>
+    <message>
+        <source>DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Post-quantum money for free people — a no-premine, open-source PoW chain. Read-only overview; OpenMarket Terminal does not buy, sell, or trade DIN.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Height</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Circulating Supply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Reward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero is the maker of OpenMarket Terminal&apos;s own blockchain project: a post-quantum-native chain (ML-DSA signatures from genesis), proof-of-work with tail emission, no premine and no token sale. You participate by running a node or mining — not by buying. The data below is public chain information from the project&apos;s own explorer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Explorer  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloads &amp; Releases  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Project Site  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Embedded explorer needs Qt WebEngine.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Explorer in Browser  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -7600,6 +6924,14 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
         <translation>Raccourcis clavier</translation>
     </message>
     <message>
+        <source>DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About Dinero</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>CORE SCREENS</source>
         <translation>ÉCRANS PRINCIPAUX</translation>
     </message>
@@ -7628,6 +6960,10 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
         <translation>Trading Crypto</translation>
     </message>
     <message>
+        <source>Equity Trading</source>
+        <translation type="unfinished">Trading d&apos;Actions</translation>
+    </message>
+    <message>
         <source>Paper Trading</source>
         <translation>Paper Trading</translation>
     </message>
@@ -7645,7 +6981,7 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
     </message>
     <message>
         <source>Equity Research</source>
-        <translation>Recherche d'Actions</translation>
+        <translation>Recherche d&apos;Actions</translation>
     </message>
     <message>
         <source>Surface Analytics</source>
@@ -7784,56 +7120,16 @@ Cette action est irréversible. Vous pouvez les rajouter depuis l'écran complet
         <translation>OPENMARKETTERMINAL  —  DOCUMENTATION</translation>
     </message>
     <message>
-        <source>v4.0.0  |  Native C++ Financial Intelligence Terminal</source>
-        <translation>v4.0.0  |  Terminal d'intelligence financière C++ natif</translation>
-    </message>
-    <message>
         <source>WHAT IS OPENMARKETTERMINAL?</source>
-        <translation>QU'EST-CE QUE OPENMARKETTERMINAL ?</translation>
-    </message>
-    <message>
-        <source>Open Terminal is a professional-grade desktop financial intelligence platform built in native C++ with Qt6. It provides institutional-quality market data, trading capabilities, quantitative research tools, and AI-powered analytics — all in a single unified terminal interface.
-
-With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, and support for 15+ broker integrations, Open Terminal bridges the gap between retail and institutional tooling.</source>
-        <translation>Open Terminal est une plateforme d'intelligence financière de bureau de qualité professionnelle, développée en C++ natif avec Qt6. Elle fournit des données de marché de qualité institutionnelle, des capacités de trading, des outils de recherche quantitative et des analyses pilotées par l'IA — le tout dans une interface de terminal unifiée.
-
-Avec plus de 45 écrans intégrés, des flux WebSocket en temps réel, des analyses Python intégrées et la prise en charge de plus de 15 intégrations de courtiers, Open Terminal comble le fossé entre les outils de détail et institutionnels.</translation>
+        <translation>QU&apos;EST-CE QUE OPENMARKETTERMINAL ?</translation>
     </message>
     <message>
         <source>KEY CAPABILITIES</source>
         <translation>FONCTIONNALITÉS CLÉS</translation>
     </message>
     <message>
-        <source>■  Real-time market data across equities, crypto, forex, commodities
-■  Multi-exchange crypto trading (Kraken, HyperLiquid, Binance, etc.)
-■  Paper trading engine with simulated order matching
-■  100+ Python analytics scripts (equity, portfolio, derivatives)
-■  18-module QuantLib quantitative analysis suite (590+ endpoints)
-■  AI Quant Lab with ML models, factor discovery, HFT, RL trading
-■  Multiple AI agent frameworks (Geopolitics, Economic, Hedge Fund)
-■  Visual node editor for workflow automation
-■  DBnomics access to 100+ data providers, 500K+ datasets
-■  Surface analytics for derivatives, fixed income, credit, risk
-■  Report builder with drag-and-drop components
-■  Backtesting with 6 providers and 50+ strategies
-■  Algorithmic trading with strategy builder and scanner</source>
-        <translation>■  Données de marché en temps réel sur actions, crypto, forex, matières premières
-■  Trading crypto multi-plateformes (Kraken, HyperLiquid, Binance, etc.)
-■  Moteur de paper trading avec appariement d'ordres simulé
-■  Plus de 100 scripts d'analyse Python (actions, portefeuille, dérivés)
-■  Suite d'analyse quantitative QuantLib à 18 modules (590+ points de terminaison)
-■  AI Quant Lab avec modèles ML, découverte de facteurs, HFT, trading RL
-■  Plusieurs frameworks d'agents IA (Géopolitique, Économique, Hedge Fund)
-■  Éditeur de nœuds visuel pour l'automatisation des workflows
-■  Accès DBnomics à plus de 100 fournisseurs de données, 500 K+ jeux de données
-■  Analyse de surface pour dérivés, revenu fixe, crédit, risque
-■  Générateur de rapports avec composants glisser-déposer
-■  Backtesting avec 6 fournisseurs et plus de 50 stratégies
-■  Trading algorithmique avec générateur de stratégies et scanner</translation>
-    </message>
-    <message>
         <source>WHO IS THIS FOR?</source>
-        <translation>À QUI S'ADRESSE-T-IL ?</translation>
+        <translation>À QUI S&apos;ADRESSE-T-IL ?</translation>
     </message>
     <message>
         <source>■  Retail traders seeking institutional-quality tools
@@ -7846,7 +7142,7 @@ Avec plus de 45 écrans intégrés, des flux WebSocket en temps réel, des analy
         <translation>■  Traders particuliers recherchant des outils de qualité institutionnelle
 ■  Chercheurs quantitatifs et data scientists
 ■  Gestionnaires de portefeuille et analystes financiers
-■  Étudiants en finance apprenant les marchés et l'analyse
+■  Étudiants en finance apprenant les marchés et l&apos;analyse
 ■  Développeurs de trading algorithmique
 ■  Traders crypto nécessitant un accès multi-plateformes
 ■  Chercheurs en économie travaillant avec des jeux de données mondiaux</translation>
@@ -7870,32 +7166,12 @@ Avec plus de 45 écrans intégrés, des flux WebSocket en temps réel, des analy
 ■  Niveaux de compétence — conseils du Débutant au Pro</translation>
     </message>
     <message>
-        <source>Your first steps with Open Terminal</source>
-        <translation>Vos premiers pas avec Open Terminal</translation>
-    </message>
-    <message>
         <source>LAUNCH &amp; LOGIN</source>
         <translation>LANCEMENT &amp; CONNEXION</translation>
     </message>
     <message>
-        <source>When you first launch Open Terminal, you'll see the login screen. You can either:
-
-■  Register a new account with email and password
-■  Continue as Guest (limited features)
-■  Log in with existing credentials
-
-After login, you'll land on the Dashboard — your home base.</source>
-        <translation>Au premier lancement de Open Terminal, vous verrez l'écran de connexion. Vous pouvez :
-
-■  Créer un nouveau compte avec e-mail et mot de passe
-■  Continuer en tant qu'invité (fonctionnalités limitées)
-■  Vous connecter avec des identifiants existants
-
-Après la connexion, vous arriverez sur le Tableau de bord — votre base.</translation>
-    </message>
-    <message>
         <source>THE INTERFACE</source>
-        <translation>L'INTERFACE</translation>
+        <translation>L&apos;INTERFACE</translation>
     </message>
     <message>
         <source>The terminal has four main zones:
@@ -7908,12 +7184,12 @@ STATUS BAR (bottom) — Version, market indicators, connection status
 Use the Navigate menu (in toolbar) to access 30+ additional screens organized by category: Markets &amp; Data, Trading, Research, Tools, etc.</source>
         <translation>Le terminal comporte quatre zones principales :
 
-BARRE D'OUTILS (haut) — menus Fichier, Naviguer, Affichage, Aide + infos de session
-BARRE D'ONGLETS — 14 onglets principaux : Tableau de bord, Marchés, Crypto, Portefeuille, etc.
-ZONE DE CONTENU — L'écran actif remplit cette zone
-BARRE D'ÉTAT (bas) — Version, indicateurs de marché, état de connexion
+BARRE D&apos;OUTILS (haut) — menus Fichier, Naviguer, Affichage, Aide + infos de session
+BARRE D&apos;ONGLETS — 14 onglets principaux : Tableau de bord, Marchés, Crypto, Portefeuille, etc.
+ZONE DE CONTENU — L&apos;écran actif remplit cette zone
+BARRE D&apos;ÉTAT (bas) — Version, indicateurs de marché, état de connexion
 
-Utilisez le menu Naviguer (dans la barre d'outils) pour accéder à plus de 30 écrans supplémentaires organisés par catégorie : Marchés &amp; Données, Trading, Recherche, Outils, etc.</translation>
+Utilisez le menu Naviguer (dans la barre d&apos;outils) pour accéder à plus de 30 écrans supplémentaires organisés par catégorie : Marchés &amp; Données, Trading, Recherche, Outils, etc.</translation>
     </message>
     <message>
         <source>KEYBOARD SHORTCUTS</source>
@@ -7925,29 +7201,9 @@ F10  — Focus mode (hide tab/status bars for maximum screen space)
 F5   — Refresh current screen
 Ctrl+P — Take screenshot (saved to home directory)</source>
         <translation>F11  — Basculer en plein écran
-F10  — Mode focus (masque les barres d'onglets/d'état pour un espace maximal)
-F5   — Actualiser l'écran actuel
-Ctrl+P — Capture d'écran (enregistrée dans le répertoire personnel)</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION PLANS</source>
-        <translation>FORMULES D'ABONNEMENT</translation>
-    </message>
-    <message>
-        <source>Open Terminal offers tiered access:
-
-■  FREE — Basic market data, limited screens, paper trading
-■  PRO — Full market data, all screens, real trading, AI chat
-■  ENTERPRISE — Everything + API access, priority support
-
-Manage your plan from Settings or the Pricing screen.</source>
-        <translation>Open Terminal propose un accès par paliers :
-
-■  GRATUIT — Données de marché de base, écrans limités, paper trading
-■  PRO — Données de marché complètes, tous les écrans, trading réel, chat IA
-■  ENTERPRISE — Tout + accès API, support prioritaire
-
-Gérez votre formule depuis les Paramètres ou l'écran Tarifs.</translation>
+F10  — Mode focus (masque les barres d&apos;onglets/d&apos;état pour un espace maximal)
+F5   — Actualiser l&apos;écran actuel
+Ctrl+P — Capture d&apos;écran (enregistrée dans le répertoire personnel)</translation>
     </message>
     <message>
         <source>Explore the Dashboard, set up a watchlist, browse market data</source>
@@ -7963,7 +7219,7 @@ Gérez votre formule depuis les Paramètres ou l'écran Tarifs.</translation>
     </message>
     <message>
         <source>Multi-agent AI systems, custom MCP servers, HFT backtesting, node editor automation</source>
-        <translation>Systèmes d'IA multi-agents, serveurs MCP personnalisés, backtesting HFT, automatisation de l'éditeur de nœuds</translation>
+        <translation>Systèmes d&apos;IA multi-agents, serveurs MCP personnalisés, backtesting HFT, automatisation de l&apos;éditeur de nœuds</translation>
     </message>
     <message>
         <source>Global shortcuts and navigation keys</source>
@@ -7974,14 +7230,51 @@ Gérez votre formule depuis les Paramètres ou l'écran Tarifs.</translation>
         <translation>RACCOURCIS GLOBAUX</translation>
     </message>
     <message>
+        <source>v0.1.0  |  Native C++ Financial Intelligence Terminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal is a professional-grade desktop financial intelligence platform built in native C++ with Qt6. It provides institutional-quality market data, trading capabilities, quantitative research tools, and AI-powered analytics — all in a single unified terminal interface.
+
+With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, and US equity broker support (Alpaca, IBKR, Tradier) plus 14 crypto exchanges, Open Terminal bridges the gap between retail and institutional tooling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Real-time market data across equities, crypto, forex, commodities
+■  Multi-exchange crypto trading (Kraken, HyperLiquid, Binance, etc.)
+■  Paper trading engine with simulated order matching
+■  100+ Python analytics scripts (equity, portfolio, derivatives)
+■  18-module QuantLib client (requires an external QuantLib server)
+■  AI Quant Lab with ML models, factor discovery, HFT, RL trading
+■  Multiple AI agent frameworks (Geopolitics, Economic, Hedge Fund)
+■  Visual node editor for workflow automation
+■  DBnomics access to 100+ data providers, 500K+ datasets
+■  Surface analytics for derivatives, fixed income, credit, risk
+■  Report builder with drag-and-drop components
+■  Backtesting with 6 providers and 50+ strategies
+■  Algorithmic trading with strategy builder and scanner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your first steps with OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When you first launch OpenMarketTerminal, you&apos;ll see the login screen. You can either:
+
+■  Register a new account with email and password
+■  Continue as Guest (limited features)
+■  Log in with existing credentials
+
+After login, you&apos;ll land on the Dashboard — your home base.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>F11  — Toggle fullscreen mode
 F10  — Toggle focus mode (hides tab bar and status bar)
 F5   — Refresh the current screen data
-Ctrl+P — Capture screenshot (saved to ~/Open TerminalScreenshot_*.png)</source>
-        <translation>F11  — Basculer le mode plein écran
-F10  — Basculer le mode focus (masque la barre d'onglets et la barre d'état)
-F5   — Actualiser les données de l'écran actuel
-Ctrl+P — Capturer l'écran (enregistré dans ~/Open TerminalScreenshot_*.png)</translation>
+Ctrl+P — Capture screenshot (saved to ~/OpenMarketTerminalScreenshot_*.png)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>FILE MENU</source>
@@ -7994,9 +7287,9 @@ Save Workspace — Persist current layout
 Import Data — Import external data files
 Export Data — Export current view data
 Refresh All — Refresh all active data feeds</source>
-        <translation>Nouvel espace de travail — Créer une nouvelle disposition d'espace de travail
+        <translation>Nouvel espace de travail — Créer une nouvelle disposition d&apos;espace de travail
 Ouvrir un espace de travail — Charger un espace de travail enregistré
-Enregistrer l'espace de travail — Conserver la disposition actuelle
+Enregistrer l&apos;espace de travail — Conserver la disposition actuelle
 Importer des données — Importer des fichiers de données externes
 Exporter des données — Exporter les données de la vue actuelle
 Tout actualiser — Actualiser tous les flux de données actifs</translation>
@@ -8026,10 +7319,10 @@ Tout actualiser — Actualiser tous les flux de données actifs</translation>
 Focus Mode (F10) — Hide chrome for maximum content area
 Refresh (F5) — Reload current screen
 Screenshot (Ctrl+P) — Capture to file</source>
-        <translation>Plein écran (F11) — Utiliser tout l'espace du moniteur
-Mode focus (F10) — Masquer l'interface pour une zone de contenu maximale
-Actualiser (F5) — Recharger l'écran actuel
-Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
+        <translation>Plein écran (F11) — Utiliser tout l&apos;espace du moniteur
+Mode focus (F10) — Masquer l&apos;interface pour une zone de contenu maximale
+Actualiser (F5) — Recharger l&apos;écran actuel
+Capture d&apos;écran (Ctrl+P) — Capturer dans un fichier</translation>
     </message>
     <message>
         <source>DASHBOARD</source>
@@ -8045,7 +7338,7 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
     </message>
     <message>
         <source>The Dashboard is your primary workspace. It features a draggable widget grid where you can arrange market widgets, a scrolling ticker bar showing live prices, a market pulse panel with sector performance, and a status bar showing connection state.</source>
-        <translation>Le Tableau de bord est votre espace de travail principal. Il propose une grille de widgets déplaçable pour organiser les widgets de marché, une barre de ticker défilante affichant les prix en direct, un panneau de pouls du marché avec la performance sectorielle et une barre d'état affichant l'état de la connexion.</translation>
+        <translation>Le Tableau de bord est votre espace de travail principal. Il propose une grille de widgets déplaçable pour organiser les widgets de marché, une barre de ticker défilante affichant les prix en direct, un panneau de pouls du marché avec la performance sectorielle et une barre d&apos;état affichant l&apos;état de la connexion.</translation>
     </message>
     <message>
         <source>AVAILABLE WIDGETS</source>
@@ -8069,7 +7362,7 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
 ■  Crypto — Top cryptocurrency prices
 ■  Commodities — Gold, oil, silver, natural gas
 ■  Portfolio Summary — Holdings overview with allocation</source>
-        <translation>■  Cotation d'action — Prix, variation, volume en temps réel pour tout symbole
+        <translation>■  Cotation d&apos;action — Prix, variation, volume en temps réel pour tout symbole
 ■  Watchlist — Vos symboles suivis avec mises à jour en direct
 ■  Top Movers — Plus fortes hausses et baisses de la séance
 ■  Sentiment de marché — Indicateurs haussiers/baissiers et indice peur/avidité
@@ -8078,9 +7371,9 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
 ■  Heatmap sectorielle — Carte visuelle de la performance sectorielle
 ■  Performance — Suivi du rendement du portefeuille
 ■  Indicateurs de risque — Indicateurs VaR, Sharpe, bêta, drawdown
-■  Screener — Screener d'actions rapide avec filtres
+■  Screener — Screener d&apos;actions rapide avec filtres
 ■  Tableau de cotation — Tableau de comparaison multi-symboles
-■  Quick Trade — Saisie d'ordre en un clic
+■  Quick Trade — Saisie d&apos;ordre en un clic
 ■  Indices — Suivi des principaux indices (S&amp;P 500, NASDAQ, DOW)
 ■  Forex — Taux des paires de devises
 ■  Crypto — Prix des principales cryptomonnaies
@@ -8103,7 +7396,7 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
     </message>
     <message>
         <source>Start with default layout. Add a Stock Quote widget for a symbol you follow. Watch the ticker bar.</source>
-        <translation>Commencez avec la disposition par défaut. Ajoutez un widget Cotation d'action pour un symbole que vous suivez. Observez la barre de ticker.</translation>
+        <translation>Commencez avec la disposition par défaut. Ajoutez un widget Cotation d&apos;action pour un symbole que vous suivez. Observez la barre de ticker.</translation>
     </message>
     <message>
         <source>Customize your grid layout. Add multiple watchlists for different sectors. Use the market pulse panel.</source>
@@ -8127,7 +7420,7 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
     </message>
     <message>
         <source>The Markets screen provides a comprehensive view of global markets organized by region. It displays indices, equities, forex, commodities, and crypto in panel-based layouts with configurable auto-refresh (default: 10 minutes).</source>
-        <translation>L'écran Marchés offre une vue d'ensemble complète des marchés mondiaux organisés par région. Il affiche les indices, les actions, le forex, les matières premières et la crypto dans des dispositions par panneaux avec actualisation automatique configurable (par défaut : 10 minutes).</translation>
+        <translation>L&apos;écran Marchés offre une vue d&apos;ensemble complète des marchés mondiaux organisés par région. Il affiche les indices, les actions, le forex, les matières premières et la crypto dans des dispositions par panneaux avec actualisation automatique configurable (par défaut : 10 minutes).</translation>
     </message>
     <message>
         <source>KEY FEATURES</source>
@@ -8143,7 +7436,7 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
         <translation>■  Panneaux régionaux — États-Unis, Europe, Asie, Monde
 ■  Actualisation automatique avec intervalle configurable
 ■  Prix, variation, % de variation avec code couleur (vert/rouge)
-■  Indicateurs d'heures de marché et de statut de séance
+■  Indicateurs d&apos;heures de marché et de statut de séance
 ■  Trier par nom, prix, variation ou volume
 ■  Cliquez sur un instrument pour accéder à la vue détaillée</translation>
     </message>
@@ -8183,7 +7476,7 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
     </message>
     <message>
         <source>The News screen aggregates financial news from multiple sources with intelligent clustering, sentiment analysis, and customizable keyword monitors that alert you to significant deviations from baseline coverage patterns.</source>
-        <translation>L'écran Actualités agrège les actualités financières de plusieurs sources avec un regroupement intelligent, une analyse de sentiment et des moniteurs de mots-clés personnalisables qui vous alertent des écarts significatifs par rapport aux schémas de couverture de référence.</translation>
+        <translation>L&apos;écran Actualités agrège les actualités financières de plusieurs sources avec un regroupement intelligent, une analyse de sentiment et des moniteurs de mots-clés personnalisables qui vous alertent des écarts significatifs par rapport aux schémas de couverture de référence.</translation>
     </message>
     <message>
         <source>■  Category filtering — All, Markets, Economy, Tech, Crypto, Geopolitics
@@ -8197,11 +7490,11 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
         <translation>■  Filtrage par catégorie — Tout, Marchés, Économie, Tech, Crypto, Géopolitique
 ■  Sélection de plage temporelle — 1H, 4H, 24H, 7D, 30D
 ■  Trier par actualité, pertinence ou score de sentiment
-■  Regroupement d'actualités — articles connexes regroupés
+■  Regroupement d&apos;actualités — articles connexes regroupés
 ■  Analyse de sentiment — étiquetage haussier/baissier/neutre
 ■  Moniteurs de mots-clés — définir des alertes pour des sujets spécifiques
-■  Détection d'écarts — signale les schémas de couverture inhabituels
-■  Lecteur d'article complet avec mise en forme épurée</translation>
+■  Détection d&apos;écarts — signale les schémas de couverture inhabituels
+■  Lecteur d&apos;article complet avec mise en forme épurée</translation>
     </message>
     <message>
         <source>■  Event-driven trading: Monitor breaking news for tradable events
@@ -8209,8 +7502,8 @@ Capture d'écran (Ctrl+P) — Capturer dans un fichier</translation>
 ■  Due diligence: Research a company before investing
 ■  Macro awareness: Track central bank news, policy changes</source>
         <translation>■  Trading événementiel : Surveiller les actualités de dernière minute pour des événements négociables
-■  Suivi du sentiment : Évaluer l'humeur du marché avant de prendre des positions
-■  Diligence raisonnable : Rechercher une entreprise avant d'investir
+■  Suivi du sentiment : Évaluer l&apos;humeur du marché avant de prendre des positions
+■  Diligence raisonnable : Rechercher une entreprise avant d&apos;investir
 ■  Conscience macro : Suivre les actualités des banques centrales, les changements de politique</translation>
     </message>
     <message>
@@ -8220,8 +7513,8 @@ ADVANCED: Use deviation alerts to catch unusual news patterns early
 PRO: Combine news sentiment with quantitative signals for alpha generation</source>
         <translation>DÉBUTANT : Parcourir les titres, filtrer par catégorie, lire les articles
 INTERMÉDIAIRE : Configurer des moniteurs de mots-clés pour vos positions, utiliser des filtres de sentiment
-AVANCÉ : Utiliser les alertes d'écart pour détecter tôt les schémas d'actualités inhabituels
-PRO : Combiner le sentiment des actualités avec des signaux quantitatifs pour générer de l'alpha</translation>
+AVANCÉ : Utiliser les alertes d&apos;écart pour détecter tôt les schémas d&apos;actualités inhabituels
+PRO : Combiner le sentiment des actualités avec des signaux quantitatifs pour générer de l&apos;alpha</translation>
     </message>
     <message>
         <source>WATCHLIST</source>
@@ -8233,7 +7526,7 @@ PRO : Combiner le sentiment des actualités avec des signaux quantitatifs pour g
     </message>
     <message>
         <source>The Watchlist screen lets you create and manage multiple watchlists, each with live price quotes, change indicators, and quick access to detailed analysis.</source>
-        <translation>L'écran Liste de Suivi vous permet de créer et de gérer plusieurs listes de suivi, chacune avec des cotations de prix en direct, des indicateurs de variation et un accès rapide à une analyse détaillée.</translation>
+        <translation>L&apos;écran Liste de Suivi vous permet de créer et de gérer plusieurs listes de suivi, chacune avec des cotations de prix en direct, des indicateurs de variation et un accès rapide à une analyse détaillée.</translation>
     </message>
     <message>
         <source>■  Multiple named watchlists (Favorites, Day Trades, Swing, etc.)
@@ -8246,7 +7539,7 @@ PRO : Combiner le sentiment des actualités avec des signaux quantitatifs pour g
 ■  Prix en direct, variation, % de variation, volume
 ■  Ajouter/supprimer des symboles facilement
 ■  Performance avec code couleur (vert/rouge)
-■  Cliquer pour accéder au graphique/à l'analyse détaillée
+■  Cliquer pour accéder au graphique/à l&apos;analyse détaillée
 ■  Stockage persistant — listes enregistrées entre les sessions</translation>
     </message>
     <message>
@@ -8270,6 +7563,55 @@ AVANCÉ : Utilisez les listes comme univers pré-filtré pour votre scan
 PRO : Listes dynamiques pilotées par la sortie du screener et des filtres quantitatifs</translation>
     </message>
     <message>
+        <source>Post-quantum money for free people — the open blockchain built by OpenMarket Terminal&apos;s maker (read-only, no trading)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WHAT IS DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero is an independent, open-source proof-of-work blockchain built by the team behind OpenMarket Terminal. It is post-quantum-native — ML-DSA signatures are active from the genesis block — with ~120-second blocks, tail emission, no premine, no token sale, and no ICO. The smallest unit is one &quot;una&quot; (1 DIN = 100,000,000 una).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HONEST DISCLOSURE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarket Terminal&apos;s maker also builds Dinero, so you should know exactly what these features are. The Dinero widget and Dinero screen are purely informational. OpenMarket Terminal does NOT buy, sell, trade, or take any fee on DIN, and never asks you to. There is no &quot;buy&quot; button anywhere. You can use OpenMarket Terminal fully and ignore Dinero entirely — nothing depends on it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HOW TO PARTICIPATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  You participate by running a node or mining — not by buying.
+■  Download the wallet and node software from dinerolabs.org.
+■  Browse the live chain at explorer.realmoneyforfreepeople.org.
+■  Anyone can run a node; there is no gatekeeper and no cost beyond your own hardware.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WHY POST-QUANTUM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Most blockchains sign transactions with elliptic-curve keys that a large quantum computer could one day break, exposing funds. Dinero ships ML-DSA (a NIST post-quantum signature standard) and P2MR outputs from block zero, so the chain is built to resist that threat from the start rather than retrofitting it later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IN OPENMARKET TERMINAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Dinero Network widget — add it on the Dashboard; it embeds the block explorer (top) and the dinerolabs.org download site (bottom).
+■  Dinero screen — open the command bar and type &quot;dinero&quot; for the network overview, project background, links, and the embedded explorer.
+■  Everything is read-only and degrades gracefully — if the network can&apos;t be reached, the rest of the app is unaffected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>CRYPTO TRADING</source>
         <translation>TRADING CRYPTO</translation>
     </message>
@@ -8279,7 +7621,7 @@ PRO : Listes dynamiques pilotées par la sortie du screener et des filtres quant
     </message>
     <message>
         <source>A full-featured crypto trading terminal supporting 10+ exchanges with real-time WebSocket feeds. Features OHLC charts, order book depth, order entry with market/limit/stop orders, watchlist, and a paper trading engine for risk-free practice.</source>
-        <translation>Un terminal de trading crypto complet prenant en charge plus de 10 exchanges avec des flux WebSocket en temps réel. Comprend des graphiques OHLC, la profondeur du carnet d'ordres, la saisie d'ordres market/limit/stop, une liste de suivi et un moteur de paper trading pour s'entraîner sans risque.</translation>
+        <translation>Un terminal de trading crypto complet prenant en charge plus de 10 exchanges avec des flux WebSocket en temps réel. Comprend des graphiques OHLC, la profondeur du carnet d&apos;ordres, la saisie d&apos;ordres market/limit/stop, une liste de suivi et un moteur de paper trading pour s&apos;entraîner sans risque.</translation>
     </message>
     <message>
         <source>SUPPORTED EXCHANGES</source>
@@ -8293,7 +7635,7 @@ Each exchange supports: spot trading, real-time orderbook, OHLC candles, ticker 
         <translation>Kraken  |  Binance  |  Bybit  |  OKX  |  Coinbase  |  Bitget
 Gate  |  KuCoin  |  MEXC  |  HTX
 
-Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, bougies OHLC, données de ticker et historique des transactions via WebSocket.</translation>
+Chaque exchange prend en charge : trading spot, carnet d&apos;ordres en temps réel, bougies OHLC, données de ticker et historique des transactions via WebSocket.</translation>
     </message>
     <message>
         <source>PANELS</source>
@@ -8307,12 +7649,12 @@ Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, 
 ■  Order Entry — Market, Limit, Stop-Limit with SL/TP
 ■  Order Book — Live bid/ask depth visualization
 ■  Bottom Panel — Open orders, order history, positions, balances</source>
-        <translation>■  Barre de commande — Sélecteur d'exchange, saisie de symbole, bascule paper/live, configuration API
+        <translation>■  Barre de commande — Sélecteur d&apos;exchange, saisie de symbole, bascule paper/live, configuration API
 ■  Barre de ticker — Prix en temps réel, variation 24h, haut/bas, volume
 ■  Liste de suivi — Plus de 8 paires par défaut avec prix en direct
 ■  Graphique OHLC — Graphique en chandeliers avec plusieurs unités de temps
-■  Saisie d'ordres — Market, Limit, Stop-Limit avec SL/TP
-■  Carnet d'ordres — Visualisation de la profondeur bid/ask en direct
+■  Saisie d&apos;ordres — Market, Limit, Stop-Limit avec SL/TP
+■  Carnet d&apos;ordres — Visualisation de la profondeur bid/ask en direct
 ■  Panneau inférieur — Ordres ouverts, historique des ordres, positions, soldes</translation>
     </message>
     <message>
@@ -8327,15 +7669,15 @@ Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, 
 ■  Order history persistence
 ■  Switch between Paper and Live mode with one click</source>
         <translation>Moteur de paper trading intégré avec :
-■  Appariement d'ordres simulé avec des exécutions réalistes
+■  Appariement d&apos;ordres simulé avec des exécutions réalistes
 ■  Suivi de portefeuille virtuel (par défaut 100 000 USDT)
 ■  Suivi du P&amp;L par position
-■  Persistance de l'historique des ordres
+■  Persistance de l&apos;historique des ordres
 ■  Basculer entre les modes Paper et Live en un clic</translation>
     </message>
     <message>
         <source>Start in Paper mode. Pick BTC/USDT, place a small market buy, watch it fill. Learn the order book.</source>
-        <translation>Commencez en mode Paper. Choisissez BTC/USDT, passez un petit achat au marché, observez son exécution. Apprenez le carnet d'ordres.</translation>
+        <translation>Commencez en mode Paper. Choisissez BTC/USDT, passez un petit achat au marché, observez son exécution. Apprenez le carnet d&apos;ordres.</translation>
     </message>
     <message>
         <source>Try limit orders at support levels. Use stop-loss. Track P&amp;L across multiple positions.</source>
@@ -8347,7 +7689,56 @@ Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, 
     </message>
     <message>
         <source>Run simultaneous positions across exchanges. Use order flow data for scalping. Combine with algo strategies.</source>
-        <translation>Exécutez des positions simultanées sur plusieurs exchanges. Utilisez les données de flux d'ordres pour le scalping. Combinez avec des stratégies algo.</translation>
+        <translation>Exécutez des positions simultanées sur plusieurs exchanges. Utilisez les données de flux d&apos;ordres pour le scalping. Combinez avec des stratégies algo.</translation>
+    </message>
+    <message>
+        <source>EQUITY TRADING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>US equities via Alpaca, IBKR, and Tradier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Equity Trading screen provides order entry, positions, orders, and balances for connected US equity broker accounts. Use the ACCOUNTS panel to add Alpaca, Interactive Brokers (IBKR), or Tradier credentials.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SUPPORTED BROKERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Alpaca — API key + secret; native paper and live (PK* / AK* keys)
+■  IBKR — Client Portal Gateway on localhost:5000 + account ID
+■  Tradier — access token from developer.tradier.com (live or sandbox)
+
+Built-in paper trading (no broker) uses the yfinance market feed for simulated US equity portfolios.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HOW TO CONNECT A BROKER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How do I connect a broker?
+
+Open Equity Trading → ACCOUNTS → Manage Broker Accounts. Click + ADD, pick Alpaca, IBKR, or Tradier, name the account, and enter the credentials shown for that broker. Click CONNECT to validate.
+
+Paper trading and crypto exchanges do not require an equity broker.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Paper trade first, then connect Alpaca paper keys to validate the flow
+■  Route live US orders through your preferred supported broker
+■  Track brokerage positions alongside portfolio and dashboard widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BEGINNER: Connect Alpaca paper keys and place a small market order
+INTERMEDIATE: Use limit orders, stop-loss, and multi-account switching
+ADVANCED: Combine with algo trading and portfolio replication
+PRO: Multi-monitor equity + crypto workflows with unified command bar</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Risk-free simulated trading engine</source>
@@ -8355,7 +7746,7 @@ Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, 
     </message>
     <message>
         <source>The paper trading engine simulates real market execution with a virtual portfolio. Available in Crypto Trading screen via the Paper/Live toggle. Your paper portfolio starts with $100,000 USDT and supports all order types.</source>
-        <translation>Le moteur de paper trading simule l'exécution réelle du marché avec un portefeuille virtuel. Disponible dans l'écran Trading Crypto via la bascule Paper/Live. Votre portefeuille paper démarre avec 100 000 USDT et prend en charge tous les types d'ordres.</translation>
+        <translation>Le moteur de paper trading simule l&apos;exécution réelle du marché avec un portefeuille virtuel. Disponible dans l&apos;écran Trading Crypto via la bascule Paper/Live. Votre portefeuille paper démarre avec 100 000 USDT et prend en charge tous les types d&apos;ordres.</translation>
     </message>
     <message>
         <source>■  Realistic order matching with market simulation
@@ -8365,8 +7756,8 @@ Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, 
 ■  Full order history with timestamps
 ■  Portfolio balance and equity tracking
 ■  Persistent state — resumes between sessions</source>
-        <translation>■  Appariement d'ordres réaliste avec simulation de marché
-■  Types d'ordres Market, Limit et Stop-Limit
+        <translation>■  Appariement d&apos;ordres réaliste avec simulation de marché
+■  Types d&apos;ordres Market, Limit et Stop-Limit
 ■  Prise en charge du stop-loss et du take-profit
 ■  Suivi du P&amp;L par position
 ■  Historique complet des ordres avec horodatages
@@ -8379,7 +7770,7 @@ Chaque exchange prend en charge : trading spot, carnet d'ordres en temps réel, 
 ■  Confidence building: Track your paper P&amp;L before going live
 ■  Backtesting comparison: Compare paper results with backtest predictions</source>
         <translation>■  Test de stratégie : Valider une nouvelle stratégie sans risquer de capital
-■  Apprentissage : Comprendre les types d'ordres, la mécanique du marché, le calcul du P&amp;L
+■  Apprentissage : Comprendre les types d&apos;ordres, la mécanique du marché, le calcul du P&amp;L
 ■  Renforcement de la confiance : Suivre votre P&amp;L paper avant de passer en réel
 ■  Comparaison de backtesting : Comparer les résultats paper aux prévisions du backtest</translation>
     </message>
@@ -8403,7 +7794,7 @@ PRO : Utiliser le paper trading pour des tests A/B de nouvelles stratégies avan
     </message>
     <message>
         <source>The Algo Trading screen provides a complete environment for building, testing, and deploying algorithmic trading strategies. It includes a strategy builder, market scanner, and deployment dashboard.</source>
-        <translation>L'écran Trading Algorithmique offre un environnement complet pour construire, tester et déployer des stratégies de trading algorithmique. Il comprend un constructeur de stratégies, un scanner de marché et un tableau de bord de déploiement.</translation>
+        <translation>L&apos;écran Trading Algorithmique offre un environnement complet pour construire, tester et déployer des stratégies de trading algorithmique. Il comprend un constructeur de stratégies, un scanner de marché et un tableau de bord de déploiement.</translation>
     </message>
     <message>
         <source>■  Strategy Builder — Define entry/exit rules, position sizing, risk limits
@@ -8412,7 +7803,7 @@ PRO : Utiliser le paper trading pour des tests A/B de nouvelles stratégies avan
 ■  Strategy Library — 50+ pre-built strategies as templates
 ■  Risk Management — Max drawdown, position limits, daily loss limits
 ■  Real-time monitoring with P&amp;L and trade logs</source>
-        <translation>■  Constructeur de stratégies — Définir des règles d'entrée/sortie, le dimensionnement des positions, les limites de risque
+        <translation>■  Constructeur de stratégies — Définir des règles d&apos;entrée/sortie, le dimensionnement des positions, les limites de risque
 ■  Scanner de marché — Scanner les marchés pour des conditions correspondant à la stratégie
 ■  Tableau de bord de déploiement — Surveiller la performance des stratégies en direct
 ■  Bibliothèque de stratégies — Plus de 50 stratégies préconçues comme modèles
@@ -8424,7 +7815,7 @@ PRO : Utiliser le paper trading pour des tests A/B de nouvelles stratégies avan
 ■  Mean reversion: Detect overbought/oversold conditions
 ■  Pairs trading: Monitor spread and auto-execute when divergence detected
 ■  Market making: Automated bid/ask placement with spread capture</source>
-        <translation>■  Stratégies de momentum : Scanner les cassures, déployer l'entrée automatique
+        <translation>■  Stratégies de momentum : Scanner les cassures, déployer l&apos;entrée automatique
 ■  Retour à la moyenne : Détecter les conditions de surachat/survente
 ■  Pairs trading : Surveiller le spread et exécuter automatiquement en cas de divergence détectée
 ■  Market making : Placement automatique bid/ask avec capture du spread</translation>
@@ -8434,7 +7825,7 @@ PRO : Utiliser le paper trading pour des tests A/B de nouvelles stratégies avan
 INTERMEDIATE: Modify strategy parameters, run scanner on your watchlist
 ADVANCED: Build custom strategies, combine multiple signals, set risk limits
 PRO: Deploy multi-strategy portfolios, optimize parameters, run live with real capital</source>
-        <translation>DÉBUTANT : Explorer les stratégies préconçues, comprendre la logique d'entrée/sortie
+        <translation>DÉBUTANT : Explorer les stratégies préconçues, comprendre la logique d&apos;entrée/sortie
 INTERMÉDIAIRE : Modifier les paramètres de stratégie, exécuter le scanner sur votre liste de suivi
 AVANCÉ : Construire des stratégies personnalisées, combiner plusieurs signaux, définir des limites de risque
 PRO : Déployer des portefeuilles multistratégies, optimiser les paramètres, exécuter en réel avec du capital réel</translation>
@@ -8449,7 +7840,7 @@ PRO : Déployer des portefeuilles multistratégies, optimiser les paramètres, e
     </message>
     <message>
         <source>The Backtesting screen lets you test trading strategies against historical data using multiple backtesting providers. Supports 9 commands, 50+ built-in strategies, and detailed performance analytics.</source>
-        <translation>L'écran Backtesting vous permet de tester des stratégies de trading sur des données historiques à l'aide de plusieurs fournisseurs de backtesting. Prend en charge 9 commandes, plus de 50 stratégies intégrées et des analyses de performance détaillées.</translation>
+        <translation>L&apos;écran Backtesting vous permet de tester des stratégies de trading sur des données historiques à l&apos;aide de plusieurs fournisseurs de backtesting. Prend en charge 9 commandes, plus de 50 stratégies intégrées et des analyses de performance détaillées.</translation>
     </message>
     <message>
         <source>PROVIDERS</source>
@@ -8457,7 +7848,7 @@ PRO : Déployer des portefeuilles multistratégies, optimiser les paramètres, e
     </message>
     <message>
         <source>■  Backtrader — Python-based, full-featured backtesting engine
-■  Zipline — Quantopian's backtesting library
+■  Zipline — Quantopian&apos;s backtesting library
 ■  VectorBT — Vectorized backtesting for high performance
 ■  QuantConnect (Lean) — Cloud-based institutional backtesting
 ■  Custom Python — Write your own backtesting scripts
@@ -8501,11 +7892,11 @@ PRO : Moteurs de backtesting personnalisés, correction du biais du survivant, m
     </message>
     <message>
         <source>Comprehensive stock analysis and fundamental research</source>
-        <translation>Analyse complète d'actions et recherche fondamentale</translation>
+        <translation>Analyse complète d&apos;actions et recherche fondamentale</translation>
     </message>
     <message>
         <source>The Equity Research screen provides institutional-grade fundamental analysis tools including financial statements, valuation models, peer comparison, and analyst estimates.</source>
-        <translation>L'écran Recherche Actions fournit des outils d'analyse fondamentale de niveau institutionnel, notamment les états financiers, les modèles de valorisation, la comparaison de pairs et les estimations d'analystes.</translation>
+        <translation>L&apos;écran Recherche Actions fournit des outils d&apos;analyse fondamentale de niveau institutionnel, notamment les états financiers, les modèles de valorisation, la comparaison de pairs et les estimations d&apos;analystes.</translation>
     </message>
     <message>
         <source>■  Financial statements — Income, Balance Sheet, Cash Flow (quarterly/annual)
@@ -8517,8 +7908,8 @@ PRO : Moteurs de backtesting personnalisés, correction du biais du survivant, m
         <translation>■  États financiers — Compte de résultat, Bilan, Flux de trésorerie (trimestriel/annuel)
 ■  Modèles de valorisation — DCF, analyse de comparables, transactions précédentes
 ■  Comparaison de pairs — Comparer les métriques entre concurrents
-■  Estimations d'analystes — BPA consensuel, chiffre d'affaires, objectifs de cours
-■  Superpositions techniques — Combiner l'analyse fondamentale et technique
+■  Estimations d&apos;analystes — BPA consensuel, chiffre d&apos;affaires, objectifs de cours
+■  Superpositions techniques — Combiner l&apos;analyse fondamentale et technique
 ■  Exporter vers le générateur de rapports pour une sortie prête à présenter</translation>
     </message>
     <message>
@@ -8526,19 +7917,19 @@ PRO : Moteurs de backtesting personnalisés, correction du biais du survivant, m
 ■  Quarterly earnings analysis and comparison to estimates
 ■  Sector analysis with peer group comparison
 ■  Valuation-driven investment thesis development</source>
-        <translation>■  Diligence raisonnable avant d'investir dans une nouvelle position
+        <translation>■  Diligence raisonnable avant d&apos;investir dans une nouvelle position
 ■  Analyse des résultats trimestriels et comparaison aux estimations
 ■  Analyse sectorielle avec comparaison de groupe de pairs
-■  Développement d'une thèse d'investissement axée sur la valorisation</translation>
+■  Développement d&apos;une thèse d&apos;investissement axée sur la valorisation</translation>
     </message>
     <message>
         <source>BEGINNER: Look up basic financials (revenue, earnings, P/E ratio) for a stock
 INTERMEDIATE: Compare peers, analyze quarterly trends, read cash flow statements
 ADVANCED: Build DCF models, identify valuation discrepancies, create investment theses
 PRO: Multi-factor screening + fundamental overlay, integrate with algo trading signals</source>
-        <translation>DÉBUTANT : Consulter les données financières de base (chiffre d'affaires, bénéfices, ratio P/E) d'une action
+        <translation>DÉBUTANT : Consulter les données financières de base (chiffre d&apos;affaires, bénéfices, ratio P/E) d&apos;une action
 INTERMÉDIAIRE : Comparer les pairs, analyser les tendances trimestrielles, lire les états de flux de trésorerie
-AVANCÉ : Construire des modèles DCF, identifier les écarts de valorisation, créer des thèses d'investissement
+AVANCÉ : Construire des modèles DCF, identifier les écarts de valorisation, créer des thèses d&apos;investissement
 PRO : Filtrage multifactoriel + superposition fondamentale, intégrer aux signaux de trading algorithmique</translation>
     </message>
     <message>
@@ -8551,7 +7942,7 @@ PRO : Filtrage multifactoriel + superposition fondamentale, intégrer aux signau
     </message>
     <message>
         <source>Surface Analytics provides 3D visualization of financial surfaces including volatility surfaces, yield curves, credit spreads, and more. Supports 35 surface types across 7 asset classes with real-time and historical data.</source>
-        <translation>L'Analyse de Surfaces offre une visualisation 3D des surfaces financières, notamment les surfaces de volatilité, les courbes de taux, les spreads de crédit et plus. Prend en charge 35 types de surfaces sur 7 classes d'actifs avec des données en temps réel et historiques.</translation>
+        <translation>L&apos;Analyse de Surfaces offre une visualisation 3D des surfaces financières, notamment les surfaces de volatilité, les courbes de taux, les spreads de crédit et plus. Prend en charge 35 types de surfaces sur 7 classes d&apos;actifs avec des données en temps réel et historiques.</translation>
     </message>
     <message>
         <source>SURFACE CATEGORIES (35 TOTAL)</source>
@@ -8573,7 +7964,7 @@ RISK (4): Correlation, covariance, VaR, stress test
 MACRO (4): GDP growth, inflation, rates, employment</source>
         <translation>DÉRIVÉS ACTIONS (7) : Surface de vol, vol locale, distribution implicite, skew, structure par terme, risk reversal, butterfly spread
 
-REVENU FIXE (5) : Courbe de taux, courbe forward, swap spread, basis swap, point mort d'inflation
+REVENU FIXE (5) : Courbe de taux, courbe forward, swap spread, basis swap, point mort d&apos;inflation
 
 FX (5) : Surface de vol, risk reversal, butterfly, basis cross-currency, carry
 
@@ -8590,7 +7981,7 @@ MACRO (4) : Croissance du PIB, inflation, taux, emploi</translation>
 ■  Fixed income: Monitor yield curve shape for recession signals
 ■  Risk management: Correlation and VaR surfaces for portfolio risk
 ■  Relative value: Compare surfaces across maturities and strikes</source>
-        <translation>■  Trading d'options : Analyser la surface de vol pour repérer les options mal valorisées
+        <translation>■  Trading d&apos;options : Analyser la surface de vol pour repérer les options mal valorisées
 ■  Revenu fixe : Surveiller la forme de la courbe de taux pour des signaux de récession
 ■  Gestion des risques : Surfaces de corrélation et de VaR pour le risque du portefeuille
 ■  Valeur relative : Comparer les surfaces entre échéances et strikes</translation>
@@ -8602,7 +7993,7 @@ ADVANCED: Use surface analytics for options trading edge, relative value
 PRO: Real-time surface monitoring, custom Databento feeds, surface arbitrage</source>
         <translation>DÉBUTANT : Visualiser les surfaces préconçues, comprendre les axes de visualisation 3D
 INTERMÉDIAIRE : Comparer les instantanés de surfaces dans le temps, identifier les tendances
-AVANCÉ : Utiliser l'analyse de surfaces pour un avantage en trading d'options, la valeur relative
+AVANCÉ : Utiliser l&apos;analyse de surfaces pour un avantage en trading d&apos;options, la valeur relative
 PRO : Surveillance de surfaces en temps réel, flux Databento personnalisés, arbitrage de surfaces</translation>
     </message>
     <message>
@@ -8611,11 +8002,11 @@ PRO : Surveillance de surfaces en temps réel, flux Databento personnalisés, ar
     </message>
     <message>
         <source>Bond, equity option, FX option, swap, and CDS pricing</source>
-        <translation>Valorisation d'obligations, d'options sur actions, d'options de change, de swaps et de CDS</translation>
+        <translation>Valorisation d&apos;obligations, d&apos;options sur actions, d&apos;options de change, de swaps et de CDS</translation>
     </message>
     <message>
         <source>The Derivatives screen provides pricing models for major derivative types using embedded Python analytics. Supports bonds, equity options, FX options, interest rate swaps, and credit default swaps.</source>
-        <translation>L'écran Dérivés fournit des modèles de valorisation pour les principaux types de dérivés à l'aide d'analyses Python intégrées. Prend en charge les obligations, les options sur actions, les options de change, les swaps de taux d'intérêt et les credit default swaps.</translation>
+        <translation>L&apos;écran Dérivés fournit des modèles de valorisation pour les principaux types de dérivés à l&apos;aide d&apos;analyses Python intégrées. Prend en charge les obligations, les options sur actions, les options de change, les swaps de taux d&apos;intérêt et les credit default swaps.</translation>
     </message>
     <message>
         <source>SUPPORTED INSTRUMENTS</source>
@@ -8630,7 +8021,7 @@ PRO : Surveillance de surfaces en temps réel, flux Databento personnalisés, ar
         <translation>■  Obligations — Prix, rendement, duration, convexité, spread
 ■  Options sur actions — Valorisation Black-Scholes, binomiale, Monte-Carlo
 ■  Options de change — Garman-Kohlhagen, options à barrière, options digitales
-■  Swaps de taux d'intérêt — Fixe-variable, basis swaps, forward starting
+■  Swaps de taux d&apos;intérêt — Fixe-variable, basis swaps, forward starting
 ■  Credit Default Swaps — Valorisation du spread, probabilité de défaut, CVA</translation>
     </message>
     <message>
@@ -8638,17 +8029,17 @@ PRO : Surveillance de surfaces en temps réel, flux Databento personnalisés, ar
 ■  Fixed income: Price bonds, analyze yield sensitivity, duration matching
 ■  Risk management: Calculate CVA, price CDS for credit hedging
 ■  Treasury: Swap valuation for interest rate risk management</source>
-        <translation>■  Traders d'options : Valoriser les options, calculer les grecques, repérer les erreurs de valorisation
-■  Revenu fixe : Valoriser les obligations, analyser la sensibilité du rendement, l'appariement de duration
+        <translation>■  Traders d&apos;options : Valoriser les options, calculer les grecques, repérer les erreurs de valorisation
+■  Revenu fixe : Valoriser les obligations, analyser la sensibilité du rendement, l&apos;appariement de duration
 ■  Gestion des risques : Calculer la CVA, valoriser les CDS pour la couverture de crédit
-■  Trésorerie : Valorisation des swaps pour la gestion du risque de taux d'intérêt</translation>
+■  Trésorerie : Valorisation des swaps pour la gestion du risque de taux d&apos;intérêt</translation>
     </message>
     <message>
         <source>BEGINNER: Price a simple call option with Black-Scholes, understand Greeks
 INTERMEDIATE: Compare pricing models, analyze sensitivity to volatility
 ADVANCED: Price exotic options, build structured products, calculate CVA
 PRO: Custom pricing models, volatility surface calibration, Greeks hedging</source>
-        <translation>DÉBUTANT : Valoriser une option d'achat simple avec Black-Scholes, comprendre les grecques
+        <translation>DÉBUTANT : Valoriser une option d&apos;achat simple avec Black-Scholes, comprendre les grecques
 INTERMÉDIAIRE : Comparer les modèles de valorisation, analyser la sensibilité à la volatilité
 AVANCÉ : Valoriser des options exotiques, construire des produits structurés, calculer la CVA
 PRO : Modèles de valorisation personnalisés, calibration de la surface de volatilité, couverture des grecques</translation>
@@ -8663,7 +8054,7 @@ PRO : Modèles de valorisation personnalisés, calibration de la surface de vola
     </message>
     <message>
         <source>The Portfolio screen supports multiple portfolios with holdings tracking, performance analytics, sector heatmap, historical chart, blotter, and an AI agent panel for intelligent portfolio insights.</source>
-        <translation>L'écran Portefeuille prend en charge plusieurs portefeuilles avec suivi des positions, analyses de performance, heatmap sectorielle, graphique historique, blotter et un panneau d'agent IA pour des informations intelligentes sur le portefeuille.</translation>
+        <translation>L&apos;écran Portefeuille prend en charge plusieurs portefeuilles avec suivi des positions, analyses de performance, heatmap sectorielle, graphique historique, blotter et un panneau d&apos;agent IA pour des informations intelligentes sur le portefeuille.</translation>
     </message>
     <message>
         <source>■  Multiple named portfolios with separate tracking
@@ -8688,8 +8079,8 @@ PRO : Modèles de valorisation personnalisés, calibration de la surface de vola
 ■  Use AI agent to ask questions about your portfolio performance</source>
         <translation>■  Suivre vos positions de courtage réelles avec un P&amp;L en temps réel
 ■  Comparer plusieurs stratégies de portefeuille côte à côte
-■  Surveiller la dérive d'allocation sectorielle et rééquilibrer
-■  Utiliser l'agent IA pour poser des questions sur la performance de votre portefeuille</translation>
+■  Surveiller la dérive d&apos;allocation sectorielle et rééquilibrer
+■  Utiliser l&apos;agent IA pour poser des questions sur la performance de votre portefeuille</translation>
     </message>
     <message>
         <source>BEGINNER: Create a portfolio, add holdings, track basic P&amp;L
@@ -8699,7 +8090,7 @@ PRO: AI agent for portfolio optimization, factor exposure analysis, risk budgeti
         <translation>DÉBUTANT : Créer un portefeuille, ajouter des positions, suivre le P&amp;L de base
 INTERMÉDIAIRE : Utiliser la heatmap sectorielle pour la diversification, examiner le blotter de transactions
 AVANCÉ : Plusieurs portefeuilles pour différentes stratégies, analyse FFN
-PRO : Agent IA pour l'optimisation de portefeuille, analyse d'exposition aux facteurs, budgétisation des risques</translation>
+PRO : Agent IA pour l&apos;optimisation de portefeuille, analyse d&apos;exposition aux facteurs, budgétisation des risques</translation>
     </message>
     <message>
         <source>M&amp;A ANALYTICS</source>
@@ -8707,11 +8098,11 @@ PRO : Agent IA pour l'optimisation de portefeuille, analyse d'exposition aux fac
     </message>
     <message>
         <source>Merger and acquisition analysis tools</source>
-        <translation>Outils d'analyse de fusions et acquisitions</translation>
+        <translation>Outils d&apos;analyse de fusions et acquisitions</translation>
     </message>
     <message>
         <source>The M&amp;A Analytics screen provides tools for analyzing mergers, acquisitions, and corporate actions including deal comparison, accretion/dilution analysis, and precedent transaction databases.</source>
-        <translation>L'écran Analyse M&amp;A fournit des outils pour analyser les fusions, acquisitions et opérations sur titres, notamment la comparaison d'opérations, l'analyse de relution/dilution et les bases de données de transactions précédentes.</translation>
+        <translation>L&apos;écran Analyse M&amp;A fournit des outils pour analyser les fusions, acquisitions et opérations sur titres, notamment la comparaison d&apos;opérations, l&apos;analyse de relution/dilution et les bases de données de transactions précédentes.</translation>
     </message>
     <message>
         <source>■  Deal screen — Browse recent and historical M&amp;A transactions
@@ -8720,18 +8111,18 @@ PRO : Agent IA pour l'optimisation de portefeuille, analyse d'exposition aux fac
 ■  Premium analysis — Analyze deal premiums by sector
 ■  Timeline tracking — Monitor deal progress and regulatory approvals</source>
         <translation>■  Deal screen — Parcourir les transactions M&amp;A récentes et historiques
-■  Analyse de relution/dilution — Modéliser l'impact sur le BPA des acquisitions
+■  Analyse de relution/dilution — Modéliser l&apos;impact sur le BPA des acquisitions
 ■  Transactions comparables — Trouver des opérations similaires pour la valorisation
-■  Analyse de prime — Analyser les primes d'opérations par secteur
-■  Suivi de calendrier — Surveiller l'avancement de l'opération et les approbations réglementaires</translation>
+■  Analyse de prime — Analyser les primes d&apos;opérations par secteur
+■  Suivi de calendrier — Surveiller l&apos;avancement de l&apos;opération et les approbations réglementaires</translation>
     </message>
     <message>
         <source>■  Investment banking: Model potential acquisition targets
 ■  Event-driven trading: Analyze merger arbitrage opportunities
 ■  Due diligence: Research comparable transactions for valuation
 ■  Risk assessment: Track regulatory risk for pending deals</source>
-        <translation>■  Banque d'investissement : Modéliser des cibles d'acquisition potentielles
-■  Trading événementiel : Analyser les opportunités d'arbitrage de fusion
+        <translation>■  Banque d&apos;investissement : Modéliser des cibles d&apos;acquisition potentielles
+■  Trading événementiel : Analyser les opportunités d&apos;arbitrage de fusion
 ■  Diligence raisonnable : Rechercher des transactions comparables pour la valorisation
 ■  Évaluation des risques : Suivre le risque réglementaire des opérations en attente</translation>
     </message>
@@ -8741,9 +8132,9 @@ INTERMEDIATE: Compare deal multiples, analyze premiums paid
 ADVANCED: Build accretion/dilution models, identify merger arb opportunities
 PRO: Custom deal screening, multi-factor M&amp;A prediction models</source>
         <translation>DÉBUTANT : Parcourir les opérations récentes, comprendre les bases de la structure des opérations
-INTERMÉDIAIRE : Comparer les multiples d'opérations, analyser les primes payées
-AVANCÉ : Construire des modèles de relution/dilution, identifier les opportunités d'arbitrage de fusion
-PRO : Filtrage d'opérations personnalisé, modèles de prédiction M&amp;A multifactoriels</translation>
+INTERMÉDIAIRE : Comparer les multiples d&apos;opérations, analyser les primes payées
+AVANCÉ : Construire des modèles de relution/dilution, identifier les opportunités d&apos;arbitrage de fusion
+PRO : Filtrage d&apos;opérations personnalisé, modèles de prédiction M&amp;A multifactoriels</translation>
     </message>
     <message>
         <source>AI QUANT LAB</source>
@@ -8755,7 +8146,7 @@ PRO : Filtrage d'opérations personnalisé, modèles de prédiction M&amp;A mult
     </message>
     <message>
         <source>The AI Quant Lab is a comprehensive quantitative research environment with 18 modules covering machine learning, factor discovery, high-frequency trading, reinforcement learning, and advanced statistical methods.</source>
-        <translation>L'AI Quant Lab est un environnement complet de recherche quantitative à 18 modules couvrant le machine learning, la découverte de facteurs, le trading haute fréquence, l'apprentissage par renforcement et les méthodes statistiques avancées.</translation>
+        <translation>L&apos;AI Quant Lab est un environnement complet de recherche quantitative à 18 modules couvrant le machine learning, la découverte de facteurs, le trading haute fréquence, l&apos;apprentissage par renforcement et les méthodes statistiques avancées.</translation>
     </message>
     <message>
         <source>MODULES (18)</source>
@@ -8773,14 +8164,14 @@ PORTFOLIO: ML portfolio optimization, dynamic allocation
 EXECUTION: Smart order routing, execution quality analysis
 And 9 more covering derivatives, crypto, macro, and cross-asset</source>
         <translation>PRÉDICTION : Prédiction de prix par ML, prévision de séries temporelles
-FACTEURS : Découverte de facteurs, génération d'alpha, smart beta
+FACTEURS : Découverte de facteurs, génération d&apos;alpha, smart beta
 RISQUE : Modèles de risque ML, risque de queue, détection de régime
 HFT : Signaux haute fréquence, analyse de microstructure
-TRADING RL : Agents d'apprentissage par renforcement pour le trading
-NLP : Analyse de sentiment, parsing d'actualités, analyse de earnings call
+TRADING RL : Agents d&apos;apprentissage par renforcement pour le trading
+NLP : Analyse de sentiment, parsing d&apos;actualités, analyse de earnings call
 DONNÉES ALTERNATIVES : Satellite, réseaux sociaux, web scraping
 PORTEFEUILLE : Optimisation de portefeuille par ML, allocation dynamique
-EXÉCUTION : Smart order routing, analyse de la qualité d'exécution
+EXÉCUTION : Smart order routing, analyse de la qualité d&apos;exécution
 Et 9 autres couvrant les dérivés, la crypto, le macro et le cross-asset</translation>
     </message>
     <message>
@@ -8798,7 +8189,7 @@ Et 9 autres couvrant les dérivés, la crypto, le macro et le cross-asset</trans
 INTERMEDIATE: Train basic ML models, test factor strategies on historical data
 ADVANCED: Custom factor research, multi-model ensembles, walk-forward validation
 PRO: Production RL trading agents, HFT signal research, custom model deployment</source>
-        <translation>DÉBUTANT : Explorer les modules préconçus, exécuter des prédictions de démo sur des données d'exemple
+        <translation>DÉBUTANT : Explorer les modules préconçus, exécuter des prédictions de démo sur des données d&apos;exemple
 INTERMÉDIAIRE : Entraîner des modèles ML de base, tester des stratégies de facteurs sur des données historiques
 AVANCÉ : Recherche de facteurs personnalisée, ensembles multi-modèles, validation walk-forward
 PRO : Agents de trading RL en production, recherche de signaux HFT, déploiement de modèles personnalisés</translation>
@@ -8808,12 +8199,12 @@ PRO : Agents de trading RL en production, recherche de signaux HFT, déploiement
         <translation>SUITE QUANTLIB</translation>
     </message>
     <message>
-        <source>18 quantitative analysis modules with 590+ endpoints</source>
-        <translation>18 modules d'analyse quantitative avec plus de 590 endpoints</translation>
+        <source>18-module client for an external QuantLib pricing server</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The QuantLib Suite provides access to 590+ quantitative analysis endpoints organized into 18 modules. Powered by a REST API backend, it covers everything from basic statistics to complex derivative pricing and risk modeling.</source>
-        <translation>La Suite QuantLib offre l'accès à plus de 590 endpoints d'analyse quantitative organisés en 18 modules. Propulsée par un backend d'API REST, elle couvre tout, des statistiques de base à la valorisation de dérivés complexes et à la modélisation des risques.</translation>
+        <source>The QuantLib Suite is a thin client that forwards requests to an external, self-hosted QuantLib REST server (set connectors.quantlib_url in Settings). It performs no pricing locally; with no server configured it does nothing. When connected, it covers everything from basic statistics to derivative pricing and risk modeling.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>■  Core — Fundamental quantitative operations
@@ -8835,16 +8226,16 @@ PRO : Agents de trading RL en production, recherche de signaux HFT, déploiement
 ■  Stochastic — Stochastic processes, Brownian motion, jump diffusion
 ■  Volatility — Vol models, SABR, Heston, local vol</source>
         <translation>■  Core — Opérations quantitatives fondamentales
-■  Analysis — Analyse statistique et tests d'hypothèses
-■  Curves — Courbes de taux, courbes forward, facteurs d'actualisation
+■  Analysis — Analyse statistique et tests d&apos;hypothèses
+■  Curves — Courbes de taux, courbes forward, facteurs d&apos;actualisation
 ■  Economics — Modélisation macro, PIB, inflation, emploi
-■  Instruments — Valorisation d'obligations, swaps, options, futures
+■  Instruments — Valorisation d&apos;obligations, swaps, options, futures
 ■  ML — Modèles de machine learning pour la finance
-■  Models — Modèles de taux d'intérêt (Hull-White, HJM, LMM)
-■  Numerical — Méthodes numériques, solveurs d'EDP, Monte-Carlo
+■  Models — Modèles de taux d&apos;intérêt (Hull-White, HJM, LMM)
+■  Numerical — Méthodes numériques, solveurs d&apos;EDP, Monte-Carlo
 ■  Physics — Modèles financiers inspirés de la physique
 ■  Portfolio — Optimisation de portefeuille, frontière efficiente
-■  Pricing — Valorisation d'options exotiques, produits structurés
+■  Pricing — Valorisation d&apos;options exotiques, produits structurés
 ■  Regulatory — Bâle III/IV, FRTB, CVA/DVA/FVA
 ■  Risk — VaR, CVaR, stress testing, analyse de scénarios
 ■  Scheduling — Calcul de dates, conventions de décompte des jours, règles de roll
@@ -8860,7 +8251,7 @@ PRO : Agents de trading RL en production, recherche de signaux HFT, déploiement
 ■  Fixed income: Yield curve construction, swap valuation</source>
         <translation>■  Analyste quantitatif : Valoriser des dérivés complexes, calibrer des modèles
 ■  Gestionnaire des risques : Exécuter la VaR, des stress tests, des calculs réglementaires
-■  Gestionnaire de portefeuille : Optimiser l'allocation, analyse de la frontière efficiente
+■  Gestionnaire de portefeuille : Optimiser l&apos;allocation, analyse de la frontière efficiente
 ■  Revenu fixe : Construction de courbe de taux, valorisation de swaps</translation>
     </message>
     <message>
@@ -8868,7 +8259,7 @@ PRO : Agents de trading RL en production, recherche de signaux HFT, déploiement
 INTERMEDIATE: Price bonds and options, build yield curves
 ADVANCED: Calibrate vol models, run Monte Carlo simulations, regulatory calculations
 PRO: Custom model development, multi-curve pricing, XVA calculations</source>
-        <translation>DÉBUTANT : Utiliser le module Statistics pour l'analyse de données de base
+        <translation>DÉBUTANT : Utiliser le module Statistics pour l&apos;analyse de données de base
 INTERMÉDIAIRE : Valoriser des obligations et des options, construire des courbes de taux
 AVANCÉ : Calibrer des modèles de vol, exécuter des simulations de Monte-Carlo, des calculs réglementaires
 PRO : Développement de modèles personnalisés, valorisation multi-courbes, calculs XVA</translation>
@@ -8879,11 +8270,11 @@ PRO : Développement de modèles personnalisés, valorisation multi-courbes, cal
     </message>
     <message>
         <source>AI-powered financial assistant</source>
-        <translation>Assistant financier propulsé par l'IA</translation>
+        <translation>Assistant financier propulsé par l&apos;IA</translation>
     </message>
     <message>
         <source>The AI Chat provides a conversational interface powered by large language models for financial analysis, market insights, and terminal assistance.</source>
-        <translation>L'AI Chat offre une interface conversationnelle propulsée par de grands modèles de langage pour l'analyse financière, les informations sur le marché et l'assistance du terminal.</translation>
+        <translation>L&apos;AI Chat offre une interface conversationnelle propulsée par de grands modèles de langage pour l&apos;analyse financière, les informations sur le marché et l&apos;assistance du terminal.</translation>
     </message>
     <message>
         <source>■  Natural language market queries
@@ -8898,14 +8289,14 @@ PRO : Développement de modèles personnalisés, valorisation multi-courbes, cal
 ■  Fournisseur et modèle LLM configurables</translation>
     </message>
     <message>
-        <source>■  Quick analysis: "What's driving NVDA today?"
-■  Strategy help: "Write a mean reversion strategy for crypto"
-■  Learning: "Explain how VaR is calculated"
-■  Data queries: "Compare AAPL and MSFT P/E ratios over 5 years"</source>
-        <translation>■  Analyse rapide : « Qu'est-ce qui fait bouger NVDA aujourd'hui ? »
+        <source>■  Quick analysis: &quot;What&apos;s driving NVDA today?&quot;
+■  Strategy help: &quot;Write a mean reversion strategy for crypto&quot;
+■  Learning: &quot;Explain how VaR is calculated&quot;
+■  Data queries: &quot;Compare AAPL and MSFT P/E ratios over 5 years&quot;</source>
+        <translation>■  Analyse rapide : « Qu&apos;est-ce qui fait bouger NVDA aujourd&apos;hui ? »
 ■  Aide à la stratégie : « Écrire une stratégie de retour à la moyenne pour la crypto »
 ■  Apprentissage : « Expliquer comment la VaR est calculée »
-■  Requêtes de données : « Comparer les ratios P/E d'AAPL et MSFT sur 5 ans »</translation>
+■  Requêtes de données : « Comparer les ratios P/E d&apos;AAPL et MSFT sur 5 ans »</translation>
     </message>
     <message>
         <source>BEGINNER: Ask basic market questions, get explanations of financial concepts
@@ -8913,7 +8304,7 @@ INTERMEDIATE: Generate analysis code, get portfolio recommendations
 ADVANCED: Complex multi-step analysis, custom strategy development
 PRO: Multi-agent workflows, MCP server integration, automated research pipelines</source>
         <translation>DÉBUTANT : Poser des questions de marché de base, obtenir des explications sur les concepts financiers
-INTERMÉDIAIRE : Générer du code d'analyse, obtenir des recommandations de portefeuille
+INTERMÉDIAIRE : Générer du code d&apos;analyse, obtenir des recommandations de portefeuille
 AVANCÉ : Analyse complexe en plusieurs étapes, développement de stratégie personnalisée
 PRO : Workflows multi-agents, intégration de serveur MCP, pipelines de recherche automatisés</translation>
     </message>
@@ -8927,7 +8318,7 @@ PRO : Workflows multi-agents, intégration de serveur MCP, pipelines de recherch
     </message>
     <message>
         <source>The Agent Studio (Agent Config) provides an 8-view interface for creating, managing, and orchestrating AI agents with specialized financial capabilities.</source>
-        <translation>L'Agent Studio (Agent Config) offre une interface à 8 vues pour créer, gérer et orchestrer des agents IA dotés de capacités financières spécialisées.</translation>
+        <translation>L&apos;Agent Studio (Agent Config) offre une interface à 8 vues pour créer, gérer et orchestrer des agents IA dotés de capacités financières spécialisées.</translation>
     </message>
     <message>
         <source>VIEWS (8)</source>
@@ -8945,7 +8336,7 @@ PRO : Workflows multi-agents, intégration de serveur MCP, pipelines de recherch
         <translation>■  Agents — Parcourir et gérer les agents configurés
 ■  Créer — Construire de nouveaux agents avec des capacités personnalisées
 ■  Équipes — Organiser les agents en équipes collaboratives
-■  Workflows — Définir des pipelines d'agents en plusieurs étapes
+■  Workflows — Définir des pipelines d&apos;agents en plusieurs étapes
 ■  Planificateur — Planification et décomposition des tâches IA
 ■  Outils — Gérer les outils disponibles pour les agents
 ■  Chat — Interagir avec les agents en conversation
@@ -8953,7 +8344,7 @@ PRO : Workflows multi-agents, intégration de serveur MCP, pipelines de recherch
     </message>
     <message>
         <source>AGENT TYPES</source>
-        <translation>TYPES D'AGENTS</translation>
+        <translation>TYPES D&apos;AGENTS</translation>
     </message>
     <message>
         <source>■  Geopolitics Agent — Monitors global events, conflict analysis
@@ -8974,9 +8365,9 @@ PRO : Workflows multi-agents, intégration de serveur MCP, pipelines de recherch
 INTERMEDIATE: Create custom agents with specific tool access
 ADVANCED: Build agent teams, define multi-step workflows
 PRO: Custom MCP server integration, multi-agent orchestration, automated research</source>
-        <translation>DÉBUTANT : Parcourir les agents préconfigurés, discuter avec l'assistant général
+        <translation>DÉBUTANT : Parcourir les agents préconfigurés, discuter avec l&apos;assistant général
 INTERMÉDIAIRE : Créer des agents personnalisés avec un accès à des outils spécifiques
-AVANCÉ : Construire des équipes d'agents, définir des workflows en plusieurs étapes
+AVANCÉ : Construire des équipes d&apos;agents, définir des workflows en plusieurs étapes
 PRO : Intégration de serveur MCP personnalisé, orchestration multi-agents, recherche automatisée</translation>
     </message>
     <message>
@@ -8985,11 +8376,11 @@ PRO : Intégration de serveur MCP personnalisé, orchestration multi-agents, rec
     </message>
     <message>
         <source>Competitive alpha research and strategy ranking</source>
-        <translation>Recherche d'alpha compétitive et classement des stratégies</translation>
+        <translation>Recherche d&apos;alpha compétitive et classement des stratégies</translation>
     </message>
     <message>
         <source>Alpha Arena is a competitive environment where trading strategies are ranked by performance. Submit strategies, compare against peers, and discover new alpha sources through community insights.</source>
-        <translation>Alpha Arena est un environnement compétitif où les stratégies de trading sont classées par performance. Soumettez des stratégies, comparez-vous à vos pairs et découvrez de nouvelles sources d'alpha grâce aux informations de la communauté.</translation>
+        <translation>Alpha Arena est un environnement compétitif où les stratégies de trading sont classées par performance. Soumettez des stratégies, comparez-vous à vos pairs et découvrez de nouvelles sources d&apos;alpha grâce aux informations de la communauté.</translation>
     </message>
     <message>
         <source>■  Strategy leaderboard with real-time rankings
@@ -9021,7 +8412,7 @@ PRO: Multi-strategy submission, alpha decay analysis, ensemble approaches</sourc
         <translation>DÉBUTANT : Parcourir le classement, étudier les meilleures stratégies
 INTERMÉDIAIRE : Soumettre votre première stratégie, analyser les métriques de performance
 AVANCÉ : Optimiser les stratégies pour le classement, étudier les expositions aux facteurs
-PRO : Soumission de plusieurs stratégies, analyse de la décroissance de l'alpha, approches d'ensemble</translation>
+PRO : Soumission de plusieurs stratégies, analyse de la décroissance de l&apos;alpha, approches d&apos;ensemble</translation>
     </message>
     <message>
         <source>DBNOMICS</source>
@@ -9032,8 +8423,8 @@ PRO : Soumission de plusieurs stratégies, analyse de la décroissance de l'alph
         <translation>Accédez à plus de 100 fournisseurs de données avec plus de 500 000 jeux de données économiques</translation>
     </message>
     <message>
-        <source>DBnomics provides access to the world's largest open economic database. Browse 100+ data providers (IMF, World Bank, OECD, ECB, Fed, etc.) with 500K+ datasets covering macroeconomics, finance, demographics, and trade.</source>
-        <translation>DBnomics offre l'accès à la plus grande base de données économiques ouverte au monde. Parcourez plus de 100 fournisseurs de données (IMF, World Bank, OECD, ECB, Fed, etc.) avec plus de 500 000 jeux de données couvrant la macroéconomie, la finance, la démographie et le commerce.</translation>
+        <source>DBnomics provides access to the world&apos;s largest open economic database. Browse 100+ data providers (IMF, World Bank, OECD, ECB, Fed, etc.) with 500K+ datasets covering macroeconomics, finance, demographics, and trade.</source>
+        <translation>DBnomics offre l&apos;accès à la plus grande base de données économiques ouverte au monde. Parcourez plus de 100 fournisseurs de données (IMF, World Bank, OECD, ECB, Fed, etc.) avec plus de 500 000 jeux de données couvrant la macroéconomie, la finance, la démographie et le commerce.</translation>
     </message>
     <message>
         <source>■  Provider browser — 100+ statistical agencies and central banks
@@ -9048,7 +8439,7 @@ PRO : Soumission de plusieurs stratégies, analyse de la décroissance de l'alph
 ■  Explorateur de séries — Parcourir des séries temporelles individuelles avec métadonnées
 ■  Vue unique — Graphique détaillé + tableau de données pour une série
 ■  Vue de comparaison — Grille de graphiques 2x2 comparant plusieurs séries
-■  Exportation CSV — Télécharger n'importe quelle série pour une analyse externe
+■  Exportation CSV — Télécharger n&apos;importe quelle série pour une analyse externe
 ■  Animations de chargement et chargement progressif des données</translation>
     </message>
     <message>
@@ -9056,8 +8447,8 @@ PRO : Soumission de plusieurs stratégies, analyse de la décroissance de l'alph
 ■  Central bank analysis: Interest rates, money supply, balance sheets
 ■  Trade analysis: Import/export data, trade balances, tariffs
 ■  Demographics: Population, labor force, migration data</source>
-        <translation>■  Recherche macro : Croissance du PIB, inflation, données d'emploi par pays
-■  Analyse des banques centrales : Taux d'intérêt, masse monétaire, bilans
+        <translation>■  Recherche macro : Croissance du PIB, inflation, données d&apos;emploi par pays
+■  Analyse des banques centrales : Taux d&apos;intérêt, masse monétaire, bilans
 ■  Analyse du commerce : Données import/export, balances commerciales, tarifs
 ■  Démographie : Population, population active, données de migration</translation>
     </message>
@@ -9066,7 +8457,7 @@ PRO : Soumission de plusieurs stratégies, analyse de la décroissance de l'alph
 INTERMEDIATE: Compare series across countries, export data for analysis
 ADVANCED: Build macro dashboards, track leading indicators
 PRO: Integrate DBnomics data into quantitative macro trading models</source>
-        <translation>DÉBUTANT : Parcourir les fournisseurs, consulter les données de PIB ou d'inflation des États-Unis
+        <translation>DÉBUTANT : Parcourir les fournisseurs, consulter les données de PIB ou d&apos;inflation des États-Unis
 INTERMÉDIAIRE : Comparer des séries entre pays, exporter des données pour analyse
 AVANCÉ : Construire des tableaux de bord macro, suivre les indicateurs avancés
 PRO : Intégrer les données DBnomics dans des modèles quantitatifs de trading macro</translation>
@@ -9077,11 +8468,11 @@ PRO : Intégrer les données DBnomics dans des modèles quantitatifs de trading 
     </message>
     <message>
         <source>Macroeconomic data and analysis tools</source>
-        <translation>Données macroéconomiques et outils d'analyse</translation>
+        <translation>Données macroéconomiques et outils d&apos;analyse</translation>
     </message>
     <message>
         <source>The Economics screen provides comprehensive macroeconomic data visualization and analysis tools for tracking economic indicators, central bank policies, and global economic trends.</source>
-        <translation>L'écran Économie fournit des outils complets de visualisation et d'analyse de données macroéconomiques pour suivre les indicateurs économiques, les politiques des banques centrales et les tendances économiques mondiales.</translation>
+        <translation>L&apos;écran Économie fournit des outils complets de visualisation et d&apos;analyse de données macroéconomiques pour suivre les indicateurs économiques, les politiques des banques centrales et les tendances économiques mondiales.</translation>
     </message>
     <message>
         <source>■  Economic indicators dashboard — GDP, CPI, unemployment, PMI
@@ -9103,7 +8494,7 @@ PRO : Intégrer les données DBnomics dans des modèles quantitatifs de trading 
         <translation>■  Trading macro : Se positionner avant les décisions de taux
 ■  Gestion des risques : Surveiller les indicateurs de récession
 ■  Trading FX : Suivre les différentiels de taux pour les carry trades
-■  Allocation d'actifs : Changer de secteur selon le cycle économique</translation>
+■  Allocation d&apos;actifs : Changer de secteur selon le cycle économique</translation>
     </message>
     <message>
         <source>BEGINNER: Check upcoming economic events, understand key indicators
@@ -9112,8 +8503,8 @@ ADVANCED: Build economic models, forecast indicator releases
 PRO: Multi-factor macro models, economic surprise index trading</source>
         <translation>DÉBUTANT : Vérifier les prochains événements économiques, comprendre les indicateurs clés
 INTERMÉDIAIRE : Suivre les indicateurs avancés vs retardés, repérer les tendances économiques
-AVANCÉ : Construire des modèles économiques, prévoir les publications d'indicateurs
-PRO : Modèles macro multifactoriels, trading de l'indice de surprise économique</translation>
+AVANCÉ : Construire des modèles économiques, prévoir les publications d&apos;indicateurs
+PRO : Modèles macro multifactoriels, trading de l&apos;indice de surprise économique</translation>
     </message>
     <message>
         <source>AKSHARE DATA</source>
@@ -9125,7 +8516,7 @@ PRO : Modèles macro multifactoriels, trading de l'indice de surprise économiqu
     </message>
     <message>
         <source>AkShare provides access to Chinese financial market data including A-shares, Hong Kong stocks, Chinese futures, and macro data from Chinese statistical agencies.</source>
-        <translation>AkShare offre l'accès aux données des marchés financiers chinois, notamment les actions A, les actions de Hong Kong, les futures chinois et les données macro des agences statistiques chinoises.</translation>
+        <translation>AkShare offre l&apos;accès aux données des marchés financiers chinois, notamment les actions A, les actions de Hong Kong, les futures chinois et les données macro des agences statistiques chinoises.</translation>
     </message>
     <message>
         <source>■  A-Share market data — SSE, SZSE listed companies
@@ -9144,7 +8535,7 @@ PRO : Modèles macro multifactoriels, trading de l'indice de surprise économiqu
 ■  Emerging market analysis: Compare Chinese vs global markets
 ■  Commodity trading: Track Chinese commodity demand
 ■  Macro research: Monitor Chinese economic indicators</source>
-        <translation>■  Exposition au marché chinois : Rechercher des opportunités d'actions A
+        <translation>■  Exposition au marché chinois : Rechercher des opportunités d&apos;actions A
 ■  Analyse des marchés émergents : Comparer les marchés chinois et mondiaux
 ■  Trading de matières premières : Suivre la demande chinoise de matières premières
 ■  Recherche macro : Surveiller les indicateurs économiques chinois</translation>
@@ -9200,7 +8591,7 @@ ADVANCED: Build predictive models using government leading indicators
 PRO: Automated policy tracking, fiscal surprise detection</source>
         <translation>DÉBUTANT : Parcourir les jeux de données disponibles, télécharger des rapports de base
 INTERMÉDIAIRE : Recouper les données gouvernementales avec les données de marché
-AVANCÉ : Construire des modèles prédictifs à l'aide d'indicateurs avancés gouvernementaux
+AVANCÉ : Construire des modèles prédictifs à l&apos;aide d&apos;indicateurs avancés gouvernementaux
 PRO : Suivi automatisé des politiques, détection de surprise budgétaire</translation>
     </message>
     <message>
@@ -9213,7 +8604,7 @@ PRO : Suivi automatisé des politiques, détection de surprise budgétaire</tran
     </message>
     <message>
         <source>The Geopolitics screen provides a comprehensive view of global geopolitical events with conflict monitoring, humanitarian data (HDX), trade flow analysis, and entity relationship mapping for understanding geopolitical dynamics.</source>
-        <translation>L'écran Géopolitique offre une vue d'ensemble complète des événements géopolitiques mondiaux avec surveillance des conflits, données humanitaires (HDX), analyse des flux commerciaux et cartographie des relations entre entités pour comprendre les dynamiques géopolitiques.</translation>
+        <translation>L&apos;écran Géopolitique offre une vue d&apos;ensemble complète des événements géopolitiques mondiaux avec surveillance des conflits, données humanitaires (HDX), analyse des flux commerciaux et cartographie des relations entre entités pour comprendre les dynamiques géopolitiques.</translation>
     </message>
     <message>
         <source>■  Conflict monitor — Active global conflicts with severity tracking
@@ -9225,9 +8616,9 @@ PRO : Suivi automatisé des politiques, détection de surprise budgétaire</tran
         <translation>■  Moniteur de conflits — Conflits mondiaux actifs avec suivi de la gravité
 ■  Intégration HDX — Humanitarian Data Exchange pour les données de crise
 ■  Analyse du commerce — Sanctions, tarifs, perturbations des flux commerciaux
-■  Cartographie des relations — Relations entre entités et réseaux d'influence
+■  Cartographie des relations — Relations entre entités et réseaux d&apos;influence
 ■  Notation des risques — Évaluations des risques géopolitiques au niveau des pays
-■  Agent IA — Agent d'analyse spécialisé en géopolitique</translation>
+■  Agent IA — Agent d&apos;analyse spécialisé en géopolitique</translation>
     </message>
     <message>
         <source>■  Risk management: Monitor geopolitical risks to your portfolio
@@ -9235,9 +8626,9 @@ PRO : Suivi automatisé des politiques, détection de surprise budgétaire</tran
 ■  FX trading: Geopolitical risk premium in currency pricing
 ■  ESG investing: Humanitarian impact assessment</source>
         <translation>■  Gestion des risques : Surveiller les risques géopolitiques pour votre portefeuille
-■  Trading de matières premières : Suivre les perturbations d'approvisionnement dues aux conflits
+■  Trading de matières premières : Suivre les perturbations d&apos;approvisionnement dues aux conflits
 ■  Trading FX : Prime de risque géopolitique dans la valorisation des devises
-■  Investissement ESG : Évaluation de l'impact humanitaire</translation>
+■  Investissement ESG : Évaluation de l&apos;impact humanitaire</translation>
     </message>
     <message>
         <source>BEGINNER: Monitor the conflict dashboard, understand risk scores
@@ -9259,7 +8650,7 @@ PRO : Alpha géopolitique multifactoriel, trading automatisé événementiel</tr
     </message>
     <message>
         <source>The Maritime screen provides shipping and trade flow data for monitoring global supply chains, commodity transport, and maritime trade patterns.</source>
-        <translation>L'écran Maritime fournit des données de transport et de flux commerciaux pour surveiller les chaînes d'approvisionnement mondiales, le transport de matières premières et les schémas du commerce maritime.</translation>
+        <translation>L&apos;écran Maritime fournit des données de transport et de flux commerciaux pour surveiller les chaînes d&apos;approvisionnement mondiales, le transport de matières premières et les schémas du commerce maritime.</translation>
     </message>
     <message>
         <source>■  Vessel tracking — AIS data for major shipping routes
@@ -9268,9 +8659,9 @@ PRO : Alpha géopolitique multifactoriel, trading automatisé événementiel</tr
 ■  Supply chain indicators — Shipping cost indices
 ■  Geopolitical overlay — Chokepoint risk assessment</source>
         <translation>■  Suivi des navires — Données AIS pour les principales routes maritimes
-■  Analyse portuaire — Débit, congestion, temps d'attente
+■  Analyse portuaire — Débit, congestion, temps d&apos;attente
 ■  Flux commerciaux — Volumes de transport de matières premières par route
-■  Indicateurs de chaîne d'approvisionnement — Indices de coût du fret
+■  Indicateurs de chaîne d&apos;approvisionnement — Indices de coût du fret
 ■  Superposition géopolitique — Évaluation des risques des points de passage stratégiques</translation>
     </message>
     <message>
@@ -9278,10 +8669,10 @@ PRO : Alpha géopolitique multifactoriel, trading automatisé événementiel</tr
 ■  Supply chain: Monitor port congestion for inflation signals
 ■  Shipping stocks: Analyze Baltic Dry Index and freight rates
 ■  Geopolitical risk: Chokepoint monitoring (Suez, Strait of Hormuz)</source>
-        <translation>■  Trading de matières premières : Suivre les mouvements des pétroliers pour des signaux d'offre
-■  Chaîne d'approvisionnement : Surveiller la congestion portuaire pour des signaux d'inflation
+        <translation>■  Trading de matières premières : Suivre les mouvements des pétroliers pour des signaux d&apos;offre
+■  Chaîne d&apos;approvisionnement : Surveiller la congestion portuaire pour des signaux d&apos;inflation
 ■  Actions du transport maritime : Analyser le Baltic Dry Index et les taux de fret
-■  Risque géopolitique : Surveillance des points de passage stratégiques (Suez, détroit d'Ormuz)</translation>
+■  Risque géopolitique : Surveillance des points de passage stratégiques (Suez, détroit d&apos;Ormuz)</translation>
     </message>
     <message>
         <source>BEGINNER: Browse shipping routes, understand trade flow basics
@@ -9290,8 +8681,8 @@ ADVANCED: Build supply chain disruption models
 PRO: Satellite-verified shipping data for alternative data alpha</source>
         <translation>DÉBUTANT : Parcourir les routes maritimes, comprendre les bases des flux commerciaux
 INTERMÉDIAIRE : Suivre les expéditions de matières premières, corréler avec les prix des futures
-AVANCÉ : Construire des modèles de perturbation de la chaîne d'approvisionnement
-PRO : Données de transport vérifiées par satellite pour l'alpha de données alternatives</translation>
+AVANCÉ : Construire des modèles de perturbation de la chaîne d&apos;approvisionnement
+PRO : Données de transport vérifiées par satellite pour l&apos;alpha de données alternatives</translation>
     </message>
     <message>
         <source>POLYMARKET</source>
@@ -9299,11 +8690,11 @@ PRO : Données de transport vérifiées par satellite pour l'alpha de données a
     </message>
     <message>
         <source>Prediction markets and event probability trading</source>
-        <translation>Marchés prédictifs et trading de probabilité d'événements</translation>
+        <translation>Marchés prédictifs et trading de probabilité d&apos;événements</translation>
     </message>
     <message>
         <source>The Polymarket screen provides access to prediction market data, allowing you to track event probabilities and trade on real-world outcomes.</source>
-        <translation>L'écran Polymarket offre l'accès aux données des marchés prédictifs, vous permettant de suivre les probabilités d'événements et de trader sur des résultats du monde réel.</translation>
+        <translation>L&apos;écran Polymarket offre l&apos;accès aux données des marchés prédictifs, vous permettant de suivre les probabilités d&apos;événements et de trader sur des résultats du monde réel.</translation>
     </message>
     <message>
         <source>■  Event browser — Political, economic, sports, crypto events
@@ -9311,7 +8702,7 @@ PRO : Données de transport vérifiées par satellite pour l'alpha de données a
 ■  Volume and liquidity data
 ■  Category filtering and search
 ■  Correlation with traditional markets</source>
-        <translation>■  Navigateur d'événements — Événements politiques, économiques, sportifs, crypto
+        <translation>■  Navigateur d&apos;événements — Événements politiques, économiques, sportifs, crypto
 ■  Graphiques de probabilité — Mouvement historique de probabilité
 ■  Données de volume et de liquidité
 ■  Filtrage et recherche par catégorie
@@ -9322,8 +8713,8 @@ PRO : Données de transport vérifiées par satellite pour l'alpha de données a
 ■  Hedging: Use prediction markets to hedge event risk
 ■  Sentiment gauge: Market-implied probabilities as sentiment
 ■  Research: Compare prediction market accuracy with polls</source>
-        <translation>■  Trading électoral : Suivre les probabilités d'événements politiques
-■  Couverture : Utiliser les marchés prédictifs pour couvrir le risque d'événement
+        <translation>■  Trading électoral : Suivre les probabilités d&apos;événements politiques
+■  Couverture : Utiliser les marchés prédictifs pour couvrir le risque d&apos;événement
 ■  Indicateur de sentiment : Probabilités implicites du marché comme sentiment
 ■  Recherche : Comparer la précision des marchés prédictifs avec les sondages</translation>
     </message>
@@ -9347,7 +8738,7 @@ PRO : Construire des modèles de trading enrichis par les marchés prédictifs</
     </message>
     <message>
         <source>The Alternative Investments screen covers non-traditional asset classes including private equity, hedge funds, real estate, commodities, and other alternatives.</source>
-        <translation>L'écran Investissements Alternatifs couvre les classes d'actifs non traditionnelles, notamment le private equity, les hedge funds, l'immobilier, les matières premières et d'autres alternatifs.</translation>
+        <translation>L&apos;écran Investissements Alternatifs couvre les classes d&apos;actifs non traditionnelles, notamment le private equity, les hedge funds, l&apos;immobilier, les matières premières et d&apos;autres alternatifs.</translation>
     </message>
     <message>
         <source>■  PE/VC deal flow and fund performance
@@ -9368,17 +8759,17 @@ PRO : Construire des modèles de trading enrichis par les marchés prédictifs</
 ■  Private market opportunity screening</source>
         <translation>■  Diversification du portefeuille avec des actifs alternatifs
 ■  Développement de stratégies de réplication de hedge funds
-■  Allocation d'actifs réels pour la couverture de l'inflation
-■  Sélection d'opportunités sur les marchés privés</translation>
+■  Allocation d&apos;actifs réels pour la couverture de l&apos;inflation
+■  Sélection d&apos;opportunités sur les marchés privés</translation>
     </message>
     <message>
         <source>BEGINNER: Understand alternative asset classes and their role
 INTERMEDIATE: Analyze REIT performance, commodity correlations
 ADVANCED: Factor-based alternative investment allocation
 PRO: Private market deal analysis, hedge fund replication, liquid alternatives</source>
-        <translation>DÉBUTANT : Comprendre les classes d'actifs alternatifs et leur rôle
+        <translation>DÉBUTANT : Comprendre les classes d&apos;actifs alternatifs et leur rôle
 INTERMÉDIAIRE : Analyser la performance des REIT, les corrélations de matières premières
-AVANCÉ : Allocation d'investissements alternatifs basée sur les facteurs
+AVANCÉ : Allocation d&apos;investissements alternatifs basée sur les facteurs
 PRO : Analyse de transactions sur les marchés privés, réplication de hedge funds, alternatifs liquides</translation>
     </message>
     <message>
@@ -9391,7 +8782,7 @@ PRO : Analyse de transactions sur les marchés privés, réplication de hedge fu
     </message>
     <message>
         <source>The Report Builder lets you create professional financial reports with a drag-and-drop interface. Combine charts, tables, text, and data from any terminal screen into presentation-ready documents.</source>
-        <translation>Le Générateur de Rapports vous permet de créer des rapports financiers professionnels via une interface glisser-déposer. Combinez graphiques, tableaux, texte et données de n'importe quel écran du terminal dans des documents prêts à présenter.</translation>
+        <translation>Le Générateur de Rapports vous permet de créer des rapports financiers professionnels via une interface glisser-déposer. Combinez graphiques, tableaux, texte et données de n&apos;importe quel écran du terminal dans des documents prêts à présenter.</translation>
     </message>
     <message>
         <source>■  Component toolbar — Charts, tables, text blocks, images, headers
@@ -9400,7 +8791,7 @@ PRO : Analyse de transactions sur les marchés privés, réplication de hedge fu
 ■  Multi-page support with page navigation
 ■  Export to PDF, PNG, or print directly
 ■  Template library for common report types</source>
-        <translation>■  Barre d'outils de composants — Graphiques, tableaux, blocs de texte, images, en-têtes
+        <translation>■  Barre d&apos;outils de composants — Graphiques, tableaux, blocs de texte, images, en-têtes
 ■  Canevas glisser-déposer avec alignement sur la grille
 ■  Panneau des propriétés — Personnalisez couleurs, polices, sources de données
 ■  Prise en charge multipage avec navigation entre pages
@@ -9413,7 +8804,7 @@ PRO : Analyse de transactions sur les marchés privés, réplication de hedge fu
 ■  Risk reports: Portfolio risk metrics for compliance
 ■  Research reports: Published equity research format</source>
         <translation>■  Rapports clients : Synthèse hebdomadaire du marché pour les clients en conseil
-■  Notes d'investissement : Documents structurés de thèse d'investissement
+■  Notes d&apos;investissement : Documents structurés de thèse d&apos;investissement
 ■  Rapports de risque : Indicateurs de risque du portefeuille pour la conformité
 ■  Rapports de recherche : Format de recherche actions publié</translation>
     </message>
@@ -9422,7 +8813,7 @@ PRO : Analyse de transactions sur les marchés privés, réplication de hedge fu
 INTERMEDIATE: Multi-page reports with tables and data binding
 ADVANCED: Templated report generation, automated weekly reports
 PRO: Branded client deliverables, automated report pipelines</source>
-        <translation>DÉBUTANT : Créer un rapport simple d'une page avec un graphique et du texte
+        <translation>DÉBUTANT : Créer un rapport simple d&apos;une page avec un graphique et du texte
 INTERMÉDIAIRE : Rapports multipages avec tableaux et liaison de données
 AVANCÉ : Génération de rapports basée sur des modèles, rapports hebdomadaires automatisés
 PRO : Livrables clients personnalisés, pipelines de rapports automatisés</translation>
@@ -9437,7 +8828,7 @@ PRO : Livrables clients personnalisés, pipelines de rapports automatisés</tran
     </message>
     <message>
         <source>The Node Editor provides a visual programming environment for building data processing and trading workflows by connecting nodes.</source>
-        <translation>L'Éditeur de Nœuds offre un environnement de programmation visuelle pour créer des workflows de traitement de données et de trading en reliant des nœuds.</translation>
+        <translation>L&apos;Éditeur de Nœuds offre un environnement de programmation visuelle pour créer des workflows de traitement de données et de trading en reliant des nœuds.</translation>
     </message>
     <message>
         <source>■  Drag-and-drop node placement
@@ -9449,16 +8840,16 @@ PRO : Livrables clients personnalisés, pipelines de rapports automatisés</tran
         <translation>■  Placement de nœuds par glisser-déposer
 ■  Nœuds de source de données — Données de marché, actualités, indicateurs économiques
 ■  Nœuds de traitement — Filtres, transformations, calculs
-■  Nœuds d'action — Alertes, transactions, génération de rapports
+■  Nœuds d&apos;action — Alertes, transactions, génération de rapports
 ■  Persistance et partage des workflows
-■  Surveillance de l'exécution en temps réel</translation>
+■  Surveillance de l&apos;exécution en temps réel</translation>
     </message>
     <message>
         <source>■  Alert systems: Price crosses MA → send notification
 ■  Data pipelines: Fetch → filter → analyze → report
 ■  Trading automation: Signal → validation → order → monitor
 ■  Research workflows: Data collection → processing → visualization</source>
-        <translation>■  Systèmes d'alerte : Le prix franchit la MM → envoyer une notification
+        <translation>■  Systèmes d&apos;alerte : Le prix franchit la MM → envoyer une notification
 ■  Pipelines de données : Récupérer → filtrer → analyser → rapporter
 ■  Automatisation du trading : Signal → validation → ordre → surveillance
 ■  Workflows de recherche : Collecte de données → traitement → visualisation</translation>
@@ -9468,10 +8859,10 @@ PRO : Livrables clients personnalisés, pipelines de rapports automatisés</tran
 INTERMEDIATE: Multi-step workflows with conditional branching
 ADVANCED: Complex trading workflows with risk checks
 PRO: Production automation pipelines, multi-feed aggregation</source>
-        <translation>DÉBUTANT : Connecter une source de données à un nœud d'alerte simple
+        <translation>DÉBUTANT : Connecter une source de données à un nœud d&apos;alerte simple
 INTERMÉDIAIRE : Workflows multi-étapes avec branchements conditionnels
 AVANCÉ : Workflows de trading complexes avec contrôles de risque
-PRO : Pipelines d'automatisation en production, agrégation multi-flux</translation>
+PRO : Pipelines d&apos;automatisation en production, agrégation multi-flux</translation>
     </message>
     <message>
         <source>CODE EDITOR</source>
@@ -9483,7 +8874,7 @@ PRO : Pipelines d'automatisation en production, agrégation multi-flux</translat
     </message>
     <message>
         <source>The Code Editor provides a built-in development environment for writing and testing Python trading strategies and analytics scripts.</source>
-        <translation>L'Éditeur de Code offre un environnement de développement intégré pour écrire et tester des stratégies de trading Python et des scripts d'analyse.</translation>
+        <translation>L&apos;Éditeur de Code offre un environnement de développement intégré pour écrire et tester des stratégies de trading Python et des scripts d&apos;analyse.</translation>
     </message>
     <message>
         <source>■  Syntax highlighting for Python
@@ -9503,7 +8894,7 @@ PRO : Pipelines d'automatisation en production, agrégation multi-flux</translat
 ■  Data processing: Transform and analyze raw data
 ■  Automation: Create scheduled data processing jobs</source>
         <translation>■  Développement de stratégies : Écrire et tester des stratégies Python
-■  Analyses personnalisées : Créer des scripts d'analyse sur mesure
+■  Analyses personnalisées : Créer des scripts d&apos;analyse sur mesure
 ■  Traitement des données : Transformer et analyser des données brutes
 ■  Automatisation : Créer des tâches planifiées de traitement de données</translation>
     </message>
@@ -9512,7 +8903,7 @@ PRO : Pipelines d'automatisation en production, agrégation multi-flux</translat
 INTERMEDIATE: Write simple strategies from templates
 ADVANCED: Custom analytics with pandas, numpy, scipy
 PRO: Full strategy development with custom backtesting integration</source>
-        <translation>DÉBUTANT : Exécuter des scripts d'exemple, modifier des paramètres
+        <translation>DÉBUTANT : Exécuter des scripts d&apos;exemple, modifier des paramètres
 INTERMÉDIAIRE : Écrire des stratégies simples à partir de modèles
 AVANCÉ : Analyses personnalisées avec pandas, numpy, scipy
 PRO : Développement complet de stratégies avec intégration de backtesting personnalisée</translation>
@@ -9523,11 +8914,11 @@ PRO : Développement complet de stratégies avec intégration de backtesting per
     </message>
     <message>
         <source>Spreadsheet interface for financial analysis</source>
-        <translation>Interface tableur pour l'analyse financière</translation>
+        <translation>Interface tableur pour l&apos;analyse financière</translation>
     </message>
     <message>
         <source>The Excel screen provides a spreadsheet-style interface for financial analysis with formula support, data import/export, and charting.</source>
-        <translation>L'écran Excel offre une interface de type tableur pour l'analyse financière avec prise en charge des formules, import/export de données et création de graphiques.</translation>
+        <translation>L&apos;écran Excel offre une interface de type tableur pour l&apos;analyse financière avec prise en charge des formules, import/export de données et création de graphiques.</translation>
     </message>
     <message>
         <source>■  Spreadsheet grid with formula support
@@ -9539,7 +8930,7 @@ PRO : Développement complet de stratégies avec intégration de backtesting per
 ■  Import de données depuis les écrans du terminal
 ■  Fonctions financières (NPV, IRR, XIRR, etc.)
 ■  Création de graphiques à partir des données du tableur
-■  Compatibilité d'import/export CSV</translation>
+■  Compatibilité d&apos;import/export CSV</translation>
     </message>
     <message>
         <source>■  Financial modeling: Build DCF models in a familiar interface
@@ -9571,7 +8962,7 @@ PRO : Mises à jour automatiques des modèles avec des flux de données en direc
     </message>
     <message>
         <source>The Notes screen provides a persistent note-taking environment for maintaining research notes, trade journals, and analysis records.</source>
-        <translation>L'écran Notes offre un environnement de prise de notes persistant pour conserver des notes de recherche, des journaux de trading et des relevés d'analyse.</translation>
+        <translation>L&apos;écran Notes offre un environnement de prise de notes persistant pour conserver des notes de recherche, des journaux de trading et des relevés d&apos;analyse.</translation>
     </message>
     <message>
         <source>■  Rich text editing
@@ -9583,15 +8974,15 @@ PRO : Mises à jour automatiques des modèles avec des flux de données en direc
 ■  Organisation de plusieurs notes
 ■  Stockage persistant entre les sessions
 ■  Recherche dans toutes les notes
-■  Suivi de l'horodatage pour chaque note</translation>
+■  Suivi de l&apos;horodatage pour chaque note</translation>
     </message>
     <message>
         <source>■  Trade journal: Record entry/exit rationale for every trade
 ■  Research notes: Document investment theses and analysis
 ■  Meeting notes: Record calls with management or analysts
-■  Watchlist notes: Add context to symbols you're tracking</source>
-        <translation>■  Journal de trading : Consignez la logique d'entrée/sortie de chaque transaction
-■  Notes de recherche : Documentez les thèses d'investissement et les analyses
+■  Watchlist notes: Add context to symbols you&apos;re tracking</source>
+        <translation>■  Journal de trading : Consignez la logique d&apos;entrée/sortie de chaque transaction
+■  Notes de recherche : Documentez les thèses d&apos;investissement et les analyses
 ■  Notes de réunion : Consignez les échanges avec la direction ou les analystes
 ■  Notes de liste de suivi : Ajoutez du contexte aux symboles que vous suivez</translation>
     </message>
@@ -9615,7 +9006,7 @@ PRO : Workflow de recherche intégré avec des notes liées aux positions</trans
     </message>
     <message>
         <source>The MCP Servers screen manages Model Context Protocol servers that extend AI agent capabilities with external tool access and data sources.</source>
-        <translation>L'écran MCP Servers gère les serveurs Model Context Protocol qui étendent les capacités des agents IA avec l'accès à des outils externes et des sources de données.</translation>
+        <translation>L&apos;écran MCP Servers gère les serveurs Model Context Protocol qui étendent les capacités des agents IA avec l&apos;accès à des outils externes et des sources de données.</translation>
     </message>
     <message>
         <source>■  Server registration and management
@@ -9625,9 +9016,9 @@ PRO : Workflow de recherche intégré avec des notes liées aux positions</trans
 ■  Security and access control</source>
         <translation>■  Enregistrement et gestion des serveurs
 ■  Découverte et configuration des outils
-■  Surveillance de l'état de la connexion
+■  Surveillance de l&apos;état de la connexion
 ■  Intégration de serveurs personnalisés
-■  Sécurité et contrôle d'accès</translation>
+■  Sécurité et contrôle d&apos;accès</translation>
     </message>
     <message>
         <source>■  Extend AI agents with custom data sources
@@ -9636,7 +9027,7 @@ PRO : Workflow de recherche intégré avec des notes liées aux positions</trans
 ■  Build custom research pipelines with external tools</source>
         <translation>■  Étendez les agents IA avec des sources de données personnalisées
 ■  Connectez-vous à des API et bases de données propriétaires
-■  Ajoutez des outils spécialisés pour l'analyse propre à un domaine
+■  Ajoutez des outils spécialisés pour l&apos;analyse propre à un domaine
 ■  Créez des pipelines de recherche personnalisés avec des outils externes</translation>
     </message>
     <message>
@@ -9659,7 +9050,7 @@ PRO : Créer une infrastructure MCP de production, orchestration multi-serveurs<
     </message>
     <message>
         <source>The Data Mapping screen lets you configure connections between external data sources and terminal screens, mapping fields and transforming data formats.</source>
-        <translation>L'écran de Mappage des Données vous permet de configurer les connexions entre les sources de données externes et les écrans du terminal, en mappant les champs et en transformant les formats de données.</translation>
+        <translation>L&apos;écran de Mappage des Données vous permet de configurer les connexions entre les sources de données externes et les écrans du terminal, en mappant les champs et en transformant les formats de données.</translation>
     </message>
     <message>
         <source>■  Data source configuration
@@ -9671,7 +9062,7 @@ PRO : Créer une infrastructure MCP de production, orchestration multi-serveurs<
 ■  Mappage et transformation des champs
 ■  Validation du schéma
 ■  Test de connexion
-■  Configuration de l'actualisation planifiée</translation>
+■  Configuration de l&apos;actualisation planifiée</translation>
     </message>
     <message>
         <source>■  Connect proprietary data feeds to terminal widgets
@@ -9679,9 +9070,9 @@ PRO : Créer une infrastructure MCP de production, orchestration multi-serveurs<
 ■  Integrate internal databases with terminal screens
 ■  Configure automated data refresh schedules</source>
         <translation>■  Connectez des flux de données propriétaires aux widgets du terminal
-■  Mappez les réponses d'API personnalisées vers des formats standard
+■  Mappez les réponses d&apos;API personnalisées vers des formats standard
 ■  Intégrez des bases de données internes aux écrans du terminal
-■  Configurez des planifications automatisées d'actualisation des données</translation>
+■  Configurez des planifications automatisées d&apos;actualisation des données</translation>
     </message>
     <message>
         <source>BEGINNER: Browse configured data sources
@@ -9699,11 +9090,11 @@ PRO : Pipelines de données complexes multi-sources avec validation</translation
     </message>
     <message>
         <source>Application configuration and preferences</source>
-        <translation>Configuration et préférences de l'application</translation>
+        <translation>Configuration et préférences de l&apos;application</translation>
     </message>
     <message>
         <source>The Settings screen provides comprehensive application configuration including display preferences, data sources, LLM configuration, MCP servers, and integration settings.</source>
-        <translation>L'écran Paramètres offre une configuration complète de l'application, y compris les préférences d'affichage, les sources de données, la configuration LLM, les serveurs MCP et les paramètres d'intégration.</translation>
+        <translation>L&apos;écran Paramètres offre une configuration complète de l&apos;application, y compris les préférences d&apos;affichage, les sources de données, la configuration LLM, les serveurs MCP et les paramètres d&apos;intégration.</translation>
     </message>
     <message>
         <source>■  Display preferences — Theme, font size, layout options
@@ -9712,8 +9103,8 @@ PRO : Pipelines de données complexes multi-sources avec validation</translation
 ■  MCP Servers — Server management and configuration
 ■  Notification preferences
 ■  Keyboard shortcut customization</source>
-        <translation>■  Préférences d'affichage — Thème, taille de police, options de mise en page
-■  Configuration des données — Clés API, intervalles d'actualisation, paramètres de cache
+        <translation>■  Préférences d&apos;affichage — Thème, taille de police, options de mise en page
+■  Configuration des données — Clés API, intervalles d&apos;actualisation, paramètres de cache
 ■  Configuration LLM — Fournisseur de modèle, clé API, paramètres
 ■  Serveurs MCP — Gestion et configuration des serveurs
 ■  Préférences de notification
@@ -9730,12 +9121,12 @@ PRO : Pipelines de données complexes multi-sources avec validation</translation
 ■  AI — LLM provider, model selection, temperature
 ■  MCP — Server endpoints and tool access
 ■  Notifications — Alert channels and thresholds</source>
-        <translation>■  Général — Langue, fuseau horaire, densité d'affichage
-■  Trading — Place de marché par défaut, confirmations d'ordres, limites de risque
+        <translation>■  Général — Langue, fuseau horaire, densité d&apos;affichage
+■  Trading — Place de marché par défaut, confirmations d&apos;ordres, limites de risque
 ■  Données — Clés API pour les fournisseurs de données de marché
 ■  IA — Fournisseur de LLM, sélection du modèle, temperature
 ■  MCP — Points de terminaison du serveur et accès aux outils
-■  Notifications — Canaux d'alerte et seuils</translation>
+■  Notifications — Canaux d&apos;alerte et seuils</translation>
     </message>
     <message>
         <source>BEGINNER: Set your timezone and preferred market
@@ -9745,7 +9136,7 @@ PRO: Full infrastructure configuration, custom integrations</source>
         <translation>DÉBUTANT : Définissez votre fuseau horaire et votre marché préféré
 INTERMÉDIAIRE : Configurez les clés API pour les fournisseurs de données et le LLM
 AVANCÉ : Affinez les paramètres du LLM, configurez des serveurs MCP
-PRO : Configuration complète de l'infrastructure, intégrations personnalisées</translation>
+PRO : Configuration complète de l&apos;infrastructure, intégrations personnalisées</translation>
     </message>
     <message>
         <source>PROFILE</source>
@@ -9753,43 +9144,30 @@ PRO : Configuration complète de l'infrastructure, intégrations personnalisées
     </message>
     <message>
         <source>User account, subscription, and usage tracking</source>
-        <translation>Compte utilisateur, abonnement et suivi de l'utilisation</translation>
+        <translation>Compte utilisateur, abonnement et suivi de l&apos;utilisation</translation>
     </message>
     <message>
-        <source>The Profile screen displays your account information, subscription status, usage statistics, and billing history.</source>
-        <translation>L'écran Profil affiche les informations de votre compte, le statut de l'abonnement, les statistiques d'utilisation et l'historique de facturation.</translation>
+        <source>The Profile screen displays your account information and security settings. OpenMarketTerminal is free and open-source — there are no plans, credits, or billing.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>■  Account details — Name, email, registration date
-■  Subscription status — Current plan, expiry, features
-■  Usage statistics — API calls, data consumed, trades placed
-■  Credit balance — Remaining AI/compute credits
-■  Billing history — Past invoices and payments</source>
-        <translation>■  Détails du compte — Nom, e-mail, date d'inscription
-■  Statut de l'abonnement — Forfait actuel, expiration, fonctionnalités
-■  Statistiques d'utilisation — Appels API, données consommées, transactions passées
-■  Solde de crédits — Crédits IA/calcul restants
-■  Historique de facturation — Factures et paiements antérieurs</translation>
+■  Security — Two-factor auth and email verification status
+■  Support — Open and track help tickets</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>■  Monitor your subscription and credit usage
-■  Upgrade or change your plan
-■  Track API usage to stay within limits
-■  Download billing records for expense tracking</source>
-        <translation>■  Surveillez votre abonnement et votre consommation de crédits
-■  Mettez à niveau ou changez de forfait
-■  Suivez l'utilisation de l'API pour rester dans les limites
-■  Téléchargez les relevés de facturation pour le suivi des dépenses</translation>
+        <source>■  Review and edit your account details
+■  Enable two-factor authentication
+■  Reach support when you need help</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BEGINNER: Check your account status and plan
-INTERMEDIATE: Monitor credit usage, plan API call budget
-ADVANCED: Optimize usage patterns for cost efficiency
-PRO: Enterprise account management, team usage tracking</source>
-        <translation>DÉBUTANT : Vérifiez le statut de votre compte et votre forfait
-INTERMÉDIAIRE : Surveillez la consommation de crédits, planifiez le budget d'appels API
-AVANCÉ : Optimisez les schémas d'utilisation pour réduire les coûts
-PRO : Gestion de comptes entreprise, suivi de l'utilisation par équipe</translation>
+        <source>BEGINNER: Review your account details
+INTERMEDIATE: Enable 2FA for stronger security
+ADVANCED: Manage sessions and API keys
+PRO: Script account actions via the MCP profile tools</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -9831,7 +9209,7 @@ Source : EconDB — données macroéconomiques, aucune clé API requise</transla
     </message>
     <message>
         <source>Fetching EconDB: %1 — %2…</source>
-        <translation>Récupération d'EconDB : %1 — %2…</translation>
+        <translation>Récupération d&apos;EconDB : %1 — %2…</translation>
     </message>
     <message>
         <source>No observations returned</source>
@@ -9939,7 +9317,7 @@ Source : Forex Factory — calendrier économique mondial (aucune clé API requi
     </message>
     <message>
         <source>No events match the selected impact filter</source>
-        <translation>Aucun événement ne correspond au filtre d'impact sélectionné</translation>
+        <translation>Aucun événement ne correspond au filtre d&apos;impact sélectionné</translation>
     </message>
     <message>
         <source>Economic Calendar — %1  (%2 events)</source>
@@ -10029,7 +9407,7 @@ Source : Forex Factory — calendrier économique mondial (aucune clé API requi
     </message>
     <message>
         <source>Interest Rates (+1%)</source>
-        <translation>Taux d'intérêt (+1 %)</translation>
+        <translation>Taux d&apos;intérêt (+1 %)</translation>
     </message>
     <message>
         <source>GDP Growth (+1%)</source>
@@ -10153,7 +9531,7 @@ Weekly Petroleum Status Report requires no API key
 Short-Term Energy Outlook requires EIA_API_KEY env var</source>
         <translation>Sélectionnez une source de données et une catégorie, puis cliquez sur FETCH
 Le Weekly Petroleum Status Report ne nécessite aucune clé API
-Le Short-Term Energy Outlook nécessite la variable d'environnement EIA_API_KEY</translation>
+Le Short-Term Energy Outlook nécessite la variable d&apos;environnement EIA_API_KEY</translation>
     </message>
     <message>
         <source>Weekly Petroleum (WPSR)</source>
@@ -10186,19 +9564,19 @@ Le Short-Term Energy Outlook nécessite la variable d'environnement EIA_API_KEY<
     <message>
         <source>Fetching EIA Petroleum Report: %1…
 (Downloads public XLS file — may take a few seconds)</source>
-        <translation>Récupération du rapport pétrolier de l'EIA : %1…
-(Téléchargement d'un fichier XLS public — cela peut prendre quelques secondes)</translation>
+        <translation>Récupération du rapport pétrolier de l&apos;EIA : %1…
+(Téléchargement d&apos;un fichier XLS public — cela peut prendre quelques secondes)</translation>
     </message>
     <message>
         <source>Fetching EIA STEO Table %1…</source>
-        <translation>Récupération du tableau STEO de l'EIA %1…</translation>
+        <translation>Récupération du tableau STEO de l&apos;EIA %1…</translation>
     </message>
     <message>
         <source>EIA API key not configured.
 Set EIA_API_KEY environment variable.
 Free key at: www.eia.gov/opendata/register.php</source>
         <translation>Clé API EIA non configurée.
-Définissez la variable d'environnement EIA_API_KEY.
+Définissez la variable d&apos;environnement EIA_API_KEY.
 Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
@@ -10210,91 +9588,357 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     <name>openmarketterminal::screens::EquityAnalysisTab</name>
     <message>
         <source>LOADING ANALYSIS…</source>
-        <translation>CHARGEMENT DE L'ANALYSE…</translation>
+        <translation>CHARGEMENT DE L&apos;ANALYSE…</translation>
+    </message>
+    <message>
+        <source>VALUATION</source>
+        <translation type="unfinished">VALORISATION</translation>
     </message>
     <message>
         <source>FINANCIAL HEALTH</source>
         <translation>SANTÉ FINANCIÈRE</translation>
     </message>
     <message>
-        <source>TOTAL CASH</source>
-        <translation>TRÉSORERIE TOTALE</translation>
+        <source>CASH FLOW</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TOTAL DEBT</source>
-        <translation>DETTE TOTALE</translation>
+        <source>PROFITABILITY</source>
+        <translation type="unfinished">RENTABILITÉ</translation>
     </message>
     <message>
-        <source>FREE CASHFLOW</source>
-        <translation>FLUX DE TRÉSORERIE DISPONIBLE</translation>
+        <source>GROWTH</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OPERATING CF</source>
-        <translation>FLUX DE TRÉSORERIE D'EXPLOITATION</translation>
+        <source>RISK / SENTIMENT</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ENTERPRISE VALUE</source>
-        <translation>VALEUR D'ENTREPRISE</translation>
+        <source>ANALYST PRICE TARGET</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EV/REVENUE</source>
-        <translation>EV/CHIFFRE D'AFFAIRES</translation>
+        <source>No analyst coverage available.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EV/EBITDA</source>
-        <translation>EV/EBITDA</translation>
+        <source> now</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BOOK VALUE</source>
-        <translation>VALEUR COMPTABLE</translation>
+        <source>to mean target</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>REVENUE &amp; PROFITS</source>
-        <translation>CHIFFRE D'AFFAIRES ET BÉNÉFICES</translation>
+        <source>target range shown</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TOTAL REVENUE</source>
-        <translation>CHIFFRE D'AFFAIRES TOTAL</translation>
+        <source>STRONG BUY</source>
+        <translation type="unfinished">ACHAT FORT</translation>
     </message>
     <message>
-        <source>REVENUE/SHARE</source>
-        <translation>CHIFFRE D'AFFAIRES/ACTION</translation>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
     </message>
     <message>
-        <source>GROSS PROFITS</source>
-        <translation>BÉNÉFICE BRUT</translation>
+        <source>HOLD</source>
+        <translation type="unfinished">CONSERVER</translation>
     </message>
     <message>
-        <source>EBITDA MARGINS</source>
-        <translation>MARGE EBITDA</translation>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
     </message>
     <message>
-        <source>KEY RATIOS</source>
-        <translation>RATIOS CLÉS</translation>
+        <source>STRONG SELL</source>
+        <translation type="unfinished">VENTE FORTE</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n analyst(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message>
-        <source>P/E RATIO</source>
-        <translation>RATIO P/E</translation>
+        <source>N/A</source>
+        <translation type="unfinished">N/D</translation>
     </message>
     <message>
-        <source>PEG RATIO</source>
-        <translation>RATIO PEG</translation>
+        <source>No earnings-based valuation available (may be unprofitable).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROE</source>
-        <translation>ROE</translation>
+        <source>UNDERVALUED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROA</source>
-        <translation>ROA</translation>
+        <source>FAIRLY VALUED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BETA</source>
-        <translation>BÊTA</translation>
+        <source>EXPENSIVE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SHORT RATIO</source>
-        <translation>RATIO DE VENTE À DÉCOUVERT</translation>
+        <source>Forward P/E below trailing — earnings expected to grow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trades at a premium; priced for growth or quality.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low multiple relative to earnings/growth.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Valuation in line with broad-market norms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Balance-sheet cash/debt not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cash %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Debt %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STRONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net cash position — more cash than total debt.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STABLE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manageable leverage relative to cash on hand.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STRETCHED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Debt is high relative to available cash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cash-flow figures not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FCF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Op CF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FCF margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Generates positive free cash flow after capex.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REINVESTING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operating cash is positive but FCF is negative (heavy investment).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BURNING CASH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operations are consuming cash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profitability ratios not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Oper. margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOSS-MAKING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Currently unprofitable on a net basis.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EXCELLENT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High returns on equity and strong net margins.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SOLID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Healthy, consistent profitability.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>THIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profitable, but margins and returns are slim.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Growth rates not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revenue %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Earnings %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HIGH GROWTH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top line expanding rapidly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MODERATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Steady single-to-double-digit growth.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FLAT</source>
+        <translation type="unfinished">NEUTRE</translation>
+    </message>
+    <message>
+        <source>Revenue is roughly unchanged year over year.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DECLINING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revenue is contracting year over year.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Risk metrics not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beta %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Short %1 of float</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>52w position %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ELEVATED</source>
+        <translation type="unfinished">ÉLEVÉ</translation>
+    </message>
+    <message>
+        <source>Heavy short interest signals bearish positioning.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High beta — amplifies market moves.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Moves roughly in line with, or above, the market.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOW</source>
+        <translation type="unfinished">BAS</translation>
+    </message>
+    <message>
+        <source>Lower volatility than the broad market.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beta unavailable; based on limited risk signals.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::EquityFilingsTab</name>
+    <message>
+        <source>SEC FILINGS — select a symbol</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Form</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation type="unfinished">Date</translation>
+    </message>
+    <message>
+        <source>Accession</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1 (loading…)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1 (%2)</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -10337,7 +9981,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Revenue</source>
-        <translation>Chiffre d'affaires</translation>
+        <translation>Chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>Gross Profit</source>
@@ -10401,7 +10045,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>TOTAL REVENUE</source>
-        <translation>CHIFFRE D'AFFAIRES TOTAL</translation>
+        <translation>CHIFFRE D&apos;AFFAIRES TOTAL</translation>
     </message>
     <message>
         <source>GROSS PROFIT</source>
@@ -10409,7 +10053,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>OPERATING INCOME</source>
-        <translation>RÉSULTAT D'EXPLOITATION</translation>
+        <translation>RÉSULTAT D&apos;EXPLOITATION</translation>
     </message>
     <message>
         <source>NET INCOME</source>
@@ -10433,7 +10077,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>REVENUE &amp; EARNINGS TREND</source>
-        <translation>TENDANCE DU CHIFFRE D'AFFAIRES ET DES BÉNÉFICES</translation>
+        <translation>TENDANCE DU CHIFFRE D&apos;AFFAIRES ET DES BÉNÉFICES</translation>
     </message>
     <message>
         <source>MARGIN TRENDS (%)</source>
@@ -10493,7 +10137,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>TOTAL ASSETS</source>
-        <translation>TOTAL DE L'ACTIF</translation>
+        <translation>TOTAL DE L&apos;ACTIF</translation>
     </message>
     <message>
         <source>TOTAL LIABILITIES</source>
@@ -10517,7 +10161,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>LIQUIDITY &amp; LEVERAGE RATIOS</source>
-        <translation>RATIOS DE LIQUIDITÉ &amp; D'ENDETTEMENT</translation>
+        <translation>RATIOS DE LIQUIDITÉ &amp; D&apos;ENDETTEMENT</translation>
     </message>
     <message>
         <source>LIQUIDITY</source>
@@ -10561,11 +10205,11 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>OPERATING CF</source>
-        <translation>FLUX DE TRÉSORERIE D'EXPLOITATION</translation>
+        <translation>FLUX DE TRÉSORERIE D&apos;EXPLOITATION</translation>
     </message>
     <message>
         <source>INVESTING CF</source>
-        <translation>FLUX DE TRÉSORERIE D'INVESTISSEMENT</translation>
+        <translation>FLUX DE TRÉSORERIE D&apos;INVESTISSEMENT</translation>
     </message>
     <message>
         <source>FINANCING CF</source>
@@ -10585,7 +10229,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>STOCK BUYBACKS</source>
-        <translation>RACHATS D'ACTIONS</translation>
+        <translation>RACHATS D&apos;ACTIONS</translation>
     </message>
     <message>
         <source>FCF MARGIN</source>
@@ -10593,7 +10237,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>CAPEX/REVENUE</source>
-        <translation>CAPEX/CHIFFRE D'AFFAIRES</translation>
+        <translation>CAPEX/CHIFFRE D&apos;AFFAIRES</translation>
     </message>
     <message>
         <source>CASH FLOW TREND (BILLIONS $)</source>
@@ -10615,8 +10259,20 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
         <translation>CHARGEMENT DES ACTUALITÉS…</translation>
     </message>
     <message>
+        <source>Add a NewsAPI key in the Data Sources tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>LATEST NEWS</source>
         <translation>DERNIÈRES ACTUALITÉS</translation>
+    </message>
+    <message>
+        <source>Auto (GNews → Yahoo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>News source</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>REFRESH</source>
@@ -10640,17 +10296,17 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>READ FULL ARTICLE →</source>
-        <translation>LIRE L'ARTICLE COMPLET →</translation>
+        <translation>LIRE L&apos;ARTICLE COMPLET →</translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::EquityOverviewTab</name>
     <message>
         <source>LOADING OVERVIEW…</source>
-        <translation>CHARGEMENT DE L'APERÇU…</translation>
+        <translation>CHARGEMENT DE L&apos;APERÇU…</translation>
     </message>
     <message>
-        <source>TODAY'S TRADING</source>
+        <source>TODAY&apos;S TRADING</source>
         <translation>SÉANCE DU JOUR</translation>
     </message>
     <message>
@@ -10783,7 +10439,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>REVENUE</source>
-        <translation>CHIFFRE D'AFFAIRES</translation>
+        <translation>CHIFFRE D&apos;AFFAIRES</translation>
     </message>
     <message>
         <source>EARNINGS</source>
@@ -10969,7 +10625,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Drag to broadcast this symbol to any panel</source>
-        <translation>Glissez pour diffuser ce symbole vers n'importe quel panneau</translation>
+        <translation>Glissez pour diffuser ce symbole vers n&apos;importe quel panneau</translation>
     </message>
     <message>
         <source>Use /stock, /fund, /index... in command bar to search</source>
@@ -10982,6 +10638,100 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     <message>
         <source>MKT CAP: %1</source>
         <translation>CAPI BOURS : %1</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>↓ CSV</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download price history (CSV) from Yahoo Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT CAP: %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Price Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load a symbol first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Price Data — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Yahoo Finance price history for &lt;b&gt;%1&lt;/b&gt; as CSV.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Period:</source>
+        <translation type="unfinished">Période :</translation>
+    </message>
+    <message>
+        <source>Interval:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note: intraday intervals (below 1d) are only available for roughly the last 60 days.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">Annuler</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fetching from Yahoo Finance…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data returned for %1 (%2). Try a longer period or a daily interval.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Price Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CSV Files (*.csv)</source>
+        <translation type="unfinished">Fichiers CSV (*.csv)</translation>
+    </message>
+    <message>
+        <source>Save cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation type="unfinished">Échec de l&apos;exportation</translation>
+    </message>
+    <message>
+        <source>Could not open the file for writing:
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved %1 rows for %2 to:
+%3</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Overview</source>
@@ -11012,6 +10762,10 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
         <translation>Sentiment</translation>
     </message>
     <message>
+        <source>Filings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>BACKTEST</source>
         <translation>BACKTEST</translation>
     </message>
@@ -11019,8 +10773,8 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
 <context>
     <name>openmarketterminal::screens::EquitySentimentTab</name>
     <message>
-        <source>Loading market sentiment…</source>
-        <translation>Chargement du sentiment de marché…</translation>
+        <source>Loading sentiment…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LOADING SENTIMENT…</source>
@@ -11035,123 +10789,52 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
         <translation>ACTUALISER</translation>
     </message>
     <message>
-        <source>Refreshing market sentiment…</source>
-        <translation>Actualisation du sentiment de marché…</translation>
+        <source>Open a symbol to compute sentiment from news and price momentum.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>REFRESHING SENTIMENT…</source>
-        <translation>ACTUALISATION DU SENTIMENT…</translation>
+        <source>OVERALL</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open a symbol and enable Adanos Market Sentiment in Data Sources to load a snapshot.</source>
-        <translation>Ouvrez un symbole et activez Adanos Market Sentiment dans les Sources de données pour charger un instantané.</translation>
+        <source>SIGNAL SOURCES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SOURCE BREAKDOWN</source>
-        <translation>RÉPARTITION PAR SOURCE</translation>
+        <source>HEADLINES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SUMMARY</source>
-        <translation>RÉSUMÉ</translation>
+        <source>Confidence %1%</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>AVERAGE BUZZ</source>
-        <translation>BUZZ MOYEN</translation>
+        <source>%1 bullish · %2 neutral · %3 bearish  (%4 headlines)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BULLISH %</source>
-        <translation>HAUSSIER %</translation>
+        <source>wt %1%</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>COVERAGE</source>
-        <translation>COUVERTURE</translation>
+        <source>n/a</source>
+        <translation type="unfinished">n/d</translation>
     </message>
     <message>
-        <source>ALIGNMENT</source>
-        <translation>ALIGNEMENT</translation>
+        <source>No headlines available for this symbol.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Buzz</source>
-        <translation>Engouement</translation>
+        <source>engine: %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Bullish</source>
-        <translation>Haussier</translation>
+        <source>self-computed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Activity</source>
-        <translation>Activité</translation>
-    </message>
-    <message>
-        <source>Sentiment</source>
-        <translation>Sentiment</translation>
-    </message>
-    <message>
-        <source>No snapshot available.</source>
-        <translation>Aucun instantané disponible.</translation>
-    </message>
-    <message>
-        <source>%1 sources live</source>
-        <translation>%1 sources en direct</translation>
-    </message>
-    <message>
-        <source>Optional alternative data</source>
-        <translation>Données alternatives optionnelles</translation>
-    </message>
-    <message>
-        <source>No market sentiment snapshot is available for this symbol.</source>
-        <translation>Aucun instantané du sentiment de marché disponible pour ce symbole.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::EquityTalippTab</name>
-    <message>
-        <source>—  data points  |  TALIpp Engine</source>
-        <translation>—  points de données  |  Moteur TALIpp</translation>
-    </message>
-    <message>
-        <source>Select an indicator and click CALCULATE.</source>
-        <translation>Sélectionnez un indicateur et cliquez sur CALCULATE.</translation>
-    </message>
-    <message>
-        <source>▶  CALCULATE</source>
-        <translation>▶  CALCULER</translation>
-    </message>
-    <message>
-        <source>Select an indicator and click CALCULATE</source>
-        <translation>Sélectionnez un indicateur et cliquez sur CALCULATE</translation>
-    </message>
-    <message>
-        <source>50+ indicators across 6 categories — powered by TALIpp incremental engine</source>
-        <translation>Plus de 50 indicateurs répartis sur 6 catégories — propulsé par le moteur incrémental TALIpp</translation>
-    </message>
-    <message>
-        <source>No symbol loaded. Search for a symbol first.</source>
-        <translation>Aucun symbole chargé. Recherchez d'abord un symbole.</translation>
-    </message>
-    <message>
-        <source>COMPUTING…</source>
-        <translation>CALCUL EN COURS…</translation>
-    </message>
-    <message>
-        <source>Computing %1…</source>
-        <translation>Calcul de %1…</translation>
-    </message>
-    <message>
-        <source>COMPUTING %1…</source>
-        <translation>CALCUL DE %1…</translation>
-    </message>
-    <message>
-        <source>LAST</source>
-        <translation>DERNIER</translation>
-    </message>
-    <message>
-        <source>N/A</source>
-        <translation>N/D</translation>
-    </message>
-    <message>
-        <source>No data returned for %1</source>
-        <translation>Aucune donnée renvoyée pour %1</translation>
+        <source>No sentiment is available for this symbol.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -11266,7 +10949,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Extreme overbought — euphoria zone</source>
-        <translation>Surachat extrême — zone d'euphorie</translation>
+        <translation>Surachat extrême — zone d&apos;euphorie</translation>
     </message>
     <message>
         <source>Overbought — watch for profit taking</source>
@@ -11330,7 +11013,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Within bands — normal range</source>
-        <translation>À l'intérieur des bandes — plage normale</translation>
+        <translation>À l&apos;intérieur des bandes — plage normale</translation>
     </message>
     <message>
         <source>Tight squeeze — breakout imminent</source>
@@ -11374,7 +11057,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Balanced — no clear accumulation or distribution</source>
-        <translation>Équilibré — pas d'accumulation ni de distribution nette</translation>
+        <translation>Équilibré — pas d&apos;accumulation ni de distribution nette</translation>
     </message>
     <message>
         <source>Strong uptrend — recent new highs</source>
@@ -11524,6 +11207,10 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
         <translation>PAPIER</translation>
     </message>
     <message>
+        <source>FEEDS</source>
+        <translation type="unfinished">FLUX</translation>
+    </message>
+    <message>
         <source>LIVE</source>
         <translation>EN DIRECT</translation>
     </message>
@@ -11557,7 +11244,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>No price available for fill</source>
-        <translation>Aucun prix disponible pour l'exécution</translation>
+        <translation>Aucun prix disponible pour l&apos;exécution</translation>
     </message>
     <message>
         <source>Paper order filled: %1 @ %2</source>
@@ -11565,43 +11252,15 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Paper order queued: %1</source>
-        <translation>Ordre papier en file d'attente : %1</translation>
+        <translation>Ordre papier en file d&apos;attente : %1</translation>
     </message>
     <message>
         <source>Order failed: %1</source>
-        <translation>Échec de l'ordre : %1</translation>
-    </message>
-    <message>
-        <source>Order queued for approval in Action Center</source>
-        <translation>Ordre en file d'attente pour approbation dans l'Action Center</translation>
-    </message>
-    <message>
-        <source>Failed to queue order</source>
-        <translation>Échec de la mise en file d'attente de l'ordre</translation>
-    </message>
-    <message>
-        <source>Order placed: %1</source>
-        <translation>Ordre passé : %1</translation>
-    </message>
-    <message>
-        <source>Cancelled %1 order(s)%2</source>
-        <translation>%1 ordre(s) annulé(s)%2</translation>
-    </message>
-    <message>
-        <source>, %1 failed</source>
-        <translation>, %1 échec(s)</translation>
-    </message>
-    <message>
-        <source>Closed %1 position(s)%2</source>
-        <translation>%1 position(s) clôturée(s)%2</translation>
+        <translation>Échec de l&apos;ordre : %1</translation>
     </message>
     <message>
         <source>Strategy has no legs to place</source>
-        <translation>La stratégie n'a aucune jambe à placer</translation>
-    </message>
-    <message>
-        <source>Strategy: %1/%2 legs placed%3</source>
-        <translation>Stratégie : %1/%2 jambes placées%3</translation>
+        <translation>La stratégie n&apos;a aucune jambe à placer</translation>
     </message>
     <message>
         <source>Import Holdings</source>
@@ -11689,7 +11348,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>(no portfolios yet)</source>
-        <translation>(aucun portefeuille pour l'instant)</translation>
+        <translation>(aucun portefeuille pour l&apos;instant)</translation>
     </message>
     <message>
         <source>Nothing selected to import.</source>
@@ -11700,12 +11359,8 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
         <translation>Le nom du portefeuille est requis.</translation>
     </message>
     <message>
-        <source>Imported %1 holdings into portfolio "%2".</source>
-        <translation>%1 positions importées dans le portefeuille "%2".</translation>
-    </message>
-    <message>
         <source>Select a portfolio first.</source>
-        <translation>Sélectionnez d'abord un portefeuille.</translation>
+        <translation>Sélectionnez d&apos;abord un portefeuille.</translation>
     </message>
     <message>
         <source>Imported %1 holdings.</source>
@@ -11713,15 +11368,133 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
     </message>
     <message>
         <source>Failed to queue strategy</source>
-        <translation>Échec de la mise en file d'attente de la stratégie</translation>
+        <translation>Échec de la mise en file d&apos;attente de la stratégie</translation>
     </message>
     <message>
         <source>Order cancelled</source>
         <translation>Ordre annulé</translation>
     </message>
     <message>
+        <source>Buy %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Market</source>
+        <translation type="unfinished">Marché</translation>
+    </message>
+    <message>
+        <source>Limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Type</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Limit price</source>
+        <translation type="unfinished">Prix limite</translation>
+    </message>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Product conversion is available for paper accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert %1 to %2 (delivery)?
+
+This locks the full position value as cash and carries it overnight instead of auto-squaring at 15:30.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 converted to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No %1 positions to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>winning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>losing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trade %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No connected broker can trade %1. Add or connect a broker for this market in the ACCOUNTS panel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SHORT</source>
+        <translation type="unfinished">VENTE À DÉCOUVERT</translation>
+    </message>
+    <message>
+        <source>LONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit %1 %2 %3 at market?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No open positions to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No holdings to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off %1 at market?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Strategy queued for approval (%1 legs)</source>
-        <translation>Stratégie en file d'attente pour approbation (%1 jambes)</translation>
+        <translation>Stratégie en file d&apos;attente pour approbation (%1 jambes)</translation>
     </message>
 </context>
 <context>
@@ -11730,7 +11503,7 @@ Clé gratuite sur : www.eia.gov/opendata/register.php</translation>
         <source>Select a dataset and country, then click FETCH
 Source: Eurostat — EU statistical office</source>
         <translation>Sélectionnez un jeu de données et un pays, puis cliquez sur FETCH
-Source : Eurostat — office statistique de l'UE</translation>
+Source : Eurostat — office statistique de l&apos;UE</translation>
     </message>
     <message>
         <source>DATASET</source>
@@ -11742,7 +11515,7 @@ Source : Eurostat — office statistique de l'UE</translation>
     </message>
     <message>
         <source>Fetching Eurostat: %1 — %2…</source>
-        <translation>Récupération d'Eurostat : %1 — %2…</translation>
+        <translation>Récupération d&apos;Eurostat : %1 — %2…</translation>
     </message>
     <message>
         <source>No data returned for this selection</source>
@@ -11820,10 +11593,10 @@ Source : Eurostat — office statistique de l'UE</translation>
 This build was compiled without QXlsx support.
 
 CSV files can still be imported via the toolbar.</source>
-        <translation>L'importation Excel (.xlsx) nécessite les en-têtes privés de Qt6.
+        <translation>L&apos;importation Excel (.xlsx) nécessite les en-têtes privés de Qt6.
 Cette version a été compilée sans prise en charge de QXlsx.
 
-Les fichiers CSV peuvent toujours être importés via la barre d'outils.</translation>
+Les fichiers CSV peuvent toujours être importés via la barre d&apos;outils.</translation>
     </message>
     <message>
         <source>Excel Files (*.xlsx)</source>
@@ -11838,10 +11611,10 @@ Les fichiers CSV peuvent toujours être importés via la barre d'outils.</transl
 This build was compiled without QXlsx support.
 
 CSV export is still available via the toolbar.</source>
-        <translation>L'exportation Excel (.xlsx) nécessite les en-têtes privés de Qt6.
+        <translation>L&apos;exportation Excel (.xlsx) nécessite les en-têtes privés de Qt6.
 Cette version a été compilée sans prise en charge de QXlsx.
 
-L'exportation CSV reste disponible via la barre d'outils.</translation>
+L&apos;exportation CSV reste disponible via la barre d&apos;outils.</translation>
     </message>
     <message>
         <source>Export CSV</source>
@@ -11853,12 +11626,12 @@ L'exportation CSV reste disponible via la barre d'outils.</translation>
     </message>
     <message>
         <source>Export failed</source>
-        <translation>Échec de l'exportation</translation>
+        <translation>Échec de l&apos;exportation</translation>
     </message>
     <message>
         <source>Could not open file for writing:
 %1</source>
-        <translation>Impossible d'ouvrir le fichier en écriture :
+        <translation>Impossible d&apos;ouvrir le fichier en écriture :
 %1</translation>
     </message>
     <message>
@@ -11874,7 +11647,7 @@ L'exportation CSV reste disponible via la barre d'outils.</translation>
         <translation>Supprimer la feuille</translation>
     </message>
     <message>
-        <source>Delete "%1"? This cannot be undone.</source>
+        <source>Delete &quot;%1&quot;? This cannot be undone.</source>
         <translation>Supprimer « %1 » ? Cette action est irréversible.</translation>
     </message>
     <message>
@@ -11985,14 +11758,14 @@ Aucune API key requise</translation>
     </message>
     <message>
         <source>Could not save file to selected location.</source>
-        <translation>Impossible d'enregistrer le fichier à l'emplacement sélectionné.</translation>
+        <translation>Impossible d&apos;enregistrer le fichier à l&apos;emplacement sélectionné.</translation>
     </message>
     <message>
         <source>Delete File</source>
         <translation>Supprimer le fichier</translation>
     </message>
     <message>
-        <source>Delete "%1"? This cannot be undone.</source>
+        <source>Delete &quot;%1&quot;? This cannot be undone.</source>
         <translation>Supprimer « %1 » ? Cette action est irréversible.</translation>
     </message>
     <message>
@@ -12014,7 +11787,7 @@ Utilisez SAVE pour télécharger.</translation>
     </message>
     <message>
         <source>Cannot open file for preview.</source>
-        <translation>Impossible d'ouvrir le fichier pour l'aperçu.</translation>
+        <translation>Impossible d&apos;ouvrir le fichier pour l&apos;aperçu.</translation>
     </message>
     <message>
         <source>[... truncated at 64K characters ...]</source>
@@ -12026,13 +11799,13 @@ Utilisez SAVE pour télécharger.</translation>
     </message>
     <message>
         <source>Your terminal file index is empty.</source>
-        <translation>L'index des fichiers de votre terminal est vide.</translation>
+        <translation>L&apos;index des fichiers de votre terminal est vide.</translation>
     </message>
     <message>
         <source>Files are registered automatically when you export, save, or generate output
 from any screen. You can also upload files manually using the button above.</source>
         <translation>Les fichiers sont enregistrés automatiquement lorsque vous exportez, enregistrez ou générez une sortie
-depuis n'importe quel écran. Vous pouvez aussi téléverser des fichiers manuellement à l'aide du bouton ci-dessus.</translation>
+depuis n&apos;importe quel écran. Vous pouvez aussi téléverser des fichiers manuellement à l&apos;aide du bouton ci-dessus.</translation>
     </message>
     <message>
         <source>FILES ARE COLLECTED FROM</source>
@@ -12048,7 +11821,7 @@ depuis n'importe quel écran. Vous pouvez aussi téléverser des fichiers manuel
     </message>
     <message>
         <source>Click any file card to preview its contents in the right panel.</source>
-        <translation>Cliquez sur n'importe quelle carte de fichier pour en prévisualiser le contenu dans le panneau de droite.</translation>
+        <translation>Cliquez sur n&apos;importe quelle carte de fichier pour en prévisualiser le contenu dans le panneau de droite.</translation>
     </message>
     <message>
         <source>Use checkboxes on file cards to bulk-delete multiple files at once.</source>
@@ -12100,43 +11873,6 @@ depuis n'importe quel écran. Vous pouvez aussi téléverser des fichiers manuel
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::Open TerminalMacroPanel</name>
-    <message>
-        <source>Open Terminal Macro — Coming Soon
-
-Planned data:
-  · Central bank rates (40+ countries)
-  · Sovereign debt metrics
-  · Open Terminal proprietary macro indices
-  · Global inflation dashboard
-  · Emerging market indicators
-
-Requires Open Terminal subscription + API key
-Check back in a future release</source>
-        <translation>Open Terminal Macro — Bientôt disponible
-
-Données prévues :
-  · Taux des banques centrales (40+ pays)
-  · Indicateurs de dette souveraine
-  · Indices macro propriétaires Open Terminal
-  · Tableau de bord mondial de l'inflation
-  · Indicateurs des marchés émergents
-
-Nécessite un abonnement Open Terminal + une API key
-Revenez dans une prochaine version</translation>
-    </message>
-    <message>
-        <source>OPENMARKETTERMINAL MACRO — COMING SOON</source>
-        <translation>OPENMARKETTERMINAL MACRO — BIENTÔT DISPONIBLE</translation>
-    </message>
-    <message>
-        <source>Open Terminal Macro data script is not yet available.
-This panel will be enabled in a future release.</source>
-        <translation>Le script de données Open Terminal Macro n'est pas encore disponible.
-Ce panneau sera activé dans une prochaine version.</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::FiscalDataPanel</name>
     <message>
         <source>Select a dataset and click FETCH
@@ -12160,428 +11896,11 @@ Aucune API key requise</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::ForgotPasswordScreen</name>
-    <message>
-        <source>RESET PASSWORD</source>
-        <translation>RÉINITIALISER LE MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>Enter your email and we'll send a verification code.</source>
-        <translation>Saisissez votre e-mail et nous vous enverrons un code de vérification.</translation>
-    </message>
-    <message>
-        <source>EMAIL</source>
-        <translation>E-MAIL</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>  SEND CODE  </source>
-        <translation>  ENVOYER LE CODE  </translation>
-    </message>
-    <message>
-        <source>REMEMBER YOUR PASSWORD? SIGN IN</source>
-        <translation>VOUS VOUS SOUVENEZ DE VOTRE MOT DE PASSE ? CONNEXION</translation>
-    </message>
-    <message>
-        <source>CHECK YOUR EMAIL</source>
-        <translation>CONSULTEZ VOTRE E-MAIL</translation>
-    </message>
-    <message>
-        <source>We've sent a verification code. Enter it on the next screen to reset your password.</source>
-        <translation>Nous avons envoyé un code de vérification. Saisissez-le à l'écran suivant pour réinitialiser votre mot de passe.</translation>
-    </message>
-    <message>
-        <source>  I HAVE THE CODE  </source>
-        <translation>  J'AI LE CODE  </translation>
-    </message>
-    <message>
-        <source>DIDN'T RECEIVE? RESEND</source>
-        <translation>NON REÇU ? RENVOYER</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>CODE DE VÉRIFICATION</translation>
-    </message>
-    <message>
-        <source>NEW PASSWORD</source>
-        <translation>NOUVEAU MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>CONFIRM PASSWORD</source>
-        <translation>CONFIRMER LE MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>enter code from email</source>
-        <translation>saisissez le code reçu par e-mail</translation>
-    </message>
-    <message>
-        <source>min 8 characters</source>
-        <translation>min. 8 caractères</translation>
-    </message>
-    <message>
-        <source>re-enter password</source>
-        <translation>ressaisir le mot de passe</translation>
-    </message>
-    <message>
-        <source>  RESET PASSWORD  </source>
-        <translation>  RÉINITIALISER LE MOT DE PASSE  </translation>
-    </message>
-    <message>
-        <source>PASSWORD RESET</source>
-        <translation>MOT DE PASSE RÉINITIALISÉ</translation>
-    </message>
-    <message>
-        <source>SUCCESS</source>
-        <translation>SUCCÈS</translation>
-    </message>
-    <message>
-        <source>Your password has been reset. You can now sign in with your new password.</source>
-        <translation>Votre mot de passe a été réinitialisé. Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.</translation>
-    </message>
-    <message>
-        <source>  CONTINUE TO LOGIN  </source>
-        <translation>  CONTINUER VERS LA CONNEXION  </translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumFeedPanel</name>
-    <message>
-        <source>DISCUSSIONS</source>
-        <translation>DISCUSSIONS</translation>
-    </message>
-    <message>
-        <source>+ NEW POST</source>
-        <translation>+ NOUVEAU MESSAGE</translation>
-    </message>
-    <message>
-        <source>%1 posts</source>
-        <translation>%1 messages</translation>
-    </message>
-    <message>
-        <source>NO DISCUSSIONS YET</source>
-        <translation>AUCUNE DISCUSSION POUR L'INSTANT</translation>
-    </message>
-    <message>
-        <source>Be the first to start a conversation</source>
-        <translation>Soyez le premier à lancer une conversation</translation>
-    </message>
-    <message>
-        <source>%1 replies</source>
-        <translation>%1 réponses</translation>
-    </message>
-    <message>
-        <source>%1 views</source>
-        <translation>%1 vues</translation>
-    </message>
-    <message>
-        <source>✓ VOTED</source>
-        <translation>✓ VOTÉ</translation>
-    </message>
-    <message>
-        <source>● HOT</source>
-        <translation>● POPULAIRE</translation>
-    </message>
-    <message>
-        <source>● ACTIVE</source>
-        <translation>● ACTIF</translation>
-    </message>
-    <message>
-        <source>Load %1 more posts</source>
-        <translation>Charger %1 messages de plus</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumPostListPanel</name>
-    <message>
-        <source>%1 posts</source>
-        <translation>%1 messages</translation>
-    </message>
-    <message>
-        <source>NO POSTS YET</source>
-        <translation>AUCUN MESSAGE POUR L'INSTANT</translation>
-    </message>
-    <message>
-        <source>Be the first to start a discussion</source>
-        <translation>Soyez le premier à lancer une discussion</translation>
-    </message>
-    <message>
-        <source>● HOT</source>
-        <translation>● POPULAIRE</translation>
-    </message>
-    <message>
-        <source>Load %1 more posts</source>
-        <translation>Charger %1 messages de plus</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumPostReaderPanel</name>
-    <message>
-        <source>SELECT A POST</source>
-        <translation>SÉLECTIONNEZ UN MESSAGE</translation>
-    </message>
-    <message>
-        <source>Click any post from the feed to read it</source>
-        <translation>Cliquez sur n'importe quel message du fil pour le lire</translation>
-    </message>
-    <message>
-        <source>Loading...</source>
-        <translation>Chargement...</translation>
-    </message>
-    <message>
-        <source>▲  Upvote</source>
-        <translation>▲  Voter pour</translation>
-    </message>
-    <message>
-        <source>◆ %1 replies</source>
-        <translation>◆ %1 réponses</translation>
-    </message>
-    <message>
-        <source>◉ %1 views</source>
-        <translation>◉ %1 vues</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>RÉPONSES</translation>
-    </message>
-    <message>
-        <source>Write a reply...</source>
-        <translation>Rédigez une réponse...</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>Répondre</translation>
-    </message>
-    <message>
-        <source>◆ %1 reply</source>
-        <translation>◆ %1 réponse</translation>
-    </message>
-    <message>
-        <source>NO REPLIES YET</source>
-        <translation>AUCUNE RÉPONSE POUR L'INSTANT</translation>
-    </message>
-    <message>
-        <source>▲ upvote</source>
-        <translation>▲ voter pour</translation>
-    </message>
-    <message>
-        <source>▼ downvote</source>
-        <translation>▼ voter contre</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumScreen</name>
-    <message>
-        <source>USER PROFILE</source>
-        <translation>PROFIL UTILISATEUR</translation>
-    </message>
-    <message>
-        <source>REP</source>
-        <translation>RÉP</translation>
-    </message>
-    <message>
-        <source>POSTS</source>
-        <translation>MESSAGES</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>RÉPONSES</translation>
-    </message>
-    <message>
-        <source>LIKES</source>
-        <translation>MENTIONS J'AIME</translation>
-    </message>
-    <message>
-        <source>EDIT MY PROFILE</source>
-        <translation>MODIFIER MON PROFIL</translation>
-    </message>
-    <message>
-        <source>SEARCH: %1</source>
-        <translation>RECHERCHER : %1</translation>
-    </message>
-    <message>
-        <source>TRENDING</source>
-        <translation>TENDANCES</translation>
-    </message>
-    <message>
-        <source>NEW POST</source>
-        <translation>NOUVEAU MESSAGE</translation>
-    </message>
-    <message>
-        <source>CREATE NEW POST</source>
-        <translation>CRÉER UN NOUVEAU MESSAGE</translation>
-    </message>
-    <message>
-        <source>Share your insights with the community</source>
-        <translation>Partagez vos analyses avec la communauté</translation>
-    </message>
-    <message>
-        <source>TITLE</source>
-        <translation>TITRE</translation>
-    </message>
-    <message>
-        <source>Give your post a descriptive title...</source>
-        <translation>Donnez à votre message un titre descriptif...</translation>
-    </message>
-    <message>
-        <source>CONTENT</source>
-        <translation>CONTENU</translation>
-    </message>
-    <message>
-        <source>Write your thoughts...</source>
-        <translation>Exprimez vos idées...</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>ANNULER</translation>
-    </message>
-    <message>
-        <source>PUBLISH POST</source>
-        <translation>PUBLIER LE MESSAGE</translation>
-    </message>
-    <message>
-        <source>EDIT PROFILE</source>
-        <translation>MODIFIER LE PROFIL</translation>
-    </message>
-    <message>
-        <source>DISPLAY NAME</source>
-        <translation>NOM D'AFFICHAGE</translation>
-    </message>
-    <message>
-        <source>BIO</source>
-        <translation>BIO</translation>
-    </message>
-    <message>
-        <source>SIGNATURE</source>
-        <translation>SIGNATURE</translation>
-    </message>
-    <message>
-        <source>AVATAR COLOR (HEX)</source>
-        <translation>COULEUR DE L'AVATAR (HEX)</translation>
-    </message>
-    <message>
-        <source>SAVE CHANGES</source>
-        <translation>ENREGISTRER LES MODIFICATIONS</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumSidebarPanel</name>
-    <message>
-        <source>COMMUNITY</source>
-        <translation>COMMUNAUTÉ</translation>
-    </message>
-    <message>
-        <source>Loading...</source>
-        <translation>Chargement...</translation>
-    </message>
-    <message>
-        <source>Search discussions...</source>
-        <translation>Rechercher des discussions...</translation>
-    </message>
-    <message>
-        <source>ACTIVITY</source>
-        <translation>ACTIVITÉ</translation>
-    </message>
-    <message>
-        <source>POSTS</source>
-        <translation>MESSAGES</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>RÉPONSES</translation>
-    </message>
-    <message>
-        <source>TODAY</source>
-        <translation>AUJOURD'HUI</translation>
-    </message>
-    <message>
-        <source>  ▲  TRENDING POSTS</source>
-        <translation>  ▲  MESSAGES TENDANCE</translation>
-    </message>
-    <message>
-        <source>CHANNELS</source>
-        <translation>CANAUX</translation>
-    </message>
-    <message>
-        <source>New post</source>
-        <translation>Nouveau message</translation>
-    </message>
-    <message>
-        <source>LEADERBOARD</source>
-        <translation>CLASSEMENT</translation>
-    </message>
-    <message>
-        <source>  loading...</source>
-        <translation>  chargement...</translation>
-    </message>
-    <message>
-        <source>  No contributors yet</source>
-        <translation>  Aucun contributeur pour l'instant</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumThreadPanel</name>
-    <message>
-        <source>Loading thread...</source>
-        <translation>Chargement du fil...</translation>
-    </message>
-    <message>
-        <source>←  Back to Feed</source>
-        <translation>←  Retour au fil</translation>
-    </message>
-    <message>
-        <source>▲  Upvote</source>
-        <translation>▲  Voter pour</translation>
-    </message>
-    <message>
-        <source>◆ %1 replies</source>
-        <translation>◆ %1 réponses</translation>
-    </message>
-    <message>
-        <source>◉ %1 views</source>
-        <translation>◉ %1 vues</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>RÉPONSES</translation>
-    </message>
-    <message>
-        <source>Write a reply...</source>
-        <translation>Rédigez une réponse...</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>Répondre</translation>
-    </message>
-    <message>
-        <source>◆ %1 reply</source>
-        <translation>◆ %1 réponse</translation>
-    </message>
-    <message>
-        <source>NO REPLIES YET</source>
-        <translation>AUCUNE RÉPONSE POUR L'INSTANT</translation>
-    </message>
-    <message>
-        <source>Be the first to share your thoughts</source>
-        <translation>Soyez le premier à partager votre avis</translation>
-    </message>
-    <message>
-        <source>▲ upvote</source>
-        <translation>▲ voter pour</translation>
-    </message>
-    <message>
-        <source>▼ downvote</source>
-        <translation>▼ voter contre</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::FredAnalyticsPanel</name>
     <message>
         <source>Set FRED_API_KEY environment variable, then select a dataset and click FETCH
 Uses the same key as the FRED panel — fred.stlouisfed.org/docs/api/api_key.html</source>
-        <translation>Définissez la variable d'environnement FRED_API_KEY, puis sélectionnez un jeu de données et cliquez sur FETCH
+        <translation>Définissez la variable d&apos;environnement FRED_API_KEY, puis sélectionnez un jeu de données et cliquez sur FETCH
 Utilise la même clé que le panneau FRED — fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
@@ -12597,7 +11916,7 @@ Utilise la même clé que le panneau FRED — fred.stlouisfed.org/docs/api/api_k
 Set FRED_API_KEY environment variable.
 Free key at: fred.stlouisfed.org/docs/api/api_key.html</source>
         <translation>Clé API FRED non configurée.
-Définissez la variable d'environnement FRED_API_KEY.
+Définissez la variable d&apos;environnement FRED_API_KEY.
 Clé gratuite sur : fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
@@ -12610,7 +11929,7 @@ Clé gratuite sur : fred.stlouisfed.org/docs/api/api_key.html</translation>
     <message>
         <source>Set FRED_API_KEY environment variable, then select a series and click FETCH
 Get a free key at: fred.stlouisfed.org/docs/api/api_key.html</source>
-        <translation>Définissez la variable d'environnement FRED_API_KEY, puis sélectionnez une série et cliquez sur FETCH
+        <translation>Définissez la variable d&apos;environnement FRED_API_KEY, puis sélectionnez une série et cliquez sur FETCH
 Obtenez une clé gratuite sur : fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
@@ -12638,7 +11957,7 @@ Obtenez une clé gratuite sur : fred.stlouisfed.org/docs/api/api_key.html</trans
 Set FRED_API_KEY environment variable.
 Free key at: fred.stlouisfed.org/docs/api/api_key.html</source>
         <translation>Clé API FRED non configurée.
-Définissez la variable d'environnement FRED_API_KEY.
+Définissez la variable d&apos;environnement FRED_API_KEY.
 Clé gratuite sur : fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
@@ -12657,7 +11976,7 @@ fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
         <source>FRED request timed out — check your network and retry.</source>
-        <translation>Délai d'attente de la requête FRED dépassé — vérifiez votre réseau et réessayez.</translation>
+        <translation>Délai d&apos;attente de la requête FRED dépassé — vérifiez votre réseau et réessayez.</translation>
     </message>
 </context>
 <context>
@@ -12668,7 +11987,7 @@ fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
         <source>Quit application</source>
-        <translation>Quitter l'application</translation>
+        <translation>Quitter l&apos;application</translation>
     </message>
     <message>
         <source>Show Launchpad</source>
@@ -12684,15 +12003,15 @@ fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
         <source>Interface language</source>
-        <translation>Langue de l'interface</translation>
+        <translation>Langue de l&apos;interface</translation>
     </message>
     <message>
-        <source>Default is Quit. Choose 'Show Launchpad' if you want a small portal window to stay open after closing your last terminal window.</source>
-        <translation>Par défaut, Quitter. Choisissez « Afficher le Launchpad » si vous souhaitez qu'une petite fenêtre de portail reste ouverte après la fermeture de votre dernière fenêtre de terminal.</translation>
+        <source>Default is Quit. Choose &apos;Show Launchpad&apos; if you want a small portal window to stay open after closing your last terminal window.</source>
+        <translation>Par défaut, Quitter. Choisissez « Afficher le Launchpad » si vous souhaitez qu&apos;une petite fenêtre de portail reste ouverte après la fermeture de votre dernière fenêtre de terminal.</translation>
     </message>
     <message>
         <source>Changes apply immediately. English is the source language; all other translations are embedded with the build.</source>
-        <translation>Les modifications s'appliquent immédiatement. L'anglais est la langue source ; toutes les autres traductions sont intégrées à la version.</translation>
+        <translation>Les modifications s&apos;appliquent immédiatement. L&apos;anglais est la langue source ; toutes les autres traductions sont intégrées à la version.</translation>
     </message>
     <message>
         <source>CURRENCY</source>
@@ -12700,7 +12019,7 @@ fred.stlouisfed.org/docs/api/api_key.html</translation>
     </message>
     <message>
         <source>Display currency</source>
-        <translation>Devise d'affichage</translation>
+        <translation>Devise d&apos;affichage</translation>
     </message>
     <message>
         <source>Changes the currency symbol on calculators and analytics. Live market data keeps its own currency — values are not converted.</source>
@@ -12807,7 +12126,7 @@ Events loaded: %2
 Total in API: %3</source>
         <translation>Événements sur la carte : %1
 Événements chargés : %2
-Total dans l'API : %3</translation>
+Total dans l&apos;API : %3</translation>
     </message>
     <message>
         <source>CREDITS: %1</source>
@@ -12952,11 +12271,11 @@ Aucune clé API requise pour aucune source</translation>
         <translation>%1 fichiers</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
+        <source>Loading datasets for &quot;%1&quot;…</source>
         <translation>Chargement des jeux de données pour « %1 »…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
+        <source>Searching for &quot;%1&quot;…</source>
         <translation>Recherche de « %1 »…</translation>
     </message>
     <message>
@@ -13258,23 +12577,23 @@ Aucune clé API requise pour aucune source</translation>
         <translation>Chargement des services de données…</translation>
     </message>
     <message>
-        <source>Searching datasets for "%1"…</source>
+        <source>Searching datasets for &quot;%1&quot;…</source>
         <translation>Recherche de jeux de données pour « %1 »…</translation>
     </message>
     <message>
-        <source>Searching municipalities for "%1"…</source>
+        <source>Searching municipalities for &quot;%1&quot;…</source>
         <translation>Recherche de communes pour « %1 »…</translation>
     </message>
     <message>
-        <source>Loading column schema for "%1"…</source>
+        <source>Loading column schema for &quot;%1&quot;…</source>
         <translation>Chargement du schéma de colonnes pour « %1 »…</translation>
     </message>
     <message>
-        <source>Datasets  ›  "%1"</source>
+        <source>Datasets  ›  &quot;%1&quot;</source>
         <translation>Jeux de données  ›  « %1 »</translation>
     </message>
     <message>
-        <source>Municipalities  ›  "%1"</source>
+        <source>Municipalities  ›  &quot;%1&quot;</source>
         <translation>Communes  ›  « %1 »</translation>
     </message>
     <message>
@@ -13373,22 +12692,22 @@ Aucune clé API requise pour aucune source</translation>
         <translation>Chargement de la liste complète des jeux de données pour le filtrage…</translation>
     </message>
     <message>
-        <source>No datasets matched "%1" in the HK catalogue.
+        <source>No datasets matched &quot;%1&quot; in the HK catalogue.
 HK DATA — Categories may have limited datasets</source>
-        <translation>Aucun jeu de données ne correspond à "%1" dans le catalogue HK.
+        <translation>Aucun jeu de données ne correspond à &quot;%1&quot; dans le catalogue HK.
 HK DATA — Les catégories peuvent avoir des jeux de données limités</translation>
     </message>
     <message>
-        <source>Datasets  ›  Filter: "%1"</source>
-        <translation>Jeux de données  ›  Filtre : "%1"</translation>
+        <source>Datasets  ›  Filter: &quot;%1&quot;</source>
+        <translation>Jeux de données  ›  Filtre : &quot;%1&quot;</translation>
     </message>
     <message>
         <source>%1 matched</source>
         <translation>%1 correspondance(s)</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>Chargement des jeux de données pour "%1"…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>Chargement des jeux de données pour &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading resources…</source>
@@ -13401,11 +12720,11 @@ HK DATA — Les catégories peuvent avoir des jeux de données limités</transla
     <message>
         <source>HK DATA — Categories may have limited datasets
 
-No datasets found for "%1".
+No datasets found for &quot;%1&quot;.
 Try searching by name using the search box above.</source>
         <translation>HK DATA — Les catégories peuvent avoir des jeux de données limités
 
-Aucun jeu de données trouvé pour "%1".
+Aucun jeu de données trouvé pour &quot;%1&quot;.
 Essayez de rechercher par nom avec la zone de recherche ci-dessus.</translation>
     </message>
     <message>
@@ -13568,8 +12887,8 @@ Essayez de rechercher par nom avec la zone de recherche ci-dessus.</translation>
         <translation>Chargement des ressources…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>Recherche de "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>Recherche de &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Resources</source>
@@ -13733,7 +13052,7 @@ Le sélecteur affiche tous les portails CKAN couverts par le fournisseur univers
     </message>
     <message>
         <source>AUCTION DATE</source>
-        <translation>DATE D'ADJUDICATION</translation>
+        <translation>DATE D&apos;ADJUDICATION</translation>
     </message>
     <message>
         <source>HIGH RATE</source>
@@ -13899,16 +13218,16 @@ Le sélecteur affiche tous les portails CKAN couverts par le fournisseur univers
         <translation>%1 fichiers</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>Chargement des jeux de données pour "%1"…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>Chargement des jeux de données pour &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading resources…</source>
         <translation>Chargement des ressources…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>Recherche de "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>Recherche de &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading popular publishers…</source>
@@ -14017,358 +13336,20 @@ Le sélecteur affiche tous les portails CKAN couverts par le fournisseur univers
 <context>
     <name>openmarketterminal::screens::HelpScreen</name>
     <message>
-        <source>HELP CENTER</source>
-        <translation>CENTRE D'AIDE</translation>
+        <source>Open Terminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Find answers, get support, and connect with the Open Terminal community.</source>
-        <translation>Trouvez des réponses, obtenez de l'aide et connectez-vous avec la communauté Open Terminal.</translation>
+        <source>Version v%1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mon-Fri  9AM–6PM EST</source>
-        <translation>Lun-Ven  9h–18h EST</translation>
+        <source>Open Terminal is a local-first, open source market terminal for personal research, watchlists, portfolios, charts, news, and analytics.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>QUICK ACTIONS</source>
-        <translation>ACTIONS RAPIDES</translation>
-    </message>
-    <message>
-        <source>Common tasks you can do right now</source>
-        <translation>Tâches courantes que vous pouvez effectuer maintenant</translation>
-    </message>
-    <message>
-        <source>Create Account</source>
-        <translation>Créer un compte</translation>
-    </message>
-    <message>
-        <source>Register for full access</source>
-        <translation>Inscrivez-vous pour un accès complet</translation>
-    </message>
-    <message>
-        <source>Reset Password</source>
-        <translation>Réinitialiser le mot de passe</translation>
-    </message>
-    <message>
-        <source>Recover your account</source>
-        <translation>Récupérez votre compte</translation>
-    </message>
-    <message>
-        <source>Documentation</source>
-        <translation>Documentation</translation>
-    </message>
-    <message>
-        <source>Guides, tutorials &amp; API ref</source>
-        <translation>Guides, tutoriels et référence API</translation>
-    </message>
-    <message>
-        <source>Report a Bug</source>
-        <translation>Signaler un bug</translation>
-    </message>
-    <message>
-        <source>Open a bug report ticket</source>
-        <translation>Ouvrir un ticket de bug</translation>
-    </message>
-    <message>
-        <source>View Source</source>
-        <translation>Rejoindre Discord</translation>
-    </message>
-    <message>
-        <source>Community &amp; live support</source>
-        <translation>Communauté et assistance en direct</translation>
-    </message>
-    <message>
-        <source>Support Tickets</source>
-        <translation>Tickets d'assistance</translation>
-    </message>
-    <message>
-        <source>View or open a support ticket</source>
-        <translation>Voir ou ouvrir un ticket d'assistance</translation>
-    </message>
-    <message>
-        <source>FREQUENTLY ASKED QUESTIONS</source>
-        <translation>QUESTIONS FRÉQUENTES</translation>
-    </message>
-    <message>
-        <source>Click a question to expand the answer</source>
-        <translation>Cliquez sur une question pour afficher la réponse</translation>
-    </message>
-    <message>
-        <source>How do I reset my password?</source>
-        <translation>Comment réinitialiser mon mot de passe ?</translation>
-    </message>
-    <message>
-        <source>Click "Forgot Password" on the login screen. Enter your email address and we'll send you a reset link. The link expires in 24 hours.</source>
-        <translation>Cliquez sur « Mot de passe oublié » sur l'écran de connexion. Saisissez votre adresse e-mail et nous vous enverrons un lien de réinitialisation. Le lien expire dans 24 heures.</translation>
-    </message>
-    <message>
-        <source>What is Guest Access?</source>
-        <translation>Qu'est-ce que l'accès invité ?</translation>
-    </message>
-    <message>
-        <source>Guest access lets you explore the terminal without creating an account. Features like trading, portfolio management, and AI analytics require a registered account.</source>
-        <translation>L'accès invité vous permet d'explorer le terminal sans créer de compte. Des fonctionnalités telles que le trading, la gestion de portefeuille et l'analyse par IA nécessitent un compte enregistré.</translation>
-    </message>
-    <message>
-        <source>What is a Credit?</source>
-        <translation>Qu'est-ce qu'un crédit ?</translation>
-    </message>
-    <message>
-        <source>Credits are the in-app currency used for premium features such as AI analysis, advanced data feeds, and quantitative analytics. Free accounts receive a limited number of credits on signup. Additional credits can be purchased in Settings → Billing.</source>
-        <translation>Les crédits constituent la monnaie intégrée à l'application, utilisée pour les fonctionnalités premium telles que l'analyse par IA, les flux de données avancés et l'analyse quantitative. Les comptes gratuits reçoivent un nombre limité de crédits à l'inscription. Des crédits supplémentaires peuvent être achetés dans Paramètres → Facturation.</translation>
-    </message>
-    <message>
-        <source>How do I connect a broker?</source>
-        <translation>Comment connecter un courtier ?</translation>
-    </message>
-    <message>
-        <source>Navigate to Settings → Brokers, select your broker from the list, and enter your API key and secret. Open Terminal supports 18+ brokers including Zerodha, Angel One, Upstox, Interactive Brokers, and more.</source>
-        <translation>Accédez à Paramètres → Courtiers, sélectionnez votre courtier dans la liste et saisissez votre API key et votre secret. Open Terminal prend en charge plus de 18 courtiers, dont Zerodha, Angel One, Upstox, Interactive Brokers et bien d'autres.</translation>
-    </message>
-    <message>
-        <source>Why does Python install at first launch?</source>
-        <translation>Pourquoi Python s'installe-t-il au premier lancement ?</translation>
-    </message>
-    <message>
-        <source>Open Terminal embeds Python for 1300+ analytics scripts covering equity, portfolio, derivatives, and quant analysis. The one-time install is ~150 MB and happens automatically in the background.</source>
-        <translation>Open Terminal intègre Python pour plus de 1300 scripts d'analyse couvrant les actions, les portefeuilles, les dérivés et l'analyse quantitative. L'installation unique pèse environ 150 Mo et s'effectue automatiquement en arrière-plan.</translation>
-    </message>
-    <message>
-        <source>What are the system requirements?</source>
-        <translation>Quelle est la configuration système requise ?</translation>
-    </message>
-    <message>
-        <source>Windows 10+ (x64), macOS 12+, or Linux (glibc 2.31+). 8 GB RAM recommended. Active internet required for data feeds. Python 3.11 is installed automatically during first-time setup.</source>
-        <translation>Windows 10+ (x64), macOS 12+ ou Linux (glibc 2.31+). 8 Go de RAM recommandés. Connexion Internet active requise pour les flux de données. Python 3.11 est installé automatiquement lors de la première configuration.</translation>
-    </message>
-    <message>
-        <source>Is my data secure?</source>
-        <translation>Mes données sont-elles sécurisées ?</translation>
-    </message>
-    <message>
-        <source>Credentials are stored encrypted via SecureStorage (OS keychain on each platform). API keys are never logged or sent to Open Terminal servers — they are used only for direct broker connections from your machine.</source>
-        <translation>Les identifiants sont stockés chiffrés via SecureStorage (le trousseau du système d'exploitation sur chaque plateforme). Les API keys ne sont jamais journalisées ni envoyées aux serveurs Open Terminal — elles servent uniquement aux connexions directes au courtier depuis votre machine.</translation>
-    </message>
-    <message>
-        <source>How do I report a bug?</source>
-        <translation>Comment signaler un bug ?</translation>
-    </message>
-    <message>
-        <source>Open a support ticket with category "bug report" (Help → Support Tickets → + New Ticket). Include your OS, version, steps to reproduce, and any error messages you see. Screenshots are helpful.</source>
-        <translation>Ouvrez un ticket d'assistance avec la catégorie « rapport de bug » (Aide → Tickets d'assistance → + Nouveau ticket). Indiquez votre système d'exploitation, la version, les étapes de reproduction et tous les messages d'erreur que vous voyez. Les captures d'écran sont utiles.</translation>
-    </message>
-    <message>
-        <source>GETTING STARTED</source>
-        <translation>PREMIERS PAS</translation>
-    </message>
-    <message>
-        <source>New to Open Terminal? Start here</source>
-        <translation>Nouveau sur Open Terminal ? Commencez ici</translation>
-    </message>
-    <message>
-        <source>Create an account</source>
-        <translation>Créer un compte</translation>
-    </message>
-    <message>
-        <source>Register at example.com or use the in-app sign-up.</source>
-        <translation>Inscrivez-vous sur example.com ou utilisez l'inscription dans l'application.</translation>
-    </message>
-    <message>
-        <source>Complete setup</source>
-        <translation>Terminer la configuration</translation>
-    </message>
-    <message>
-        <source>The setup wizard installs Python and configures your paths.</source>
-        <translation>L'assistant de configuration installe Python et configure vos chemins d'accès.</translation>
-    </message>
-    <message>
-        <source>Connect a data source</source>
-        <translation>Connecter une source de données</translation>
-    </message>
-    <message>
-        <source>Add a broker or enable free data feeds in Data Sources.</source>
-        <translation>Ajoutez un courtier ou activez des flux de données gratuits dans Sources de données.</translation>
-    </message>
-    <message>
-        <source>Explore the terminal</source>
-        <translation>Explorer le terminal</translation>
-    </message>
-    <message>
-        <source>Browse Markets, Research, AI Chat, and QuantLib tabs.</source>
-        <translation>Parcourez les onglets Marchés, Recherche, AI Chat et QuantLib.</translation>
-    </message>
-    <message>
-        <source>CONTACT &amp; RESOURCES</source>
-        <translation>CONTACT ET RESSOURCES</translation>
-    </message>
-    <message>
-        <source>Email Support</source>
-        <translation>Assistance par e-mail</translation>
-    </message>
-    <message>
-        <source>Discord Server</source>
-        <translation>Serveur Discord</translation>
-    </message>
-    <message>
-        <source>Website</source>
-        <translation>Site web</translation>
-    </message>
-    <message>
-        <source>GitHub</source>
-        <translation>GitHub</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::HoldingsBar</name>
-    <message>
-        <source>Holding ≥ %1 $FNCPT — you qualify for the fee discount.</source>
-        <translation>Détention ≥ %1 $FNCPT — vous bénéficiez de la réduction de frais.</translation>
-    </message>
-    <message>
-        <source>%1 holding(s) excluded — no live price.</source>
-        <translation>%1 position(s) exclue(s) — pas de cours en direct.</translation>
-    </message>
-    <message>
-        <source>Public Solana RPC. STREAM may degrade — add a Helius API key in Settings for reliable WebSocket subscriptions.</source>
-        <translation>RPC Solana public. STREAM peut se dégrader — ajoutez une Helius API key dans les Paramètres pour des abonnements WebSocket fiables.</translation>
-    </message>
-    <message>
-        <source>Helius RPC — STREAM fully supported.</source>
-        <translation>RPC Helius — STREAM entièrement pris en charge.</translation>
-    </message>
-    <message>
-        <source>Custom RPC override active.</source>
-        <translation>Remplacement RPC personnalisé actif.</translation>
-    </message>
-    <message>
-        <source>SOL</source>
-        <translation>SOL</translation>
-    </message>
-    <message>
-        <source>$FNCPT</source>
-        <translation>$FNCPT</translation>
-    </message>
-    <message>
-        <source>TOTAL</source>
-        <translation>TOTAL</translation>
-    </message>
-    <message>
-        <source>$FNCPT PRICE</source>
-        <translation>PRIX $FNCPT</translation>
-    </message>
-    <message>
-        <source>UPDATED</source>
-        <translation>MIS À JOUR</translation>
-    </message>
-    <message>
-        <source>○ IDLE</source>
-        <translation>○ INACTIF</translation>
-    </message>
-    <message>
-        <source>waiting…</source>
-        <translation>en attente…</translation>
-    </message>
-    <message>
-        <source>◌ CONNECTING</source>
-        <translation>◌ CONNEXION</translation>
-    </message>
-    <message>
-        <source>● LIVE</source>
-        <translation>● EN DIRECT</translation>
-    </message>
-    <message>
-        <source>◐ STALE</source>
-        <translation>◐ PÉRIMÉ</translation>
-    </message>
-    <message>
-        <source>✕ ERROR</source>
-        <translation>✕ ERREUR</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::HomeTab</name>
-    <message>
-        <source>COPY ADDRESS</source>
-        <translation>COPIER L'ADRESSE</translation>
-    </message>
-    <message>
-        <source>DISCONNECT</source>
-        <translation>DÉCONNECTER</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>ACTUALISER</translation>
-    </message>
-    <message>
-        <source>COPIED</source>
-        <translation>COPIÉ</translation>
-    </message>
-    <message>
-        <source>Solana wallet</source>
-        <translation>Portefeuille Solana</translation>
-    </message>
-    <message>
-        <source>restored from storage</source>
-        <translation>restauré depuis le stockage</translation>
-    </message>
-    <message>
-        <source>Balance fetch failed: %1</source>
-        <translation>Échec de la récupération du solde : %1</translation>
-    </message>
-    <message>
-        <source>WALLET</source>
-        <translation>PORTEFEUILLE</translation>
-    </message>
-    <message>
-        <source>● CONNECTED</source>
-        <translation>● CONNECTÉ</translation>
-    </message>
-    <message>
-        <source>PROVIDER</source>
-        <translation>FOURNISSEUR</translation>
-    </message>
-    <message>
-        <source>ADDRESS</source>
-        <translation>ADRESSE</translation>
-    </message>
-    <message>
-        <source>CONNECTED</source>
-        <translation>CONNECTÉ</translation>
-    </message>
-    <message>
-        <source>HOLDINGS</source>
-        <translation>TITRES</translation>
-    </message>
-    <message>
-        <source>POLL</source>
-        <translation>POLL</translation>
-    </message>
-    <message>
-        <source>STREAM</source>
-        <translation>STREAM</translation>
-    </message>
-    <message>
-        <source>MAINNET</source>
-        <translation>MAINNET</translation>
-    </message>
-    <message>
-        <source>$FNCPT ROADMAP</source>
-        <translation>FEUILLE DE ROUTE $FNCPT</translation>
-    </message>
-    <message>
-        <source>PHASE 2</source>
-        <translation>PHASE 2</translation>
-    </message>
-    <message>
-        <source>PHASE 1   WALLET &amp; BALANCE        SHIPPED        connect Solana wallet, view $FNCPT + SOL
-PHASE 2   SWAP &amp; FEE DISCOUNT     IN PROGRESS    buy $FNCPT via PumpPortal, fee discount
-PHASE 3   STAKING &amp; TIERS         UPCOMING       lock $FNCPT for bronze / silver / gold tiers
-PHASE 4   PREDICTION MARKETS      UPCOMING       earnings, fed, weather — settled in $FNCPT
-PHASE 5   BUYBACK &amp; BURN          UPCOMING       terminal revenue auto-buys &amp; burns $FNCPT</source>
-        <translation>PHASE 1   PORTEFEUILLE &amp; SOLDE    LIVRÉ          connecter le portefeuille Solana, voir $FNCPT + SOL
-PHASE 2   SWAP &amp; RÉDUCTION FRAIS  EN COURS       acheter $FNCPT via PumpPortal, réduction de frais
-PHASE 3   STAKING &amp; PALIERS       À VENIR        verrouiller $FNCPT pour les paliers bronze / argent / or
-PHASE 4   MARCHÉS PRÉDICTIFS      À VENIR        résultats, Fed, météo — réglés en $FNCPT
-PHASE 5   RACHAT &amp; BURN           À VENIR        les revenus du terminal achètent et brûlent automatiquement $FNCPT</translation>
+        <source>This build is yours to inspect, modify, and personalize.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -14419,7 +13400,7 @@ Tous les pays : ALL</translation>
     </message>
     <message>
         <source>No data returned — try a different country code or year range</source>
-        <translation>Aucune donnée renvoyée — essayez un autre code de pays ou une autre plage d'années</translation>
+        <translation>Aucune donnée renvoyée — essayez un autre code de pays ou une autre plage d&apos;années</translation>
     </message>
 </context>
 <context>
@@ -14477,7 +13458,7 @@ Tous les pays : ALL</translation>
     </message>
     <message>
         <source>Need a template? Download the demo portfolio JSON:</source>
-        <translation>Besoin d'un modèle ? Téléchargez le JSON du portefeuille de démo :</translation>
+        <translation>Besoin d&apos;un modèle ? Téléchargez le JSON du portefeuille de démo :</translation>
     </message>
     <message>
         <source>DOWNLOAD DEMO</source>
@@ -14499,19 +13480,19 @@ Tous les pays : ALL</translation>
         <source>Demo portfolio JSON saved.
 You can now import it using the BROWSE button.</source>
         <translation>JSON du portefeuille de démo enregistré.
-Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
+Vous pouvez maintenant l&apos;importer avec le bouton PARCOURIR.</translation>
     </message>
     <message>
         <source>Save Failed</source>
-        <translation>Échec de l'enregistrement</translation>
+        <translation>Échec de l&apos;enregistrement</translation>
     </message>
     <message>
         <source>Could not write to: %1</source>
-        <translation>Impossible d'écrire dans : %1</translation>
+        <translation>Impossible d&apos;écrire dans : %1</translation>
     </message>
     <message>
         <source>IMPORT MODE</source>
-        <translation>MODE D'IMPORTATION</translation>
+        <translation>MODE D&apos;IMPORTATION</translation>
     </message>
     <message>
         <source>Create new portfolio from file</source>
@@ -14561,7 +13542,7 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
         <translation>Annuler</translation>
     </message>
     <message>
-        <source>Warning: already used by "%1"</source>
+        <source>Warning: already used by &quot;%1&quot;</source>
         <translation>Avertissement : déjà utilisé par « %1 »</translation>
     </message>
 </context>
@@ -14583,8 +13564,8 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
 <context>
     <name>openmarketterminal::screens::LaunchpadScreen</name>
     <message>
-        <source>Open Terminal Launchpad</source>
-        <translation>Open Terminal Launchpad</translation>
+        <source>OpenMarketTerminal Launchpad</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Type to filter layouts…</source>
@@ -14599,8 +13580,8 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
         <translation>Toutes les fenêtres sont fermées. Ouvrez une nouvelle fenêtre ou choisissez une disposition ci-dessous.</translation>
     </message>
     <message>
-        <source>Last session ended unexpectedly — your work was auto-saved. Click "Continue from last session" to restore.</source>
-        <translation>La dernière session s'est terminée de manière inattendue — votre travail a été enregistré automatiquement. Cliquez sur « Reprendre la dernière session » pour le restaurer.</translation>
+        <source>Last session ended unexpectedly — your work was auto-saved. Click &quot;Continue from last session&quot; to restore.</source>
+        <translation>La dernière session s&apos;est terminée de manière inattendue — votre travail a été enregistré automatiquement. Cliquez sur « Reprendre la dernière session » pour le restaurer.</translation>
     </message>
     <message>
         <source>Continue from last session</source>
@@ -14647,8 +13628,8 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
         <translation>Nom du nouveau profil :</translation>
     </message>
     <message>
-        <source>(No saved layouts yet — use 'layout save "&lt;name&gt;"' to save the current state)</source>
-        <translation>(Aucune disposition enregistrée pour l'instant — utilisez 'layout save "&lt;name&gt;"' pour enregistrer l'état actuel)</translation>
+        <source>(No saved layouts yet — use &apos;layout save &quot;&lt;name&gt;&quot;&apos; to save the current state)</source>
+        <translation>(Aucune disposition enregistrée pour l&apos;instant — utilisez &apos;layout save &quot;&lt;name&gt;&quot;&apos; pour enregistrer l&apos;état actuel)</translation>
     </message>
 </context>
 <context>
@@ -14663,7 +13644,7 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
     </message>
     <message>
         <source>A profile = named LLM config you can assign to any agent or team.</source>
-        <translation>Un profil = configuration LLM nommée que vous pouvez attribuer à n'importe quel agent ou équipe.</translation>
+        <translation>Un profil = configuration LLM nommée que vous pouvez attribuer à n&apos;importe quel agent ou équipe.</translation>
     </message>
     <message>
         <source>PROVIDERS</source>
@@ -14723,7 +13704,7 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
     </message>
     <message>
         <source>When enabled, the AI can interact with the terminal: navigate screens, fetch market data, manage watchlists, etc.</source>
-        <translation>Une fois activée, l'IA peut interagir avec le terminal : naviguer dans les écrans, récupérer des données de marché, gérer les listes de surveillance, etc.</translation>
+        <translation>Une fois activée, l&apos;IA peut interagir avec le terminal : naviguer dans les écrans, récupérer des données de marché, gérer les listes de surveillance, etc.</translation>
     </message>
     <message>
         <source>Save &amp; Set Active</source>
@@ -14747,12 +13728,12 @@ Vous pouvez maintenant l'importer avec le bouton PARCOURIR.</translation>
     </message>
     <message>
         <source>Max Tool Rounds</source>
-        <translation>Tours d'outils max.</translation>
+        <translation>Tours d&apos;outils max.</translation>
     </message>
     <message>
         <source>Ceiling on tool-call rounds per chat turn. Default 40.
 Range 1-200. Raise for long workflows (e.g. populating multi-section reports).</source>
-        <translation>Plafond du nombre de tours d'appel d'outils par tour de discussion. Par défaut 40.
+        <translation>Plafond du nombre de tours d&apos;appel d&apos;outils par tour de discussion. Par défaut 40.
 Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rapports à plusieurs sections).</translation>
     </message>
     <message>
@@ -14805,7 +13786,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>SYSTEM PROMPT OVERRIDE (optional)</source>
-        <translation>REMPLACEMENT DE L'INVITE SYSTÈME (facultatif)</translation>
+        <translation>REMPLACEMENT DE L&apos;INVITE SYSTÈME (facultatif)</translation>
     </message>
     <message>
         <source>e.g. Fast Groq, Careful Claude, Coding minimax</source>
@@ -14821,7 +13802,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>Leave blank to use global system prompt</source>
-        <translation>Laisser vide pour utiliser l'invite système globale</translation>
+        <translation>Laisser vide pour utiliser l&apos;invite système globale</translation>
     </message>
     <message>
         <source>SAVE PROFILE</source>
@@ -14844,18 +13825,6 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
         <translation>Fournisseur déjà configuré</translation>
     </message>
     <message>
-        <source>Open Terminal LLM</source>
-        <translation>Open Terminal LLM</translation>
-    </message>
-    <message>
-        <source>Linked to your Open Terminal account: %1</source>
-        <translation>Lié à votre compte Open Terminal : %1</translation>
-    </message>
-    <message>
-        <source>Login to your Open Terminal account to enable</source>
-        <translation>Connectez-vous à votre compte Open Terminal pour l'activer</translation>
-    </message>
-    <message>
         <source>Not required — local provider</source>
         <translation>Non requis — fournisseur local</translation>
     </message>
@@ -14873,39 +13842,43 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>Failed to save: </source>
-        <translation>Échec de l'enregistrement : </translation>
+        <translation>Échec de l&apos;enregistrement : </translation>
     </message>
     <message>
         <source>Failed to activate: </source>
-        <translation>Échec de l'activation : </translation>
+        <translation>Échec de l&apos;activation : </translation>
     </message>
     <message>
-        <source>active is '%1' not '%2'</source>
-        <translation>l'actif est « %1 » et non « %2 »</translation>
+        <source>active is &apos;%1&apos; not &apos;%2&apos;</source>
+        <translation>l&apos;actif est « %1 » et non « %2 »</translation>
     </message>
     <message>
         <source>Save verification failed: </source>
-        <translation>Échec de la vérification de l'enregistrement : </translation>
+        <translation>Échec de la vérification de l&apos;enregistrement : </translation>
     </message>
     <message>
         <source>Saved and set as active provider</source>
         <translation>Enregistré et défini comme fournisseur actif</translation>
     </message>
     <message>
-        <source>Cannot remove built-in Open Terminal provider</source>
-        <translation>Impossible de supprimer le fournisseur Open Terminal intégré</translation>
+        <source>Cannot remove built-in OpenMarketTerminal provider</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal manages models automatically</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Delete Provider</source>
         <translation>Supprimer le fournisseur</translation>
     </message>
     <message>
-        <source>Remove '%1' configuration?</source>
+        <source>Remove &apos;%1&apos; configuration?</source>
         <translation>Supprimer la configuration « %1 » ?</translation>
     </message>
     <message>
         <source>Failed to save global settings</source>
-        <translation>Échec de l'enregistrement des paramètres globaux</translation>
+        <translation>Échec de l&apos;enregistrement des paramètres globaux</translation>
     </message>
     <message>
         <source>Global settings saved</source>
@@ -14913,15 +13886,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>Select a provider first</source>
-        <translation>Sélectionnez d'abord un fournisseur</translation>
-    </message>
-    <message>
-        <source>Open Terminal connected — API key active</source>
-        <translation>Open Terminal connecté — API key active</translation>
-    </message>
-    <message>
-        <source>Not connected — login to your Open Terminal account first</source>
-        <translation>Non connecté — connectez-vous d'abord à votre compte Open Terminal</translation>
+        <translation>Sélectionnez d&apos;abord un fournisseur</translation>
     </message>
     <message>
         <source>API key required for test</source>
@@ -14940,12 +13905,8 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
         <translation>Échec de la connexion : </translation>
     </message>
     <message>
-        <source>Open Terminal manages models automatically</source>
-        <translation>Open Terminal gère les modèles automatiquement</translation>
-    </message>
-    <message>
         <source>Enter API key first, then fetch models</source>
-        <translation>Saisissez d'abord l'API key, puis récupérez les modèles</translation>
+        <translation>Saisissez d&apos;abord l&apos;API key, puis récupérez les modèles</translation>
     </message>
     <message>
         <source>Fetching models...</source>
@@ -14953,7 +13914,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>Ollama fetch failed: %1 — check `ollama serve` and base URL</source>
-        <translation>Échec de la récupération Ollama : %1 — vérifiez `ollama serve` et l'URL de base</translation>
+        <translation>Échec de la récupération Ollama : %1 — vérifiez `ollama serve` et l&apos;URL de base</translation>
     </message>
     <message>
         <source>Fetch failed: </source>
@@ -14965,7 +13926,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>Cannot reach Ollama — is `ollama serve` running locally?</source>
-        <translation>Impossible de joindre Ollama — `ollama serve` est-il en cours d'exécution en local ?</translation>
+        <translation>Impossible de joindre Ollama — `ollama serve` est-il en cours d&apos;exécution en local ?</translation>
     </message>
     <message>
         <source>Profile name is required</source>
@@ -14977,7 +13938,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
     </message>
     <message>
         <source>Save failed: </source>
-        <translation>Échec de l'enregistrement : </translation>
+        <translation>Échec de l&apos;enregistrement : </translation>
     </message>
     <message>
         <source>Profile saved</source>
@@ -15010,7 +13971,7 @@ Plage 1-200. Augmentez-le pour les flux de travail longs (p. ex. remplir des rap
         <source>This PIN will be required each time you open
 the terminal or after a period of inactivity.</source>
         <translation>Ce code PIN sera demandé chaque fois que vous ouvrez
-le terminal ou après une période d'inactivité.</translation>
+le terminal ou après une période d&apos;inactivité.</translation>
     </message>
     <message>
         <source>ENTER PIN</source>
@@ -15028,7 +13989,7 @@ le terminal ou après une période d'inactivité.</translation>
         <source>PIN is encrypted and stored locally on this device.
 It cannot be recovered if forgotten.</source>
         <translation>Le PIN est chiffré et stocké localement sur cet appareil.
-Il ne peut pas être récupéré en cas d'oubli.</translation>
+Il ne peut pas être récupéré en cas d&apos;oubli.</translation>
     </message>
     <message>
         <source>TERMINAL LOCKED</source>
@@ -15068,7 +14029,7 @@ to reset your PIN and regain access.</source>
 
 Pour votre sécurité, le terminal a été verrouillé.
 Vous devez vous reconnecter avec votre e-mail et votre mot de passe
-pour réinitialiser votre PIN et retrouver l'accès.</translation>
+pour réinitialiser votre PIN et retrouver l&apos;accès.</translation>
     </message>
     <message>
         <source>  SIGN IN AGAIN  </source>
@@ -15142,7 +14103,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Plain text is human-readable; JSON emits one structured object per line (easier to parse with tooling).</source>
-        <translation>Le texte brut est lisible par l'humain ; le JSON émet un objet structuré par ligne (plus facile à analyser avec des outils).</translation>
+        <translation>Le texte brut est lisible par l&apos;humain ; le JSON émet un objet structuré par ligne (plus facile à analyser avec des outils).</translation>
     </message>
     <message>
         <source>Emit structured JSON lines</source>
@@ -15164,104 +14125,16 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
 <context>
     <name>openmarketterminal::screens::LoginScreen</name>
     <message>
-        <source>SIGN IN</source>
-        <translation>CONNEXION</translation>
+        <source>WELCOME</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Access your terminal account</source>
-        <translation>Accédez à votre compte terminal</translation>
+        <source>Your local-first markets terminal. No account required.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EMAIL</source>
-        <translation>E-MAIL</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>enter password</source>
-        <translation>saisissez le mot de passe</translation>
-    </message>
-    <message>
-        <source>SHOW</source>
-        <translation>AFFICHER</translation>
-    </message>
-    <message>
-        <source>HIDE</source>
-        <translation>MASQUER</translation>
-    </message>
-    <message>
-        <source>FORGOT PASSWORD?</source>
-        <translation>MOT DE PASSE OUBLIÉ ?</translation>
-    </message>
-    <message>
-        <source>  SIGN IN  </source>
-        <translation>  CONNEXION  </translation>
-    </message>
-    <message>
-        <source>  SIGNING IN...  </source>
-        <translation>  CONNEXION EN COURS...  </translation>
-    </message>
-    <message>
-        <source>No account?</source>
-        <translation>Pas de compte ?</translation>
-    </message>
-    <message>
-        <source>SIGN UP</source>
-        <translation>S'INSCRIRE</translation>
-    </message>
-    <message>
-        <source>TWO-FACTOR AUTH</source>
-        <translation>AUTHENTIFICATION À DEUX FACTEURS</translation>
-    </message>
-    <message>
-        <source>SECURE</source>
-        <translation>SÉCURISÉ</translation>
-    </message>
-    <message>
-        <source>Enter the 6-digit code from your authenticator</source>
-        <translation>Saisissez le code à 6 chiffres de votre authentificateur</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>CODE DE VÉRIFICATION</translation>
-    </message>
-    <message>
-        <source>  VERIFY  </source>
-        <translation>  VÉRIFIER  </translation>
-    </message>
-    <message>
-        <source>BACK TO LOGIN</source>
-        <translation>RETOUR À LA CONNEXION</translation>
-    </message>
-    <message>
-        <source>SESSION CONFLICT</source>
-        <translation>CONFLIT DE SESSION</translation>
-    </message>
-    <message>
-        <source>WARNING</source>
-        <translation>AVERTISSEMENT</translation>
-    </message>
-    <message>
-        <source>  LOG OUT OTHER SESSION &amp; CONTINUE  </source>
-        <translation>  DÉCONNECTER L'AUTRE SESSION ET CONTINUER  </translation>
-    </message>
-    <message>
-        <source>  CANCEL  </source>
-        <translation>  ANNULER  </translation>
-    </message>
-    <message>
-        <source>Please enter your password</source>
-        <translation>Veuillez saisir votre mot de passe</translation>
-    </message>
-    <message>
-        <source>Please enter the code</source>
-        <translation>Veuillez saisir le code</translation>
+        <source>  CONTINUE AS GUEST  </source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -15276,7 +14149,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>CORPORATE FINANCE TOOLKIT</source>
-        <translation>BOÎTE À OUTILS DE FINANCE D'ENTREPRISE</translation>
+        <translation>BOÎTE À OUTILS DE FINANCE D&apos;ENTREPRISE</translation>
     </message>
     <message>
         <source>MODULES</source>
@@ -15308,11 +14181,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Analysis Tools</source>
-        <translation>Outils d'analyse</translation>
+        <translation>Outils d&apos;analyse</translation>
     </message>
     <message>
         <source>Click sidebar modules to switch views. Each module provides professional-grade analytics with export capabilities.</source>
-        <translation>Cliquez sur les modules de la barre latérale pour changer de vue. Chaque module fournit des analyses de niveau professionnel avec des capacités d'exportation.</translation>
+        <translation>Cliquez sur les modules de la barre latérale pour changer de vue. Chaque module fournit des analyses de niveau professionnel avec des capacités d&apos;exportation.</translation>
     </message>
     <message>
         <source>MODULE:</source>
@@ -15359,7 +14232,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Tax Rate</source>
-        <translation>Taux d'imposition</translation>
+        <translation>Taux d&apos;imposition</translation>
     </message>
     <message>
         <source>Risk-Free Rate</source>
@@ -15395,7 +14268,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>RUN DCF ANALYSIS</source>
-        <translation>EXÉCUTER L'ANALYSE DCF</translation>
+        <translation>EXÉCUTER L&apos;ANALYSE DCF</translation>
     </message>
     <message>
         <source>Running DCF...</source>
@@ -15407,7 +14280,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Entry Valuation</source>
-        <translation>Valorisation à l'entrée</translation>
+        <translation>Valorisation à l&apos;entrée</translation>
     </message>
     <message>
         <source>Exit Valuation</source>
@@ -15439,7 +14312,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>RUN LBO ANALYSIS</source>
-        <translation>EXÉCUTER L'ANALYSE LBO</translation>
+        <translation>EXÉCUTER L&apos;ANALYSE LBO</translation>
     </message>
     <message>
         <source>Running LBO...</source>
@@ -15455,7 +14328,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Entry Multiple</source>
-        <translation>Multiple à l'entrée</translation>
+        <translation>Multiple à l&apos;entrée</translation>
     </message>
     <message>
         <source>Exit Multiple</source>
@@ -15463,7 +14336,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Revenue Growth</source>
-        <translation>Croissance du chiffre d'affaires</translation>
+        <translation>Croissance du chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>EBITDA Margin</source>
@@ -15503,11 +14376,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>ANALYZE DEBT SCHEDULE</source>
-        <translation>ANALYSER L'ÉCHÉANCIER DE LA DETTE</translation>
+        <translation>ANALYSER L&apos;ÉCHÉANCIER DE LA DETTE</translation>
     </message>
     <message>
         <source>Analyzing Debt Schedule...</source>
-        <translation>Analyse de l'échéancier de la dette...</translation>
+        <translation>Analyse de l&apos;échéancier de la dette...</translation>
     </message>
     <message>
         <source>Debt Schedule</source>
@@ -15515,11 +14388,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Sensitivity analysis varies entry multiple and exit multiple around base case.</source>
-        <translation>L'analyse de sensibilité fait varier le multiple à l'entrée et le multiple à la sortie autour du scénario de base.</translation>
+        <translation>L&apos;analyse de sensibilité fait varier le multiple à l&apos;entrée et le multiple à la sortie autour du scénario de base.</translation>
     </message>
     <message>
         <source>Entry Multiple (base)</source>
-        <translation>Multiple à l'entrée (base)</translation>
+        <translation>Multiple à l&apos;entrée (base)</translation>
     </message>
     <message>
         <source>Exit Multiple (base)</source>
@@ -15575,7 +14448,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Target Revenue</source>
-        <translation>Chiffre d'affaires de la cible</translation>
+        <translation>Chiffre d&apos;affaires de la cible</translation>
     </message>
     <message>
         <source>Target EBITDA</source>
@@ -15583,7 +14456,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>RUN PRECEDENT ANALYSIS</source>
-        <translation>EXÉCUTER L'ANALYSE DES PRÉCÉDENTS</translation>
+        <translation>EXÉCUTER L&apos;ANALYSE DES PRÉCÉDENTS</translation>
     </message>
     <message>
         <source>Running Precedent Txns...</source>
@@ -15599,7 +14472,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Revenue</source>
-        <translation>Chiffre d'affaires</translation>
+        <translation>Chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>Net Income</source>
@@ -15611,11 +14484,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>DEAL TERMS</source>
-        <translation>MODALITÉS DE L'OPÉRATION</translation>
+        <translation>MODALITÉS DE L&apos;OPÉRATION</translation>
     </message>
     <message>
         <source>Deal Value</source>
-        <translation>Valeur de l'opération</translation>
+        <translation>Valeur de l&apos;opération</translation>
     </message>
     <message>
         <source>Premium</source>
@@ -15647,11 +14520,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Integration Cost</source>
-        <translation>Coût d'intégration</translation>
+        <translation>Coût d&apos;intégration</translation>
     </message>
     <message>
         <source>Discount Rate</source>
-        <translation>Taux d'actualisation</translation>
+        <translation>Taux d&apos;actualisation</translation>
     </message>
     <message>
         <source>VALUE SYNERGIES</source>
@@ -15691,7 +14564,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Stock Issuance</source>
-        <translation>Émission d'actions</translation>
+        <translation>Émission d&apos;actions</translation>
     </message>
     <message>
         <source>CALCULATE SOURCES &amp; USES</source>
@@ -15706,12 +14579,12 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>Emplois et ressources</translation>
     </message>
     <message>
-        <source>Calculates each party's % contribution to the combined entity.</source>
-        <translation>Calcule la contribution en % de chaque partie à l'entité combinée.</translation>
+        <source>Calculates each party&apos;s % contribution to the combined entity.</source>
+        <translation>Calcule la contribution en % de chaque partie à l&apos;entité combinée.</translation>
     </message>
     <message>
         <source>Acquirer Ownership %</source>
-        <translation>Participation de l'acquéreur %</translation>
+        <translation>Participation de l&apos;acquéreur %</translation>
     </message>
     <message>
         <source>ANALYZE CONTRIBUTION</source>
@@ -15727,7 +14600,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Purchase Price</source>
-        <translation>Prix d'achat</translation>
+        <translation>Prix d&apos;achat</translation>
     </message>
     <message>
         <source>ANALYZE PAYMENT STRUCTURE</source>
@@ -15743,15 +14616,15 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Earnout Amount</source>
-        <translation>Montant de l'earnout</translation>
+        <translation>Montant de l&apos;earnout</translation>
     </message>
     <message>
         <source>Revenue Threshold</source>
-        <translation>Seuil de chiffre d'affaires</translation>
+        <translation>Seuil de chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>Earnout Period (yrs)</source>
-        <translation>Période d'earnout (ans)</translation>
+        <translation>Période d&apos;earnout (ans)</translation>
     </message>
     <message>
         <source>Achievement Probability</source>
@@ -15763,7 +14636,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Valuing Earnout...</source>
-        <translation>Évaluation de l'earnout...</translation>
+        <translation>Évaluation de l&apos;earnout...</translation>
     </message>
     <message>
         <source>Earnout</source>
@@ -15771,7 +14644,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Acquirer Share Price</source>
-        <translation>Cours de l'acquéreur</translation>
+        <translation>Cours de l&apos;acquéreur</translation>
     </message>
     <message>
         <source>Target Share Price</source>
@@ -15779,19 +14652,19 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Offer Premium</source>
-        <translation>Prime d'offre</translation>
+        <translation>Prime d&apos;offre</translation>
     </message>
     <message>
         <source>CALCULATE EXCHANGE RATIO</source>
-        <translation>CALCULER PARITÉ D'ÉCHANGE</translation>
+        <translation>CALCULER PARITÉ D&apos;ÉCHANGE</translation>
     </message>
     <message>
         <source>Calculating Exchange Ratio...</source>
-        <translation>Calcul de la parité d'échange...</translation>
+        <translation>Calcul de la parité d&apos;échange...</translation>
     </message>
     <message>
         <source>Exchange Ratio</source>
-        <translation>Parité d'échange</translation>
+        <translation>Parité d&apos;échange</translation>
     </message>
     <message>
         <source>Price Floor</source>
@@ -15803,7 +14676,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Base Exchange Ratio</source>
-        <translation>Parité d'échange de base</translation>
+        <translation>Parité d&apos;échange de base</translation>
     </message>
     <message>
         <source>ANALYZE COLLAR</source>
@@ -15847,7 +14720,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Scan Days:</source>
-        <translation>Jours d'analyse :</translation>
+        <translation>Jours d&apos;analyse :</translation>
     </message>
     <message>
         <source>SCAN SEC FILINGS</source>
@@ -15871,7 +14744,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Searching deals...</source>
-        <translation>Recherche d'opérations...</translation>
+        <translation>Recherche d&apos;opérations...</translation>
     </message>
     <message>
         <source>Sound Idea</source>
@@ -15951,11 +14824,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Exit Year Metric</source>
-        <translation>Indicateur de l'année de sortie</translation>
+        <translation>Indicateur de l&apos;année de sortie</translation>
     </message>
     <message>
         <source>Years to Exit</source>
-        <translation>Années jusqu'à la sortie</translation>
+        <translation>Années jusqu&apos;à la sortie</translation>
     </message>
     <message>
         <source>Investment</source>
@@ -16071,7 +14944,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Running Comprehensive...</source>
-        <translation>Exécution de l'analyse complète...</translation>
+        <translation>Exécution de l&apos;analyse complète...</translation>
     </message>
     <message>
         <source>All Methods</source>
@@ -16079,7 +14952,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Offer Price</source>
-        <translation>Prix d'offre</translation>
+        <translation>Prix d&apos;offre</translation>
     </message>
     <message>
         <source>DCF Valuation</source>
@@ -16095,15 +14968,15 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>GENERATE FAIRNESS OPINION</source>
-        <translation>GÉNÉRER AVIS D'ÉQUITÉ</translation>
+        <translation>GÉNÉRER AVIS D&apos;ÉQUITÉ</translation>
     </message>
     <message>
         <source>Generating Fairness Opinion...</source>
-        <translation>Génération de l'avis d'équité...</translation>
+        <translation>Génération de l&apos;avis d&apos;équité...</translation>
     </message>
     <message>
         <source>Fairness Analysis</source>
-        <translation>Analyse d'équité</translation>
+        <translation>Analyse d&apos;équité</translation>
     </message>
     <message>
         <source>1-Day Prior Price</source>
@@ -16155,7 +15028,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Disclosure Quality</source>
-        <translation>Qualité de l'information communiquée</translation>
+        <translation>Qualité de l&apos;information communiquée</translation>
     </message>
     <message>
         <source>Timing Adequacy</source>
@@ -16179,7 +15052,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>ARR/Revenue</source>
-        <translation>ARR/Chiffre d'affaires</translation>
+        <translation>ARR/Chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>Growth Rate</source>
@@ -16191,7 +15064,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Net Revenue Retention</source>
-        <translation>Rétention nette du chiffre d'affaires</translation>
+        <translation>Rétention nette du chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>CAC Payback (months)</source>
@@ -16255,11 +15128,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Net Interest Margin</source>
-        <translation>Marge nette d'intérêt</translation>
+        <translation>Marge nette d&apos;intérêt</translation>
     </message>
     <message>
         <source>Efficiency Ratio</source>
-        <translation>Coefficient d'exploitation</translation>
+        <translation>Coefficient d&apos;exploitation</translation>
     </message>
     <message>
         <source>CET1 Ratio</source>
@@ -16319,7 +15192,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Subject Revenue</source>
-        <translation>Chiffre d'affaires de la cible</translation>
+        <translation>Chiffre d&apos;affaires de la cible</translation>
     </message>
     <message>
         <source>Subject EBITDA</source>
@@ -16342,8 +15215,8 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>Régression</translation>
     </message>
     <message>
-        <source>Enter deal data as JSON array. Each deal: {"acquirer":"...","target":"...","deal_value":N,"premium":N,"ev_revenue":N,"ev_ebitda":N}</source>
-        <translation>Saisissez les données de l'opération sous forme de tableau JSON. Chaque opération : {"acquirer":"...","target":"...","deal_value":N,"premium":N,"ev_revenue":N,"ev_ebitda":N}</translation>
+        <source>Enter deal data as JSON array. Each deal: {&quot;acquirer&quot;:&quot;...&quot;,&quot;target&quot;:&quot;...&quot;,&quot;deal_value&quot;:N,&quot;premium&quot;:N,&quot;ev_revenue&quot;:N,&quot;ev_ebitda&quot;:N}</source>
+        <translation>Saisissez les données de l&apos;opération sous forme de tableau JSON. Chaque opération : {&quot;acquirer&quot;:&quot;...&quot;,&quot;target&quot;:&quot;...&quot;,&quot;deal_value&quot;:N,&quot;premium&quot;:N,&quot;ev_revenue&quot;:N,&quot;ev_ebitda&quot;:N}</translation>
     </message>
     <message>
         <source>COMPARE DEALS</source>
@@ -16363,7 +15236,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Same JSON array format as Compare tab...</source>
-        <translation>Même format de tableau JSON que l'onglet Comparer...</translation>
+        <translation>Même format de tableau JSON que l&apos;onglet Comparer...</translation>
     </message>
     <message>
         <source>RANK DEALS</source>
@@ -16383,7 +15256,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Comparable deals JSON array...</source>
-        <translation>Tableau JSON d'opérations comparables...</translation>
+        <translation>Tableau JSON d&apos;opérations comparables...</translation>
     </message>
     <message>
         <source>BENCHMARK PREMIUM</source>
@@ -16399,7 +15272,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Deals JSON with cash_pct and stock_pct fields...</source>
-        <translation>JSON d'opérations avec champs cash_pct et stock_pct...</translation>
+        <translation>JSON d&apos;opérations avec champs cash_pct et stock_pct...</translation>
     </message>
     <message>
         <source>ANALYZE PAYMENT STRUCTURES</source>
@@ -16411,7 +15284,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Deals JSON with industry field...</source>
-        <translation>JSON d'opérations avec champ industry...</translation>
+        <translation>JSON d&apos;opérations avec champ industry...</translation>
     </message>
     <message>
         <source>ANALYZE BY INDUSTRY</source>
@@ -16469,20 +15342,16 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>✕ EFFACER</translation>
     </message>
     <message>
-        <source>INTELLIGENCE</source>
-        <translation>RENSEIGNEMENT</translation>
-    </message>
-    <message>
-        <source>TOTAL IN AREA</source>
-        <translation>TOTAL DANS LA ZONE</translation>
-    </message>
-    <message>
-        <source>DISPLAYED</source>
-        <translation>AFFICHÉS</translation>
-    </message>
-    <message>
         <source>ROUTES</source>
         <translation>ITINÉRAIRES</translation>
+    </message>
+    <message>
+        <source>LIVE VESSEL MAP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BASEMAP</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>PORTS</source>
@@ -16491,6 +15360,30 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     <message>
         <source>TRADE CORRIDORS</source>
         <translation>CORRIDORS COMMERCIAUX</translation>
+    </message>
+    <message>
+        <source>FLEET INTELLIGENCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOADED</source>
+        <translation type="unfinished">CHARGÉ</translation>
+    </message>
+    <message>
+        <source>IN REGION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MOVING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AVG SPEED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEST PORTS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Route</source>
@@ -16503,10 +15396,6 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     <message>
         <source>Status</source>
         <translation>Statut</translation>
-    </message>
-    <message>
-        <source>VESSEL TRACKING</source>
-        <translation>SUIVI DES NAVIRES</translation>
     </message>
     <message>
         <source>Name</source>
@@ -16657,16 +15546,24 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>ENREGISTREMENTS :</translation>
     </message>
     <message>
-        <source>REFRESH:</source>
-        <translation>ACTUALISER :</translation>
-    </message>
-    <message>
-        <source>5 MIN</source>
-        <translation>5 MIN</translation>
+        <source>UPDATED:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>— VESSELS</source>
         <translation>— NAVIRES</translation>
+    </message>
+    <message>
+        <source>⟳ REFRESH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO ⟳ OFF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO ⟳ 5m</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>IMO: %1</source>
@@ -16690,11 +15587,11 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>LOADING HISTORY...</source>
-        <translation>CHARGEMENT DE L'HISTORIQUE...</translation>
+        <translation>CHARGEMENT DE L&apos;HISTORIQUE...</translation>
     </message>
     <message>
         <source>LOADING HISTORY</source>
-        <translation>CHARGEMENT DE L'HISTORIQUE</translation>
+        <translation>CHARGEMENT DE L&apos;HISTORIQUE</translation>
     </message>
     <message>
         <source>Searching…</source>
@@ -16702,7 +15599,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>Set a valid bbox in AREA SEARCH first.</source>
-        <translation>Définissez d'abord une bbox valide dans RECHERCHE DE ZONE.</translation>
+        <translation>Définissez d&apos;abord une bbox valide dans RECHERCHE DE ZONE.</translation>
     </message>
     <message>
         <source>LOADING GLOBAL...</source>
@@ -16819,6 +15716,14 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>%1 — POSITION ACTUELLE</translation>
     </message>
     <message>
+        <source>ORIGIN: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEST: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>HISTORY: %1 (%2 positions)</source>
         <translation>HISTORIQUE : %1 (%2 positions)</translation>
     </message>
@@ -16888,6 +15793,14 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     <message>
         <source>TICKER</source>
         <translation>TICKER</translation>
+    </message>
+    <message>
+        <source>No data (rate-limited) — auto-retrying…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data — press [RETRY] or wait for refresh</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Copy Symbol</source>
@@ -17207,7 +16120,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
     </message>
     <message>
         <source>TOOL NAME</source>
-        <translation>NOM DE L'OUTIL</translation>
+        <translation>NOM DE L&apos;OUTIL</translation>
     </message>
     <message>
         <source>SERVER</source>
@@ -17274,10 +16187,6 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>JOURNAUX</translation>
     </message>
     <message>
-        <source>No output yet. Start the server to see logs here.</source>
-        <translation>Aucune sortie pour l'instant. Démarrez le serveur pour voir les journaux ici.</translation>
-    </message>
-    <message>
         <source>REMOVE</source>
         <translation>SUPPRIMER</translation>
     </message>
@@ -17286,7 +16195,7 @@ pour réinitialiser votre PIN et retrouver l'accès.</translation>
         <translation>Supprimer le serveur</translation>
     </message>
     <message>
-        <source>Remove "%1"?
+        <source>Remove &quot;%1&quot;?
 This cannot be undone.</source>
         <translation>Supprimer « %1 » ?
 Cette action est irréversible.</translation>
@@ -17313,7 +16222,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Environment Variables</source>
-        <translation>Variables d'environnement</translation>
+        <translation>Variables d&apos;environnement</translation>
     </message>
     <message>
         <source>Enter %1</source>
@@ -17354,7 +16263,7 @@ Cette action est irréversible.</translation>
     <message>
         <source>No servers installed yet.
 Use MARKETPLACE to add one, or click ADD CUSTOM MCP SERVER below.</source>
-        <translation>Aucun serveur installé pour l'instant.
+        <translation>Aucun serveur installé pour l&apos;instant.
 Utilisez le MARKETPLACE pour en ajouter un, ou cliquez sur AJOUTER UN SERVEUR MCP PERSONNALISÉ ci-dessous.</translation>
     </message>
     <message>
@@ -17430,7 +16339,7 @@ Utilisez le MARKETPLACE pour en ajouter un, ou cliquez sur AJOUTER UN SERVEUR MC
     </message>
     <message>
         <source>Tool Name</source>
-        <translation>Nom de l'outil</translation>
+        <translation>Nom de l&apos;outil</translation>
     </message>
     <message>
         <source>Server</source>
@@ -17498,7 +16407,7 @@ Utilisez le MARKETPLACE pour en ajouter un, ou cliquez sur AJOUTER UN SERVEUR MC
     </message>
     <message>
         <source>Failed to save server: </source>
-        <translation>Échec de l'enregistrement du serveur : </translation>
+        <translation>Échec de l&apos;enregistrement du serveur : </translation>
     </message>
     <message>
         <source>Server added: </source>
@@ -17506,7 +16415,7 @@ Utilisez le MARKETPLACE pour en ajouter un, ou cliquez sur AJOUTER UN SERVEUR MC
     </message>
     <message>
         <source>No external servers configured.
-Click '+ Add' to add one.</source>
+Click &apos;+ Add&apos; to add one.</source>
         <translation>Aucun serveur externe configuré.
 Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
@@ -17583,7 +16492,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     <name>openmarketterminal::screens::NewsCommandBar</name>
     <message>
         <source>Auto-refresh interval</source>
-        <translation>Intervalle d'actualisation automatique</translation>
+        <translation>Intervalle d&apos;actualisation automatique</translation>
     </message>
     <message>
         <source>MANUAL</source>
@@ -17706,7 +16615,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     <name>openmarketterminal::screens::NewsDetailPanel</name>
     <message>
         <source>ARTICLE DETAIL</source>
-        <translation>DÉTAIL DE L'ARTICLE</translation>
+        <translation>DÉTAIL DE L&apos;ARTICLE</translation>
     </message>
     <message>
         <source>ANALYZE</source>
@@ -17722,7 +16631,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>COPY URL</source>
-        <translation>COPIER L'URL</translation>
+        <translation>COPIER L&apos;URL</translation>
     </message>
     <message>
         <source>COPY TITLE</source>
@@ -17730,7 +16639,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Copy article headline to clipboard</source>
-        <translation>Copier le titre de l'article dans le presse-papiers</translation>
+        <translation>Copier le titre de l&apos;article dans le presse-papiers</translation>
     </message>
     <message>
         <source>SAVE</source>
@@ -17738,7 +16647,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Save article to File Manager</source>
-        <translation>Enregistrer l'article dans le gestionnaire de fichiers</translation>
+        <translation>Enregistrer l&apos;article dans le gestionnaire de fichiers</translation>
     </message>
     <message>
         <source>BOOKMARK</source>
@@ -17746,7 +16655,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Bookmark article</source>
-        <translation>Ajouter l'article aux favoris</translation>
+        <translation>Ajouter l&apos;article aux favoris</translation>
     </message>
     <message>
         <source>TRANSLATE</source>
@@ -17871,10 +16780,6 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     <message>
         <source>LOC  </source>
         <translation>LIEU  </translation>
-    </message>
-    <message>
-        <source>Credits used: %1  •  remaining: %2</source>
-        <translation>Crédits utilisés : %1  •  restants : %2</translation>
     </message>
     <message>
         <source>Country: %1 (%2)</source>
@@ -18151,8 +17056,16 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
         <translation>Envoi...</translation>
     </message>
     <message>
+        <source>OpenMarketTerminal Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This is a test notification from OpenMarketTerminal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>ALERT TRIGGERS</source>
-        <translation>DÉCLENCHEURS D'ALERTE</translation>
+        <translation>DÉCLENCHEURS D&apos;ALERTE</translation>
     </message>
     <message>
         <source>Price Alerts</source>
@@ -18165,14 +17078,6 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     <message>
         <source>Save All Providers</source>
         <translation>Enregistrer Tous les Fournisseurs</translation>
-    </message>
-    <message>
-        <source>Open Terminal Test</source>
-        <translation>Test Open Terminal</translation>
-    </message>
-    <message>
-        <source>This is a test notification from Open Terminal.</source>
-        <translation>Ceci est une notification de test de Open Terminal.</translation>
     </message>
     <message>
         <source>✓ Sent successfully</source>
@@ -18188,11 +17093,11 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Notify when price alert thresholds are crossed.</source>
-        <translation>Notifier lorsque les seuils d'alerte de prix sont franchis.</translation>
+        <translation>Notifier lorsque les seuils d&apos;alerte de prix sont franchis.</translation>
     </message>
     <message>
         <source>Enable news notifications (configure which types below).</source>
-        <translation>Activer les notifications d'actualités (configurez les types ci-dessous).</translation>
+        <translation>Activer les notifications d&apos;actualités (configurez les types ci-dessous).</translation>
     </message>
     <message>
         <source>Breaking News</source>
@@ -18208,7 +17113,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Notify when a news monitor watch list gets new matches.</source>
-        <translation>Notifier lorsqu'une liste de surveillance d'actualités obtient de nouvelles correspondances.</translation>
+        <translation>Notifier lorsqu&apos;une liste de surveillance d&apos;actualités obtient de nouvelles correspondances.</translation>
     </message>
     <message>
         <source>Category Volume Spikes</source>
@@ -18216,7 +17121,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Notify when a category has abnormally high article volume (z-score ≥ 3).</source>
-        <translation>Notifier lorsqu'une catégorie présente un volume d'articles anormalement élevé (z-score ≥ 3).</translation>
+        <translation>Notifier lorsqu&apos;une catégorie présente un volume d&apos;articles anormalement élevé (z-score ≥ 3).</translation>
     </message>
     <message>
         <source>FLASH + High-Impact Articles</source>
@@ -18228,7 +17133,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Order Fill Alerts</source>
-        <translation>Alertes d'exécution d'ordres</translation>
+        <translation>Alertes d&apos;exécution d&apos;ordres</translation>
     </message>
     <message>
         <source>Notify when orders are filled or rejected.</source>
@@ -18273,10 +17178,6 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
 <context>
     <name>openmarketterminal::screens::OnboardingTour</name>
     <message>
-        <source>Welcome to Open Terminal</source>
-        <translation>Bienvenue dans Open Terminal</translation>
-    </message>
-    <message>
         <source>A 30-second tour</source>
         <translation>Une visite de 30 secondes</translation>
     </message>
@@ -18285,12 +17186,12 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
         <translation>Barre de commande (Ctrl+\)</translation>
     </message>
     <message>
-        <source>Type a function code or verb to do anything in the terminal — e.g. "AAPL", "layout switch \"Morning\"", or "link panel red". Press Ctrl+K for a fuzzy palette of every action.</source>
-        <translation>Saisissez un code de fonction ou un verbe pour effectuer n'importe quelle action dans le terminal — p. ex. "AAPL", "layout switch \"Morning\"" ou "link panel red". Appuyez sur Ctrl+K pour une palette floue de toutes les actions.</translation>
+        <source>Type a function code or verb to do anything in the terminal — e.g. &quot;AAPL&quot;, &quot;layout switch \&quot;Morning\&quot;&quot;, or &quot;link panel red&quot;. Press Ctrl+K for a fuzzy palette of every action.</source>
+        <translation>Saisissez un code de fonction ou un verbe pour effectuer n&apos;importe quelle action dans le terminal — p. ex. &quot;AAPL&quot;, &quot;layout switch \&quot;Morning\&quot;&quot; ou &quot;link panel red&quot;. Appuyez sur Ctrl+K pour une palette floue de toutes les actions.</translation>
     </message>
     <message>
-        <source>Tip: type "?" to list available actions for whatever you type next.</source>
-        <translation>Astuce : saisissez "?" pour afficher les actions disponibles pour ce que vous saisirez ensuite.</translation>
+        <source>Tip: type &quot;?&quot; to list available actions for whatever you type next.</source>
+        <translation>Astuce : saisissez &quot;?&quot; pour afficher les actions disponibles pour ce que vous saisirez ensuite.</translation>
     </message>
     <message>
         <source>Link panels with a colour</source>
@@ -18298,7 +17199,7 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
     </message>
     <message>
         <source>Click the coloured dot in any panel header to add it to a link group. Panels in the same group share their selected symbol across windows — pick AAPL in a watchlist and your charts, research, and trading panels all switch.</source>
-        <translation>Cliquez sur le point coloré dans l'en-tête de n'importe quel panneau pour l'ajouter à un groupe de liaison. Les panneaux du même groupe partagent leur symbole sélectionné entre les fenêtres — choisissez AAPL dans une liste de suivi et vos panneaux de graphiques, de recherche et de trading basculent tous.</translation>
+        <translation>Cliquez sur le point coloré dans l&apos;en-tête de n&apos;importe quel panneau pour l&apos;ajouter à un groupe de liaison. Les panneaux du même groupe partagent leur symbole sélectionné entre les fenêtres — choisissez AAPL dans une liste de suivi et vos panneaux de graphiques, de recherche et de trading basculent tous.</translation>
     </message>
     <message>
         <source>Tip: groups are shared across windows, not just the active one.</source>
@@ -18309,8 +17210,8 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
         <translation>Détacher des panneaux dans de nouvelles fenêtres</translation>
     </message>
     <message>
-        <source>Right-click a panel tab → "Tear off into new window" to spawn a fresh frame on the next monitor. Or drag a panel to another frame's tab bar to move it. Each frame keeps its own dock layout — save the whole arrangement as a named layout when you've got it the way you like.</source>
-        <translation>Cliquez avec le bouton droit sur un onglet de panneau → « Détacher dans une nouvelle fenêtre » pour créer un nouveau cadre sur l'écran suivant. Ou faites glisser un panneau vers la barre d'onglets d'un autre cadre pour le déplacer. Chaque cadre conserve sa propre disposition d'ancrage — enregistrez l'ensemble de l'agencement comme disposition nommée lorsqu'il vous convient.</translation>
+        <source>Right-click a panel tab → &quot;Tear off into new window&quot; to spawn a fresh frame on the next monitor. Or drag a panel to another frame&apos;s tab bar to move it. Each frame keeps its own dock layout — save the whole arrangement as a named layout when you&apos;ve got it the way you like.</source>
+        <translation>Cliquez avec le bouton droit sur un onglet de panneau → « Détacher dans une nouvelle fenêtre » pour créer un nouveau cadre sur l&apos;écran suivant. Ou faites glisser un panneau vers la barre d&apos;onglets d&apos;un autre cadre pour le déplacer. Chaque cadre conserve sa propre disposition d&apos;ancrage — enregistrez l&apos;ensemble de l&apos;agencement comme disposition nommée lorsqu&apos;il vous convient.</translation>
     </message>
     <message>
         <source>Tip: Ctrl+Shift+N opens a fresh window on your next monitor.</source>
@@ -18321,10 +17222,6 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
         <translation>Paramètres et raccourcis</translation>
     </message>
     <message>
-        <source>Open Settings (gear icon) to tune theme, hotkeys, telemetry opt-in, and broker credentials. Hotkeys are rebindable — every action in the registry can be assigned a key.</source>
-        <translation>Ouvrez les Paramètres (icône d'engrenage) pour régler le thème, les raccourcis clavier, le consentement à la télémétrie et les identifiants de courtier. Les raccourcis sont réassignables — chaque action du registre peut se voir attribuer une touche.</translation>
-    </message>
-    <message>
         <source>Tip: F11 toggles fullscreen on the focused window.</source>
         <translation>Astuce : F11 active/désactive le plein écran sur la fenêtre active.</translation>
     </message>
@@ -18333,12 +17230,20 @@ Cliquez sur « + Ajouter » pour en ajouter un.</translation>
         <translation>Passer</translation>
     </message>
     <message>
+        <source>Welcome to OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation>Retour</translation>
     </message>
     <message>
         <source>Next</source>
         <translation>Suivant</translation>
+    </message>
+    <message>
+        <source>Open Settings (gear icon) to tune theme, hotkeys, and broker credentials. Hotkeys are rebindable — every action in the registry can be assigned a key.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Got it!</source>
@@ -18373,12 +17278,86 @@ Données via api.beta.ons.gov.uk — GDP, CPI, marché du travail, logement</tra
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::OpenMarketTerminalMacroPanel</name>
+    <message>
+        <source>INDICATOR</source>
+        <translation type="unfinished">INDICATEUR</translation>
+    </message>
+    <message>
+        <source>Fetching %1 …</source>
+        <translation type="unfinished">Récupération de %1 …</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::OrderConfirmDialog</name>
+    <message>
+        <source>Confirm Order</source>
+        <translation>Confirmer l&apos;ordre</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">Compte</translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation type="unfinished">Action</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Symbole</translation>
+    </message>
+    <message>
+        <source>Exchange</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quantity</source>
+        <translation type="unfinished">Quantité</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Type</translation>
+    </message>
+    <message>
+        <source>Price</source>
+        <translation type="unfinished">Prix</translation>
+    </message>
+    <message>
+        <source>Trigger</source>
+        <translation type="unfinished">Déclencheur</translation>
+    </message>
+    <message>
+        <source>Est. value</source>
+        <translation>Val. est.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">Annuler</translation>
+    </message>
+    <message>
+        <source>Send Order</source>
+        <translation>Envoyer l&apos;ordre</translation>
+    </message>
+    <message>
+        <source>⚠  SEMI-AUTO — review before sending</source>
+        <translation>⚠  SEMI-AUTOMATIQUE — examiner avant l&apos;envoi</translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::OwIdPanel</name>
     <message>
         <source>Select a series, enter a country and year range, then click FETCH
 Source: Our World in Data (ourworldindata.org) — no API key required
 Country examples: United States, China, Germany, India, Japan, World</source>
-        <translation>Sélectionnez une série, saisissez un pays et une plage d'années, puis cliquez sur FETCH
+        <translation>Sélectionnez une série, saisissez un pays et une plage d&apos;années, puis cliquez sur FETCH
 Source : Our World in Data (ourworldindata.org) — aucune API key requise
 Exemples de pays : United States, China, Germany, India, Japan, World</translation>
     </message>
@@ -18412,7 +17391,149 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>No data returned — try a different country or year range</source>
-        <translation>Aucune donnée renvoyée — essayez un autre pays ou une autre plage d'années</translation>
+        <translation>Aucune donnée renvoyée — essayez un autre pays ou une autre plage d&apos;années</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::PendingOrdersBadge</name>
+    <message>
+        <source>Orders awaiting approval — click to review</source>
+        <translation>Ordres en attente d&apos;approbation — cliquez pour examiner</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::PendingOrdersPanel</name>
+    <message>
+        <source>PENDING ORDERS</source>
+        <translation>ORDRES EN ATTENTE</translation>
+    </message>
+    <message>
+        <source>Account:</source>
+        <translation type="unfinished">Compte :</translation>
+    </message>
+    <message>
+        <source>Show:</source>
+        <translation type="unfinished">Afficher :</translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation type="unfinished">En attente</translation>
+    </message>
+    <message>
+        <source>Approved</source>
+        <translation type="unfinished">Approuvé</translation>
+    </message>
+    <message>
+        <source>Rejected</source>
+        <translation type="unfinished">Rejeté</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished">Tous</translation>
+    </message>
+    <message>
+        <source>PENDING</source>
+        <translation type="unfinished">EN ATTENTE</translation>
+    </message>
+    <message>
+        <source>APPROVED</source>
+        <translation type="unfinished">APPROUVÉ</translation>
+    </message>
+    <message>
+        <source>REJECTED</source>
+        <translation type="unfinished">REJETÉ</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>APPROVE ALL</source>
+        <translation type="unfinished">TOUT APPROUVER</translation>
+    </message>
+    <message>
+        <source>REJECT ALL</source>
+        <translation type="unfinished">TOUT REJETER</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">Heure</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">Compte</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Type</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Symbole</translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">Sens</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Price Type</source>
+        <translation type="unfinished">Type de prix</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Actions</source>
+        <translation type="unfinished">Actions</translation>
+    </message>
+    <message>
+        <source>Approve All</source>
+        <translation type="unfinished">Tout approuver</translation>
+    </message>
+    <message>
+        <source>Execute ALL pending orders now?</source>
+        <translation type="unfinished">Exécuter TOUS les ordres en attente maintenant ?</translation>
+    </message>
+    <message>
+        <source>Reject All</source>
+        <translation type="unfinished">Tout rejeter</translation>
+    </message>
+    <message>
+        <source>Select a specific account to reject all its pending orders.</source>
+        <translation type="unfinished">Sélectionnez un compte spécifique pour rejeter tous ses ordres en attente.</translation>
+    </message>
+    <message>
+        <source>Rejection reason:</source>
+        <translation type="unfinished">Motif du rejet :</translation>
+    </message>
+    <message>
+        <source>Rejected by user</source>
+        <translation type="unfinished">Rejeté par l&apos;utilisateur</translation>
+    </message>
+    <message>
+        <source>All Accounts</source>
+        <translation type="unfinished">Tous les comptes</translation>
+    </message>
+    <message>
+        <source>Approve</source>
+        <translation type="unfinished">Approuver</translation>
+    </message>
+    <message>
+        <source>Reject</source>
+        <translation type="unfinished">Rejeter</translation>
+    </message>
+    <message>
+        <source>Reject Order</source>
+        <translation type="unfinished">Rejeter l&apos;ordre</translation>
     </message>
 </context>
 <context>
@@ -18482,8 +17603,8 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
         <translation>Perte attendue (95 %)</translation>
     </message>
     <message>
-        <source>Jensen's alpha vs benchmark (CAPM)</source>
-        <translation>Alpha de Jensen par rapport à l'indice de référence (CAPM)</translation>
+        <source>Jensen&apos;s alpha vs benchmark (CAPM)</source>
+        <translation>Alpha de Jensen par rapport à l&apos;indice de référence (CAPM)</translation>
     </message>
     <message>
         <source>1-day historical VaR</source>
@@ -18491,7 +17612,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>⚠ Using a default 4% risk-free rate for Sharpe/Sortino. Add a free FRED API key in Settings → API Credentials for the live Treasury yield.</source>
-        <translation>⚠ Utilisation d'un taux sans risque par défaut de 4 % pour Sharpe/Sortino. Ajoutez une FRED API key gratuite dans Paramètres → API Credentials pour le rendement du Treasury en direct.</translation>
+        <translation>⚠ Utilisation d&apos;un taux sans risque par défaut de 4 % pour Sharpe/Sortino. Ajoutez une FRED API key gratuite dans Paramètres → API Credentials pour le rendement du Treasury en direct.</translation>
     </message>
     <message>
         <source>N/A</source>
@@ -18522,11 +17643,11 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>EXECUTION PLAN</source>
-        <translation>PLAN D'EXÉCUTION</translation>
+        <translation>PLAN D&apos;EXÉCUTION</translation>
     </message>
     <message>
         <source>STEP RESULT</source>
-        <translation>RÉSULTAT DE L'ÉTAPE</translation>
+        <translation>RÉSULTAT DE L&apos;ÉTAPE</translation>
     </message>
     <message>
         <source>READY</source>
@@ -18578,7 +17699,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>LLM profile used for plan generation and execution</source>
-        <translation>Profil LLM utilisé pour la génération et l'exécution du plan</translation>
+        <translation>Profil LLM utilisé pour la génération et l&apos;exécution du plan</translation>
     </message>
     <message>
         <source>Default (Global)</source>
@@ -18594,7 +17715,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Portfolio to use as context for rebalance / analysis plans</source>
-        <translation>Portefeuille à utiliser comme contexte pour les plans de rééquilibrage / d'analyse</translation>
+        <translation>Portefeuille à utiliser comme contexte pour les plans de rééquilibrage / d&apos;analyse</translation>
     </message>
     <message>
         <source>None</source>
@@ -18602,7 +17723,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Stock Analysis Plan</source>
-        <translation>Plan d'analyse d'actions</translation>
+        <translation>Plan d&apos;analyse d&apos;actions</translation>
     </message>
     <message>
         <source>Portfolio Rebalance Plan</source>
@@ -18610,11 +17731,11 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Market Overview Plan</source>
-        <translation>Plan d'aperçu du marché</translation>
+        <translation>Plan d&apos;aperçu du marché</translation>
     </message>
     <message>
         <source>Risk Assessment Plan</source>
-        <translation>Plan d'évaluation des risques</translation>
+        <translation>Plan d&apos;évaluation des risques</translation>
     </message>
     <message>
         <source>Sector Rotation Plan</source>
@@ -18622,7 +17743,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Search history...</source>
-        <translation>Rechercher dans l'historique...</translation>
+        <translation>Rechercher dans l&apos;historique...</translation>
     </message>
     <message>
         <source>#</source>
@@ -18733,7 +17854,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>SAVINGS RATE ANALYSIS</source>
-        <translation>ANALYSE DU TAUX D'ÉPARGNE</translation>
+        <translation>ANALYSE DU TAUX D&apos;ÉPARGNE</translation>
     </message>
     <message>
         <source>✓ On track! Your projected retirement fund of %1 %2 exceeds your target of %1 %3 by %1 %4.</source>
@@ -18741,7 +17862,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>⚠ Shortfall of %1 %2. Consider increasing monthly savings by %1 %3 to close the gap.</source>
-        <translation>⚠ Déficit de %1 %2. Envisagez d'augmenter l'épargne mensuelle de %1 %3 pour combler l'écart.</translation>
+        <translation>⚠ Déficit de %1 %2. Envisagez d&apos;augmenter l&apos;épargne mensuelle de %1 %3 pour combler l&apos;écart.</translation>
     </message>
     <message>
         <source>⚙  OPTIMIZE PORTFOLIO FOR THIS GOAL</source>
@@ -18749,7 +17870,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>House Down Payment</source>
-        <translation>Apport pour l'achat immobilier</translation>
+        <translation>Apport pour l&apos;achat immobilier</translation>
     </message>
     <message>
         <source>Goal:</source>
@@ -18761,7 +17882,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Years to Goal:</source>
-        <translation>Années avant l'objectif :</translation>
+        <translation>Années avant l&apos;objectif :</translation>
     </message>
     <message>
         <source>Monthly Saving:</source>
@@ -18773,11 +17894,11 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>ADD / UPDATE GOAL</source>
-        <translation>AJOUTER / METTRE À JOUR L'OBJECTIF</translation>
+        <translation>AJOUTER / METTRE À JOUR L&apos;OBJECTIF</translation>
     </message>
     <message>
         <source>GOAL PROJECTION</source>
-        <translation>PROJECTION DE L'OBJECTIF</translation>
+        <translation>PROJECTION DE L&apos;OBJECTIF</translation>
     </message>
     <message>
         <source>TARGET AMOUNT</source>
@@ -18813,11 +17934,11 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>REMOVE SELECTED GOAL</source>
-        <translation>SUPPRIMER L'OBJECTIF SÉLECTIONNÉ</translation>
+        <translation>SUPPRIMER L&apos;OBJECTIF SÉLECTIONNÉ</translation>
     </message>
     <message>
         <source>Projects wealth accumulation across a range of savings rates, starting from your current portfolio value.</source>
-        <translation>Projette l'accumulation de patrimoine sur une plage de taux d'épargne, à partir de la valeur actuelle de votre portefeuille.</translation>
+        <translation>Projette l&apos;accumulation de patrimoine sur une plage de taux d&apos;épargne, à partir de la valeur actuelle de votre portefeuille.</translation>
     </message>
     <message>
         <source>Annual Income:</source>
@@ -18825,7 +17946,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Savings Rate:</source>
-        <translation>Taux d'épargne :</translation>
+        <translation>Taux d&apos;épargne :</translation>
     </message>
     <message>
         <source>Years:</source>
@@ -18833,11 +17954,11 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>WEALTH BY SAVINGS RATE</source>
-        <translation>PATRIMOINE PAR TAUX D'ÉPARGNE</translation>
+        <translation>PATRIMOINE PAR TAUX D&apos;ÉPARGNE</translation>
     </message>
     <message>
         <source>SAVINGS RATE</source>
-        <translation>TAUX D'ÉPARGNE</translation>
+        <translation>TAUX D&apos;ÉPARGNE</translation>
     </message>
     <message>
         <source>ANNUAL SAVED</source>
@@ -18857,15 +17978,15 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>✓ On track for %1. Saving %2 %3/month reaches %2 %4 in %5 years — %6% of the %2 %7 target.</source>
-        <translation>✓ En bonne voie pour %1. En épargnant %2 %3/mois, vous atteignez %2 %4 en %5 ans — soit %6% de l'objectif de %2 %7.</translation>
+        <translation>✓ En bonne voie pour %1. En épargnant %2 %3/mois, vous atteignez %2 %4 en %5 ans — soit %6% de l&apos;objectif de %2 %7.</translation>
     </message>
     <message>
         <source>⚠ Short of %1. At %2 %3/month you reach %2 %4 (%5%). Save %2 %6/month to hit the %2 %7 target in %8 years.</source>
-        <translation>⚠ En deçà de %1. À %2 %3/mois, vous atteignez %2 %4 (%5%). Épargnez %2 %6/mois pour atteindre l'objectif de %2 %7 en %8 ans.</translation>
+        <translation>⚠ En deçà de %1. À %2 %3/mois, vous atteignez %2 %4 (%5%). Épargnez %2 %6/mois pour atteindre l&apos;objectif de %2 %7 en %8 ans.</translation>
     </message>
     <message>
-        <source>Monte Carlo: &lt;b&gt;&lt;span style='color:%1'&gt;%2%% chance&lt;/span&gt;&lt;/b&gt; of reaching %3 %4 — likely %3 %5 – %3 %6.</source>
-        <translation>Monte Carlo : &lt;b&gt;&lt;span style='color:%1'&gt;%2%% de chances&lt;/span&gt;&lt;/b&gt; d'atteindre %3 %4 — probablement %3 %5 – %3 %6.</translation>
+        <source>Monte Carlo: &lt;b&gt;&lt;span style=&apos;color:%1&apos;&gt;%2%% chance&lt;/span&gt;&lt;/b&gt; of reaching %3 %4 — likely %3 %5 – %3 %6.</source>
+        <translation>Monte Carlo : &lt;b&gt;&lt;span style=&apos;color:%1&apos;&gt;%2%% de chances&lt;/span&gt;&lt;/b&gt; d&apos;atteindre %3 %4 — probablement %3 %5 – %3 %6.</translation>
     </message>
     <message>
         <source>  (current)</source>
@@ -18873,27 +17994,27 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>At a %1% savings rate you set aside %2 %3/year and project %2 %4 after %5 years (%6% annual return, starting from %2 %7).</source>
-        <translation>Avec un taux d'épargne de %1%, vous mettez de côté %2 %3/an et projetez %2 %4 après %5 ans (rendement annuel de %6%, à partir de %2 %7).</translation>
+        <translation>Avec un taux d&apos;épargne de %1%, vous mettez de côté %2 %3/an et projetez %2 %4 après %5 ans (rendement annuel de %6%, à partir de %2 %7).</translation>
     </message>
     <message>
         <source>◉ Calibrated to your portfolio: %1% expected return, %2% volatility (from %3 days of history). Edit any field to override.</source>
-        <translation>◉ Calibré sur votre portefeuille : rendement attendu de %1%, volatilité de %2% (sur %3 jours d'historique). Modifiez un champ pour le remplacer.</translation>
+        <translation>◉ Calibré sur votre portefeuille : rendement attendu de %1%, volatilité de %2% (sur %3 jours d&apos;historique). Modifiez un champ pour le remplacer.</translation>
     </message>
     <message>
         <source>○ Not enough portfolio history yet to calibrate — using your typed assumptions. Estimates improve as daily snapshots accumulate.</source>
-        <translation>○ Pas encore assez d'historique du portefeuille pour calibrer — vos hypothèses saisies sont utilisées. Les estimations s'améliorent à mesure que les instantanés quotidiens s'accumulent.</translation>
+        <translation>○ Pas encore assez d&apos;historique du portefeuille pour calibrer — vos hypothèses saisies sont utilisées. Les estimations s&apos;améliorent à mesure que les instantanés quotidiens s&apos;accumulent.</translation>
     </message>
     <message>
         <source>(unnamed)</source>
         <translation>(sans nom)</translation>
     </message>
     <message>
-        <source>Monte Carlo (2000 runs, %1% vol): &lt;b&gt;&lt;span style='color:%2'&gt;%3%% chance&lt;/span&gt;&lt;/b&gt; of reaching your target. Likely range %4 %5 – %6 %7 (median %4 %8).</source>
-        <translation>Monte Carlo (2000 simulations, vol. %1%) : &lt;b&gt;&lt;span style='color:%2'&gt;%3%% de chances&lt;/span&gt;&lt;/b&gt; d'atteindre votre objectif. Plage probable %4 %5 – %6 %7 (médiane %4 %8).</translation>
+        <source>Monte Carlo (2000 runs, %1% vol): &lt;b&gt;&lt;span style=&apos;color:%2&apos;&gt;%3%% chance&lt;/span&gt;&lt;/b&gt; of reaching your target. Likely range %4 %5 – %6 %7 (median %4 %8).</source>
+        <translation>Monte Carlo (2000 simulations, vol. %1%) : &lt;b&gt;&lt;span style=&apos;color:%2&apos;&gt;%3%% de chances&lt;/span&gt;&lt;/b&gt; d&apos;atteindre votre objectif. Plage probable %4 %5 – %6 %7 (médiane %4 %8).</translation>
     </message>
     <message>
         <source>Stress: a %1%% drawdown (your historical max) near retirement would cut the projection to %2 %3 — %4%% of target.</source>
-        <translation>Stress : une baisse de %1%% (votre maximum historique) à l'approche de la retraite réduirait la projection à %2 %3 — soit %4%% de l'objectif.</translation>
+        <translation>Stress : une baisse de %1%% (votre maximum historique) à l&apos;approche de la retraite réduirait la projection à %2 %3 — soit %4%% de l&apos;objectif.</translation>
     </message>
 </context>
 <context>
@@ -19082,7 +18203,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>Auto-refresh interval</source>
-        <translation>Intervalle d'actualisation automatique</translation>
+        <translation>Intervalle d&apos;actualisation automatique</translation>
     </message>
     <message>
         <source>SELECT PORTFOLIO ▾</source>
@@ -19102,7 +18223,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>More actions</source>
-        <translation>Plus d'actions</translation>
+        <translation>Plus d&apos;actions</translation>
     </message>
     <message>
         <source>Export CSV</source>
@@ -19212,7 +18333,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     </message>
     <message>
         <source>RUN FFN ANALYSIS</source>
-        <translation>LANCER L'ANALYSE FFN</translation>
+        <translation>LANCER L&apos;ANALYSE FFN</translation>
     </message>
     <message>
         <source>PORTFOLIO METRICS OVERVIEW</source>
@@ -19245,7 +18366,7 @@ Exemples de pays : United States, China, Germany, India, Japan, World</translati
     <message>
         <source>Portfolio metrics computed from 1-year price history via yfinance.
 Connect a live benchmark feed to populate the Benchmark column.</source>
-        <translation>Métriques du portefeuille calculées à partir de l'historique de prix sur 1 an via yfinance.
+        <translation>Métriques du portefeuille calculées à partir de l&apos;historique de prix sur 1 an via yfinance.
 Connectez un flux de référence en direct pour remplir la colonne Référence.</translation>
     </message>
     <message>
@@ -19259,12 +18380,12 @@ Run FFN Analysis to compute optimal weights
 (ERC, Inverse-Vol, Equal, Current).</source>
         <translation>FRONTIÈRE EFFICIENTE
 
-Lancez l'analyse FFN pour calculer les pondérations optimales
+Lancez l&apos;analyse FFN pour calculer les pondérations optimales
 (ERC, Inverse-Vol, Égales, Actuelles).</translation>
     </message>
     <message>
         <source>ALLOCATION WEIGHTS BY STRATEGY</source>
-        <translation>PONDÉRATIONS D'ALLOCATION PAR STRATÉGIE</translation>
+        <translation>PONDÉRATIONS D&apos;ALLOCATION PAR STRATÉGIE</translation>
     </message>
     <message>
         <source>SYMBOL</source>
@@ -19321,7 +18442,7 @@ Run FFN Analysis to compare holdings
 on a common base of 100.</source>
         <translation>GRAPHIQUES DE PRIX REBASÉS
 
-Lancez l'analyse FFN pour comparer les titres
+Lancez l&apos;analyse FFN pour comparer les titres
 sur une base commune de 100.</translation>
     </message>
     <message>
@@ -19339,7 +18460,7 @@ Run FFN Analysis to visualise historical
 drawdowns for each holding.</source>
         <translation>ANALYSE DE DRAWDOWN
 
-Lancez l'analyse FFN pour visualiser les drawdowns
+Lancez l&apos;analyse FFN pour visualiser les drawdowns
 historiques de chaque titre.</translation>
     </message>
     <message>
@@ -19357,7 +18478,7 @@ Add more holdings and run FFN Analysis
 to track 60-day rolling correlations.</source>
         <translation>CORRÉLATIONS GLISSANTES
 
-Ajoutez plus de titres et lancez l'analyse FFN
+Ajoutez plus de titres et lancez l&apos;analyse FFN
 pour suivre les corrélations glissantes sur 60 jours.</translation>
     </message>
     <message>
@@ -19446,7 +18567,7 @@ pour suivre les corrélations glissantes sur 60 jours.</translation>
     </message>
     <message>
         <source>Click RUN FFN ANALYSIS for full stats</source>
-        <translation>Cliquez sur LANCER L'ANALYSE FFN pour les stats complètes</translation>
+        <translation>Cliquez sur LANCER L&apos;ANALYSE FFN pour les stats complètes</translation>
     </message>
     <message>
         <source>Total Return</source>
@@ -19507,7 +18628,7 @@ pour suivre les corrélations glissantes sur 60 jours.</translation>
     </message>
     <message>
         <source>RE-RUN %1 ANALYSIS</source>
-        <translation>RELANCER L'ANALYSE %1</translation>
+        <translation>RELANCER L&apos;ANALYSE %1</translation>
     </message>
     <message>
         <source>No response received.</source>
@@ -19517,27 +18638,27 @@ pour suivre les corrélations glissantes sur 60 jours.</translation>
         <source>Analysis failed.
 
 </source>
-        <translation>Échec de l'analyse.
+        <translation>Échec de l&apos;analyse.
 
 </translation>
     </message>
     <message>
         <source>RE-RUN AGENT</source>
-        <translation>RELANCER L'AGENT</translation>
+        <translation>RELANCER L&apos;AGENT</translation>
     </message>
     <message>
         <source>Agent completed but returned no content.
 
-Check the agent's LLM profile in Agent Config → Agents, and make sure an API key is set in Settings → LLM Configuration.</source>
-        <translation>L'agent a terminé mais n'a retourné aucun contenu.
+Check the agent&apos;s LLM profile in Agent Config → Agents, and make sure an API key is set in Settings → LLM Configuration.</source>
+        <translation>L&apos;agent a terminé mais n&apos;a retourné aucun contenu.
 
-Vérifiez le profil LLM de l'agent dans Configuration de l'agent → Agents, et assurez-vous qu'une clé API est définie dans Paramètres → Configuration LLM.</translation>
+Vérifiez le profil LLM de l&apos;agent dans Configuration de l&apos;agent → Agents, et assurez-vous qu&apos;une clé API est définie dans Paramètres → Configuration LLM.</translation>
     </message>
     <message>
         <source>Agent run failed.
 
 </source>
-        <translation>Échec de l'exécution de l'agent.
+        <translation>Échec de l&apos;exécution de l&apos;agent.
 
 </translation>
     </message>
@@ -19563,11 +18684,11 @@ Vérifiez le profil LLM de l'agent dans Configuration de l'agent → Agents, et 
     </message>
     <message>
         <source>AGENT RUNNER</source>
-        <translation>EXÉCUTEUR D'AGENT</translation>
+        <translation>EXÉCUTEUR D&apos;AGENT</translation>
     </message>
     <message>
         <source>ANALYSIS TYPE</source>
-        <translation>TYPE D'ANALYSE</translation>
+        <translation>TYPE D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>FULL</source>
@@ -19587,7 +18708,7 @@ Vérifiez le profil LLM de l'agent dans Configuration de l'agent → Agents, et 
     </message>
     <message>
         <source>RUN FULL ANALYSIS</source>
-        <translation>LANCER L'ANALYSE COMPLÈTE</translation>
+        <translation>LANCER L&apos;ANALYSE COMPLÈTE</translation>
     </message>
     <message>
         <source>Select an analysis type and press RUN.
@@ -19596,9 +18717,9 @@ FULL — broad review of holdings and allocation.
 RISK — concentration, correlation, downside scenarios.
 REBALANCE — target weights with rationale.
 OPPS — undervalued positions and gaps.</source>
-        <translation>Sélectionnez un type d'analyse et appuyez sur LANCER.
+        <translation>Sélectionnez un type d&apos;analyse et appuyez sur LANCER.
 
-COMPLÈTE — revue large des titres et de l'allocation.
+COMPLÈTE — revue large des titres et de l&apos;allocation.
 RISQUE — concentration, corrélation, scénarios baissiers.
 RÉÉQUILIBRER — pondérations cibles avec justification.
 OPPS — positions sous-évaluées et écarts.</translation>
@@ -19613,7 +18734,7 @@ OPPS — positions sous-évaluées et écarts.</translation>
     </message>
     <message>
         <source>RUN AGENT</source>
-        <translation>LANCER L'AGENT</translation>
+        <translation>LANCER L&apos;AGENT</translation>
     </message>
     <message>
         <source>Load a saved agent above and press RUN.</source>
@@ -19621,7 +18742,7 @@ OPPS — positions sous-évaluées et écarts.</translation>
     </message>
     <message>
         <source>RUN %1 ANALYSIS</source>
-        <translation>LANCER L'ANALYSE %1</translation>
+        <translation>LANCER L&apos;ANALYSE %1</translation>
     </message>
     <message>
         <source>Press RUN to start this analysis.</source>
@@ -19633,7 +18754,7 @@ OPPS — positions sous-évaluées et écarts.</translation>
     </message>
     <message>
         <source>Loading agents from finagent_core. If this persists, make sure Python is installed and open Agent Config for more details.</source>
-        <translation>Chargement des agents depuis finagent_core. Si cela persiste, assurez-vous que Python est installé et ouvrez Configuration de l'agent pour plus de détails.</translation>
+        <translation>Chargement des agents depuis finagent_core. Si cela persiste, assurez-vous que Python est installé et ouvrez Configuration de l&apos;agent pour plus de détails.</translation>
     </message>
     <message>
         <source>No LLM configured.
@@ -19641,7 +18762,7 @@ OPPS — positions sous-évaluées et écarts.</translation>
 Open Settings → LLM Configuration, add a provider with an API key, then try again. The Agent Config tab shares the same LLM setup.</source>
         <translation>Aucun LLM configuré.
 
-Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé API, puis réessayez. L'onglet Configuration de l'agent partage la même configuration LLM.</translation>
+Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé API, puis réessayez. L&apos;onglet Configuration de l&apos;agent partage la même configuration LLM.</translation>
     </message>
     <message>
         <source>● running %1…</source>
@@ -19649,7 +18770,7 @@ Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé A
     </message>
     <message>
         <source>Running %1 analysis through the agent stack…</source>
-        <translation>Exécution de l'analyse %1 via la pile d'agents…</translation>
+        <translation>Exécution de l&apos;analyse %1 via la pile d&apos;agents…</translation>
     </message>
     <message>
         <source>No agent selected.
@@ -19657,7 +18778,7 @@ Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé A
 Create one in the Agent Config screen, then return here.</source>
         <translation>Aucun agent sélectionné.
 
-Créez-en un dans l'écran Configuration de l'agent, puis revenez ici.</translation>
+Créez-en un dans l&apos;écran Configuration de l&apos;agent, puis revenez ici.</translation>
     </message>
     <message>
         <source>No LLM configured.
@@ -19732,7 +18853,7 @@ Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé A
     </message>
     <message>
         <source>▶ RUN OPTIMIZATION</source>
-        <translation>▶ LANCER L'OPTIMISATION</translation>
+        <translation>▶ LANCER L&apos;OPTIMISATION</translation>
     </message>
     <message>
         <source>SYMBOL</source>
@@ -19760,7 +18881,7 @@ Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé A
     </message>
     <message>
         <source>Run optimization on the OPTIMIZE tab to generate the efficient frontier.</source>
-        <translation>Lancez l'optimisation sur l'onglet OPTIMISER pour générer la frontière efficiente.</translation>
+        <translation>Lancez l&apos;optimisation sur l&apos;onglet OPTIMISER pour générer la frontière efficiente.</translation>
     </message>
     <message>
         <source>WEIGHT</source>
@@ -19781,7 +18902,7 @@ Ouvrez Paramètres → Configuration LLM, ajoutez un fournisseur avec une clé A
     <message>
         <source>Run optimization on the OPTIMIZE tab.
 All 5 strategies will be compared automatically.</source>
-        <translation>Lancez l'optimisation sur l'onglet OPTIMISER.
+        <translation>Lancez l&apos;optimisation sur l&apos;onglet OPTIMISER.
 Les 5 stratégies seront comparées automatiquement.</translation>
     </message>
     <message>
@@ -19810,7 +18931,7 @@ Les 5 stratégies seront comparées automatiquement.</translation>
     </message>
     <message>
         <source>Run optimization on the OPTIMIZE tab to populate this comparison.</source>
-        <translation>Lancez l'optimisation sur l'onglet OPTIMISER pour remplir cette comparaison.</translation>
+        <translation>Lancez l&apos;optimisation sur l&apos;onglet OPTIMISER pour remplir cette comparaison.</translation>
     </message>
     <message>
         <source>BACKTEST RESULTS</source>
@@ -19819,7 +18940,7 @@ Les 5 stratégies seront comparées automatiquement.</translation>
     <message>
         <source>Run an optimization first, then backtest the optimal weights
 against historical data to evaluate out-of-sample performance.</source>
-        <translation>Lancez d'abord une optimisation, puis backtestez les pondérations optimales
+        <translation>Lancez d&apos;abord une optimisation, puis backtestez les pondérations optimales
 contre les données historiques pour évaluer la performance hors échantillon.</translation>
     </message>
     <message>
@@ -19854,7 +18975,7 @@ performance historique, ou ouvrez le terminal de Backtesting complet.</translati
     </message>
     <message>
         <source>Run optimization first to enable</source>
-        <translation>Lancez d'abord l'optimisation pour activer</translation>
+        <translation>Lancez d&apos;abord l&apos;optimisation pour activer</translation>
     </message>
     <message>
         <source>OPEN FULL BACKTESTING TERMINAL</source>
@@ -19872,11 +18993,11 @@ performance historique, ou ouvrez le terminal de Backtesting complet.</translati
         <source>Marginal risk contribution decomposes total portfolio volatility across holdings.
 Run optimization on the OPTIMIZE tab to compute it from the covariance matrix.</source>
         <translation>La contribution marginale au risque décompose la volatilité totale du portefeuille entre les positions.
-Lancez l'optimisation sur l'onglet OPTIMIZE pour la calculer à partir de la matrice de covariance.</translation>
+Lancez l&apos;optimisation sur l&apos;onglet OPTIMIZE pour la calculer à partir de la matrice de covariance.</translation>
     </message>
     <message>
         <source>ASSET VOL</source>
-        <translation>VOL DE L'ACTIF</translation>
+        <translation>VOL DE L&apos;ACTIF</translation>
     </message>
     <message>
         <source>MARGINAL RISK</source>
@@ -19893,8 +19014,8 @@ Lancez l'optimisation sur l'onglet OPTIMIZE pour la calculer à partir de la mat
     <message>
         <source>Applies historical crisis shocks to your current asset-class exposure.
 Select a portfolio to see estimated impact per scenario.</source>
-        <translation>Applique des chocs de crise historiques à votre exposition actuelle par classe d'actifs.
-Sélectionnez un portefeuille pour voir l'impact estimé par scénario.</translation>
+        <translation>Applique des chocs de crise historiques à votre exposition actuelle par classe d&apos;actifs.
+Sélectionnez un portefeuille pour voir l&apos;impact estimé par scénario.</translation>
     </message>
     <message>
         <source>SCENARIO</source>
@@ -19909,12 +19030,12 @@ Sélectionnez un portefeuille pour voir l'impact estimé par scénario.</transla
         <translation>PERTE EST.</translation>
     </message>
     <message>
-        <source>Market-implied equilibrium returns (π = δ·Σ·w_market) shown below. Select 'B-L Model' as the METHOD on the OPTIMIZE tab to also compute B-L weights.</source>
-        <translation>Les rendements d'équilibre implicites du marché (π = δ·Σ·w_market) sont affichés ci-dessous. Sélectionnez « B-L Model » comme METHOD sur l'onglet OPTIMIZE pour calculer aussi les pondérations B-L.</translation>
+        <source>Market-implied equilibrium returns (π = δ·Σ·w_market) shown below. Select &apos;B-L Model&apos; as the METHOD on the OPTIMIZE tab to also compute B-L weights.</source>
+        <translation>Les rendements d&apos;équilibre implicites du marché (π = δ·Σ·w_market) sont affichés ci-dessous. Sélectionnez « B-L Model » comme METHOD sur l&apos;onglet OPTIMIZE pour calculer aussi les pondérations B-L.</translation>
     </message>
     <message>
         <source>Run optimization on the OPTIMIZE tab to compute market-implied returns and Black-Litterman weights.</source>
-        <translation>Lancez l'optimisation sur l'onglet OPTIMIZE pour calculer les rendements implicites du marché et les pondérations de Black-Litterman.</translation>
+        <translation>Lancez l&apos;optimisation sur l&apos;onglet OPTIMIZE pour calculer les rendements implicites du marché et les pondérations de Black-Litterman.</translation>
     </message>
     <message>
         <source>IMPLIED RETURN</source>
@@ -19937,7 +19058,7 @@ Sélectionnez un portefeuille pour voir l'impact estimé par scénario.</transla
     <name>openmarketterminal::screens::PortfolioOrderPanel</name>
     <message>
         <source>ORDER ENTRY</source>
-        <translation>SAISIE D'ORDRE</translation>
+        <translation>SAISIE D&apos;ORDRE</translation>
     </message>
     <message>
         <source>BUY</source>
@@ -19982,7 +19103,7 @@ dans votre portefeuille</translation>
     </message>
     <message>
         <source>Overlay benchmark index (auto-selected by portfolio currency)</source>
-        <translation>Superposer l'indice de référence (auto-sélectionné par la devise du portefeuille)</translation>
+        <translation>Superposer l&apos;indice de référence (auto-sélectionné par la devise du portefeuille)</translation>
     </message>
     <message>
         <source>Indexed view: rebase portfolio and benchmark to 100 at the start of
@@ -20020,6 +19141,140 @@ de la période sélectionnée. À utiliser pour comparer différentes devises.</
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::PortfolioReplicationDialog</name>
+    <message>
+        <source>Replicate Portfolio → Paper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target (paper)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holdings</source>
+        <translation type="unfinished">Positions</translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished">Positions</translation>
+    </message>
+    <message>
+        <source>Include:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source></source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Type</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation type="unfinished">Source</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished">Cible</translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">Sens</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Est Price</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Est Value / Note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up paper balance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished">Fermer</translation>
+    </message>
+    <message>
+        <source>REPLICATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No paper accounts found. Create one via ACCOUNTS first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading source portfolio…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No credentials for source account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source account has no holdings or positions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 stock(s) selected  •  Required %2  vs  Paper available %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up paper balance to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paper balance set to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm replication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Place %1 paper order(s) into the target account?
+This is paper trading — no real money.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1  •  Failed %2  •  Skipped %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Replication results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1, failed %2, skipped %3.
+
+%4</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::PortfolioScreen</name>
     <message>
         <source>Export CSV</source>
@@ -20039,17 +19294,17 @@ de la période sélectionnée. À utiliser pour comparer différentes devises.</
     </message>
     <message>
         <source>Import failed with no details.</source>
-        <translation>Échec de l'importation sans détails.</translation>
+        <translation>Échec de l&apos;importation sans détails.</translation>
     </message>
     <message>
         <source>Portfolio Import Failed</source>
-        <translation>Échec de l'importation du portefeuille</translation>
+        <translation>Échec de l&apos;importation du portefeuille</translation>
     </message>
     <message>
         <source>Could not import the portfolio.
 
 </source>
-        <translation>Impossible d'importer le portefeuille.
+        <translation>Impossible d&apos;importer le portefeuille.
 
 </translation>
     </message>
@@ -20058,24 +19313,24 @@ de la période sélectionnée. À utiliser pour comparer différentes devises.</
 
 Expected format:
 {
-  "portfolio_name": "My Portfolio",
-  "currency": "USD",
-  "owner": "...",
-  "transactions": [
-    {"date": "YYYY-MM-DD", "symbol": "AAPL", "type": "BUY",
-     "quantity": 10, "price": 150.0}
+  &quot;portfolio_name&quot;: &quot;My Portfolio&quot;,
+  &quot;currency&quot;: &quot;USD&quot;,
+  &quot;owner&quot;: &quot;...&quot;,
+  &quot;transactions&quot;: [
+    {&quot;date&quot;: &quot;YYYY-MM-DD&quot;, &quot;symbol&quot;: &quot;AAPL&quot;, &quot;type&quot;: &quot;BUY&quot;,
+     &quot;quantity&quot;: 10, &quot;price&quot;: 150.0}
   ]
 }</source>
         <translation>
 
 Format attendu :
 {
-  "portfolio_name": "My Portfolio",
-  "currency": "USD",
-  "owner": "...",
-  "transactions": [
-    {"date": "YYYY-MM-DD", "symbol": "AAPL", "type": "BUY",
-     "quantity": 10, "price": 150.0}
+  &quot;portfolio_name&quot;: &quot;My Portfolio&quot;,
+  &quot;currency&quot;: &quot;USD&quot;,
+  &quot;owner&quot;: &quot;...&quot;,
+  &quot;transactions&quot;: [
+    {&quot;date&quot;: &quot;YYYY-MM-DD&quot;, &quot;symbol&quot;: &quot;AAPL&quot;, &quot;type&quot;: &quot;BUY&quot;,
+     &quot;quantity&quot;: 10, &quot;price&quot;: 150.0}
   ]
 }</translation>
     </message>
@@ -20085,7 +19340,7 @@ Format attendu :
     </message>
     <message>
         <source>Create, import, or explore a sample portfolio to get started.</source>
-        <translation>Créez, importez ou explorez un portefeuille d'exemple pour commencer.</translation>
+        <translation>Créez, importez ou explorez un portefeuille d&apos;exemple pour commencer.</translation>
     </message>
     <message>
         <source>CREATE NEW</source>
@@ -20109,7 +19364,7 @@ Format attendu :
     </message>
     <message>
         <source>Preview the workspace with a sample diversified portfolio of 12 major equities.</source>
-        <translation>Aperçu de l'espace de travail avec un portefeuille d'exemple diversifié de 12 actions majeures.</translation>
+        <translation>Aperçu de l&apos;espace de travail avec un portefeuille d&apos;exemple diversifié de 12 actions majeures.</translation>
     </message>
     <message>
         <source>Loading portfolio data…</source>
@@ -20128,12 +19383,12 @@ Format attendu :
         <translation>Portefeuille de démo</translation>
     </message>
     <message>
-        <source>Open Terminal User</source>
-        <translation>Utilisateur Open Terminal</translation>
+        <source>OpenMarketTerminal User</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Sample portfolio for demonstration</source>
-        <translation>Portefeuille d'exemple pour démonstration</translation>
+        <translation>Portefeuille d&apos;exemple pour démonstration</translation>
     </message>
     <message>
         <source>Unclassified</source>
@@ -20175,7 +19430,7 @@ Format attendu :
     </message>
     <message>
         <source>TODAY</source>
-        <translation>AUJOURD'HUI</translation>
+        <translation>AUJOURD&apos;HUI</translation>
     </message>
     <message>
         <source>RISK &amp; POSITIONING</source>
@@ -20245,7 +19500,7 @@ Format attendu :
     </message>
     <message>
         <source>Collapse / expand transaction history</source>
-        <translation>Réduire / développer l'historique des transactions</translation>
+        <translation>Réduire / développer l&apos;historique des transactions</translation>
     </message>
     <message>
         <source>Date</source>
@@ -20281,93 +19536,6 @@ Format attendu :
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::PricingScreen</name>
-    <message>
-        <source>PLANS &amp; PRICING</source>
-        <translation>FORMULES ET TARIFS</translation>
-    </message>
-    <message>
-        <source>Unlock the full power of Open Terminal</source>
-        <translation>Débloquez toute la puissance de Open Terminal</translation>
-    </message>
-    <message>
-        <source>Loading plans...</source>
-        <translation>Chargement des formules...</translation>
-    </message>
-    <message>
-        <source>Updating plan status...</source>
-        <translation>Mise à jour du statut de la formule...</translation>
-    </message>
-    <message>
-        <source>Failed to load plans</source>
-        <translation>Échec du chargement des formules</translation>
-    </message>
-    <message>
-        <source>No plans available.</source>
-        <translation>Aucune formule disponible.</translation>
-    </message>
-    <message>
-        <source>RECOMMENDED</source>
-        <translation>RECOMMANDÉ</translation>
-    </message>
-    <message>
-        <source>FREE</source>
-        <translation>GRATUIT</translation>
-    </message>
-    <message>
-        <source>/ %1 days</source>
-        <translation>/ %1 jours</translation>
-    </message>
-    <message>
-        <source>%1 credits</source>
-        <translation>%1 crédits</translation>
-    </message>
-    <message>
-        <source>%1 support</source>
-        <translation>Support %1</translation>
-    </message>
-    <message>
-        <source>ACTIVE</source>
-        <translation>ACTIF</translation>
-    </message>
-    <message>
-        <source>FREE TIER</source>
-        <translation>NIVEAU GRATUIT</translation>
-    </message>
-    <message>
-        <source>CONTINUE FREE</source>
-        <translation>CONTINUER GRATUITEMENT</translation>
-    </message>
-    <message>
-        <source>SELECT PLAN</source>
-        <translation>CHOISIR LA FORMULE</translation>
-    </message>
-    <message>
-        <source>PROCESSING...</source>
-        <translation>TRAITEMENT...</translation>
-    </message>
-    <message>
-        <source>Failed to generate checkout token</source>
-        <translation>Échec de génération du jeton de paiement</translation>
-    </message>
-    <message>
-        <source>No checkout token received from server</source>
-        <translation>Aucun jeton de paiement reçu du serveur</translation>
-    </message>
-    <message>
-        <source>Back to Dashboard</source>
-        <translation>Retour au Tableau de Bord</translation>
-    </message>
-    <message>
-        <source>Want to explore first?</source>
-        <translation>Envie d'explorer d'abord ?</translation>
-    </message>
-    <message>
-        <source>Continue with Free Plan</source>
-        <translation>Continuer avec la Formule Gratuite</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::PrivacyScreen</name>
     <message>
         <source>&lt; BACK</source>
@@ -20378,204 +19546,148 @@ Format attendu :
         <translation>POLITIQUE DE CONFIDENTIALITÉ</translation>
     </message>
     <message>
-        <source>Last updated: January 1, 2026</source>
-        <translation>Dernière mise à jour : 1 janvier 2026</translation>
+        <source>Applies to the open-source release.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OUR COMMITMENT TO PRIVACY</source>
-        <translation>NOTRE ENGAGEMENT EN MATIÈRE DE CONFIDENTIALITÉ</translation>
+        <source>LOCAL-FIRST BY DESIGN</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>At Open Terminal contributors, we are committed to protecting your privacy. This policy describes how we collect, use, and safeguard your personal information when you use Open Terminal.</source>
-        <translation>Chez Open Terminal contributors, nous nous engageons à protéger votre vie privée. Cette politique décrit comment nous collectons, utilisons et protégeons vos informations personnelles lorsque vous utilisez Open Terminal.</translation>
+        <source>Open Terminal is a local-first desktop app that runs entirely on your computer. There is no Open Terminal server. We do not collect, transmit, sell, or share your personal data, and the app contains no analytics, telemetry, or phone-home of any kind.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>INFORMATION WE COLLECT</source>
-        <translation>INFORMATIONS QUE NOUS COLLECTONS</translation>
+        <source>YOUR DATA STAYS ON YOUR DEVICE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Personal Information:</source>
-        <translation>Informations personnelles :</translation>
+        <source>Everything you create in the app is stored locally on your machine:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Name and email address</source>
-        <translation>Nom et adresse e-mail</translation>
+        <source>Watchlists, portfolios, notes, and settings — in local SQLite databases</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Account credentials (encrypted)</source>
-        <translation>Identifiants du compte (chiffrés)</translation>
+        <source>Secrets such as API keys — in your operating system&apos;s keychain</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Payment information (processed by third-party providers)</source>
-        <translation>Informations de paiement (traitées par des prestataires tiers)</translation>
+        <source>Nothing is uploaded to us; there is no account to register and no cloud sync</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Phone number (optional)</source>
-        <translation>Numéro de téléphone (facultatif)</translation>
+        <source>API KEYS AND THIRD-PARTY SERVICES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Country and region</source>
-        <translation>Pays et région</translation>
+        <source>STORED LOCALLY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Usage Information:</source>
-        <translation>Informations d'utilisation :</translation>
+        <source>API keys you configure are kept on your device and are never sent to us</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Feature usage and navigation patterns</source>
-        <translation>Utilisation des fonctionnalités et habitudes de navigation</translation>
+        <source>DIRECT CONNECTIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Device and browser information</source>
-        <translation>Informations sur l'appareil et le navigateur</translation>
+        <source>Keys are used only to connect directly from your machine to the brokers and data providers you choose</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IP address and approximate location</source>
-        <translation>Adresse IP et localisation approximative</translation>
+        <source>THEIR POLICIES APPLY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Error logs and performance metrics</source>
-        <translation>Journaux d'erreurs et indicateurs de performance</translation>
+        <source>Those third parties handle your requests under their own privacy policies — review them separately</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Session duration and frequency</source>
-        <translation>Durée et fréquence des sessions</translation>
+        <source>YOU DECIDE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>HOW WE USE YOUR INFORMATION</source>
-        <translation>COMMENT NOUS UTILISONS VOS INFORMATIONS</translation>
+        <source>No connection is made unless you add a key and choose to use that service</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SERVICE DELIVERY</source>
-        <translation>FOURNITURE DU SERVICE</translation>
+        <source>NO COLLECTION, NO SHARING</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Provide and maintain terminal features, process transactions, and deliver data feeds</source>
-        <translation>Fournir et maintenir les fonctionnalités du terminal, traiter les transactions et fournir les flux de données</translation>
+        <source>Because there is no server and no telemetry:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SECURITY</source>
-        <translation>SÉCURITÉ</translation>
+        <source>We do not collect names, emails, phone numbers, payment details, or location</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Protect accounts, detect fraud, enforce terms of service, and ensure platform integrity</source>
-        <translation>Protéger les comptes, détecter la fraude, faire respecter les conditions de service et garantir l'intégrité de la plateforme</translation>
+        <source>We do not track feature usage, navigation, or session activity</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>COMMUNICATION</source>
-        <translation>COMMUNICATION</translation>
+        <source>We have no data to sell, share with partners, or hand over</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Send service updates, security alerts, support responses, and optional marketing</source>
-        <translation>Envoyer des mises à jour du service, des alertes de sécurité, des réponses du support et du marketing facultatif</translation>
+        <source>KEEPING YOUR DATA SAFE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IMPROVEMENT</source>
-        <translation>AMÉLIORATION</translation>
+        <source>Your data&apos;s security rests with your own machine:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Analyze usage to improve features, fix bugs, and develop new capabilities</source>
-        <translation>Analyser l'utilisation pour améliorer les fonctionnalités, corriger les bugs et développer de nouvelles capacités</translation>
+        <source>Secrets are stored in the OS keychain rather than plain text</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>INFORMATION SHARING</source>
-        <translation>PARTAGE DES INFORMATIONS</translation>
+        <source>Local databases live under your user profile, protected by your OS account</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>We may share your information with:</source>
-        <translation>Nous pouvons partager vos informations avec :</translation>
+        <source>Keeping your device and operating system secure protects your data</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Service Providers — third-party services that help operate the platform</source>
-        <translation>Prestataires de services — services tiers qui contribuent au fonctionnement de la plateforme</translation>
+        <source>OPEN AND INSPECTABLE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Legal Requirements — when required by law or to protect our rights</source>
-        <translation>Obligations légales — lorsque la loi l'exige ou pour protéger nos droits</translation>
+        <source>Open Terminal is open-source software:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Business Transfer — in connection with a merger, acquisition, or sale</source>
-        <translation>Cession d'entreprise — dans le cadre d'une fusion, d'une acquisition ou d'une vente</translation>
+        <source>You can read the source to see exactly how your data is handled</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>With Your Consent — when you explicitly authorize sharing</source>
-        <translation>Avec votre consentement — lorsque vous autorisez explicitement le partage</translation>
+        <source>You control your local data — back it up, export it, or delete it at any time</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DATA SECURITY</source>
-        <translation>SÉCURITÉ DES DONNÉES</translation>
+        <source>Removing the app&apos;s data folders removes your data completely</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>We implement industry-standard security measures:</source>
-        <translation>Nous mettons en œuvre des mesures de sécurité conformes aux normes du secteur :</translation>
+        <source>QUESTIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>End-to-end encryption for sensitive data</source>
-        <translation>Chiffrement de bout en bout pour les données sensibles</translation>
+        <source>Privacy questions can be raised in the public issue tracker:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Secure credential storage (encrypted at rest)</source>
-        <translation>Stockage sécurisé des identifiants (chiffrés au repos)</translation>
-    </message>
-    <message>
-        <source>Regular security audits and penetration testing</source>
-        <translation>Audits de sécurité réguliers et tests d'intrusion</translation>
-    </message>
-    <message>
-        <source>Access controls and authentication requirements</source>
-        <translation>Contrôles d'accès et exigences d'authentification</translation>
-    </message>
-    <message>
-        <source>Automatic session expiry and logout</source>
-        <translation>Expiration de session et déconnexion automatiques</translation>
-    </message>
-    <message>
-        <source>HTTPS/TLS for all data transmission</source>
-        <translation>HTTPS/TLS pour toutes les transmissions de données</translation>
-    </message>
-    <message>
-        <source>YOUR RIGHTS</source>
-        <translation>VOS DROITS</translation>
-    </message>
-    <message>
-        <source>You have the right to:</source>
-        <translation>Vous avez le droit de :</translation>
-    </message>
-    <message>
-        <source>Access — Request a copy of your personal data</source>
-        <translation>Accès — Demander une copie de vos données personnelles</translation>
-    </message>
-    <message>
-        <source>Correction — Update inaccurate or incomplete data</source>
-        <translation>Rectification — Mettre à jour des données inexactes ou incomplètes</translation>
-    </message>
-    <message>
-        <source>Deletion — Request deletion of your account and data</source>
-        <translation>Suppression — Demander la suppression de votre compte et de vos données</translation>
-    </message>
-    <message>
-        <source>Portability — Export your data in a machine-readable format</source>
-        <translation>Portabilité — Exporter vos données dans un format lisible par machine</translation>
-    </message>
-    <message>
-        <source>Opt-out — Unsubscribe from marketing communications</source>
-        <translation>Désinscription — Se désabonner des communications marketing</translation>
-    </message>
-    <message>
-        <source>CONTACT US</source>
-        <translation>NOUS CONTACTER</translation>
-    </message>
-    <message>
-        <source>Privacy Officer: github.com/your-org/open-terminal/issues</source>
-        <translation>Délégué à la protection des données : github.com/your-org/open-terminal/issues</translation>
-    </message>
-    <message>
-        <source>For privacy-related inquiries, write to the address above.</source>
-        <translation>Pour toute question relative à la confidentialité, écrivez à l'adresse ci-dessus.</translation>
+        <source>github.com/Trucker2827/Open-Terminal/issues</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Terms of Service</source>
-        <translation>Conditions d'Utilisation</translation>
+        <translation>Conditions d&apos;Utilisation</translation>
     </message>
     <message>
         <source>Contact Us</source>
@@ -20589,10 +19701,6 @@ Format attendu :
         <translation>PROFIL ET COMPTE</translation>
     </message>
     <message>
-        <source>REFRESH</source>
-        <translation>ACTUALISER</translation>
-    </message>
-    <message>
         <source>SECURITY</source>
         <translation>SÉCURITÉ</translation>
     </message>
@@ -20602,7 +19710,7 @@ Format attendu :
     </message>
     <message>
         <source>USERNAME</source>
-        <translation>NOM D'UTILISATEUR</translation>
+        <translation>NOM D&apos;UTILISATEUR</translation>
     </message>
     <message>
         <source>EMAIL</source>
@@ -20610,11 +19718,7 @@ Format attendu :
     </message>
     <message>
         <source>USER TYPE</source>
-        <translation>TYPE D'UTILISATEUR</translation>
-    </message>
-    <message>
-        <source>ACCOUNT TYPE</source>
-        <translation>TYPE DE COMPTE</translation>
+        <translation>TYPE D&apos;UTILISATEUR</translation>
     </message>
     <message>
         <source>PHONE</source>
@@ -20633,88 +19737,12 @@ Format attendu :
         <translation>2FA ACTIVÉ</translation>
     </message>
     <message>
-        <source>EDIT PROFILE</source>
-        <translation>MODIFIER LE PROFIL</translation>
-    </message>
-    <message>
-        <source>CREDITS &amp; BALANCE</source>
-        <translation>CRÉDITS ET SOLDE</translation>
-    </message>
-    <message>
-        <source>AVAILABLE CREDITS</source>
-        <translation>CRÉDITS DISPONIBLES</translation>
-    </message>
-    <message>
-        <source>PLAN</source>
-        <translation>FORMULE</translation>
-    </message>
-    <message>
         <source>QUICK ACTIONS</source>
         <translation>ACTIONS RAPIDES</translation>
     </message>
     <message>
         <source>LOGOUT</source>
         <translation>DÉCONNEXION</translation>
-    </message>
-    <message>
-        <source>DELETE ACCOUNT</source>
-        <translation>SUPPRIMER LE COMPTE</translation>
-    </message>
-    <message>
-        <source>CREDIT BALANCE</source>
-        <translation>SOLDE DE CRÉDITS</translation>
-    </message>
-    <message>
-        <source>RATE LIMIT/HR</source>
-        <translation>LIMITE/H</translation>
-    </message>
-    <message>
-        <source>USAGE SUMMARY — LAST 30 DAYS</source>
-        <translation>RÉSUMÉ D'UTILISATION — 30 DERNIERS JOURS</translation>
-    </message>
-    <message>
-        <source>TOTAL REQUESTS</source>
-        <translation>TOTAL REQUÊTES</translation>
-    </message>
-    <message>
-        <source>CREDITS USED</source>
-        <translation>CRÉDITS UTILISÉS</translation>
-    </message>
-    <message>
-        <source>AVG CR/REQ</source>
-        <translation>CR/REQ MOY.</translation>
-    </message>
-    <message>
-        <source>AVG RESP (ms)</source>
-        <translation>RÉP. MOY. (ms)</translation>
-    </message>
-    <message>
-        <source>DAILY USAGE</source>
-        <translation>UTILISATION QUOTIDIENNE</translation>
-    </message>
-    <message>
-        <source>DATE</source>
-        <translation>DATE</translation>
-    </message>
-    <message>
-        <source>REQUESTS</source>
-        <translation>REQUÊTES</translation>
-    </message>
-    <message>
-        <source>CREDITS</source>
-        <translation>CRÉDITS</translation>
-    </message>
-    <message>
-        <source>TOP ENDPOINTS</source>
-        <translation>PRINCIPAUX ENDPOINTS</translation>
-    </message>
-    <message>
-        <source>ENDPOINT</source>
-        <translation>ENDPOINT</translation>
-    </message>
-    <message>
-        <source>AVG MS</source>
-        <translation>MS MOY.</translation>
     </message>
     <message>
         <source>API KEY</source>
@@ -20737,44 +19765,8 @@ Format attendu :
         <translation>COPIÉ</translation>
     </message>
     <message>
-        <source>REGENERATE</source>
-        <translation>RÉGÉNÉRER</translation>
-    </message>
-    <message>
         <source>SECURITY STATUS</source>
         <translation>STATUT DE SÉCURITÉ</translation>
-    </message>
-    <message>
-        <source>LOGIN HISTORY</source>
-        <translation>HISTORIQUE DE CONNEXION</translation>
-    </message>
-    <message>
-        <source>TIMESTAMP</source>
-        <translation>HORODATAGE</translation>
-    </message>
-    <message>
-        <source>IP ADDRESS</source>
-        <translation>ADRESSE IP</translation>
-    </message>
-    <message>
-        <source>STATUS</source>
-        <translation>STATUT</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION</source>
-        <translation>ABONNEMENT</translation>
-    </message>
-    <message>
-        <source>SUPPORT TYPE</source>
-        <translation>TYPE DE SUPPORT</translation>
-    </message>
-    <message>
-        <source>PAYMENT HISTORY</source>
-        <translation>HISTORIQUE DE PAIEMENT</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>MONTANT</translation>
     </message>
     <message>
         <source>CONTACT US</source>
@@ -20787,10 +19779,6 @@ Format attendu :
     <message>
         <source>ISSUES</source>
         <translation>ISSUES</translation>
-    </message>
-    <message>
-        <source>LEGAL</source>
-        <translation>JURIDIQUE</translation>
     </message>
     <message>
         <source>RESOURCES</source>
@@ -20821,32 +19809,16 @@ Format attendu :
         <translation>INSCRIT</translation>
     </message>
     <message>
+        <source>LICENSE</source>
+        <translation type="unfinished">LICENCE</translation>
+    </message>
+    <message>
         <source>ENABLED</source>
         <translation>ACTIVÉ</translation>
     </message>
     <message>
         <source>DISABLED</source>
         <translation>DÉSACTIVÉ</translation>
-    </message>
-    <message>
-        <source>CR %1</source>
-        <translation>CR %1</translation>
-    </message>
-    <message>
-        <source>Edit Profile</source>
-        <translation>Modifier le Profil</translation>
-    </message>
-    <message>
-        <source>PHONE (with country code)</source>
-        <translation>TÉLÉPHONE (avec indicatif pays)</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>ANNULER</translation>
-    </message>
-    <message>
-        <source>SAVE</source>
-        <translation>ENREGISTRER</translation>
     </message>
     <message>
         <source>Confirm Logout</source>
@@ -20857,60 +19829,8 @@ Format attendu :
         <translation>Voulez-vous vraiment vous déconnecter ?</translation>
     </message>
     <message>
-        <source>Regenerate API Key</source>
-        <translation>Régénérer la clé API</translation>
-    </message>
-    <message>
-        <source>Your current API key will be invalidated. Continue?</source>
-        <translation>Votre clé API actuelle sera invalidée. Continuer ?</translation>
-    </message>
-    <message>
-        <source>Delete Account</source>
-        <translation>Supprimer le Compte</translation>
-    </message>
-    <message>
-        <source>Confirm Account Deletion</source>
-        <translation>Confirmer la suppression du compte</translation>
-    </message>
-    <message>
-        <source>TYPE YOUR EMAIL ADDRESS TO CONFIRM:</source>
-        <translation>SAISISSEZ VOTRE ADRESSE E-MAIL POUR CONFIRMER :</translation>
-    </message>
-    <message>
-        <source>ENTER YOUR PASSWORD:</source>
-        <translation>SAISISSEZ VOTRE MOT DE PASSE :</translation>
-    </message>
-    <message>
-        <source>Current password</source>
-        <translation>Mot de passe actuel</translation>
-    </message>
-    <message>
-        <source>DELETE MY ACCOUNT</source>
-        <translation>SUPPRIMER MON COMPTE</translation>
-    </message>
-    <message>
-        <source>Delete Failed</source>
-        <translation>Échec de la suppression</translation>
-    </message>
-    <message>
         <source>2FA (MFA)</source>
         <translation>2FA (MFA)</translation>
-    </message>
-    <message>
-        <source>This will permanently delete your Open Terminal account (%1) and all associated data.
-
-This action CANNOT be undone. Are you sure?</source>
-        <translation>Cela supprimera définitivement votre compte Open Terminal (%1) et toutes les données associées.
-
-Cette action est IRRÉVERSIBLE. Êtes-vous sûr ?</translation>
-    </message>
-    <message>
-        <source>Account deletion failed: %1
-
-Open an issue in the project repository if this persists</source>
-        <translation>Échec de la suppression du compte : %1
-
-Veuillez contacter github.com/your-org/open-terminal/issues</translation>
     </message>
 </context>
 <context>
@@ -20957,7 +19877,7 @@ Différents profils peuvent fonctionner simultanément — utile pour des compte
     </message>
     <message>
         <source>Creating a profile sets up a fresh data directory. The app will restart with the new profile active.</source>
-        <translation>La création d'un profil configure un nouveau répertoire de données. L'application redémarrera avec le nouveau profil actif.</translation>
+        <translation>La création d&apos;un profil configure un nouveau répertoire de données. L&apos;application redémarrera avec le nouveau profil actif.</translation>
     </message>
 </context>
 <context>
@@ -21006,7 +19926,7 @@ pour modifier les propriétés</translation>
     </message>
     <message>
         <source>Fetch Price History:</source>
-        <translation>Récupérer l'historique des prix :</translation>
+        <translation>Récupérer l&apos;historique des prix :</translation>
     </message>
     <message>
         <source>e.g. AAPL</source>
@@ -21118,7 +20038,7 @@ les données pour actualiser la sparkline.</translation>
     </message>
     <message>
         <source>e.g. Figure 1: Revenue growth</source>
-        <translation>p. ex. Figure 1 : Croissance du chiffre d'affaires</translation>
+        <translation>p. ex. Figure 1 : Croissance du chiffre d&apos;affaires</translation>
     </message>
     <message>
         <source>Items (one per line):</source>
@@ -21173,7 +20093,7 @@ des composants de titre.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Upgrading packages may break the terminal.&lt;/b&gt; Only proceed if you know what you are doing. Incompatible version changes can cause analytics scripts to crash or produce incorrect results.</source>
-        <translation>&lt;b&gt;La mise à niveau des paquets peut endommager le terminal.&lt;/b&gt; Ne continuez que si vous savez ce que vous faites. Des changements de version incompatibles peuvent faire planter les scripts d'analyse ou produire des résultats erronés.</translation>
+        <translation>&lt;b&gt;La mise à niveau des paquets peut endommager le terminal.&lt;/b&gt; Ne continuez que si vous savez ce que vous faites. Des changements de version incompatibles peuvent faire planter les scripts d&apos;analyse ou produire des résultats erronés.</translation>
     </message>
     <message>
         <source>Filter packages...</source>
@@ -21233,7 +20153,7 @@ des composants de titre.</translation>
     </message>
     <message>
         <source>Python environment not set up — run Setup first</source>
-        <translation>Environnement Python non configuré — exécutez d'abord la configuration</translation>
+        <translation>Environnement Python non configuré — exécutez d&apos;abord la configuration</translation>
     </message>
     <message>
         <source>Loading...</source>
@@ -21283,12 +20203,16 @@ des composants de titre.</translation>
         <translation>SUITE QUANTLIB</translation>
     </message>
     <message>
-        <source>18 MODULES | 590+ QUANTITATIVE ENDPOINTS</source>
-        <translation>18 MODULES | 590+ POINTS DE TERMINAISON QUANTITATIFS</translation>
+        <source>Local QuantLib pricing engine (QuantLib + scipy)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>API POWERED</source>
-        <translation>PROPULSÉ PAR API</translation>
+        <source>SERVER CONFIGURED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NOT CONFIGURED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>MODULES</source>
@@ -21335,14 +20259,18 @@ des composants de titre.</translation>
         <translation>MODULE : %1</translation>
     </message>
     <message>
+        <source>Remote pricing client — requires an external QuantLib server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>ERROR: Invalid JSON in request body.
 
-Expected format: {"key": value, ...}
-Example: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</source>
+Expected format: {&quot;key&quot;: value, ...}
+Example: {&quot;spot&quot;: 100, &quot;strike&quot;: 105, &quot;risk_free_rate&quot;: 0.05}</source>
         <translation>ERREUR : JSON non valide dans le corps de la requête.
 
-Format attendu : {"key": value, ...}
-Exemple : {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
+Format attendu : {&quot;key&quot;: value, ...}
+Exemple : {&quot;spot&quot;: 100, &quot;strike&quot;: 105, &quot;risk_free_rate&quot;: 0.05}</translation>
     </message>
     <message>
         <source>Computing...</source>
@@ -21400,6 +20328,14 @@ Exemple : {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
 <context>
     <name>openmarketterminal::screens::QuantModulePanel</name>
     <message>
+        <source>DEMO (synthetic data)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off = train on real qlib market data. On = clearly-labeled synthetic data for testing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No LLM profiles — configure in Settings → LLM Config</source>
         <translation>Aucun profil LLM — configurez dans Paramètres → Configuration LLM</translation>
     </message>
@@ -21421,9 +20357,9 @@ Exemple : {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
     </message>
     <message>
         <source>JSON parameters (optional)
-e.g. {"ticker":"AAPL"}</source>
+e.g. {&quot;ticker&quot;:&quot;AAPL&quot;}</source>
         <translation>Paramètres JSON (facultatif)
-p. ex. {"ticker":"AAPL"}</translation>
+p. ex. {&quot;ticker&quot;:&quot;AAPL&quot;}</translation>
     </message>
     <message>
         <source>EXECUTE</source>
@@ -21431,7 +20367,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Running...</source>
-        <translation>En cours d'exécution...</translation>
+        <translation>En cours d&apos;exécution...</translation>
     </message>
     <message>
         <source>Error</source>
@@ -21479,7 +20415,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Bid Size</source>
-        <translation>Taille à l'achat</translation>
+        <translation>Taille à l&apos;achat</translation>
     </message>
     <message>
         <source>Bid Px</source>
@@ -21515,7 +20451,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>BID SIZE</source>
-        <translation>TAILLE À L'ACHAT</translation>
+        <translation>TAILLE À L&apos;ACHAT</translation>
     </message>
     <message>
         <source>ASK SIZE</source>
@@ -21567,7 +20503,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>BUY VOLUME</source>
-        <translation>VOLUME D'ACHAT</translation>
+        <translation>VOLUME D&apos;ACHAT</translation>
     </message>
     <message>
         <source>SELL VOLUME</source>
@@ -21787,11 +20723,11 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Train Start</source>
-        <translation>Début d'Entraînement</translation>
+        <translation>Début d&apos;Entraînement</translation>
     </message>
     <message>
         <source>Train End</source>
-        <translation>Fin d'Entraînement</translation>
+        <translation>Fin d&apos;Entraînement</translation>
     </message>
     <message>
         <source>Test Start</source>
@@ -21863,7 +20799,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>INPUT SHAPE</source>
-        <translation>FORME D'ENTRÉE</translation>
+        <translation>FORME D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>OUTPUT SHAPE</source>
@@ -21875,7 +20811,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>INPUT NULLS</source>
-        <translation>VALEURS NULLES D'ENTRÉE</translation>
+        <translation>VALEURS NULLES D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>OUTPUT NULLS</source>
@@ -21883,7 +20819,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>INPUT MEAN</source>
-        <translation>MOYENNE D'ENTRÉE</translation>
+        <translation>MOYENNE D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>OUTPUT MEAN</source>
@@ -22143,7 +21079,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>INFO RATIO</source>
-        <translation>RATIO D'INFO</translation>
+        <translation>RATIO D&apos;INFO</translation>
     </message>
     <message>
         <source>WIN RATE</source>
@@ -22437,7 +21373,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>EXECUTION COSTS</source>
-        <translation>COÛTS D'EXÉCUTION</translation>
+        <translation>COÛTS D&apos;EXÉCUTION</translation>
     </message>
     <message>
         <source>Commission</source>
@@ -22481,11 +21417,11 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Analysis Type</source>
-        <translation>Type d'analyse</translation>
+        <translation>Type d&apos;analyse</translation>
     </message>
     <message>
         <source>ANALYSIS PARAMETERS</source>
-        <translation>PARAMÈTRES D'ANALYSE</translation>
+        <translation>PARAMÈTRES D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>Trend Type</source>
@@ -22517,7 +21453,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Train Size</source>
-        <translation>Taille d'entraînement</translation>
+        <translation>Taille d&apos;entraînement</translation>
     </message>
     <message>
         <source>comma-separated: ridge,lasso,random_forest,svr,knn</source>
@@ -22561,7 +21497,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Sample Size</source>
-        <translation>Taille d'échantillon</translation>
+        <translation>Taille d&apos;échantillon</translation>
     </message>
     <message>
         <source>Distribution</source>
@@ -22569,7 +21505,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Sample Sizes</source>
-        <translation>Tailles d'échantillon</translation>
+        <translation>Tailles d&apos;échantillon</translation>
     </message>
     <message>
         <source>Samples per size</source>
@@ -22601,7 +21537,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>RUN ANALYSIS</source>
-        <translation>LANCER L'ANALYSE</translation>
+        <translation>LANCER L&apos;ANALYSE</translation>
     </message>
     <message>
         <source>Please enter a ticker symbol or comma-separated values</source>
@@ -22617,7 +21553,7 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>INTERCEPT</source>
-        <translation>ORDONNÉE À L'ORIGINE</translation>
+        <translation>ORDONNÉE À L&apos;ORIGINE</translation>
     </message>
     <message>
         <source>R²</source>
@@ -22669,9 +21605,9 @@ p. ex. {"ticker":"AAPL"}</translation>
     </message>
     <message>
         <source>Describe your analysis task...
-e.g. "Conduct a full investment analysis of NVDA: research fundamentals, assess risks, and give a buy/sell/hold recommendation with price target"</source>
-        <translation>Décrivez votre tâche d'analyse...
-par ex. « Réalisez une analyse d'investissement complète de NVDA : étudiez les fondamentaux, évaluez les risques et donnez une recommandation acheter/vendre/conserver avec objectif de cours »</translation>
+e.g. &quot;Conduct a full investment analysis of NVDA: research fundamentals, assess risks, and give a buy/sell/hold recommendation with price target&quot;</source>
+        <translation>Décrivez votre tâche d&apos;analyse...
+par ex. « Réalisez une analyse d&apos;investissement complète de NVDA : étudiez les fondamentaux, évaluez les risques et donnez une recommandation acheter/vendre/conserver avec objectif de cours »</translation>
     </message>
     <message>
         <source>Task</source>
@@ -22679,7 +21615,7 @@ par ex. « Réalisez une analyse d'investissement complète de NVDA : étudiez l
     </message>
     <message>
         <source>Agent Type</source>
-        <translation>Type d'agent</translation>
+        <translation>Type d&apos;agent</translation>
     </message>
     <message>
         <source>Optional — leave blank to auto-generate</source>
@@ -22691,11 +21627,11 @@ par ex. « Réalisez une analyse d'investissement complète de NVDA : étudiez l
     </message>
     <message>
         <source>RUN DEEP ANALYSIS</source>
-        <translation>LANCER L'ANALYSE APPROFONDIE</translation>
+        <translation>LANCER L&apos;ANALYSE APPROFONDIE</translation>
     </message>
     <message>
         <source>Please enter an analysis task.</source>
-        <translation>Veuillez saisir une tâche d'analyse.</translation>
+        <translation>Veuillez saisir une tâche d&apos;analyse.</translation>
     </message>
     <message>
         <source>Select an LLM profile before running.</source>
@@ -22703,7 +21639,7 @@ par ex. « Réalisez une analyse d'investissement complète de NVDA : étudiez l
     </message>
     <message>
         <source>Analysis results will appear here...</source>
-        <translation>Les résultats de l'analyse apparaîtront ici...</translation>
+        <translation>Les résultats de l&apos;analyse apparaîtront ici...</translation>
     </message>
     <message>
         <source>Deep Analysis</source>
@@ -22719,7 +21655,7 @@ par ex. « Réalisez une analyse d'investissement complète de NVDA : étudiez l
     </message>
     <message>
         <source>CHECK STATUS</source>
-        <translation>VÉRIFIER L'ÉTAT</translation>
+        <translation>VÉRIFIER L&apos;ÉTAT</translation>
     </message>
     <message>
         <source>Checking...</source>
@@ -22738,29 +21674,21 @@ par ex. « Réalisez une analyse d'investissement complète de NVDA : étudiez l
         <translation>OUTILS MCP</translation>
     </message>
     <message>
-        <source>Start/stop the Open Terminal MCP tool server
-Gives RD-Agent loops access to market data,
-financial news and economics tools.</source>
-        <translation>Démarrer/arrêter le serveur d'outils MCP de Open Terminal
-Donne aux boucles RD-Agent l'accès aux données de marché,
-à l'actualité financière et aux outils économiques.</translation>
-    </message>
-    <message>
         <source>Starting MCP tool server...</source>
-        <translation>Démarrage du serveur d'outils MCP...</translation>
+        <translation>Démarrage du serveur d&apos;outils MCP...</translation>
     </message>
     <message>
         <source>MCP tool server stopped</source>
-        <translation>Serveur d'outils MCP arrêté</translation>
+        <translation>Serveur d&apos;outils MCP arrêté</translation>
     </message>
     <message>
         <source>Autonomous alpha factor discovery via FactorRDLoop. The agent proposes, codes, runs and evaluates factors iteratively until the target IC is reached.</source>
-        <translation>Découverte autonome de facteurs alpha via FactorRDLoop. L'agent propose, code, exécute et évalue les facteurs de manière itérative jusqu'à atteindre l'IC cible.</translation>
+        <translation>Découverte autonome de facteurs alpha via FactorRDLoop. L&apos;agent propose, code, exécute et évalue les facteurs de manière itérative jusqu&apos;à atteindre l&apos;IC cible.</translation>
     </message>
     <message>
         <source>Describe the factor hypothesis...
-e.g. "Discover momentum-based alpha factors for US equities"</source>
-        <translation>Décrivez l'hypothèse du facteur...
+e.g. &quot;Discover momentum-based alpha factors for US equities&quot;</source>
+        <translation>Décrivez l&apos;hypothèse du facteur...
 par ex. « Découvrir des facteurs alpha basés sur le momentum pour les actions américaines »</translation>
     </message>
     <message>
@@ -22781,7 +21709,7 @@ par ex. « Découvrir des facteurs alpha basés sur le momentum pour les actions
     </message>
     <message>
         <source>START FACTOR MINING</source>
-        <translation>DÉMARRER L'EXPLORATION DE FACTEURS</translation>
+        <translation>DÉMARRER L&apos;EXPLORATION DE FACTEURS</translation>
     </message>
     <message>
         <source>Enter a task description.</source>
@@ -22790,6 +21718,12 @@ par ex. « Découvrir des facteurs alpha basés sur le momentum pour les actions
     <message>
         <source>Starting...</source>
         <translation>Démarrage...</translation>
+    </message>
+    <message>
+        <source>Start/stop the OpenMarketTerminal MCP tool server
+Gives RD-Agent loops access to market data,
+financial news and economics tools.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Factor mining started...</source>
@@ -22801,7 +21735,7 @@ par ex. « Découvrir des facteurs alpha basés sur le momentum pour les actions
     </message>
     <message>
         <source>ML model hyperparameter optimization via ModelRDLoop. Supports LightGBM, XGBoost, LSTM, GRU, Transformer and TCN. Optimizes for Sharpe, IC, max drawdown, or win rate.</source>
-        <translation>Optimisation des hyperparamètres de modèles de ML via ModelRDLoop. Prend en charge LightGBM, XGBoost, LSTM, GRU, Transformer et TCN. Optimise le Sharpe, l'IC, le drawdown maximal ou le taux de réussite.</translation>
+        <translation>Optimisation des hyperparamètres de modèles de ML via ModelRDLoop. Prend en charge LightGBM, XGBoost, LSTM, GRU, Transformer et TCN. Optimise le Sharpe, l&apos;IC, le drawdown maximal ou le taux de réussite.</translation>
     </message>
     <message>
         <source>Optimize For</source>
@@ -22809,7 +21743,7 @@ par ex. « Découvrir des facteurs alpha basés sur le momentum pour les actions
     </message>
     <message>
         <source>START MODEL OPTIMIZATION</source>
-        <translation>DÉMARRER L'OPTIMISATION DU MODÈLE</translation>
+        <translation>DÉMARRER L&apos;OPTIMISATION DU MODÈLE</translation>
     </message>
     <message>
         <source>Model optimization started...</source>
@@ -22825,7 +21759,7 @@ par ex. « Découvrir des facteurs alpha basés sur le momentum pour les actions
     </message>
     <message>
         <source>Research goal...
-e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
+e.g. &quot;Build a quantitative equity strategy for mid-cap US stocks&quot;</source>
         <translation>Objectif de recherche...
 par ex. « Construire une stratégie actions quantitative pour les actions américaines de moyenne capitalisation »</translation>
     </message>
@@ -22954,8 +21888,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>Saisissez au moins 2 tickers (par ex. AAPL,MSFT,GOOG).</translation>
     </message>
     <message>
-        <source>Weights: '%1' is not numeric.</source>
-        <translation>Pondérations : « %1 » n'est pas numérique.</translation>
+        <source>Weights: &apos;%1&apos; is not numeric.</source>
+        <translation>Pondérations : « %1 » n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Fetching %1 from yfinance and computing metrics...</source>
@@ -22967,7 +21901,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Computes the full covariance matrix, correlation matrix, and per-asset moments (mean, vol, skew, kurtosis). Asset count is capped — keep it under 12 for readability.</source>
-        <translation>Calcule la matrice de covariance complète, la matrice de corrélation et les moments par actif (moyenne, volatilité, asymétrie, aplatissement). Le nombre d'actifs est plafonné — gardez-le sous 12 pour la lisibilité.</translation>
+        <translation>Calcule la matrice de covariance complète, la matrice de corrélation et les moments par actif (moyenne, volatilité, asymétrie, aplatissement). Le nombre d&apos;actifs est plafonné — gardez-le sous 12 pour la lisibilité.</translation>
     </message>
     <message>
         <source>COMPUTE COV + CORR + MOMENTS</source>
@@ -23054,8 +21988,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>Demi-vie (observations)</translation>
     </message>
     <message>
-        <source>Builds exponentially-decayed scenario weights so recent observations dominate. ESS (Kish effective sample size) tells you how much of the history you're effectively using.</source>
-        <translation>Construit des pondérations de scénarios à décroissance exponentielle afin que les observations récentes dominent. L'ESS (taille d'échantillon effective de Kish) indique quelle part de l'historique vous utilisez réellement.</translation>
+        <source>Builds exponentially-decayed scenario weights so recent observations dominate. ESS (Kish effective sample size) tells you how much of the history you&apos;re effectively using.</source>
+        <translation>Construit des pondérations de scénarios à décroissance exponentielle afin que les observations récentes dominent. L&apos;ESS (taille d&apos;échantillon effective de Kish) indique quelle part de l&apos;historique vous utilisez réellement.</translation>
     </message>
     <message>
         <source>COMPUTE DECAY WEIGHTS</source>
@@ -23299,7 +22233,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Series values (&gt;= 30). Bootstrap residual ensemble forecasts the next H steps with quantile bands.</source>
-        <translation>Valeurs de la série (&gt;= 30). L'ensemble de résidus bootstrap prévoit les H prochaines étapes avec des bandes de quantiles.</translation>
+        <translation>Valeurs de la série (&gt;= 30). L&apos;ensemble de résidus bootstrap prévoit les H prochaines étapes avec des bandes de quantiles.</translation>
     </message>
     <message>
         <source>Series Values</source>
@@ -23326,8 +22260,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>LANCER LA PRÉVISION PROBABILISTE</translation>
     </message>
     <message>
-        <source>Series Values: '%1' is not numeric.</source>
-        <translation>Valeurs de la série : '%1' n'est pas numérique.</translation>
+        <source>Series Values: &apos;%1&apos; is not numeric.</source>
+        <translation>Valeurs de la série : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Need at least 30 obs; you provided %1.</source>
@@ -23362,8 +22296,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>LANCER LA PRÉVISION DE QUANTILES</translation>
     </message>
     <message>
-        <source>Quantiles: '%1' is not numeric.</source>
-        <translation>Quantiles : '%1' n'est pas numérique.</translation>
+        <source>Quantiles: &apos;%1&apos; is not numeric.</source>
+        <translation>Quantiles : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Provide at least one quantile in (0, 1).</source>
@@ -23402,8 +22336,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>CALCULER LES INDICATEURS DE RISQUE</translation>
     </message>
     <message>
-        <source>Daily Returns: '%1' is not a number. Use comma-, space-, or newline-separated decimals (e.g. 0.01, -0.02, 0.005).</source>
-        <translation>Rendements quotidiens : '%1' n'est pas un nombre. Utilisez des décimales séparées par virgule, espace ou saut de ligne (p. ex. 0.01, -0.02, 0.005).</translation>
+        <source>Daily Returns: &apos;%1&apos; is not a number. Use comma-, space-, or newline-separated decimals (e.g. 0.01, -0.02, 0.005).</source>
+        <translation>Rendements quotidiens : &apos;%1&apos; n&apos;est pas un nombre. Utilisez des décimales séparées par virgule, espace ou saut de ligne (p. ex. 0.01, -0.02, 0.005).</translation>
     </message>
     <message>
         <source>Need at least 5 daily returns; you provided %1. Click LOAD SAMPLE to insert 252 synthetic values.</source>
@@ -23446,12 +22380,12 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>ANALYSER LE PORTEFEUILLE</translation>
     </message>
     <message>
-        <source>Portfolio Returns: '%1' is not numeric.</source>
-        <translation>Rendements du portefeuille : '%1' n'est pas numérique.</translation>
+        <source>Portfolio Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Rendements du portefeuille : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
-        <source>Benchmark Returns: '%1' is not numeric.</source>
-        <translation>Rendements de la référence : '%1' n'est pas numérique.</translation>
+        <source>Benchmark Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Rendements de la référence : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Need at least 5 observations for both portfolio and benchmark returns.</source>
@@ -23471,7 +22405,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Strike Price ($)</source>
-        <translation>Prix d'exercice ($)</translation>
+        <translation>Prix d&apos;exercice ($)</translation>
     </message>
     <message>
         <source>Expiry (months)</source>
@@ -23483,7 +22417,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Option Type</source>
-        <translation>Type d'option</translation>
+        <translation>Type d&apos;option</translation>
     </message>
     <message>
         <source>CALCULATE GREEKS</source>
@@ -23514,8 +22448,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>CALCULER LA VaR</translation>
     </message>
     <message>
-        <source>Daily Returns: '%1' is not numeric.</source>
-        <translation>Rendements quotidiens : '%1' n'est pas numérique.</translation>
+        <source>Daily Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Rendements quotidiens : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>VaR needs at least 30 observations for a stable estimate; you provided %1.</source>
@@ -23543,7 +22477,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Applies 9 historical crisis scenarios (2008, COVID-19, Dot-Com, etc.) to the weighted portfolio. Allocations need not sum to 100% — they will be normalized.</source>
-        <translation>Applique 9 scénarios de crise historiques (2008, COVID-19, bulle Internet, etc.) au portefeuille pondéré. Les allocations n'ont pas à totaliser 100% — elles seront normalisées.</translation>
+        <translation>Applique 9 scénarios de crise historiques (2008, COVID-19, bulle Internet, etc.) au portefeuille pondéré. Les allocations n&apos;ont pas à totaliser 100% — elles seront normalisées.</translation>
     </message>
     <message>
         <source>RUN STRESS TEST</source>
@@ -23579,11 +22513,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Enter a ticker (e.g. AAPL, SPY, MSFT) to fetch price history.</source>
-        <translation>Saisissez un ticker (p. ex. AAPL, SPY, MSFT) pour récupérer l'historique des prix.</translation>
+        <translation>Saisissez un ticker (p. ex. AAPL, SPY, MSFT) pour récupérer l&apos;historique des prix.</translation>
     </message>
     <message>
         <source>Fetching %1 history from yfinance and running %2 backtest...</source>
-        <translation>Récupération de l'historique de %1 depuis yfinance et exécution du backtest %2...</translation>
+        <translation>Récupération de l&apos;historique de %1 depuis yfinance et exécution du backtest %2...</translation>
     </message>
     <message>
         <source>Backtest</source>
@@ -23606,8 +22540,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>CALCULER LES STATISTIQUES</translation>
     </message>
     <message>
-        <source>Values: '%1' is not numeric.</source>
-        <translation>Valeurs : '%1' n'est pas numérique.</translation>
+        <source>Values: &apos;%1&apos; is not numeric.</source>
+        <translation>Valeurs : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Need at least 2 values; you provided %1.</source>
@@ -23835,7 +22769,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Stress test returned no scenarios.</source>
-        <translation>Le test de résistance n'a retourné aucun scénario.</translation>
+        <translation>Le test de résistance n&apos;a retourné aucun scénario.</translation>
     </message>
     <message>
         <source>WORST CASE PnL</source>
@@ -23899,7 +22833,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Equity curve: %1 samples  |  Range %2 → %3</source>
-        <translation>Courbe d'équité : %1 échantillons  |  Plage %2 → %3</translation>
+        <translation>Courbe d&apos;équité : %1 échantillons  |  Plage %2 → %3</translation>
     </message>
     <message>
         <source>Portfolio Value</source>
@@ -23967,11 +22901,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>FETCH LIVE ORDER BOOK</source>
-        <translation>RÉCUPÉRER LE CARNET D'ORDRES EN DIRECT</translation>
+        <translation>RÉCUPÉRER LE CARNET D&apos;ORDRES EN DIRECT</translation>
     </message>
     <message>
         <source>Fetching live order book...</source>
-        <translation>Récupération du carnet d'ordres en direct...</translation>
+        <translation>Récupération du carnet d&apos;ordres en direct...</translation>
     </message>
     <message>
         <source>SPREAD BPS</source>
@@ -23979,7 +22913,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>ORDER BOOK IMBALANCE</source>
-        <translation>DÉSÉQUILIBRE DU CARNET D'ORDRES</translation>
+        <translation>DÉSÉQUILIBRE DU CARNET D&apos;ORDRES</translation>
     </message>
     <message>
         <source>WEIGHTED MID</source>
@@ -24003,7 +22937,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Live Order Book</source>
-        <translation>Carnet d'ordres en direct</translation>
+        <translation>Carnet d&apos;ordres en direct</translation>
     </message>
     <message>
         <source>MARKET MAKING  —  Avellaneda-Stoikov Model</source>
@@ -24087,11 +23021,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>SLIPPAGE ESTIMATOR  —  Real Order Book Walk</source>
-        <translation>ESTIMATEUR DE SLIPPAGE  —  Parcours réel du carnet d'ordres</translation>
+        <translation>ESTIMATEUR DE SLIPPAGE  —  Parcours réel du carnet d&apos;ordres</translation>
     </message>
     <message>
         <source>Walks the live order book level-by-level to compute actual fill price and slippage for a given order size.</source>
-        <translation>Parcourt le carnet d'ordres en direct niveau par niveau pour calculer le prix d'exécution réel et le slippage pour une taille d'ordre donnée.</translation>
+        <translation>Parcourt le carnet d&apos;ordres en direct niveau par niveau pour calculer le prix d&apos;exécution réel et le slippage pour une taille d&apos;ordre donnée.</translation>
     </message>
     <message>
         <source>Side</source>
@@ -24103,11 +23037,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Walking order book...</source>
-        <translation>Parcours du carnet d'ordres...</translation>
+        <translation>Parcours du carnet d&apos;ordres...</translation>
     </message>
     <message>
         <source>AVG FILL PRICE</source>
-        <translation>PRIX D'EXÉCUTION MOYEN</translation>
+        <translation>PRIX D&apos;EXÉCUTION MOYEN</translation>
     </message>
     <message>
         <source>SLIPPAGE BPS</source>
@@ -24115,7 +23049,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>FILL LEVELS</source>
-        <translation>NIVEAUX D'EXÉCUTION</translation>
+        <translation>NIVEAUX D&apos;EXÉCUTION</translation>
     </message>
     <message>
         <source>VIABILITY</source>
@@ -24123,7 +23057,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Fill Price</source>
-        <translation>Prix d'exécution</translation>
+        <translation>Prix d&apos;exécution</translation>
     </message>
     <message>
         <source>Slippage Estimator</source>
@@ -24135,11 +23069,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Fetches live order book + trades, computes book metrics, market making quotes, toxic flow, and slippage in one call</source>
-        <translation>Récupère le carnet d'ordres en direct + les transactions, calcule les indicateurs du carnet, les cotations de market making, le flux toxique et le slippage en un seul appel</translation>
+        <translation>Récupère le carnet d&apos;ordres en direct + les transactions, calcule les indicateurs du carnet, les cotations de market making, le flux toxique et le slippage en un seul appel</translation>
     </message>
     <message>
         <source>Running full microstructure analysis...</source>
-        <translation>Exécution de l'analyse complète de microstructure...</translation>
+        <translation>Exécution de l&apos;analyse complète de microstructure...</translation>
     </message>
     <message>
         <source>Instruments (comma-separated, e.g. aapl,msft,goog)</source>
@@ -24179,7 +23113,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>RUN FACTOR ANALYSIS</source>
-        <translation>EXÉCUTER L'ANALYSE FACTORIELLE</translation>
+        <translation>EXÉCUTER L&apos;ANALYSE FACTORIELLE</translation>
     </message>
     <message>
         <source>Analyzing...</source>
@@ -24195,7 +23129,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>GET FEATURE IMPORTANCE</source>
-        <translation>OBTENIR L'IMPORTANCE DES FEATURES</translation>
+        <translation>OBTENIR L&apos;IMPORTANCE DES FEATURES</translation>
     </message>
     <message>
         <source>Loading...</source>
@@ -24247,7 +23181,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>TRAIN ONE STEP</source>
-        <translation>ENTRAÎNER D'UN PAS</translation>
+        <translation>ENTRAÎNER D&apos;UN PAS</translation>
     </message>
     <message>
         <source>Training...</source>
@@ -24311,7 +23245,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Ensemble Method</source>
-        <translation>Méthode d'ensemble</translation>
+        <translation>Méthode d&apos;ensemble</translation>
     </message>
     <message>
         <source>CREATE ENSEMBLE</source>
@@ -24319,7 +23253,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Creating ensemble...</source>
-        <translation>Création de l'ensemble…</translation>
+        <translation>Création de l&apos;ensemble…</translation>
     </message>
     <message>
         <source>Ensemble</source>
@@ -24411,11 +23345,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Enter a Model ID or Config Path to preview.</source>
-        <translation>Saisissez un ID de modèle ou un chemin de configuration pour l'aperçu.</translation>
+        <translation>Saisissez un ID de modèle ou un chemin de configuration pour l&apos;aperçu.</translation>
     </message>
     <message>
         <source>Generating preview...</source>
-        <translation>Génération de l'aperçu…</translation>
+        <translation>Génération de l&apos;aperçu…</translation>
     </message>
     <message>
         <source>CREATE SCHEDULE</source>
@@ -24423,7 +23357,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Model ID is required.</source>
-        <translation>L'ID de modèle est requis.</translation>
+        <translation>L&apos;ID de modèle est requis.</translation>
     </message>
     <message>
         <source>Creating schedule...</source>
@@ -24435,7 +23369,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Executes a full rolling retrain for a scheduled model. Each window trains independently and progress is streamed live below.</source>
-        <translation>Exécute un réentraînement glissant complet pour un modèle planifié. Chaque fenêtre s'entraîne indépendamment et la progression est diffusée en direct ci-dessous.</translation>
+        <translation>Exécute un réentraînement glissant complet pour un modèle planifié. Chaque fenêtre s&apos;entraîne indépendamment et la progression est diffusée en direct ci-dessous.</translation>
     </message>
     <message>
         <source>Model ID (must be in Schedules)</source>
@@ -24447,7 +23381,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Training progress will stream here...</source>
-        <translation>La progression de l'entraînement s'affichera ici…</translation>
+        <translation>La progression de l&apos;entraînement s&apos;affichera ici…</translation>
     </message>
     <message>
         <source>EXECUTE RETRAIN NOW</source>
@@ -24495,7 +23429,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>COMPUTE INDICATOR</source>
-        <translation>CALCULER L'INDICATEUR</translation>
+        <translation>CALCULER L&apos;INDICATEUR</translation>
     </message>
     <message>
         <source>Computing...</source>
@@ -24506,8 +23440,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>Indicateurs</translation>
     </message>
     <message>
-        <source>Feature values JSON: {"rsi":[...],"macd":[...]}</source>
-        <translation>JSON des valeurs de caractéristiques : {"rsi":[...],"macd":[...]}</translation>
+        <source>Feature values JSON: {&quot;rsi&quot;:[...],&quot;macd&quot;:[...]}</source>
+        <translation>JSON des valeurs de caractéristiques : {&quot;rsi&quot;:[...],&quot;macd&quot;:[...]}</translation>
     </message>
     <message>
         <source>Target returns (comma-separated)</source>
@@ -24530,8 +23464,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>Sélection de caractéristiques</translation>
     </message>
     <message>
-        <source>{"close":[100,102,...],"volume":[1000,1200,...]}</source>
-        <translation>{"close":[100,102,...],"volume":[1000,1200,...]}</translation>
+        <source>{&quot;close&quot;:[100,102,...],&quot;volume&quot;:[1000,1200,...]}</source>
+        <translation>{&quot;close&quot;:[100,102,...],&quot;volume&quot;:[1000,1200,...]}</translation>
     </message>
     <message>
         <source>OHLCV Data (JSON)</source>
@@ -24547,7 +23481,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>EVALUATE EXPRESSION</source>
-        <translation>ÉVALUER L'EXPRESSION</translation>
+        <translation>ÉVALUER L&apos;EXPRESSION</translation>
     </message>
     <message>
         <source>Evaluating...</source>
@@ -24555,11 +23489,11 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Expression Engine</source>
-        <translation>Moteur d'expressions</translation>
+        <translation>Moteur d&apos;expressions</translation>
     </message>
     <message>
         <source>Asset names (comma-separated, e.g. AAPL,GOOG,MSFT)</source>
-        <translation>Noms d'actifs (séparés par des virgules, ex. AAPL,GOOG,MSFT)</translation>
+        <translation>Noms d&apos;actifs (séparés par des virgules, ex. AAPL,GOOG,MSFT)</translation>
     </message>
     <message>
         <source>Assets</source>
@@ -24619,7 +23553,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Asset names (comma-separated)</source>
-        <translation>Noms d'actifs (séparés par des virgules)</translation>
+        <translation>Noms d&apos;actifs (séparés par des virgules)</translation>
     </message>
     <message>
         <source>Market caps (comma-separated, e.g. 2000,1500,800)</source>
@@ -24699,7 +23633,7 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>GENERATE EVALUATION REPORT</source>
-        <translation>GÉNÉRER LE RAPPORT D'ÉVALUATION</translation>
+        <translation>GÉNÉRER LE RAPPORT D&apos;ÉVALUATION</translation>
     </message>
     <message>
         <source>Generating...</source>
@@ -24802,8 +23736,8 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
         <translation>ID de pipeline</translation>
     </message>
     <message>
-        <source>[{"type":"zscore"},{"type":"winsorize","lower":0.01,"upper":0.99}]</source>
-        <translation>[{"type":"zscore"},{"type":"winsorize","lower":0.01,"upper":0.99}]</translation>
+        <source>[{&quot;type&quot;:&quot;zscore&quot;},{&quot;type&quot;:&quot;winsorize&quot;,&quot;lower&quot;:0.01,&quot;upper&quot;:0.99}]</source>
+        <translation>[{&quot;type&quot;:&quot;zscore&quot;},{&quot;type&quot;:&quot;winsorize&quot;,&quot;lower&quot;:0.01,&quot;upper&quot;:0.99}]</translation>
     </message>
     <message>
         <source>Processors (JSON)</source>
@@ -24823,15 +23757,15 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Training Episodes</source>
-        <translation>Épisodes d'entraînement</translation>
+        <translation>Épisodes d&apos;entraînement</translation>
     </message>
     <message>
         <source>Learning Rate</source>
-        <translation>Taux d'apprentissage</translation>
+        <translation>Taux d&apos;apprentissage</translation>
     </message>
     <message>
         <source>TRAIN RL AGENT</source>
-        <translation>ENTRAÎNER L'AGENT RL</translation>
+        <translation>ENTRAÎNER L&apos;AGENT RL</translation>
     </message>
     <message>
         <source>step 0 / — · reward — · loss —</source>
@@ -24839,11 +23773,15 @@ par ex. « Construire une stratégie actions quantitative pour les actions amér
     </message>
     <message>
         <source>Training RL Agent...</source>
-        <translation>Entraînement de l'agent RL…</translation>
+        <translation>Entraînement de l&apos;agent RL…</translation>
     </message>
     <message>
         <source>RESULTS</source>
         <translation>RÉSULTATS</translation>
+    </message>
+    <message>
+        <source>DEMO · SYNTHETIC DATA — not real results</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Metric</source>
@@ -24977,15 +23915,15 @@ Installer : %2</translation>
 Available tools:
   %2
 
-Enable 'enable_mcp: true' in factor/model/quant research params
+Enable &apos;enable_mcp: true&apos; in factor/model/quant research params
 to give RD-Agent loops access to these tools.</source>
-        <translation>Serveur d'outils MCP en cours d'exécution sur %1
+        <translation>Serveur d&apos;outils MCP en cours d&apos;exécution sur %1
 
 Outils disponibles :
   %2
 
-Activez 'enable_mcp: true' dans les paramètres de recherche factor/model/quant
-pour donner aux boucles RD-Agent l'accès à ces outils.</translation>
+Activez &apos;enable_mcp: true&apos; dans les paramètres de recherche factor/model/quant
+pour donner aux boucles RD-Agent l&apos;accès à ces outils.</translation>
     </message>
     <message>
         <source>MCP server available: %1
@@ -24993,7 +23931,7 @@ pydantic-ai MCP: %2
 Running ports: %3</source>
         <translation>Serveur MCP disponible : %1
 pydantic-ai MCP : %2
-Ports en cours d'exécution : %3</translation>
+Ports en cours d&apos;exécution : %3</translation>
     </message>
     <message>
         <source>yes</source>
@@ -25103,7 +24041,7 @@ Erreur : %1</translation>
         <source>No schedules configured yet.
 Use the Create Schedule tab to add one.</source>
         <translation>Aucune planification configurée pour le moment.
-Utilisez l'onglet Create Schedule pour en ajouter une.</translation>
+Utilisez l&apos;onglet Create Schedule pour en ajouter une.</translation>
     </message>
     <message>
         <source>pending</source>
@@ -25149,7 +24087,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
     </message>
     <message>
         <source>Schedule created — switch to Schedules tab to view</source>
-        <translation>Planification créée — passez à l'onglet Schedules pour la voir</translation>
+        <translation>Planification créée — passez à l&apos;onglet Schedules pour la voir</translation>
     </message>
     <message>
         <source>Preview: %1 rolling windows  (step=%2, horizon=%3)</source>
@@ -25229,7 +24167,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
     </message>
     <message>
         <source>Expected Anomaly Fraction (Isolation Forest)</source>
-        <translation>Fraction d'anomalies attendue (Isolation Forest)</translation>
+        <translation>Fraction d&apos;anomalies attendue (Isolation Forest)</translation>
     </message>
     <message>
         <source>DETECT ANOMALIES</source>
@@ -25292,7 +24230,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
         <translation>Réel</translation>
     </message>
     <message>
-        <source>100-pt synthetic 'actual' series (level ~50)</source>
+        <source>100-pt synthetic &apos;actual&apos; series (level ~50)</source>
         <translation>Série « réelle » synthétique de 100 pts (niveau ~50)</translation>
     </message>
     <message>
@@ -25304,7 +24242,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
         <translation>Prédit</translation>
     </message>
     <message>
-        <source>100-pt synthetic 'predicted' series (similar shape, mild noise)</source>
+        <source>100-pt synthetic &apos;predicted&apos; series (similar shape, mild noise)</source>
         <translation>Série « prédite » synthétique de 100 pts (forme similaire, léger bruit)</translation>
     </message>
     <message>
@@ -25312,12 +24250,12 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
         <translation>CALCULER LES MÉTRIQUES</translation>
     </message>
     <message>
-        <source>Actual: '%1' is not numeric.</source>
-        <translation>Réel : '%1' n'est pas numérique.</translation>
+        <source>Actual: &apos;%1&apos; is not numeric.</source>
+        <translation>Réel : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
-        <source>Predicted: '%1' is not numeric.</source>
-        <translation>Prédit : '%1' n'est pas numérique.</translation>
+        <source>Predicted: &apos;%1&apos; is not numeric.</source>
+        <translation>Prédit : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Need at least 2 observations in both actual and predicted.</source>
@@ -25337,11 +24275,11 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
     </message>
     <message>
         <source>Series values (training history, &gt;= 30)</source>
-        <translation>Valeurs de la série (historique d'entraînement, &gt;= 30)</translation>
+        <translation>Valeurs de la série (historique d&apos;entraînement, &gt;= 30)</translation>
     </message>
     <message>
         <source>Interval Method</source>
-        <translation>Méthode d'intervalle</translation>
+        <translation>Méthode d&apos;intervalle</translation>
     </message>
     <message>
         <source>Lag Window</source>
@@ -25385,7 +24323,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
     </message>
     <message>
         <source>Running ADF + KPSS up to d=%1...</source>
-        <translation>Exécution de ADF + KPSS jusqu'à d=%1...</translation>
+        <translation>Exécution de ADF + KPSS jusqu&apos;à d=%1...</translation>
     </message>
     <message>
         <source>Stationarity</source>
@@ -25477,7 +24415,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
     </message>
     <message>
         <source>ANOMALY RATE</source>
-        <translation>TAUX D'ANOMALIE</translation>
+        <translation>TAUX D&apos;ANOMALIE</translation>
     </message>
     <message>
         <source>MAX |SCORE|</source>
@@ -25545,7 +24483,7 @@ Fréq. : %2  |  Fenêtre : %3 jours  |  Suivante : %4%5</translation>
     </message>
     <message>
         <source>Weak structure — series is close to noise around its mean.</source>
-        <translation>Structure faible — la série est proche d'un bruit autour de sa moyenne.</translation>
+        <translation>Structure faible — la série est proche d&apos;un bruit autour de sa moyenne.</translation>
     </message>
     <message>
         <source>Trend</source>
@@ -25716,12 +24654,12 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>LANCER LA RÉGRESSION OLS</translation>
     </message>
     <message>
-        <source>y: '%1' is not numeric.</source>
-        <translation>y : '%1' n'est pas numérique.</translation>
+        <source>y: &apos;%1&apos; is not numeric.</source>
+        <translation>y : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
-        <source>x: '%1' is not numeric.</source>
-        <translation>x : '%1' n'est pas numérique.</translation>
+        <source>x: &apos;%1&apos; is not numeric.</source>
+        <translation>x : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>OLS needs at least 10 observations; you provided %1.</source>
@@ -25809,7 +24747,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Time series values (&gt;= 20). Used for ARIMA(p,q) order selection.</source>
-        <translation>Valeurs de série temporelle (&gt;= 20). Utilisées pour la sélection de l'ordre ARIMA(p,q).</translation>
+        <translation>Valeurs de série temporelle (&gt;= 20). Utilisées pour la sélection de l&apos;ordre ARIMA(p,q).</translation>
     </message>
     <message>
         <source>Number of Lags</source>
@@ -25825,15 +24763,15 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Computing ACF + PACF up to lag %1...</source>
-        <translation>Calcul de ACF + PACF jusqu'au décalage %1...</translation>
+        <translation>Calcul de ACF + PACF jusqu&apos;au décalage %1...</translation>
     </message>
     <message>
         <source>ACF / PACF</source>
         <translation>ACF / PACF</translation>
     </message>
     <message>
-        <source>Effect series y (the one we ask: 'is this caused by x?')</source>
-        <translation>Série d'effet y (celle dont on demande : « est-elle causée par x ? »)</translation>
+        <source>Effect series y (the one we ask: &apos;is this caused by x?&apos;)</source>
+        <translation>Série d&apos;effet y (celle dont on demande : « est-elle causée par x ? »)</translation>
     </message>
     <message>
         <source>y (Effect)</source>
@@ -25841,7 +24779,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>200-pt synthetic effect series</source>
-        <translation>Série d'effet synthétique de 200 pts</translation>
+        <translation>Série d&apos;effet synthétique de 200 pts</translation>
     </message>
     <message>
         <source>Potential cause series x (same length as y)</source>
@@ -25873,7 +24811,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Testing Granger causality up to lag %1...</source>
-        <translation>Test de causalité de Granger jusqu'au décalage %1...</translation>
+        <translation>Test de causalité de Granger jusqu&apos;au décalage %1...</translation>
     </message>
     <message>
         <source>Granger Causality</source>
@@ -26273,15 +25211,15 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Training history (optional; enables MASE)</source>
-        <translation>Historique d'entraînement (facultatif ; active MASE)</translation>
+        <translation>Historique d&apos;entraînement (facultatif ; active MASE)</translation>
     </message>
     <message>
         <source>Training History (optional)</source>
-        <translation>Historique d'entraînement (facultatif)</translation>
+        <translation>Historique d&apos;entraînement (facultatif)</translation>
     </message>
     <message>
         <source>200-pt synthetic training history</source>
-        <translation>Historique d'entraînement synthétique de 200 pts</translation>
+        <translation>Historique d&apos;entraînement synthétique de 200 pts</translation>
     </message>
     <message>
         <source>MASE Seasonal Period</source>
@@ -26296,12 +25234,12 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>ÉVALUER LA PRÉVISION</translation>
     </message>
     <message>
-        <source>Actuals: '%1' is not numeric.</source>
-        <translation>Réels : '%1' n'est pas numérique.</translation>
+        <source>Actuals: &apos;%1&apos; is not numeric.</source>
+        <translation>Réels : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
-        <source>Point: '%1' is not numeric.</source>
-        <translation>Point : '%1' n'est pas numérique.</translation>
+        <source>Point: &apos;%1&apos; is not numeric.</source>
+        <translation>Point : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Need at least 5 actuals; you provided %1.</source>
@@ -26312,20 +25250,20 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>Les réels (%1) et le point (%2) doivent avoir la même longueur.</translation>
     </message>
     <message>
-        <source>Lower band: '%1' is not numeric.</source>
-        <translation>Bande inférieure : '%1' n'est pas numérique.</translation>
+        <source>Lower band: &apos;%1&apos; is not numeric.</source>
+        <translation>Bande inférieure : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
-        <source>Upper band: '%1' is not numeric.</source>
-        <translation>Bande supérieure : '%1' n'est pas numérique.</translation>
+        <source>Upper band: &apos;%1&apos; is not numeric.</source>
+        <translation>Bande supérieure : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Lower and upper bands must match actuals length.</source>
         <translation>Les bandes inférieure et supérieure doivent correspondre à la longueur des réels.</translation>
     </message>
     <message>
-        <source>Training: '%1' is not numeric.</source>
-        <translation>Entraînement : '%1' n'est pas numérique.</translation>
+        <source>Training: &apos;%1&apos; is not numeric.</source>
+        <translation>Entraînement : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Evaluating forecast on %1 obs...</source>
@@ -26344,7 +25282,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>Longueur de saison (1 = naïf pur)</translation>
     </message>
     <message>
-        <source>Baseline forecaster everyone compares against. season_length=1 is the pure naive 'repeat last value'. Larger values cycle through the most recent N observations.</source>
+        <source>Baseline forecaster everyone compares against. season_length=1 is the pure naive &apos;repeat last value&apos;. Larger values cycle through the most recent N observations.</source>
         <translation>Prévisionniste de référence auquel tout le monde se compare. season_length=1 correspond au naïf pur « répéter la dernière valeur ». Des valeurs plus grandes parcourent cycliquement les N dernières observations.</translation>
     </message>
     <message>
@@ -26361,7 +25299,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Repeating last %1 obs forward over %2 steps...</source>
-        <translation>Répétition des %1 dernières obs vers l'avant sur %2 pas…</translation>
+        <translation>Répétition des %1 dernières obs vers l&apos;avant sur %2 pas…</translation>
     </message>
     <message>
         <source>Seasonal Naive</source>
@@ -26509,7 +25447,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>INTERVAL SCORE</source>
-        <translation>SCORE D'INTERVALLE</translation>
+        <translation>SCORE D&apos;INTERVALLE</translation>
     </message>
     <message>
         <source>Coverage on target — intervals are well-calibrated.</source>
@@ -26641,7 +25579,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>DATA SCALED</source>
-        <translation>DONNÉES MISES À L'ÉCHELLE</translation>
+        <translation>DONNÉES MISES À L&apos;ÉCHELLE</translation>
     </message>
     <message>
         <source>PCA</source>
@@ -26813,19 +25751,19 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>SAMPLE SIZE</source>
-        <translation>TAILLE DE L'ÉCHANTILLON</translation>
+        <translation>TAILLE DE L&apos;ÉCHANTILLON</translation>
     </message>
     <message>
         <source>SAMPLING FRAC</source>
-        <translation>FRACTION D'ÉCHANT.</translation>
+        <translation>FRACTION D&apos;ÉCHANT.</translation>
     </message>
     <message>
         <source>Sample N</source>
-        <translation>N d'Échantillon</translation>
+        <translation>N d&apos;Échantillon</translation>
     </message>
     <message>
         <source>Sample Mean</source>
-        <translation>Moyenne d'Échantillon</translation>
+        <translation>Moyenne d&apos;Échantillon</translation>
     </message>
     <message>
         <source>Pop Mean</source>
@@ -26885,7 +25823,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>CLT %1: μ=%2  σ=%3  (%4 sample sizes)</source>
-        <translation>CLT %1 : μ=%2  σ=%3  (%4 tailles d'échantillon)</translation>
+        <translation>CLT %1 : μ=%2  σ=%3  (%4 tailles d&apos;échantillon)</translation>
     </message>
     <message>
         <source>RECOMMENDED n</source>
@@ -26913,7 +25851,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Sampling error: recommended n=%1  target MoE=%2</source>
-        <translation>Erreur d'échantillonnage : n recommandé=%1  MoE cible=%2</translation>
+        <translation>Erreur d&apos;échantillonnage : n recommandé=%1  MoE cible=%2</translation>
     </message>
     <message>
         <source>QUALITY SCORE</source>
@@ -26993,19 +25931,19 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>RUN IC ANALYSIS</source>
-        <translation>LANCER L'ANALYSE IC</translation>
+        <translation>LANCER L&apos;ANALYSE IC</translation>
     </message>
     <message>
-        <source>Predictions: '%1' is not numeric.</source>
-        <translation>Prédictions : '%1' n'est pas numérique.</translation>
+        <source>Predictions: &apos;%1&apos; is not numeric.</source>
+        <translation>Prédictions : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
-        <source>Returns: '%1' is not numeric.</source>
-        <translation>Rendements : '%1' n'est pas numérique.</translation>
+        <source>Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>Rendements : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>IC analysis needs at least 10 predictions; you provided %1.</source>
-        <translation>L'analyse IC nécessite au moins 10 prédictions ; vous en avez fourni %1.</translation>
+        <translation>L&apos;analyse IC nécessite au moins 10 prédictions ; vous en avez fourni %1.</translation>
     </message>
     <message>
         <source>Predictions (%1) and returns (%2) must have the same length.</source>
@@ -27013,7 +25951,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Computing IC + rolling IC on %1 observations...</source>
-        <translation>Calcul de l'IC + IC glissant sur %1 observations...</translation>
+        <translation>Calcul de l&apos;IC + IC glissant sur %1 observations...</translation>
     </message>
     <message>
         <source>IC Analysis</source>
@@ -27060,8 +25998,8 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>Au moins 5 rendements sont nécessaires ; vous en avez fourni %1.</translation>
     </message>
     <message>
-        <source>Benchmark: '%1' is not numeric.</source>
-        <translation>Référence : '%1' n'est pas numérique.</translation>
+        <source>Benchmark: &apos;%1&apos; is not numeric.</source>
+        <translation>Référence : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Benchmark (%1) and returns (%2) must have the same length.</source>
@@ -27133,7 +26071,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Model evaluation needs at least 20 obs; you provided %1.</source>
-        <translation>L'évaluation du modèle nécessite au moins 20 obs ; vous en avez fourni %1.</translation>
+        <translation>L&apos;évaluation du modèle nécessite au moins 20 obs ; vous en avez fourni %1.</translation>
     </message>
     <message>
         <source>Evaluating %1 on %2 obs...</source>
@@ -27176,12 +26114,12 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>ANALYSER LES QUANTILES DE FACTEUR</translation>
     </message>
     <message>
-        <source>Factor: '%1' is not numeric.</source>
-        <translation>Facteur : '%1' n'est pas numérique.</translation>
+        <source>Factor: &apos;%1&apos; is not numeric.</source>
+        <translation>Facteur : &apos;%1&apos; n&apos;est pas numérique.</translation>
     </message>
     <message>
         <source>Quantile analysis needs at least 20 obs; you provided %1.</source>
-        <translation>L'analyse de quantile nécessite au moins 20 obs ; vous en avez fourni %1.</translation>
+        <translation>L&apos;analyse de quantile nécessite au moins 20 obs ; vous en avez fourni %1.</translation>
     </message>
     <message>
         <source>Factor (%1) and returns (%2) must have the same length.</source>
@@ -27281,7 +26219,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>INFORMATION RATIO</source>
-        <translation>RATIO D'INFORMATION</translation>
+        <translation>RATIO D&apos;INFORMATION</translation>
     </message>
     <message>
         <source>Cum Return</source>
@@ -28021,11 +26959,11 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Pipeline ID (must be created first)</source>
-        <translation>ID du pipeline (à créer d'abord)</translation>
+        <translation>ID du pipeline (à créer d&apos;abord)</translation>
     </message>
     <message>
-        <source>{"feature_close":[100,102,...],"feature_volume":[1000,1200,...]}</source>
-        <translation>{"feature_close":[100,102,...],"feature_volume":[1000,1200,...]}</translation>
+        <source>{&quot;feature_close&quot;:[100,102,...],&quot;feature_volume&quot;:[1000,1200,...]}</source>
+        <translation>{&quot;feature_close&quot;:[100,102,...],&quot;feature_volume&quot;:[1000,1200,...]}</translation>
     </message>
     <message>
         <source>Data (JSON)</source>
@@ -28068,14 +27006,6 @@ Le verdict exige que LES DEUX tests concordent.</translation>
         <translation>Champs (séparés par des virgules, ex. $close,$volume,$open)</translation>
     </message>
     <message>
-        <source>Start date (YYYY-MM-DD, e.g. 2019-01-01)</source>
-        <translation>Date de début (YYYY-MM-DD, ex. 2019-01-01)</translation>
-    </message>
-    <message>
-        <source>End date (YYYY-MM-DD, e.g. 2020-11-10)</source>
-        <translation>Date de fin (YYYY-MM-DD, ex. 2020-11-10)</translation>
-    </message>
-    <message>
         <source>FETCH DATA</source>
         <translation>RÉCUPÉRER LES DONNÉES</translation>
     </message>
@@ -28097,15 +27027,15 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>CHECK QLIB STATUS</source>
-        <translation>VÉRIFIER L'ÉTAT DE QLIB</translation>
+        <translation>VÉRIFIER L&apos;ÉTAT DE QLIB</translation>
     </message>
     <message>
         <source>Train start (YYYY-MM-DD)</source>
-        <translation>Début de l'entraînement (YYYY-MM-DD)</translation>
+        <translation>Début de l&apos;entraînement (YYYY-MM-DD)</translation>
     </message>
     <message>
         <source>Train end (YYYY-MM-DD)</source>
-        <translation>Fin de l'entraînement (YYYY-MM-DD)</translation>
+        <translation>Fin de l&apos;entraînement (YYYY-MM-DD)</translation>
     </message>
     <message>
         <source>TRAIN MODEL</source>
@@ -28117,7 +27047,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Model ID (from training output)</source>
-        <translation>ID du modèle (issu de la sortie d'entraînement)</translation>
+        <translation>ID du modèle (issu de la sortie d&apos;entraînement)</translation>
     </message>
     <message>
         <source>Backtest start (YYYY-MM-DD)</source>
@@ -28168,7 +27098,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Run QuantStats Analysis for return distribution</source>
-        <translation>Lancez l'analyse QuantStats pour la distribution des rendements</translation>
+        <translation>Lancez l&apos;analyse QuantStats pour la distribution des rendements</translation>
     </message>
     <message>
         <source>RETURNS</source>
@@ -28176,7 +27106,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Run QuantStats Analysis for drawdown metrics</source>
-        <translation>Lancez l'analyse QuantStats pour les mesures de drawdown</translation>
+        <translation>Lancez l&apos;analyse QuantStats pour les mesures de drawdown</translation>
     </message>
     <message>
         <source>DRAWDOWN</source>
@@ -28184,7 +27114,7 @@ Le verdict exige que LES DEUX tests concordent.</translation>
     </message>
     <message>
         <source>Run QuantStats Analysis for rolling metrics</source>
-        <translation>Lancez l'analyse QuantStats pour les mesures glissantes</translation>
+        <translation>Lancez l&apos;analyse QuantStats pour les mesures glissantes</translation>
     </message>
     <message>
         <source>ROLLING</source>
@@ -28438,7 +27368,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Fetching 1-year price history...</source>
-        <translation>Récupération de l'historique de prix sur 1 an...</translation>
+        <translation>Récupération de l&apos;historique de prix sur 1 an...</translation>
     </message>
     <message>
         <source>QuantStats: %1</source>
@@ -28462,141 +27392,10 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::RegisterScreen</name>
-    <message>
-        <source>CREATE ACCOUNT</source>
-        <translation>CRÉER UN COMPTE</translation>
-    </message>
-    <message>
-        <source>FIRST NAME</source>
-        <translation>PRÉNOM</translation>
-    </message>
-    <message>
-        <source>LAST NAME</source>
-        <translation>NOM</translation>
-    </message>
-    <message>
-        <source>EMAIL</source>
-        <translation>E-MAIL</translation>
-    </message>
-    <message>
-        <source>CODE</source>
-        <translation>CODE</translation>
-    </message>
-    <message>
-        <source>PHONE</source>
-        <translation>TÉLÉPHONE</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>CONFIRM PASSWORD</source>
-        <translation>CONFIRMER LE MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>First</source>
-        <translation>Prénom</translation>
-    </message>
-    <message>
-        <source>Last</source>
-        <translation>Nom</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>+1</source>
-        <translation>+33</translation>
-    </message>
-    <message>
-        <source>234 567 8900</source>
-        <translation>6 12 34 56 78</translation>
-    </message>
-    <message>
-        <source>min 8 characters</source>
-        <translation>min. 8 caractères</translation>
-    </message>
-    <message>
-        <source>re-enter password</source>
-        <translation>ressaisir le mot de passe</translation>
-    </message>
-    <message>
-        <source>  CREATE ACCOUNT  </source>
-        <translation>  CRÉER UN COMPTE  </translation>
-    </message>
-    <message>
-        <source>  CREATING...  </source>
-        <translation>  CRÉATION...  </translation>
-    </message>
-    <message>
-        <source>Already have an account?</source>
-        <translation>Vous avez déjà un compte ?</translation>
-    </message>
-    <message>
-        <source>SIGN IN</source>
-        <translation>CONNEXION</translation>
-    </message>
-    <message>
-        <source>VERIFY EMAIL</source>
-        <translation>VÉRIFIER L'E-MAIL</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>CODE DE VÉRIFICATION</translation>
-    </message>
-    <message>
-        <source>enter code from email</source>
-        <translation>saisissez le code reçu par e-mail</translation>
-    </message>
-    <message>
-        <source>  VERIFY  </source>
-        <translation>  VÉRIFIER  </translation>
-    </message>
-    <message>
-        <source>  VERIFYING...  </source>
-        <translation>  VÉRIFICATION...  </translation>
-    </message>
-    <message>
-        <source>DIDN'T RECEIVE? RESEND</source>
-        <translation>NON REÇU ? RENVOYER</translation>
-    </message>
-    <message>
-        <source>BACK TO FORM</source>
-        <translation>RETOUR AU FORMULAIRE</translation>
-    </message>
-    <message>
-        <source>All fields are required</source>
-        <translation>Tous les champs sont obligatoires</translation>
-    </message>
-    <message>
-        <source>Country code is required (e.g. +1, +91)</source>
-        <translation>L'indicatif pays est obligatoire (ex. +33, +1)</translation>
-    </message>
-    <message>
-        <source>Passwords do not match</source>
-        <translation>Les mots de passe ne correspondent pas</translation>
-    </message>
-    <message>
-        <source>Password must be at least 8 characters</source>
-        <translation>Le mot de passe doit comporter au moins 8 caractères</translation>
-    </message>
-    <message>
-        <source>Username must be 3-50 characters</source>
-        <translation>Le nom d'utilisateur doit comporter 3 à 50 caractères</translation>
-    </message>
-    <message>
-        <source>Enter the verification code</source>
-        <translation>Saisissez le code de vérification</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::RelationshipMapScreen</name>
     <message>
         <source>CORPORATE INTELLIGENCE MAP</source>
-        <translation>CARTE D'INTELLIGENCE D'ENTREPRISE</translation>
+        <translation>CARTE D&apos;INTELLIGENCE D&apos;ENTREPRISE</translation>
     </message>
     <message>
         <source>Search assets (AAPL, Tesla, RELIANCE...)</source>
@@ -28676,7 +27475,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Supply Chain</source>
-        <translation>Chaîne d'approvisionnement</translation>
+        <translation>Chaîne d&apos;approvisionnement</translation>
     </message>
     <message>
         <source>SELECT A NODE</source>
@@ -28762,24 +27561,56 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
         <translation>RÉSEAU DE RELATIONS GÉOPOLITIQUES</translation>
     </message>
     <message>
-        <source>NODES: %1  |  CONFLICTS: %2  |  ORGANIZATIONS: %3</source>
-        <translation>NŒUDS : %1  |  CONFLITS : %2  |  ORGANISATIONS : %3</translation>
+        <source>ACTORS: —  |  RELATIONSHIPS: —</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACTIVE CONFLICTS</source>
-        <translation>CONFLITS ACTIFS</translation>
+        <source>⟳ REFRESH</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>CRISIS TYPES</source>
-        <translation>TYPES DE CRISE</translation>
+        <source>Refreshing live GDELT events…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ORGANIZATIONS</source>
-        <translation>ORGANISATIONS</translation>
+        <source>Live actor→actor events from GDELT (CAMEO-coded).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>datasets</source>
-        <translation>jeux de données</translation>
+        <source>Loading live GDELT events…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MATERIAL CONFLICT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOPERATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Goldstein %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 mentions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ACTORS: %1  |  RELATIONSHIPS: %2  |  CONFLICT: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live actor→actor events from GDELT (CAMEO-coded) — %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>recent exports</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>events</source>
+        <translation type="unfinished">événements</translation>
     </message>
 </context>
 <context>
@@ -28849,7 +27680,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
 %1
 
 %2</source>
-        <translation>Impossible d'ouvrir le fichier :
+        <translation>Impossible d&apos;ouvrir le fichier :
 %1
 
 %2</translation>
@@ -28876,11 +27707,11 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Company overview, financials, valuation, thesis, and risks.</source>
-        <translation>Présentation de l'entreprise, finances, valorisation, thèse et risques.</translation>
+        <translation>Présentation de l&apos;entreprise, finances, valorisation, thèse et risques.</translation>
     </message>
     <message>
         <source>Holdings, performance, allocation pie, risk metrics, notes.</source>
-        <translation>Positions, performance, camembert d'allocation, indicateurs de risque, notes.</translation>
+        <translation>Positions, performance, camembert d&apos;allocation, indicateurs de risque, notes.</translation>
     </message>
     <message>
         <source>Tracked tickers with price, change, target, and notes columns.</source>
@@ -28888,7 +27719,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Dividend stocks table, yield chart, income projection, calendar.</source>
-        <translation>Tableau d'actions à dividendes, graphique de rendement, projection de revenus, calendrier.</translation>
+        <translation>Tableau d&apos;actions à dividendes, graphique de rendement, projection de revenus, calendrier.</translation>
     </message>
     <message>
         <source>Trader</source>
@@ -28904,7 +27735,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Price chart placeholder, indicators table, S/R levels, setup.</source>
-        <translation>Emplacement du graphique de prix, tableau d'indicateurs, niveaux de support/résistance, configuration.</translation>
+        <translation>Emplacement du graphique de prix, tableau d&apos;indicateurs, niveaux de support/résistance, configuration.</translation>
     </message>
     <message>
         <source>Macro events, key levels, planned trades, risk per trade.</source>
@@ -28920,11 +27751,11 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Revenue/EPS vs estimates, guidance, segment breakdown, outlook.</source>
-        <translation>Chiffre d'affaires/EPS vs estimations, prévisions, répartition par segment, perspectives.</translation>
+        <translation>Chiffre d&apos;affaires/EPS vs estimations, prévisions, répartition par segment, perspectives.</translation>
     </message>
     <message>
         <source>Deal overview, rationale, comparables, synergies, valuation.</source>
-        <translation>Présentation de l'opération, justification, comparables, synergies, valorisation.</translation>
+        <translation>Présentation de l&apos;opération, justification, comparables, synergies, valorisation.</translation>
     </message>
     <message>
         <source>Sector overview, sub-industries, key players, trends, risks.</source>
@@ -28968,7 +27799,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Issuer overview, credit profile, yield analysis, recommendation.</source>
-        <translation>Présentation de l'émetteur, profil de crédit, analyse de rendement, recommandation.</translation>
+        <translation>Présentation de l&apos;émetteur, profil de crédit, analyse de rendement, recommandation.</translation>
     </message>
     <message>
         <source>Curve chart, spread table, duration/convexity, macro drivers.</source>
@@ -29028,7 +27859,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>%1 — Sample Text</source>
-        <translation>%1 — Texte d'exemple</translation>
+        <translation>%1 — Texte d&apos;exemple</translation>
     </message>
     <message>
         <source>Report Metadata</source>
@@ -29087,8 +27918,8 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
         <translation>Créer un nouveau rapport ? Les modifications non enregistrées seront perdues.</translation>
     </message>
     <message>
-        <source>Open Terminal Report (*.openmarketterminal);;JSON (*.json)</source>
-        <translation>Rapport Open Terminal (*.openmarketterminal);;JSON (*.json)</translation>
+        <source>OpenMarketTerminal Report (*.openmarketterminal);;JSON (*.json)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save Report</source>
@@ -29099,7 +27930,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
 %1
 
 %2</source>
-        <translation>Impossible d'enregistrer dans :
+        <translation>Impossible d&apos;enregistrer dans :
 %1
 
 %2</translation>
@@ -29281,7 +28112,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Interest Rate Shock +3%</source>
-        <translation>Choc de taux d'intérêt +3 %</translation>
+        <translation>Choc de taux d&apos;intérêt +3 %</translation>
     </message>
     <message>
         <source>Aggressive Fed tightening</source>
@@ -29293,11 +28124,11 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Single-day market crash</source>
-        <translation>Krach boursier d'une seule journée</translation>
+        <translation>Krach boursier d&apos;une seule journée</translation>
     </message>
     <message>
         <source>Inflation Surge</source>
-        <translation>Flambée de l'inflation</translation>
+        <translation>Flambée de l&apos;inflation</translation>
     </message>
     <message>
         <source>1970s-style stagflation</source>
@@ -29464,7 +28295,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Consider adding more</source>
-        <translation>Envisagez d'en ajouter davantage</translation>
+        <translation>Envisagez d&apos;en ajouter davantage</translation>
     </message>
     <message>
         <source>HIGH</source>
@@ -29491,7 +28322,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Built-in feed ID is fixed.</source>
-        <translation>L'ID du flux intégré est fixe.</translation>
+        <translation>L&apos;ID du flux intégré est fixe.</translation>
     </message>
     <message>
         <source>ID</source>
@@ -29535,7 +28366,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>Test URL</source>
-        <translation>Tester l'URL</translation>
+        <translation>Tester l&apos;URL</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -29547,7 +28378,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>✗ Enter a valid URL first.</source>
-        <translation>✗ Saisissez d'abord une URL valide.</translation>
+        <translation>✗ Saisissez d&apos;abord une URL valide.</translation>
     </message>
     <message>
         <source>Testing...</source>
@@ -29570,7 +28401,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
         <translation>✗ Le serveur a renvoyé du HTML — probablement une page de connexion ou de blocage, pas du RSS.</translation>
     </message>
     <message>
-        <source>⚠ Response doesn't look like RSS/Atom XML (%1 bytes).</source>
+        <source>⚠ Response doesn&apos;t look like RSS/Atom XML (%1 bytes).</source>
         <translation>⚠ La réponse ne ressemble pas à du XML RSS/Atom (%1 octets).</translation>
     </message>
     <message>
@@ -29587,11 +28418,11 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
     </message>
     <message>
         <source>URL must start with http:// or https://.</source>
-        <translation>L'URL doit commencer par http:// ou https://.</translation>
+        <translation>L&apos;URL doit commencer par http:// ou https://.</translation>
     </message>
     <message>
         <source>Validating URL before save...</source>
-        <translation>Validation de l'URL avant l'enregistrement…</translation>
+        <translation>Validation de l&apos;URL avant l&apos;enregistrement…</translation>
     </message>
     <message>
         <source>Request failed: %1</source>
@@ -29602,7 +28433,7 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
         <translation>Le serveur a renvoyé du HTML, pas du RSS.</translation>
     </message>
     <message>
-        <source>Response doesn't look like RSS/Atom XML.</source>
+        <source>Response doesn&apos;t look like RSS/Atom XML.</source>
         <translation>La réponse ne ressemble pas à du XML RSS/Atom.</translation>
     </message>
     <message>
@@ -29610,8 +28441,8 @@ de probabilité des rendements futurs, drawdowns et richesse terminale.</transla
         <translation>⚠ %1 Enregistrer quand même ?</translation>
     </message>
     <message>
-        <source>URL didn't validate</source>
-        <translation>L'URL n'a pas été validée</translation>
+        <source>URL didn&apos;t validate</source>
+        <translation>L&apos;URL n&apos;a pas été validée</translation>
     </message>
     <message>
         <source>%1
@@ -29622,8 +28453,8 @@ Save the feed anyway?</source>
 Enregistrer le flux quand même ?</translation>
     </message>
     <message>
-        <source>The last URL test didn't return valid RSS. Save anyway?</source>
-        <translation>Le dernier test d'URL n'a pas renvoyé de RSS valide. Enregistrer quand même ?</translation>
+        <source>The last URL test didn&apos;t return valid RSS. Save anyway?</source>
+        <translation>Le dernier test d&apos;URL n&apos;a pas renvoyé de RSS valide. Enregistrer quand même ?</translation>
     </message>
 </context>
 <context>
@@ -29634,7 +28465,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Manage the RSS feeds the News screen pulls from. Built-in feeds (DEF) can be disabled or edited; user-added feeds (USR) can be removed.</source>
-        <translation>Gérez les flux RSS dont l'écran Actualités tire les données. Les flux intégrés (DEF) peuvent être désactivés ou modifiés ; les flux ajoutés par l'utilisateur (USR) peuvent être supprimés.</translation>
+        <translation>Gérez les flux RSS dont l&apos;écran Actualités tire les données. Les flux intégrés (DEF) peuvent être désactivés ou modifiés ; les flux ajoutés par l&apos;utilisateur (USR) peuvent être supprimés.</translation>
     </message>
     <message>
         <source>On</source>
@@ -29686,7 +28517,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Test URL</source>
-        <translation>Tester l'URL</translation>
+        <translation>Tester l&apos;URL</translation>
     </message>
     <message>
         <source>Close</source>
@@ -29694,7 +28525,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Built-in feed with user edits</source>
-        <translation>Flux intégré avec modifications de l'utilisateur</translation>
+        <translation>Flux intégré avec modifications de l&apos;utilisateur</translation>
     </message>
     <message>
         <source>Built-in default feed</source>
@@ -29702,7 +28533,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>User-added feed</source>
-        <translation>Flux ajouté par l'utilisateur</translation>
+        <translation>Flux ajouté par l&apos;utilisateur</translation>
     </message>
     <message>
         <source>%1 feeds (%2 enabled)</source>
@@ -29718,18 +28549,18 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Save failed</source>
-        <translation>Échec de l'enregistrement</translation>
+        <translation>Échec de l&apos;enregistrement</translation>
     </message>
     <message>
         <source>Could not save the feed. See log for details.</source>
-        <translation>Impossible d'enregistrer le flux. Consultez le journal pour plus de détails.</translation>
+        <translation>Impossible d&apos;enregistrer le flux. Consultez le journal pour plus de détails.</translation>
     </message>
     <message>
-        <source>Reset built-in feed "%1" to its default settings? Your edits will be lost.</source>
+        <source>Reset built-in feed &quot;%1&quot; to its default settings? Your edits will be lost.</source>
         <translation>Réinitialiser le flux intégré « %1 » à ses paramètres par défaut ? Vos modifications seront perdues.</translation>
     </message>
     <message>
-        <source>Delete user feed "%1"?</source>
+        <source>Delete user feed &quot;%1&quot;?</source>
         <translation>Supprimer le flux utilisateur « %1 » ?</translation>
     </message>
     <message>
@@ -29754,7 +28585,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Feed URL is invalid.</source>
-        <translation>L'URL du flux n'est pas valide.</translation>
+        <translation>L&apos;URL du flux n&apos;est pas valide.</translation>
     </message>
     <message>
         <source>Testing %1...</source>
@@ -29785,7 +28616,7 @@ Enregistrer le flux quand même ?</translation>
         <translation>Le test a renvoyé du HTML.</translation>
     </message>
     <message>
-        <source>Response doesn't look like RSS/Atom XML (%1 bytes).</source>
+        <source>Response doesn&apos;t look like RSS/Atom XML (%1 bytes).</source>
         <translation>La réponse ne ressemble pas à du XML RSS/Atom (%1 octets).</translation>
     </message>
     <message>
@@ -29808,14 +28639,6 @@ Enregistrer le flux quand même ?</translation>
         <translation>Personnalisé</translation>
     </message>
     <message>
-        <source>LOGIC:</source>
-        <translation>LOGIQUE :</translation>
-    </message>
-    <message>
-        <source>+ ADD CONDITION</source>
-        <translation>+ AJOUTER UNE CONDITION</translation>
-    </message>
-    <message>
         <source>SYMBOLS &amp; PARAMETERS</source>
         <translation>SYMBOLES ET PARAMÈTRES</translation>
     </message>
@@ -29828,8 +28651,8 @@ Enregistrer le flux quand même ?</translation>
         <translation>PÉRIODE</translation>
     </message>
     <message>
-        <source>LOOKBACK (DAYS)</source>
-        <translation>RÉTROSPECTIVE (JOURS)</translation>
+        <source>RANGE</source>
+        <translation type="unfinished">PLAGE</translation>
     </message>
     <message>
         <source>DATA SOURCE</source>
@@ -29858,6 +28681,14 @@ Enregistrer le flux quand même ?</translation>
     <message>
         <source>SCAN MARKET</source>
         <translation>SCANNER LE MARCHÉ</translation>
+    </message>
+    <message>
+        <source>+ CREATE ALERT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a condition first.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SCAN RESULTS</source>
@@ -29924,7 +28755,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Assign each holding to a sector for allocation analysis.</source>
-        <translation>Affectez chaque position à un secteur pour l'analyse de l'allocation.</translation>
+        <translation>Affectez chaque position à un secteur pour l&apos;analyse de l&apos;allocation.</translation>
     </message>
     <message>
         <source>CANCEL</source>
@@ -30019,7 +28850,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>AUDIT LOG</source>
-        <translation>JOURNAL D'AUDIT</translation>
+        <translation>JOURNAL D&apos;AUDIT</translation>
     </message>
     <message>
         <source>Refresh</source>
@@ -30039,7 +28870,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>PIN lockout engages after 5 consecutive failures.</source>
-        <translation>Le verrouillage du PIN s'active après 5 échecs consécutifs.</translation>
+        <translation>Le verrouillage du PIN s&apos;active après 5 échecs consécutifs.</translation>
     </message>
     <message>
         <source>Locked out — try again in %1s</source>
@@ -30059,7 +28890,7 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Enable auto-lock on inactivity</source>
-        <translation>Activer le verrouillage automatique en cas d'inactivité</translation>
+        <translation>Activer le verrouillage automatique en cas d&apos;inactivité</translation>
     </message>
     <message>
         <source>Auto-Lock</source>
@@ -30067,11 +28898,11 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>Locks the terminal after a period of inactivity.</source>
-        <translation>Verrouille le terminal après une période d'inactivité.</translation>
+        <translation>Verrouille le terminal après une période d&apos;inactivité.</translation>
     </message>
     <message>
         <source>Time of inactivity before the terminal locks.</source>
-        <translation>Durée d'inactivité avant le verrouillage du terminal.</translation>
+        <translation>Durée d&apos;inactivité avant le verrouillage du terminal.</translation>
     </message>
     <message>
         <source>Lock when the window is minimized</source>
@@ -30083,22 +28914,22 @@ Enregistrer le flux quand même ?</translation>
     </message>
     <message>
         <source>When on, minimizing the terminal immediately shows the PIN screen.</source>
-        <translation>Si activé, la réduction du terminal affiche immédiatement l'écran du PIN.</translation>
+        <translation>Si activé, la réduction du terminal affiche immédiatement l&apos;écran du PIN.</translation>
     </message>
     <message>
         <source>Recent security events (PIN setup, failed unlocks, inactivity locks).</source>
-        <translation>Événements de sécurité récents (configuration du PIN, échecs de déverrouillage, verrouillages d'inactivité).</translation>
+        <translation>Événements de sécurité récents (configuration du PIN, échecs de déverrouillage, verrouillages d&apos;inactivité).</translation>
     </message>
     <message>
         <source>(no events recorded yet)</source>
-        <translation>(aucun événement enregistré pour l'instant)</translation>
+        <translation>(aucun événement enregistré pour l&apos;instant)</translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::SellAssetDialog</name>
     <message>
         <source>Sell Asset</source>
-        <translation>Vendre l'actif</translation>
+        <translation>Vendre l&apos;actif</translation>
     </message>
     <message>
         <source>SELL %1</source>
@@ -30141,123 +28972,24 @@ Enregistrer le flux quand même ?</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::SettingsTab</name>
-    <message>
-        <source>POLL refreshes balances on a TTL via the configured RPC. STREAM opens a WebSocket account subscription — requires Helius or a private RPC.</source>
-        <translation>POLL actualise les soldes selon un TTL via le RPC configuré. STREAM ouvre un abonnement de compte WebSocket — nécessite Helius ou un RPC privé.</translation>
-    </message>
-    <message>
-        <source>Paste a Helius API key for reliable account-subscribe streaming and parsed transaction history. Stored in SecureStorage; never transmitted off-machine except in RPC requests to api.helius.xyz.</source>
-        <translation>Collez une clé API Helius pour un streaming account-subscribe fiable et un historique de transactions analysé. Stockée dans SecureStorage ; jamais transmise hors de la machine, sauf dans les requêtes RPC vers api.helius.xyz.</translation>
-    </message>
-    <message>
-        <source>paste API key…</source>
-        <translation>coller la clé API…</translation>
-    </message>
-    <message>
-        <source>SAVE</source>
-        <translation>ENREGISTRER</translation>
-    </message>
-    <message>
-        <source>CLEAR</source>
-        <translation>EFFACER</translation>
-    </message>
-    <message>
-        <source>Default slippage tolerance for swaps. Quotes whose route impact exceeds this value are blocked. Adjustable per-swap on the TRADE tab.</source>
-        <translation>Tolérance de slippage par défaut pour les swaps. Les cotations dont l'impact de route dépasse cette valeur sont bloquées. Ajustable par swap dans l'onglet TRADE.</translation>
-    </message>
-    <message>
-        <source>Pump.fun-launched wallets accumulate airdropped junk over time. By default the holdings panel hides tokens that aren't in Jupiter's verified-tagged list. Toggle this on to see every SPL token account in the wallet.</source>
-        <translation>Les portefeuilles lancés via Pump.fun accumulent des déchets d'airdrop au fil du temps. Par défaut, le panneau des positions masque les jetons qui ne figurent pas dans la liste des jetons marqués vérifiés de Jupiter. Activez cette option pour voir tous les comptes de jetons SPL du portefeuille.</translation>
-    </message>
-    <message>
-        <source>Show unverified tokens in the holdings panel</source>
-        <translation>Afficher les jetons non vérifiés dans le panneau des positions</translation>
-    </message>
-    <message>
-        <source>Stored — input is hidden. Type to replace.</source>
-        <translation>Stocké — la saisie est masquée. Tapez pour remplacer.</translation>
-    </message>
-    <message>
-        <source>No key stored. Public RPC will be used.</source>
-        <translation>Aucune clé stockée. Le RPC public sera utilisé.</translation>
-    </message>
-    <message>
-        <source>Empty input — use CLEAR to remove a stored key.</source>
-        <translation>Saisie vide — utilisez EFFACER pour supprimer une clé stockée.</translation>
-    </message>
-    <message>
-        <source>Failed: %1</source>
-        <translation>Échec : %1</translation>
-    </message>
-    <message>
-        <source>Saved. Restart streaming to use the new key.</source>
-        <translation>Enregistré. Redémarrez le streaming pour utiliser la nouvelle clé.</translation>
-    </message>
-    <message>
-        <source>Cleared. Public RPC will be used.</source>
-        <translation>Effacé. Le RPC public sera utilisé.</translation>
-    </message>
-    <message>
-        <source>BALANCE REFRESH</source>
-        <translation>ACTUALISATION DU SOLDE</translation>
-    </message>
-    <message>
-        <source>Mirrored on HOME</source>
-        <translation>Reflété sur HOME</translation>
-    </message>
-    <message>
-        <source>POLL</source>
-        <translation>POLL</translation>
-    </message>
-    <message>
-        <source>STREAM</source>
-        <translation>STREAM</translation>
-    </message>
-    <message>
-        <source>HELIUS API KEY</source>
-        <translation>CLÉ API HELIUS</translation>
-    </message>
-    <message>
-        <source>optional</source>
-        <translation>facultatif</translation>
-    </message>
-    <message>
-        <source>DEFAULT SLIPPAGE</source>
-        <translation>SLIPPAGE PAR DÉFAUT</translation>
-    </message>
-    <message>
-        <source>1% – 5%</source>
-        <translation>1 % – 5 %</translation>
-    </message>
-    <message>
-        <source>ASSET FILTERS</source>
-        <translation>FILTRES D'ACTIFS</translation>
-    </message>
-    <message>
-        <source>affects holdings</source>
-        <translation>affecte les positions</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::SetupScreen</name>
     <message>
         <source>We need to download a few tools and data libraries once.
 This only happens the first time — future launches are instant.</source>
         <translation>Nous devons télécharger quelques outils et bibliothèques de données une seule fois.
-Cela n'arrive qu'à la première utilisation — les lancements suivants sont instantanés.</translation>
+Cela n&apos;arrive qu&apos;à la première utilisation — les lancements suivants sont instantanés.</translation>
     </message>
     <message>
         <source>Download Installer</source>
-        <translation>Télécharger l'installateur</translation>
+        <translation>Télécharger l&apos;installateur</translation>
     </message>
     <message>
         <source>Downloads the tool that manages everything else (~13 MB)</source>
-        <translation>Télécharge l'outil qui gère tout le reste (~13 Mo)</translation>
+        <translation>Télécharge l&apos;outil qui gère tout le reste (~13 Mo)</translation>
     </message>
     <message>
         <source>Install Python Runtime</source>
-        <translation>Installer l'environnement Python</translation>
+        <translation>Installer l&apos;environnement Python</translation>
     </message>
     <message>
         <source>The programming language engine used for all analytics</source>
@@ -30281,11 +29013,11 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     </message>
     <message>
         <source>Install Analytics Libraries</source>
-        <translation>Installer les bibliothèques d'analyse</translation>
+        <translation>Installer les bibliothèques d&apos;analyse</translation>
     </message>
     <message>
         <source>Machine learning, data science and AI agent frameworks</source>
-        <translation>Apprentissage automatique, science des données et frameworks d'agents IA</translation>
+        <translation>Apprentissage automatique, science des données et frameworks d&apos;agents IA</translation>
     </message>
     <message>
         <source>Installing to: %1</source>
@@ -30305,7 +29037,7 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     </message>
     <message>
         <source>BEGIN SETUP</source>
-        <translation>DÉMARRER L'INSTALLATION</translation>
+        <translation>DÉMARRER L&apos;INSTALLATION</translation>
     </message>
     <message>
         <source>SETTING UP...</source>
@@ -30313,7 +29045,7 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     </message>
     <message>
         <source>RETRY SETUP</source>
-        <translation>RÉESSAYER L'INSTALLATION</translation>
+        <translation>RÉESSAYER L&apos;INSTALLATION</translation>
     </message>
     <message>
         <source>LAUNCH</source>
@@ -30321,11 +29053,15 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     </message>
     <message>
         <source>CONTINUE SETUP</source>
-        <translation>POURSUIVRE L'INSTALLATION</translation>
+        <translation>POURSUIVRE L&apos;INSTALLATION</translation>
     </message>
     <message>
         <source>ALREADY COMPLETE</source>
         <translation>DÉJÀ TERMINÉ</translation>
+    </message>
+    <message>
+        <source>Everything is ready! Launching OpenMarketTerminal...</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SKIP &amp; CONTINUE</source>
@@ -30337,11 +29073,7 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     </message>
     <message>
         <source>Setup in progress — please keep the application open</source>
-        <translation>Installation en cours — veuillez laisser l'application ouverte</translation>
-    </message>
-    <message>
-        <source>Everything is ready! Launching Open Terminal...</source>
-        <translation>Tout est prêt ! Lancement de Open Terminal...</translation>
+        <translation>Installation en cours — veuillez laisser l&apos;application ouverte</translation>
     </message>
     <message>
         <source>Only the missing pieces will be downloaded. Needs an internet connection.</source>
@@ -30349,7 +29081,7 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     </message>
     <message>
         <source>Setup failed: %1</source>
-        <translation>Échec de l'installation : %1</translation>
+        <translation>Échec de l&apos;installation : %1</translation>
     </message>
     <message>
         <source>Unknown error — see logs for details.</source>
@@ -30358,7 +29090,7 @@ Cela n'arrive qu'à la première utilisation — les lancements suivants sont in
     <message>
         <source>Setup is taking longer than expected — possibly a slow internet connection.
 You can wait or skip and continue with limited functionality.</source>
-        <translation>L'installation prend plus de temps que prévu — connexion Internet peut-être lente.
+        <translation>L&apos;installation prend plus de temps que prévu — connexion Internet peut-être lente.
 Vous pouvez attendre ou ignorer et continuer avec des fonctionnalités limitées.</translation>
     </message>
     <message>
@@ -30391,7 +29123,7 @@ Vous pouvez attendre ou ignorer et continuer avec des fonctionnalités limitées
     </message>
     <message>
         <source>Analytics workspace</source>
-        <translation>Espace de travail d'analyse</translation>
+        <translation>Espace de travail d&apos;analyse</translation>
     </message>
     <message>
         <source>trading library list</source>
@@ -30399,11 +29131,7 @@ Vous pouvez attendre ou ignorer et continuer avec des fonctionnalités limitées
     </message>
     <message>
         <source>analytics library list</source>
-        <translation>liste des bibliothèques d'analyse</translation>
-    </message>
-    <message>
-        <source>Everything is installed and ready to go.</source>
-        <translation>Tout est installé et prêt à l'emploi.</translation>
+        <translation>liste des bibliothèques d&apos;analyse</translation>
     </message>
 </context>
 <context>
@@ -30553,12 +29281,12 @@ Cette action est irréversible.</translation>
     <message>
         <source>Failed to clear %1:
 %2</source>
-        <translation>Échec de l'effacement de %1 :
+        <translation>Échec de l&apos;effacement de %1 :
 %2</translation>
     </message>
     <message>
         <source>FILE &amp; STATE MANAGEMENT</source>
-        <translation>GESTION DES FICHIERS ET DE L'ÉTAT</translation>
+        <translation>GESTION DES FICHIERS ET DE L&apos;ÉTAT</translation>
     </message>
     <message>
         <source>STORE</source>
@@ -30583,12 +29311,12 @@ Cette action est irréversible.</translation>
     <message>
         <source>Clear all application log files?
 Current log data will be lost.</source>
-        <translation>Effacer tous les fichiers journaux de l'application ?
+        <translation>Effacer tous les fichiers journaux de l&apos;application ?
 Les données de journal actuelles seront perdues.</translation>
     </message>
     <message>
         <source>Workspace Files (.fwsp)</source>
-        <translation>Fichiers d'espace de travail (.fwsp)</translation>
+        <translation>Fichiers d&apos;espace de travail (.fwsp)</translation>
     </message>
     <message>
         <source>Delete Workspaces</source>
@@ -30597,16 +29325,16 @@ Les données de journal actuelles seront perdues.</translation>
     <message>
         <source>Delete all saved workspace files?
 This cannot be undone.</source>
-        <translation>Supprimer tous les fichiers d'espace de travail enregistrés ?
+        <translation>Supprimer tous les fichiers d&apos;espace de travail enregistrés ?
 Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Window &amp; UI State</source>
-        <translation>État de la fenêtre et de l'UI</translation>
+        <translation>État de la fenêtre et de l&apos;UI</translation>
     </message>
     <message>
         <source>Reset UI State</source>
-        <translation>Réinitialiser l'état de l'UI</translation>
+        <translation>Réinitialiser l&apos;état de l&apos;UI</translation>
     </message>
     <message>
         <source>Reset all window positions, dock layouts, and perspectives?
@@ -30640,7 +29368,7 @@ Prend effet au prochain redémarrage.</translation>
     </message>
     <message>
         <source>Execute Write Query</source>
-        <translation>Exécuter une requête d'écriture</translation>
+        <translation>Exécuter une requête d&apos;écriture</translation>
     </message>
     <message>
         <source>This will modify the database:
@@ -30701,12 +29429,78 @@ Data will be re-fetched on next access.</source>
 Les données seront récupérées au prochain accès.</translation>
     </message>
     <message>
+        <source>Backup &amp; Restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export all your data (databases, workspaces, files) to a single .zip file you can copy to another machine or a drive. Nothing is uploaded. Secrets in the OS keychain are not included — re-enter them after restoring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Backup…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a folder for the backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your data was backed up to:
+
+%1
+
+Keep it somewhere safe — it is unencrypted personal data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore Backup…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a backup .zip to restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal backup (*.zip)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restoring will REPLACE all current data with the backup. Your current data is moved to a &apos;pre-restore&apos; folder first (so you can undo).
+
+The app must restart to finish. Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart to finish</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The backup is staged. OpenMarketTerminal will now close — reopen it to complete the restore.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Clear ALL User Data</source>
         <translation>Effacer TOUTES les données utilisateur</translation>
     </message>
     <message>
         <source>Permanently delete all databases, files, cache, and UI state. OS keychain is preserved.</source>
-        <translation>Supprimer définitivement toutes les bases de données, fichiers, cache et état de l'UI. Le trousseau du système est conservé.</translation>
+        <translation>Supprimer définitivement toutes les bases de données, fichiers, cache et état de l&apos;UI. Le trousseau du système est conservé.</translation>
     </message>
     <message>
         <source>DELETE ALL</source>
@@ -30731,11 +29525,11 @@ This action CANNOT be undone.</source>
   Historique de chat, notes, rapports, listes de suivi
   Portefeuilles, transactions, paper trades
   Workflows, dispositions du tableau de bord
-  Articles d'actualité, flux RSS, moniteurs
+  Articles d&apos;actualité, flux RSS, moniteurs
   Sources de données, serveurs MCP
-  Configurations d'agent, configurations et profils LLM
-  Paramètres de l'app, identifiants, stockage clé-valeur
-  Tout le cache, fichiers journaux, espaces de travail, état de l'UI
+  Configurations d&apos;agent, configurations et profils LLM
+  Paramètres de l&apos;app, identifiants, stockage clé-valeur
+  Tout le cache, fichiers journaux, espaces de travail, état de l&apos;UI
 
 Les identifiants du trousseau du système ne sont PAS affectés.
 Cette action est IRRÉVERSIBLE.</translation>
@@ -30762,36 +29556,128 @@ Are you absolutely sure?</source>
         <translation>Description (facultatif)</translation>
     </message>
     <message>
+        <source>Bar timeframe the entry/exit rules evaluate on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Templates…</source>
         <translation>Modèles…</translation>
+    </message>
+    <message>
+        <source>Load a ready-made strategy as a starting point</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Equity</source>
+        <translation type="unfinished">Capitaux propres</translation>
+    </message>
+    <message>
+        <source>Instrument type this strategy trades</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NEW DRAFT</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save</source>
         <translation>Enregistrer</translation>
     </message>
     <message>
-        <source>Backtest</source>
-        <translation>Backtest</translation>
+        <source>Save this strategy to My Strategies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deploy ▸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go live (paper or real) with this strategy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NAME</source>
+        <translation type="unfinished">NOM</translation>
+    </message>
+    <message>
+        <source>DESC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TYPE</source>
+        <translation type="unfinished">TYPE</translation>
+    </message>
+    <message>
+        <source>BACKTEST SETUP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Symbole</translation>
+    </message>
+    <message>
+        <source>From</source>
+        <translation type="unfinished">De</translation>
+    </message>
+    <message>
+        <source>To</source>
+        <translation type="unfinished">À</translation>
+    </message>
+    <message>
+        <source>▶  RUN BACKTEST</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RESULTS</source>
+        <translation type="unfinished">RÉSULTATS</translation>
+    </message>
+    <message>
+        <source>Enter a strategy name before deploying.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Entry</source>
+        <translation type="unfinished">Entrée</translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">Sortie</translation>
+    </message>
+    <message>
+        <source>Deploy — check conditions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is at %2, but some rules may never trigger:
+
+%3
+
+Deploy anyway?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already deployed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An identical deployment is already running:
+
+%1 · %2 · %3 · %4
+
+Deploy another copy anyway?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Deploy</source>
         <translation>Déployer</translation>
     </message>
     <message>
-        <source>BACKTEST</source>
-        <translation>BACKTEST</translation>
-    </message>
-    <message>
         <source>Capital</source>
         <translation>Capital</translation>
-    </message>
-    <message>
-        <source>Start</source>
-        <translation>Début</translation>
-    </message>
-    <message>
-        <source>End</source>
-        <translation>Fin</translation>
     </message>
     <message>
         <source>Strategy saved: %1</source>
@@ -30806,10 +29692,6 @@ Are you absolutely sure?</source>
         <translation>Enregistrement de la stratégie...</translation>
     </message>
     <message>
-        <source>Save strategy first.</source>
-        <translation>Enregistrez d'abord la stratégie.</translation>
-    </message>
-    <message>
         <source>Start date must be before end date.</source>
         <translation>La date de début doit être antérieure à la date de fin.</translation>
     </message>
@@ -30818,12 +29700,12 @@ Are you absolutely sure?</source>
         <translation>Exécution du backtest...</translation>
     </message>
     <message>
-        <source>Deploying strategy...</source>
-        <translation>Déploiement de la stratégie...</translation>
-    </message>
-    <message>
         <source>Loaded template: %1</source>
         <translation>Modèle chargé : %1</translation>
+    </message>
+    <message>
+        <source>EDITING</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Editing: %1</source>
@@ -30831,7 +29713,7 @@ Are you absolutely sure?</source>
     </message>
     <message>
         <source>Add at least one entry condition.</source>
-        <translation>Ajoutez au moins une condition d'entrée.</translation>
+        <translation>Ajoutez au moins une condition d&apos;entrée.</translation>
     </message>
     <message>
         <source>Strategy never exits: add an exit condition or set a stop-loss / take-profit.</source>
@@ -30957,305 +29839,8 @@ Are you absolutely sure?</source>
         <translation>Supprimer la stratégie</translation>
     </message>
     <message>
-        <source>Delete "%1"?</source>
+        <source>Delete &quot;%1&quot;?</source>
         <translation>Supprimer « %1 » ?</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::SupportScreen</name>
-    <message>
-        <source>Select a ticket to view details</source>
-        <translation>Sélectionnez un ticket pour afficher les détails</translation>
-    </message>
-    <message>
-        <source>or create a new support request</source>
-        <translation>ou créez une nouvelle demande d'assistance</translation>
-    </message>
-    <message>
-        <source>＋  Create New Ticket</source>
-        <translation>＋  Créer un nouveau ticket</translation>
-    </message>
-    <message>
-        <source>← Back</source>
-        <translation>← Retour</translation>
-    </message>
-    <message>
-        <source>Create Support Ticket</source>
-        <translation>Créer un ticket d'assistance</translation>
-    </message>
-    <message>
-        <source>Describe your issue in detail. We typically respond within 24 hours.</source>
-        <translation>Décrivez votre problème en détail. Nous répondons généralement sous 24 heures.</translation>
-    </message>
-    <message>
-        <source>Brief summary of your issue</source>
-        <translation>Bref résumé de votre problème</translation>
-    </message>
-    <message>
-        <source>Subject</source>
-        <translation>Objet</translation>
-    </message>
-    <message>
-        <source>Category</source>
-        <translation>Catégorie</translation>
-    </message>
-    <message>
-        <source>Technical</source>
-        <translation>Technique</translation>
-    </message>
-    <message>
-        <source>Billing</source>
-        <translation>Facturation</translation>
-    </message>
-    <message>
-        <source>Feature Request</source>
-        <translation>Demande de fonctionnalité</translation>
-    </message>
-    <message>
-        <source>Bug Report</source>
-        <translation>Rapport de bug</translation>
-    </message>
-    <message>
-        <source>Account</source>
-        <translation>Compte</translation>
-    </message>
-    <message>
-        <source>Other</source>
-        <translation>Autre</translation>
-    </message>
-    <message>
-        <source>Priority</source>
-        <translation>Priorité</translation>
-    </message>
-    <message>
-        <source>Low</source>
-        <translation>Faible</translation>
-    </message>
-    <message>
-        <source>Medium</source>
-        <translation>Moyenne</translation>
-    </message>
-    <message>
-        <source>High</source>
-        <translation>Élevée</translation>
-    </message>
-    <message>
-        <source>Description</source>
-        <translation>Description</translation>
-    </message>
-    <message>
-        <source>%1 / 2000</source>
-        <translation>%1 / 2000</translation>
-    </message>
-    <message>
-        <source>Please describe:
-• What were you doing?
-• What did you expect to happen?
-• What actually happened?
-• Steps to reproduce (if applicable)</source>
-        <translation>Veuillez décrire :
-• Que faisiez-vous ?
-• À quoi vous attendiez-vous ?
-• Que s'est-il réellement passé ?
-• Étapes pour reproduire (le cas échéant)</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annuler</translation>
-    </message>
-    <message>
-        <source>Submit Ticket →</source>
-        <translation>Envoyer le ticket →</translation>
-    </message>
-    <message>
-        <source>Tips for a faster response</source>
-        <translation>Conseils pour une réponse plus rapide</translation>
-    </message>
-    <message>
-        <source>✓  One issue per ticket — easier to track and resolve</source>
-        <translation>✓  Un problème par ticket — plus facile à suivre et à résoudre</translation>
-    </message>
-    <message>
-        <source>✓  Include your OS, version, and any error messages</source>
-        <translation>✓  Indiquez votre système d'exploitation, votre version et tout message d'erreur</translation>
-    </message>
-    <message>
-        <source>✓  Describe steps to reproduce if it's a bug</source>
-        <translation>✓  Décrivez les étapes pour reproduire s'il s'agit d'un bug</translation>
-    </message>
-    <message>
-        <source>✓  Billing questions resolved within 4 hours</source>
-        <translation>✓  Questions de facturation résolues sous 4 heures</translation>
-    </message>
-    <message>
-        <source>Close Ticket</source>
-        <translation>Fermer le ticket</translation>
-    </message>
-    <message>
-        <source>Reopen</source>
-        <translation>Rouvrir</translation>
-    </message>
-    <message>
-        <source>This is a demo ticket. Open a real ticket to get support from our team.</source>
-        <translation>Ceci est un ticket de démonstration. Ouvrez un vrai ticket pour obtenir l'assistance de notre équipe.</translation>
-    </message>
-    <message>
-        <source>New Ticket</source>
-        <translation>Nouveau ticket</translation>
-    </message>
-    <message>
-        <source>✓  This ticket is closed.</source>
-        <translation>✓  Ce ticket est fermé.</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>Répondre</translation>
-    </message>
-    <message>
-        <source>Ctrl+Enter to send</source>
-        <translation>Ctrl+Entrée pour envoyer</translation>
-    </message>
-    <message>
-        <source>Type your reply…</source>
-        <translation>Saisissez votre réponse…</translation>
-    </message>
-    <message>
-        <source>Send Reply →</source>
-        <translation>Envoyer la réponse →</translation>
-    </message>
-    <message>
-        <source>Updating…</source>
-        <translation>Mise à jour…</translation>
-    </message>
-    <message>
-        <source>Ready</source>
-        <translation>Prêt</translation>
-    </message>
-    <message>
-        <source>Welcome to Open Terminal Support</source>
-        <translation>Bienvenue dans l'assistance Open Terminal</translation>
-    </message>
-    <message>
-        <source>No tickets yet</source>
-        <translation>Aucun ticket pour le moment</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DÉMO</translation>
-    </message>
-    <message>
-        <source>Ticket #%1</source>
-        <translation>Ticket n° %1</translation>
-    </message>
-    <message>
-        <source>%1  ·  %2  ·  Opened %3</source>
-        <translation>%1  ·  %2  ·  Ouvert le %3</translation>
-    </message>
-    <message>
-        <source>No description provided.</source>
-        <translation>Aucune description fournie.</translation>
-    </message>
-    <message>
-        <source>Support Team</source>
-        <translation>Équipe d'assistance</translation>
-    </message>
-    <message>
-        <source>1 Jan 2026</source>
-        <translation>1 janv. 2026</translation>
-    </message>
-    <message>
-        <source>Welcome to Open Terminal! This demo ticket shows how the support system works.
-Create a real ticket and our team will respond within 24 hours.</source>
-        <translation>Bienvenue sur Open Terminal ! Ce ticket de démonstration montre le fonctionnement du système d'assistance.
-Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
-    </message>
-    <message>
-        <source>You</source>
-        <translation>Vous</translation>
-    </message>
-    <message>
-        <source>No messages yet — be the first to reply.</source>
-        <translation>Aucun message pour l'instant — soyez le premier à répondre.</translation>
-    </message>
-    <message>
-        <source>Submitting…</source>
-        <translation>Envoi en cours…</translation>
-    </message>
-    <message>
-        <source>Sending…</source>
-        <translation>Envoi…</translation>
-    </message>
-    <message>
-        <source>OPEN</source>
-        <translation>OUVERT</translation>
-    </message>
-    <message>
-        <source>IN PROGRESS</source>
-        <translation>EN COURS</translation>
-    </message>
-    <message>
-        <source>RESOLVED</source>
-        <translation>RÉSOLU</translation>
-    </message>
-    <message>
-        <source>CLOSED</source>
-        <translation>FERMÉ</translation>
-    </message>
-    <message>
-        <source>PENDING</source>
-        <translation>EN ATTENTE</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Support</translation>
-    </message>
-    <message>
-        <source>Tickets</source>
-        <translation>Tickets</translation>
-    </message>
-    <message>
-        <source>Refresh tickets</source>
-        <translation>Actualiser les tickets</translation>
-    </message>
-    <message>
-        <source>＋  New Ticket</source>
-        <translation>＋  Nouveau Ticket</translation>
-    </message>
-    <message>
-        <source>🔍  Search tickets…</source>
-        <translation>🔍  Rechercher des tickets…</translation>
-    </message>
-    <message>
-        <source>All Tickets</source>
-        <translation>Tous les tickets</translation>
-    </message>
-    <message>
-        <source>Open</source>
-        <translation>Ouvert</translation>
-    </message>
-    <message>
-        <source>In Progress</source>
-        <translation>En cours</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>En attente</translation>
-    </message>
-    <message>
-        <source>Resolved</source>
-        <translation>Résolu</translation>
-    </message>
-    <message>
-        <source>Closed</source>
-        <translation>Fermé</translation>
-    </message>
-    <message>
-        <source>Total</source>
-        <translation>Total</translation>
-    </message>
-    <message>
-        <source>Done</source>
-        <translation>Terminé</translation>
     </message>
 </context>
 <context>
@@ -31353,7 +29938,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>ADD TO TEAM</source>
-        <translation>AJOUTER À L'ÉQUIPE</translation>
+        <translation>AJOUTER À L&apos;ÉQUIPE</translation>
     </message>
     <message>
         <source>COORDINATOR LLM PROFILE</source>
@@ -31361,19 +29946,19 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>TEAM QUERY</source>
-        <translation>REQUÊTE DE L'ÉQUIPE</translation>
+        <translation>REQUÊTE DE L&apos;ÉQUIPE</translation>
     </message>
     <message>
         <source>Enter a query for the team...</source>
-        <translation>Saisissez une requête pour l'équipe...</translation>
+        <translation>Saisissez une requête pour l&apos;équipe...</translation>
     </message>
     <message>
         <source>RUN TEAM</source>
-        <translation>EXÉCUTER L'ÉQUIPE</translation>
+        <translation>EXÉCUTER L&apos;ÉQUIPE</translation>
     </message>
     <message>
         <source>EXECUTION LOG</source>
-        <translation>JOURNAL D'EXÉCUTION</translation>
+        <translation>JOURNAL D&apos;EXÉCUTION</translation>
     </message>
     <message>
         <source>RESULT</source>
@@ -31393,7 +29978,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Queries are routed to the most appropriate agent based on intent.</source>
-        <translation>Les requêtes sont acheminées vers l'agent le plus approprié en fonction de l'intention.</translation>
+        <translation>Les requêtes sont acheminées vers l&apos;agent le plus approprié en fonction de l&apos;intention.</translation>
     </message>
     <message>
         <source>All agents work on the query simultaneously, results are merged.</source>
@@ -31417,7 +30002,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>LLM profile for the team coordinator. Members use their own assigned profiles.</source>
-        <translation>Profil LLM pour le coordinateur de l'équipe. Les membres utilisent leurs propres profils attribués.</translation>
+        <translation>Profil LLM pour le coordinateur de l&apos;équipe. Les membres utilisent leurs propres profils attribués.</translation>
     </message>
     <message>
         <source>Completed in %1ms</source>
@@ -31445,7 +30030,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>RUNNING...</source>
-        <translation>EN COURS D'EXÉCUTION...</translation>
+        <translation>EN COURS D&apos;EXÉCUTION...</translation>
     </message>
     <message>
         <source>Executing...</source>
@@ -31464,7 +30049,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Select a template to reset your dashboard. Current layout will be replaced.</source>
-        <translation>Sélectionnez un modèle pour réinitialiser le tableau de bord. L'agencement actuel sera remplacé.</translation>
+        <translation>Sélectionnez un modèle pour réinitialiser le tableau de bord. L&apos;agencement actuel sera remplacé.</translation>
     </message>
     <message>
         <source>APPLY</source>
@@ -31483,111 +30068,71 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>TERMS OF SERVICE</source>
-        <translation>CONDITIONS D'UTILISATION</translation>
+        <translation>CONDITIONS D&apos;UTILISATION</translation>
     </message>
     <message>
-        <source>Last updated: January 1, 2026</source>
-        <translation>Dernière mise à jour : 1er janvier 2026</translation>
+        <source>Applies to the open-source release.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACCEPTANCE OF TERMS</source>
-        <translation>ACCEPTATION DES CONDITIONS</translation>
+        <source>FREE AND OPEN SOURCE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>By accessing or using Open Terminal ("the Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, do not use the Service.</source>
-        <translation>En accédant à Open Terminal (« le Service ») ou en l'utilisant, vous acceptez d'être lié par les présentes Conditions d'utilisation. Si vous n'acceptez pas ces conditions, n'utilisez pas le Service.</translation>
+        <source>Open Terminal is free, open-source software released under the MIT License. There is no subscription, fee, or billing of any kind. You may use, copy, modify, and redistribute it under the terms of that license.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DESCRIPTION OF SERVICE</source>
-        <translation>DESCRIPTION DU SERVICE</translation>
+        <source>WHAT OPEN TERMINAL IS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal is a desktop financial intelligence terminal providing market data, analytics, trading tools, and AI-powered research capabilities.</source>
-        <translation>Open Terminal est un terminal de bureau d'intelligence financière offrant des données de marché, des analyses, des outils de trading et des capacités de recherche alimentées par l'IA.</translation>
+        <source>Open Terminal is a local-first desktop application that runs entirely on your own computer. It is a research and educational tool — it does not provide financial advice, brokerage services, or any guarantee about the data it displays.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>USER ACCOUNTS AND REGISTRATION</source>
-        <translation>COMPTES UTILISATEUR ET INSCRIPTION</translation>
+        <source>PROVIDED &quot;AS IS&quot;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>To access certain features, you must create an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities under your account.</source>
-        <translation>Pour accéder à certaines fonctionnalités, vous devez créer un compte. Vous êtes responsable de la confidentialité de vos identifiants de compte et de toutes les activités effectuées sous votre compte.</translation>
+        <source>As stated in the MIT License, the software is provided &quot;AS IS&quot;, without warranty of any kind, express or implied. The authors and contributors are not liable for any claim, damages, or other liability arising from the use of the software.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACCEPTABLE USE POLICY</source>
-        <translation>POLITIQUE D'UTILISATION ACCEPTABLE</translation>
+        <source>NOT FINANCIAL ADVICE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>You agree not to:</source>
-        <translation>Vous acceptez de ne pas :</translation>
+        <source>Market data, analytics, and AI-generated output are for informational and educational purposes only and do not constitute investment advice. You are solely responsible for your own trading and investment decisions and their outcomes.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use the Service for any unlawful purpose</source>
-        <translation>Utiliser le Service à des fins illégales</translation>
+        <source>THIRD-PARTY SERVICES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Attempt to gain unauthorized access to any part of the Service</source>
-        <translation>Tenter d'obtenir un accès non autorisé à toute partie du Service</translation>
+        <source>When you configure API keys, the app connects directly from your machine to the brokers and data providers you choose. You are responsible for complying with the terms, fees, and usage policies of any third-party service you connect, and for any orders you place through them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Interfere with or disrupt the Service or its servers</source>
-        <translation>Perturber ou interrompre le Service ou ses serveurs</translation>
+        <source>PRIVACY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reverse engineer, decompile, or disassemble any part of the Service</source>
-        <translation>Procéder à l'ingénierie inverse, décompiler ou désassembler toute partie du Service</translation>
+        <source>Open Terminal has no server and collects no personal data. Your data stays on your device. See the Privacy Policy for details.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use automated means to access the Service without permission</source>
-        <translation>Utiliser des moyens automatisés pour accéder au Service sans autorisation</translation>
+        <source>CONTACT</source>
+        <translation type="unfinished">CONTACT</translation>
     </message>
     <message>
-        <source>DATA AND PRIVACY</source>
-        <translation>DONNÉES ET CONFIDENTIALITÉ</translation>
+        <source>For questions about these Terms, open an issue in the project repository:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your use of the Service is also governed by our Privacy Policy. By using the Service, you consent to the collection and use of information as described therein.</source>
-        <translation>Votre utilisation du Service est également régie par notre Politique de confidentialité. En utilisant le Service, vous consentez à la collecte et à l'utilisation des informations telles qu'elles y sont décrites.</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION AND BILLING</source>
-        <translation>ABONNEMENT ET FACTURATION</translation>
-    </message>
-    <message>
-        <source>Certain features require a paid subscription. Subscriptions are billed in advance. Refunds are handled according to our refund policy. Credits expire according to plan terms.</source>
-        <translation>Certaines fonctionnalités nécessitent un abonnement payant. Les abonnements sont facturés à l'avance. Les remboursements sont traités conformément à notre politique de remboursement. Les crédits expirent selon les conditions du forfait.</translation>
-    </message>
-    <message>
-        <source>DISCLAIMERS AND LIMITATIONS</source>
-        <translation>AVERTISSEMENTS ET LIMITATIONS</translation>
-    </message>
-    <message>
-        <source>The Service is provided "as is" without warranty of any kind. Open Terminal contributors shall not be liable for any indirect, incidental, special, or consequential damages. Financial data and analytics are for informational purposes only and do not constitute investment advice.</source>
-        <translation>Le Service est fourni « tel quel », sans garantie d'aucune sorte. Open Terminal contributors ne saurait être tenue responsable de tout dommage indirect, accessoire, spécial ou consécutif. Les données et analyses financières sont fournies à titre informatif uniquement et ne constituent pas un conseil en investissement.</translation>
-    </message>
-    <message>
-        <source>TERMINATION</source>
-        <translation>RÉSILIATION</translation>
-    </message>
-    <message>
-        <source>We may terminate or suspend your account at any time for violation of these terms. Upon termination, your right to use the Service will immediately cease.</source>
-        <translation>Nous pouvons résilier ou suspendre votre compte à tout moment en cas de violation des présentes conditions. Dès la résiliation, votre droit d'utiliser le Service cessera immédiatement.</translation>
-    </message>
-    <message>
-        <source>CHANGES TO TERMS</source>
-        <translation>MODIFICATIONS DES CONDITIONS</translation>
-    </message>
-    <message>
-        <source>We reserve the right to modify these terms at any time. Continued use of the Service after changes constitutes acceptance of the modified terms.</source>
-        <translation>Nous nous réservons le droit de modifier ces conditions à tout moment. La poursuite de l'utilisation du Service après des modifications vaut acceptation des conditions modifiées.</translation>
-    </message>
-    <message>
-        <source>CONTACT INFORMATION</source>
-        <translation>COORDONNÉES</translation>
-    </message>
-    <message>
-        <source>For questions about these Terms, contact us at github.com/your-org/open-terminal/issues</source>
-        <translation>Pour toute question sur ces Conditions, contactez-nous à github.com/your-org/open-terminal/issues</translation>
+        <source>github.com/Trucker2827/Open-Terminal/issues</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Privacy Policy</source>
@@ -31669,7 +30214,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Save selected tools to the chosen agent or team</source>
-        <translation>Enregistrer les outils sélectionnés dans l'agent ou l'équipe choisis</translation>
+        <translation>Enregistrer les outils sélectionnés dans l&apos;agent ou l&apos;équipe choisis</translation>
     </message>
     <message>
         <source>● = already assigned</source>
@@ -31685,7 +30230,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>TOOL DETAIL</source>
-        <translation>DÉTAIL DE L'OUTIL</translation>
+        <translation>DÉTAIL DE L&apos;OUTIL</translation>
     </message>
     <message>
         <source>Select a tool</source>
@@ -31709,7 +30254,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>No agents or teams use this tool yet.</source>
-        <translation>Aucun agent ou équipe n'utilise encore cet outil.</translation>
+        <translation>Aucun agent ou équipe n&apos;utilise encore cet outil.</translation>
     </message>
     <message>
         <source>Assigning to: %1 (%2)</source>
@@ -31717,11 +30262,11 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>No agents found — create one first</source>
-        <translation>Aucun agent trouvé — créez-en un d'abord</translation>
+        <translation>Aucun agent trouvé — créez-en un d&apos;abord</translation>
     </message>
     <message>
         <source>No teams found — create one first</source>
-        <translation>Aucune équipe trouvée — créez-en une d'abord</translation>
+        <translation>Aucune équipe trouvée — créez-en une d&apos;abord</translation>
     </message>
     <message>
         <source>No parameters</source>
@@ -31753,7 +30298,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Error saving to %1</source>
-        <translation>Erreur lors de l'enregistrement dans %1</translation>
+        <translation>Erreur lors de l&apos;enregistrement dans %1</translation>
     </message>
 </context>
 <context>
@@ -31780,11 +30325,11 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>ANALYSIS TYPE</source>
-        <translation>TYPE D'ANALYSE</translation>
+        <translation>TYPE D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>Analyzes efficiency gains, consumer benefits, growth effects, and adjustment costs of international trade.</source>
-        <translation>Analyse les gains d'efficacité, les avantages pour les consommateurs, les effets sur la croissance et les coûts d'ajustement du commerce international.</translation>
+        <translation>Analyse les gains d&apos;efficacité, les avantages pour les consommateurs, les effets sur la croissance et les coûts d&apos;ajustement du commerce international.</translation>
     </message>
     <message>
         <source>% of GDP</source>
@@ -31804,7 +30349,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Consumer price reduction from trade openness</source>
-        <translation>Baisse des prix à la consommation due à l'ouverture commerciale</translation>
+        <translation>Baisse des prix à la consommation due à l&apos;ouverture commerciale</translation>
     </message>
     <message>
         <source>% of consumption</source>
@@ -31820,7 +30365,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>RUN ANALYSIS</source>
-        <translation>LANCER L'ANALYSE</translation>
+        <translation>LANCER L&apos;ANALYSE</translation>
     </message>
     <message>
         <source>Analyzing...</source>
@@ -31832,7 +30377,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Analyzes economic impact of tariffs, quotas, export subsidies, and non-tariff barriers.</source>
-        <translation>Analyse l'impact économique des droits de douane, des quotas, des subventions à l'exportation et des barrières non tarifaires.</translation>
+        <translation>Analyse l&apos;impact économique des droits de douane, des quotas, des subventions à l&apos;exportation et des barrières non tarifaires.</translation>
     </message>
     <message>
         <source>TARIFF RATE</source>
@@ -31840,7 +30385,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Import duty rate (e.g. 10% = standard MFN tariff)</source>
-        <translation>Taux de droit à l'importation (ex. 10 % = tarif MFN standard)</translation>
+        <translation>Taux de droit à l&apos;importation (ex. 10 % = tarif MFN standard)</translation>
     </message>
     <message>
         <source> units</source>
@@ -31852,11 +30397,11 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Annual import quantity limit</source>
-        <translation>Limite annuelle de quantité d'importation</translation>
+        <translation>Limite annuelle de quantité d&apos;importation</translation>
     </message>
     <message>
         <source>EXPORT SUBSIDY RATE</source>
-        <translation>TAUX DE SUBVENTION À L'EXPORTATION</translation>
+        <translation>TAUX DE SUBVENTION À L&apos;EXPORTATION</translation>
     </message>
     <message>
         <source>Government subsidy as % of export value</source>
@@ -31912,7 +30457,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Common Market (e.g. EU Single Market)</source>
-        <translation>Marché commun (ex. Marché unique de l'EU)</translation>
+        <translation>Marché commun (ex. Marché unique de l&apos;EU)</translation>
     </message>
     <message>
         <source>Economic Union (e.g. European Union)</source>
@@ -31920,7 +30465,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>INTEGRATION TYPE</source>
-        <translation>TYPE D'INTÉGRATION</translation>
+        <translation>TYPE D&apos;INTÉGRATION</translation>
     </message>
     <message>
         <source>B USD</source>
@@ -31948,7 +30493,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Assesses FDI, employment, wage, and GDP impact of removing trade barriers.</source>
-        <translation>Évalue l'impact de la suppression des barrières commerciales sur les FDI, l'emploi, les salaires et le GDP.</translation>
+        <translation>Évalue l&apos;impact de la suppression des barrières commerciales sur les FDI, l&apos;emploi, les salaires et le GDP.</translation>
     </message>
     <message>
         <source>Unilateral Liberalization</source>
@@ -31964,7 +30509,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Multilateral (WTO Round)</source>
-        <translation>Multilatéral (cycle de l'OMC)</translation>
+        <translation>Multilatéral (cycle de l&apos;OMC)</translation>
     </message>
     <message>
         <source>LIBERALIZATION SCOPE</source>
@@ -31984,7 +30529,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>ECONOMY SIZE (GDP)</source>
-        <translation>TAILLE DE L'ÉCONOMIE (GDP)</translation>
+        <translation>TAILLE DE L&apos;ÉCONOMIE (GDP)</translation>
     </message>
     <message>
         <source>Barrier Removal</source>
@@ -31992,7 +30537,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>ANALYSIS RESULTS</source>
-        <translation>RÉSULTATS DE L'ANALYSE</translation>
+        <translation>RÉSULTATS DE L&apos;ANALYSE</translation>
     </message>
     <message>
         <source>YES</source>
@@ -32070,12 +30615,20 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
         <translation>Mensuel</translation>
     </message>
     <message>
+        <source>Display-only — not connected to a live trade-data feed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Trading Partner</source>
         <translation>Partenaire commercial</translation>
     </message>
     <message>
         <source>Total Trade ($M)</source>
         <translation>Commerce total (M$)</translation>
+    </message>
+    <message>
+        <source>Static sample — illustrative U.S. goods-trade partners. Not connected to a live trade-data feed; the filters above are inactive.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Table</source>
@@ -32109,14 +30662,6 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
         <translation>Dernière mise à jour : 1er janvier 2026</translation>
     </message>
     <message>
-        <source>OPENMARKETTERMINAL TRADEMARKS</source>
-        <translation>MARQUES OPENMARKETTERMINAL</translation>
-    </message>
-    <message>
-        <source>Open Terminal Logo and associated visual identities</source>
-        <translation>Logo Open Terminal et identités visuelles associées</translation>
-    </message>
-    <message>
         <source>THIRD-PARTY TRADEMARKS</source>
         <translation>MARQUES DE TIERS</translation>
     </message>
@@ -32133,48 +30678,52 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
         <translation>Utilisations autorisées :</translation>
     </message>
     <message>
-        <source>Referring to Open Terminal products in editorial or descriptive contexts</source>
-        <translation>Faire référence aux produits Open Terminal dans des contextes éditoriaux ou descriptifs</translation>
-    </message>
-    <message>
-        <source>Linking to official Open Terminal resources</source>
-        <translation>Créer des liens vers les ressources officielles Open Terminal</translation>
-    </message>
-    <message>
-        <source>Academic or research references</source>
-        <translation>Références académiques ou de recherche</translation>
-    </message>
-    <message>
         <source>Prohibited Uses:</source>
         <translation>Utilisations interdites :</translation>
     </message>
     <message>
-        <source>Using Open Terminal marks to imply endorsement or affiliation</source>
-        <translation>Utiliser les marques Open Terminal pour suggérer un soutien ou une affiliation</translation>
-    </message>
-    <message>
-        <source>Modifying or altering any Open Terminal trademark</source>
-        <translation>Modifier ou altérer toute marque Open Terminal</translation>
-    </message>
-    <message>
-        <source>Using Open Terminal marks in domain names or product names</source>
-        <translation>Utiliser les marques Open Terminal dans des noms de domaine ou de produits</translation>
-    </message>
-    <message>
-        <source>Creating confusingly similar marks</source>
-        <translation>Créer des marques similaires prêtant à confusion</translation>
-    </message>
-    <message>
         <source>COPYRIGHT NOTICE</source>
-        <translation>AVIS DE DROIT D'AUTEUR</translation>
+        <translation>AVIS DE DROIT D&apos;AUTEUR</translation>
     </message>
     <message>
-        <source>Copyright 2024-2026 Open Terminal contributors. All rights reserved.</source>
-        <translation>Copyright 2024-2026 Open Terminal contributors. Tous droits réservés.</translation>
+        <source>OPEN TERMINAL TRADEMARKS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This software is licensed under MIT License for open-source use, including personal, educational, and commercial use.</source>
-        <translation>This software is licensed under MIT License for open-source use, including personal, educational, and commercial use.</translation>
+        <source>Open Terminal logos and associated visual identities</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Referring to Open Terminal in editorial or descriptive contexts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identifying forks, packages, and redistributed builds truthfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Academic, research, and community references</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using Open Terminal marks to falsely imply endorsement or official affiliation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Misrepresenting a modified build as the official project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Creating confusingly similar marks for deceptive use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copyright 2026 Open Terminal contributors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This software is licensed under the MIT License for open-source use, including personal, educational, and commercial use.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DATA PROVIDER ACKNOWLEDGMENTS</source>
@@ -32190,7 +30739,7 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>News data from licensed news aggregation services</source>
-        <translation>Données d'actualités provenant de services agrégateurs d'actualités sous licence</translation>
+        <translation>Données d&apos;actualités provenant de services agrégateurs d&apos;actualités sous licence</translation>
     </message>
     <message>
         <source>Geopolitical data from HDX and public sources</source>
@@ -32198,15 +30747,19 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
     </message>
     <message>
         <source>Crypto data from exchange APIs (Kraken, HyperLiquid, etc.)</source>
-        <translation>Données crypto provenant des API d'échanges (Kraken, HyperLiquid, etc.)</translation>
+        <translation>Données crypto provenant des API d&apos;échanges (Kraken, HyperLiquid, etc.)</translation>
     </message>
     <message>
         <source>REPORTING INFRINGEMENT</source>
         <translation>SIGNALER UNE CONTREFAÇON</translation>
     </message>
     <message>
-        <source>To report trademark infringement, contact: github.com/your-org/open-terminal/issues</source>
-        <translation>Pour signaler une contrefaçon de marque, contactez : github.com/your-org/open-terminal/issues</translation>
+        <source>To report trademark infringement, open an issue in the project repository.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repository: github.com/your-org/open-terminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LEGAL DEPARTMENT</source>
@@ -32216,17 +30769,13 @@ Créez un vrai ticket et notre équipe répondra sous 24 heures.</translation>
         <source>Open Terminal contributors — Legal Department</source>
         <translation>Open Terminal contributors — Service juridique</translation>
     </message>
-    <message>
-        <source>Email: github.com/your-org/open-terminal/issues</source>
-        <translation>E-mail : github.com/your-org/open-terminal/issues</translation>
-    </message>
 </context>
 <context>
     <name>openmarketterminal::screens::TradingEconomicsPanel</name>
     <message>
         <source>Set TRADING_ECONOMICS_API_KEY environment variable, then select a dataset and click FETCH
 Get a key at: tradingeconomics.com/api</source>
-        <translation>Définissez la variable d'environnement TRADING_ECONOMICS_API_KEY, puis sélectionnez un jeu de données et cliquez sur FETCH
+        <translation>Définissez la variable d&apos;environnement TRADING_ECONOMICS_API_KEY, puis sélectionnez un jeu de données et cliquez sur FETCH
 Obtenez une clé sur : tradingeconomics.com/api</translation>
     </message>
     <message>
@@ -32249,13 +30798,13 @@ Obtenez une clé sur : tradingeconomics.com/api</translation>
         <source>Trading Economics API key not configured.
 Set TRADING_ECONOMICS_API_KEY environment variable.
 Get a key at: tradingeconomics.com/api</source>
-        <translation>Clé d'API Trading Economics non configurée.
-Définissez la variable d'environnement TRADING_ECONOMICS_API_KEY.
+        <translation>Clé d&apos;API Trading Economics non configurée.
+Définissez la variable d&apos;environnement TRADING_ECONOMICS_API_KEY.
 Obtenez une clé sur : tradingeconomics.com/api</translation>
     </message>
     <message>
         <source>No data returned — API key may be required</source>
-        <translation>Aucune donnée retournée — une clé d'API peut être requise</translation>
+        <translation>Aucune donnée retournée — une clé d&apos;API peut être requise</translation>
     </message>
 </context>
 <context>
@@ -32264,7 +30813,7 @@ Obtenez une clé sur : tradingeconomics.com/api</translation>
         <source>Select reporter, flow, and period, then click FETCH
 (Free tier: up to 250 records per request)</source>
         <translation>Sélectionnez le pays déclarant, le flux et la période, puis cliquez sur FETCH
-(Niveau gratuit : jusqu'à 250 enregistrements par requête)</translation>
+(Niveau gratuit : jusqu&apos;à 250 enregistrements par requête)</translation>
     </message>
     <message>
         <source>Exports</source>
@@ -32334,7 +30883,7 @@ Obtenez une clé sur : tradingeconomics.com/api</translation>
 UNESCO UIS data is free — no API key required
 Use 3-letter ISO country codes: USA, GBR, IND, CHN, BRA, DEU</source>
         <translation>Sélectionnez un thème, un indicateur et un code pays, puis cliquez sur FETCH
-Les données UNESCO UIS sont gratuites — aucune clé d'API requise
+Les données UNESCO UIS sont gratuites — aucune clé d&apos;API requise
 Utilisez des codes pays ISO à 3 lettres : USA, GBR, IND, CHN, BRA, DEU</translation>
     </message>
     <message>
@@ -32377,11 +30926,130 @@ Utilisez des codes pays ISO à 3 lettres : USA, GBR, IND, CHN, BRA, DEU</transla
         <source>No data found for this indicator and country
 Try a different country code or check the indicator is available</source>
         <translation>Aucune donnée trouvée pour cet indicateur et ce pays
-Essayez un autre code pays ou vérifiez que l'indicateur est disponible</translation>
+Essayez un autre code pays ou vérifiez que l&apos;indicateur est disponible</translation>
     </message>
     <message>
         <source>Indicator</source>
         <translation>Indicateur</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::UniverseScannerPanel</name>
+    <message>
+        <source>STRATEGY</source>
+        <translation type="unfinished">STRATÉGIE</translation>
+    </message>
+    <message>
+        <source>UNIVERSE</source>
+        <translation type="unfinished">UNIVERS</translation>
+    </message>
+    <message>
+        <source>US mega-cap preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>US tech preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom symbols</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CUSTOM SYMBOLS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BROKER ACCOUNT</source>
+        <translation type="unfinished">COMPTE COURTIER</translation>
+    </message>
+    <message>
+        <source>EVAL SWEEP (ms)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOLDOWN (min)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>START SCAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE MATCHES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYMBOL</source>
+        <translation type="unfinished">SYMBOLE</translation>
+    </message>
+    <message>
+        <source>SIGNAL</source>
+        <translation type="unfinished">SIGNAL</translation>
+    </message>
+    <message>
+        <source>PRICE</source>
+        <translation type="unfinished">PRIX</translation>
+    </message>
+    <message>
+        <source>MATCHED RULES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEPLOY</source>
+        <translation type="unfinished">DÉPLOYER</translation>
+    </message>
+    <message>
+        <source>Stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a strategy first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected strategy has no entry conditions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a connected broker account (live feed required).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter custom symbols or pick a universe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not save scan: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STOP SCAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scanning live — warming history, matches will appear below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MATCH</source>
+        <translation type="unfinished">CORRESPONDANCE</translation>
+    </message>
+    <message>
+        <source>BULLISH</source>
+        <translation type="unfinished">HAUSSIER</translation>
+    </message>
+    <message>
+        <source>BEARISH</source>
+        <translation type="unfinished">BAISSIER</translation>
+    </message>
+    <message>
+        <source>Strategy no longer selected — cannot deploy.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deployed %1.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -32392,7 +31060,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Pick a provider for each direction independently. Free options work out of the box; Deepgram requires an API key but offers higher accuracy (STT) and natural-sounding voices (TTS).</source>
-        <translation>Choisissez un fournisseur pour chaque direction de manière indépendante. Les options gratuites fonctionnent immédiatement ; Deepgram nécessite une clé d'API mais offre une précision supérieure (STT) et des voix au son naturel (TTS).</translation>
+        <translation>Choisissez un fournisseur pour chaque direction de manière indépendante. Les options gratuites fonctionnent immédiatement ; Deepgram nécessite une clé d&apos;API mais offre une précision supérieure (STT) et des voix au son naturel (TTS).</translation>
     </message>
     <message>
         <source>SPEECH-TO-TEXT (microphone -&gt; text)</source>
@@ -32404,7 +31072,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Deepgram (API key required)</source>
-        <translation>Deepgram (clé d'API requise)</translation>
+        <translation>Deepgram (clé d&apos;API requise)</translation>
     </message>
     <message>
         <source>Provider</source>
@@ -32459,8 +31127,8 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
         <translation>Gain du micro (augmentez si le micro est faible)</translation>
     </message>
     <message>
-        <source>e.g. 'Headset' (substring match, blank = system default)</source>
-        <translation>p. ex. 'Headset' (correspondance de sous-chaîne, vide = défaut système)</translation>
+        <source>e.g. &apos;Headset&apos; (substring match, blank = system default)</source>
+        <translation>p. ex. &apos;Headset&apos; (correspondance de sous-chaîne, vide = défaut système)</translation>
     </message>
     <message>
         <source>Mic device</source>
@@ -32468,7 +31136,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>TEXT-TO-SPEECH (assistant reply -&gt; spoken audio)</source>
-        <translation>TEXT-TO-SPEECH (réponse de l'assistant -&gt; audio vocal)</translation>
+        <translation>TEXT-TO-SPEECH (réponse de l&apos;assistant -&gt; audio vocal)</translation>
     </message>
     <message>
         <source>Free / pyttsx3 (offline, default)</source>
@@ -32476,7 +31144,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Deepgram Aura-2 (API key required)</source>
-        <translation>Deepgram Aura-2 (clé d'API requise)</translation>
+        <translation>Deepgram Aura-2 (clé d&apos;API requise)</translation>
     </message>
     <message>
         <source>Thalia — female, American</source>
@@ -32524,11 +31192,11 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>API Key</source>
-        <translation>Clé d'API</translation>
+        <translation>Clé d&apos;API</translation>
     </message>
     <message>
         <source>Paste your Deepgram API key</source>
-        <translation>Collez votre clé d'API Deepgram</translation>
+        <translation>Collez votre clé d&apos;API Deepgram</translation>
     </message>
     <message>
         <source>Show</source>
@@ -32536,7 +31204,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>WAKE TRIGGER</source>
-        <translation>DÉCLENCHEUR D'ACTIVATION</translation>
+        <translation>DÉCLENCHEUR D&apos;ACTIVATION</translation>
     </message>
     <message>
         <source>Clap to open mic</source>
@@ -32544,7 +31212,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Listens to the mic in the background and opens the chat bubble when you clap. Audio is analysed locally and never sent over the network.</source>
-        <translation>Écoute le micro en arrière-plan et ouvre la bulle de chat lorsque vous tapez dans les mains. L'audio est analysé localement et n'est jamais envoyé sur le réseau.</translation>
+        <translation>Écoute le micro en arrière-plan et ouvre la bulle de chat lorsque vous tapez dans les mains. L&apos;audio est analysé localement et n&apos;est jamais envoyé sur le réseau.</translation>
     </message>
     <message>
         <source>Double clap (recommended)</source>
@@ -32572,15 +31240,15 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Failed to save API key: </source>
-        <translation>Échec de l'enregistrement de la clé d'API : </translation>
+        <translation>Échec de l&apos;enregistrement de la clé d&apos;API : </translation>
     </message>
     <message>
         <source>Saved. Changes apply on next voice session.</source>
-        <translation>Enregistré. Les modifications s'appliquent à la prochaine session vocale.</translation>
+        <translation>Enregistré. Les modifications s&apos;appliquent à la prochaine session vocale.</translation>
     </message>
     <message>
         <source>Enter an API key first.</source>
-        <translation>Saisissez d'abord une clé d'API.</translation>
+        <translation>Saisissez d&apos;abord une clé d&apos;API.</translation>
     </message>
     <message>
         <source>Deepgram Python SDK is missing from venv-numpy2. Open Settings -&gt; Python Env -&gt; Reinstall packages, then test again.</source>
@@ -32596,7 +31264,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Invalid API key (401).</source>
-        <translation>Clé d'API non valide (401).</translation>
+        <translation>Clé d&apos;API non valide (401).</translation>
     </message>
     <message>
         <source>Deepgram credits exhausted (402).</source>
@@ -32605,25 +31273,6 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     <message>
         <source>Test failed: HTTP %1 — %2</source>
         <translation>Échec du test : HTTP %1 — %2</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::WalletActionConfirmDialog</name>
-    <message>
-        <source>Confirm</source>
-        <translation>Confirmer</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>ANNULER</translation>
-    </message>
-    <message>
-        <source>AWAITING CONFIRMATION</source>
-        <translation>EN ATTENTE DE CONFIRMATION</translation>
-    </message>
-    <message>
-        <source>%1 in %2</source>
-        <translation>%1 dans %2</translation>
     </message>
 </context>
 <context>
@@ -32738,12 +31387,12 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Export failed</source>
-        <translation>Échec de l'exportation</translation>
+        <translation>Échec de l&apos;exportation</translation>
     </message>
     <message>
         <source>Could not open file for writing:
 %1</source>
-        <translation>Impossible d'ouvrir le fichier en écriture :
+        <translation>Impossible d&apos;ouvrir le fichier en écriture :
 %1</translation>
     </message>
     <message>
@@ -32752,12 +31401,12 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Import failed</source>
-        <translation>Échec de l'importation</translation>
+        <translation>Échec de l&apos;importation</translation>
     </message>
     <message>
         <source>Could not open file for reading:
 %1</source>
-        <translation>Impossible d'ouvrir le fichier en lecture :
+        <translation>Impossible d&apos;ouvrir le fichier en lecture :
 %1</translation>
     </message>
     <message>
@@ -32841,7 +31490,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>News Feed</source>
-        <translation>Fil d'Actualités</translation>
+        <translation>Fil d&apos;Actualités</translation>
     </message>
     <message>
         <source>Research</source>
@@ -32849,19 +31498,19 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Latest financial news headlines</source>
-        <translation>Derniers titres de l'actualité financière</translation>
+        <translation>Derniers titres de l&apos;actualité financière</translation>
     </message>
     <message>
         <source>Stock Quote</source>
-        <translation>Cotation d'action</translation>
+        <translation>Cotation d&apos;action</translation>
     </message>
     <message>
         <source>Single stock detail — price, volume, chart</source>
-        <translation>Détail d'une action — cours, volume, graphique</translation>
+        <translation>Détail d&apos;une action — cours, volume, graphique</translation>
     </message>
     <message>
         <source>Stock Screener</source>
-        <translation>Filtre d'actions</translation>
+        <translation>Filtre d&apos;actions</translation>
     </message>
     <message>
         <source>Filter stocks by fundamentals and technicals</source>
@@ -32901,7 +31550,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Holdings overview with allocation breakdown</source>
-        <translation>Aperçu des positions avec répartition de l'allocation</translation>
+        <translation>Aperçu des positions avec répartition de l&apos;allocation</translation>
     </message>
     <message>
         <source>Risk Metrics</source>
@@ -32921,7 +31570,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Fast order entry for crypto and equities</source>
-        <translation>Saisie rapide d'ordres pour crypto et actions</translation>
+        <translation>Saisie rapide d&apos;ordres pour crypto et actions</translation>
     </message>
     <message>
         <source>Open Positions</source>
@@ -32929,7 +31578,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Live open positions for a broker account — pick via gear icon</source>
-        <translation>Positions ouvertes en direct d'un compte courtier — sélection via l'icône d'engrenage</translation>
+        <translation>Positions ouvertes en direct d&apos;un compte courtier — sélection via l&apos;icône d&apos;engrenage</translation>
     </message>
     <message>
         <source>Working Orders</source>
@@ -32937,7 +31586,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Pending/working orders for a broker account — click × to cancel</source>
-        <translation>Ordres en attente/en cours d'un compte courtier — cliquez sur × pour annuler</translation>
+        <translation>Ordres en attente/en cours d&apos;un compte courtier — cliquez sur × pour annuler</translation>
     </message>
     <message>
         <source>Margin Usage</source>
@@ -32945,7 +31594,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Broker account funds — available, used margin, total, usage %</source>
-        <translation>Fonds du compte courtier — disponible, marge utilisée, total, % d'utilisation</translation>
+        <translation>Fonds du compte courtier — disponible, marge utilisée, total, % d&apos;utilisation</translation>
     </message>
     <message>
         <source>Today P&amp;L</source>
@@ -32989,7 +31638,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Configurable live quote list — pick symbols via gear icon</source>
-        <translation>Liste de cotations en direct configurable — sélection des symboles via l'icône d'engrenage</translation>
+        <translation>Liste de cotations en direct configurable — sélection des symboles via l&apos;icône d&apos;engrenage</translation>
     </message>
     <message>
         <source>Crypto Ticker</source>
@@ -33000,20 +31649,32 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
         <translation>Bandeau de ticker Kraken / HyperLiquid en direct — liste de paires configurable</translation>
     </message>
     <message>
+        <source>Dinero Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Dinero chain stats + a GET DINERO download button (read-only, no trading)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Polymarket</source>
         <translation>Polymarket</translation>
     </message>
     <message>
         <source>Live prediction-market prices — configurable asset list</source>
-        <translation>Prix de marché prédictif en direct — liste d'actifs configurable</translation>
+        <translation>Prix de marché prédictif en direct — liste d&apos;actifs configurable</translation>
     </message>
     <message>
         <source>Agent Errors</source>
-        <translation>Erreurs d'agent</translation>
+        <translation>Erreurs d&apos;agent</translation>
     </message>
     <message>
         <source>Recent agent execution failures — subscribes to agent:error:*</source>
-        <translation>Échecs récents d'exécution d'agent — s'abonne à agent:error:*</translation>
+        <translation>Échecs récents d&apos;exécution d&apos;agent — s&apos;abonne à agent:error:*</translation>
     </message>
     <message>
         <source>Sparklines</source>
@@ -33021,7 +31682,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Configurable sparkline strip — subscribes to market:sparkline:*</source>
-        <translation>Bandeau de sparklines configurable — s'abonne à market:sparkline:*</translation>
+        <translation>Bandeau de sparklines configurable — s&apos;abonne à market:sparkline:*</translation>
     </message>
     <message>
         <source>Trade Tape</source>
@@ -33037,7 +31698,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Category-filtered news headlines — news:category:&lt;category&gt;</source>
-        <translation>Titres d'actualité filtrés par catégorie — news:category:&lt;category&gt;</translation>
+        <translation>Titres d&apos;actualité filtrés par catégorie — news:category:&lt;category&gt;</translation>
     </message>
     <message>
         <source>Web Scraper</source>
@@ -33045,7 +31706,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Scrape tables from any URL — auto-detects HTML, JSON, CSV, XML/RSS</source>
-        <translation>Extraire des tableaux de n'importe quelle URL — détecte HTML, JSON, CSV, XML/RSS automatiquement</translation>
+        <translation>Extraire des tableaux de n&apos;importe quelle URL — détecte HTML, JSON, CSV, XML/RSS automatiquement</translation>
     </message>
     <message>
         <source>Geopolitics Events</source>
@@ -33057,7 +31718,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Live conflict / political events — subscribes to geopolitics:events</source>
-        <translation>Événements de conflit / politiques en direct — s'abonne à geopolitics:events</translation>
+        <translation>Événements de conflit / politiques en direct — s&apos;abonne à geopolitics:events</translation>
     </message>
     <message>
         <source>Maritime Vessels</source>
@@ -33065,7 +31726,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Live vessel positions — configurable IMO list, subscribes to maritime:vessel:*</source>
-        <translation>Positions de navires en direct — liste IMO configurable, s'abonne à maritime:vessel:*</translation>
+        <translation>Positions de navires en direct — liste IMO configurable, s&apos;abonne à maritime:vessel:*</translation>
     </message>
     <message>
         <source>Notes</source>
@@ -33073,7 +31734,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Recent / favorite financial notes — click to open Notes screen</source>
-        <translation>Notes financières récentes / favorites — cliquez pour ouvrir l'écran Notes</translation>
+        <translation>Notes financières récentes / favorites — cliquez pour ouvrir l&apos;écran Notes</translation>
     </message>
     <message>
         <source>Candle Chart</source>
@@ -33081,7 +31742,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>Candlestick chart for a single ticker — set symbol via gear icon</source>
-        <translation>Graphique en chandeliers pour un seul symbole — définissez le symbole via l'icône d'engrenage</translation>
+        <translation>Graphique en chandeliers pour un seul symbole — définissez le symbole via l&apos;icône d&apos;engrenage</translation>
     </message>
 </context>
 <context>
@@ -33112,7 +31773,7 @@ Essayez un autre code pays ou vérifiez que l'indicateur est disponible</transla
     </message>
     <message>
         <source>EXECUTION LOG</source>
-        <translation>JOURNAL D'EXÉCUTION</translation>
+        <translation>JOURNAL D&apos;EXÉCUTION</translation>
     </message>
     <message>
         <source>RESULT</source>
@@ -33358,13 +32019,13 @@ Trade Statistics nécessite WTO_API_KEY (Ocp-Apim-Subscription-Key)</translation
 Set WTO_API_KEY environment variable
 (Ocp-Apim-Subscription-Key from developer.wto.org)</source>
         <translation>WTO API key non configurée.
-Définissez la variable d'environnement WTO_API_KEY
+Définissez la variable d&apos;environnement WTO_API_KEY
 (Ocp-Apim-Subscription-Key de developer.wto.org)</translation>
     </message>
     <message>
         <source>No data returned — check reporter code or years range
 Also verify WTO_API_KEY is set correctly</source>
-        <translation>Aucune donnée renvoyée — vérifiez le code du déclarant ou la plage d'années
+        <translation>Aucune donnée renvoyée — vérifiez le code du déclarant ou la plage d&apos;années
 Vérifiez aussi que WTO_API_KEY est correctement définie</translation>
     </message>
     <message>
@@ -33400,11 +32061,11 @@ Vérifiez aussi que WTO_API_KEY est correctement définie</translation>
     </message>
     <message>
         <source>Agent action</source>
-        <translation>Action de l'agent</translation>
+        <translation>Action de l&apos;agent</translation>
     </message>
     <message>
         <source>Action for agent %1?</source>
-        <translation>Action pour l'agent %1 ?</translation>
+        <translation>Action pour l&apos;agent %1 ?</translation>
     </message>
     <message>
         <source>Select at least one instrument.</source>
@@ -33415,22 +32076,22 @@ Vérifiez aussi que WTO_API_KEY est correctement définie</translation>
         <translation>Sélectionnez au moins un modèle.</translation>
     </message>
     <message>
-        <source>Close every agent's positions and stop the competition?
+        <source>Close every agent&apos;s positions and stop the competition?
 This cannot be undone.</source>
         <translation>Clôturer toutes les positions de chaque agent et arrêter la compétition ?
 Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Create a competition first, then engage live mode.</source>
-        <translation>Créez d'abord une compétition, puis activez le mode live.</translation>
+        <translation>Créez d&apos;abord une compétition, puis activez le mode live.</translation>
     </message>
     <message>
         <source>Live mode is not available in this build — the Hyperliquid signer (secp256k1 + keccak256) failed to initialise. Check the build log.</source>
-        <translation>Le mode live n'est pas disponible dans cette build — le signataire Hyperliquid (secp256k1 + keccak256) n'a pas pu s'initialiser. Consultez le journal de build.</translation>
+        <translation>Le mode live n&apos;est pas disponible dans cette build — le signataire Hyperliquid (secp256k1 + keccak256) n&apos;a pas pu s&apos;initialiser. Consultez le journal de build.</translation>
     </message>
     <message>
         <source>Live mode is unavailable in your jurisdiction.</source>
-        <translation>Le mode live n'est pas disponible dans votre juridiction.</translation>
+        <translation>Le mode live n&apos;est pas disponible dans votre juridiction.</translation>
     </message>
     <message>
         <source>Alpha Arena — Crash Recovery</source>
@@ -33442,7 +32103,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>⚠ LIVE MODE — orders are sent to Hyperliquid with real funds. Past performance ≠ future results. Not financial advice.</source>
-        <translation>⚠ MODE LIVE — les ordres sont envoyés à Hyperliquid avec des fonds réels. Les performances passées ≠ résultats futurs. Ceci n'est pas un conseil financier.</translation>
+        <translation>⚠ MODE LIVE — les ordres sont envoyés à Hyperliquid avec des fonds réels. Les performances passées ≠ résultats futurs. Ceci n&apos;est pas un conseil financier.</translation>
     </message>
     <message>
         <source>ALPHA ARENA</source>
@@ -33573,7 +32234,7 @@ Cette action est irréversible.</translation>
     <name>openmarketterminal::screens::alpha_arena::AuditPanel</name>
     <message>
         <source>AUDIT LOG</source>
-        <translation>JOURNAL D'AUDIT</translation>
+        <translation>JOURNAL D&apos;AUDIT</translation>
     </message>
 </context>
 <context>
@@ -33638,7 +32299,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>&lt;b&gt;You are about to enable live trading.&lt;/b&gt;&lt;br&gt;Orders below will be sent to Hyperliquid using a real agent wallet and may incur real losses. There is &lt;b&gt;no undo&lt;/b&gt;.&lt;br&gt;&lt;br&gt;Read every line of the next four prompts carefully.</source>
-        <translation>&lt;b&gt;Vous êtes sur le point d'activer le trading en direct.&lt;/b&gt;&lt;br&gt;Les ordres ci-dessous seront envoyés à Hyperliquid via un portefeuille d'agent réel et peuvent entraîner des pertes réelles. &lt;b&gt;Aucune annulation possible&lt;/b&gt;.&lt;br&gt;&lt;br&gt;Lisez attentivement chaque ligne des quatre invites suivantes.</translation>
+        <translation>&lt;b&gt;Vous êtes sur le point d&apos;activer le trading en direct.&lt;/b&gt;&lt;br&gt;Les ordres ci-dessous seront envoyés à Hyperliquid via un portefeuille d&apos;agent réel et peuvent entraîner des pertes réelles. &lt;b&gt;Aucune annulation possible&lt;/b&gt;.&lt;br&gt;&lt;br&gt;Lisez attentivement chaque ligne des quatre invites suivantes.</translation>
     </message>
     <message>
         <source>Type the phrase &lt;b&gt;exactly&lt;/b&gt;: %1</source>
@@ -33646,7 +32307,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>I am at least 18 years old.</source>
-        <translation>J'ai au moins 18 ans.</translation>
+        <translation>J&apos;ai au moins 18 ans.</translation>
     </message>
     <message>
         <source>I am NOT a resident or located in the United States, North Korea, Iran, or any other sanctioned jurisdiction.</source>
@@ -33654,7 +32315,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Agent wallet private key (separate from any master wallet — 0x-prefixed 32-byte hex):</source>
-        <translation>Clé privée du portefeuille d'agent (distincte de tout portefeuille maître — hex de 32 octets préfixé 0x) :</translation>
+        <translation>Clé privée du portefeuille d&apos;agent (distincte de tout portefeuille maître — hex de 32 octets préfixé 0x) :</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -33686,7 +32347,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Failed to store key: %1</source>
-        <translation>Échec de l'enregistrement de la clé : %1</translation>
+        <translation>Échec de l&apos;enregistrement de la clé : %1</translation>
     </message>
 </context>
 <context>
@@ -33717,7 +32378,7 @@ Parse error: %3</source>
 Verdicts de risque :
 %2
 
-Erreur d'analyse : %3</translation>
+Erreur d&apos;analyse : %3</translation>
     </message>
     <message>
         <source>(none)</source>
@@ -33783,7 +32444,7 @@ Erreur d'analyse : %3</translation>
     </message>
     <message>
         <source>PARSE FAILS</source>
-        <translation>ÉCHECS D'ANALYSE</translation>
+        <translation>ÉCHECS D&apos;ANALYSE</translation>
     </message>
     <message>
         <source>RISK REJECTS</source>
@@ -33796,6 +32457,101 @@ Erreur d'analyse : %3</translation>
     <message>
         <source>AVG LEV</source>
         <translation>LEV MOY</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::common::PaperBlotterPanel</name>
+    <message>
+        <source>No open paper positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SQUARE OFF ALL</source>
+        <translation type="unfinished">TOUT SOLDER</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">Compte</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">Symbole</translation>
+    </message>
+    <message>
+        <source>Product</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">Sens</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">Qty</translation>
+    </message>
+    <message>
+        <source>Avg</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LTP</source>
+        <translation type="unfinished">LTP</translation>
+    </message>
+    <message>
+        <source>P&amp;L</source>
+        <translation type="unfinished">P&amp;L</translation>
+    </message>
+    <message>
+        <source>P&amp;L %</source>
+        <translation type="unfinished">P&amp;L %</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">Type</translation>
+    </message>
+    <message>
+        <source>Price</source>
+        <translation type="unfinished">Prix</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">Heure</translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished">Positions</translation>
+    </message>
+    <message>
+        <source>Orders</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trades</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">Sortie</translation>
+    </message>
+    <message>
+        <source>%1 open · unrealized %2%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT</source>
+        <translation type="unfinished">MKT</translation>
+    </message>
+    <message>
+        <source>Square off all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close all %1 open paper position(s) at market?</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -33914,7 +32670,7 @@ Erreur d'analyse : %3</translation>
     </message>
     <message>
         <source>No trade history yet.</source>
-        <translation>Aucun historique de trades pour l'instant.</translation>
+        <translation>Aucun historique de trades pour l&apos;instant.</translation>
     </message>
     <message>
         <source>No exchange-side fills.
@@ -33944,7 +32700,7 @@ Connectez une clé API en mode EN DIRECT pour remplir les données.</translation
     </message>
     <message>
         <source>INDEX PRICE</source>
-        <translation>PRIX DE L'INDICE</translation>
+        <translation>PRIX DE L&apos;INDICE</translation>
     </message>
     <message>
         <source>OPEN INTEREST</source>
@@ -34004,7 +32760,7 @@ Are you sure?</source>
     </message>
     <message>
         <source>Cancel order</source>
-        <translation>Annuler l'ordre</translation>
+        <translation>Annuler l&apos;ordre</translation>
     </message>
 </context>
 <context>
@@ -34044,7 +32800,7 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>Enter API secret</source>
-        <translation>Saisir l'API secret</translation>
+        <translation>Saisir l&apos;API secret</translation>
     </message>
     <message>
         <source>PASSPHRASE (OKX/KUCOIN/BITGET/COINBASE)</source>
@@ -34100,7 +32856,7 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>Enter wallet address (0x…)</source>
-        <translation>Saisir l'adresse du portefeuille (0x…)</translation>
+        <translation>Saisir l&apos;adresse du portefeuille (0x…)</translation>
     </message>
     <message>
         <source>PRIVATE KEY</source>
@@ -34112,21 +32868,21 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>Wallet address and private key are required</source>
-        <translation>L'adresse du portefeuille et la clé privée sont requises</translation>
+        <translation>L&apos;adresse du portefeuille et la clé privée sont requises</translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::crypto::CryptoDepthChart</name>
     <message>
         <source>Waiting for order book data...</source>
-        <translation>En attente des données du carnet d'ordres...</translation>
+        <translation>En attente des données du carnet d&apos;ordres...</translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::crypto::CryptoOrderBook</name>
     <message>
         <source>ORDER BOOK</source>
-        <translation>CARNET D'ORDRES</translation>
+        <translation>CARNET D&apos;ORDRES</translation>
     </message>
     <message>
         <source>Book</source>
@@ -34221,7 +32977,7 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     <name>openmarketterminal::screens::crypto::CryptoOrderEntry</name>
     <message>
         <source>ORDER ENTRY</source>
-        <translation>SAISIE D'ORDRE</translation>
+        <translation>SAISIE D&apos;ORDRE</translation>
     </message>
     <message>
         <source>PAPER</source>
@@ -34277,7 +33033,7 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>ORDER VALUE</source>
-        <translation>VALEUR DE L'ORDRE</translation>
+        <translation>VALEUR DE L&apos;ORDRE</translation>
     </message>
     <message>
         <source>FEE EST</source>
@@ -34341,11 +33097,11 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>Submit order  (⌘/Ctrl+Enter)</source>
-        <translation>Soumettre l'ordre  (⌘/Ctrl+Enter)</translation>
+        <translation>Soumettre l&apos;ordre  (⌘/Ctrl+Enter)</translation>
     </message>
     <message>
         <source>Enter a quantity to preview</source>
-        <translation>Saisissez une quantité pour l'aperçu</translation>
+        <translation>Saisissez une quantité pour l&apos;aperçu</translation>
     </message>
     <message>
         <source>SELL  %1</source>
@@ -34354,6 +33110,10 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     <message>
         <source>LIVE</source>
         <translation>EN DIRECT</translation>
+    </message>
+    <message>
+        <source>SENDING…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>⚠ Enter a valid quantity</source>
@@ -34638,7 +33398,7 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>no connections yet</source>
-        <translation>aucune connexion pour l'instant</translation>
+        <translation>aucune connexion pour l&apos;instant</translation>
     </message>
     <message>
         <source>Double-click any row to configure</source>
@@ -34784,14 +33544,14 @@ Les clés sont stockées localement dans un stockage sécurisé chiffré.</trans
     </message>
     <message>
         <source>Could not save the account to the database. Check the application log for details.</source>
-        <translation>Impossible d'enregistrer le compte dans la base de données. Consultez le journal de l'application pour plus de détails.</translation>
+        <translation>Impossible d&apos;enregistrer le compte dans la base de données. Consultez le journal de l&apos;application pour plus de détails.</translation>
     </message>
     <message>
         <source>Remove Account</source>
         <translation>Supprimer le compte</translation>
     </message>
     <message>
-        <source>Are you sure you want to remove "%1"?
+        <source>Are you sure you want to remove &quot;%1&quot;?
 
 This will delete all saved credentials and the linked paper portfolio.
 This action cannot be undone.</source>
@@ -34805,244 +33565,28 @@ Cette action est irréversible.</translation>
         <translation>Connexion...</translation>
     </message>
     <message>
-        <source>Error: %1</source>
-        <translation>Erreur : %1</translation>
-    </message>
-    <message>
-        <source>Connected as %1</source>
-        <translation>Connecté en tant que %1</translation>
-    </message>
-    <message>
-        <source> First-time setup (4 steps)</source>
-        <translation> Configuration initiale (4 étapes)</translation>
-    </message>
-    <message>
-        <source>1. Create a Kite Connect app at &lt;a href='https://developers.kite.trade/apps'&gt;developers.kite.trade/apps&lt;/a&gt;.</source>
-        <translation>1. Créez une application Kite Connect sur &lt;a href='https://developers.kite.trade/apps'&gt;developers.kite.trade/apps&lt;/a&gt;.</translation>
-    </message>
-    <message>
-        <source>2. Register redirect URL &lt;b&gt;http://127.0.0.1:5010/&lt;/b&gt; on that app.</source>
-        <translation>2. Enregistrez l'URL de redirection &lt;b&gt;http://127.0.0.1:5010/&lt;/b&gt; dans cette application.</translation>
-    </message>
-    <message>
-        <source>3. Enable TOTP 2FA on your Zerodha account (&lt;a href='https://support.zerodha.com/category/your-zerodha-account/login-credentials/articles/time-based-otp'&gt;support.zerodha.com&lt;/a&gt;).</source>
-        <translation>3. Activez l'authentification à deux facteurs TOTP sur votre compte Zerodha (&lt;a href='https://support.zerodha.com/category/your-zerodha-account/login-credentials/articles/time-based-otp'&gt;support.zerodha.com&lt;/a&gt;).</translation>
-    </message>
-    <message>
-        <source>4. For auto-login, copy the Base32 TOTP secret during 2FA setup ("Can't scan?" link).</source>
-        <translation>4. Pour la connexion automatique, copiez le secret TOTP Base32 lors de la configuration de la 2FA (lien « Can't scan? »).</translation>
-    </message>
-    <message>
-        <source>Auto-login (TOTP)</source>
-        <translation>Connexion automatique (TOTP)</translation>
-    </message>
-    <message>
-        <source>Browser login</source>
-        <translation>Connexion par navigateur</translation>
-    </message>
-    <message>
-        <source>API KEY</source>
-        <translation>CLÉ API</translation>
-    </message>
-    <message>
-        <source>Enter API Key...</source>
-        <translation>Saisissez la clé API...</translation>
-    </message>
-    <message>
-        <source>from developers.kite.trade -&gt; My Apps</source>
-        <translation>depuis developers.kite.trade -&gt; My Apps</translation>
-    </message>
-    <message>
-        <source>API SECRET</source>
-        <translation>API SECRET</translation>
-    </message>
-    <message>
-        <source>Enter API Secret...</source>
-        <translation>Saisissez le secret API...</translation>
-    </message>
-    <message>
-        <source>same console, shown once - regenerate if lost</source>
-        <translation>même console, affiché une seule fois - régénérez en cas de perte</translation>
-    </message>
-    <message>
-        <source>KITE USER ID</source>
-        <translation>ID UTILISATEUR KITE</translation>
-    </message>
-    <message>
-        <source>e.g. AB1234</source>
-        <translation>p. ex. AB1234</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>MOT DE PASSE</translation>
-    </message>
-    <message>
-        <source>Zerodha login password</source>
-        <translation>Mot de passe de connexion Zerodha</translation>
-    </message>
-    <message>
-        <source>TOTP SECRET</source>
-        <translation>TOTP SECRET</translation>
-    </message>
-    <message>
-        <source>Base32 string</source>
-        <translation>Chaîne Base32</translation>
-    </message>
-    <message>
-        <source>Base32 secret from Zerodha 2FA setup</source>
-        <translation>Secret Base32 issu de la configuration 2FA de Zerodha</translation>
-    </message>
-    <message>
-        <source>Open Kite login in browser</source>
-        <translation>Ouvrir la connexion Kite dans le navigateur</translation>
-    </message>
-    <message>
-        <source>Redirect didn't work? Paste request_token manually</source>
-        <translation>La redirection n'a pas fonctionné ? Collez le request_token manuellement</translation>
-    </message>
-    <message>
-        <source>Paste request_token here</source>
-        <translation>Collez le request_token ici</translation>
-    </message>
-    <message>
-        <source>Connect with pasted token</source>
-        <translation>Se connecter avec le token collé</translation>
-    </message>
-    <message>
-        <source>Missing field: API Key</source>
-        <translation>Champ manquant : API Key</translation>
-    </message>
-    <message>
-        <source>Missing field: API Secret</source>
-        <translation>Champ manquant : API Secret</translation>
-    </message>
-    <message>
-        <source>Missing field: Kite User ID</source>
-        <translation>Champ manquant : Kite User ID</translation>
-    </message>
-    <message>
-        <source>Missing field: Password</source>
-        <translation>Champ manquant : Mot de passe</translation>
-    </message>
-    <message>
-        <source>Missing field: TOTP Secret</source>
-        <translation>Champ manquant : TOTP Secret</translation>
-    </message>
-    <message>
-        <source>Logging in...</source>
-        <translation>Connexion en cours...</translation>
-    </message>
-    <message>
-        <source>Enter API Key and API Secret first</source>
-        <translation>Saisissez d'abord la clé API et le secret API</translation>
-    </message>
-    <message>
-        <source>Port 5010 busy - use manual paste fallback</source>
-        <translation>Port 5010 occupé - utilisez le collage manuel en repli</translation>
-    </message>
-    <message>
-        <source>Exchanging token...</source>
-        <translation>Échange du token...</translation>
-    </message>
-    <message>
-        <source>Browser login timed out - try again or paste manually</source>
-        <translation>Délai de connexion par navigateur dépassé - réessayez ou collez manuellement</translation>
-    </message>
-    <message>
-        <source>Waiting for browser login on port %1 (120s)...</source>
-        <translation>En attente de la connexion par navigateur sur le port %1 (120 s)...</translation>
-    </message>
-    <message>
-        <source>Enter API Key, API Secret, and paste request_token</source>
-        <translation>Saisissez la clé API, le secret API et collez le request_token</translation>
-    </message>
-    <message>
-        <source>Could not find request_token in pasted text</source>
-        <translation>Impossible de trouver le request_token dans le texte collé</translation>
-    </message>
-    <message>
         <source> First-time setup (3 steps)</source>
         <translation> Configuration initiale (3 étapes)</translation>
     </message>
     <message>
-        <source>1. Create an API app at &lt;a href='https://myapi.fyers.in/dashboard/'&gt;myapi.fyers.in/dashboard&lt;/a&gt;.</source>
-        <translation>1. Créez une application API sur &lt;a href='https://myapi.fyers.in/dashboard/'&gt;myapi.fyers.in/dashboard&lt;/a&gt;.</translation>
+        <source>Rename Account</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>2. Set &lt;b&gt;Redirect URL&lt;/b&gt; to &lt;b&gt;http://127.0.0.1:5011/&lt;/b&gt; in app settings.</source>
-        <translation>2. Définissez la &lt;b&gt;Redirect URL&lt;/b&gt; sur &lt;b&gt;http://127.0.0.1:5011/&lt;/b&gt; dans les paramètres de l'application.</translation>
+        <source>Select an account first, then rename it.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>3. Note your &lt;b&gt;Client ID&lt;/b&gt; (e.g. ABCXYZ-100) and &lt;b&gt;Secret Key&lt;/b&gt;.</source>
-        <translation>3. Notez votre &lt;b&gt;Client ID&lt;/b&gt; (p. ex. ABCXYZ-100) et votre &lt;b&gt;Secret Key&lt;/b&gt;.</translation>
+        <source>New account name:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>CLIENT ID</source>
-        <translation>CLIENT ID</translation>
-    </message>
-    <message>
-        <source>e.g. ABCXYZ-100</source>
-        <translation>p. ex. ABCXYZ-100</translation>
-    </message>
-    <message>
-        <source>from myapi.fyers.in -&gt; My Apps</source>
-        <translation>depuis myapi.fyers.in -&gt; My Apps</translation>
-    </message>
-    <message>
-        <source>SECRET KEY</source>
-        <translation>SECRET KEY</translation>
-    </message>
-    <message>
-        <source>Enter Secret Key...</source>
-        <translation>Saisissez la Secret Key...</translation>
-    </message>
-    <message>
-        <source>shown once during app creation - regenerate if lost</source>
-        <translation>affiché une seule fois lors de la création de l'application - régénérez en cas de perte</translation>
-    </message>
-    <message>
-        <source>Open Fyers login in browser</source>
-        <translation>Ouvrir la connexion Fyers dans le navigateur</translation>
-    </message>
-    <message>
-        <source>Redirect didn't work? Paste auth_code manually</source>
-        <translation>La redirection n'a pas fonctionné ? Collez le auth_code manuellement</translation>
-    </message>
-    <message>
-        <source>Paste auth_code or full redirect URL here</source>
-        <translation>Collez le auth_code ou l'URL de redirection complète ici</translation>
-    </message>
-    <message>
-        <source>Connect with pasted auth code</source>
-        <translation>Se connecter avec le auth code collé</translation>
-    </message>
-    <message>
-        <source>Enter Client ID and Secret Key first</source>
-        <translation>Saisissez d'abord le Client ID et la Secret Key</translation>
-    </message>
-    <message>
-        <source>Port 5011 busy — use manual paste fallback below</source>
-        <translation>Port 5011 occupé — utilisez le collage manuel ci-dessous</translation>
-    </message>
-    <message>
-        <source>Exchanging auth code...</source>
-        <translation>Échange du code d'authentification...</translation>
-    </message>
-    <message>
-        <source>Browser login timed out — try again or paste manually</source>
-        <translation>Connexion navigateur expirée — réessayez ou collez manuellement</translation>
-    </message>
-    <message>
-        <source>Enter Client ID, Secret Key, and paste auth code</source>
-        <translation>Saisissez Client ID, Secret Key et collez le code d'authentification</translation>
-    </message>
-    <message>
-        <source>1. Create a free account at &lt;a href='https://app.metaapi.cloud'&gt;app.metaapi.cloud&lt;/a&gt;.</source>
-        <translation>1. Créez un compte gratuit sur &lt;a href='https://app.metaapi.cloud'&gt;app.metaapi.cloud&lt;/a&gt;.</translation>
+        <source>1. Create a free account at &lt;a href=&apos;https://app.metaapi.cloud&apos;&gt;app.metaapi.cloud&lt;/a&gt;.</source>
+        <translation>1. Créez un compte gratuit sur &lt;a href=&apos;https://app.metaapi.cloud&apos;&gt;app.metaapi.cloud&lt;/a&gt;.</translation>
     </message>
     <message>
         <source>2. Generate an auth token from the API Access section.</source>
-        <translation>2. Générez un token d'authentification dans la section API Access.</translation>
+        <translation>2. Générez un token d&apos;authentification dans la section API Access.</translation>
     </message>
     <message>
         <source>3. Enter your MT4 broker account credentials (login, password, server name).</source>
@@ -35054,11 +33598,11 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Enter MetaAPI auth token...</source>
-        <translation>Saisissez le token d'authentification MetaAPI...</translation>
+        <translation>Saisissez le token d&apos;authentification MetaAPI...</translation>
     </message>
     <message>
-        <source>&lt;a href='https://app.metaapi.cloud/api-access/generate-token' style='color:%1;font-size:10px;'&gt;Get Token →&lt;/a&gt;</source>
-        <translation>&lt;a href='https://app.metaapi.cloud/api-access/generate-token' style='color:%1;font-size:10px;'&gt;Obtenir le token →&lt;/a&gt;</translation>
+        <source>&lt;a href=&apos;https://app.metaapi.cloud/api-access/generate-token&apos; style=&apos;color:%1;font-size:10px;&apos;&gt;Get Token →&lt;/a&gt;</source>
+        <translation>&lt;a href=&apos;https://app.metaapi.cloud/api-access/generate-token&apos; style=&apos;color:%1;font-size:10px;&apos;&gt;Obtenir le token →&lt;/a&gt;</translation>
     </message>
     <message>
         <source>MT4 LOGIN</source>
@@ -35133,16 +33677,12 @@ Cette action est irréversible.</translation>
         <translation>Création du pont MT4...</translation>
     </message>
     <message>
-        <source>Connected</source>
-        <translation>Connecté</translation>
-    </message>
-    <message>
         <source>Auto — execute immediately</source>
         <translation>Auto — exécuter immédiatement</translation>
     </message>
     <message>
         <source>Order Approval:</source>
-        <translation>Approbation de l'ordre :</translation>
+        <translation>Approbation de l&apos;ordre :</translation>
     </message>
     <message>
         <source>Semi-Auto — require approval</source>
@@ -35153,11 +33693,11 @@ Cette action est irréversible.</translation>
     <name>openmarketterminal::screens::equity::BroadcastOrderDialog</name>
     <message>
         <source>Broadcast Order</source>
-        <translation>Diffuser l'ordre</translation>
+        <translation>Diffuser l&apos;ordre</translation>
     </message>
     <message>
         <source>BROADCAST ORDER</source>
-        <translation>DIFFUSER L'ORDRE</translation>
+        <translation>DIFFUSER L&apos;ORDRE</translation>
     </message>
     <message>
         <source>BUY</source>
@@ -35197,7 +33737,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Placing order across %1 account(s)...</source>
-        <translation>Passage de l'ordre sur %1 compte(s)...</translation>
+        <translation>Passage de l&apos;ordre sur %1 compte(s)...</translation>
     </message>
     <message>
         <source>All %1 orders placed successfully</source>
@@ -35217,11 +33757,11 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>%1 order(s) queued for approval</source>
-        <translation>%1 ordre(s) en file d'attente pour approbation</translation>
+        <translation>%1 ordre(s) en file d&apos;attente pour approbation</translation>
     </message>
     <message>
         <source>Placing %1 order(s); %2 queued for approval...</source>
-        <translation>Passage de %1 ordre(s) ; %2 en file d'attente pour approbation...</translation>
+        <translation>Passage de %1 ordre(s) ; %2 en file d&apos;attente pour approbation...</translation>
     </message>
 </context>
 <context>
@@ -35275,6 +33815,10 @@ Cette action est irréversible.</translation>
         <translation>Qty</translation>
     </message>
     <message>
+        <source>Product</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Avg Price</source>
         <translation>Prix moyen</translation>
     </message>
@@ -35300,7 +33844,7 @@ Cette action est irréversible.</translation>
     </message>
     <message>
         <source>Order ID</source>
-        <translation>ID d'ordre</translation>
+        <translation>ID d&apos;ordre</translation>
     </message>
     <message>
         <source>Type</source>
@@ -35319,8 +33863,156 @@ Cette action est irréversible.</translation>
         <translation>Heure</translation>
     </message>
     <message>
+        <source>AVAILABLE BALANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USED MARGIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOTAL EQUITY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REALIZED P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UNREALIZED P&amp;L</source>
+        <translation type="unfinished">P&amp;L NON RÉALISÉ</translation>
+    </message>
+    <message>
+        <source>HOLDINGS VALUE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPENING BALANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MARGIN USED %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COLLATERAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NET P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TODAY&apos;S P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WIN RATE</source>
+        <translation type="unfinished">TAUX DE RÉUSSITE</translation>
+    </message>
+    <message>
+        <source>PROFIT FACTOR</source>
+        <translation type="unfinished">FACTEUR DE PROFIT</translation>
+    </message>
+    <message>
+        <source>TOTAL TRADES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AVG WIN</source>
+        <translation type="unfinished">GAIN MOYEN</translation>
+    </message>
+    <message>
+        <source>AVG LOSS</source>
+        <translation type="unfinished">PERTE MOYENNE</translation>
+    </message>
+    <message>
+        <source>TURNOVER</source>
+        <translation type="unfinished">ROTATION</translation>
+    </message>
+    <message>
+        <source>LARGEST WIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LARGEST LOSS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOTAL CHARGES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total P&amp;L  --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off all winning positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Winning Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will close ALL positions currently in profit.
+
+Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off all losing positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Losing Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will close ALL positions currently in loss.
+
+Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total P&amp;L  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT</source>
+        <translation type="unfinished">MKT</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Sell / exit %1 — opens an order ticket pre-filled with the held quantity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>→ CNC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert to CNC delivery (carry overnight, locks full cash)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off %1 — sells the full holding at market</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Action</source>
         <translation>Action</translation>
+    </message>
+    <message>
+        <source>Collapse panel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expand panel</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Date</source>
@@ -35387,42 +34079,6 @@ Cette action est irréversible.</translation>
         <translation>RENDEMENT %</translation>
     </message>
     <message>
-        <source>Available Balance</source>
-        <translation>Solde disponible</translation>
-    </message>
-    <message>
-        <source>Used Margin</source>
-        <translation>Marge utilisée</translation>
-    </message>
-    <message>
-        <source>Total Balance</source>
-        <translation>Solde total</translation>
-    </message>
-    <message>
-        <source>Collateral</source>
-        <translation>Garantie</translation>
-    </message>
-    <message>
-        <source>Total P&amp;L</source>
-        <translation>P&amp;L total</translation>
-    </message>
-    <message>
-        <source>Win Rate</source>
-        <translation>Taux de réussite</translation>
-    </message>
-    <message>
-        <source>Total Trades</source>
-        <translation>Total des transactions</translation>
-    </message>
-    <message>
-        <source>Largest Win</source>
-        <translation>Gain le plus élevé</translation>
-    </message>
-    <message>
-        <source>Largest Loss</source>
-        <translation>Perte la plus élevée</translation>
-    </message>
-    <message>
         <source>Square Off All Positions</source>
         <translation>Solder toutes les positions</translation>
     </message>
@@ -35433,6 +34089,32 @@ Are you sure?</source>
         <translation>Cela fermera TOUTES les positions ouvertes.
 
 Êtes-vous sûr ?</translation>
+    </message>
+    <message>
+        <source>Buy / Add  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell / Reduce  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REPLICATE → PAPER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off All Holdings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will place MARKET SELL orders to exit ALL %1 holding(s).
+
+Positions are NOT affected. Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DATE</source>
+        <translation type="unfinished">DATE</translation>
     </message>
     <message>
         <source>Cancel All Orders</source>
@@ -35447,16 +34129,12 @@ Are you sure?</source>
 Êtes-vous sûr ?</translation>
     </message>
     <message>
-        <source>--- RECENT TRADES ---</source>
-        <translation>--- TRANSACTIONS RÉCENTES ---</translation>
-    </message>
-    <message>
         <source>EDIT</source>
         <translation>MODIFIER</translation>
     </message>
     <message>
         <source>Modify Order</source>
-        <translation>Modifier l'ordre</translation>
+        <translation>Modifier l&apos;ordre</translation>
     </message>
     <message>
         <source>QTY</source>
@@ -35509,6 +34187,41 @@ Are you sure?</source>
         <source>CHART</source>
         <translation>GRAPHIQUE</translation>
     </message>
+    <message>
+        <source>Buy @ %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell @ %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::equity::EquityChartPanel</name>
+    <message>
+        <source>EXIT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SHORT</source>
+        <translation type="unfinished">VENTE À DÉCOUVERT</translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::screens::equity::EquityOrderBook</name>
@@ -35517,12 +34230,31 @@ Are you sure?</source>
         <translation>PROFONDEUR DE MARCHÉ</translation>
     </message>
     <message>
-        <source>Spread: --</source>
-        <translation>Spread : --</translation>
+        <source>L1 · synthetic</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Spread: %1 (%2%)</source>
-        <translation>Spread : %1 (%2%)</translation>
+        <source>L2 · %1×%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1  %2
+Size  %3
+Cumulative  %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASK</source>
+        <translation type="unfinished">VENTE</translation>
+    </message>
+    <message>
+        <source>BID</source>
+        <translation type="unfinished">ACHAT</translation>
+    </message>
+    <message>
+        <source>
+Orders  %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No depth data</source>
@@ -35533,19 +34265,27 @@ Are you sure?</source>
         <translation>PRIX</translation>
     </message>
     <message>
-        <source>QTY</source>
-        <translation>QTY</translation>
+        <source>SIZE</source>
+        <translation type="unfinished">TAILLE</translation>
     </message>
     <message>
-        <source>ORDERS</source>
-        <translation>ORDRES</translation>
+        <source>TOTAL</source>
+        <translation type="unfinished">TOTAL</translation>
+    </message>
+    <message>
+        <source>SPREAD</source>
+        <translation type="unfinished">SPREAD</translation>
+    </message>
+    <message>
+        <source>%1% %2</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::equity::EquityOrderEntry</name>
     <message>
         <source>ORDER ENTRY</source>
-        <translation>SAISIE D'ORDRE</translation>
+        <translation>SAISIE D&apos;ORDRE</translation>
     </message>
     <message>
         <source>PAPER</source>
@@ -35576,28 +34316,32 @@ Are you sure?</source>
         <translation>SL-L</translation>
     </message>
     <message>
+        <source>LTP --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bal --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>PRODUCT</source>
         <translation>PRODUIT</translation>
-    </message>
-    <message>
-        <source>Intraday (MIS)</source>
-        <translation>Intraday (MIS)</translation>
-    </message>
-    <message>
-        <source>Delivery (CNC)</source>
-        <translation>Livraison (CNC)</translation>
-    </message>
-    <message>
-        <source>Margin (NRML)</source>
-        <translation>Marge (NRML)</translation>
     </message>
     <message>
         <source>EXCHANGE</source>
         <translation>BOURSE</translation>
     </message>
     <message>
-        <source>MKT: --</source>
-        <translation>MKT : --</translation>
+        <source>Intraday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delivery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Margin</source>
+        <translation type="unfinished">Marge</translation>
     </message>
     <message>
         <source>QTY</source>
@@ -35641,7 +34385,7 @@ Are you sure?</source>
     </message>
     <message>
         <source>+ OPTIONS STRATEGY</source>
-        <translation>+ STRATÉGIE D'OPTIONS</translation>
+        <translation>+ STRATÉGIE D&apos;OPTIONS</translation>
     </message>
     <message>
         <source>STRATEGY</source>
@@ -35713,7 +34457,7 @@ Are you sure?</source>
     </message>
     <message>
         <source>- OPTIONS STRATEGY</source>
-        <translation>- STRATÉGIE D'OPTIONS</translation>
+        <translation>- STRATÉGIE D&apos;OPTIONS</translation>
     </message>
     <message>
         <source>Est: --</source>
@@ -35744,8 +34488,12 @@ Are you sure?</source>
         <translation>VENDRE %1</translation>
     </message>
     <message>
-        <source>MKT: %1%2</source>
-        <translation>MKT : %1%2</translation>
+        <source>Bal %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LTP %1%2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LIVE</source>
@@ -35756,12 +34504,8 @@ Are you sure?</source>
         <translation>Est : %1%2</translation>
     </message>
     <message>
-        <source>Margin: %1%2</source>
-        <translation>Marge : %1%2</translation>
-    </message>
-    <message>
         <source>Enter expiry, ATM strike (and width where required).</source>
-        <translation>Saisissez l'échéance, le strike ATM (et la largeur si nécessaire).</translation>
+        <translation>Saisissez l&apos;échéance, le strike ATM (et la largeur si nécessaire).</translation>
     </message>
     <message>
         <source>Select a strategy and enter valid expiry / strike / width</source>
@@ -35779,6 +34523,14 @@ Are you sure?</source>
         <translation>Filtrer...</translation>
     </message>
     <message>
+        <source>Active watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New / Rename / Delete watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add symbol...</source>
         <translation>Ajouter un symbole…</translation>
     </message>
@@ -35794,1456 +34546,41 @@ Are you sure?</source>
         <source>CHG%</source>
         <translation>CHG%</translation>
     </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::BuilderAnalyticsRibbon</name>
     <message>
-        <source>Premium</source>
-        <translation>Prime</translation>
+        <source>New watchlist…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Max Profit</source>
-        <translation>Gain Max.</translation>
+        <source>Rename…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Max Loss</source>
-        <translation>Perte Max.</translation>
+        <source>Delete</source>
+        <translation type="unfinished">Supprimer</translation>
     </message>
     <message>
-        <source>Breakevens</source>
-        <translation>Seuils de Rentabilité</translation>
+        <source>New Watchlist</source>
+        <translation type="unfinished">Nouvelle liste</translation>
     </message>
     <message>
-        <source>POP</source>
-        <translation>POP</translation>
+        <source>Name:</source>
+        <translation type="unfinished">Nom :</translation>
     </message>
     <message>
-        <source>Delta</source>
-        <translation>Delta</translation>
+        <source>Rename Watchlist</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Gamma</source>
-        <translation>Gamma</translation>
+        <source>Delete Watchlist</source>
+        <translation type="unfinished">Supprimer la liste</translation>
     </message>
     <message>
-        <source>Theta</source>
-        <translation>Theta</translation>
+        <source>Delete &quot;%1&quot;?</source>
+        <translation type="unfinished">Supprimer « %1 » ?</translation>
     </message>
     <message>
-        <source>Vega</source>
-        <translation>Vega</translation>
-    </message>
-    <message>
-        <source>Margin</source>
-        <translation>Marge</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::BuilderSubTab</name>
-    <message>
-        <source>SAVE</source>
-        <translation>ENREGISTRER</translation>
-    </message>
-    <message>
-        <source>LOAD</source>
-        <translation>CHARGER</translation>
-    </message>
-    <message>
-        <source>TARGET +</source>
-        <translation>CIBLE +</translation>
-    </message>
-    <message>
-        <source>Days from today for the dashed target-day P/L curve. 0 = T+0.</source>
-        <translation>Jours à partir d'aujourd'hui pour la courbe de P/P du jour cible (pointillés). 0 = T+0.</translation>
-    </message>
-    <message>
-        <source>PCR</source>
-        <translation>PCR</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>TRADE ALL (PAPER)</source>
-        <translation>TOUT TRADER (PAPIER)</translation>
-    </message>
-    <message>
-        <source>Build a strategy first — Trade All needs at least one active leg.</source>
-        <translation>Créez d'abord une stratégie — Tout Trader nécessite au moins une jambe active.</translation>
-    </message>
-    <message>
-        <source>No chain yet</source>
-        <translation>Pas encore de chaîne</translation>
-    </message>
-    <message>
-        <source>Open the Chain tab first so a chain snapshot is loaded.</source>
-        <translation>Ouvrez d'abord l'onglet Chaîne pour charger un instantané de la chaîne.</translation>
-    </message>
-    <message>
-        <source>Could not build strategy</source>
-        <translation>Impossible de créer la stratégie</translation>
-    </message>
-    <message>
-        <source>Custom</source>
-        <translation>Personnalisé</translation>
-    </message>
-    <message>
-        <source>Place all active legs as paper orders.</source>
-        <translation>Placer toutes les jambes actives en tant qu'ordres papier.</translation>
-    </message>
-    <message>
-        <source>Placed %1 paper orders for %2 (%3).</source>
-        <translation>%1 ordres papier placés pour %2 (%3).</translation>
-    </message>
-    <message>
-        <source>Placed %1 of %2 paper orders. %3 failed:
-%4</source>
-        <translation>%1 ordres papier sur %2 placés. %3 ont échoué :
-%4</translation>
-    </message>
-    <message>
-        <source>Paper orders dispatched</source>
-        <translation>Ordres papier envoyés</translation>
-    </message>
-    <message>
-        <source>Nothing to save</source>
-        <translation>Rien à enregistrer</translation>
-    </message>
-    <message>
-        <source>Build a strategy first.</source>
-        <translation>Créez d'abord une stratégie.</translation>
-    </message>
-    <message>
-        <source>Save failed</source>
-        <translation>Échec de l'enregistrement</translation>
-    </message>
-    <message>
-        <source>Save strategy</source>
-        <translation>Enregistrer la stratégie</translation>
-    </message>
-    <message>
-        <source>Name</source>
-        <translation>Nom</translation>
-    </message>
-    <message>
-        <source>My strategy</source>
-        <translation>Ma stratégie</translation>
-    </message>
-    <message>
-        <source>(no saved strategies)</source>
-        <translation>(aucune stratégie enregistrée)</translation>
-    </message>
-    <message>
-        <source>Load failed</source>
-        <translation>Échec du chargement</translation>
-    </message>
-    <message>
-        <source>Delete: %1</source>
-        <translation>Supprimer : %1</translation>
-    </message>
-    <message>
-        <source>Delete saved strategy</source>
-        <translation>Supprimer la stratégie enregistrée</translation>
-    </message>
-    <message>
-        <source>Delete '%1'? This can't be undone.</source>
-        <translation>Supprimer « %1 » ? Cette action est irréversible.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::ChainSubTab</name>
-    <message>
-        <source>Connect a broker to load F&amp;O data.</source>
-        <translation>Connectez un courtier pour charger les données F&amp;O.</translation>
-    </message>
-    <message>
-        <source>Failed to load %1 instruments: %2</source>
-        <translation>Échec du chargement de %1 instruments : %2</translation>
-    </message>
-    <message>
-        <source>No broker accounts or data sources configured.</source>
-        <translation>Aucun compte de courtier ni source de données configuré.</translation>
-    </message>
-    <message>
-        <source>Select a broker.</source>
-        <translation>Sélectionnez un courtier.</translation>
-    </message>
-    <message>
-        <source>Databento selected — enter your API key in Settings &gt; Credentials to load US options data.</source>
-        <translation>Databento sélectionné — saisissez votre clé API dans Paramètres &gt; Identifiants pour charger les données d'options américaines.</translation>
-    </message>
-    <message>
-        <source>Databento configuration error.</source>
-        <translation>Erreur de configuration Databento.</translation>
-    </message>
-    <message>
-        <source>Loading %1 instruments...</source>
-        <translation>Chargement de %1 instruments…</translation>
-    </message>
-    <message>
-        <source>No account configured for %1. Connect one in Equity Trading.</source>
-        <translation>Aucun compte configuré pour %1. Connectez-en un dans Trading d'Actions.</translation>
-    </message>
-    <message>
-        <source>Downloading %1 instruments from broker...</source>
-        <translation>Téléchargement de %1 instruments depuis le courtier…</translation>
-    </message>
-    <message>
-        <source>No NFO instruments cached for %1.</source>
-        <translation>Aucun instrument NFO en cache pour %1.</translation>
-    </message>
-    <message>
-        <source>Loading expiries for %1 from Databento...</source>
-        <translation>Chargement des échéances pour %1 depuis Databento…</translation>
-    </message>
-    <message>
-        <source>No expiries found for %1. Check Databento API key and OPRA access.</source>
-        <translation>Aucune échéance trouvée pour %1. Vérifiez la clé API Databento et l'accès OPRA.</translation>
-    </message>
-    <message>
-        <source>No expiries cached for %1.</source>
-        <translation>Aucune échéance en cache pour %1.</translation>
-    </message>
-    <message>
-        <source>Pick a broker, underlying, and expiry.</source>
-        <translation>Choisissez un courtier, un sous-jacent et une échéance.</translation>
-    </message>
-    <message>
-        <source>Chain unavailable: %1</source>
-        <translation>Chaîne indisponible : %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FiiDiiChart</name>
-    <message>
-        <source>Daily Net Flows (₹ Cr)</source>
-        <translation>Flux nets quotidiens (₹ Cr)</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FiiDiiSubTab</name>
-    <message>
-        <source>FII / DII flows — fetching…</source>
-        <translation>Flux FII / DII — récupération…</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>ACTUALISER</translation>
-    </message>
-    <message>
-        <source>Date</source>
-        <translation>Date</translation>
-    </message>
-    <message>
-        <source>FII Buy</source>
-        <translation>Achat FII</translation>
-    </message>
-    <message>
-        <source>FII Sell</source>
-        <translation>Vente FII</translation>
-    </message>
-    <message>
-        <source>FII Net</source>
-        <translation>Net FII</translation>
-    </message>
-    <message>
-        <source>DII Buy</source>
-        <translation>Achat DII</translation>
-    </message>
-    <message>
-        <source>DII Sell</source>
-        <translation>Vente DII</translation>
-    </message>
-    <message>
-        <source>DII Net</source>
-        <translation>Net DII</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — error: %1</source>
-        <translation>Flux FII / DII — erreur : %1</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — refreshing…</source>
-        <translation>Flux FII / DII — actualisation…</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — no data yet. Try refreshing after 6 PM IST.</source>
-        <translation>Flux FII / DII — pas encore de données. Réessayez d'actualiser après 18 h IST.</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — last update: %1   ·   %2 days cached</source>
-        <translation>Flux FII / DII — dernière mise à jour : %1   ·   %2 jours en cache</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FnoHeaderBar</name>
-    <message>
-        <source>REFRESH</source>
-        <translation>ACTUALISER</translation>
-    </message>
-    <message>
-        <source>Broker:</source>
-        <translation>Courtier :</translation>
-    </message>
-    <message>
-        <source>Underlying:</source>
-        <translation>Sous-jacent :</translation>
-    </message>
-    <message>
-        <source>Expiry:</source>
-        <translation>Échéance :</translation>
-    </message>
-    <message>
-        <source>Spot</source>
-        <translation>Au comptant</translation>
-    </message>
-    <message>
-        <source>Day Change</source>
-        <translation>Variation du Jour</translation>
-    </message>
-    <message>
-        <source>ATM</source>
-        <translation>ATM</translation>
-    </message>
-    <message>
-        <source>PCR</source>
-        <translation>PCR</translation>
-    </message>
-    <message>
-        <source>Max Pain</source>
-        <translation>Max Pain</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>IV Pctile</source>
-        <translation>Centile IV</translation>
-    </message>
-    <message>
-        <source>Current ATM IV %1 ranks at %2th percentile of %3 days of history.</source>
-        <translation>L'IV ATM actuelle %1 se situe au %2e centile sur %3 jours d'historique.</translation>
-    </message>
-    <message>
-        <source>Needs ≥30 days of data — have %1.</source>
-        <translation>Nécessite ≥30 jours de données — disponibles %1.</translation>
-    </message>
-    <message>
-        <source>Updated %1</source>
-        <translation>Mis à jour %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FnoScreen</name>
-    <message>
-        <source>Chain</source>
-        <translation>Chaîne</translation>
-    </message>
-    <message>
-        <source>Builder</source>
-        <translation>Constructeur</translation>
-    </message>
-    <message>
-        <source>OI</source>
-        <translation>OI</translation>
-    </message>
-    <message>
-        <source>Multi-Stra</source>
-        <translation>Multi-Stra</translation>
-    </message>
-    <message>
-        <source>FII / DII</source>
-        <translation>FII / DII</translation>
-    </message>
-    <message>
-        <source>Screener</source>
-        <translation>Screener</translation>
-    </message>
-    <message>
-        <source>Live option chain (Phase 2)</source>
-        <translation>Chaîne d'options en direct (Phase 2)</translation>
-    </message>
-    <message>
-        <source>Strategy builder + payoff (Phase 5)</source>
-        <translation>Constructeur de stratégie + payoff (Phase 5)</translation>
-    </message>
-    <message>
-        <source>Open Interest analytics (Phase 7)</source>
-        <translation>Analyse de l'intérêt ouvert (Phase 7)</translation>
-    </message>
-    <message>
-        <source>Multi straddle / strangle charts (Phase 9)</source>
-        <translation>Graphiques multi straddle / strangle (Phase 9)</translation>
-    </message>
-    <message>
-        <source>Institutional flows (Phase 8)</source>
-        <translation>Flux institutionnels (Phase 8)</translation>
-    </message>
-    <message>
-        <source>Chain screener (Phase 9)</source>
-        <translation>Screener de chaîne (Phase 9)</translation>
-    </message>
-    <message>
-        <source>%1 — coming in a later phase</source>
-        <translation>%1 — disponible dans une phase ultérieure</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::IntradayOIChart</name>
-    <message>
-        <source>Intraday OI</source>
-        <translation>OI Intrajournalier</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::LegEditorModel</name>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>On</source>
-        <translation>Activé</translation>
-    </message>
-    <message>
-        <source>B/S</source>
-        <translation>A/V</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Type</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-    <message>
-        <source>Lots</source>
-        <translation>Lots</translation>
-    </message>
-    <message>
-        <source>Entry</source>
-        <translation>Entrée</translation>
-    </message>
-    <message>
-        <source>IV</source>
-        <translation>IV</translation>
-    </message>
-    <message>
-        <source>LTP</source>
-        <translation>LTP</translation>
-    </message>
-    <message>
-        <source>Delta</source>
-        <translation>Delta</translation>
-    </message>
-    <message>
-        <source>P&amp;L</source>
-        <translation>P&amp;L</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MaxPainChart</name>
-    <message>
-        <source>Max Pain Profile</source>
-        <translation>Profil Max Pain</translation>
-    </message>
-    <message>
-        <source>Pain</source>
-        <translation>Pain</translation>
-    </message>
-    <message>
-        <source>Max Pain</source>
-        <translation>Max Pain</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStraddleChart</name>
-    <message>
-        <source>Synthetic Premium (intraday)</source>
-        <translation>Prime synthétique (intrajournalier)</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStraddleSubTab</name>
-    <message>
-        <source>Type</source>
-        <translation>Type</translation>
-    </message>
-    <message>
-        <source>Anchor</source>
-        <translation>Ancrage</translation>
-    </message>
-    <message>
-        <source>ADD</source>
-        <translation>AJOUTER</translation>
-    </message>
-    <message>
-        <source>Double-click an entry to remove it.</source>
-        <translation>Double-cliquez sur une entrée pour la supprimer.</translation>
-    </message>
-    <message>
-        <source>Straddle %1</source>
-        <translation>Straddle %1</translation>
-    </message>
-    <message>
-        <source>Strangle %1C / %2P</source>
-        <translation>Strangle %1C / %2P</translation>
-    </message>
-    <message>
-        <source>Double-click to remove.</source>
-        <translation>Double-cliquez pour supprimer.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStrikeOIChart</name>
-    <message>
-        <source>Open Interest by Strike</source>
-        <translation>Intérêt ouvert par strike</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OIBuildupModel</name>
-    <message>
-        <source>Long Build-up</source>
-        <translation>Accumulation Longue</translation>
-    </message>
-    <message>
-        <source>Short Build-up</source>
-        <translation>Accumulation Courte</translation>
-    </message>
-    <message>
-        <source>Short Covering</source>
-        <translation>Rachat de Positions Courtes</translation>
-    </message>
-    <message>
-        <source>Long Unwinding</source>
-        <translation>Dénouement de Positions Longues</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-    <message>
-        <source>CE Action</source>
-        <translation>Action CE</translation>
-    </message>
-    <message>
-        <source>CE Δ%</source>
-        <translation>CE Δ%</translation>
-    </message>
-    <message>
-        <source>CE ΔOI%</source>
-        <translation>CE ΔOI%</translation>
-    </message>
-    <message>
-        <source>PE Action</source>
-        <translation>Action PE</translation>
-    </message>
-    <message>
-        <source>PE Δ%</source>
-        <translation>PE Δ%</translation>
-    </message>
-    <message>
-        <source>PE ΔOI%</source>
-        <translation>PE ΔOI%</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OISubTab</name>
-    <message>
-        <source>STRIKE</source>
-        <translation>STRIKE</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OptionChainModel</name>
-    <message>
-        <source>OI</source>
-        <translation>OI</translation>
-    </message>
-    <message>
-        <source>Chg OI</source>
-        <translation>Var OI</translation>
-    </message>
-    <message>
-        <source>Volume</source>
-        <translation>Volume</translation>
-    </message>
-    <message>
-        <source>IV</source>
-        <translation>IV</translation>
-    </message>
-    <message>
-        <source>LTP</source>
-        <translation>LTP</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OrderConfirmDialog</name>
-    <message>
-        <source>Confirm Paper Orders</source>
-        <translation>Confirmer les ordres papier</translation>
-    </message>
-    <message>
-        <source>%1  —  paper trade preview</source>
-        <translation>%1  —  aperçu du trade papier</translation>
-    </message>
-    <message>
-        <source>%1   ·   Expiry %2   ·   Spot %3</source>
-        <translation>%1   ·   Échéance %2   ·   Comptant %3</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>Symbole</translation>
-    </message>
-    <message>
-        <source>B/S</source>
-        <translation>A/V</translation>
-    </message>
-    <message>
-        <source>Qty</source>
-        <translation>Qty</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>Type</translation>
-    </message>
-    <message>
-        <source>Entry</source>
-        <translation>Entrée</translation>
-    </message>
-    <message>
-        <source>Net Premium</source>
-        <translation>Prime Nette</translation>
-    </message>
-    <message>
-        <source>Max Profit / Loss</source>
-        <translation>Gain / Perte Max.</translation>
-    </message>
-    <message>
-        <source>Basket Margin</source>
-        <translation>Marge du Panier</translation>
-    </message>
-    <message>
-        <source>Loading…</source>
-        <translation>Chargement…</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>ANNULER</translation>
-    </message>
-    <message>
-        <source>PLACE PAPER ORDERS</source>
-        <translation>PLACER LES ORDRES PAPIER</translation>
-    </message>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>Broker %1 not registered</source>
-        <translation>Courtier %1 non enregistré</translation>
-    </message>
-    <message>
-        <source>no active legs</source>
-        <translation>aucune jambe active</translation>
-    </message>
-    <message>
-        <source>— (timeout)</source>
-        <translation>— (délai dépassé)</translation>
-    </message>
-    <message>
-        <source>Initial: ₹ %1   ·   Final (after netting): ₹ %2</source>
-        <translation>Initial : ₹ %1   ·   Final (après netting) : ₹ %2</translation>
-    </message>
-    <message>
-        <source>Margin unavailable</source>
-        <translation>Marge indisponible</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::PayoffChartWidget</name>
-    <message>
-        <source>Spot: %1
-Expiry P/L: %2
-Target P/L: %3</source>
-        <translation>Comptant : %1
-P/P à l'échéance : %2
-P/P cible : %3</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::ScreenedChainModel</name>
-    <message>
-        <source>Strike</source>
-        <translation>Strike</translation>
-    </message>
-    <message>
-        <source>CE IV</source>
-        <translation>CE IV</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>CE Δ%</source>
-        <translation>CE Δ%</translation>
-    </message>
-    <message>
-        <source>PE Δ%</source>
-        <translation>PE Δ%</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>PE IV</source>
-        <translation>PE IV</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::TemplatePickerPanel</name>
-    <message>
-        <source>WIDTH</source>
-        <translation>LARGEUR</translation>
-    </message>
-    <message>
-        <source>SHIFT</source>
-        <translation>DÉCALAGE</translation>
-    </message>
-    <message>
-        <source>LOTS</source>
-        <translation>LOTS</translation>
-    </message>
-    <message>
-        <source>USE</source>
-        <translation>UTILISER</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::TemplateToolbar</name>
-    <message>
-        <source>TEMPLATE</source>
-        <translation>MODÈLE</translation>
-    </message>
-    <message>
-        <source>W:</source>
-        <translation>W:</translation>
-    </message>
-    <message>
-        <source>S:</source>
-        <translation>S:</translation>
-    </message>
-    <message>
-        <source>L:</source>
-        <translation>L:</translation>
-    </message>
-    <message>
-        <source>+ ADD LEG</source>
-        <translation>+ AJOUTER JAMBE</translation>
-    </message>
-    <message>
-        <source>USE</source>
-        <translation>UTILISER</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::ActiveLocksPanel</name>
-    <message>
-        <source>No active locks. Lock $FNCPT above to start earning yield.</source>
-        <translation>Aucun verrouillage actif. Verrouillez $FNCPT ci-dessus pour commencer à générer du rendement.</translation>
-    </message>
-    <message>
-        <source>Locks feed error: %1</source>
-        <translation>Erreur du flux de verrouillages : %1</translation>
-    </message>
-    <message>
-        <source>Extend lock…</source>
-        <translation>Prolonger le verrouillage…</translation>
-    </message>
-    <message>
-        <source>Withdraw</source>
-        <translation>Retirer</translation>
-    </message>
-    <message>
-        <source>Available after %1</source>
-        <translation>Disponible après %1</translation>
-    </message>
-    <message>
-        <source>openmarketterminal_lock not deployed — Settings &gt; Lock program ID</source>
-        <translation>openmarketterminal_lock non déployé — Paramètres &gt; ID du programme Lock</translation>
-    </message>
-    <message>
-        <source>Extend flow lands with the Anchor program.</source>
-        <translation>Le flux de prolongation arrivera avec le programme Anchor.</translation>
-    </message>
-    <message>
-        <source>Withdraw flow lands with the Anchor program.</source>
-        <translation>Le flux de retrait arrivera avec le programme Anchor.</translation>
-    </message>
-    <message>
-        <source>ACTIVE LOCKS</source>
-        <translation>VERROUILLAGES ACTIFS</translation>
-    </message>
-    <message>
-        <source>0 positions · 0 veFNCPT</source>
-        <translation>0 positions · 0 veFNCPT</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>EN DIRECT</translation>
-    </message>
-    <message>
-        <source>LOCKED</source>
-        <translation>VERROUILLÉ</translation>
-    </message>
-    <message>
-        <source>DURATION</source>
-        <translation>DURÉE</translation>
-    </message>
-    <message>
-        <source>UNLOCKS</source>
-        <translation>DÉVERROUILLAGE</translation>
-    </message>
-    <message>
-        <source>WEIGHT</source>
-        <translation>PONDÉRATION</translation>
-    </message>
-    <message>
-        <source>YIELD (LIFETIME)</source>
-        <translation>RENDEMENT (TOTAL)</translation>
-    </message>
-    <message>
-        <source>TOTAL</source>
-        <translation>TOTAL</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DÉMO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::BuybackBurnPanel</name>
-    <message>
-        <source>Open burn transaction in Solscan</source>
-        <translation>Ouvrir la transaction de burn dans Solscan</translation>
-    </message>
-    <message>
-        <source>subs %1 · pred-mkt %2 · misc %3</source>
-        <translation>abos %1 · marché-préd %2 · divers %3</translation>
-    </message>
-    <message>
-        <source>Treasury feed error: %1</source>
-        <translation>Erreur du flux de trésorerie : %1</translation>
-    </message>
-    <message>
-        <source>Demo signature — connect a treasury endpoint for a real burn tx.</source>
-        <translation>Signature démo — connectez un point de terminaison de trésorerie pour une vraie tx de burn.</translation>
-    </message>
-    <message>
-        <source>BUYBACK &amp; BURN</source>
-        <translation>RACHAT &amp; BURN</translation>
-    </message>
-    <message>
-        <source>epoch — · — → —</source>
-        <translation>epoch — · — → —</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>EN DIRECT</translation>
-    </message>
-    <message>
-        <source>THIS EPOCH</source>
-        <translation>CET EPOCH</translation>
-    </message>
-    <message>
-        <source>REVENUE</source>
-        <translation>REVENUS</translation>
-    </message>
-    <message>
-        <source>BUYBACK (50%)</source>
-        <translation>RACHAT (50%)</translation>
-    </message>
-    <message>
-        <source>STAKER YIELD (25%)</source>
-        <translation>RENDEMENT DU STAKER (25%)</translation>
-    </message>
-    <message>
-        <source>TREASURY TOPUP (25%)</source>
-        <translation>RECHARGE DE TRÉSORERIE (25%)</translation>
-    </message>
-    <message>
-        <source>$FNCPT BOUGHT</source>
-        <translation>$FNCPT ACHETÉ</translation>
-    </message>
-    <message>
-        <source>$FNCPT BURNED</source>
-        <translation>$FNCPT BRÛLÉ</translation>
-    </message>
-    <message>
-        <source>BURN TX</source>
-        <translation>TX DE BURN</translation>
-    </message>
-    <message>
-        <source>ALL-TIME</source>
-        <translation>DEPUIS LE DÉBUT</translation>
-    </message>
-    <message>
-        <source>BURNED</source>
-        <translation>BRÛLÉ</translation>
-    </message>
-    <message>
-        <source>SUPPLY REMAINING</source>
-        <translation>OFFRE RESTANTE</translation>
-    </message>
-    <message>
-        <source>SPENT ON BUYBACK</source>
-        <translation>DÉPENSÉ EN RACHAT</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DÉMO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::FeeDiscountPanel</name>
-    <message>
-        <source>PROJECTED SAVINGS  ·  reference $%1 SKU</source>
-        <translation>ÉCONOMIES PRÉVUES  ·  SKU de référence $%1</translation>
-    </message>
-    <message>
-        <source>Hold ≥ %1 $FNCPT to qualify for the discount on premium screens, AI reports, and deep backtests.</source>
-        <translation>Détenez ≥ %1 $FNCPT pour bénéficier de la remise sur les écrans premium, les rapports AI et les backtests approfondis.</translation>
-    </message>
-    <message>
-        <source>Acquire %1 more $FNCPT to unlock %2% off.</source>
-        <translation>Acquérez %1 $FNCPT de plus pour débloquer %2 % de remise.</translation>
-    </message>
-    <message>
-        <source>FEE DISCOUNT</source>
-        <translation>REMISE SUR FRAIS</translation>
-    </message>
-    <message>
-        <source>HOLDING</source>
-        <translation>DÉTENTION</translation>
-    </message>
-    <message>
-        <source>THRESHOLD</source>
-        <translation>SEUIL</translation>
-    </message>
-    <message>
-        <source>APPLIED TO</source>
-        <translation>APPLIQUÉ À</translation>
-    </message>
-    <message>
-        <source>● %1% OFF ACTIVE</source>
-        <translation>● %1 % DE REMISE ACTIVE</translation>
-    </message>
-    <message>
-        <source>LOCKED</source>
-        <translation>VERROUILLÉ</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::HoldingsTable</name>
-    <message>
-        <source>Hide unverified</source>
-        <translation>Masquer les non vérifiés</translation>
-    </message>
-    <message>
-        <source>Show all</source>
-        <translation>Tout afficher</translation>
-    </message>
-    <message>
-        <source>Unverified mint: %1</source>
-        <translation>Mint non vérifié : %1</translation>
-    </message>
-    <message>
-        <source>TOTAL %1  ·  %2 verified</source>
-        <translation>TOTAL %1  ·  %2 vérifiés</translation>
-    </message>
-    <message>
-        <source>  ·  %1 unverified%2</source>
-        <translation>  ·  %1 non vérifiés%2</translation>
-    </message>
-    <message>
-        <source> hidden</source>
-        <translation> masqués</translation>
-    </message>
-    <message>
-        <source>  ·  %1 without price</source>
-        <translation>  ·  %1 sans prix</translation>
-    </message>
-    <message>
-        <source>TOKEN</source>
-        <translation>JETON</translation>
-    </message>
-    <message>
-        <source>BALANCE</source>
-        <translation>SOLDE</translation>
-    </message>
-    <message>
-        <source>PRICE</source>
-        <translation>PRIX</translation>
-    </message>
-    <message>
-        <source>USD VALUE</source>
-        <translation>VALEUR USD</translation>
-    </message>
-    <message>
-        <source>% OF PORT</source>
-        <translation>% DU PORTEF.</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::LockPanel</name>
-    <message>
-        <source>MAX</source>
-        <translation>MAX</translation>
-    </message>
-    <message>
-        <source>Available: —</source>
-        <translation>Disponible : —</translation>
-    </message>
-    <message>
-        <source>Choose an amount and duration.</source>
-        <translation>Choisissez un montant et une durée.</translation>
-    </message>
-    <message>
-        <source>LOCK</source>
-        <translation>VERROUILLER</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to lock $FNCPT.</source>
-        <translation>Connectez un portefeuille pour verrouiller $FNCPT.</translation>
-    </message>
-    <message>
-        <source>Available: %1 $FNCPT</source>
-        <translation>Disponible : %1 $FNCPT</translation>
-    </message>
-    <message>
-        <source>%1 / week (USDC) — %2% weekly real yield at %3 stake</source>
-        <translation>%1 / semaine (USDC) — %2 % de rendement réel hebdomadaire pour %3 en stake</translation>
-    </message>
-    <message>
-        <source>waiting for revenue + spot price…</source>
-        <translation>en attente des revenus + prix spot…</translation>
-    </message>
-    <message>
-        <source>DEMO — openmarketterminal_lock not deployed; configure SecureStorage openmarketterminal.lock_program_id to enable real locks.</source>
-        <translation>DÉMO — openmarketterminal_lock non déployé ; configurez openmarketterminal.lock_program_id dans SecureStorage pour activer les verrouillages réels.</translation>
-    </message>
-    <message>
-        <source>Ready. Click LOCK to build the transaction.</source>
-        <translation>Prêt. Cliquez sur VERROUILLER pour créer la transaction.</translation>
-    </message>
-    <message>
-        <source>Amount exceeds available $FNCPT.</source>
-        <translation>Le montant dépasse le $FNCPT disponible.</translation>
-    </message>
-    <message>
-        <source>Building lock transaction…</source>
-        <translation>Création de la transaction de verrouillage…</translation>
-    </message>
-    <message>
-        <source>Aborted.</source>
-        <translation>Abandonné.</translation>
-    </message>
-    <message>
-        <source>Approve in your wallet to escrow $FNCPT under the openmarketterminal_lock program. The terminal does not hold your funds — the on-chain program does, and only releases them after the unlock date.</source>
-        <translation>Approuvez dans votre portefeuille pour déposer $FNCPT en séquestre sous le programme openmarketterminal_lock. Le terminal ne détient pas vos fonds — c'est le programme on-chain qui le fait et ne les libère qu'après la date de déverrouillage.</translation>
-    </message>
-    <message>
-        <source>Locked $FNCPT cannot be withdrawn before the unlock date. If you need liquidity sooner, do not lock.</source>
-        <translation>Les $FNCPT verrouillés ne peuvent pas être retirés avant la date de déverrouillage. Si vous avez besoin de liquidités plus tôt, ne verrouillez pas.</translation>
-    </message>
-    <message>
-        <source>Awaiting wallet signature…</source>
-        <translation>En attente de la signature du portefeuille…</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>Annulé.</translation>
-    </message>
-    <message>
-        <source>STAKE / LOCK</source>
-        <translation>STAKE / VERROUILLER</translation>
-    </message>
-    <message>
-        <source>veFNCPT — locked $FNCPT earns USDC yield</source>
-        <translation>veFNCPT — le $FNCPT verrouillé génère un rendement en USDC</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>MONTANT</translation>
-    </message>
-    <message>
-        <source>TOKEN</source>
-        <translation>JETON</translation>
-    </message>
-    <message>
-        <source>$FNCPT</source>
-        <translation>$FNCPT</translation>
-    </message>
-    <message>
-        <source>DURATION</source>
-        <translation>DURÉE</translation>
-    </message>
-    <message>
-        <source>3 MO</source>
-        <translation>3 MOIS</translation>
-    </message>
-    <message>
-        <source>6 MO</source>
-        <translation>6 MOIS</translation>
-    </message>
-    <message>
-        <source>1 YR</source>
-        <translation>1 AN</translation>
-    </message>
-    <message>
-        <source>2 YR</source>
-        <translation>2 ANS</translation>
-    </message>
-    <message>
-        <source>4 YR</source>
-        <translation>4 ANS</translation>
-    </message>
-    <message>
-        <source>WEIGHT</source>
-        <translation>PONDÉRATION</translation>
-    </message>
-    <message>
-        <source>EST. YIELD</source>
-        <translation>RENDEMENT EST.</translation>
-    </message>
-    <message>
-        <source>TIER</source>
-        <translation>PALIER</translation>
-    </message>
-    <message>
-        <source>LOCK $FNCPT</source>
-        <translation>VERROUILLER $FNCPT</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::MarketsListPanel</name>
-    <message>
-        <source>MARKET</source>
-        <translation>MARCHÉ</translation>
-    </message>
-    <message>
-        <source>YES</source>
-        <translation>OUI</translation>
-    </message>
-    <message>
-        <source>NO</source>
-        <translation>NON</translation>
-    </message>
-    <message>
-        <source>24h VOL</source>
-        <translation>VOL 24h</translation>
-    </message>
-    <message>
-        <source>EXPIRES</source>
-        <translation>EXPIRE</translation>
-    </message>
-    <message>
-        <source>Demo dataset. Set `openmarketterminal.markets_endpoint` in SecureStorage and deploy the openmarketterminal_market Anchor program for live trading.</source>
-        <translation>Jeu de données démo. Définissez `openmarketterminal.markets_endpoint` dans SecureStorage et déployez le programme Anchor openmarketterminal_market pour le trading en direct.</translation>
-    </message>
-    <message>
-        <source>Open TerminalInternalAdapter not registered</source>
-        <translation>Open TerminalInternalAdapter non enregistré</translation>
-    </message>
-    <message>
-        <source>MARKETS</source>
-        <translation>MARCHÉS</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DÉMO</translation>
-    </message>
-    <message>
-        <source>ERROR</source>
-        <translation>ERREUR</translation>
-    </message>
-    <message>
-        <source>● LIVE</source>
-        <translation>● EN DIRECT</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::SupplyChartPanel</name>
-    <message>
-        <source>Supply history feed error: %1</source>
-        <translation>Erreur du flux d'historique de l'offre : %1</translation>
-    </message>
-    <message>
-        <source>SUPPLY CHART · 12 MONTHS</source>
-        <translation>GRAPHIQUE DE L'OFFRE · 12 MOIS</translation>
-    </message>
-    <message>
-        <source>● TOTAL  ● CIRCULATING  ● BURNED</source>
-        <translation>● TOTAL  ● EN CIRCULATION  ● BRÛLÉ</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>EN DIRECT</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DÉMO</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::SwapPanel</name>
-    <message>
-        <source>MAX</source>
-        <translation>MAX</translation>
-    </message>
-    <message>
-        <source>Balance: —</source>
-        <translation>Solde : —</translation>
-    </message>
-    <message>
-        <source>Quotes refresh as you type.</source>
-        <translation>Les cotations se rafraîchissent à mesure que vous tapez.</translation>
-    </message>
-    <message>
-        <source>SWAP</source>
-        <translation>SWAP</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to swap.</source>
-        <translation>Connectez un portefeuille pour effectuer un swap.</translation>
-    </message>
-    <message>
-        <source>Price unavailable: %1. Try again in a moment.</source>
-        <translation>Prix indisponible : %1. Réessayez dans un instant.</translation>
-    </message>
-    <message>
-        <source>Balance: 0 %1</source>
-        <translation>Solde : 0 %1</translation>
-    </message>
-    <message>
-        <source>Balance: %1 %2</source>
-        <translation>Solde : %1 %2</translation>
-    </message>
-    <message>
-        <source>Waiting for spot prices…</source>
-        <translation>En attente des prix spot…</translation>
-    </message>
-    <message>
-        <source>set by PumpSwap; capped by slippage</source>
-        <translation>défini par PumpSwap ; plafonné par le slippage</translation>
-    </message>
-    <message>
-        <source>Ready. Click SWAP to build the transaction.</source>
-        <translation>Prêt. Cliquez sur SWAP pour créer la transaction.</translation>
-    </message>
-    <message>
-        <source>This pair isn't routable in Phase 2. PumpPortal supports SOL ↔ $FNCPT only; a generalised router lands in Phase 3.</source>
-        <translation>Cette paire n'est pas routable en Phase 2. PumpPortal ne prend en charge que SOL ↔ $FNCPT ; un routeur générique arrivera en Phase 3.</translation>
-    </message>
-    <message>
-        <source>Swap service unavailable.</source>
-        <translation>Service de swap indisponible.</translation>
-    </message>
-    <message>
-        <source>Building swap transaction…</source>
-        <translation>Création de la transaction de swap…</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>Annulé.</translation>
-    </message>
-    <message>
-        <source>via PumpPortal · pool=auto</source>
-        <translation>via PumpPortal · pool=auto</translation>
-    </message>
-    <message>
-        <source>YOU PAY</source>
-        <translation>VOUS PAYEZ</translation>
-    </message>
-    <message>
-        <source>FROM</source>
-        <translation>DE</translation>
-    </message>
-    <message>
-        <source>YOU RECEIVE (EST.)</source>
-        <translation>VOUS RECEVEZ (EST.)</translation>
-    </message>
-    <message>
-        <source>TO</source>
-        <translation>VERS</translation>
-    </message>
-    <message>
-        <source>ROUTE</source>
-        <translation>ROUTE</translation>
-    </message>
-    <message>
-        <source>PRICE IMPACT</source>
-        <translation>IMPACT SUR LE PRIX</translation>
-    </message>
-    <message>
-        <source>MAX SLIPPAGE</source>
-        <translation>SLIPPAGE MAX</translation>
-    </message>
-    <message>
-        <source>estimate unavailable</source>
-        <translation>estimation indisponible</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::TierPanel</name>
-    <message>
-        <source>basic API quota</source>
-        <translation>quota d'API de base</translation>
-    </message>
-    <message>
-        <source>premium screens</source>
-        <translation>écrans premium</translation>
-    </message>
-    <message>
-        <source>all agents + arena</source>
-        <translation>tous les agents + arène</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to see your tier.</source>
-        <translation>Connectez un portefeuille pour voir votre palier.</translation>
-    </message>
-    <message>
-        <source>Next: lock %1 to reach the next tier.</source>
-        <translation>Suivant : verrouillez %1 pour atteindre le palier suivant.</translation>
-    </message>
-    <message>
-        <source>All Open Terminal features unlocked.</source>
-        <translation>Toutes les fonctionnalités de Open Terminal débloquées.</translation>
-    </message>
-    <message>
-        <source>TIER</source>
-        <translation>PALIER</translation>
-    </message>
-    <message>
-        <source>current FREE</source>
-        <translation>actuel GRATUIT</translation>
-    </message>
-    <message>
-        <source>[locked]</source>
-        <translation>[verrouillé]</translation>
-    </message>
-    <message>
-        <source>BRONZE</source>
-        <translation>BRONZE</translation>
-    </message>
-    <message>
-        <source>100+ veFNCPT</source>
-        <translation>100+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>SILVER</source>
-        <translation>ARGENT</translation>
-    </message>
-    <message>
-        <source>1,000+ veFNCPT</source>
-        <translation>1 000+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>GOLD</source>
-        <translation>OR</translation>
-    </message>
-    <message>
-        <source>10,000+ veFNCPT</source>
-        <translation>10 000+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>[achieved]</source>
-        <translation>[atteint]</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::TreasuryPanel</name>
-    <message>
-        <source>Open Squads vault in browser</source>
-        <translation>Ouvrir le coffre Squads dans le navigateur</translation>
-    </message>
-    <message>
-        <source>Treasury feed error: %1</source>
-        <translation>Erreur du flux de trésorerie : %1</translation>
-    </message>
-    <message>
-        <source>TREASURY</source>
-        <translation>TRÉSORERIE</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>EN DIRECT</translation>
-    </message>
-    <message>
-        <source>USDC RESERVES</source>
-        <translation>RÉSERVES USDC</translation>
-    </message>
-    <message>
-        <source>SOL RESERVES</source>
-        <translation>RÉSERVES SOL</translation>
-    </message>
-    <message>
-        <source>TOTAL USD</source>
-        <translation>TOTAL USD</translation>
-    </message>
-    <message>
-        <source>RUNWAY @ CURRENT</source>
-        <translation>AUTONOMIE @ ACTUEL</translation>
-    </message>
-    <message>
-        <source>MULTI-SIG</source>
-        <translation>MULTI-SIG</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>DÉMO</translation>
+        <source>Remove %1</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37367,7 +34704,7 @@ P/P cible : %3</translation>
     </message>
     <message>
         <source>ORDER BOOK</source>
-        <translation>CARNET D'ORDRES</translation>
+        <translation>CARNET D&apos;ORDRES</translation>
     </message>
     <message>
         <source>CHART</source>
@@ -37465,11 +34802,11 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>ORDER TYPE</source>
-        <translation>TYPE D'ORDRE</translation>
+        <translation>TYPE D&apos;ORDRE</translation>
     </message>
     <message>
         <source>PLACE ORDER</source>
-        <translation>PASSER L'ORDRE</translation>
+        <translation>PASSER L&apos;ORDRE</translation>
     </message>
     <message>
         <source>Invalid price — enter a value between 0 and 1</source>
@@ -37509,7 +34846,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No comments yet</source>
-        <translation>Aucun commentaire pour l'instant</translation>
+        <translation>Aucun commentaire pour l&apos;instant</translation>
     </message>
     <message>
         <source>No related markets</source>
@@ -37517,7 +34854,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>  · %1 likes</source>
-        <translation>  · %1 j'aime</translation>
+        <translation>  · %1 j&apos;aime</translation>
     </message>
 </context>
 <context>
@@ -37570,11 +34907,11 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>Refresh order state</source>
-        <translation>Actualiser l'état de l'ordre</translation>
+        <translation>Actualiser l&apos;état de l&apos;ordre</translation>
     </message>
     <message>
         <source>Cancel order</source>
-        <translation>Annuler l'ordre</translation>
+        <translation>Annuler l&apos;ordre</translation>
     </message>
     <message>
         <source>Amend price</source>
@@ -37605,7 +34942,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No order book data</source>
-        <translation>Aucune donnée de carnet d'ordres</translation>
+        <translation>Aucune donnée de carnet d&apos;ordres</translation>
     </message>
 </context>
 <context>
@@ -37674,7 +35011,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>&lt;b&gt;Polymarket (Polygon)&lt;/b&gt;&lt;br&gt;Trading requires a Polygon-compatible private key. The key is signed locally via &lt;code&gt;py_clob_client&lt;/code&gt; and never leaves your machine in plaintext — it is stored encrypted in your OS credential manager.&lt;br&gt;&lt;br&gt;&lt;b&gt;⚠ Security:&lt;/b&gt; use a dedicated funding wallet, not your primary wallet.</source>
-        <translation>&lt;b&gt;Polymarket (Polygon)&lt;/b&gt;&lt;br&gt;Le trading nécessite une clé privée compatible Polygon. La clé est signée localement via &lt;code&gt;py_clob_client&lt;/code&gt; et ne quitte jamais votre machine en clair — elle est stockée chiffrée dans le gestionnaire d'identifiants de votre SE.&lt;br&gt;&lt;br&gt;&lt;b&gt;⚠ Sécurité :&lt;/b&gt; utilisez un portefeuille de financement dédié, pas votre portefeuille principal.</translation>
+        <translation>&lt;b&gt;Polymarket (Polygon)&lt;/b&gt;&lt;br&gt;Le trading nécessite une clé privée compatible Polygon. La clé est signée localement via &lt;code&gt;py_clob_client&lt;/code&gt; et ne quitte jamais votre machine en clair — elle est stockée chiffrée dans le gestionnaire d&apos;identifiants de votre SE.&lt;br&gt;&lt;br&gt;&lt;b&gt;⚠ Sécurité :&lt;/b&gt; utilisez un portefeuille de financement dédié, pas votre portefeuille principal.</translation>
     </message>
     <message>
         <source>0x… (64 hex chars)</source>
@@ -37729,10 +35066,6 @@ pour passer des ordres</translation>
         <translation>Polymarket</translation>
     </message>
     <message>
-        <source>&lt;b&gt;Kalshi (CFTC-regulated)&lt;/b&gt;&lt;br&gt;Generate an API key + RSA private key in your Kalshi dashboard (&lt;code&gt;api.elections.kalshi.com&lt;/code&gt;). Requests are signed with RSA-PSS (key stays local, encrypted in your OS credential manager).&lt;br&gt;&lt;br&gt;Use &lt;b&gt;Demo mode&lt;/b&gt; to target &lt;code&gt;demo-api.kalshi.co&lt;/code&gt; for testing.</source>
-        <translation>&lt;b&gt;Kalshi (réglementé par la CFTC)&lt;/b&gt;&lt;br&gt;Générez une clé API + une clé privée RSA dans votre tableau de bord Kalshi (&lt;code&gt;api.elections.kalshi.com&lt;/code&gt;). Les requêtes sont signées avec RSA-PSS (la clé reste locale, chiffrée dans le gestionnaire d'identifiants de votre SE).&lt;br&gt;&lt;br&gt;Utilisez le &lt;b&gt;mode Démo&lt;/b&gt; pour cibler &lt;code&gt;demo-api.kalshi.co&lt;/code&gt; à des fins de test.</translation>
-    </message>
-    <message>
         <source>00000000-0000-0000-0000-000000000000</source>
         <translation>00000000-0000-0000-0000-000000000000</translation>
     </message>
@@ -37758,11 +35091,27 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>Use demo (paper trading) environment</source>
-        <translation>Utiliser l'environnement démo (paper trading)</translation>
+        <translation>Utiliser l&apos;environnement démo (paper trading)</translation>
     </message>
     <message>
         <source>Kalshi</source>
         <translation>Kalshi</translation>
+    </message>
+    <message>
+        <source>Testing connection...</source>
+        <translation type="unfinished">Test de la connexion...</translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Connection OK. %1&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Connection test failed: %1&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Kalshi (CFTC-regulated)&lt;/b&gt;&lt;br&gt;Generate an API key + RSA private key in your Kalshi dashboard (&lt;code&gt;external-api.kalshi.com&lt;/code&gt;). Requests are signed with RSA-PSS (key stays local, encrypted in your OS credential manager).&lt;br&gt;&lt;br&gt;Keep &lt;b&gt;Demo mode&lt;/b&gt; on to target &lt;code&gt;external-api.demo.kalshi.co&lt;/code&gt; for testing.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>L2 API credentials: derived (%1…)</source>
@@ -37777,20 +35126,20 @@ pour passer des ordres</translation>
         <translation>Identifiants Kalshi chargés depuis le stockage sécurisé.</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key is required.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;La clé privée est requise.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key is required.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;La clé privée est requise.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key should be 0x + 64 hex chars.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;La clé privée doit être 0x + 64 caractères hex.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key should be 0x + 64 hex chars.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;La clé privée doit être 0x + 64 caractères hex.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#16a34a'&gt;Polymarket credentials saved.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#16a34a'&gt;Identifiants Polymarket enregistrés.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Polymarket credentials saved.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#16a34a&apos;&gt;Identifiants Polymarket enregistrés.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Save failed — see logs.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Échec de l'enregistrement — voir les journaux.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Save failed — see logs.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;Échec de l&apos;enregistrement — voir les journaux.&lt;/span&gt;</translation>
     </message>
     <message>
         <source>Clear Polymarket credentials?</source>
@@ -37805,16 +35154,16 @@ pour passer des ordres</translation>
         <translation>Identifiants Polymarket effacés.</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Both API Key ID and PEM private key are required.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;L'ID de clé API et la clé privée PEM sont tous deux requis.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Both API Key ID and PEM private key are required.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;L&apos;ID de clé API et la clé privée PEM sont tous deux requis.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key must be a PEM-encoded RSA key.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;La clé privée doit être une clé RSA encodée en PEM.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key must be a PEM-encoded RSA key.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;La clé privée doit être une clé RSA encodée en PEM.&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#16a34a'&gt;Kalshi credentials saved.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#16a34a'&gt;Identifiants Kalshi enregistrés.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Kalshi credentials saved.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#16a34a&apos;&gt;Identifiants Kalshi enregistrés.&lt;/span&gt;</translation>
     </message>
     <message>
         <source>Clear Kalshi credentials?</source>
@@ -37829,31 +35178,35 @@ pour passer des ordres</translation>
         <translation>Identifiants Kalshi effacés.</translation>
     </message>
     <message>
-        <source>Select Kalshi private key (PEM)</source>
-        <translation>Sélectionner la clé privée Kalshi (PEM)</translation>
+        <source>Select Kalshi credential file</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>PEM files (*.pem *.key);;All files (*)</source>
-        <translation>Fichiers PEM (*.pem *.key);;Tous les fichiers (*)</translation>
+        <source>Kalshi credential files (*.rtf *.pem *.key);;All files (*)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Could not read %1.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;Impossible de lire %1.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Could not read %1: %2&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;%1 does not look like a PEM file.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;%1 ne ressemble pas à un fichier PEM.&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;%1 does not contain a PEM private key.&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Loaded PEM from %1.</source>
-        <translation>PEM chargé depuis %1.</translation>
+        <source>Loaded private key from %1. Enter the API Key ID, then save.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Imported Kalshi API Key ID and private key from %1. Demo mode is on.&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::screens::widgets::AgentErrorsWidget</name>
     <message>
         <source>AGENT ERRORS</source>
-        <translation>ERREURS D'AGENT</translation>
+        <translation>ERREURS D&apos;AGENT</translation>
     </message>
     <message>
         <source>Time</source>
@@ -37869,7 +35222,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>Configure — Agent Errors</source>
-        <translation>Configurer — Erreurs d'agent</translation>
+        <translation>Configurer — Erreurs d&apos;agent</translation>
     </message>
     <message>
         <source>Max rows</source>
@@ -37896,7 +35249,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No data yet — click refresh to retry</source>
-        <translation>Aucune donnée pour l'instant — cliquez sur actualiser pour réessayer</translation>
+        <translation>Aucune donnée pour l&apos;instant — cliquez sur actualiser pour réessayer</translation>
     </message>
 </context>
 <context>
@@ -37904,6 +35257,10 @@ pour passer des ordres</translation>
     <message>
         <source>HOLDINGS</source>
         <translation>TITRES</translation>
+    </message>
+    <message>
+        <source>SQUARE OFF ALL</source>
+        <translation type="unfinished">TOUT SOLDER</translation>
     </message>
     <message>
         <source>Symbol</source>
@@ -37927,7 +35284,11 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No active account — click gear to configure</source>
-        <translation>Aucun compte actif — cliquez sur l'engrenage pour configurer</translation>
+        <translation>Aucun compte actif — cliquez sur l&apos;engrenage pour configurer</translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">Sortie</translation>
     </message>
     <message>
         <source>Configure — Holdings</source>
@@ -37936,6 +35297,45 @@ pour passer des ordres</translation>
     <message>
         <source>Broker account</source>
         <translation>Compte de courtage</translation>
+    </message>
+    <message>
+        <source>Square Off Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Place a MARKET SELL order for %1 %2 (CNC)?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell order placed for %1 (order %2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to square off %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off All Holdings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No holdings to square off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will place MARKET SELL orders to exit ALL %1 holding(s) in this account.
+
+Positions are NOT affected. Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1 sell order(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1 order(s). %2 failed:
+%3</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37985,6 +35385,41 @@ pour passer des ordres</translation>
     <message>
         <source>Symbol</source>
         <translation>Symbole</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::widgets::DineroNetworkWidget</name>
+    <message>
+        <source>DINERO NETWORK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK HEIGHT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MONEY SUPPLY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK TIME</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK REWARD</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GET DINERO  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Block Explorer  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -38086,7 +35521,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>Awaiting events…</source>
-        <translation>En attente d'événements…</translation>
+        <translation>En attente d&apos;événements…</translation>
     </message>
     <message>
         <source>No events available</source>
@@ -38140,7 +35575,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No active account — click gear to configure</source>
-        <translation>Aucun compte actif — cliquez sur l'engrenage pour configurer</translation>
+        <translation>Aucun compte actif — cliquez sur l&apos;engrenage pour configurer</translation>
     </message>
     <message>
         <source>Usage: %1%</source>
@@ -38183,7 +35618,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No vessels configured — click gear to add IMOs</source>
-        <translation>Aucun navire configuré — cliquez sur l'engrenage pour ajouter des IMO</translation>
+        <translation>Aucun navire configuré — cliquez sur l&apos;engrenage pour ajouter des IMO</translation>
     </message>
     <message>
         <source>Configure — Maritime Vessels</source>
@@ -38284,7 +35719,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>Configure — News Category</source>
-        <translation>Configurer — Catégorie d'actualités</translation>
+        <translation>Configurer — Catégorie d&apos;actualités</translation>
     </message>
     <message>
         <source>markets | geopolitics | crypto | …</source>
@@ -38334,7 +35769,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No notes yet — open Notes screen to add one</source>
-        <translation>Aucune note pour le moment — ouvrez l'écran Notes pour en ajouter une</translation>
+        <translation>Aucune note pour le moment — ouvrez l&apos;écran Notes pour en ajouter une</translation>
     </message>
     <message>
         <source>(untitled)</source>
@@ -38389,7 +35824,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No active account — click gear to configure</source>
-        <translation>Aucun compte actif — cliquez sur l'engrenage pour configurer</translation>
+        <translation>Aucun compte actif — cliquez sur l&apos;engrenage pour configurer</translation>
     </message>
     <message>
         <source>Configure — Open Positions</source>
@@ -38428,7 +35863,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No active account — click gear to configure</source>
-        <translation>Aucun compte actif — cliquez sur l'engrenage pour configurer</translation>
+        <translation>Aucun compte actif — cliquez sur l&apos;engrenage pour configurer</translation>
     </message>
     <message>
         <source>MKT</source>
@@ -38436,15 +35871,15 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>Cancel order %1</source>
-        <translation>Annuler l'ordre %1</translation>
+        <translation>Annuler l&apos;ordre %1</translation>
     </message>
     <message>
         <source>Cancel Order</source>
-        <translation>Annuler l'ordre</translation>
+        <translation>Annuler l&apos;ordre</translation>
     </message>
     <message>
         <source>Cancel order %1?</source>
-        <translation>Annuler l'ordre %1 ?</translation>
+        <translation>Annuler l&apos;ordre %1 ?</translation>
     </message>
     <message>
         <source>Configure — Working Orders</source>
@@ -38495,7 +35930,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>TODAY</source>
-        <translation>AUJOURD'HUI</translation>
+        <translation>AUJOURD&apos;HUI</translation>
     </message>
 </context>
 <context>
@@ -38506,7 +35941,7 @@ pour passer des ordres</translation>
     </message>
     <message>
         <source>No markets configured — click gear to add</source>
-        <translation>Aucun marché configuré — cliquez sur l'engrenage pour ajouter</translation>
+        <translation>Aucun marché configuré — cliquez sur l&apos;engrenage pour ajouter</translation>
     </message>
     <message>
         <source>Configure — Polymarket</source>
@@ -38567,13 +36002,13 @@ pour passer des ordres</translation>
         <source>No portfolios yet.
 Create one from the Portfolio tab.</source>
         <translation>Aucun portefeuille pour le moment.
-Créez-en un depuis l'onglet Portefeuille.</translation>
+Créez-en un depuis l&apos;onglet Portefeuille.</translation>
     </message>
     <message>
-        <source>'%1' has no holdings.
+        <source>&apos;%1&apos; has no holdings.
 Add positions from the Portfolio tab.</source>
-        <translation>'%1' ne contient aucune position.
-Ajoutez des positions depuis l'onglet Portefeuille.</translation>
+        <translation>&apos;%1&apos; ne contient aucune position.
+Ajoutez des positions depuis l&apos;onglet Portefeuille.</translation>
     </message>
     <message>
         <source>Configure — Portfolio Summary</source>
@@ -38581,7 +36016,7 @@ Ajoutez des positions depuis l'onglet Portefeuille.</translation>
     </message>
     <message>
         <source>(no portfolios — create one in the Portfolio tab)</source>
-        <translation>(aucun portefeuille — créez-en un dans l'onglet Portefeuille)</translation>
+        <translation>(aucun portefeuille — créez-en un dans l&apos;onglet Portefeuille)</translation>
     </message>
     <message>
         <source>Portfolio</source>
@@ -38651,8 +36086,30 @@ Ajoutez des positions depuis l'onglet Portefeuille.</translation>
         <translation>TOTAL EST.  --</translation>
     </message>
     <message>
-        <source>PLACE ORDER</source>
-        <translation>PASSER L'ORDRE</translation>
+        <source>REVIEW ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW BUY ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW SELL ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW SHORT ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Order ticket — not sent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 %3 @ %4
+
+Quick Trade builds an order ticket for review; it does not place orders. To route this to your broker, use the Equity Trading screen. No order has been sent.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>EST. TOTAL  $%1</source>
@@ -38667,18 +36124,6 @@ Ajoutez des positions depuis l'onglet Portefeuille.</translation>
         <translation>VENTE  —</translation>
     </message>
     <message>
-        <source>PLACE BUY ORDER</source>
-        <translation>PASSER UN ORDRE D'ACHAT</translation>
-    </message>
-    <message>
-        <source>PLACE SELL ORDER</source>
-        <translation>PASSER UN ORDRE DE VENTE</translation>
-    </message>
-    <message>
-        <source>PLACE SHORT ORDER</source>
-        <translation>PASSER UN ORDRE DE VENTE À DÉCOUVERT</translation>
-    </message>
-    <message>
         <source>Quick Trade</source>
         <translation>Trading rapide</translation>
     </message>
@@ -38689,16 +36134,6 @@ Ajoutez des positions depuis l'onglet Portefeuille.</translation>
     <message>
         <source>market price ($%1)</source>
         <translation>prix du marché ($%1)</translation>
-    </message>
-    <message>
-        <source>Order Submitted</source>
-        <translation>Ordre soumis</translation>
-    </message>
-    <message>
-        <source>%1 %2 %3 @ %4
-Order sent to trading engine.</source>
-        <translation>%1 %2 %3 @ %4
-Ordre envoyé au moteur de trading.</translation>
     </message>
 </context>
 <context>
@@ -38718,22 +36153,6 @@ Ordre envoyé au moteur de trading.</translation>
     <message>
         <source>CHG%</source>
         <translation>CHG%</translation>
-    </message>
-    <message>
-        <source>COMMODITIES</source>
-        <translation>MATIÈRES PREMIÈRES</translation>
-    </message>
-    <message>
-        <source>CRYPTOCURRENCY</source>
-        <translation>CRYPTOMONNAIE</translation>
-    </message>
-    <message>
-        <source>FOREX - MAJOR PAIRS</source>
-        <translation>FOREX - PAIRES MAJEURES</translation>
-    </message>
-    <message>
-        <source>GLOBAL INDICES</source>
-        <translation>INDICES MONDIAUX</translation>
     </message>
 </context>
 <context>
@@ -38802,7 +36221,7 @@ Ordre envoyé au moteur de trading.</translation>
     <name>openmarketterminal::screens::widgets::ScreenerWidget</name>
     <message>
         <source>STOCK SCREENER</source>
-        <translation>SCREENER D'ACTIONS</translation>
+        <translation>SCREENER D&apos;ACTIONS</translation>
     </message>
     <message>
         <source>SORT BY</source>
@@ -38974,7 +36393,7 @@ Ordre envoyé au moteur de trading.</translation>
     </message>
     <message>
         <source>No active account — click gear to configure</source>
-        <translation>Aucun compte actif — cliquez sur l'engrenage pour configurer</translation>
+        <translation>Aucun compte actif — cliquez sur l&apos;engrenage pour configurer</translation>
     </message>
     <message>
         <source>Configure — Today P&amp;L</source>
@@ -39096,8 +36515,20 @@ Compilez avec Qt6 Multimedia pour la lecture en intégré.</translation>
         <translation>TV EN DIRECT — %1</translation>
     </message>
     <message>
-        <source>yt-dlp not found. Bundle yt-dlp.exe next to Open Terminal.exe.</source>
-        <translation>yt-dlp introuvable. Placez yt-dlp.exe à côté de Open Terminal.exe.</translation>
+        <source>yt-dlp not found. Bundle yt-dlp.exe next to OpenMarketTerminal.exe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>YouTube is blocking automated playback (sign-in required). Make sure you&apos;re logged into YouTube in Chrome, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This channel is not live right now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t read Chrome cookies for YouTube sign-in. Open Chrome and sign into YouTube, then retry.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>yt-dlp error: %1</source>
@@ -39109,7 +36540,7 @@ Compilez avec Qt6 Multimedia pour la lecture en intégré.</translation>
     </message>
     <message>
         <source>Could not extract stream URL.</source>
-        <translation>Impossible d'extraire l'URL du flux.</translation>
+        <translation>Impossible d&apos;extraire l&apos;URL du flux.</translation>
     </message>
     <message>
         <source>Failed to start yt-dlp: %1</source>
@@ -39159,7 +36590,7 @@ Compilez avec Qt6 Multimedia pour la lecture en intégré.</translation>
     </message>
     <message>
         <source>Configure a URL via the gear icon</source>
-        <translation>Configurez une URL via l'icône d'engrenage</translation>
+        <translation>Configurez une URL via l&apos;icône d&apos;engrenage</translation>
     </message>
     <message>
         <source>Invalid URL</source>
@@ -39187,7 +36618,7 @@ Compilez avec Qt6 Multimedia pour la lecture en intégré.</translation>
     </message>
     <message>
         <source>No tabular data found — site may require JavaScript. Try its JSON API URL instead.</source>
-        <translation>Aucune donnée tabulaire trouvée — le site peut nécessiter JavaScript. Utilisez plutôt son URL d'API JSON.</translation>
+        <translation>Aucune donnée tabulaire trouvée — le site peut nécessiter JavaScript. Utilisez plutôt son URL d&apos;API JSON.</translation>
     </message>
     <message numerus="yes">
         <source>Loaded %n table(s)</source>
@@ -39266,7 +36697,18 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Auto-detects HTML tables, JSON arrays/objects, CSV/TSV, XML/RSS/Atom. If the page renders tables via JavaScript, use its underlying API URL instead.</source>
-        <translation>Détecte automatiquement les tableaux HTML, tableaux/objets JSON, CSV/TSV, XML/RSS/Atom. Si la page affiche les tableaux via JavaScript, utilisez plutôt son URL d'API sous-jacente.</translation>
+        <translation>Détecte automatiquement les tableaux HTML, tableaux/objets JSON, CSV/TSV, XML/RSS/Atom. Si la page affiche les tableaux via JavaScript, utilisez plutôt son URL d&apos;API sous-jacente.</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::services::dinero::DineroRpcClient</name>
+    <message>
+        <source>Dinero network unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bad response from Dinero RPC</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -39366,6 +36808,10 @@ X-API-Key: xyz</translation>
         <source>Fetch failed</source>
         <translation>Échec de la récupération</translation>
     </message>
+    <message>
+        <source>Synthetic demo data — not from a live source</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::surface::SurfaceControlPanel</name>
@@ -39411,7 +36857,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>OPTION FILTERS</source>
-        <translation>FILTRES D'OPTIONS</translation>
+        <translation>FILTRES D&apos;OPTIONS</translation>
     </message>
     <message>
         <source>Strike window:</source>
@@ -39542,7 +36988,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>(no response captured yet)</source>
-        <translation>(aucune réponse capturée pour l'instant)</translation>
+        <translation>(aucune réponse capturée pour l&apos;instant)</translation>
     </message>
     <message>
         <source>CLOSE</source>
@@ -39611,20 +37057,12 @@ X-API-Key: xyz</translation>
         <translation>Paramètres</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>Forum</translation>
-    </message>
-    <message>
         <source>Equity Trading</source>
-        <translation>Trading d'Actions</translation>
+        <translation>Trading d&apos;Actions</translation>
     </message>
     <message>
         <source>Algo Trading</source>
         <translation>Trading Algorithmique</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>Centre d'actions</translation>
     </message>
     <message>
         <source>Alpha Arena</source>
@@ -39639,12 +37077,8 @@ X-API-Key: xyz</translation>
         <translation>Dérivés</translation>
     </message>
     <message>
-        <source>F&amp;O</source>
-        <translation>F&amp;O</translation>
-    </message>
-    <message>
         <source>Equity Research</source>
-        <translation>Recherche d'Actions</translation>
+        <translation>Recherche d&apos;Actions</translation>
     </message>
     <message>
         <source>Screener</source>
@@ -39743,16 +37177,12 @@ X-API-Key: xyz</translation>
         <translation>À propos</translation>
     </message>
     <message>
-        <source>Support</source>
-        <translation>Support</translation>
-    </message>
-    <message>
         <source>Stock</source>
         <translation>Action</translation>
     </message>
     <message>
         <source>Search stocks by symbol or company name</source>
-        <translation>Rechercher des actions par symbole ou nom d'entreprise</translation>
+        <translation>Rechercher des actions par symbole ou nom d&apos;entreprise</translation>
     </message>
     <message>
         <source>Fund</source>
@@ -39833,6 +37263,14 @@ X-API-Key: xyz</translation>
         <source>Search actions, layouts… (Esc to cancel, Enter to run)</source>
         <translation>Rechercher des actions, des dispositions… (Échap pour annuler, Entrée pour exécuter)</translation>
     </message>
+    <message>
+        <source>Open %1 in Equity Research</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ticker shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::ui::ComponentBrowserDialog</name>
@@ -39864,7 +37302,7 @@ X-API-Key: xyz</translation>
     <name>openmarketterminal::ui::IndicatorParamDialog</name>
     <message>
         <source>Indicator Parameters</source>
-        <translation>Paramètres de l'indicateur</translation>
+        <translation>Paramètres de l&apos;indicateur</translation>
     </message>
     <message>
         <source>Period:</source>
@@ -39900,6 +37338,21 @@ X-API-Key: xyz</translation>
     <message>
         <source>+ Indicator</source>
         <translation>+ Indicateur</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::ui::KLineChartWidget</name>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to watchlist</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -39947,25 +37400,32 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::ui::ProvenanceBadge</name>
+    <message>
+        <source>no data source</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::ui::PushpinBar</name>
     <message>
         <source>Drag any symbol here to pin</source>
-        <translation>Faites glisser un symbole ici pour l'épingler</translation>
+        <translation>Faites glisser un symbole ici pour l&apos;épingler</translation>
     </message>
 </context>
 <context>
     <name>openmarketterminal::ui::QuickCommandBar</name>
     <message>
-        <source>Type a command (e.g. 'layout switch "Morning"', AAPL, ?). Esc to dismiss.</source>
-        <translation>Saisissez une commande (par ex. 'layout switch "Morning"', AAPL, ?). Échap pour fermer.</translation>
+        <source>Type a command (e.g. &apos;layout switch &quot;Morning&quot;&apos;, AAPL, ?). Esc to dismiss.</source>
+        <translation>Saisissez une commande (par ex. &apos;layout switch &quot;Morning&quot;&apos;, AAPL, ?). Échap pour fermer.</translation>
     </message>
     <message>
-        <source>Help: type any verb (e.g. 'layout switch') or a ticker (AAPL).</source>
-        <translation>Aide : saisissez n'importe quel verbe (par ex. 'layout switch') ou un symbole (AAPL).</translation>
+        <source>Help: type any verb (e.g. &apos;layout switch&apos;) or a ticker (AAPL).</source>
+        <translation>Aide : saisissez n&apos;importe quel verbe (par ex. &apos;layout switch&apos;) ou un symbole (AAPL).</translation>
     </message>
     <message>
-        <source>Published %1 to group A</source>
-        <translation>%1 publié dans le groupe A</translation>
+        <source>Opened %1 in Equity Research</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Unknown command</source>
@@ -40020,28 +37480,8 @@ X-API-Key: xyz</translation>
         <translation> EN DIRECT</translation>
     </message>
     <message>
-        <source>View Plans &amp; Pricing</source>
-        <translation>Voir les Forfaits et Tarifs</translation>
-    </message>
-    <message>
-        <source>CHAT</source>
-        <translation>CHAT</translation>
-    </message>
-    <message>
-        <source>Switch to Chat Mode (F9)</source>
-        <translation>Passer en Mode Chat (F9)</translation>
-    </message>
-    <message>
         <source>LOGOUT</source>
         <translation>DÉCONNEXION</translation>
-    </message>
-    <message>
-        <source>%1 CR</source>
-        <translation>%1 CR</translation>
-    </message>
-    <message>
-        <source>FREE</source>
-        <translation>GRATUIT</translation>
     </message>
     <message>
         <source>File</source>
@@ -40058,6 +37498,14 @@ X-API-Key: xyz</translation>
     <message>
         <source>(single monitor)</source>
         <translation>(moniteur unique)</translation>
+    </message>
+    <message>
+        <source>Close Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close All Windows</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>New Layout</source>
@@ -40125,7 +37573,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Equity Trading</source>
-        <translation>Trading d'Actions</translation>
+        <translation>Trading d&apos;Actions</translation>
     </message>
     <message>
         <source>Alpha Arena</source>
@@ -40140,20 +37588,8 @@ X-API-Key: xyz</translation>
         <translation>Dérivés</translation>
     </message>
     <message>
-        <source>F&amp;&amp;O</source>
-        <translation>F&amp;&amp;O</translation>
-    </message>
-    <message>
         <source>Watchlist</source>
         <translation>Liste de Suivi</translation>
-    </message>
-    <message>
-        <source>Crypto</source>
-        <translation>Crypto</translation>
-    </message>
-    <message>
-        <source>Crypto Center</source>
-        <translation>Centre Crypto</translation>
     </message>
     <message>
         <source>Research &amp; Intelligence</source>
@@ -40161,7 +37597,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Equity Research</source>
-        <translation>Recherche d'Actions</translation>
+        <translation>Recherche d&apos;Actions</translation>
     </message>
     <message>
         <source>M&amp;A Analytics</source>
@@ -40208,16 +37644,8 @@ X-API-Key: xyz</translation>
         <translation>Notes</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>Forum</translation>
-    </message>
-    <message>
         <source>Docs</source>
         <translation>Docs</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>Support</translation>
     </message>
     <message>
         <source>About</source>
@@ -40253,7 +37681,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>News Feed</source>
-        <translation>Fil d'Actualités</translation>
+        <translation>Fil d&apos;Actualités</translation>
     </message>
     <message>
         <source>Portfolio</source>
@@ -40281,7 +37709,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Save Workspace</source>
-        <translation>Enregistrer l'Espace de Travail</translation>
+        <translation>Enregistrer l&apos;Espace de Travail</translation>
     </message>
     <message>
         <source>Trading</source>
@@ -40329,47 +37757,19 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Refresh Screen	F5</source>
-        <translation>Actualiser l'Écran	F5</translation>
+        <translation>Actualiser l&apos;Écran	F5</translation>
     </message>
     <message>
         <source>Take Screenshot	Ctrl+P</source>
-        <translation>Capture d'Écran	Ctrl+P</translation>
+        <translation>Capture d&apos;Écran	Ctrl+P</translation>
     </message>
     <message>
         <source>Help</source>
         <translation>Aide</translation>
     </message>
     <message>
-        <source>About Open Terminal</source>
-        <translation>À propos de Open Terminal</translation>
-    </message>
-    <message>
-        <source>Help Center</source>
-        <translation>Centre d'Aide</translation>
-    </message>
-    <message>
-        <source>Contact Us</source>
-        <translation>Nous Contacter</translation>
-    </message>
-    <message>
-        <source>Terms of Service</source>
-        <translation>Conditions d'Utilisation</translation>
-    </message>
-    <message>
-        <source>Privacy Policy</source>
-        <translation>Politique de Confidentialité</translation>
-    </message>
-    <message>
-        <source>Trademarks</source>
-        <translation>Marques</translation>
-    </message>
-    <message>
-        <source>Check for Updates</source>
-        <translation>Rechercher des Mises à Jour</translation>
-    </message>
-    <message>
-        <source>Logout</source>
-        <translation>Déconnexion</translation>
+        <source>About OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DBnomics</source>
@@ -40386,10 +37786,6 @@ X-API-Key: xyz</translation>
     <message>
         <source>Excel</source>
         <translation>Excel</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>Centre d'actions</translation>
     </message>
 </context>
 <context>
@@ -40471,12 +37867,12 @@ X-API-Key: xyz</translation>
         <translation>Sortie</translation>
     </message>
     <message>
-        <source>Entry $</source>
-        <translation>Entrée $</translation>
+        <source>Entry %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exit $</source>
-        <translation>Sortie $</translation>
+        <source>Final %1%2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Qty</source>
@@ -40491,16 +37887,16 @@ X-API-Key: xyz</translation>
         <translation>P&amp;L %</translation>
     </message>
     <message>
+        <source>Exit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bars</source>
         <translation>Barres</translation>
     </message>
     <message>
         <source>Reason</source>
         <translation>Raison</translation>
-    </message>
-    <message>
-        <source>Final $%1</source>
-        <translation>Final $%1</translation>
     </message>
     <message>
         <source>Excellent</source>
@@ -40590,7 +37986,7 @@ X-API-Key: xyz</translation>
     <name>openmarketterminal::ui::algo::ConditionSection</name>
     <message>
         <source>ENTRY CONDITIONS</source>
-        <translation>CONDITIONS D'ENTRÉE</translation>
+        <translation>CONDITIONS D&apos;ENTRÉE</translation>
     </message>
     <message>
         <source>EXIT CONDITIONS</source>
@@ -40606,7 +38002,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>ANY (OR)</source>
-        <translation>N'IMPORTE (OR)</translation>
+        <translation>N&apos;IMPORTE (OR)</translation>
     </message>
     <message>
         <source>+ Add Condition</source>
@@ -40735,7 +38131,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Max Order Value</source>
-        <translation>Valeur max. de l'ordre</translation>
+        <translation>Valeur max. de l&apos;ordre</translation>
     </message>
     <message>
         <source>No Limit</source>
@@ -40743,77 +38139,10 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::wallet::ConnectWalletDialog</name>
+    <name>openmarketterminal::ui::algo::SymbolChipInput</name>
     <message>
-        <source>Connect Wallet</source>
-        <translation>Connecter le portefeuille</translation>
-    </message>
-    <message>
-        <source>Connect your Solana wallet</source>
-        <translation>Connectez votre portefeuille Solana</translation>
-    </message>
-    <message>
-        <source>Opening your browser to complete the handshake…</source>
-        <translation>Ouverture de votre navigateur pour finaliser la négociation…</translation>
-    </message>
-    <message>
-        <source>Reopen browser</source>
-        <translation>Rouvrir le navigateur</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annuler</translation>
-    </message>
-    <message>
-        <source>cancelled by user</source>
-        <translation>annulé par l'utilisateur</translation>
-    </message>
-    <message>
-        <source>could not start local bridge server</source>
-        <translation>impossible de démarrer le serveur de pont local</translation>
-    </message>
-    <message>
-        <source>Browser opened. Approve the connection and the signature in your wallet.</source>
-        <translation>Navigateur ouvert. Approuvez la connexion et la signature dans votre portefeuille.</translation>
-    </message>
-    <message>
-        <source>signature verification failed</source>
-        <translation>échec de la vérification de la signature</translation>
-    </message>
-    <message>
-        <source>timed out waiting for browser callback</source>
-        <translation>délai dépassé en attendant le rappel du navigateur</translation>
-    </message>
-    <message>
-        <source>bridge error: %1</source>
-        <translation>erreur de pont : %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::wallet::SignTransactionDialog</name>
-    <message>
-        <source>Sign transaction</source>
-        <translation>Signer la transaction</translation>
-    </message>
-    <message>
-        <source>Approve the transaction in your wallet to complete this action.</source>
-        <translation>Approuvez la transaction dans votre portefeuille pour finaliser cette action.</translation>
-    </message>
-    <message>
-        <source>Opening your browser to relay the transaction…</source>
-        <translation>Ouverture de votre navigateur pour relayer la transaction…</translation>
-    </message>
-    <message>
-        <source>Reopen browser</source>
-        <translation>Rouvrir le navigateur</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annuler</translation>
-    </message>
-    <message>
-        <source>Browser opened. Approve the transaction in your wallet. The terminal is waiting on a single-use loopback bridge — this dialog will close automatically when the wallet returns the signature.</source>
-        <translation>Navigateur ouvert. Approuvez la transaction dans votre portefeuille. Le terminal attend un pont en boucle locale à usage unique — cette boîte de dialogue se fermera automatiquement lorsque le portefeuille renverra la signature.</translation>
+        <source>type a ticker…</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -40866,7 +38195,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>EXECUTION RESULTS</source>
-        <translation>RÉSULTATS D'EXÉCUTION</translation>
+        <translation>RÉSULTATS D&apos;EXÉCUTION</translation>
     </message>
     <message>
         <source>IDLE</source>
@@ -40974,7 +38303,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>2. Stock Quote Lookup — Fetch quote for multiple tickers</source>
-        <translation>2. Recherche de cotation d'actions — Récupérer la cotation de plusieurs symboles</translation>
+        <translation>2. Recherche de cotation d&apos;actions — Récupérer la cotation de plusieurs symboles</translation>
     </message>
     <message>
         <source>3. Multi-Indicator Scanner — RSI + MACD + Bollinger on a stock</source>
@@ -40998,7 +38327,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>8. Portfolio Rebalancer — Check drift → optimize → place orders</source>
-        <translation>8. Rééquilibreur de portefeuille — Vérifier l'écart → optimiser → passer les ordres</translation>
+        <translation>8. Rééquilibreur de portefeuille — Vérifier l&apos;écart → optimiser → passer les ordres</translation>
     </message>
     <message>
         <source>9. Daily Risk Monitor — Positions → VaR → loss limit → alert</source>
@@ -41006,7 +38335,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>10. Pre-Trade Compliance — Full validation before order execution</source>
-        <translation>10. Conformité avant transaction — Validation complète avant l'exécution de l'ordre</translation>
+        <translation>10. Conformité avant transaction — Validation complète avant l&apos;exécution de l&apos;ordre</translation>
     </message>
     <message>
         <source>11. News Sentiment Pipeline — Fetch news → NLP → filter → alert</source>
@@ -41022,7 +38351,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>14. Data Export Pipeline — Fetch → transform → CSV export</source>
-        <translation>14. Pipeline d'export de données — Récupérer → transformer → export CSV</translation>
+        <translation>14. Pipeline d&apos;export de données — Récupérer → transformer → export CSV</translation>
     </message>
     <message>
         <source>15. Webhook Automation — External trigger → process → notify</source>
@@ -41124,7 +38453,7 @@ X-API-Key: xyz</translation>
     </message>
     <message>
         <source>Execute From Here</source>
-        <translation>Exécuter à partir d'ici</translation>
+        <translation>Exécuter à partir d&apos;ici</translation>
     </message>
     <message>
         <source>Delete</source>
@@ -41176,47 +38505,7 @@ pour modifier les propriétés</translation>
     </message>
     <message>
         <source>Continue on Fail</source>
-        <translation>Continuer en cas d'échec</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::OrderConfirmDialog</name>
-    <message>
-        <source>Confirm Order</source>
-        <translation>Confirmer l'ordre</translation>
-    </message>
-    <message>
-        <source>Est. value</source>
-        <translation>Val. est.</translation>
-    </message>
-    <message>
-        <source>Send Order</source>
-        <translation>Envoyer l'ordre</translation>
-    </message>
-    <message>
-        <source>⚠  SEMI-AUTO — review before sending</source>
-        <translation>⚠  SEMI-AUTOMATIQUE — examiner avant l'envoi</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::PendingOrdersBadge</name>
-    <message>
-        <source>Orders awaiting approval — click to review</source>
-        <translation>Ordres en attente d'approbation — cliquez pour examiner</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::PendingOrdersPanel</name>
-    <message>
-        <source>PENDING ORDERS</source>
-        <translation>ORDRES EN ATTENTE</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::ui::PhoneCodeComboBox</name>
-    <message>
-        <source>Search country…</source>
-        <translation>Rechercher un pays…</translation>
+        <translation>Continuer en cas d&apos;échec</translation>
     </message>
 </context>
 </TS>

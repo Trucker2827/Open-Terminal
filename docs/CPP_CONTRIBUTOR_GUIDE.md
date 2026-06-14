@@ -84,7 +84,7 @@ openmarketterminal-qt/src/
 │
 ├── auth/                           # AuthManager, AuthApi, SessionGuard
 ├── python/PythonRunner.cpp/h       # Execute Python scripts
-├── trading/                        # Trading engine + 20+ broker adapters
+├── trading/                        # Trading engine + 3 US equity broker adapters
 ├── services/                       # MarketDataService, NewsService
 │
 └── screens/                        # Terminal screens

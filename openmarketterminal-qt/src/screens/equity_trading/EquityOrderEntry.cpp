@@ -163,7 +163,7 @@ EquityOrderEntry::EquityOrderEntry(QWidget* parent) : QWidget(parent) {
     exchange_combo_->setObjectName("eqOeCombo");
     // Exchange codes are market identifiers — data, not translated. US/EU first
     // since the app targets those markets.
-    exchange_combo_->addItems({"NASDAQ", "NYSE", "AMEX", "ARCA", "LSE", "XETRA", "NSE", "BSE"});
+    exchange_combo_->addItems({"NASDAQ", "NYSE", "AMEX", "ARCA", "LSE", "XETRA"});
     exchange_combo_->setFixedHeight(28);
     connect(exchange_combo_, &QComboBox::currentTextChanged, this, [this](const QString& ex) {
         current_exchange_ = ex;

@@ -16,7 +16,7 @@ struct ScanWatch {
     QJsonArray  conditions;
     QString     logic = QStringLiteral("AND");
     QStringList symbols;
-    QString     universe; // '' / 'CUSTOM' use symbols; 'NSE_EQ'/'BSE_EQ'/'NIFTY50' resolve live
+    QString     universe; // '' / 'CUSTOM' use symbols; 'US_MEGA'/'US_TECH' use presets
     QString     timeframe = QStringLiteral("1m");
     int         lookback_days = 5;
     QString     data_source = QStringLiteral("Broker");

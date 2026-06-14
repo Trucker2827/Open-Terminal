@@ -29,10 +29,8 @@ namespace openmarketterminal::services::equity {
 
 namespace {
 
-// yfinance symbol → broker region. ".NS"/".BO" are Indian (NSE/BSE); a bare
-// ticker with no exchange suffix is a US listing (yfinance convention, e.g.
-// AAPL/SPGI). Other suffixes (.L, .TO, .HK …) aren't routable via the wired
-// brokers → empty region. Mirrors research_symbol_region() in the screen.
+// yfinance symbol → broker region. ".NS"/".BO" are NSE/BSE yfinance suffixes; a
+// bare ticker with no exchange suffix is treated as US (yfinance convention).
 QString candle_symbol_region(const QString& sym) {
     if (sym.endsWith(QStringLiteral(".NS"), Qt::CaseInsensitive) ||
         sym.endsWith(QStringLiteral(".BO"), Qt::CaseInsensitive))
@@ -42,8 +40,7 @@ QString candle_symbol_region(const QString& sym) {
     return {};
 }
 
-// yfinance form (RELIANCE.NS / TCS.BO) → bare broker symbol. US tickers are
-// already bare.
+// yfinance suffixed symbols (.NS / .BO) → bare broker symbol. US tickers are bare.
 QString candle_bare_symbol(const QString& sym) {
     if (sym.endsWith(QStringLiteral(".NS"), Qt::CaseInsensitive) ||
         sym.endsWith(QStringLiteral(".BO"), Qt::CaseInsensitive))
@@ -52,9 +49,7 @@ QString candle_bare_symbol(const QString& sym) {
 }
 
 // Pick the first *Connected* active account whose broker region matches the
-// symbol's market, so RELIANCE.NS routes through a live IN-region broker and a
-// US ticker through a live US broker — never cross-region. Returns false when no
-// usable broker exists (caller then uses yfinance).
+// symbol's market (US bare tickers → US brokers; .NS/.BO → IN if ever wired).
 bool resolve_connected_data_broker(const QString& symbol, QString& broker_id, QString& account_id) {
     const QString region = candle_symbol_region(symbol);
     if (region.isEmpty())

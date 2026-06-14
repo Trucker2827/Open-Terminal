@@ -253,6 +253,7 @@ void DocsScreen::build_sidebar() {
     // ── Trading ──────────────────────────────────────────────────────────────
     auto* trading = add_category(tr("TRADING"));
     add_item(trading, tr("Crypto Trading"), "crypto_trading");
+    add_item(trading, tr("Equity Trading"), "equity_trading");
     add_item(trading, tr("Paper Trading"), "paper_trading");
     add_item(trading, tr("Algo Trading"), "algo_trading");
     add_item(trading, tr("Backtesting"), "backtesting");
@@ -340,6 +341,7 @@ void DocsScreen::build_content_pages() {
 
     // Trading
     add("crypto_trading", page_crypto_trading());
+    add("equity_trading", page_equity_trading());
     add("paper_trading", page_paper_trading());
     add("algo_trading", page_algo_trading());
     add("backtesting", page_backtesting());

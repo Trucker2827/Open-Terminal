@@ -60,7 +60,7 @@ enum StatCard {
 };
 
 // Money with the connected broker's currency symbol and locale-aware grouping
-// (Indian lakh grouping for ₹). `signed_pfx` prepends an explicit +/- for P&L.
+// (INR lakh grouping; USD/US-style grouping otherwise). `signed_pfx` for P&L +/-.
 QString fmt_money(double v, const QString& sym, bool signed_pfx = false) {
     const QLocale loc = (sym == QString::fromUtf8("₹")) ? QLocale(QLocale::English, QLocale::India)
                                                         : QLocale(QLocale::English, QLocale::UnitedStates);

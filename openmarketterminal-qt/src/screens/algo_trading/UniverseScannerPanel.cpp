@@ -94,10 +94,10 @@ void UniverseScannerPanel::build_ui() {
     universe_combo_ = new QComboBox(content);
     universe_combo_->setStyleSheet(uCombo());
     universe_combo_->setFixedHeight(30);
-    universe_combo_->addItem(tr("All NSE Equity"), "NSE_EQ");
-    universe_combo_->addItem(tr("All BSE Equity"), "BSE_EQ");
-    universe_combo_->addItem(tr("NIFTY 50"), "NIFTY50");
+    universe_combo_->addItem(tr("US mega-cap preset"), "US_MEGA");
+    universe_combo_->addItem(tr("US tech preset"), "US_TECH");
     universe_combo_->addItem(tr("Custom symbols"), "CUSTOM");
+    universe_combo_->setCurrentIndex(2);
     vl->addWidget(universe_combo_);
     connect(universe_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &UniverseScannerPanel::on_universe_changed);

@@ -23,9 +23,8 @@ BacktestingService& BacktestingService::instance() {
 BacktestingService::BacktestingService(QObject* parent) : QObject(parent) {}
 
 void BacktestingService::execute(const QString& provider, const QString& command, const QJsonObject& args) {
-    // Backtests source their candles from the Python providers (yfinance et al).
-    // The previous broker-candle injection only ever served India-only brokers,
-    // which have been removed, so all backtests now go straight to Python.
+    // Backtests source candles from Python providers (yfinance, etc.).
+    // Legacy broker-candle injection was removed with the India broker adapters.
     dispatch_python(provider, command, args);
 }
 

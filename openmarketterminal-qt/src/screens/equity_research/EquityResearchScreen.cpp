@@ -661,70 +661,6 @@ void EquityResearchScreen::restore_state(const QVariantMap& state) {
 
 // ── Broker live quote subscription ──────────────────────────────────────────
 
-void EquityResearchScreen::hub_subscribe_broker_quote() {
-    hub_unsubscribe_broker_quote();
-
-    if (current_symbol_.isEmpty())
-        return;
-    // Only NSE/BSE-listed stocks stream through an IN-region broker
-    if (!current_symbol_.endsWith(QStringLiteral(".NS")) && !current_symbol_.endsWith(QStringLiteral(".BO")))
-        return;
-
-    // Find a connected IN-region broker account (any). NSE/BSE quotes stream
-    // through whichever region-matched broker the user has live. Pick the first
-    // Connected IN broker.
-    const auto accounts = trading::AccountManager::instance().active_accounts();
-    QString quote_broker_id, quote_account_id;
-    for (const auto& a : accounts) {
-        if (a.state != trading::ConnectionState::Connected)
-            continue;
-        auto* b = trading::BrokerRegistry::instance().get(a.broker_id);
-        if (b && b->profile().region == QLatin1String("IN")) {
-            quote_broker_id = a.broker_id;
-            quote_account_id = a.account_id;
-            break;
-        }
-    }
-    if (quote_account_id.isEmpty())
-        return;
-
-    // Strip .NS/.BO suffix to get plain broker symbol
-    QString broker_sym = current_symbol_.left(current_symbol_.length() - 3);
-    const QString topic = trading::broker_topic(quote_broker_id, quote_account_id,
-                                                QStringLiteral("quote"), broker_sym);
-    const QString sym = current_symbol_;
-
-    datahub::DataHub::instance().subscribe(this, topic, [this, sym](const QVariant& v) {
-        if (!v.canConvert<trading::BrokerQuote>())
-            return;
-        const auto bq = v.value<trading::BrokerQuote>();
-        services::equity::QuoteData qd;
-        qd.symbol = sym;
-        qd.price = bq.ltp;
-        qd.change = bq.change;
-        qd.change_pct = bq.change_pct;
-        qd.high = bq.high;
-        qd.low = bq.low;
-        qd.volume = bq.volume;
-        qd.timestamp = bq.timestamp;
-        update_quote_bar(qd);
-    });
-
-    refresh_timer_->stop(); // broker stream is faster than 30s polling
-    hub_broker_active_ = true;
-}
-
-void EquityResearchScreen::hub_unsubscribe_broker_quote() {
-    if (!hub_broker_active_)
-        return;
-    datahub::DataHub::instance().unsubscribe(this);
-    hub_broker_active_ = false;
-    if (isVisible())
-        refresh_timer_->start();
-}
-
-// ── In-tab trading ──────────────────────────────────────────────────────────
-
 // Resolve a yfinance research symbol to a broker-tradable route, matched against
 // any broker's BrokerProfile.exchanges (works for every region — not a hardcoded
 // IN/US split). `match_exchanges` is the set a broker must serve to trade it;
@@ -775,6 +711,74 @@ static ResearchTradeRoute research_trade_route(const QString& sym) {
     return r; // other suffixes (.SS, .KS, …) — not routable via the wired brokers
 }
 
+void EquityResearchScreen::hub_subscribe_broker_quote() {
+    hub_unsubscribe_broker_quote();
+
+    if (current_symbol_.isEmpty())
+        return;
+
+    const auto route = research_trade_route(current_symbol_);
+    if (!route.routable)
+        return;
+
+    const auto accounts = trading::AccountManager::instance().active_accounts();
+    QString quote_broker_id, quote_account_id;
+    for (const auto& a : accounts) {
+        if (a.state != trading::ConnectionState::Connected)
+            continue;
+        auto* b = trading::BrokerRegistry::instance().get(a.broker_id);
+        if (!b)
+            continue;
+        const QStringList exchanges = b->profile().exchanges;
+        for (const auto& me : route.match_exchanges) {
+            if (exchanges.contains(me, Qt::CaseInsensitive)) {
+                quote_broker_id = a.broker_id;
+                quote_account_id = a.account_id;
+                break;
+            }
+        }
+        if (!quote_account_id.isEmpty())
+            break;
+    }
+    if (quote_account_id.isEmpty())
+        return;
+
+    const QString broker_sym = route.bare;
+    const QString topic = trading::broker_topic(quote_broker_id, quote_account_id,
+                                                QStringLiteral("quote"), broker_sym);
+    const QString sym = current_symbol_;
+
+    datahub::DataHub::instance().subscribe(this, topic, [this, sym](const QVariant& v) {
+        if (!v.canConvert<trading::BrokerQuote>())
+            return;
+        const auto bq = v.value<trading::BrokerQuote>();
+        services::equity::QuoteData qd;
+        qd.symbol = sym;
+        qd.price = bq.ltp;
+        qd.change = bq.change;
+        qd.change_pct = bq.change_pct;
+        qd.high = bq.high;
+        qd.low = bq.low;
+        qd.volume = bq.volume;
+        qd.timestamp = bq.timestamp;
+        update_quote_bar(qd);
+    });
+
+    refresh_timer_->stop(); // broker stream is faster than 30s polling
+    hub_broker_active_ = true;
+}
+
+void EquityResearchScreen::hub_unsubscribe_broker_quote() {
+    if (!hub_broker_active_)
+        return;
+    datahub::DataHub::instance().unsubscribe(this);
+    hub_broker_active_ = false;
+    if (isVisible())
+        refresh_timer_->start();
+}
+
+// ── In-tab trading ──────────────────────────────────────────────────────────
+
 // True when at least one usable account (paper, or live + Connected) is on a broker
 // that serves one of `match_exchanges`.
 static bool any_usable_broker_trades(const QStringList& match_exchanges) {
@@ -800,9 +804,8 @@ void EquityResearchScreen::update_trade_buttons() {
     if (!buy_btn_ || !sell_btn_)
         return;
 
-    // Show BUY/SELL only when the symbol is routable AND a usable broker actually
-    // trades that market — so SPGI shows for US-venue brokers (Alpaca/IBKR),
-    // RELIANCE.NS for an IN-region broker, and nothing for a forex-only broker.
+    // Show BUY/SELL only when the symbol is routable and a usable broker serves
+    // that market (US bare tickers → Alpaca/IBKR; suffixed listings → matching venue).
     const auto route = research_trade_route(current_symbol_);
     const bool show = route.routable && any_usable_broker_trades(route.match_exchanges);
     buy_btn_->setVisible(show);

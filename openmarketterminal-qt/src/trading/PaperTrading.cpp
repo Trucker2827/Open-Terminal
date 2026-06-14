@@ -666,10 +666,10 @@ void pt_convert_position_product(const QString& position_id, const QString& new_
 }
 
 int pt_settle_intraday(const QString& portfolio_id) {
-    // Intraday auto-square applies ONLY to Indian (INR) equity portfolios. Crypto
-    // and US (USD) paper portfolios trade on other schedules and must never be
-    // squared at the IST 15:30 cutoff (this previously closed month-old crypto
-    // positions because their product had defaulted to MIS).
+    // Intraday auto-square applies ONLY to INR-denominated equity portfolios.
+    // Crypto and USD paper portfolios use other schedules and must never hit the
+    // IST 15:30 cutoff (this previously closed month-old crypto positions because
+    // their product had defaulted to MIS).
     PtPortfolio portfolio;
     try {
         portfolio = pt_get_portfolio(portfolio_id);

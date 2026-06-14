@@ -3,6 +3,7 @@
 #include "mcp/tools/MarketsTools.h"
 
 #include "core/logging/Logger.h"
+#include "mcp/tools/DataHubPeekHelpers.h"
 #include "mcp/tools/ThreadHelper.h"
 #include "python/PythonRunner.h"
 #include "services/markets/MarketDataService.h"
@@ -34,7 +35,9 @@ std::vector<ToolDef> get_markets_tools() {
         ToolDef t;
         t.name = "get_quote";
         t.description = "Fetch the latest stock/ETF/crypto quote (price, change, "
-                        "high/low, volume). Backed by yfinance. Symbols accept "
+                        "high/low, volume). Checks the in-process DataHub first "
+                        "(cheap if a screen is already streaming the symbol), "
+                        "then falls back to yfinance. Symbols accept "
                         "AAPL, BTC-USD, ^GSPC, GBPUSD=X, GC=F, etc.";
         t.category = "markets";
         t.input_schema.properties = QJsonObject{
@@ -44,6 +47,14 @@ std::vector<ToolDef> get_markets_tools() {
             QString symbol = args["symbol"].toString().trimmed().toUpper();
             if (symbol.isEmpty())
                 return ToolResult::fail("Missing 'symbol'");
+
+            if (const auto cached = detail::peek_quote(symbol)) {
+                QJsonObject out = detail::quote_to_json(*cached);
+                const QString topic = QStringLiteral("market:quote:") + symbol;
+                out["_source"] = QStringLiteral("datahub");
+                out["_age_ms"] = detail::topic_age_ms(topic);
+                return ToolResult::ok_data(out);
+            }
 
             auto* svc = &services::MarketDataService::instance();
             bool ok = false;
@@ -68,14 +79,10 @@ std::vector<ToolDef> get_markets_tools() {
                 return ToolResult::fail("No quote data available for " + symbol);
             }
 
-            return ToolResult::ok_data(QJsonObject{{"symbol", q.symbol},
-                                                   {"name", q.name},
-                                                   {"price", q.price},
-                                                   {"change", q.change},
-                                                   {"change_pct", q.change_pct},
-                                                   {"high", q.high},
-                                                   {"low", q.low},
-                                                   {"volume", q.volume}});
+            QJsonObject out = detail::quote_to_json(q);
+            out["_source"] = QStringLiteral("fetch");
+            out["_age_ms"] = 0;
+            return ToolResult::ok_data(out);
         };
         tools.push_back(std::move(t));
     }

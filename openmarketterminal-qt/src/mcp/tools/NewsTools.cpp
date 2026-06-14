@@ -5,6 +5,7 @@
 #include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
 #include "mcp/ToolSchemaBuilder.h"
+#include "mcp/tools/DataHubPeekHelpers.h"
 #include "mcp/tools/ThreadHelper.h"
 #include "services/news/NewsClusterService.h"
 #include "services/news/NewsMonitorService.h"
@@ -144,7 +145,8 @@ std::vector<ToolDef> get_news_tools() {
     {
         ToolDef t;
         t.name = "get_news";
-        t.description = "Fetch latest financial news headlines. Supports filtering by category, time range, "
+        t.description = "Fetch latest financial news headlines. Reads the DataHub "
+                        "`news:general` cache first when `force` is false. Supports filtering by category, time range, "
                         "sentiment, and keyword search. "
                         "Categories: ALL, MARKETS (MKT), EARNINGS (EARN), ECONOMIC (ECO), CRYPTO (CRPT), "
                         "GEOPOLITICS (GEO), ENERGY (NRG), DEFENSE (DEF), TECH, REGULATORY. "
@@ -179,7 +181,16 @@ std::vector<ToolDef> get_news_tools() {
             int limit = qBound(1, args["limit"].toInt(20), 100);
             bool force = args["force"].toBool(false);
 
-            auto all = fetch_articles_sync(force);
+            QString source = QStringLiteral("fetch");
+            QVector<NewsArticle> all;
+            if (!force) {
+                if (const auto cached = detail::peek_news_general())
+                    all = *cached;
+                if (!all.isEmpty())
+                    source = QStringLiteral("datahub");
+            }
+            if (all.isEmpty())
+                all = fetch_articles_sync(force);
             if (all.isEmpty())
                 return ToolResult::fail("No news articles available — feeds may still be loading");
 
@@ -189,13 +200,20 @@ std::vector<ToolDef> get_news_tools() {
             for (const auto& a : filtered)
                 result.append(article_to_json(a));
 
-            LOG_DEBUG(TAG, QString("get_news: %1/%2 articles").arg(filtered.size()).arg(all.size()));
+            LOG_DEBUG(TAG, QString("get_news: %1/%2 articles (source=%3)")
+                                .arg(filtered.size())
+                                .arg(all.size())
+                                .arg(source));
 
             return ToolResult::ok(QString("Found %1 articles").arg(filtered.size()),
                                   QJsonObject{{"count", filtered.size()},
                                               {"total", all.size()},
                                               {"category", category},
                                               {"time_range", time_range},
+                                              {"_source", source},
+                                              {"_age_ms", source == QLatin1String("datahub")
+                                                              ? detail::topic_age_ms(QStringLiteral("news:general"))
+                                                              : 0},
                                               {"articles", result}});
         };
         tools.push_back(std::move(t));
@@ -213,7 +231,11 @@ std::vector<ToolDef> get_news_tools() {
         t.handler = [](const QJsonObject& args) -> ToolResult {
             int limit = qBound(1, args["limit"].toInt(10), 50);
 
-            auto all = fetch_articles_sync(false);
+            QVector<NewsArticle> all;
+            if (const auto cached = detail::peek_news_general())
+                all = *cached;
+            if (all.isEmpty())
+                all = fetch_articles_sync(false);
             if (all.isEmpty())
                 return ToolResult::fail("No news articles available");
 

@@ -61,7 +61,7 @@ QVector<SourceItem> paper_source_items(const QString& portfolio_id) {
             continue;
         SourceItem s;
         s.src_symbol = p.symbol;
-        s.exchange = QStringLiteral("NSE"); // paper positions carry no exchange column
+        s.exchange = QStringLiteral("NASDAQ"); // paper positions carry no exchange column
         s.quantity = std::fabs(p.quantity);
         s.avg_price = p.entry_price;
         s.ltp = p.current_price > 0 ? p.current_price : p.entry_price;
@@ -99,7 +99,7 @@ ReplicationPlan build_plan(const QVector<SourceItem>& items,
         PlannedOrder po;
         po.kind = item.kind;
         po.src_symbol = item.src_symbol;
-        po.exchange = item.exchange.isEmpty() ? QStringLiteral("NSE") : item.exchange;
+        po.exchange = item.exchange.isEmpty() ? QStringLiteral("NASDAQ") : item.exchange;
         po.quantity = std::floor(item.quantity); // whole shares
         po.est_price = item.ltp > 0 ? item.ltp : item.avg_price;
         po.est_value = po.quantity * po.est_price;

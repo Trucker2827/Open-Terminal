@@ -1,25 +1,6 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en">
-<context>
-    <name>ActivityTab</name>
-    <message>
-        <source>SWAP</source>
-        <translation>兑换</translation>
-    </message>
-    <message>
-        <source>RECEIVE</source>
-        <translation>接收</translation>
-    </message>
-    <message>
-        <source>SEND</source>
-        <translation>发送</translation>
-    </message>
-    <message>
-        <source>OTHER</source>
-        <translation>其他</translation>
-    </message>
-</context>
 <context>
     <name>AgentChatPanel</name>
     <message>
@@ -33,29 +14,6 @@
     <message>
         <source>Agent</source>
         <translation>智能体</translation>
-    </message>
-</context>
-<context>
-    <name>EquitySentimentTab</name>
-    <message>
-        <source>ALIGNED</source>
-        <translation>一致</translation>
-    </message>
-    <message>
-        <source>MIXED</source>
-        <translation>分歧</translation>
-    </message>
-    <message>
-        <source>DIVERGENT</source>
-        <translation>背离</translation>
-    </message>
-    <message>
-        <source>SINGLE SOURCE</source>
-        <translation>单一来源</translation>
-    </message>
-    <message>
-        <source>UNAVAILABLE</source>
-        <translation>不可用</translation>
     </message>
 </context>
 <context>
@@ -86,82 +44,6 @@
     <message>
         <source>OPEN</source>
         <translation>打开</translation>
-    </message>
-</context>
-<context>
-    <name>ForumFeedPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 秒前</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 分钟前</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 小时前</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 天前</translation>
-    </message>
-</context>
-<context>
-    <name>ForumPostListPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 秒前</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 分钟前</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 小时前</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 天前</translation>
-    </message>
-</context>
-<context>
-    <name>ForumPostReaderPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 秒前</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 分钟前</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 小时前</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 天前</translation>
-    </message>
-</context>
-<context>
-    <name>ForumThreadPanel</name>
-    <message>
-        <source>%1s ago</source>
-        <translation>%1 秒前</translation>
-    </message>
-    <message>
-        <source>%1m ago</source>
-        <translation>%1 分钟前</translation>
-    </message>
-    <message>
-        <source>%1h ago</source>
-        <translation>%1 小时前</translation>
-    </message>
-    <message>
-        <source>%1d ago</source>
-        <translation>%1 天前</translation>
     </message>
 </context>
 <context>
@@ -212,29 +94,6 @@
     </message>
 </context>
 <context>
-    <name>MultiStraddleSubTab</name>
-    <message>
-        <source>Straddle (ATM)</source>
-        <translation>跨式 (ATM)</translation>
-    </message>
-    <message>
-        <source>Strangle ±1</source>
-        <translation>宽跨式 ±1</translation>
-    </message>
-    <message>
-        <source>Strangle ±2</source>
-        <translation>宽跨式 ±2</translation>
-    </message>
-    <message>
-        <source>Strangle ±3</source>
-        <translation>宽跨式 ±3</translation>
-    </message>
-    <message>
-        <source>(ATM)</source>
-        <translation>(ATM)</translation>
-    </message>
-</context>
-<context>
     <name>NotesScreen</name>
     <message>
         <source>ALL NOTES</source>
@@ -267,13 +126,6 @@
     <message>
         <source>GENERAL</source>
         <translation>常规</translation>
-    </message>
-</context>
-<context>
-    <name>OISubTab</name>
-    <message>
-        <source>(ATM)</source>
-        <translation>(ATM)</translation>
     </message>
 </context>
 <context>
@@ -331,8 +183,8 @@
         <translation>刷新工具列表</translation>
     </message>
     <message>
-        <source>All Open Terminal internal tools. Input JSON flows in as arguments.</source>
-        <translation>所有 Open Terminal 内部工具。输入的 JSON 将作为参数传入。</translation>
+        <source>All OpenMarketTerminal internal tools. Input JSON flows in as arguments.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Loading connections...</source>
@@ -356,118 +208,6 @@
 </context>
 <context>
     <name>QObject</name>
-    <message>
-        <source>No confirmation after 60 s. Check Solscan.</source>
-        <translation>60 秒后仍未确认。请检查 Solscan。</translation>
-    </message>
-    <message>
-        <source>Timed out.</source>
-        <translation>已超时。</translation>
-    </message>
-    <message>
-        <source>Tx failed on-chain: %1</source>
-        <translation>交易在链上失败：%1</translation>
-    </message>
-    <message>
-        <source>Reverted.</source>
-        <translation>已回滚。</translation>
-    </message>
-    <message>
-        <source>Confirmed: %1…</source>
-        <translation>已确认：%1…</translation>
-    </message>
-    <message>
-        <source>build_swap failed: %1</source>
-        <translation>build_swap 失败：%1</translation>
-    </message>
-    <message>
-        <source>Failed.</source>
-        <translation>已失败。</translation>
-    </message>
-    <message>
-        <source>Validating with RPC…</source>
-        <translation>正在通过 RPC 验证…</translation>
-    </message>
-    <message>
-        <source>Simulation failed: %1. Refusing to sign.</source>
-        <translation>模拟失败：%1。拒绝签名。</translation>
-    </message>
-    <message>
-        <source>Aborted.</source>
-        <translation>已中止。</translation>
-    </message>
-    <message>
-        <source>This swap would fail on-chain: %1. Refusing to sign.</source>
-        <translation>此次兑换将在链上失败：%1。拒绝签名。</translation>
-    </message>
-    <message>
-        <source>Approve in your wallet to forward this transaction to the network. The terminal does not hold any funds.</source>
-        <translation>在你的钱包中批准，以将此交易转发至网络。终端不持有任何资金。</translation>
-    </message>
-    <message>
-        <source>≈ %1 $FNCPT (PumpSwap fills at execution)</source>
-        <translation>≈ %1 $FNCPT（PumpSwap 在执行时成交）</translation>
-    </message>
-    <message>
-        <source>≈ %1 SOL (PumpSwap fills at execution)</source>
-        <translation>≈ %1 SOL（PumpSwap 在执行时成交）</translation>
-    </message>
-    <message>
-        <source>PumpSwap will reject the trade if execution drifts more than the slippage tolerance above. Your funds stay in your wallet.</source>
-        <translation>如果执行价格偏离超过上方的滑点容差，PumpSwap 将拒绝该交易。你的资金始终保留在你的钱包中。</translation>
-    </message>
-    <message>
-        <source>Re-checking freshness…</source>
-        <translation>正在重新检查时效性…</translation>
-    </message>
-    <message>
-        <source>Could not verify freshness: %1. Try the swap again.</source>
-        <translation>无法验证时效性：%1。请重试兑换。</translation>
-    </message>
-    <message>
-        <source>This swap is no longer fresh: %1. Click SWAP again to rebuild.</source>
-        <translation>此次兑换已失效：%1。请再次点击“兑换”以重建。</translation>
-    </message>
-    <message>
-        <source>Stale.</source>
-        <translation>已失效。</translation>
-    </message>
-    <message>
-        <source>Awaiting wallet signature…</source>
-        <translation>正在等待钱包签名…</translation>
-    </message>
-    <message>
-        <source>Sign swap</source>
-        <translation>签名兑换</translation>
-    </message>
-    <message>
-        <source>Approve the swap in your wallet to complete the trade.</source>
-        <translation>在你的钱包中批准兑换以完成交易。</translation>
-    </message>
-    <message>
-        <source>Signing failed: %1</source>
-        <translation>签名失败：%1</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>已取消。</translation>
-    </message>
-    <message>
-        <source>Sent. Waiting for confirmation…</source>
-        <translation>已发送。正在等待确认…</translation>
-    </message>
-    <message>
-        <source>Sign lock</source>
-        <translation>签名锁定</translation>
-    </message>
-    <message>
-        <source>Approve the lock in your wallet.</source>
-        <translation>在你的钱包中批准锁定。</translation>
-    </message>
-    <message>
-        <source>Sent: %1…</source>
-        <translation>已发送：%1…</translation>
-    </message>
     <message>
         <source>Dow Jones style — sum of prices / divisor</source>
         <translation>道琼斯式 — 价格总和 / 除数</translation>
@@ -685,36 +425,72 @@ Ensure required fields (URL, host, or API key) are filled in.</source>
         <translation>保存连接器模板</translation>
     </message>
     <message>
-        <source>SWAP</source>
-        <translation>兑换</translation>
+        <source>Confirm AI action</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROUTE</source>
-        <translation>路由</translation>
+        <source>Approve</source>
+        <translation type="unfinished">批准</translation>
     </message>
     <message>
-        <source>YOU PAY</source>
-        <translation>你支付</translation>
+        <source>Deny</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>YOU RECEIVE</source>
-        <translation>你收到</translation>
+        <source>Place a LIVE order with REAL money?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>MAX SLIPPAGE</source>
-        <translation>最大滑点</translation>
+        <source>%1 %2 %3 on %4 (%5).
+This sends a real order to your broker.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>PRIORITY FEE</source>
-        <translation>优先费</translation>
+        <source>Run a Python script on your machine?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>RPC SIMULATION</source>
-        <translation>RPC 模拟</translation>
+        <source>script: %1
+args: %2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OK · %1 CU</source>
-        <translation>OK · %1 CU</translation>
+        <source>Let the AI save an agent/workflow config?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 — a saved workflow/agent can later run code or place orders.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Approve AI action: %1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Approve external MCP tool &apos;%1&apos;?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Server: %1
+Runs in an external MCP server you added.
+args: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>~%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPEN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exchange adapter is not registered.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 balance: %2 %3</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -746,60 +522,6 @@ Ensure required fields (URL, host, or API key) are filled in.</source>
     <message>
         <source>Computation failed: </source>
         <translation>计算失败：</translation>
-    </message>
-</context>
-<context>
-    <name>ScreenerSubTab</name>
-    <message>
-        <source>IV Min</source>
-        <translation>IV 最小值</translation>
-    </message>
-    <message>
-        <source>IV Max</source>
-        <translation>IV 最大值</translation>
-    </message>
-    <message>
-        <source>± Strikes</source>
-        <translation>± 行权价</translation>
-    </message>
-    <message>
-        <source>CE OI ≥</source>
-        <translation>CE OI ≥</translation>
-    </message>
-    <message>
-        <source>PE OI ≥</source>
-        <translation>PE OI ≥</translation>
-    </message>
-    <message>
-        <source>0 of 0 strikes match</source>
-        <translation>匹配 0 / 0 个行权价</translation>
-    </message>
-    <message>
-        <source>%1 of %2 strikes match</source>
-        <translation>匹配 %1 / %2 个行权价</translation>
-    </message>
-</context>
-<context>
-    <name>TemplatePickerPanel</name>
-    <message>
-        <source>BULLISH</source>
-        <translation>看涨</translation>
-    </message>
-    <message>
-        <source>BEARISH</source>
-        <translation>看跌</translation>
-    </message>
-    <message>
-        <source>NEUTRAL</source>
-        <translation>中性</translation>
-    </message>
-    <message>
-        <source>VOLATILE</source>
-        <translation>高波动</translation>
-    </message>
-    <message>
-        <source>OTHERS</source>
-        <translation>其他</translation>
     </message>
 </context>
 <context>
@@ -882,8 +604,8 @@ For long-form chats use the AI Chat tab.</source>
 如需长篇对话，请使用 AI Chat 标签页。</translation>
     </message>
     <message>
-        <source>AI chat is not configured. Open **Settings → LLM Config** and add an API key or pick the Open Terminal provider.</source>
-        <translation>AI 聊天尚未配置。请打开 **设置 → LLM Config** 并添加 API key，或选择 Open Terminal 提供商。</translation>
+        <source>AI chat is not configured. Open **Settings → LLM Config** and add an API key or pick the OpenMarketTerminal provider.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Error: %1</source>
@@ -1057,16 +779,8 @@ For long-form chats use the AI Chat tab.</source>
         <translation>笔记</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>论坛</translation>
-    </message>
-    <message>
         <source>Docs</source>
         <translation>文档</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>支持</translation>
     </message>
     <message>
         <source>About</source>
@@ -1099,10 +813,6 @@ For long-form chats use the AI Chat tab.</source>
     <message>
         <source>Help</source>
         <translation>帮助</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>操作中心</translation>
     </message>
 </context>
 <context>
@@ -1142,8 +852,12 @@ For long-form chats use the AI Chat tab.</source>
         <translation>导入布局</translation>
     </message>
     <message>
-        <source>Open Terminal Layout (*.flayout *.fwsp);;All Files (*)</source>
-        <translation>Open Terminal 布局 (*.flayout *.fwsp);;所有文件 (*)</translation>
+        <source>OpenMarketTerminal Layout (*.flayout *.fwsp);;All Files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Layout (*.flayout)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Import Failed</source>
@@ -1156,10 +870,6 @@ For long-form chats use the AI Chat tab.</source>
     <message>
         <source>Open or save a layout first, then export it.</source>
         <translation>请先打开或保存一个布局，然后再导出。</translation>
-    </message>
-    <message>
-        <source>Open Terminal Layout (*.flayout)</source>
-        <translation>Open Terminal 布局 (*.flayout)</translation>
     </message>
     <message>
         <source>Export Failed</source>
@@ -1175,646 +885,196 @@ For long-form chats use the AI Chat tab.</source>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::chat_mode::ChatAgentPanel</name>
+    <name>openmarketterminal::feeds::FeedConfigDialog</name>
     <message>
-        <source>Mem</source>
-        <translation>记忆</translation>
+        <source>Add Feed</source>
+        <translation type="unfinished">添加订阅源</translation>
     </message>
     <message>
-        <source>Sched</source>
-        <translation>计划</translation>
+        <source>Edit Feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Tasks</source>
-        <translation>任务</translation>
+        <source> s</source>
+        <translation type="unfinished"> 秒</translation>
     </message>
     <message>
-        <source>MCP</source>
-        <translation>MCP</translation>
+        <source>Cards</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Monitor</source>
-        <translation>监控</translation>
+        <source>Table</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>AGENT MEMORY</source>
-        <translation>代理记忆</translation>
+        <source>Auto</source>
+        <translation type="unfinished">自动</translation>
     </message>
     <message>
-        <source>+ Add</source>
-        <translation>+ 添加</translation>
+        <source>Manual</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Add memory entry</source>
-        <translation>添加记忆条目</translation>
+        <source>Store history (offline cache + past items)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete</source>
-        <translation>删除</translation>
+        <source>Keep fetched items in the local database so they show when the feed is unreachable, and can be queried later.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete selected</source>
-        <translation>删除所选</translation>
+        <source>Name</source>
+        <translation type="unfinished">名称</translation>
     </message>
     <message>
-        <source>Clear</source>
-        <translation>清除</translation>
-    </message>
-    <message>
-        <source>Clear all memory</source>
-        <translation>清除所有记忆</translation>
-    </message>
-    <message>
-        <source>SCHEDULED QUERIES</source>
-        <translation>计划查询</translation>
-    </message>
-    <message>
-        <source>Cron-based agent queries (e.g. daily 9 AM).</source>
-        <translation>基于 Cron 的代理查询（例如每天上午 9 点）。</translation>
-    </message>
-    <message>
-        <source>Create schedule</source>
-        <translation>创建计划</translation>
-    </message>
-    <message>
-        <source>Pause</source>
-        <translation>暂停</translation>
-    </message>
-    <message>
-        <source>Pause/resume</source>
-        <translation>暂停/恢复</translation>
-    </message>
-    <message>
-        <source>BACKGROUND TASKS</source>
-        <translation>后台任务</translation>
-    </message>
-    <message>
-        <source>Long-running agent queries.</source>
-        <translation>长时间运行的代理查询。</translation>
+        <source>URL</source>
+        <translation type="unfinished">URL</translation>
     </message>
     <message>
         <source>Refresh</source>
-        <translation>刷新</translation>
+        <translation type="unfinished">刷新</translation>
     </message>
     <message>
-        <source>Refresh task list</source>
-        <translation>刷新任务列表</translation>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Detail</source>
-        <translation>详情</translation>
+        <source>Parse</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>View task result</source>
-        <translation>查看任务结果</translation>
+        <source>Format</source>
+        <translation type="unfinished">格式</translation>
     </message>
     <message>
-        <source>Feedback</source>
-        <translation>反馈</translation>
+        <source>Records</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Send feedback</source>
-        <translation>发送反馈</translation>
+        <source>The repeating tag/element that marks one entry (auto-filled by Discover).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel</source>
-        <translation>取消</translation>
+        <source>🔍 Discover fields from feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel task</source>
-        <translation>取消任务</translation>
+        <source>Pick what each tag is, rename it, or remove it. Add your own with “+ Add field”.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>MCP SERVERS</source>
-        <translation>MCP 服务器</translation>
+        <source>+ Add field</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Model Context Protocol tool servers.</source>
-        <translation>Model Context Protocol 工具服务器。</translation>
-    </message>
-    <message>
-        <source>Add MCP server</source>
-        <translation>添加 MCP 服务器</translation>
-    </message>
-    <message>
-        <source>Remove selected</source>
-        <translation>移除所选</translation>
-    </message>
-    <message>
-        <source>Refresh all</source>
-        <translation>全部刷新</translation>
-    </message>
-    <message>
-        <source>DATA MONITORS</source>
-        <translation>数据监控</translation>
-    </message>
-    <message>
-        <source>Watch sources, trigger agent analysis.</source>
-        <translation>监视数据源，触发代理分析。</translation>
-    </message>
-    <message>
-        <source>Create monitor</source>
-        <translation>创建监控</translation>
-    </message>
-    <message>
-        <source>Not available.</source>
-        <translation>不可用。</translation>
-    </message>
-    <message>
-        <source>No entries yet.</source>
-        <translation>暂无条目。</translation>
-    </message>
-    <message>
-        <source>No schedules yet.</source>
-        <translation>暂无计划。</translation>
-    </message>
-    <message>
-        <source>%1 task(s)</source>
-        <translation>%1 个任务</translation>
-    </message>
-    <message>
-        <source>No tasks yet.</source>
-        <translation>暂无任务。</translation>
-    </message>
-    <message>
-        <source>MCP not available.</source>
-        <translation>MCP 不可用。</translation>
-    </message>
-    <message>
-        <source>%1 server(s) | %2 tools</source>
-        <translation>%1 个服务器 | %2 个工具</translation>
-    </message>
-    <message>
-        <source>No servers connected.</source>
-        <translation>无已连接的服务器。</translation>
-    </message>
-    <message>
-        <source>%1
-  %2 | %3 tools</source>
-        <translation>%1
-  %2 | %3 个工具</translation>
-    </message>
-    <message>
-        <source>No monitors configured.</source>
-        <translation>未配置监控。</translation>
-    </message>
-    <message>
-        <source>Add Memory</source>
-        <translation>添加记忆</translation>
-    </message>
-    <message>
-        <source>Key:</source>
-        <translation>键：</translation>
-    </message>
-    <message>
-        <source>Value for "%1":</source>
-        <translation>“%1” 的值：</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>类型</translation>
-    </message>
-    <message>
-        <source>Memory type:</source>
-        <translation>记忆类型：</translation>
-    </message>
-    <message>
-        <source>Delete Memory</source>
-        <translation>删除记忆</translation>
-    </message>
-    <message>
-        <source>Delete "%1"?</source>
-        <translation>删除“%1”？</translation>
-    </message>
-    <message>
-        <source>Clear Memory</source>
-        <translation>清除记忆</translation>
-    </message>
-    <message>
-        <source>Delete ALL memory entries?</source>
-        <translation>删除全部记忆条目？</translation>
-    </message>
-    <message>
-        <source>New Schedule</source>
-        <translation>新建计划</translation>
-    </message>
-    <message>
-        <source>Query:</source>
-        <translation>查询：</translation>
-    </message>
-    <message>
-        <source>Cron (e.g. 0 9 * * 1-5):</source>
-        <translation>Cron（例如 0 9 * * 1-5）：</translation>
-    </message>
-    <message>
-        <source>Task</source>
-        <translation>任务</translation>
-    </message>
-    <message>
-        <source>Failed: %1</source>
-        <translation>失败：%1</translation>
-    </message>
-    <message>
-        <source>ID: %1
-Query: %2
-Status: %3
-Created: %4
-Started: %5
-Completed: %6
-
-Result:
-%7</source>
-        <translation>ID: %1
-查询: %2
-状态: %3
-创建: %4
-开始: %5
-完成: %6
-
-结果:
-%7</translation>
-    </message>
-    <message>
-        <source>(none)</source>
-        <translation>（无）</translation>
-    </message>
-    <message>
-        <source>Task Detail</source>
-        <translation>任务详情</translation>
-    </message>
-    <message>
-        <source>Task Feedback</source>
-        <translation>任务反馈</translation>
-    </message>
-    <message>
-        <source>Feedback:</source>
-        <translation>反馈：</translation>
-    </message>
-    <message>
-        <source>Sent.</source>
-        <translation>已发送。</translation>
-    </message>
-    <message>
-        <source>Add MCP Server</source>
-        <translation>添加 MCP 服务器</translation>
-    </message>
-    <message>
-        <source>Name:</source>
-        <translation>名称：</translation>
-    </message>
-    <message>
-        <source>Transport</source>
-        <translation>传输</translation>
-    </message>
-    <message>
-        <source>Type:</source>
-        <translation>类型：</translation>
-    </message>
-    <message>
-        <source>Command</source>
-        <translation>命令</translation>
-    </message>
-    <message>
-        <source>Command (e.g. uvx, npx):</source>
-        <translation>命令（例如 uvx、npx）：</translation>
-    </message>
-    <message>
-        <source>Arguments</source>
-        <translation>参数</translation>
-    </message>
-    <message>
-        <source>Args (space-separated):</source>
-        <translation>参数（空格分隔）：</translation>
-    </message>
-    <message>
-        <source>SSE URL</source>
-        <translation>SSE URL</translation>
-    </message>
-    <message>
-        <source>URL:</source>
-        <translation>URL：</translation>
-    </message>
-    <message>
-        <source>MCP Server</source>
-        <translation>MCP 服务器</translation>
-    </message>
-    <message>
-        <source>'%1' added with errors.</source>
-        <translation>“%1” 已添加，但存在错误。</translation>
-    </message>
-    <message>
-        <source>Remove Server</source>
-        <translation>移除服务器</translation>
-    </message>
-    <message>
-        <source>Remove "%1"?</source>
-        <translation>移除“%1”？</translation>
-    </message>
-    <message>
-        <source>New Monitor</source>
-        <translation>新建监控</translation>
-    </message>
-    <message>
-        <source>Source</source>
-        <translation>来源</translation>
-    </message>
-    <message>
-        <source>Data source:</source>
-        <translation>数据源：</translation>
-    </message>
-    <message>
-        <source>Analysis</source>
-        <translation>分析</translation>
-    </message>
-    <message>
-        <source>What should the agent analyze?:</source>
-        <translation>代理应分析什么？：</translation>
-    </message>
-    <message>
-        <source>Interval</source>
-        <translation>间隔</translation>
-    </message>
-    <message>
-        <source>Check interval (seconds):</source>
-        <translation>检查间隔（秒）：</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>代码</translation>
-    </message>
-    <message>
-        <source>Symbol:</source>
-        <translation>代码：</translation>
-    </message>
-    <message>
-        <source>Indicator</source>
-        <translation>指标</translation>
-    </message>
-    <message>
-        <source>Indicator:</source>
-        <translation>指标：</translation>
-    </message>
-    <message>
-        <source>Query</source>
-        <translation>查询</translation>
-    </message>
-    <message>
-        <source>News query:</source>
-        <translation>新闻查询：</translation>
-    </message>
-    <message>
-        <source>Trigger</source>
-        <translation>触发条件</translation>
-    </message>
-    <message>
-        <source>Condition:</source>
-        <translation>条件：</translation>
-    </message>
-    <message>
-        <source>Delete Monitor</source>
-        <translation>删除监控</translation>
-    </message>
-    <message>
-        <source>Delete?</source>
-        <translation>删除？</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatMessagePanel</name>
-    <message>
-        <source>New Conversation</source>
-        <translation>新建对话</translation>
-    </message>
-    <message>
-        <source>Toggle Lite / Deep mode</source>
-        <translation>切换 Lite / Deep 模式</translation>
-    </message>
-    <message>
-        <source>%1 tokens</source>
-        <translation>%1 个 token</translation>
-    </message>
-    <message>
-        <source>OPENMARKETTERMINAL AGENT</source>
-        <translation>OPENMARKETTERMINAL AGENT</translation>
-    </message>
-    <message>
-        <source>AI-powered financial intelligence.
-Markets, equities, portfolio, macro insights.</source>
-        <translation>AI 驱动的金融智能。
-市场、股票、投资组合、宏观洞察。</translation>
-    </message>
-    <message>
-        <source>Outlook for AAPL?</source>
-        <translation>AAPL 的前景如何？</translation>
-    </message>
-    <message>
-        <source>Today's market news</source>
-        <translation>今日市场新闻</translation>
-    </message>
-    <message>
-        <source>Portfolio risk analysis</source>
-        <translation>投资组合风险分析</translation>
-    </message>
-    <message>
-        <source>Key indicators this week</source>
-        <translation>本周关键指标</translation>
-    </message>
-    <message>
-        <source>Agent</source>
-        <translation>代理</translation>
-    </message>
-    <message>
-        <source>Ask anything... (Enter to send, Shift+Enter for new line)</source>
-        <translation>随便问... (Enter 发送，Shift+Enter 换行)</translation>
-    </message>
-    <message>
-        <source>Optimize</source>
-        <translation>优化</translation>
-    </message>
-    <message>
-        <source>Optimize prompt with AI</source>
-        <translation>使用 AI 优化提示词</translation>
-    </message>
-    <message>
-        <source>Stop</source>
-        <translation>停止</translation>
-    </message>
-    <message>
-        <source>Send</source>
-        <translation>发送</translation>
-    </message>
-    <message>
-        <source>You</source>
-        <translation>你</translation>
-    </message>
-    <message>
-        <source>&gt; %1 thinking steps | tools: %2</source>
-        <translation>&gt; %1 个思考步骤 | 工具：%2</translation>
-    </message>
-    <message>
-        <source>&gt; %1 thinking steps</source>
-        <translation>&gt; %1 个思考步骤</translation>
-    </message>
-    <message>
-        <source>used %1</source>
-        <translation>已用 %1</translation>
-    </message>
-    <message>
-        <source>step %1</source>
-        <translation>步骤 %1</translation>
-    </message>
-    <message>
-        <source>thinking...</source>
-        <translation>思考中…</translation>
-    </message>
-    <message>
-        <source>Insufficient credits. Top up to continue.</source>
-        <translation>积分不足。请充值以继续。</translation>
-    </message>
-    <message>
-        <source>%1 tools</source>
-        <translation>%1 个工具</translation>
-    </message>
-    <message>
-        <source>%1 credits</source>
-        <translation>%1 积分</translation>
-    </message>
-    <message>
-        <source>0 credits</source>
-        <translation>0 积分</translation>
-    </message>
-    <message>
-        <source>Optimize failed: %1</source>
-        <translation>优化失败：%1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatModeScreen</name>
-    <message>
-        <source>New Conversation</source>
-        <translation>新建对话</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatModeService</name>
-    <message>
-        <source>Insufficient credits</source>
-        <translation>积分不足</translation>
-    </message>
-    <message>
-        <source>Optimize prompt request failed</source>
-        <translation>优化提示词请求失败</translation>
-    </message>
-    <message>
-        <source>JSON parse error</source>
-        <translation>JSON 解析错误</translation>
-    </message>
-    <message>
-        <source>Agent chat request failed</source>
-        <translation>智能体聊天请求失败</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::chat_mode::ChatSessionPanel</name>
-    <message>
-        <source>CONVERSATIONS</source>
-        <translation>对话</translation>
-    </message>
-    <message>
-        <source>TERMINAL</source>
-        <translation>终端</translation>
-    </message>
-    <message>
-        <source>Switch to Terminal Mode (F9)</source>
-        <translation>切换到终端模式 (F9)</translation>
-    </message>
-    <message>
-        <source>Search...</source>
-        <translation>搜索…</translation>
-    </message>
-    <message>
-        <source>+ New</source>
-        <translation>+ 新建</translation>
-    </message>
-    <message>
-        <source>New conversation</source>
-        <translation>新建对话</translation>
-    </message>
-    <message>
-        <source>Rename</source>
-        <translation>重命名</translation>
-    </message>
-    <message>
-        <source>Rename selected</source>
-        <translation>重命名所选项</translation>
+        <source>Test / Preview</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Delete</source>
-        <translation>删除</translation>
+        <translation type="unfinished">删除</translation>
     </message>
     <message>
-        <source>Delete selected</source>
-        <translation>删除所选项</translation>
+        <source>Delete feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export</source>
-        <translation>导出</translation>
+        <source>Delete this feed and its stored history? This cannot be undone.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export conversations</source>
-        <translation>导出对话</translation>
+        <source>Column</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>(Untitled)</source>
-        <translation>（无标题）</translation>
+        <source>Title</source>
+        <translation type="unfinished">标题</translation>
     </message>
     <message>
-        <source>%1 msg</source>
-        <translation>%1 条消息</translation>
+        <source>Summary</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 sessions | %2 messages</source>
-        <translation>%1 个会话 | %2 条消息</translation>
+        <source>Link</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delete Conversation</source>
-        <translation>删除对话</translation>
+        <source>Time</source>
+        <translation type="unfinished">时间</translation>
     </message>
     <message>
-        <source>Delete "%1"?</source>
-        <translation>删除“%1”？</translation>
+        <source>Title/Summary/Link/Time feed the card view; Column shows only in the table.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Rename Conversation</source>
-        <translation>重命名对话</translation>
+        <source>Display name</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>New title:</source>
-        <translation>新标题：</translation>
+        <source>Which feed tag to read this from.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No conversations to export.</source>
-        <translation>没有可导出的对话。</translation>
+        <source>Remove</source>
+        <translation type="unfinished">删除</translation>
     </message>
     <message>
-        <source>Export Conversations</source>
-        <translation>导出对话</translation>
+        <source>Discovering…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>JSON (*.json)</source>
-        <translation>JSON (*.json)</translation>
+        <source>e.g. %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export Failed</source>
-        <translation>导出失败</translation>
+        <source>Testing…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedPanel</name>
+    <message>
+        <source>FEEDS</source>
+        <translation type="unfinished">订阅源</translation>
     </message>
     <message>
-        <source>Could not write file.</source>
-        <translation>无法写入文件。</translation>
+        <source>+ Add Feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exported %1 conversations.</source>
-        <translation>已导出 %1 个对话。</translation>
+        <source>No feeds configured.
+Click “+ Add Feed”.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedTableView</name>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">时间</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation type="unfinished">标题</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::feeds::FeedView</name>
+    <message>
+        <source>Refresh now</source>
+        <translation type="unfinished">立即刷新</translation>
+    </message>
+    <message>
+        <source>Pop out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock back into panel</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1935,16 +1195,8 @@ Markets, equities, portfolio, macro insights.</source>
         <translation>模块</translation>
     </message>
     <message>
-        <source>ML Models</source>
-        <translation>ML 模型</translation>
-    </message>
-    <message>
         <source>RL Algorithms</source>
         <translation>RL 算法</translation>
-    </message>
-    <message>
-        <source>Python Scripts</source>
-        <translation>Python 脚本</translation>
     </message>
     <message>
         <source>ENGINE:</source>
@@ -1966,24 +1218,44 @@ Markets, equities, portfolio, macro insights.</source>
         <translation>原生桌面金融智能终端</translation>
     </message>
     <message>
-        <source>Check for Updates</source>
-        <translation>检查更新</translation>
-    </message>
-    <message>
-        <source>Checking…</source>
-        <translation>检查中…</translation>
-    </message>
-    <message>
-        <source>© 2024-2026 Open Terminal contributors. All rights reserved.</source>
-        <translation>© 2024-2026 Open Terminal contributors。保留所有权利。</translation>
-    </message>
-    <message>
         <source>OPEN SOURCE LICENSE</source>
         <translation>开源许可证</translation>
     </message>
     <message>
-        <source>Custom integration options available</source>
-        <translation>提供定制集成方案</translation>
+        <source>© 2026 Open Terminal contributors. MIT License.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free for personal, educational, and commercial use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fork, modify, redistribute, and package your own builds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep copyright and license notices with redistributed copies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPEN SOURCE RIGHTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No separate commercial license required</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Private customizations are allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contributions are welcome, not mandatory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You control your local data and configuration</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DIAGNOSTICS</source>
@@ -2002,8 +1274,32 @@ Markets, equities, portfolio, macro insights.</source>
         <translation>商标</translation>
     </message>
     <message>
-        <source>"OpenMarket", "Open Terminal", and associated logos are trademarks of Open Terminal contributors. Use of these marks requires explicit written permission.</source>
-        <translation>“Open Terminal”、“Open Terminal”及相关标识均为 Open Terminal contributors 的商标。使用这些标识需获得明确的书面许可。</translation>
+        <source>&quot;Open Terminal&quot; and associated community-created logos identify this open-source project and its contributors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Documentation</source>
+        <translation type="unfinished">文档</translation>
+    </message>
+    <message>
+        <source>Issue Tracker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release Notes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source Code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PROJECT</source>
+        <translation type="unfinished">一般支持</translation>
+    </message>
+    <message>
+        <source>LICENSE</source>
+        <translation type="unfinished">许可证</translation>
     </message>
     <message>
         <source>Permission is granted to use the Open Terminal name and logos to identify, discuss, fork, package, and redistribute this open-source project, provided the use is truthful and does not misrepresent affiliation or endorsement.</source>
@@ -2022,16 +1318,8 @@ Markets, equities, portfolio, macro insights.</source>
         <translation>许可证 (MIT)</translation>
     </message>
     <message>
-        <source>Open Source Rights</source>
-        <translation>Open Source Rights</translation>
-    </message>
-    <message>
         <source>CONTACT</source>
         <translation>联系方式</translation>
-    </message>
-    <message>
-        <source>GENERAL</source>
-        <translation>常规</translation>
     </message>
     <message>
         <source>ISSUES</source>
@@ -2040,224 +1328,6 @@ Markets, equities, portfolio, macro insights.</source>
     <message>
         <source>SECURITY</source>
         <translation>安全</translation>
-    </message>
-    <message>
-        <source>LEGAL</source>
-        <translation>法律</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ActionCenterScreen</name>
-    <message>
-        <source>ACTION CENTER</source>
-        <translation>操作中心</translation>
-    </message>
-    <message>
-        <source>Account:</source>
-        <translation>账户：</translation>
-    </message>
-    <message>
-        <source>Show:</source>
-        <translation>显示：</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>待处理</translation>
-    </message>
-    <message>
-        <source>Approved</source>
-        <translation>已批准</translation>
-    </message>
-    <message>
-        <source>Rejected</source>
-        <translation>已拒绝</translation>
-    </message>
-    <message>
-        <source>All</source>
-        <translation>全部</translation>
-    </message>
-    <message>
-        <source>Mode:</source>
-        <translation>模式：</translation>
-    </message>
-    <message>
-        <source>Auto</source>
-        <translation>自动</translation>
-    </message>
-    <message>
-        <source>Semi-Auto</source>
-        <translation>半自动</translation>
-    </message>
-    <message>
-        <source>PENDING</source>
-        <translation>待处理</translation>
-    </message>
-    <message>
-        <source>APPROVED</source>
-        <translation>已批准</translation>
-    </message>
-    <message>
-        <source>REJECTED</source>
-        <translation>已拒绝</translation>
-    </message>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>APPROVE ALL</source>
-        <translation>全部批准</translation>
-    </message>
-    <message>
-        <source>REJECT ALL</source>
-        <translation>全部拒绝</translation>
-    </message>
-    <message>
-        <source>Time</source>
-        <translation>时间</translation>
-    </message>
-    <message>
-        <source>Account</source>
-        <translation>账户</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>类型</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>代码</translation>
-    </message>
-    <message>
-        <source>Side</source>
-        <translation>方向</translation>
-    </message>
-    <message>
-        <source>Qty</source>
-        <translation>数量</translation>
-    </message>
-    <message>
-        <source>Price Type</source>
-        <translation>价格类型</translation>
-    </message>
-    <message>
-        <source>Status</source>
-        <translation>状态</translation>
-    </message>
-    <message>
-        <source>Actions</source>
-        <translation>操作</translation>
-    </message>
-    <message>
-        <source>Approve All</source>
-        <translation>全部批准</translation>
-    </message>
-    <message>
-        <source>Execute ALL pending orders now?</source>
-        <translation>立即执行所有待处理订单？</translation>
-    </message>
-    <message>
-        <source>Reject All</source>
-        <translation>全部拒绝</translation>
-    </message>
-    <message>
-        <source>Select a specific account to reject all its pending orders.</source>
-        <translation>请选择某个特定账户以拒绝其所有待处理订单。</translation>
-    </message>
-    <message>
-        <source>Rejection reason:</source>
-        <translation>拒绝原因：</translation>
-    </message>
-    <message>
-        <source>Rejected by user</source>
-        <translation>已被用户拒绝</translation>
-    </message>
-    <message>
-        <source>All Accounts</source>
-        <translation>所有账户</translation>
-    </message>
-    <message>
-        <source>Approve</source>
-        <translation>批准</translation>
-    </message>
-    <message>
-        <source>Reject</source>
-        <translation>拒绝</translation>
-    </message>
-    <message>
-        <source>Reject Order</source>
-        <translation>拒绝订单</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ActivityTab</name>
-    <message>
-        <source>ALL</source>
-        <translation>全部</translation>
-    </message>
-    <message>
-        <source>SWAP</source>
-        <translation>兑换</translation>
-    </message>
-    <message>
-        <source>SEND</source>
-        <translation>发送</translation>
-    </message>
-    <message>
-        <source>RECEIVE</source>
-        <translation>接收</translation>
-    </message>
-    <message>
-        <source>OTHER</source>
-        <translation>其他</translation>
-    </message>
-    <message>
-        <source>No transactions yet.</source>
-        <translation>暂无交易。</translation>
-    </message>
-    <message>
-        <source>Activity fetch failed: %1</source>
-        <translation>活动获取失败：%1</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to view activity.</source>
-        <translation>请连接钱包以查看活动。</translation>
-    </message>
-    <message>
-        <source>%1 of %2 events</source>
-        <translation>%2 个事件中的 %1 个</translation>
-    </message>
-    <message>
-        <source>  ·  Add a Helius API key in Settings for parsed swap and transfer details.</source>
-        <translation>  ·  在“设置”中添加 Helius API 密钥，以获取解析后的兑换和转账详情。</translation>
-    </message>
-    <message>
-        <source>TIMESTAMP</source>
-        <translation>时间</translation>
-    </message>
-    <message>
-        <source>EVENT</source>
-        <translation>事件</translation>
-    </message>
-    <message>
-        <source>ASSET</source>
-        <translation>资产</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>金额</translation>
-    </message>
-    <message>
-        <source>STATUS</source>
-        <translation>状态</translation>
-    </message>
-    <message>
-        <source>SIGNATURE</source>
-        <translation>签名</translation>
     </message>
 </context>
 <context>
@@ -2587,16 +1657,16 @@ Select an agent above, or use Auto-Route to let the system decide.</source>
         <translation>自动路由失败 — 使用默认智能体。</translation>
     </message>
     <message>
-        <source>Analyze my portfolio '%1' — give key metrics and recommendations.</source>
-        <translation>分析我的投资组合 '%1' — 给出关键指标和建议。</translation>
+        <source>Analyze my portfolio &apos;%1&apos; — give key metrics and recommendations.</source>
+        <translation>分析我的投资组合 &apos;%1&apos; — 给出关键指标和建议。</translation>
     </message>
     <message>
-        <source>Suggest rebalancing for portfolio '%1' to optimize risk-return.</source>
-        <translation>为投资组合 '%1' 提出再平衡建议，以优化风险收益。</translation>
+        <source>Suggest rebalancing for portfolio &apos;%1&apos; to optimize risk-return.</source>
+        <translation>为投资组合 &apos;%1&apos; 提出再平衡建议，以优化风险收益。</translation>
     </message>
     <message>
-        <source>Perform risk analysis on portfolio '%1' — VaR, drawdown, stress test.</source>
-        <translation>对投资组合 '%1' 进行风险分析 — VaR、回撤、压力测试。</translation>
+        <source>Perform risk analysis on portfolio &apos;%1&apos; — VaR, drawdown, stress test.</source>
+        <translation>对投资组合 &apos;%1&apos; 进行风险分析 — VaR、回撤、压力测试。</translation>
     </message>
     <message>
         <source>No LLM configured</source>
@@ -3107,8 +2177,8 @@ Select an agent above, or use Auto-Route to let the system decide.</source>
         <translation>活动模型 — 在“设置 &gt; LLM 配置”中更改</translation>
     </message>
     <message>
-        <source>Message Open Terminal AI...</source>
-        <translation>给 Open Terminal AI 发消息…</translation>
+        <source>Message OpenMarketTerminal AI...</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Attach a file to this message</source>
@@ -3125,6 +2195,14 @@ Select an agent above, or use Auto-Route to let the system decide.</source>
     <message>
         <source>No model</source>
         <translation>无模型</translation>
+    </message>
+    <message>
+        <source>⚙  Configure LLM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add an API provider (OpenAI, Anthropic, …) or pick a model</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>New Conversation</source>
@@ -3149,7 +2227,7 @@ Conversations are saved automatically.</source>
         <translation>市场</translation>
     </message>
     <message>
-        <source>Show me today's top market movers</source>
+        <source>Show me today&apos;s top market movers</source>
         <translation>显示今日市场领涨/领跌股</translation>
     </message>
     <message>
@@ -3209,8 +2287,8 @@ Conversations are saved automatically.</source>
         <translation>附加文件到消息</translation>
     </message>
     <message>
-        <source>All Files (*);;Text Files (*.txt *.md *.csv *.json);;Notebooks (*.ipynb);;PDF (*.pdf)</source>
-        <translation>所有文件 (*);;文本文件 (*.txt *.md *.csv *.json);;笔记本 (*.ipynb);;PDF (*.pdf)</translation>
+        <source>Text Files (*.txt *.md *.csv *.json *.py *.log *.yaml *.yml);;All Files (*)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>AI is thinking·</source>
@@ -3253,6 +2331,14 @@ Conversations are saved automatically.</source>
         <translation>（空响应 — 模型未返回任何内容）</translation>
     </message>
     <message>
+        <source>Thinking…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Thoughts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Send</source>
         <translation>发送</translation>
     </message>
@@ -3269,24 +2355,22 @@ Conversations are saved automatically.</source>
         <translation>%1k 个 token</translation>
     </message>
     <message>
-        <source>Open Terminal LLM</source>
-        <translation>Open Terminal LLM</translation>
+        <source>Local LLM</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Managed by Open Terminal</source>
-        <translation>由 Open Terminal 托管</translation>
+        <source>Local model</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal LLM — managed AI service</source>
-        <translation>Open Terminal LLM — 托管 AI 服务</translation>
+        <source>Local LLM (Ollama) — runs on your machine</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal managed AI service
+        <source>Local LLM (Ollama) — runs on your machine
 
 Change in Settings &gt; LLM Configuration</source>
-        <translation>Open Terminal 托管 AI 服务
-
-在“设置 &gt; LLM 配置”中更改</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Provider: %1
@@ -3452,6 +2536,161 @@ to load available endpoints</source>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::AlertsPanel</name>
+    <message>
+        <source>ALERT CONDITIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYMBOLS &amp; FEED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIMEFRAME</source>
+        <translation type="unfinished">时间周期</translation>
+    </message>
+    <message>
+        <source>DATA SOURCE</source>
+        <translation type="unfinished">数据源</translation>
+    </message>
+    <message>
+        <source>Broker Only</source>
+        <translation type="unfinished">仅券商</translation>
+    </message>
+    <message>
+        <source>Auto (Broker → YFinance)</source>
+        <translation type="unfinished">自动（券商 → YFinance）</translation>
+    </message>
+    <message>
+        <source>YFinance Only</source>
+        <translation type="unfinished">仅 YFinance</translation>
+    </message>
+    <message>
+        <source>BROKER ACCOUNT</source>
+        <translation type="unfinished">券商账户</translation>
+    </message>
+    <message>
+        <source>None (use YFinance fallback)</source>
+        <translation type="unfinished">无（使用 YFinance 备用）</translation>
+    </message>
+    <message>
+        <source>POLL INTERVAL (SEC)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOLDOWN (MIN)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send to external providers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WATCH NAME</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>My Volume Watch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SAVE WATCH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE WATCHES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NAME</source>
+        <translation type="unfinished">名称</translation>
+    </message>
+    <message>
+        <source>SYMBOLS</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>STATUS</source>
+        <translation type="unfinished">状态</translation>
+    </message>
+    <message>
+        <source>ACTIVE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ACTIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ALERT HISTORY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIME</source>
+        <translation type="unfinished">时间</translation>
+    </message>
+    <message>
+        <source>SYMBOL</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>DETAIL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add at least one condition before saving a watch.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter at least one symbol.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch &apos;%1&apos; updated and re-watching.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Watch &apos;%1&apos; saved and monitoring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UPDATE WATCH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Editing &apos;%1&apos; — change conditions/symbols and press UPDATE WATCH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished">编辑</translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished">测试</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished">删除</translation>
+    </message>
+    <message>
+        <source>Pre-filled from Scanner — name it and SAVE WATCH.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::AlgoDeployDialog</name>
     <message>
         <source>Deploy Strategy</source>
@@ -3530,6 +2769,14 @@ to load available endpoints</source>
         <translation>部署</translation>
     </message>
     <message>
+        <source>Broker (orders + data):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broker (data source):</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No connected accounts</source>
         <translation>无已连接账户</translation>
     </message>
@@ -3579,6 +2826,14 @@ to load available endpoints</source>
     <message>
         <source>DASHBOARD</source>
         <translation>仪表板</translation>
+    </message>
+    <message>
+        <source>ALERTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UNIVERSE</source>
+        <translation type="unfinished">范围</translation>
     </message>
     <message>
         <source>ENGINE:</source>
@@ -3832,20 +3087,8 @@ sectors</source>
         <translation>行情条</translation>
     </message>
     <message>
-        <source>Live price ticker at the bottom of the screen.</source>
-        <translation>屏幕底部的实时价格行情。</translation>
-    </message>
-    <message>
-        <source>Enable Animations</source>
-        <translation>启用动画</translation>
-    </message>
-    <message>
-        <source>Animations</source>
-        <translation>动画</translation>
-    </message>
-    <message>
-        <source>Fade and transition effects throughout the UI.</source>
-        <translation>整个界面的淡入与过渡效果。</translation>
+        <source>Live price ticker on the dashboard.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save Settings</source>
@@ -3988,12 +3231,9 @@ sectors</source>
     <message>
         <source>Select a provider, command, and strategy, then click RUN to execute.
 
-Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, Open Terminal
+Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, OpenMarketTerminal
 Commands: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Returns</source>
-        <translation>选择提供商、命令和策略，然后点击 RUN 执行。
-
-支持的提供商：VectorBT、Backtesting.py、FastTrade、Zipline、BT、Open Terminal
-命令：Backtest、Optimize、Walk-Forward、Indicators、ML Labels、CV Splits、Returns</translation>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Run a backtest to see the equity curve.</source>
@@ -4372,8 +3612,8 @@ Commands: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Re
         <translation>加载中…</translation>
     </message>
     <message>
-        <source>Command '%1' is not supported by provider '%2'</source>
-        <translation>数据源 '%2' 不支持命令 '%1'</translation>
+        <source>Command &apos;%1&apos; is not supported by provider &apos;%2&apos;</source>
+        <translation>数据源 &apos;%2&apos; 不支持命令 &apos;%1&apos;</translation>
     </message>
     <message>
         <source>Please enter at least one symbol (e.g. SPY, AAPL)</source>
@@ -4758,16 +3998,16 @@ CFTC 数据免费 — 无需 API key</translation>
         <translation>净额：—</translation>
     </message>
     <message>
-        <source>ISSUES TRADERS</source>
-        <translation>商业交易者</translation>
-    </message>
-    <message>
         <source>Hedgers &amp; producers — usually contrarian signal</source>
         <translation>套期保值者和生产者 — 通常为反向信号</translation>
     </message>
     <message>
-        <source>NON-ISSUES (SPECULATORS)</source>
-        <translation>非商业（投机者）</translation>
+        <source>COMMERCIAL TRADERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NON-COMMERCIAL (SPECULATORS)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Managed money &amp; funds — trend-following signal</source>
@@ -4831,69 +4071,26 @@ CFTC 数据免费 — 无需 API key</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::CloudSyncSection</name>
-    <message>
-        <source>Open Terminal Cloud Sync</source>
-        <translation>Open Terminal 云同步</translation>
-    </message>
-    <message>
-        <source>Mirror your data to your Open Terminal account. Your local copy stays the working copy — sync runs in the background, on this device and across your devices.</source>
-        <translation>将您的数据镜像到 Open Terminal 账户。本地副本仍为工作副本 — 同步在后台运行，覆盖本设备及您的所有设备。</translation>
-    </message>
-    <message>
-        <source>Out of credits — top up to resume cloud sync.</source>
-        <translation>额度已用尽 — 充值以恢复云同步。</translation>
-    </message>
-    <message>
-        <source>Enable cloud sync</source>
-        <translation>启用云同步</translation>
-    </message>
-    <message>
-        <source>Cloud Sync</source>
-        <translation>云同步</translation>
-    </message>
-    <message>
-        <source>When on, changes mirror to your account and pull on this device.</source>
-        <translation>开启后，更改将镜像到您的账户并拉取到本设备。</translation>
-    </message>
-    <message>
-        <source>Sign in to enable cloud sync.</source>
-        <translation>登录以启用云同步。</translation>
-    </message>
-    <message>
-        <source>ADVANCED — DOMAINS</source>
-        <translation>高级 — 域</translation>
-    </message>
-    <message>
-        <source>Sync this domain</source>
-        <translation>同步此域</translation>
-    </message>
-    <message>
-        <source>Refresh now</source>
-        <translation>立即刷新</translation>
-    </message>
-    <message>
-        <source>You have local data and existing cloud data for "%1".</source>
-        <translation>您有“%1”的本地数据和现有云数据。</translation>
-    </message>
-    <message>
-        <source>Upload &amp; merge keeps your local items (recommended). Use cloud replaces this device's copy with your cloud account — a local backup is saved first.</source>
-        <translation>上传并合并会保留您的本地项目（推荐）。使用云端将用您的云账户替换本设备的副本 — 会先保存本地备份。</translation>
-    </message>
-    <message>
-        <source>Upload &amp;&amp; merge</source>
-        <translation>上传并合并</translation>
-    </message>
-    <message>
-        <source>Use cloud</source>
-        <translation>使用云端</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::CodeEditorScreen</name>
     <message>
-        <source>PYTHON NOTEBOOK</source>
-        <translation>PYTHON NOTEBOOK</translation>
+        <source>OPENMARKETTERMINAL NOTEBOOK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIBRARY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EDITOR</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search notebooks...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>＋  NEW NOTEBOOK</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>NEW</source>
@@ -4916,20 +4113,44 @@ CFTC 数据免费 — 无需 API key</translation>
         <translation>清除输出</translation>
     </message>
     <message>
-        <source>RUN ALL</source>
-        <translation>全部运行</translation>
+        <source>▶  RUN ALL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RESTART KERNEL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KERNEL: READY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Python</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation type="unfinished">错误</translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Notebooks (*.ipynb);;All Files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Notebooks (*.ipynb)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KERNEL: RUNNING…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPENMARKETTERMINAL NOTEBOOK LIBRARY — curated finance, economics, trading, investing, portfolio &amp; quant notebooks</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SIDEBAR</source>
         <translation>侧边栏</translation>
-    </message>
-    <message>
-        <source>KERNEL: IDLE</source>
-        <translation>KERNEL：空闲</translation>
-    </message>
-    <message>
-        <source>Python 3.11</source>
-        <translation>Python 3.11</translation>
     </message>
     <message>
         <source>READY</source>
@@ -4952,32 +4173,68 @@ CFTC 数据免费 — 无需 API key</translation>
         <translation>单元格名称：</translation>
     </message>
     <message>
-        <source>Process exited with code %1</source>
-        <translation>进程已退出，退出码 %1</translation>
-    </message>
-    <message>
         <source>Open Notebook</source>
         <translation>打开 Notebook</translation>
-    </message>
-    <message>
-        <source>Jupyter Notebooks (*.ipynb);;All Files (*)</source>
-        <translation>Jupyter Notebooks (*.ipynb);;所有文件 (*)</translation>
     </message>
     <message>
         <source>Save Notebook</source>
         <translation>保存 Notebook</translation>
     </message>
     <message>
-        <source>Jupyter Notebooks (*.ipynb)</source>
-        <translation>Jupyter Notebooks (*.ipynb)</translation>
-    </message>
-    <message>
         <source>CELLS: %1 CODE  %2 MD  |  EXECUTED: %3</source>
         <translation>单元格：%1 代码  %2 MD  |  已执行：%3</translation>
     </message>
     <message>
-        <source>KERNEL: BUSY</source>
-        <translation>KERNEL：忙碌</translation>
+        <source>All</source>
+        <translation type="unfinished">全部</translation>
+    </message>
+    <message>
+        <source>Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Economics</source>
+        <translation type="unfinished">经济</translation>
+    </message>
+    <message>
+        <source>Trading</source>
+        <translation type="unfinished">交易</translation>
+    </message>
+    <message>
+        <source>Investing</source>
+        <translation type="unfinished">投资活动</translation>
+    </message>
+    <message>
+        <source>Portfolio</source>
+        <translation type="unfinished">投资组合</translation>
+    </message>
+    <message>
+        <source>Quant</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beginner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Intermediate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notebook library not found. Rebuild the app to bundle the notebooks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No notebooks match your filters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 notebooks  ·  %2 beginner · %3 intermediate · %4 hard</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -4991,13 +4248,6 @@ CFTC 数据免费 — 无需 API key</translation>
 It will be available in a future update.</source>
         <translation>此模块正在积极开发中。
 将在未来更新中提供。</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ComingSoonTab</name>
-    <message>
-        <source>STATUS  ·  COMING SOON</source>
-        <translation>状态  ·  即将推出</translation>
     </message>
 </context>
 <context>
@@ -5134,7 +4384,7 @@ It will be available in a future update.</source>
         <translation>⚠  删除投资组合</translation>
     </message>
     <message>
-        <source>Are you sure you want to delete "%1"?
+        <source>Are you sure you want to delete &quot;%1&quot;?
 This will remove all holdings and transactions.</source>
         <translation>确定要删除“%1”吗？
 这将移除所有持仓和交易记录。</translation>
@@ -5150,6 +4400,14 @@ This will remove all holdings and transactions.</source>
 </context>
 <context>
     <name>openmarketterminal::screens::ConflictMonitorPanel</name>
+    <message>
+        <source>CONFLICT MAP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BASEMAP</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Category</source>
         <translation>类别</translation>
@@ -5264,60 +4522,24 @@ This will remove all holdings and transactions.</source>
         <translation>联系我们的团队</translation>
     </message>
     <message>
-        <source>CONTACT INFORMATION</source>
-        <translation>联系信息</translation>
-    </message>
-    <message>
         <source>REPOSITORY</source>
         <translation>电子邮件支持</translation>
-    </message>
-    <message>
-        <source>Response within 4-6 hours</source>
-        <translation>4-6 小时内回复</translation>
     </message>
     <message>
         <source>ISSUE TRACKER</source>
         <translation>电话支持</translation>
     </message>
     <message>
-        <source>Mon-Fri, 9AM-6PM EST</source>
-        <translation>周一至周五，上午 9 点至下午 6 点（EST）</translation>
-    </message>
-    <message>
         <source>SECURITY</source>
         <translation>支持时间</translation>
-    </message>
-    <message>
-        <source>Mon-Fri 9AM-6PM EST</source>
-        <translation>周一至周五 上午 9 点至下午 6 点（EST）</translation>
-    </message>
-    <message>
-        <source>Saturday 10AM-4PM EST</source>
-        <translation>周六 上午 10 点至下午 4 点（EST）</translation>
-    </message>
-    <message>
-        <source>OFFICE</source>
-        <translation>办公室</translation>
-    </message>
-    <message>
-        <source>New York, United States</source>
-        <translation>美国纽约</translation>
     </message>
     <message>
         <source>QUICK ACTIONS</source>
         <translation>快捷操作</translation>
     </message>
     <message>
-        <source>Send Email</source>
-        <translation>发送电子邮件</translation>
-    </message>
-    <message>
         <source>View Source</source>
         <translation>加入 Discord</translation>
-    </message>
-    <message>
-        <source>GitHub Issues</source>
-        <translation>GitHub Issues</translation>
     </message>
     <message>
         <source>COMMON ISSUES</source>
@@ -5328,8 +4550,36 @@ This will remove all holdings and transactions.</source>
         <translation>无法登录或忘记密码</translation>
     </message>
     <message>
-        <source>Use the Forgot Password option on the login screen, or contact github.com/your-org/open-terminal/issues</source>
-        <translation>请使用登录界面上的“忘记密码”选项，或联系 github.com/your-org/open-terminal/issues</translation>
+        <source>PROJECT INFORMATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source code and releases</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bugs and feature requests</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Responsible disclosure</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PROJECT</source>
+        <translation type="unfinished">一般支持</translation>
+    </message>
+    <message>
+        <source>Open-source community project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Issues</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use guest mode for local exploration, or reset credentials from the login screen.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Python setup fails or times out</source>
@@ -5351,8 +4601,8 @@ This will remove all holdings and transactions.</source>
 <context>
     <name>openmarketterminal::screens::CrashRecoveryDialog</name>
     <message>
-        <source>Open Terminal — Recover Previous Session</source>
-        <translation>Open Terminal — 恢复上次会话</translation>
+        <source>OpenMarketTerminal — Recover Previous Session</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>RECOVER PREVIOUS SESSION</source>
@@ -5467,7 +4717,7 @@ This will remove all holdings and transactions.</source>
         <translation>删除快照</translation>
     </message>
     <message>
-        <source>Delete "%1"?
+        <source>Delete &quot;%1&quot;?
 
 This cannot be undone.</source>
         <translation>删除“%1”？
@@ -5865,79 +5115,6 @@ This cannot be undone.</source>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::CryptoCenterScreen</name>
-    <message>
-        <source>No wallet connected</source>
-        <translation>未连接钱包</translation>
-    </message>
-    <message>
-        <source>Connect a Solana wallet to view your $FNCPT balance, SOL holdings, and live USD valuation. Your private keys never leave your wallet.</source>
-        <translation>连接 Solana 钱包以查看您的 $FNCPT 余额、SOL 持仓及实时 USD 估值。您的私钥绝不会离开钱包。</translation>
-    </message>
-    <message>
-        <source>· public address read-only
-· no private keys, no seed phrases
-· local handshake on 127.0.0.1, single-use token
-· cryptographic signature challenge before connect</source>
-        <translation>· 公开地址仅供读取
-· 无私钥、无助记词
-· 在 127.0.0.1 上进行本地握手，使用一次性令牌
-· 连接前进行加密签名验证</translation>
-    </message>
-    <message>
-        <source>CONNECT WALLET</source>
-        <translation>连接钱包</translation>
-    </message>
-    <message>
-        <source>HOME</source>
-        <translation>主页</translation>
-    </message>
-    <message>
-        <source>TRADE</source>
-        <translation>交易</translation>
-    </message>
-    <message>
-        <source>ACTIVITY</source>
-        <translation>活动</translation>
-    </message>
-    <message>
-        <source>SETTINGS</source>
-        <translation>设置</translation>
-    </message>
-    <message>
-        <source>STAKE</source>
-        <translation>质押</translation>
-    </message>
-    <message>
-        <source>MARKETS</source>
-        <translation>市场</translation>
-    </message>
-    <message>
-        <source>ROADMAP</source>
-        <translation>路线图</translation>
-    </message>
-    <message>
-        <source>CRYPTO CENTER</source>
-        <translation>加密中心</translation>
-    </message>
-    <message>
-        <source>● DISCONNECTED</source>
-        <translation>● 已断开</translation>
-    </message>
-    <message>
-        <source>READY</source>
-        <translation>就绪</translation>
-    </message>
-    <message>
-        <source>SECURITY</source>
-        <translation>安全</translation>
-    </message>
-    <message>
-        <source>● CONNECTED</source>
-        <translation>● 已连接</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::CryptoTradingScreen</name>
     <message>
         <source>CONNECTING</source>
@@ -5948,16 +5125,8 @@ This cannot be undone.</source>
         <translation>WebSocket 数据流状态 — 绿色=实时，琥珀色=连接中，红色=离线（REST 轮询）</translation>
     </message>
     <message>
-        <source>NATIVE</source>
-        <translation>原生</translation>
-    </message>
-    <message>
         <source>DAEMON</source>
         <translation>守护进程</translation>
-    </message>
-    <message>
-        <source>Native C++ WebSocket — direct connection, no Python subprocess</source>
-        <translation>原生 C++ WebSocket — 直接连接，无 Python 子进程</translation>
     </message>
     <message>
         <source>ws_stream.py via ccxt.pro — Python subprocess</source>
@@ -6097,7 +5266,7 @@ Go to CREATE INDEX tab to build one from your portfolio.</source>
         <translation>错误：%1</translation>
     </message>
     <message>
-        <source>Index '%1' created successfully.</source>
+        <source>Index &apos;%1&apos; created successfully.</source>
         <translation>指数“%1”创建成功。</translation>
     </message>
     <message>
@@ -6406,8 +5575,12 @@ Click  + ADD SLOT  in the left panel to begin</source>
         <translation>数据源：</translation>
     </message>
     <message>
-        <source>CONNECTED</source>
-        <translation>已连接</translation>
+        <source>IDLE</source>
+        <translation type="unfinished">空闲</translation>
+    </message>
+    <message>
+        <source>LIVE</source>
+        <translation type="unfinished">实时</translation>
     </message>
     <message>
         <source>MEM: ---</source>
@@ -6426,12 +5599,12 @@ Click  + ADD SLOT  in the left panel to begin</source>
         <translation>空</translation>
     </message>
     <message>
-        <source>DISCONNECTED</source>
-        <translation>已断开</translation>
-    </message>
-    <message>
         <source>MEM: %1 MB</source>
         <translation>内存: %1 MB</translation>
+    </message>
+    <message>
+        <source>LAT: LOCAL</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LAT: ERR</source>
@@ -6504,6 +5677,10 @@ Click  + ADD SLOT  in the left panel to begin</source>
         <translation>点击切换 UTC / 本地时间</translation>
     </message>
     <message>
+        <source>IDLE</source>
+        <translation type="unfinished">空闲</translation>
+    </message>
+    <message>
         <source>%1 WIDGETS</source>
         <translation>%1 个组件</translation>
     </message>
@@ -6542,10 +5719,6 @@ Click  + ADD SLOT  in the left panel to begin</source>
     <message>
         <source> LOC</source>
         <translation> 本地</translation>
-    </message>
-    <message>
-        <source>OFFLINE</source>
-        <translation>离线</translation>
     </message>
 </context>
 <context>
@@ -6695,8 +5868,8 @@ Click  + ADD SLOT  in the left panel to begin</source>
         <translation>超时</translation>
     </message>
     <message>
-        <source>e.g. Upstox OHLCV</source>
-        <translation>例如 Upstox OHLCV</translation>
+        <source>e.g. broker OHLCV</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Token / API Key value</source>
@@ -7022,6 +6195,58 @@ API 详情：
         <translation>打开全屏</translation>
     </message>
     <message>
+        <source>CONNECTOR ENDPOINTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FRED API KEY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. abcd1234…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free key from fredaccount.stlouisfed.org — powers the economic calendar + FRED data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>QUANTLIB SERVER URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. http://127.0.0.1:8800</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional self-hosted QuantLib REST server. Blank = pricing disabled (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MARITIME / AIS URL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>e.g. http://127.0.0.1:8900</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optional self-hosted AIS/maritime proxy. Blank = disabled (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AISSTREAM.IO API KEY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>free key from aisstream.io</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free key from aisstream.io — enables the live vessel feed (positions/speed/course). Blank = maritime stays empty (no network).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>TOTAL</source>
         <translation>总计</translation>
     </message>
@@ -7098,7 +6323,7 @@ API 详情：
         <translation>未配置任何数据源。打开完整的“数据源”界面以浏览和添加连接器。</translation>
     </message>
     <message>
-        <source>Delete connection "%1"?
+        <source>Delete connection &quot;%1&quot;?
 
 This cannot be undone.</source>
         <translation>删除连接“%1”？
@@ -7133,6 +6358,26 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
         <translation>LTP</translation>
     </message>
     <message>
+        <source>CONNECTED</source>
+        <translation type="unfinished">已连接</translation>
+    </message>
+    <message>
+        <source>OFFLINE</source>
+        <translation type="unfinished">离线</translation>
+    </message>
+    <message>
+        <source>Broker connected — sourcing live quotes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broker not connected — connect it in Equity Trading to get live data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>waiting for data…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>WIN RATE</source>
         <translation>胜率</translation>
     </message>
@@ -7151,6 +6396,10 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
     <message>
         <source>MAX DD</source>
         <translation>最大回撤</translation>
+    </message>
+    <message>
+        <source>CONDITIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>STOP</source>
@@ -7207,6 +6456,26 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
     <message>
         <source>%1 deployment(s)</source>
         <translation>%1 个部署</translation>
+    </message>
+    <message>
+        <source>  ⚠ already above — can&apos;t cross up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>  ⚠ already below — can&apos;t cross down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>  · executed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>updated just now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>updated %1s ago</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Error [%1]: %2</source>
@@ -7551,12 +6820,67 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
         <translation>DataHub 检查器</translation>
     </message>
     <message>
-        <source>Enable durable, long-running autonomous tasks. When on, AGENT STUDIO shows an extra AGENTIC tab listing in-flight tasks (plan, step log, pause/resume/cancel) and the chat panel offers a "Run as background task" checkbox. All state is checkpointed to SQLite so tasks survive process restarts. Leave off for standard chatbot behavior.</source>
+        <source>Enable durable, long-running autonomous tasks. When on, AGENT STUDIO shows an extra AGENTIC tab listing in-flight tasks (plan, step log, pause/resume/cancel) and the chat panel offers a &quot;Run as background task&quot; checkbox. All state is checkpointed to SQLite so tasks survive process restarts. Leave off for standard chatbot behavior.</source>
         <translation>启用持久的长时间运行自主任务。开启后，AGENT STUDIO 会显示额外的 AGENTIC 选项卡，列出进行中的任务（计划、步骤日志、暂停/恢复/取消），聊天面板会提供“作为后台任务运行”复选框。所有状态都会检查点保存到 SQLite，因此任务可在进程重启后保留。如需标准聊天机器人行为，请保持关闭。</translation>
     </message>
     <message>
         <source>Live view over the in-process pub/sub layer. Shows every active topic, its subscriber count, total publishes, and time since last publish. Refreshes once per second while this tab is visible.</source>
         <translation>进程内发布/订阅层的实时视图。显示每个活动主题、其订阅者数量、累计发布次数以及距上次发布的时间。此选项卡可见时每秒刷新一次。</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::DineroScreen</name>
+    <message>
+        <source>DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Post-quantum money for free people — a no-premine, open-source PoW chain. Read-only overview; OpenMarket Terminal does not buy, sell, or trade DIN.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Height</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Circulating Supply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Reward</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero is the maker of OpenMarket Terminal&apos;s own blockchain project: a post-quantum-native chain (ML-DSA signatures from genesis), proof-of-work with tail emission, no premine and no token sale. You participate by running a node or mining — not by buying. The data below is public chain information from the project&apos;s own explorer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Block Explorer  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloads &amp; Releases  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Project Site  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Embedded explorer needs Qt WebEngine.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Explorer in Browser  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -7598,6 +6922,14 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
         <translation>键盘快捷键</translation>
     </message>
     <message>
+        <source>DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About Dinero</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>CORE SCREENS</source>
         <translation>核心屏幕</translation>
     </message>
@@ -7624,6 +6956,10 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
     <message>
         <source>Crypto Trading</source>
         <translation>加密交易</translation>
+    </message>
+    <message>
+        <source>Equity Trading</source>
+        <translation type="unfinished">股票交易</translation>
     </message>
     <message>
         <source>Paper Trading</source>
@@ -7782,52 +7118,12 @@ This cannot be undone. You can re-add them from the full Data Sources screen.</s
         <translation>OPENMARKETTERMINAL  —  文档</translation>
     </message>
     <message>
-        <source>v4.0.0  |  Native C++ Financial Intelligence Terminal</source>
-        <translation>v4.0.0  |  原生 C++ 金融智能终端</translation>
-    </message>
-    <message>
         <source>WHAT IS OPENMARKETTERMINAL?</source>
         <translation>什么是 OPENMARKETTERMINAL？</translation>
     </message>
     <message>
-        <source>Open Terminal is a professional-grade desktop financial intelligence platform built in native C++ with Qt6. It provides institutional-quality market data, trading capabilities, quantitative research tools, and AI-powered analytics — all in a single unified terminal interface.
-
-With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, and support for 15+ broker integrations, Open Terminal bridges the gap between retail and institutional tooling.</source>
-        <translation>Open Terminal 是一个专业级桌面金融智能平台，使用原生 C++ 和 Qt6 构建。它提供机构级市场数据、交易功能、量化研究工具和 AI 驱动的分析——全部集成在一个统一的终端界面中。
-
-凭借 45 多个集成屏幕、实时 WebSocket 行情、嵌入式 Python 分析以及对 15 多个券商集成的支持，Open Terminal 弥合了零售与机构工具之间的差距。</translation>
-    </message>
-    <message>
         <source>KEY CAPABILITIES</source>
         <translation>核心功能</translation>
-    </message>
-    <message>
-        <source>■  Real-time market data across equities, crypto, forex, commodities
-■  Multi-exchange crypto trading (Kraken, HyperLiquid, Binance, etc.)
-■  Paper trading engine with simulated order matching
-■  100+ Python analytics scripts (equity, portfolio, derivatives)
-■  18-module QuantLib quantitative analysis suite (590+ endpoints)
-■  AI Quant Lab with ML models, factor discovery, HFT, RL trading
-■  Multiple AI agent frameworks (Geopolitics, Economic, Hedge Fund)
-■  Visual node editor for workflow automation
-■  DBnomics access to 100+ data providers, 500K+ datasets
-■  Surface analytics for derivatives, fixed income, credit, risk
-■  Report builder with drag-and-drop components
-■  Backtesting with 6 providers and 50+ strategies
-■  Algorithmic trading with strategy builder and scanner</source>
-        <translation>■  覆盖股票、加密货币、外汇、大宗商品的实时市场数据
-■  多交易所加密货币交易（Kraken、HyperLiquid、Binance 等）
-■  带模拟订单撮合的模拟交易引擎
-■  100 多个 Python 分析脚本（股票、投资组合、衍生品）
-■  18 模块 QuantLib 量化分析套件（590 多个端点）
-■  配备 ML 模型、因子发现、HFT、RL 交易的 AI Quant Lab
-■  多个 AI 智能体框架（地缘政治、经济、对冲基金）
-■  用于工作流自动化的可视化节点编辑器
-■  DBnomics 访问 100 多个数据提供商、50 万多个数据集
-■  衍生品、固定收益、信用、风险的曲面分析
-■  带拖放组件的报告生成器
-■  使用 6 个提供商和 50 多种策略的回测
-■  带策略生成器和扫描器的算法交易</translation>
     </message>
     <message>
         <source>WHO IS THIS FOR?</source>
@@ -7868,28 +7164,8 @@ With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytic
 ■  技能等级——从初学者到专业版的指导</translation>
     </message>
     <message>
-        <source>Your first steps with Open Terminal</source>
-        <translation>您使用 Open Terminal 的第一步</translation>
-    </message>
-    <message>
         <source>LAUNCH &amp; LOGIN</source>
         <translation>启动与登录</translation>
-    </message>
-    <message>
-        <source>When you first launch Open Terminal, you'll see the login screen. You can either:
-
-■  Register a new account with email and password
-■  Continue as Guest (limited features)
-■  Log in with existing credentials
-
-After login, you'll land on the Dashboard — your home base.</source>
-        <translation>首次启动 Open Terminal 时，您会看到登录屏幕。您可以：
-
-■  使用电子邮件和密码注册新账户
-■  以访客身份继续（功能有限）
-■  使用现有凭据登录
-
-登录后，您将进入仪表板——您的主基地。</translation>
     </message>
     <message>
         <source>THE INTERFACE</source>
@@ -7928,26 +7204,6 @@ F5   — 刷新当前屏幕
 Ctrl+P — 截图（保存到主目录）</translation>
     </message>
     <message>
-        <source>SUBSCRIPTION PLANS</source>
-        <translation>订阅计划</translation>
-    </message>
-    <message>
-        <source>Open Terminal offers tiered access:
-
-■  FREE — Basic market data, limited screens, paper trading
-■  PRO — Full market data, all screens, real trading, AI chat
-■  ENTERPRISE — Everything + API access, priority support
-
-Manage your plan from Settings or the Pricing screen.</source>
-        <translation>Open Terminal 提供分级访问：
-
-■  免费版——基础市场数据、有限屏幕、模拟交易
-■  专业版——完整市场数据、所有屏幕、真实交易、AI 聊天
-■  企业版——全部功能 + API 访问、优先支持
-
-可在“设置”或“定价”屏幕中管理您的计划。</translation>
-    </message>
-    <message>
         <source>Explore the Dashboard, set up a watchlist, browse market data</source>
         <translation>探索仪表板、设置自选列表、浏览市场数据</translation>
     </message>
@@ -7972,14 +7228,51 @@ Manage your plan from Settings or the Pricing screen.</source>
         <translation>全局快捷键</translation>
     </message>
     <message>
+        <source>v0.1.0  |  Native C++ Financial Intelligence Terminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal is a professional-grade desktop financial intelligence platform built in native C++ with Qt6. It provides institutional-quality market data, trading capabilities, quantitative research tools, and AI-powered analytics — all in a single unified terminal interface.
+
+With 45+ integrated screens, real-time WebSocket feeds, embedded Python analytics, and US equity broker support (Alpaca, IBKR, Tradier) plus 14 crypto exchanges, Open Terminal bridges the gap between retail and institutional tooling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Real-time market data across equities, crypto, forex, commodities
+■  Multi-exchange crypto trading (Kraken, HyperLiquid, Binance, etc.)
+■  Paper trading engine with simulated order matching
+■  100+ Python analytics scripts (equity, portfolio, derivatives)
+■  18-module QuantLib client (requires an external QuantLib server)
+■  AI Quant Lab with ML models, factor discovery, HFT, RL trading
+■  Multiple AI agent frameworks (Geopolitics, Economic, Hedge Fund)
+■  Visual node editor for workflow automation
+■  DBnomics access to 100+ data providers, 500K+ datasets
+■  Surface analytics for derivatives, fixed income, credit, risk
+■  Report builder with drag-and-drop components
+■  Backtesting with 6 providers and 50+ strategies
+■  Algorithmic trading with strategy builder and scanner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your first steps with OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When you first launch OpenMarketTerminal, you&apos;ll see the login screen. You can either:
+
+■  Register a new account with email and password
+■  Continue as Guest (limited features)
+■  Log in with existing credentials
+
+After login, you&apos;ll land on the Dashboard — your home base.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>F11  — Toggle fullscreen mode
 F10  — Toggle focus mode (hides tab bar and status bar)
 F5   — Refresh the current screen data
-Ctrl+P — Capture screenshot (saved to ~/Open TerminalScreenshot_*.png)</source>
-        <translation>F11  — 切换全屏模式
-F10  — 切换专注模式（隐藏标签栏和状态栏）
-F5   — 刷新当前屏幕数据
-Ctrl+P — 截图（保存到 ~/Open TerminalScreenshot_*.png）</translation>
+Ctrl+P — Capture screenshot (saved to ~/OpenMarketTerminalScreenshot_*.png)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>FILE MENU</source>
@@ -8268,6 +7561,55 @@ PRO: Dynamic watchlists driven by screener output and quantitative filters</sour
 专业：由筛选器输出和量化过滤器驱动的动态自选列表</translation>
     </message>
     <message>
+        <source>Post-quantum money for free people — the open blockchain built by OpenMarket Terminal&apos;s maker (read-only, no trading)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WHAT IS DINERO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero is an independent, open-source proof-of-work blockchain built by the team behind OpenMarket Terminal. It is post-quantum-native — ML-DSA signatures are active from the genesis block — with ~120-second blocks, tail emission, no premine, no token sale, and no ICO. The smallest unit is one &quot;una&quot; (1 DIN = 100,000,000 una).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HONEST DISCLOSURE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarket Terminal&apos;s maker also builds Dinero, so you should know exactly what these features are. The Dinero widget and Dinero screen are purely informational. OpenMarket Terminal does NOT buy, sell, trade, or take any fee on DIN, and never asks you to. There is no &quot;buy&quot; button anywhere. You can use OpenMarket Terminal fully and ignore Dinero entirely — nothing depends on it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HOW TO PARTICIPATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  You participate by running a node or mining — not by buying.
+■  Download the wallet and node software from dinerolabs.org.
+■  Browse the live chain at explorer.realmoneyforfreepeople.org.
+■  Anyone can run a node; there is no gatekeeper and no cost beyond your own hardware.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WHY POST-QUANTUM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Most blockchains sign transactions with elliptic-curve keys that a large quantum computer could one day break, exposing funds. Dinero ships ML-DSA (a NIST post-quantum signature standard) and P2MR outputs from block zero, so the chain is built to resist that threat from the start rather than retrofitting it later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IN OPENMARKET TERMINAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Dinero Network widget — add it on the Dashboard; it embeds the block explorer (top) and the dinerolabs.org download site (bottom).
+■  Dinero screen — open the command bar and type &quot;dinero&quot; for the network overview, project background, links, and the embedded explorer.
+■  Everything is read-only and degrades gracefully — if the network can&apos;t be reached, the rest of the app is unaffected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>CRYPTO TRADING</source>
         <translation>加密货币交易</translation>
     </message>
@@ -8346,6 +7688,55 @@ Gate  |  KuCoin  |  MEXC  |  HTX
     <message>
         <source>Run simultaneous positions across exchanges. Use order flow data for scalping. Combine with algo strategies.</source>
         <translation>在多家交易所同时持仓。利用订单流数据进行剥头皮交易。与算法策略结合。</translation>
+    </message>
+    <message>
+        <source>EQUITY TRADING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>US equities via Alpaca, IBKR, and Tradier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Equity Trading screen provides order entry, positions, orders, and balances for connected US equity broker accounts. Use the ACCOUNTS panel to add Alpaca, Interactive Brokers (IBKR), or Tradier credentials.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SUPPORTED BROKERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Alpaca — API key + secret; native paper and live (PK* / AK* keys)
+■  IBKR — Client Portal Gateway on localhost:5000 + account ID
+■  Tradier — access token from developer.tradier.com (live or sandbox)
+
+Built-in paper trading (no broker) uses the yfinance market feed for simulated US equity portfolios.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HOW TO CONNECT A BROKER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How do I connect a broker?
+
+Open Equity Trading → ACCOUNTS → Manage Broker Accounts. Click + ADD, pick Alpaca, IBKR, or Tradier, name the account, and enter the credentials shown for that broker. Click CONNECT to validate.
+
+Paper trading and crypto exchanges do not require an equity broker.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>■  Paper trade first, then connect Alpaca paper keys to validate the flow
+■  Route live US orders through your preferred supported broker
+■  Track brokerage positions alongside portfolio and dashboard widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BEGINNER: Connect Alpaca paper keys and place a small market order
+INTERMEDIATE: Use limit orders, stop-loss, and multi-account switching
+ADVANCED: Combine with algo trading and portfolio replication
+PRO: Multi-monitor equity + crypto workflows with unified command bar</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Risk-free simulated trading engine</source>
@@ -8455,7 +7846,7 @@ PRO: Deploy multi-strategy portfolios, optimize parameters, run live with real c
     </message>
     <message>
         <source>■  Backtrader — Python-based, full-featured backtesting engine
-■  Zipline — Quantopian's backtesting library
+■  Zipline — Quantopian&apos;s backtesting library
 ■  VectorBT — Vectorized backtesting for high performance
 ■  QuantConnect (Lean) — Cloud-based institutional backtesting
 ■  Custom Python — Write your own backtesting scripts
@@ -8806,12 +8197,12 @@ PRO: Production RL trading agents, HFT signal research, custom model deployment<
         <translation>QUANTLIB 套件</translation>
     </message>
     <message>
-        <source>18 quantitative analysis modules with 590+ endpoints</source>
-        <translation>18 个量化分析模块，含 590 多个端点</translation>
+        <source>18-module client for an external QuantLib pricing server</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The QuantLib Suite provides access to 590+ quantitative analysis endpoints organized into 18 modules. Powered by a REST API backend, it covers everything from basic statistics to complex derivative pricing and risk modeling.</source>
-        <translation>QuantLib 套件提供对 590 多个量化分析端点的访问，分为 18 个模块。由 REST API 后端驱动，涵盖从基础统计到复杂衍生品定价和风险建模的方方面面。</translation>
+        <source>The QuantLib Suite is a thin client that forwards requests to an external, self-hosted QuantLib REST server (set connectors.quantlib_url in Settings). It performs no pricing locally; with no server configured it does nothing. When connected, it covers everything from basic statistics to derivative pricing and risk modeling.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>■  Core — Fundamental quantitative operations
@@ -8896,10 +8287,10 @@ PRO: Custom model development, multi-curve pricing, XVA calculations</source>
 ■  可配置的 LLM 提供商和模型</translation>
     </message>
     <message>
-        <source>■  Quick analysis: "What's driving NVDA today?"
-■  Strategy help: "Write a mean reversion strategy for crypto"
-■  Learning: "Explain how VaR is calculated"
-■  Data queries: "Compare AAPL and MSFT P/E ratios over 5 years"</source>
+        <source>■  Quick analysis: &quot;What&apos;s driving NVDA today?&quot;
+■  Strategy help: &quot;Write a mean reversion strategy for crypto&quot;
+■  Learning: &quot;Explain how VaR is calculated&quot;
+■  Data queries: &quot;Compare AAPL and MSFT P/E ratios over 5 years&quot;</source>
         <translation>■  快速分析：「今天是什么在驱动 NVDA？」
 ■  策略帮助：「为加密货币编写一个均值回归策略」
 ■  学习：「解释 VaR 是如何计算的」
@@ -9030,7 +8421,7 @@ PRO: Multi-strategy submission, alpha decay analysis, ensemble approaches</sourc
         <translation>访问 100 多个数据提供商和 50 万多个经济数据集</translation>
     </message>
     <message>
-        <source>DBnomics provides access to the world's largest open economic database. Browse 100+ data providers (IMF, World Bank, OECD, ECB, Fed, etc.) with 500K+ datasets covering macroeconomics, finance, demographics, and trade.</source>
+        <source>DBnomics provides access to the world&apos;s largest open economic database. Browse 100+ data providers (IMF, World Bank, OECD, ECB, Fed, etc.) with 500K+ datasets covering macroeconomics, finance, demographics, and trade.</source>
         <translation>DBnomics 提供对全球最大的开放经济数据库的访问。浏览 100 多个数据提供商（IMF、World Bank、OECD、ECB、Fed 等）和 50 万多个数据集，涵盖宏观经济、金融、人口和贸易。</translation>
     </message>
     <message>
@@ -9587,7 +8978,7 @@ PRO: Automated model updates with live data feeds</source>
         <source>■  Trade journal: Record entry/exit rationale for every trade
 ■  Research notes: Document investment theses and analysis
 ■  Meeting notes: Record calls with management or analysts
-■  Watchlist notes: Add context to symbols you're tracking</source>
+■  Watchlist notes: Add context to symbols you&apos;re tracking</source>
         <translation>■  交易日志：记录每笔交易的进出场理由
 ■  研究笔记：记录投资论点和分析
 ■  会议记录：记录与管理层或分析师的通话
@@ -9754,40 +9145,27 @@ PRO: Full infrastructure configuration, custom integrations</source>
         <translation>用户账户、订阅与用量跟踪</translation>
     </message>
     <message>
-        <source>The Profile screen displays your account information, subscription status, usage statistics, and billing history.</source>
-        <translation>个人资料界面显示您的账户信息、订阅状态、用量统计和账单历史。</translation>
+        <source>The Profile screen displays your account information and security settings. OpenMarketTerminal is free and open-source — there are no plans, credits, or billing.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>■  Account details — Name, email, registration date
-■  Subscription status — Current plan, expiry, features
-■  Usage statistics — API calls, data consumed, trades placed
-■  Credit balance — Remaining AI/compute credits
-■  Billing history — Past invoices and payments</source>
-        <translation>■  账户详情 — 姓名、电子邮件、注册日期
-■  订阅状态 — 当前套餐、到期时间、功能
-■  用量统计 — API调用次数、已消耗数据、已下单交易
-■  额度余额 — 剩余的AI/计算额度
-■  账单历史 — 过往发票和付款记录</translation>
+■  Security — Two-factor auth and email verification status
+■  Support — Open and track help tickets</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>■  Monitor your subscription and credit usage
-■  Upgrade or change your plan
-■  Track API usage to stay within limits
-■  Download billing records for expense tracking</source>
-        <translation>■  监控您的订阅和额度使用情况
-■  升级或更改您的套餐
-■  跟踪API用量以保持在限额内
-■  下载账单记录以进行费用跟踪</translation>
+        <source>■  Review and edit your account details
+■  Enable two-factor authentication
+■  Reach support when you need help</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BEGINNER: Check your account status and plan
-INTERMEDIATE: Monitor credit usage, plan API call budget
-ADVANCED: Optimize usage patterns for cost efficiency
-PRO: Enterprise account management, team usage tracking</source>
-        <translation>初级：查看您的账户状态和套餐
-中级：监控额度使用、规划API调用预算
-高级：优化使用模式以提升成本效益
-专业级：企业账户管理、团队用量跟踪</translation>
+        <source>BEGINNER: Review your account details
+INTERMEDIATE: Enable 2FA for stronger security
+ADVANCED: Manage sessions and API keys
+PRO: Script account actions via the MCP profile tools</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -10211,88 +9589,353 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>正在加载分析…</translation>
     </message>
     <message>
+        <source>VALUATION</source>
+        <translation type="unfinished">估值</translation>
+    </message>
+    <message>
         <source>FINANCIAL HEALTH</source>
         <translation>财务健康状况</translation>
     </message>
     <message>
-        <source>TOTAL CASH</source>
-        <translation>现金总额</translation>
+        <source>CASH FLOW</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TOTAL DEBT</source>
-        <translation>债务总额</translation>
+        <source>PROFITABILITY</source>
+        <translation type="unfinished">盈利能力</translation>
     </message>
     <message>
-        <source>FREE CASHFLOW</source>
-        <translation>自由现金流</translation>
+        <source>GROWTH</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OPERATING CF</source>
-        <translation>经营现金流</translation>
+        <source>RISK / SENTIMENT</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ENTERPRISE VALUE</source>
-        <translation>企业价值</translation>
+        <source>ANALYST PRICE TARGET</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EV/REVENUE</source>
-        <translation>EV/营收</translation>
+        <source>No analyst coverage available.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EV/EBITDA</source>
-        <translation>EV/EBITDA</translation>
+        <source> now</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BOOK VALUE</source>
-        <translation>账面价值</translation>
+        <source>to mean target</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>REVENUE &amp; PROFITS</source>
-        <translation>营收与利润</translation>
+        <source>target range shown</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>TOTAL REVENUE</source>
-        <translation>总营收</translation>
+        <source>STRONG BUY</source>
+        <translation type="unfinished">强烈买入</translation>
     </message>
     <message>
-        <source>REVENUE/SHARE</source>
-        <translation>每股营收</translation>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
     </message>
     <message>
-        <source>GROSS PROFITS</source>
-        <translation>毛利润</translation>
+        <source>HOLD</source>
+        <translation type="unfinished">持有</translation>
     </message>
     <message>
-        <source>EBITDA MARGINS</source>
-        <translation>EBITDA 利润率</translation>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
     </message>
     <message>
-        <source>KEY RATIOS</source>
-        <translation>关键比率</translation>
+        <source>STRONG SELL</source>
+        <translation type="unfinished">强烈卖出</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n analyst(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
     </message>
     <message>
-        <source>P/E RATIO</source>
-        <translation>P/E 比率</translation>
+        <source>N/A</source>
+        <translation type="unfinished">无</translation>
     </message>
     <message>
-        <source>PEG RATIO</source>
-        <translation>PEG 比率</translation>
+        <source>No earnings-based valuation available (may be unprofitable).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROE</source>
-        <translation>ROE</translation>
+        <source>UNDERVALUED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ROA</source>
-        <translation>ROA</translation>
+        <source>FAIRLY VALUED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BETA</source>
-        <translation>贝塔</translation>
+        <source>EXPENSIVE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SHORT RATIO</source>
-        <translation>做空比率</translation>
+        <source>Forward P/E below trailing — earnings expected to grow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trades at a premium; priced for growth or quality.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low multiple relative to earnings/growth.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Valuation in line with broad-market norms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Balance-sheet cash/debt not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cash %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Debt %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STRONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net cash position — more cash than total debt.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STABLE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manageable leverage relative to cash on hand.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STRETCHED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Debt is high relative to available cash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cash-flow figures not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FCF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Op CF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FCF margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Generates positive free cash flow after capex.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REINVESTING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operating cash is positive but FCF is negative (heavy investment).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BURNING CASH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operations are consuming cash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profitability ratios not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Net margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Oper. margin %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOSS-MAKING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Currently unprofitable on a net basis.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EXCELLENT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High returns on equity and strong net margins.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SOLID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Healthy, consistent profitability.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>THIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Profitable, but margins and returns are slim.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Growth rates not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revenue %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Earnings %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HIGH GROWTH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top line expanding rapidly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MODERATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Steady single-to-double-digit growth.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FLAT</source>
+        <translation type="unfinished">无持仓</translation>
+    </message>
+    <message>
+        <source>Revenue is roughly unchanged year over year.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DECLINING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revenue is contracting year over year.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Risk metrics not reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beta %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Short %1 of float</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>52w position %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ELEVATED</source>
+        <translation type="unfinished">偏高</translation>
+    </message>
+    <message>
+        <source>Heavy short interest signals bearish positioning.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High beta — amplifies market moves.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Moves roughly in line with, or above, the market.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOW</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lower volatility than the broad market.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Beta unavailable; based on limited risk signals.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::EquityFilingsTab</name>
+    <message>
+        <source>SEC FILINGS — select a symbol</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Form</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation type="unfinished">日期</translation>
+    </message>
+    <message>
+        <source>Accession</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Document</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1 (loading…)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SEC FILINGS — %1 (%2)</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -10613,8 +10256,20 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>正在加载新闻…</translation>
     </message>
     <message>
+        <source>Add a NewsAPI key in the Data Sources tab</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>LATEST NEWS</source>
         <translation>最新新闻</translation>
+    </message>
+    <message>
+        <source>Auto (GNews → Yahoo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>News source</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>REFRESH</source>
@@ -10648,7 +10303,7 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>正在加载概览…</translation>
     </message>
     <message>
-        <source>TODAY'S TRADING</source>
+        <source>TODAY&apos;S TRADING</source>
         <translation>今日交易</translation>
     </message>
     <message>
@@ -10982,6 +10637,100 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>市值: %1</translation>
     </message>
     <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>↓ CSV</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download price history (CSV) from Yahoo Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT CAP: %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Price Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load a symbol first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Price Data — %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Yahoo Finance price history for &lt;b&gt;%1&lt;/b&gt; as CSV.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Period:</source>
+        <translation type="unfinished">周期：</translation>
+    </message>
+    <message>
+        <source>Interval:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note: intraday intervals (below 1d) are only available for roughly the last 60 days.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">取消</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fetching from Yahoo Finance…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data returned for %1 (%2). Try a longer period or a daily interval.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Price Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CSV Files (*.csv)</source>
+        <translation type="unfinished">CSV 文件 (*.csv)</translation>
+    </message>
+    <message>
+        <source>Save cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation type="unfinished">导出失败</translation>
+    </message>
+    <message>
+        <source>Could not open the file for writing:
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved %1 rows for %2 to:
+%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
         <translation>概览</translation>
     </message>
@@ -11010,6 +10759,10 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>情绪</translation>
     </message>
     <message>
+        <source>Filings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>BACKTEST</source>
         <translation>回测</translation>
     </message>
@@ -11017,8 +10770,8 @@ Free key at: www.eia.gov/opendata/register.php</source>
 <context>
     <name>openmarketterminal::screens::EquitySentimentTab</name>
     <message>
-        <source>Loading market sentiment…</source>
-        <translation>正在加载市场情绪…</translation>
+        <source>Loading sentiment…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LOADING SENTIMENT…</source>
@@ -11033,123 +10786,52 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>刷新</translation>
     </message>
     <message>
-        <source>Refreshing market sentiment…</source>
-        <translation>正在刷新市场情绪…</translation>
+        <source>Open a symbol to compute sentiment from news and price momentum.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>REFRESHING SENTIMENT…</source>
-        <translation>正在刷新情绪…</translation>
+        <source>OVERALL</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open a symbol and enable Adanos Market Sentiment in Data Sources to load a snapshot.</source>
-        <translation>打开一个代码并在数据源中启用 Adanos Market Sentiment 以加载快照。</translation>
+        <source>SIGNAL SOURCES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SOURCE BREAKDOWN</source>
-        <translation>来源细分</translation>
+        <source>HEADLINES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SUMMARY</source>
-        <translation>摘要</translation>
+        <source>Confidence %1%</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>AVERAGE BUZZ</source>
-        <translation>平均热度</translation>
+        <source>%1 bullish · %2 neutral · %3 bearish  (%4 headlines)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>BULLISH %</source>
-        <translation>看涨 %</translation>
+        <source>wt %1%</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>COVERAGE</source>
-        <translation>覆盖度</translation>
+        <source>n/a</source>
+        <translation type="unfinished">无</translation>
     </message>
     <message>
-        <source>ALIGNMENT</source>
-        <translation>一致性</translation>
+        <source>No headlines available for this symbol.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Buzz</source>
-        <translation>热度</translation>
+        <source>engine: %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Bullish</source>
-        <translation>看涨</translation>
+        <source>self-computed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Activity</source>
-        <translation>活跃度</translation>
-    </message>
-    <message>
-        <source>Sentiment</source>
-        <translation>情绪</translation>
-    </message>
-    <message>
-        <source>No snapshot available.</source>
-        <translation>无可用快照。</translation>
-    </message>
-    <message>
-        <source>%1 sources live</source>
-        <translation>%1 个数据源在线</translation>
-    </message>
-    <message>
-        <source>Optional alternative data</source>
-        <translation>可选的另类数据</translation>
-    </message>
-    <message>
-        <source>No market sentiment snapshot is available for this symbol.</source>
-        <translation>该标的暂无市场情绪快照。</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::EquityTalippTab</name>
-    <message>
-        <source>—  data points  |  TALIpp Engine</source>
-        <translation>—  数据点  |  TALIpp 引擎</translation>
-    </message>
-    <message>
-        <source>Select an indicator and click CALCULATE.</source>
-        <translation>选择一个指标并点击 CALCULATE。</translation>
-    </message>
-    <message>
-        <source>▶  CALCULATE</source>
-        <translation>▶  计算</translation>
-    </message>
-    <message>
-        <source>Select an indicator and click CALCULATE</source>
-        <translation>选择一个指标并点击 CALCULATE</translation>
-    </message>
-    <message>
-        <source>50+ indicators across 6 categories — powered by TALIpp incremental engine</source>
-        <translation>涵盖 6 大类别的 50+ 个指标 — 由 TALIpp 增量引擎驱动</translation>
-    </message>
-    <message>
-        <source>No symbol loaded. Search for a symbol first.</source>
-        <translation>未加载标的。请先搜索一个标的。</translation>
-    </message>
-    <message>
-        <source>COMPUTING…</source>
-        <translation>计算中…</translation>
-    </message>
-    <message>
-        <source>Computing %1…</source>
-        <translation>正在计算 %1…</translation>
-    </message>
-    <message>
-        <source>COMPUTING %1…</source>
-        <translation>正在计算 %1…</translation>
-    </message>
-    <message>
-        <source>LAST</source>
-        <translation>最新</translation>
-    </message>
-    <message>
-        <source>N/A</source>
-        <translation>无</translation>
-    </message>
-    <message>
-        <source>No data returned for %1</source>
-        <translation>%1 未返回数据</translation>
+        <source>No sentiment is available for this symbol.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -11522,6 +11204,10 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>模拟</translation>
     </message>
     <message>
+        <source>FEEDS</source>
+        <translation type="unfinished">订阅源</translation>
+    </message>
+    <message>
         <source>LIVE</source>
         <translation>实时</translation>
     </message>
@@ -11570,36 +11256,8 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>订单失败：%1</translation>
     </message>
     <message>
-        <source>Order queued for approval in Action Center</source>
-        <translation>订单已在操作中心排队等待审批</translation>
-    </message>
-    <message>
-        <source>Failed to queue order</source>
-        <translation>订单排队失败</translation>
-    </message>
-    <message>
-        <source>Order placed: %1</source>
-        <translation>订单已下达：%1</translation>
-    </message>
-    <message>
-        <source>Cancelled %1 order(s)%2</source>
-        <translation>已取消 %1 笔订单%2</translation>
-    </message>
-    <message>
-        <source>, %1 failed</source>
-        <translation>，%1 笔失败</translation>
-    </message>
-    <message>
-        <source>Closed %1 position(s)%2</source>
-        <translation>已平 %1 个持仓%2</translation>
-    </message>
-    <message>
         <source>Strategy has no legs to place</source>
         <translation>策略没有可下单的腿</translation>
-    </message>
-    <message>
-        <source>Strategy: %1/%2 legs placed%3</source>
-        <translation>策略：已下单 %1/%2 条腿%3</translation>
     </message>
     <message>
         <source>Import Holdings</source>
@@ -11698,10 +11356,6 @@ Free key at: www.eia.gov/opendata/register.php</source>
         <translation>投资组合名称为必填项。</translation>
     </message>
     <message>
-        <source>Imported %1 holdings into portfolio "%2".</source>
-        <translation>已将 %1 个持仓导入投资组合「%2」。</translation>
-    </message>
-    <message>
         <source>Select a portfolio first.</source>
         <translation>请先选择一个投资组合。</translation>
     </message>
@@ -11716,6 +11370,124 @@ Free key at: www.eia.gov/opendata/register.php</source>
     <message>
         <source>Order cancelled</source>
         <translation>订单已取消</translation>
+    </message>
+    <message>
+        <source>Buy %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Market</source>
+        <translation type="unfinished">市场</translation>
+    </message>
+    <message>
+        <source>Limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">类型</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">数量</translation>
+    </message>
+    <message>
+        <source>Limit price</source>
+        <translation type="unfinished">限价</translation>
+    </message>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Product conversion is available for paper accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert %1 to %2 (delivery)?
+
+This locks the full position value as cash and carries it overnight instead of auto-squaring at 15:30.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 converted to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No %1 positions to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>winning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>losing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trade %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No connected broker can trade %1. Add or connect a broker for this market in the ACCOUNTS panel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SHORT</source>
+        <translation type="unfinished">做空</translation>
+    </message>
+    <message>
+        <source>LONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit %1 %2 %3 at market?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No open positions to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No holdings to square off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off %1 at market?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Strategy queued for approval (%1 legs)</source>
@@ -11872,7 +11644,7 @@ CSV 导出仍可通过工具栏使用。</translation>
         <translation>删除工作表</translation>
     </message>
     <message>
-        <source>Delete "%1"? This cannot be undone.</source>
+        <source>Delete &quot;%1&quot;? This cannot be undone.</source>
         <translation>删除“%1”？此操作无法撤消。</translation>
     </message>
     <message>
@@ -11990,7 +11762,7 @@ No API key required</source>
         <translation>删除文件</translation>
     </message>
     <message>
-        <source>Delete "%1"? This cannot be undone.</source>
+        <source>Delete &quot;%1&quot;? This cannot be undone.</source>
         <translation>删除“%1”？此操作无法撤消。</translation>
     </message>
     <message>
@@ -12097,43 +11869,6 @@ from any screen. You can also upload files manually using the button above.</sou
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::Open TerminalMacroPanel</name>
-    <message>
-        <source>Open Terminal Macro — Coming Soon
-
-Planned data:
-  · Central bank rates (40+ countries)
-  · Sovereign debt metrics
-  · Open Terminal proprietary macro indices
-  · Global inflation dashboard
-  · Emerging market indicators
-
-Requires Open Terminal subscription + API key
-Check back in a future release</source>
-        <translation>Open Terminal Macro — 即将推出
-
-计划数据：
-  · 央行利率（40+ 个国家/地区）
-  · 主权债务指标
-  · Open Terminal 专有宏观指数
-  · 全球通胀仪表板
-  · 新兴市场指标
-
-需要 Open Terminal 订阅 + API key
-请在未来版本中再来查看</translation>
-    </message>
-    <message>
-        <source>OPENMARKETTERMINAL MACRO — COMING SOON</source>
-        <translation>OPENMARKETTERMINAL MACRO — 即将推出</translation>
-    </message>
-    <message>
-        <source>Open Terminal Macro data script is not yet available.
-This panel will be enabled in a future release.</source>
-        <translation>Open Terminal Macro 数据脚本尚不可用。
-此面板将在未来版本中启用。</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::FiscalDataPanel</name>
     <message>
         <source>Select a dataset and click FETCH
@@ -12154,423 +11889,6 @@ No API key required</source>
     <message>
         <source>No data returned</source>
         <translation>未返回数据</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForgotPasswordScreen</name>
-    <message>
-        <source>RESET PASSWORD</source>
-        <translation>重置密码</translation>
-    </message>
-    <message>
-        <source>Enter your email and we'll send a verification code.</source>
-        <translation>请输入您的邮箱，我们将发送验证码。</translation>
-    </message>
-    <message>
-        <source>EMAIL</source>
-        <translation>邮箱</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>  SEND CODE  </source>
-        <translation>  发送验证码  </translation>
-    </message>
-    <message>
-        <source>REMEMBER YOUR PASSWORD? SIGN IN</source>
-        <translation>想起密码了？立即登录</translation>
-    </message>
-    <message>
-        <source>CHECK YOUR EMAIL</source>
-        <translation>请查收邮件</translation>
-    </message>
-    <message>
-        <source>We've sent a verification code. Enter it on the next screen to reset your password.</source>
-        <translation>验证码已发送。请在下一页输入以重置密码。</translation>
-    </message>
-    <message>
-        <source>  I HAVE THE CODE  </source>
-        <translation>  我已收到验证码  </translation>
-    </message>
-    <message>
-        <source>DIDN'T RECEIVE? RESEND</source>
-        <translation>没收到？重新发送</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>验证码</translation>
-    </message>
-    <message>
-        <source>NEW PASSWORD</source>
-        <translation>新密码</translation>
-    </message>
-    <message>
-        <source>CONFIRM PASSWORD</source>
-        <translation>确认密码</translation>
-    </message>
-    <message>
-        <source>enter code from email</source>
-        <translation>请输入邮件中的验证码</translation>
-    </message>
-    <message>
-        <source>min 8 characters</source>
-        <translation>至少 8 个字符</translation>
-    </message>
-    <message>
-        <source>re-enter password</source>
-        <translation>再次输入密码</translation>
-    </message>
-    <message>
-        <source>  RESET PASSWORD  </source>
-        <translation>  重置密码  </translation>
-    </message>
-    <message>
-        <source>PASSWORD RESET</source>
-        <translation>密码已重置</translation>
-    </message>
-    <message>
-        <source>SUCCESS</source>
-        <translation>成功</translation>
-    </message>
-    <message>
-        <source>Your password has been reset. You can now sign in with your new password.</source>
-        <translation>您的密码已重置。现在可以使用新密码登录。</translation>
-    </message>
-    <message>
-        <source>  CONTINUE TO LOGIN  </source>
-        <translation>  前往登录  </translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumFeedPanel</name>
-    <message>
-        <source>DISCUSSIONS</source>
-        <translation>讨论</translation>
-    </message>
-    <message>
-        <source>+ NEW POST</source>
-        <translation>+ 新帖子</translation>
-    </message>
-    <message>
-        <source>%1 posts</source>
-        <translation>%1 个帖子</translation>
-    </message>
-    <message>
-        <source>NO DISCUSSIONS YET</source>
-        <translation>暂无讨论</translation>
-    </message>
-    <message>
-        <source>Be the first to start a conversation</source>
-        <translation>成为第一个发起对话的人</translation>
-    </message>
-    <message>
-        <source>%1 replies</source>
-        <translation>%1 条回复</translation>
-    </message>
-    <message>
-        <source>%1 views</source>
-        <translation>%1 次浏览</translation>
-    </message>
-    <message>
-        <source>✓ VOTED</source>
-        <translation>✓ 已投票</translation>
-    </message>
-    <message>
-        <source>● HOT</source>
-        <translation>● 热门</translation>
-    </message>
-    <message>
-        <source>● ACTIVE</source>
-        <translation>● 活跃</translation>
-    </message>
-    <message>
-        <source>Load %1 more posts</source>
-        <translation>再加载 %1 个帖子</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumPostListPanel</name>
-    <message>
-        <source>%1 posts</source>
-        <translation>%1 个帖子</translation>
-    </message>
-    <message>
-        <source>NO POSTS YET</source>
-        <translation>暂无帖子</translation>
-    </message>
-    <message>
-        <source>Be the first to start a discussion</source>
-        <translation>成为第一个发起讨论的人</translation>
-    </message>
-    <message>
-        <source>● HOT</source>
-        <translation>● 热门</translation>
-    </message>
-    <message>
-        <source>Load %1 more posts</source>
-        <translation>再加载 %1 个帖子</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumPostReaderPanel</name>
-    <message>
-        <source>SELECT A POST</source>
-        <translation>选择一个帖子</translation>
-    </message>
-    <message>
-        <source>Click any post from the feed to read it</source>
-        <translation>点击信息流中的任意帖子即可阅读</translation>
-    </message>
-    <message>
-        <source>Loading...</source>
-        <translation>正在加载...</translation>
-    </message>
-    <message>
-        <source>▲  Upvote</source>
-        <translation>▲  顶</translation>
-    </message>
-    <message>
-        <source>◆ %1 replies</source>
-        <translation>◆ %1 条回复</translation>
-    </message>
-    <message>
-        <source>◉ %1 views</source>
-        <translation>◉ %1 次浏览</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>Write a reply...</source>
-        <translation>撰写回复...</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>◆ %1 reply</source>
-        <translation>◆ %1 条回复</translation>
-    </message>
-    <message>
-        <source>NO REPLIES YET</source>
-        <translation>暂无回复</translation>
-    </message>
-    <message>
-        <source>▲ upvote</source>
-        <translation>▲ 顶</translation>
-    </message>
-    <message>
-        <source>▼ downvote</source>
-        <translation>▼ 踩</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumScreen</name>
-    <message>
-        <source>USER PROFILE</source>
-        <translation>用户资料</translation>
-    </message>
-    <message>
-        <source>REP</source>
-        <translation>声望</translation>
-    </message>
-    <message>
-        <source>POSTS</source>
-        <translation>帖子</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>LIKES</source>
-        <translation>点赞</translation>
-    </message>
-    <message>
-        <source>EDIT MY PROFILE</source>
-        <translation>编辑我的资料</translation>
-    </message>
-    <message>
-        <source>SEARCH: %1</source>
-        <translation>搜索：%1</translation>
-    </message>
-    <message>
-        <source>TRENDING</source>
-        <translation>热门趋势</translation>
-    </message>
-    <message>
-        <source>NEW POST</source>
-        <translation>新帖子</translation>
-    </message>
-    <message>
-        <source>CREATE NEW POST</source>
-        <translation>创建新帖子</translation>
-    </message>
-    <message>
-        <source>Share your insights with the community</source>
-        <translation>与社区分享您的见解</translation>
-    </message>
-    <message>
-        <source>TITLE</source>
-        <translation>标题</translation>
-    </message>
-    <message>
-        <source>Give your post a descriptive title...</source>
-        <translation>为您的帖子取一个描述性标题...</translation>
-    </message>
-    <message>
-        <source>CONTENT</source>
-        <translation>内容</translation>
-    </message>
-    <message>
-        <source>Write your thoughts...</source>
-        <translation>写下您的想法...</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>PUBLISH POST</source>
-        <translation>发布帖子</translation>
-    </message>
-    <message>
-        <source>EDIT PROFILE</source>
-        <translation>编辑资料</translation>
-    </message>
-    <message>
-        <source>DISPLAY NAME</source>
-        <translation>显示名称</translation>
-    </message>
-    <message>
-        <source>BIO</source>
-        <translation>简介</translation>
-    </message>
-    <message>
-        <source>SIGNATURE</source>
-        <translation>签名</translation>
-    </message>
-    <message>
-        <source>AVATAR COLOR (HEX)</source>
-        <translation>头像颜色 (HEX)</translation>
-    </message>
-    <message>
-        <source>SAVE CHANGES</source>
-        <translation>保存更改</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumSidebarPanel</name>
-    <message>
-        <source>COMMUNITY</source>
-        <translation>社区</translation>
-    </message>
-    <message>
-        <source>Loading...</source>
-        <translation>正在加载...</translation>
-    </message>
-    <message>
-        <source>Search discussions...</source>
-        <translation>搜索讨论...</translation>
-    </message>
-    <message>
-        <source>ACTIVITY</source>
-        <translation>活动</translation>
-    </message>
-    <message>
-        <source>POSTS</source>
-        <translation>帖子</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>TODAY</source>
-        <translation>今日</translation>
-    </message>
-    <message>
-        <source>  ▲  TRENDING POSTS</source>
-        <translation>  ▲  热门帖子</translation>
-    </message>
-    <message>
-        <source>CHANNELS</source>
-        <translation>频道</translation>
-    </message>
-    <message>
-        <source>New post</source>
-        <translation>新帖子</translation>
-    </message>
-    <message>
-        <source>LEADERBOARD</source>
-        <translation>排行榜</translation>
-    </message>
-    <message>
-        <source>  loading...</source>
-        <translation>  正在加载...</translation>
-    </message>
-    <message>
-        <source>  No contributors yet</source>
-        <translation>  暂无贡献者</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::ForumThreadPanel</name>
-    <message>
-        <source>Loading thread...</source>
-        <translation>正在加载主题...</translation>
-    </message>
-    <message>
-        <source>←  Back to Feed</source>
-        <translation>←  返回信息流</translation>
-    </message>
-    <message>
-        <source>▲  Upvote</source>
-        <translation>▲  顶</translation>
-    </message>
-    <message>
-        <source>◆ %1 replies</source>
-        <translation>◆ %1 条回复</translation>
-    </message>
-    <message>
-        <source>◉ %1 views</source>
-        <translation>◉ %1 次浏览</translation>
-    </message>
-    <message>
-        <source>REPLIES</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>Write a reply...</source>
-        <translation>撰写回复...</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>◆ %1 reply</source>
-        <translation>◆ %1 条回复</translation>
-    </message>
-    <message>
-        <source>NO REPLIES YET</source>
-        <translation>暂无回复</translation>
-    </message>
-    <message>
-        <source>Be the first to share your thoughts</source>
-        <translation>抢先分享你的想法</translation>
-    </message>
-    <message>
-        <source>▲ upvote</source>
-        <translation>▲ 顶</translation>
-    </message>
-    <message>
-        <source>▼ downvote</source>
-        <translation>▼ 踩</translation>
     </message>
 </context>
 <context>
@@ -12676,8 +11994,8 @@ fred.stlouisfed.org/docs/api/api_key.html</translation>
         <translation>关闭最后一个窗口时</translation>
     </message>
     <message>
-        <source>Default is Quit. Choose 'Show Launchpad' if you want a small portal window to stay open after closing your last terminal window.</source>
-        <translation>默认为退出。如果希望关闭最后一个终端窗口后保留小型门户窗口，请选择"显示启动台"。</translation>
+        <source>Default is Quit. Choose &apos;Show Launchpad&apos; if you want a small portal window to stay open after closing your last terminal window.</source>
+        <translation>默认为退出。如果希望关闭最后一个终端窗口后保留小型门户窗口，请选择&quot;显示启动台&quot;。</translation>
     </message>
     <message>
         <source>LANGUAGE</source>
@@ -12949,11 +12267,11 @@ No API key required for any source</source>
         <translation>%1 个文件</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
+        <source>Loading datasets for &quot;%1&quot;…</source>
         <translation>正在加载“%1”的数据集…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
+        <source>Searching for &quot;%1&quot;…</source>
         <translation>正在搜索“%1”…</translation>
     </message>
     <message>
@@ -13255,23 +12573,23 @@ No API key required for any source</source>
         <translation>正在加载数据服务…</translation>
     </message>
     <message>
-        <source>Searching datasets for "%1"…</source>
+        <source>Searching datasets for &quot;%1&quot;…</source>
         <translation>正在搜索“%1”的数据集…</translation>
     </message>
     <message>
-        <source>Searching municipalities for "%1"…</source>
+        <source>Searching municipalities for &quot;%1&quot;…</source>
         <translation>正在搜索“%1”的市镇…</translation>
     </message>
     <message>
-        <source>Loading column schema for "%1"…</source>
+        <source>Loading column schema for &quot;%1&quot;…</source>
         <translation>正在加载“%1”的列结构…</translation>
     </message>
     <message>
-        <source>Datasets  ›  "%1"</source>
+        <source>Datasets  ›  &quot;%1&quot;</source>
         <translation>数据集  ›  “%1”</translation>
     </message>
     <message>
-        <source>Municipalities  ›  "%1"</source>
+        <source>Municipalities  ›  &quot;%1&quot;</source>
         <translation>市镇  ›  “%1”</translation>
     </message>
     <message>
@@ -13370,22 +12688,22 @@ No API key required for any source</source>
         <translation>正在加载完整数据集列表以供筛选…</translation>
     </message>
     <message>
-        <source>No datasets matched "%1" in the HK catalogue.
+        <source>No datasets matched &quot;%1&quot; in the HK catalogue.
 HK DATA — Categories may have limited datasets</source>
-        <translation>在 HK 目录中没有数据集匹配 "%1"。
+        <translation>在 HK 目录中没有数据集匹配 &quot;%1&quot;。
 HK DATA — 类别中的数据集可能有限</translation>
     </message>
     <message>
-        <source>Datasets  ›  Filter: "%1"</source>
-        <translation>数据集  ›  筛选: "%1"</translation>
+        <source>Datasets  ›  Filter: &quot;%1&quot;</source>
+        <translation>数据集  ›  筛选: &quot;%1&quot;</translation>
     </message>
     <message>
         <source>%1 matched</source>
         <translation>%1 个匹配</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>正在加载 "%1" 的数据集…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>正在加载 &quot;%1&quot; 的数据集…</translation>
     </message>
     <message>
         <source>Loading resources…</source>
@@ -13398,11 +12716,11 @@ HK DATA — 类别中的数据集可能有限</translation>
     <message>
         <source>HK DATA — Categories may have limited datasets
 
-No datasets found for "%1".
+No datasets found for &quot;%1&quot;.
 Try searching by name using the search box above.</source>
         <translation>HK DATA — 类别中的数据集可能有限
 
-未找到 "%1" 的数据集。
+未找到 &quot;%1&quot; 的数据集。
 请尝试使用上方的搜索框按名称搜索。</translation>
     </message>
     <message>
@@ -13565,8 +12883,8 @@ Try searching by name using the search box above.</source>
         <translation>正在加载资源…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>正在搜索 "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>正在搜索 &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Resources</source>
@@ -13896,16 +13214,16 @@ The selector shows all CKAN portals covered by the universal provider.</source>
         <translation>%1 个文件</translation>
     </message>
     <message>
-        <source>Loading datasets for "%1"…</source>
-        <translation>正在加载 "%1" 的数据集…</translation>
+        <source>Loading datasets for &quot;%1&quot;…</source>
+        <translation>正在加载 &quot;%1&quot; 的数据集…</translation>
     </message>
     <message>
         <source>Loading resources…</source>
         <translation>正在加载资源…</translation>
     </message>
     <message>
-        <source>Searching for "%1"…</source>
-        <translation>正在搜索 "%1"…</translation>
+        <source>Searching for &quot;%1&quot;…</source>
+        <translation>正在搜索 &quot;%1&quot;…</translation>
     </message>
     <message>
         <source>Loading popular publishers…</source>
@@ -14014,358 +13332,20 @@ The selector shows all CKAN portals covered by the universal provider.</source>
 <context>
     <name>openmarketterminal::screens::HelpScreen</name>
     <message>
-        <source>HELP CENTER</source>
-        <translation>帮助中心</translation>
+        <source>Open Terminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Find answers, get support, and connect with the Open Terminal community.</source>
-        <translation>查找答案、获取支持，并与 Open Terminal 社区互动。</translation>
+        <source>Version v%1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mon-Fri  9AM–6PM EST</source>
-        <translation>周一至周五  上午9点–下午6点 EST</translation>
+        <source>Open Terminal is a local-first, open source market terminal for personal research, watchlists, portfolios, charts, news, and analytics.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>QUICK ACTIONS</source>
-        <translation>快捷操作</translation>
-    </message>
-    <message>
-        <source>Common tasks you can do right now</source>
-        <translation>您现在可以执行的常见任务</translation>
-    </message>
-    <message>
-        <source>Create Account</source>
-        <translation>创建账户</translation>
-    </message>
-    <message>
-        <source>Register for full access</source>
-        <translation>注册以获得完整访问权限</translation>
-    </message>
-    <message>
-        <source>Reset Password</source>
-        <translation>重置密码</translation>
-    </message>
-    <message>
-        <source>Recover your account</source>
-        <translation>恢复您的账户</translation>
-    </message>
-    <message>
-        <source>Documentation</source>
-        <translation>文档</translation>
-    </message>
-    <message>
-        <source>Guides, tutorials &amp; API ref</source>
-        <translation>指南、教程和 API 参考</translation>
-    </message>
-    <message>
-        <source>Report a Bug</source>
-        <translation>报告错误</translation>
-    </message>
-    <message>
-        <source>Open a bug report ticket</source>
-        <translation>提交错误报告工单</translation>
-    </message>
-    <message>
-        <source>View Source</source>
-        <translation>加入 Discord</translation>
-    </message>
-    <message>
-        <source>Community &amp; live support</source>
-        <translation>社区与即时支持</translation>
-    </message>
-    <message>
-        <source>Support Tickets</source>
-        <translation>支持工单</translation>
-    </message>
-    <message>
-        <source>View or open a support ticket</source>
-        <translation>查看或提交支持工单</translation>
-    </message>
-    <message>
-        <source>FREQUENTLY ASKED QUESTIONS</source>
-        <translation>常见问题</translation>
-    </message>
-    <message>
-        <source>Click a question to expand the answer</source>
-        <translation>点击问题以展开答案</translation>
-    </message>
-    <message>
-        <source>How do I reset my password?</source>
-        <translation>如何重置我的密码？</translation>
-    </message>
-    <message>
-        <source>Click "Forgot Password" on the login screen. Enter your email address and we'll send you a reset link. The link expires in 24 hours.</source>
-        <translation>在登录界面点击“忘记密码”。输入您的电子邮箱地址，我们将向您发送重置链接。该链接将在 24 小时后失效。</translation>
-    </message>
-    <message>
-        <source>What is Guest Access?</source>
-        <translation>什么是访客访问？</translation>
-    </message>
-    <message>
-        <source>Guest access lets you explore the terminal without creating an account. Features like trading, portfolio management, and AI analytics require a registered account.</source>
-        <translation>访客访问让您无需创建账户即可浏览终端。交易、投资组合管理和 AI 分析等功能需要注册账户。</translation>
-    </message>
-    <message>
-        <source>What is a Credit?</source>
-        <translation>什么是积分？</translation>
-    </message>
-    <message>
-        <source>Credits are the in-app currency used for premium features such as AI analysis, advanced data feeds, and quantitative analytics. Free accounts receive a limited number of credits on signup. Additional credits can be purchased in Settings → Billing.</source>
-        <translation>积分是应用内货币，用于 AI 分析、高级数据源和量化分析等高级功能。免费账户在注册时会获得有限数量的积分。可在“设置 → 账单”中购买额外积分。</translation>
-    </message>
-    <message>
-        <source>How do I connect a broker?</source>
-        <translation>如何连接券商？</translation>
-    </message>
-    <message>
-        <source>Navigate to Settings → Brokers, select your broker from the list, and enter your API key and secret. Open Terminal supports 18+ brokers including Zerodha, Angel One, Upstox, Interactive Brokers, and more.</source>
-        <translation>前往“设置 → 券商”，从列表中选择您的券商，并输入您的 API key 和 secret。Open Terminal 支持 18 家以上的券商，包括 Zerodha、Angel One、Upstox、Interactive Brokers 等。</translation>
-    </message>
-    <message>
-        <source>Why does Python install at first launch?</source>
-        <translation>为什么首次启动时会安装 Python？</translation>
-    </message>
-    <message>
-        <source>Open Terminal embeds Python for 1300+ analytics scripts covering equity, portfolio, derivatives, and quant analysis. The one-time install is ~150 MB and happens automatically in the background.</source>
-        <translation>Open Terminal 嵌入 Python 以运行 1300 多个分析脚本，涵盖股票、投资组合、衍生品和量化分析。一次性安装约 150 MB，会在后台自动完成。</translation>
-    </message>
-    <message>
-        <source>What are the system requirements?</source>
-        <translation>系统要求是什么？</translation>
-    </message>
-    <message>
-        <source>Windows 10+ (x64), macOS 12+, or Linux (glibc 2.31+). 8 GB RAM recommended. Active internet required for data feeds. Python 3.11 is installed automatically during first-time setup.</source>
-        <translation>Windows 10+（x64）、macOS 12+ 或 Linux（glibc 2.31+）。建议 8 GB RAM。数据源需要有效的互联网连接。Python 3.11 会在首次设置时自动安装。</translation>
-    </message>
-    <message>
-        <source>Is my data secure?</source>
-        <translation>我的数据安全吗？</translation>
-    </message>
-    <message>
-        <source>Credentials are stored encrypted via SecureStorage (OS keychain on each platform). API keys are never logged or sent to Open Terminal servers — they are used only for direct broker connections from your machine.</source>
-        <translation>凭据通过 SecureStorage（各平台的操作系统钥匙串）加密存储。API key 绝不会被记录或发送到 Open Terminal 服务器——它们仅用于从您的设备直接连接券商。</translation>
-    </message>
-    <message>
-        <source>How do I report a bug?</source>
-        <translation>如何报告错误？</translation>
-    </message>
-    <message>
-        <source>Open a support ticket with category "bug report" (Help → Support Tickets → + New Ticket). Include your OS, version, steps to reproduce, and any error messages you see. Screenshots are helpful.</source>
-        <translation>提交一个类别为“错误报告”的支持工单（帮助 → 支持工单 → + 新建工单）。请包含您的操作系统、版本、重现步骤以及您看到的任何错误消息。截图会很有帮助。</translation>
-    </message>
-    <message>
-        <source>GETTING STARTED</source>
-        <translation>入门指南</translation>
-    </message>
-    <message>
-        <source>New to Open Terminal? Start here</source>
-        <translation>初次使用 Open Terminal？从这里开始</translation>
-    </message>
-    <message>
-        <source>Create an account</source>
-        <translation>创建账户</translation>
-    </message>
-    <message>
-        <source>Register at example.com or use the in-app sign-up.</source>
-        <translation>在 example.com 注册，或使用应用内注册。</translation>
-    </message>
-    <message>
-        <source>Complete setup</source>
-        <translation>完成设置</translation>
-    </message>
-    <message>
-        <source>The setup wizard installs Python and configures your paths.</source>
-        <translation>设置向导会安装 Python 并配置您的路径。</translation>
-    </message>
-    <message>
-        <source>Connect a data source</source>
-        <translation>连接数据源</translation>
-    </message>
-    <message>
-        <source>Add a broker or enable free data feeds in Data Sources.</source>
-        <translation>在“数据源”中添加券商或启用免费数据源。</translation>
-    </message>
-    <message>
-        <source>Explore the terminal</source>
-        <translation>探索终端</translation>
-    </message>
-    <message>
-        <source>Browse Markets, Research, AI Chat, and QuantLib tabs.</source>
-        <translation>浏览“市场”“研究”“AI 聊天”和“QuantLib”标签页。</translation>
-    </message>
-    <message>
-        <source>CONTACT &amp; RESOURCES</source>
-        <translation>联系方式与资源</translation>
-    </message>
-    <message>
-        <source>Email Support</source>
-        <translation>电子邮件支持</translation>
-    </message>
-    <message>
-        <source>Discord Server</source>
-        <translation>Discord 服务器</translation>
-    </message>
-    <message>
-        <source>Website</source>
-        <translation>网站</translation>
-    </message>
-    <message>
-        <source>GitHub</source>
-        <translation>GitHub</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::HoldingsBar</name>
-    <message>
-        <source>Holding ≥ %1 $FNCPT — you qualify for the fee discount.</source>
-        <translation>持有量 ≥ %1 $FNCPT——您符合手续费折扣资格。</translation>
-    </message>
-    <message>
-        <source>%1 holding(s) excluded — no live price.</source>
-        <translation>已排除 %1 项持仓——无实时价格。</translation>
-    </message>
-    <message>
-        <source>Public Solana RPC. STREAM may degrade — add a Helius API key in Settings for reliable WebSocket subscriptions.</source>
-        <translation>公共 Solana RPC。STREAM 可能会降级——请在“设置”中添加 Helius API key 以获得可靠的 WebSocket 订阅。</translation>
-    </message>
-    <message>
-        <source>Helius RPC — STREAM fully supported.</source>
-        <translation>Helius RPC——完全支持 STREAM。</translation>
-    </message>
-    <message>
-        <source>Custom RPC override active.</source>
-        <translation>自定义 RPC 覆盖已启用。</translation>
-    </message>
-    <message>
-        <source>SOL</source>
-        <translation>SOL</translation>
-    </message>
-    <message>
-        <source>$FNCPT</source>
-        <translation>$FNCPT</translation>
-    </message>
-    <message>
-        <source>TOTAL</source>
-        <translation>总计</translation>
-    </message>
-    <message>
-        <source>$FNCPT PRICE</source>
-        <translation>$FNCPT 价格</translation>
-    </message>
-    <message>
-        <source>UPDATED</source>
-        <translation>已更新</translation>
-    </message>
-    <message>
-        <source>○ IDLE</source>
-        <translation>○ 空闲</translation>
-    </message>
-    <message>
-        <source>waiting…</source>
-        <translation>等待中…</translation>
-    </message>
-    <message>
-        <source>◌ CONNECTING</source>
-        <translation>◌ 连接中</translation>
-    </message>
-    <message>
-        <source>● LIVE</source>
-        <translation>● 实时</translation>
-    </message>
-    <message>
-        <source>◐ STALE</source>
-        <translation>◐ 过期</translation>
-    </message>
-    <message>
-        <source>✕ ERROR</source>
-        <translation>✕ 错误</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::HomeTab</name>
-    <message>
-        <source>COPY ADDRESS</source>
-        <translation>复制地址</translation>
-    </message>
-    <message>
-        <source>DISCONNECT</source>
-        <translation>断开连接</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>刷新</translation>
-    </message>
-    <message>
-        <source>COPIED</source>
-        <translation>已复制</translation>
-    </message>
-    <message>
-        <source>Solana wallet</source>
-        <translation>Solana 钱包</translation>
-    </message>
-    <message>
-        <source>restored from storage</source>
-        <translation>已从存储中恢复</translation>
-    </message>
-    <message>
-        <source>Balance fetch failed: %1</source>
-        <translation>余额获取失败：%1</translation>
-    </message>
-    <message>
-        <source>WALLET</source>
-        <translation>钱包</translation>
-    </message>
-    <message>
-        <source>● CONNECTED</source>
-        <translation>● 已连接</translation>
-    </message>
-    <message>
-        <source>PROVIDER</source>
-        <translation>提供商</translation>
-    </message>
-    <message>
-        <source>ADDRESS</source>
-        <translation>地址</translation>
-    </message>
-    <message>
-        <source>CONNECTED</source>
-        <translation>已连接</translation>
-    </message>
-    <message>
-        <source>HOLDINGS</source>
-        <translation>持仓</translation>
-    </message>
-    <message>
-        <source>POLL</source>
-        <translation>轮询</translation>
-    </message>
-    <message>
-        <source>STREAM</source>
-        <translation>STREAM</translation>
-    </message>
-    <message>
-        <source>MAINNET</source>
-        <translation>MAINNET</translation>
-    </message>
-    <message>
-        <source>$FNCPT ROADMAP</source>
-        <translation>$FNCPT 路线图</translation>
-    </message>
-    <message>
-        <source>PHASE 2</source>
-        <translation>第 2 阶段</translation>
-    </message>
-    <message>
-        <source>PHASE 1   WALLET &amp; BALANCE        SHIPPED        connect Solana wallet, view $FNCPT + SOL
-PHASE 2   SWAP &amp; FEE DISCOUNT     IN PROGRESS    buy $FNCPT via PumpPortal, fee discount
-PHASE 3   STAKING &amp; TIERS         UPCOMING       lock $FNCPT for bronze / silver / gold tiers
-PHASE 4   PREDICTION MARKETS      UPCOMING       earnings, fed, weather — settled in $FNCPT
-PHASE 5   BUYBACK &amp; BURN          UPCOMING       terminal revenue auto-buys &amp; burns $FNCPT</source>
-        <translation>第 1 阶段   钱包与余额          已上线        连接 Solana 钱包，查看 $FNCPT + SOL
-第 2 阶段   兑换与手续费折扣    进行中        通过 PumpPortal 购买 $FNCPT，手续费折扣
-第 3 阶段   质押与等级          即将推出      锁定 $FNCPT 以获得铜 / 银 / 金等级
-第 4 阶段   预测市场            即将推出      财报、美联储、天气——以 $FNCPT 结算
-第 5 阶段   回购与销毁          即将推出      终端收入自动买入并销毁 $FNCPT</translation>
+        <source>This build is yours to inspect, modify, and personalize.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -14558,7 +13538,7 @@ You can now import it using the BROWSE button.</source>
         <translation>取消</translation>
     </message>
     <message>
-        <source>Warning: already used by "%1"</source>
+        <source>Warning: already used by &quot;%1&quot;</source>
         <translation>警告：已被“%1”使用</translation>
     </message>
 </context>
@@ -14580,8 +13560,8 @@ You can now import it using the BROWSE button.</source>
 <context>
     <name>openmarketterminal::screens::LaunchpadScreen</name>
     <message>
-        <source>Open Terminal Launchpad</source>
-        <translation>Open Terminal Launchpad</translation>
+        <source>OpenMarketTerminal Launchpad</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Type to filter layouts…</source>
@@ -14596,7 +13576,7 @@ You can now import it using the BROWSE button.</source>
         <translation>所有窗口已关闭。请打开新窗口或在下方选择一个布局。</translation>
     </message>
     <message>
-        <source>Last session ended unexpectedly — your work was auto-saved. Click "Continue from last session" to restore.</source>
+        <source>Last session ended unexpectedly — your work was auto-saved. Click &quot;Continue from last session&quot; to restore.</source>
         <translation>上次会话意外结束——您的工作已自动保存。点击“从上次会话继续”以恢复。</translation>
     </message>
     <message>
@@ -14644,8 +13624,8 @@ You can now import it using the BROWSE button.</source>
         <translation>新配置文件名称：</translation>
     </message>
     <message>
-        <source>(No saved layouts yet — use 'layout save "&lt;name&gt;"' to save the current state)</source>
-        <translation>（尚无已保存的布局——使用 'layout save "&lt;name&gt;"' 保存当前状态）</translation>
+        <source>(No saved layouts yet — use &apos;layout save &quot;&lt;name&gt;&quot;&apos; to save the current state)</source>
+        <translation>（尚无已保存的布局——使用 &apos;layout save &quot;&lt;name&gt;&quot;&apos; 保存当前状态）</translation>
     </message>
 </context>
 <context>
@@ -14841,18 +13821,6 @@ Range 1-200. Raise for long workflows (e.g. populating multi-section reports).</
         <translation>提供商已配置</translation>
     </message>
     <message>
-        <source>Open Terminal LLM</source>
-        <translation>Open Terminal LLM</translation>
-    </message>
-    <message>
-        <source>Linked to your Open Terminal account: %1</source>
-        <translation>已关联到您的 Open Terminal 账户：%1</translation>
-    </message>
-    <message>
-        <source>Login to your Open Terminal account to enable</source>
-        <translation>登录您的 Open Terminal 账户以启用</translation>
-    </message>
-    <message>
         <source>Not required — local provider</source>
         <translation>无需——本地提供商</translation>
     </message>
@@ -14877,7 +13845,7 @@ Range 1-200. Raise for long workflows (e.g. populating multi-section reports).</
         <translation>激活失败：</translation>
     </message>
     <message>
-        <source>active is '%1' not '%2'</source>
+        <source>active is &apos;%1&apos; not &apos;%2&apos;</source>
         <translation>当前激活的是“%1”而非“%2”</translation>
     </message>
     <message>
@@ -14889,15 +13857,19 @@ Range 1-200. Raise for long workflows (e.g. populating multi-section reports).</
         <translation>已保存并设为活动提供商</translation>
     </message>
     <message>
-        <source>Cannot remove built-in Open Terminal provider</source>
-        <translation>无法移除内置的 Open Terminal 提供商</translation>
+        <source>Cannot remove built-in OpenMarketTerminal provider</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal manages models automatically</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Delete Provider</source>
         <translation>删除提供商</translation>
     </message>
     <message>
-        <source>Remove '%1' configuration?</source>
+        <source>Remove &apos;%1&apos; configuration?</source>
         <translation>移除“%1”配置？</translation>
     </message>
     <message>
@@ -14911,14 +13883,6 @@ Range 1-200. Raise for long workflows (e.g. populating multi-section reports).</
     <message>
         <source>Select a provider first</source>
         <translation>请先选择提供商</translation>
-    </message>
-    <message>
-        <source>Open Terminal connected — API key active</source>
-        <translation>Open Terminal 已连接 — API key 已激活</translation>
-    </message>
-    <message>
-        <source>Not connected — login to your Open Terminal account first</source>
-        <translation>未连接 — 请先登录您的 Open Terminal 账户</translation>
     </message>
     <message>
         <source>API key required for test</source>
@@ -14935,10 +13899,6 @@ Range 1-200. Raise for long workflows (e.g. populating multi-section reports).</
     <message>
         <source>Connection failed: </source>
         <translation>连接失败：</translation>
-    </message>
-    <message>
-        <source>Open Terminal manages models automatically</source>
-        <translation>Open Terminal 自动管理模型</translation>
     </message>
     <message>
         <source>Enter API key first, then fetch models</source>
@@ -15160,104 +14120,16 @@ to reset your PIN and regain access.</source>
 <context>
     <name>openmarketterminal::screens::LoginScreen</name>
     <message>
-        <source>SIGN IN</source>
-        <translation>登录</translation>
+        <source>WELCOME</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Access your terminal account</source>
-        <translation>登录您的终端账户</translation>
+        <source>Your local-first markets terminal. No account required.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EMAIL</source>
-        <translation>邮箱</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>密码</translation>
-    </message>
-    <message>
-        <source>enter password</source>
-        <translation>请输入密码</translation>
-    </message>
-    <message>
-        <source>SHOW</source>
-        <translation>显示</translation>
-    </message>
-    <message>
-        <source>HIDE</source>
-        <translation>隐藏</translation>
-    </message>
-    <message>
-        <source>FORGOT PASSWORD?</source>
-        <translation>忘记密码？</translation>
-    </message>
-    <message>
-        <source>  SIGN IN  </source>
-        <translation>  登录  </translation>
-    </message>
-    <message>
-        <source>  SIGNING IN...  </source>
-        <translation>  正在登录...  </translation>
-    </message>
-    <message>
-        <source>No account?</source>
-        <translation>还没有账户？</translation>
-    </message>
-    <message>
-        <source>SIGN UP</source>
-        <translation>注册</translation>
-    </message>
-    <message>
-        <source>TWO-FACTOR AUTH</source>
-        <translation>双重验证</translation>
-    </message>
-    <message>
-        <source>SECURE</source>
-        <translation>安全</translation>
-    </message>
-    <message>
-        <source>Enter the 6-digit code from your authenticator</source>
-        <translation>请输入验证器中的 6 位数字代码</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>验证码</translation>
-    </message>
-    <message>
-        <source>  VERIFY  </source>
-        <translation>  验证  </translation>
-    </message>
-    <message>
-        <source>BACK TO LOGIN</source>
-        <translation>返回登录</translation>
-    </message>
-    <message>
-        <source>SESSION CONFLICT</source>
-        <translation>会话冲突</translation>
-    </message>
-    <message>
-        <source>WARNING</source>
-        <translation>警告</translation>
-    </message>
-    <message>
-        <source>  LOG OUT OTHER SESSION &amp; CONTINUE  </source>
-        <translation>  退出其他会话并继续  </translation>
-    </message>
-    <message>
-        <source>  CANCEL  </source>
-        <translation>  取消  </translation>
-    </message>
-    <message>
-        <source>Please enter your password</source>
-        <translation>请输入您的密码</translation>
-    </message>
-    <message>
-        <source>Please enter the code</source>
-        <translation>请输入验证码</translation>
+        <source>  CONTINUE AS GUEST  </source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -15702,7 +14574,7 @@ to reset your PIN and regain access.</source>
         <translation>资金来源与运用</translation>
     </message>
     <message>
-        <source>Calculates each party's % contribution to the combined entity.</source>
+        <source>Calculates each party&apos;s % contribution to the combined entity.</source>
         <translation>计算各方对合并实体的贡献占比 %。</translation>
     </message>
     <message>
@@ -16338,8 +15210,8 @@ to reset your PIN and regain access.</source>
         <translation>回归</translation>
     </message>
     <message>
-        <source>Enter deal data as JSON array. Each deal: {"acquirer":"...","target":"...","deal_value":N,"premium":N,"ev_revenue":N,"ev_ebitda":N}</source>
-        <translation>以 JSON 数组形式输入交易数据。每笔交易：{"acquirer":"...","target":"...","deal_value":N,"premium":N,"ev_revenue":N,"ev_ebitda":N}</translation>
+        <source>Enter deal data as JSON array. Each deal: {&quot;acquirer&quot;:&quot;...&quot;,&quot;target&quot;:&quot;...&quot;,&quot;deal_value&quot;:N,&quot;premium&quot;:N,&quot;ev_revenue&quot;:N,&quot;ev_ebitda&quot;:N}</source>
+        <translation>以 JSON 数组形式输入交易数据。每笔交易：{&quot;acquirer&quot;:&quot;...&quot;,&quot;target&quot;:&quot;...&quot;,&quot;deal_value&quot;:N,&quot;premium&quot;:N,&quot;ev_revenue&quot;:N,&quot;ev_ebitda&quot;:N}</translation>
     </message>
     <message>
         <source>COMPARE DEALS</source>
@@ -16465,20 +15337,16 @@ to reset your PIN and regain access.</source>
         <translation>✕ 清除</translation>
     </message>
     <message>
-        <source>INTELLIGENCE</source>
-        <translation>情报</translation>
-    </message>
-    <message>
-        <source>TOTAL IN AREA</source>
-        <translation>区域内总数</translation>
-    </message>
-    <message>
-        <source>DISPLAYED</source>
-        <translation>已显示</translation>
-    </message>
-    <message>
         <source>ROUTES</source>
         <translation>航线</translation>
+    </message>
+    <message>
+        <source>LIVE VESSEL MAP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BASEMAP</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>PORTS</source>
@@ -16487,6 +15355,30 @@ to reset your PIN and regain access.</source>
     <message>
         <source>TRADE CORRIDORS</source>
         <translation>贸易走廊</translation>
+    </message>
+    <message>
+        <source>FLEET INTELLIGENCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LOADED</source>
+        <translation type="unfinished">已加载</translation>
+    </message>
+    <message>
+        <source>IN REGION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MOVING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AVG SPEED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEST PORTS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Route</source>
@@ -16499,10 +15391,6 @@ to reset your PIN and regain access.</source>
     <message>
         <source>Status</source>
         <translation>状态</translation>
-    </message>
-    <message>
-        <source>VESSEL TRACKING</source>
-        <translation>船舶追踪</translation>
     </message>
     <message>
         <source>Name</source>
@@ -16653,16 +15541,24 @@ to reset your PIN and regain access.</source>
         <translation>记录数：</translation>
     </message>
     <message>
-        <source>REFRESH:</source>
-        <translation>刷新：</translation>
-    </message>
-    <message>
-        <source>5 MIN</source>
-        <translation>5 分钟</translation>
+        <source>UPDATED:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>— VESSELS</source>
         <translation>— 艘船舶</translation>
+    </message>
+    <message>
+        <source>⟳ REFRESH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO ⟳ OFF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUTO ⟳ 5m</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>IMO: %1</source>
@@ -16813,6 +15709,14 @@ to reset your PIN and regain access.</source>
         <translation>%1 — 当前位置</translation>
     </message>
     <message>
+        <source>ORIGIN: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEST: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>HISTORY: %1 (%2 positions)</source>
         <translation>历史：%1（%2 个位置）</translation>
     </message>
@@ -16882,6 +15786,14 @@ to reset your PIN and regain access.</source>
     <message>
         <source>TICKER</source>
         <translation>代码</translation>
+    </message>
+    <message>
+        <source>No data (rate-limited) — auto-retrying…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No data — press [RETRY] or wait for refresh</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Copy Symbol</source>
@@ -17268,10 +16180,6 @@ to reset your PIN and regain access.</source>
         <translation>日志</translation>
     </message>
     <message>
-        <source>No output yet. Start the server to see logs here.</source>
-        <translation>暂无输出。启动服务器后即可在此查看日志。</translation>
-    </message>
-    <message>
         <source>REMOVE</source>
         <translation>移除</translation>
     </message>
@@ -17280,7 +16188,7 @@ to reset your PIN and regain access.</source>
         <translation>移除服务器</translation>
     </message>
     <message>
-        <source>Remove "%1"?
+        <source>Remove &quot;%1&quot;?
 This cannot be undone.</source>
         <translation>移除“%1”？
 此操作无法撤销。</translation>
@@ -17500,7 +16408,7 @@ Use MARKETPLACE to add one, or click ADD CUSTOM MCP SERVER below.</source>
     </message>
     <message>
         <source>No external servers configured.
-Click '+ Add' to add one.</source>
+Click &apos;+ Add&apos; to add one.</source>
         <translation>未配置外部服务器。
 点击“+ 添加”以添加一个。</translation>
     </message>
@@ -17867,10 +16775,6 @@ Click '+ Add' to add one.</source>
         <translation>地点  </translation>
     </message>
     <message>
-        <source>Credits used: %1  •  remaining: %2</source>
-        <translation>已用额度：%1  •  剩余：%2</translation>
-    </message>
-    <message>
         <source>Country: %1 (%2)</source>
         <translation>国家：%1（%2）</translation>
     </message>
@@ -18145,14 +17049,6 @@ Click '+ Add' to add one.</source>
         <translation>正在发送...</translation>
     </message>
     <message>
-        <source>Open Terminal Test</source>
-        <translation>Open Terminal 测试</translation>
-    </message>
-    <message>
-        <source>This is a test notification from Open Terminal.</source>
-        <translation>这是来自 Open Terminal 的测试通知。</translation>
-    </message>
-    <message>
         <source>✓ Sent successfully</source>
         <translation>✓ 发送成功</translation>
     </message>
@@ -18179,6 +17075,14 @@ Click '+ Add' to add one.</source>
     <message>
         <source>In-App Alerts (toast + bell)</source>
         <translation>应用内提醒（弹窗 + 铃铛）</translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This is a test notification from OpenMarketTerminal.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Show slide-in toasts and update bell badge.</source>
@@ -18267,10 +17171,6 @@ Click '+ Add' to add one.</source>
 <context>
     <name>openmarketterminal::screens::OnboardingTour</name>
     <message>
-        <source>Welcome to Open Terminal</source>
-        <translation>欢迎使用 Open Terminal</translation>
-    </message>
-    <message>
         <source>A 30-second tour</source>
         <translation>30 秒快速导览</translation>
     </message>
@@ -18279,12 +17179,12 @@ Click '+ Add' to add one.</source>
         <translation>命令栏（Ctrl+\）</translation>
     </message>
     <message>
-        <source>Type a function code or verb to do anything in the terminal — e.g. "AAPL", "layout switch \"Morning\"", or "link panel red". Press Ctrl+K for a fuzzy palette of every action.</source>
-        <translation>输入功能代码或动词即可在终端中执行任何操作——例如 "AAPL"、"layout switch \"Morning\"" 或 "link panel red"。按 Ctrl+K 调出包含所有操作的模糊搜索面板。</translation>
+        <source>Type a function code or verb to do anything in the terminal — e.g. &quot;AAPL&quot;, &quot;layout switch \&quot;Morning\&quot;&quot;, or &quot;link panel red&quot;. Press Ctrl+K for a fuzzy palette of every action.</source>
+        <translation>输入功能代码或动词即可在终端中执行任何操作——例如 &quot;AAPL&quot;、&quot;layout switch \&quot;Morning\&quot;&quot; 或 &quot;link panel red&quot;。按 Ctrl+K 调出包含所有操作的模糊搜索面板。</translation>
     </message>
     <message>
-        <source>Tip: type "?" to list available actions for whatever you type next.</source>
-        <translation>提示：输入 "?" 可列出接下来所输内容的可用操作。</translation>
+        <source>Tip: type &quot;?&quot; to list available actions for whatever you type next.</source>
+        <translation>提示：输入 &quot;?&quot; 可列出接下来所输内容的可用操作。</translation>
     </message>
     <message>
         <source>Link panels with a colour</source>
@@ -18303,7 +17203,7 @@ Click '+ Add' to add one.</source>
         <translation>将面板拆分到新窗口</translation>
     </message>
     <message>
-        <source>Right-click a panel tab → "Tear off into new window" to spawn a fresh frame on the next monitor. Or drag a panel to another frame's tab bar to move it. Each frame keeps its own dock layout — save the whole arrangement as a named layout when you've got it the way you like.</source>
+        <source>Right-click a panel tab → &quot;Tear off into new window&quot; to spawn a fresh frame on the next monitor. Or drag a panel to another frame&apos;s tab bar to move it. Each frame keeps its own dock layout — save the whole arrangement as a named layout when you&apos;ve got it the way you like.</source>
         <translation>右键点击面板标签 →“拆分到新窗口”，即可在下一个显示器上生成新框架。或将面板拖到另一框架的标签栏以移动它。每个框架保留各自的停靠布局——满意后可将整体排布另存为命名布局。</translation>
     </message>
     <message>
@@ -18315,10 +17215,6 @@ Click '+ Add' to add one.</source>
         <translation>设置与快捷键</translation>
     </message>
     <message>
-        <source>Open Settings (gear icon) to tune theme, hotkeys, telemetry opt-in, and broker credentials. Hotkeys are rebindable — every action in the registry can be assigned a key.</source>
-        <translation>打开“设置”（齿轮图标）可调整主题、热键、遥测授权和券商凭据。热键可重新绑定——注册表中的每个操作都可指派按键。</translation>
-    </message>
-    <message>
         <source>Tip: F11 toggles fullscreen on the focused window.</source>
         <translation>提示：F11 可切换当前焦点窗口的全屏模式。</translation>
     </message>
@@ -18327,12 +17223,20 @@ Click '+ Add' to add one.</source>
         <translation>跳过</translation>
     </message>
     <message>
+        <source>Welcome to OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Back</source>
         <translation>上一步</translation>
     </message>
     <message>
         <source>Next</source>
         <translation>下一步</translation>
+    </message>
+    <message>
+        <source>Open Settings (gear icon) to tune theme, hotkeys, and broker credentials. Hotkeys are rebindable — every action in the registry can be assigned a key.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Got it!</source>
@@ -18364,6 +17268,80 @@ Data via api.beta.ons.gov.uk — GDP, CPI, labour market, housing</source>
     <message>
         <source>No data returned</source>
         <translation>未返回数据</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::OpenMarketTerminalMacroPanel</name>
+    <message>
+        <source>INDICATOR</source>
+        <translation type="unfinished">指标</translation>
+    </message>
+    <message>
+        <source>Fetching %1 …</source>
+        <translation type="unfinished">正在获取 %1 …</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::OrderConfirmDialog</name>
+    <message>
+        <source>Confirm Order</source>
+        <translation>确认订单</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">账户</translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation type="unfinished">操作</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>Exchange</source>
+        <translation type="unfinished">交易所</translation>
+    </message>
+    <message>
+        <source>Quantity</source>
+        <translation type="unfinished">数量</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">类型</translation>
+    </message>
+    <message>
+        <source>Price</source>
+        <translation type="unfinished">价格</translation>
+    </message>
+    <message>
+        <source>Trigger</source>
+        <translation type="unfinished">触发方式</translation>
+    </message>
+    <message>
+        <source>Est. value</source>
+        <translation>预估价值</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">取消</translation>
+    </message>
+    <message>
+        <source>Send Order</source>
+        <translation>发送订单</translation>
+    </message>
+    <message>
+        <source>⚠  SEMI-AUTO — review before sending</source>
+        <translation>⚠  半自动 — 发送前请审核</translation>
     </message>
 </context>
 <context>
@@ -18407,6 +17385,148 @@ Country examples: United States, China, Germany, India, Japan, World</source>
     <message>
         <source>No data returned — try a different country or year range</source>
         <translation>未返回数据——请尝试其他国家或年份范围</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::PendingOrdersBadge</name>
+    <message>
+        <source>Orders awaiting approval — click to review</source>
+        <translation>订单正在等待审批 — 点击查看</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::PendingOrdersPanel</name>
+    <message>
+        <source>PENDING ORDERS</source>
+        <translation>待处理订单</translation>
+    </message>
+    <message>
+        <source>Account:</source>
+        <translation type="unfinished">账户：</translation>
+    </message>
+    <message>
+        <source>Show:</source>
+        <translation type="unfinished">显示：</translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation type="unfinished">待处理</translation>
+    </message>
+    <message>
+        <source>Approved</source>
+        <translation type="unfinished">已批准</translation>
+    </message>
+    <message>
+        <source>Rejected</source>
+        <translation type="unfinished">已拒绝</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished">全部</translation>
+    </message>
+    <message>
+        <source>PENDING</source>
+        <translation type="unfinished">待处理</translation>
+    </message>
+    <message>
+        <source>APPROVED</source>
+        <translation type="unfinished">已批准</translation>
+    </message>
+    <message>
+        <source>REJECTED</source>
+        <translation type="unfinished">已拒绝</translation>
+    </message>
+    <message>
+        <source>BUY</source>
+        <translation type="unfinished">BUY</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>APPROVE ALL</source>
+        <translation type="unfinished">全部批准</translation>
+    </message>
+    <message>
+        <source>REJECT ALL</source>
+        <translation type="unfinished">全部拒绝</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">时间</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">账户</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">类型</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">方向</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">数量</translation>
+    </message>
+    <message>
+        <source>Price Type</source>
+        <translation type="unfinished">价格类型</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished">状态</translation>
+    </message>
+    <message>
+        <source>Actions</source>
+        <translation type="unfinished">操作</translation>
+    </message>
+    <message>
+        <source>Approve All</source>
+        <translation type="unfinished">全部批准</translation>
+    </message>
+    <message>
+        <source>Execute ALL pending orders now?</source>
+        <translation type="unfinished">立即执行所有待处理订单？</translation>
+    </message>
+    <message>
+        <source>Reject All</source>
+        <translation type="unfinished">全部拒绝</translation>
+    </message>
+    <message>
+        <source>Select a specific account to reject all its pending orders.</source>
+        <translation type="unfinished">请选择某个特定账户以拒绝其所有待处理订单。</translation>
+    </message>
+    <message>
+        <source>Rejection reason:</source>
+        <translation type="unfinished">拒绝原因：</translation>
+    </message>
+    <message>
+        <source>Rejected by user</source>
+        <translation type="unfinished">已被用户拒绝</translation>
+    </message>
+    <message>
+        <source>All Accounts</source>
+        <translation type="unfinished">所有账户</translation>
+    </message>
+    <message>
+        <source>Approve</source>
+        <translation type="unfinished">批准</translation>
+    </message>
+    <message>
+        <source>Reject</source>
+        <translation type="unfinished">拒绝</translation>
+    </message>
+    <message>
+        <source>Reject Order</source>
+        <translation type="unfinished">拒绝订单</translation>
     </message>
 </context>
 <context>
@@ -18476,7 +17596,7 @@ Country examples: United States, China, Germany, India, Japan, World</source>
         <translation>预期损失 (95%)</translation>
     </message>
     <message>
-        <source>Jensen's alpha vs benchmark (CAPM)</source>
+        <source>Jensen&apos;s alpha vs benchmark (CAPM)</source>
         <translation>相对基准的詹森阿尔法（CAPM）</translation>
     </message>
     <message>
@@ -18858,8 +17978,8 @@ Country examples: United States, China, Germany, India, Japan, World</source>
         <translation>⚠ 距 %1 尚有差距。按每月 %2 %3 计算，可达到 %2 %4（%5%）。请每月储蓄 %2 %6，以在 %8 年内达成 %2 %7 目标。</translation>
     </message>
     <message>
-        <source>Monte Carlo: &lt;b&gt;&lt;span style='color:%1'&gt;%2%% chance&lt;/span&gt;&lt;/b&gt; of reaching %3 %4 — likely %3 %5 – %3 %6.</source>
-        <translation>蒙特卡洛模拟：达到 %3 %4 的&lt;b&gt;&lt;span style='color:%1'&gt;概率为 %2%%&lt;/span&gt;&lt;/b&gt; —— 可能区间为 %3 %5 – %3 %6。</translation>
+        <source>Monte Carlo: &lt;b&gt;&lt;span style=&apos;color:%1&apos;&gt;%2%% chance&lt;/span&gt;&lt;/b&gt; of reaching %3 %4 — likely %3 %5 – %3 %6.</source>
+        <translation>蒙特卡洛模拟：达到 %3 %4 的&lt;b&gt;&lt;span style=&apos;color:%1&apos;&gt;概率为 %2%%&lt;/span&gt;&lt;/b&gt; —— 可能区间为 %3 %5 – %3 %6。</translation>
     </message>
     <message>
         <source>  (current)</source>
@@ -18882,8 +18002,8 @@ Country examples: United States, China, Germany, India, Japan, World</source>
         <translation>(未命名)</translation>
     </message>
     <message>
-        <source>Monte Carlo (2000 runs, %1% vol): &lt;b&gt;&lt;span style='color:%2'&gt;%3%% chance&lt;/span&gt;&lt;/b&gt; of reaching your target. Likely range %4 %5 – %6 %7 (median %4 %8).</source>
-        <translation>蒙特卡洛模拟（2000 次运行，波动率 %1%）：达到目标的&lt;b&gt;&lt;span style='color:%2'&gt;概率为 %3%%&lt;/span&gt;&lt;/b&gt;。可能区间为 %4 %5 – %6 %7（中位数 %4 %8）。</translation>
+        <source>Monte Carlo (2000 runs, %1% vol): &lt;b&gt;&lt;span style=&apos;color:%2&apos;&gt;%3%% chance&lt;/span&gt;&lt;/b&gt; of reaching your target. Likely range %4 %5 – %6 %7 (median %4 %8).</source>
+        <translation>蒙特卡洛模拟（2000 次运行，波动率 %1%）：达到目标的&lt;b&gt;&lt;span style=&apos;color:%2&apos;&gt;概率为 %3%%&lt;/span&gt;&lt;/b&gt;。可能区间为 %4 %5 – %6 %7（中位数 %4 %8）。</translation>
     </message>
     <message>
         <source>Stress: a %1%% drawdown (your historical max) near retirement would cut the projection to %2 %3 — %4%% of target.</source>
@@ -19521,7 +18641,7 @@ to track 60-day rolling correlations.</source>
     <message>
         <source>Agent completed but returned no content.
 
-Check the agent's LLM profile in Agent Config → Agents, and make sure an API key is set in Settings → LLM Configuration.</source>
+Check the agent&apos;s LLM profile in Agent Config → Agents, and make sure an API key is set in Settings → LLM Configuration.</source>
         <translation>Agent 已完成但未返回任何内容。
 
 请在 Agent Config → Agents 中检查代理的 LLM 配置，并确保在 Settings → LLM Configuration 中设置了 API 密钥。</translation>
@@ -19902,7 +19022,7 @@ Select a portfolio to see estimated impact per scenario.</source>
         <translation>预计损失</translation>
     </message>
     <message>
-        <source>Market-implied equilibrium returns (π = δ·Σ·w_market) shown below. Select 'B-L Model' as the METHOD on the OPTIMIZE tab to also compute B-L weights.</source>
+        <source>Market-implied equilibrium returns (π = δ·Σ·w_market) shown below. Select &apos;B-L Model&apos; as the METHOD on the OPTIMIZE tab to also compute B-L weights.</source>
         <translation>下方显示市场隐含的均衡收益率（π = δ·Σ·w_market）。在「优化」选项卡上将 METHOD 选为「B-L Model」，即可同时计算 B-L 权重。</translation>
     </message>
     <message>
@@ -20013,6 +19133,140 @@ the selected period. Use when comparing different currencies.</source>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::PortfolioReplicationDialog</name>
+    <message>
+        <source>Replicate Portfolio → Paper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target (paper)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holdings</source>
+        <translation type="unfinished">持仓</translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished">持仓</translation>
+    </message>
+    <message>
+        <source>Include:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source></source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">类型</translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation type="unfinished">来源</translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished">目标</translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">方向</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">数量</translation>
+    </message>
+    <message>
+        <source>Est Price</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Est Value / Note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up paper balance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished">关闭</translation>
+    </message>
+    <message>
+        <source>REPLICATE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No paper accounts found. Create one via ACCOUNTS first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading source portfolio…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No credentials for source account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source account has no holdings or positions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 stock(s) selected  •  Required %2  vs  Paper available %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up paper balance to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paper balance set to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top up failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm replication</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Place %1 paper order(s) into the target account?
+This is paper trading — no real money.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1  •  Failed %2  •  Skipped %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Replication results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1, failed %2, skipped %3.
+
+%4</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::PortfolioScreen</name>
     <message>
         <source>Export CSV</source>
@@ -20051,24 +19305,24 @@ the selected period. Use when comparing different currencies.</source>
 
 Expected format:
 {
-  "portfolio_name": "My Portfolio",
-  "currency": "USD",
-  "owner": "...",
-  "transactions": [
-    {"date": "YYYY-MM-DD", "symbol": "AAPL", "type": "BUY",
-     "quantity": 10, "price": 150.0}
+  &quot;portfolio_name&quot;: &quot;My Portfolio&quot;,
+  &quot;currency&quot;: &quot;USD&quot;,
+  &quot;owner&quot;: &quot;...&quot;,
+  &quot;transactions&quot;: [
+    {&quot;date&quot;: &quot;YYYY-MM-DD&quot;, &quot;symbol&quot;: &quot;AAPL&quot;, &quot;type&quot;: &quot;BUY&quot;,
+     &quot;quantity&quot;: 10, &quot;price&quot;: 150.0}
   ]
 }</source>
         <translation>
 
 预期格式：
 {
-  "portfolio_name": "My Portfolio",
-  "currency": "USD",
-  "owner": "...",
-  "transactions": [
-    {"date": "YYYY-MM-DD", "symbol": "AAPL", "type": "BUY",
-     "quantity": 10, "price": 150.0}
+  &quot;portfolio_name&quot;: &quot;My Portfolio&quot;,
+  &quot;currency&quot;: &quot;USD&quot;,
+  &quot;owner&quot;: &quot;...&quot;,
+  &quot;transactions&quot;: [
+    {&quot;date&quot;: &quot;YYYY-MM-DD&quot;, &quot;symbol&quot;: &quot;AAPL&quot;, &quot;type&quot;: &quot;BUY&quot;,
+     &quot;quantity&quot;: 10, &quot;price&quot;: 150.0}
   ]
 }</translation>
     </message>
@@ -20121,8 +19375,8 @@ Expected format:
         <translation>演示投资组合</translation>
     </message>
     <message>
-        <source>Open Terminal User</source>
-        <translation>Open Terminal 用户</translation>
+        <source>OpenMarketTerminal User</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Sample portfolio for demonstration</source>
@@ -20274,93 +19528,6 @@ Expected format:
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::PricingScreen</name>
-    <message>
-        <source>PLANS &amp; PRICING</source>
-        <translation>套餐与价格</translation>
-    </message>
-    <message>
-        <source>Unlock the full power of Open Terminal</source>
-        <translation>解锁 Open Terminal 的全部功能</translation>
-    </message>
-    <message>
-        <source>Loading plans...</source>
-        <translation>正在加载套餐...</translation>
-    </message>
-    <message>
-        <source>Updating plan status...</source>
-        <translation>正在更新套餐状态...</translation>
-    </message>
-    <message>
-        <source>Failed to load plans</source>
-        <translation>加载套餐失败</translation>
-    </message>
-    <message>
-        <source>No plans available.</source>
-        <translation>暂无可用套餐。</translation>
-    </message>
-    <message>
-        <source>RECOMMENDED</source>
-        <translation>推荐</translation>
-    </message>
-    <message>
-        <source>FREE</source>
-        <translation>免费</translation>
-    </message>
-    <message>
-        <source>/ %1 days</source>
-        <translation>/ %1 天</translation>
-    </message>
-    <message>
-        <source>%1 credits</source>
-        <translation>%1 积分</translation>
-    </message>
-    <message>
-        <source>%1 support</source>
-        <translation>%1 支持</translation>
-    </message>
-    <message>
-        <source>ACTIVE</source>
-        <translation>当前套餐</translation>
-    </message>
-    <message>
-        <source>FREE TIER</source>
-        <translation>免费版</translation>
-    </message>
-    <message>
-        <source>CONTINUE FREE</source>
-        <translation>继续使用免费版</translation>
-    </message>
-    <message>
-        <source>SELECT PLAN</source>
-        <translation>选择套餐</translation>
-    </message>
-    <message>
-        <source>PROCESSING...</source>
-        <translation>处理中...</translation>
-    </message>
-    <message>
-        <source>Failed to generate checkout token</source>
-        <translation>生成结账令牌失败</translation>
-    </message>
-    <message>
-        <source>No checkout token received from server</source>
-        <translation>未从服务器获取结账令牌</translation>
-    </message>
-    <message>
-        <source>Back to Dashboard</source>
-        <translation>返回仪表盘</translation>
-    </message>
-    <message>
-        <source>Want to explore first?</source>
-        <translation>想先体验一下？</translation>
-    </message>
-    <message>
-        <source>Continue with Free Plan</source>
-        <translation>使用免费套餐继续</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::PrivacyScreen</name>
     <message>
         <source>&lt; BACK</source>
@@ -20371,200 +19538,144 @@ Expected format:
         <translation>隐私政策</translation>
     </message>
     <message>
-        <source>Last updated: January 1, 2026</source>
-        <translation>最后更新：2026年1月1日</translation>
+        <source>Applies to the open-source release.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>OUR COMMITMENT TO PRIVACY</source>
-        <translation>我们对隐私的承诺</translation>
+        <source>LOCAL-FIRST BY DESIGN</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>At Open Terminal contributors, we are committed to protecting your privacy. This policy describes how we collect, use, and safeguard your personal information when you use Open Terminal.</source>
-        <translation>Open Terminal contributors 致力于保护您的隐私。本政策说明当您使用 Open Terminal 时，我们如何收集、使用和保护您的个人信息。</translation>
+        <source>Open Terminal is a local-first desktop app that runs entirely on your computer. There is no Open Terminal server. We do not collect, transmit, sell, or share your personal data, and the app contains no analytics, telemetry, or phone-home of any kind.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>INFORMATION WE COLLECT</source>
-        <translation>我们收集的信息</translation>
+        <source>YOUR DATA STAYS ON YOUR DEVICE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Personal Information:</source>
-        <translation>个人信息：</translation>
+        <source>Everything you create in the app is stored locally on your machine:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Name and email address</source>
-        <translation>姓名和电子邮件地址</translation>
+        <source>Watchlists, portfolios, notes, and settings — in local SQLite databases</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Account credentials (encrypted)</source>
-        <translation>账户凭据（已加密）</translation>
+        <source>Secrets such as API keys — in your operating system&apos;s keychain</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Payment information (processed by third-party providers)</source>
-        <translation>支付信息（由第三方服务商处理）</translation>
+        <source>Nothing is uploaded to us; there is no account to register and no cloud sync</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Phone number (optional)</source>
-        <translation>电话号码（可选）</translation>
+        <source>API KEYS AND THIRD-PARTY SERVICES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Country and region</source>
-        <translation>国家和地区</translation>
+        <source>STORED LOCALLY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Usage Information:</source>
-        <translation>使用信息：</translation>
+        <source>API keys you configure are kept on your device and are never sent to us</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Feature usage and navigation patterns</source>
-        <translation>功能使用和导航模式</translation>
+        <source>DIRECT CONNECTIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Device and browser information</source>
-        <translation>设备和浏览器信息</translation>
+        <source>Keys are used only to connect directly from your machine to the brokers and data providers you choose</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IP address and approximate location</source>
-        <translation>IP 地址和大致位置</translation>
+        <source>THEIR POLICIES APPLY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Error logs and performance metrics</source>
-        <translation>错误日志和性能指标</translation>
+        <source>Those third parties handle your requests under their own privacy policies — review them separately</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Session duration and frequency</source>
-        <translation>会话时长和频率</translation>
+        <source>YOU DECIDE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>HOW WE USE YOUR INFORMATION</source>
-        <translation>我们如何使用您的信息</translation>
+        <source>No connection is made unless you add a key and choose to use that service</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SERVICE DELIVERY</source>
-        <translation>服务交付</translation>
+        <source>NO COLLECTION, NO SHARING</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Provide and maintain terminal features, process transactions, and deliver data feeds</source>
-        <translation>提供和维护终端功能、处理交易并传送数据源</translation>
+        <source>Because there is no server and no telemetry:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>SECURITY</source>
-        <translation>安全</translation>
+        <source>We do not collect names, emails, phone numbers, payment details, or location</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Protect accounts, detect fraud, enforce terms of service, and ensure platform integrity</source>
-        <translation>保护账户、检测欺诈、执行服务条款并确保平台完整性</translation>
+        <source>We do not track feature usage, navigation, or session activity</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>COMMUNICATION</source>
-        <translation>沟通联络</translation>
+        <source>We have no data to sell, share with partners, or hand over</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Send service updates, security alerts, support responses, and optional marketing</source>
-        <translation>发送服务更新、安全警报、支持回复及可选的营销信息</translation>
+        <source>KEEPING YOUR DATA SAFE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>IMPROVEMENT</source>
-        <translation>改进优化</translation>
+        <source>Your data&apos;s security rests with your own machine:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Analyze usage to improve features, fix bugs, and develop new capabilities</source>
-        <translation>分析使用情况以改进功能、修复缺陷并开发新能力</translation>
+        <source>Secrets are stored in the OS keychain rather than plain text</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>INFORMATION SHARING</source>
-        <translation>信息共享</translation>
+        <source>Local databases live under your user profile, protected by your OS account</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>We may share your information with:</source>
-        <translation>我们可能与以下各方共享您的信息：</translation>
+        <source>Keeping your device and operating system secure protects your data</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Service Providers — third-party services that help operate the platform</source>
-        <translation>服务提供商 —— 协助运营平台的第三方服务</translation>
+        <source>OPEN AND INSPECTABLE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Legal Requirements — when required by law or to protect our rights</source>
-        <translation>法律要求 —— 在法律要求时或为保护我们的权利</translation>
+        <source>Open Terminal is open-source software:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Business Transfer — in connection with a merger, acquisition, or sale</source>
-        <translation>业务转让 —— 与合并、收购或出售相关</translation>
+        <source>You can read the source to see exactly how your data is handled</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>With Your Consent — when you explicitly authorize sharing</source>
-        <translation>经您同意 —— 当您明确授权共享时</translation>
+        <source>You control your local data — back it up, export it, or delete it at any time</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DATA SECURITY</source>
-        <translation>数据安全</translation>
+        <source>Removing the app&apos;s data folders removes your data completely</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>We implement industry-standard security measures:</source>
-        <translation>我们采用行业标准的安全措施：</translation>
+        <source>QUESTIONS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>End-to-end encryption for sensitive data</source>
-        <translation>对敏感数据进行端到端加密</translation>
+        <source>Privacy questions can be raised in the public issue tracker:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Secure credential storage (encrypted at rest)</source>
-        <translation>安全的凭据存储（静态加密）</translation>
-    </message>
-    <message>
-        <source>Regular security audits and penetration testing</source>
-        <translation>定期进行安全审计和渗透测试</translation>
-    </message>
-    <message>
-        <source>Access controls and authentication requirements</source>
-        <translation>访问控制和身份验证要求</translation>
-    </message>
-    <message>
-        <source>Automatic session expiry and logout</source>
-        <translation>自动会话过期和登出</translation>
-    </message>
-    <message>
-        <source>HTTPS/TLS for all data transmission</source>
-        <translation>所有数据传输均采用 HTTPS/TLS</translation>
-    </message>
-    <message>
-        <source>YOUR RIGHTS</source>
-        <translation>您的权利</translation>
-    </message>
-    <message>
-        <source>You have the right to:</source>
-        <translation>您有权：</translation>
-    </message>
-    <message>
-        <source>Access — Request a copy of your personal data</source>
-        <translation>访问 —— 申请获取您个人数据的副本</translation>
-    </message>
-    <message>
-        <source>Correction — Update inaccurate or incomplete data</source>
-        <translation>更正 —— 更新不准确或不完整的数据</translation>
-    </message>
-    <message>
-        <source>Deletion — Request deletion of your account and data</source>
-        <translation>删除 —— 申请删除您的账户和数据</translation>
-    </message>
-    <message>
-        <source>Portability — Export your data in a machine-readable format</source>
-        <translation>可携性 —— 以机器可读格式导出您的数据</translation>
-    </message>
-    <message>
-        <source>Opt-out — Unsubscribe from marketing communications</source>
-        <translation>退出 —— 取消订阅营销通讯</translation>
-    </message>
-    <message>
-        <source>CONTACT US</source>
-        <translation>联系我们</translation>
-    </message>
-    <message>
-        <source>Privacy Officer: github.com/your-org/open-terminal/issues</source>
-        <translation>隐私官：github.com/your-org/open-terminal/issues</translation>
-    </message>
-    <message>
-        <source>For privacy-related inquiries, write to the address above.</source>
-        <translation>如有隐私相关咨询，请写信至上述地址。</translation>
+        <source>github.com/Trucker2827/Open-Terminal/issues</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Terms of Service</source>
@@ -20580,10 +19691,6 @@ Expected format:
     <message>
         <source>PROFILE &amp; ACCOUNT</source>
         <translation>个人资料与账户</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>刷新</translation>
     </message>
     <message>
         <source>SECURITY</source>
@@ -20606,10 +19713,6 @@ Expected format:
         <translation>用户类型</translation>
     </message>
     <message>
-        <source>ACCOUNT TYPE</source>
-        <translation>账户类型</translation>
-    </message>
-    <message>
         <source>PHONE</source>
         <translation>电话</translation>
     </message>
@@ -20626,88 +19729,12 @@ Expected format:
         <translation>已启用 2FA</translation>
     </message>
     <message>
-        <source>EDIT PROFILE</source>
-        <translation>编辑资料</translation>
-    </message>
-    <message>
-        <source>CREDITS &amp; BALANCE</source>
-        <translation>积分与余额</translation>
-    </message>
-    <message>
-        <source>AVAILABLE CREDITS</source>
-        <translation>可用积分</translation>
-    </message>
-    <message>
-        <source>PLAN</source>
-        <translation>套餐</translation>
-    </message>
-    <message>
         <source>QUICK ACTIONS</source>
         <translation>快捷操作</translation>
     </message>
     <message>
         <source>LOGOUT</source>
         <translation>退出登录</translation>
-    </message>
-    <message>
-        <source>DELETE ACCOUNT</source>
-        <translation>删除账户</translation>
-    </message>
-    <message>
-        <source>CREDIT BALANCE</source>
-        <translation>积分余额</translation>
-    </message>
-    <message>
-        <source>RATE LIMIT/HR</source>
-        <translation>每小时限速</translation>
-    </message>
-    <message>
-        <source>USAGE SUMMARY — LAST 30 DAYS</source>
-        <translation>使用摘要 — 近 30 天</translation>
-    </message>
-    <message>
-        <source>TOTAL REQUESTS</source>
-        <translation>总请求数</translation>
-    </message>
-    <message>
-        <source>CREDITS USED</source>
-        <translation>已用积分</translation>
-    </message>
-    <message>
-        <source>AVG CR/REQ</source>
-        <translation>平均积分/请求</translation>
-    </message>
-    <message>
-        <source>AVG RESP (ms)</source>
-        <translation>平均响应（毫秒）</translation>
-    </message>
-    <message>
-        <source>DAILY USAGE</source>
-        <translation>每日使用</translation>
-    </message>
-    <message>
-        <source>DATE</source>
-        <translation>日期</translation>
-    </message>
-    <message>
-        <source>REQUESTS</source>
-        <translation>请求</translation>
-    </message>
-    <message>
-        <source>CREDITS</source>
-        <translation>积分</translation>
-    </message>
-    <message>
-        <source>TOP ENDPOINTS</source>
-        <translation>常用端点</translation>
-    </message>
-    <message>
-        <source>ENDPOINT</source>
-        <translation>端点</translation>
-    </message>
-    <message>
-        <source>AVG MS</source>
-        <translation>平均毫秒</translation>
     </message>
     <message>
         <source>API KEY</source>
@@ -20730,48 +19757,12 @@ Expected format:
         <translation>已复制</translation>
     </message>
     <message>
-        <source>REGENERATE</source>
-        <translation>重新生成</translation>
-    </message>
-    <message>
         <source>SECURITY STATUS</source>
         <translation>安全状态</translation>
     </message>
     <message>
         <source>2FA (MFA)</source>
         <translation>双重验证 (MFA)</translation>
-    </message>
-    <message>
-        <source>LOGIN HISTORY</source>
-        <translation>登录历史</translation>
-    </message>
-    <message>
-        <source>TIMESTAMP</source>
-        <translation>时间</translation>
-    </message>
-    <message>
-        <source>IP ADDRESS</source>
-        <translation>IP 地址</translation>
-    </message>
-    <message>
-        <source>STATUS</source>
-        <translation>状态</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION</source>
-        <translation>订阅</translation>
-    </message>
-    <message>
-        <source>SUPPORT TYPE</source>
-        <translation>支持类型</translation>
-    </message>
-    <message>
-        <source>PAYMENT HISTORY</source>
-        <translation>付款历史</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>金额</translation>
     </message>
     <message>
         <source>CONTACT US</source>
@@ -20784,10 +19775,6 @@ Expected format:
     <message>
         <source>ISSUES</source>
         <translation>商业</translation>
-    </message>
-    <message>
-        <source>LEGAL</source>
-        <translation>法律</translation>
     </message>
     <message>
         <source>RESOURCES</source>
@@ -20818,6 +19805,10 @@ Expected format:
         <translation>已注册</translation>
     </message>
     <message>
+        <source>LICENSE</source>
+        <translation type="unfinished">许可证</translation>
+    </message>
+    <message>
         <source>ENABLED</source>
         <translation>已启用</translation>
     </message>
@@ -20826,84 +19817,12 @@ Expected format:
         <translation>已禁用</translation>
     </message>
     <message>
-        <source>CR %1</source>
-        <translation>积分 %1</translation>
-    </message>
-    <message>
-        <source>Edit Profile</source>
-        <translation>编辑个人资料</translation>
-    </message>
-    <message>
-        <source>PHONE (with country code)</source>
-        <translation>电话（含国家区号）</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>SAVE</source>
-        <translation>保存</translation>
-    </message>
-    <message>
         <source>Confirm Logout</source>
         <translation>确认退出</translation>
     </message>
     <message>
         <source>Are you sure you want to logout?</source>
         <translation>确定要退出登录吗？</translation>
-    </message>
-    <message>
-        <source>Regenerate API Key</source>
-        <translation>重新生成 API 密钥</translation>
-    </message>
-    <message>
-        <source>Your current API key will be invalidated. Continue?</source>
-        <translation>当前 API 密钥将作废。是否继续？</translation>
-    </message>
-    <message>
-        <source>Delete Account</source>
-        <translation>删除账户</translation>
-    </message>
-    <message>
-        <source>This will permanently delete your Open Terminal account (%1) and all associated data.
-
-This action CANNOT be undone. Are you sure?</source>
-        <translation>这将永久删除您的 Open Terminal 账户 (%1) 及所有相关数据。
-
-此操作无法撤销。确定继续吗？</translation>
-    </message>
-    <message>
-        <source>Confirm Account Deletion</source>
-        <translation>确认删除账户</translation>
-    </message>
-    <message>
-        <source>TYPE YOUR EMAIL ADDRESS TO CONFIRM:</source>
-        <translation>请输入您的邮箱地址以确认：</translation>
-    </message>
-    <message>
-        <source>ENTER YOUR PASSWORD:</source>
-        <translation>请输入您的密码：</translation>
-    </message>
-    <message>
-        <source>Current password</source>
-        <translation>当前密码</translation>
-    </message>
-    <message>
-        <source>DELETE MY ACCOUNT</source>
-        <translation>删除我的账户</translation>
-    </message>
-    <message>
-        <source>Delete Failed</source>
-        <translation>删除失败</translation>
-    </message>
-    <message>
-        <source>Account deletion failed: %1
-
-Open an issue in the project repository if this persists</source>
-        <translation>账户删除失败：%1
-
-请联系 github.com/your-org/open-terminal/issues</translation>
     </message>
 </context>
 <context>
@@ -21276,12 +20195,16 @@ Heading components.</source>
         <translation>QUANTLIB 套件</translation>
     </message>
     <message>
-        <source>18 MODULES | 590+ QUANTITATIVE ENDPOINTS</source>
-        <translation>18 个模块 | 590+ 个量化端点</translation>
+        <source>Local QuantLib pricing engine (QuantLib + scipy)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>API POWERED</source>
-        <translation>API 驱动</translation>
+        <source>SERVER CONFIGURED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NOT CONFIGURED</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>MODULES</source>
@@ -21328,14 +20251,18 @@ Heading components.</source>
         <translation>模块：%1</translation>
     </message>
     <message>
+        <source>Remote pricing client — requires an external QuantLib server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>ERROR: Invalid JSON in request body.
 
-Expected format: {"key": value, ...}
-Example: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</source>
+Expected format: {&quot;key&quot;: value, ...}
+Example: {&quot;spot&quot;: 100, &quot;strike&quot;: 105, &quot;risk_free_rate&quot;: 0.05}</source>
         <translation>错误：请求体中的 JSON 无效。
 
-预期格式：{"key": value, ...}
-示例：{"spot": 100, "strike": 105, "risk_free_rate": 0.05}</translation>
+预期格式：{&quot;key&quot;: value, ...}
+示例：{&quot;spot&quot;: 100, &quot;strike&quot;: 105, &quot;risk_free_rate&quot;: 0.05}</translation>
     </message>
     <message>
         <source>Computing...</source>
@@ -21393,6 +20320,14 @@ Example: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</source>
 <context>
     <name>openmarketterminal::screens::QuantModulePanel</name>
     <message>
+        <source>DEMO (synthetic data)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off = train on real qlib market data. On = clearly-labeled synthetic data for testing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No LLM profiles — configure in Settings → LLM Config</source>
         <translation>无 LLM 配置文件 — 请在 设置 → LLM 配置 中配置</translation>
     </message>
@@ -21414,9 +20349,9 @@ Example: {"spot": 100, "strike": 105, "risk_free_rate": 0.05}</source>
     </message>
     <message>
         <source>JSON parameters (optional)
-e.g. {"ticker":"AAPL"}</source>
+e.g. {&quot;ticker&quot;:&quot;AAPL&quot;}</source>
         <translation>JSON 参数（可选）
-例如 {"ticker":"AAPL"}</translation>
+例如 {&quot;ticker&quot;:&quot;AAPL&quot;}</translation>
     </message>
     <message>
         <source>EXECUTE</source>
@@ -22662,7 +21597,7 @@ e.g. {"ticker":"AAPL"}</source>
     </message>
     <message>
         <source>Describe your analysis task...
-e.g. "Conduct a full investment analysis of NVDA: research fundamentals, assess risks, and give a buy/sell/hold recommendation with price target"</source>
+e.g. &quot;Conduct a full investment analysis of NVDA: research fundamentals, assess risks, and give a buy/sell/hold recommendation with price target&quot;</source>
         <translation>描述你的分析任务……
 例如「对 NVDA 进行完整的投资分析：研究基本面、评估风险，并给出附目标价的买入/卖出/持有建议」</translation>
     </message>
@@ -22731,14 +21666,6 @@ e.g. "Conduct a full investment analysis of NVDA: research fundamentals, assess 
         <translation>MCP 工具</translation>
     </message>
     <message>
-        <source>Start/stop the Open Terminal MCP tool server
-Gives RD-Agent loops access to market data,
-financial news and economics tools.</source>
-        <translation>启动/停止 Open Terminal MCP 工具服务器
-让 RD-Agent 循环可访问市场数据、
-财经新闻和经济学工具。</translation>
-    </message>
-    <message>
         <source>Starting MCP tool server...</source>
         <translation>正在启动 MCP 工具服务器……</translation>
     </message>
@@ -22752,7 +21679,7 @@ financial news and economics tools.</source>
     </message>
     <message>
         <source>Describe the factor hypothesis...
-e.g. "Discover momentum-based alpha factors for US equities"</source>
+e.g. &quot;Discover momentum-based alpha factors for US equities&quot;</source>
         <translation>描述因子假设……
 例如「发现美股的基于动量的 alpha 因子」</translation>
     </message>
@@ -22783,6 +21710,12 @@ e.g. "Discover momentum-based alpha factors for US equities"</source>
     <message>
         <source>Starting...</source>
         <translation>正在启动……</translation>
+    </message>
+    <message>
+        <source>Start/stop the OpenMarketTerminal MCP tool server
+Gives RD-Agent loops access to market data,
+financial news and economics tools.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Factor mining started...</source>
@@ -22818,7 +21751,7 @@ e.g. "Discover momentum-based alpha factors for US equities"</source>
     </message>
     <message>
         <source>Research goal...
-e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
+e.g. &quot;Build a quantitative equity strategy for mid-cap US stocks&quot;</source>
         <translation>研究目标……
 例如「为美国中盘股构建量化股票策略」</translation>
     </message>
@@ -22947,7 +21880,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>请至少输入 2 个股票代码（例如 AAPL,MSFT,GOOG）。</translation>
     </message>
     <message>
-        <source>Weights: '%1' is not numeric.</source>
+        <source>Weights: &apos;%1&apos; is not numeric.</source>
         <translation>权重：「%1」不是数值。</translation>
     </message>
     <message>
@@ -23047,7 +21980,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>半衰期（观测数）</translation>
     </message>
     <message>
-        <source>Builds exponentially-decayed scenario weights so recent observations dominate. ESS (Kish effective sample size) tells you how much of the history you're effectively using.</source>
+        <source>Builds exponentially-decayed scenario weights so recent observations dominate. ESS (Kish effective sample size) tells you how much of the history you&apos;re effectively using.</source>
         <translation>构建指数衰减的情景权重，使近期观测占主导。ESS（Kish 有效样本量）告诉你实际有效使用了多少历史数据。</translation>
     </message>
     <message>
@@ -23319,7 +22252,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>运行概率预测</translation>
     </message>
     <message>
-        <source>Series Values: '%1' is not numeric.</source>
+        <source>Series Values: &apos;%1&apos; is not numeric.</source>
         <translation>序列值：“%1” 不是数值。</translation>
     </message>
     <message>
@@ -23355,7 +22288,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>运行分位数预测</translation>
     </message>
     <message>
-        <source>Quantiles: '%1' is not numeric.</source>
+        <source>Quantiles: &apos;%1&apos; is not numeric.</source>
         <translation>分位数：“%1” 不是数值。</translation>
     </message>
     <message>
@@ -23395,7 +22328,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>计算风险指标</translation>
     </message>
     <message>
-        <source>Daily Returns: '%1' is not a number. Use comma-, space-, or newline-separated decimals (e.g. 0.01, -0.02, 0.005).</source>
+        <source>Daily Returns: &apos;%1&apos; is not a number. Use comma-, space-, or newline-separated decimals (e.g. 0.01, -0.02, 0.005).</source>
         <translation>日收益率：“%1” 不是数字。请使用以逗号、空格或换行分隔的小数（例如 0.01、-0.02、0.005）。</translation>
     </message>
     <message>
@@ -23439,11 +22372,11 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>分析组合</translation>
     </message>
     <message>
-        <source>Portfolio Returns: '%1' is not numeric.</source>
+        <source>Portfolio Returns: &apos;%1&apos; is not numeric.</source>
         <translation>组合收益率：“%1” 不是数值。</translation>
     </message>
     <message>
-        <source>Benchmark Returns: '%1' is not numeric.</source>
+        <source>Benchmark Returns: &apos;%1&apos; is not numeric.</source>
         <translation>基准收益率：“%1” 不是数值。</translation>
     </message>
     <message>
@@ -23507,7 +22440,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>计算 VaR</translation>
     </message>
     <message>
-        <source>Daily Returns: '%1' is not numeric.</source>
+        <source>Daily Returns: &apos;%1&apos; is not numeric.</source>
         <translation>日收益率：“%1” 不是数值。</translation>
     </message>
     <message>
@@ -23599,7 +22532,7 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>计算统计量</translation>
     </message>
     <message>
-        <source>Values: '%1' is not numeric.</source>
+        <source>Values: &apos;%1&apos; is not numeric.</source>
         <translation>数值：“%1” 不是数值。</translation>
     </message>
     <message>
@@ -24499,8 +23432,8 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>指标</translation>
     </message>
     <message>
-        <source>Feature values JSON: {"rsi":[...],"macd":[...]}</source>
-        <translation>特征值 JSON：{"rsi":[...],"macd":[...]}</translation>
+        <source>Feature values JSON: {&quot;rsi&quot;:[...],&quot;macd&quot;:[...]}</source>
+        <translation>特征值 JSON：{&quot;rsi&quot;:[...],&quot;macd&quot;:[...]}</translation>
     </message>
     <message>
         <source>Target returns (comma-separated)</source>
@@ -24523,8 +23456,8 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>特征选择</translation>
     </message>
     <message>
-        <source>{"close":[100,102,...],"volume":[1000,1200,...]}</source>
-        <translation>{"close":[100,102,...],"volume":[1000,1200,...]}</translation>
+        <source>{&quot;close&quot;:[100,102,...],&quot;volume&quot;:[1000,1200,...]}</source>
+        <translation>{&quot;close&quot;:[100,102,...],&quot;volume&quot;:[1000,1200,...]}</translation>
     </message>
     <message>
         <source>OHLCV Data (JSON)</source>
@@ -24795,8 +23728,8 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
         <translation>管道 ID</translation>
     </message>
     <message>
-        <source>[{"type":"zscore"},{"type":"winsorize","lower":0.01,"upper":0.99}]</source>
-        <translation>[{"type":"zscore"},{"type":"winsorize","lower":0.01,"upper":0.99}]</translation>
+        <source>[{&quot;type&quot;:&quot;zscore&quot;},{&quot;type&quot;:&quot;winsorize&quot;,&quot;lower&quot;:0.01,&quot;upper&quot;:0.99}]</source>
+        <translation>[{&quot;type&quot;:&quot;zscore&quot;},{&quot;type&quot;:&quot;winsorize&quot;,&quot;lower&quot;:0.01,&quot;upper&quot;:0.99}]</translation>
     </message>
     <message>
         <source>Processors (JSON)</source>
@@ -24837,6 +23770,10 @@ e.g. "Build a quantitative equity strategy for mid-cap US stocks"</source>
     <message>
         <source>RESULTS</source>
         <translation>结果</translation>
+    </message>
+    <message>
+        <source>DEMO · SYNTHETIC DATA — not real results</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Metric</source>
@@ -24970,14 +23907,14 @@ Install: %2</source>
 Available tools:
   %2
 
-Enable 'enable_mcp: true' in factor/model/quant research params
+Enable &apos;enable_mcp: true&apos; in factor/model/quant research params
 to give RD-Agent loops access to these tools.</source>
         <translation>MCP 工具服务器运行于 %1
 
 可用工具：
   %2
 
-在 factor/model/quant 研究参数中启用 'enable_mcp: true'，
+在 factor/model/quant 研究参数中启用 &apos;enable_mcp: true&apos;，
 以便 RD-Agent 循环访问这些工具。</translation>
     </message>
     <message>
@@ -25285,7 +24222,7 @@ Freq: %2  |  Window: %3 days  |  Next: %4%5</source>
         <translation>实际</translation>
     </message>
     <message>
-        <source>100-pt synthetic 'actual' series (level ~50)</source>
+        <source>100-pt synthetic &apos;actual&apos; series (level ~50)</source>
         <translation>100 点合成“实际”序列 (水平约 50)</translation>
     </message>
     <message>
@@ -25297,7 +24234,7 @@ Freq: %2  |  Window: %3 days  |  Next: %4%5</source>
         <translation>预测</translation>
     </message>
     <message>
-        <source>100-pt synthetic 'predicted' series (similar shape, mild noise)</source>
+        <source>100-pt synthetic &apos;predicted&apos; series (similar shape, mild noise)</source>
         <translation>100 点合成“预测”序列 (形状相似，轻微噪声)</translation>
     </message>
     <message>
@@ -25305,12 +24242,12 @@ Freq: %2  |  Window: %3 days  |  Next: %4%5</source>
         <translation>计算指标</translation>
     </message>
     <message>
-        <source>Actual: '%1' is not numeric.</source>
-        <translation>实际值: '%1' 不是数字。</translation>
+        <source>Actual: &apos;%1&apos; is not numeric.</source>
+        <translation>实际值: &apos;%1&apos; 不是数字。</translation>
     </message>
     <message>
-        <source>Predicted: '%1' is not numeric.</source>
-        <translation>预测值: '%1' 不是数字。</translation>
+        <source>Predicted: &apos;%1&apos; is not numeric.</source>
+        <translation>预测值: &apos;%1&apos; 不是数字。</translation>
     </message>
     <message>
         <source>Need at least 2 observations in both actual and predicted.</source>
@@ -25709,12 +24646,12 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>运行 OLS 回归</translation>
     </message>
     <message>
-        <source>y: '%1' is not numeric.</source>
-        <translation>y：'%1' 不是数值。</translation>
+        <source>y: &apos;%1&apos; is not numeric.</source>
+        <translation>y：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
-        <source>x: '%1' is not numeric.</source>
-        <translation>x：'%1' 不是数值。</translation>
+        <source>x: &apos;%1&apos; is not numeric.</source>
+        <translation>x：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>OLS needs at least 10 observations; you provided %1.</source>
@@ -25825,8 +24762,8 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>ACF / PACF</translation>
     </message>
     <message>
-        <source>Effect series y (the one we ask: 'is this caused by x?')</source>
-        <translation>结果序列 y (我们要问：'它是否由 x 引起？')</translation>
+        <source>Effect series y (the one we ask: &apos;is this caused by x?&apos;)</source>
+        <translation>结果序列 y (我们要问：&apos;它是否由 x 引起？&apos;)</translation>
     </message>
     <message>
         <source>y (Effect)</source>
@@ -26289,12 +25226,12 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>评估预测</translation>
     </message>
     <message>
-        <source>Actuals: '%1' is not numeric.</source>
-        <translation>实际值：'%1' 不是数值。</translation>
+        <source>Actuals: &apos;%1&apos; is not numeric.</source>
+        <translation>实际值：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
-        <source>Point: '%1' is not numeric.</source>
-        <translation>点预测：'%1' 不是数值。</translation>
+        <source>Point: &apos;%1&apos; is not numeric.</source>
+        <translation>点预测：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>Need at least 5 actuals; you provided %1.</source>
@@ -26305,20 +25242,20 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>实际值（%1）和点预测（%2）必须长度相同。</translation>
     </message>
     <message>
-        <source>Lower band: '%1' is not numeric.</source>
-        <translation>下界带：'%1' 不是数值。</translation>
+        <source>Lower band: &apos;%1&apos; is not numeric.</source>
+        <translation>下界带：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
-        <source>Upper band: '%1' is not numeric.</source>
-        <translation>上界带：'%1' 不是数值。</translation>
+        <source>Upper band: &apos;%1&apos; is not numeric.</source>
+        <translation>上界带：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>Lower and upper bands must match actuals length.</source>
         <translation>下界带和上界带必须与实际值长度相同。</translation>
     </message>
     <message>
-        <source>Training: '%1' is not numeric.</source>
-        <translation>训练：'%1' 不是数值。</translation>
+        <source>Training: &apos;%1&apos; is not numeric.</source>
+        <translation>训练：&apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>Evaluating forecast on %1 obs...</source>
@@ -26337,7 +25274,7 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>季节长度（1 = 纯朴素法）</translation>
     </message>
     <message>
-        <source>Baseline forecaster everyone compares against. season_length=1 is the pure naive 'repeat last value'. Larger values cycle through the most recent N observations.</source>
+        <source>Baseline forecaster everyone compares against. season_length=1 is the pure naive &apos;repeat last value&apos;. Larger values cycle through the most recent N observations.</source>
         <translation>大家都用来对比的基准预测器。season_length=1 即纯朴素法的「重复最后一个值」。更大的值则循环使用最近的 N 个观测值。</translation>
     </message>
     <message>
@@ -26989,12 +25926,12 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>运行 IC 分析</translation>
     </message>
     <message>
-        <source>Predictions: '%1' is not numeric.</source>
-        <translation>预测值: '%1' 不是数值。</translation>
+        <source>Predictions: &apos;%1&apos; is not numeric.</source>
+        <translation>预测值: &apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
-        <source>Returns: '%1' is not numeric.</source>
-        <translation>收益率: '%1' 不是数值。</translation>
+        <source>Returns: &apos;%1&apos; is not numeric.</source>
+        <translation>收益率: &apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>IC analysis needs at least 10 predictions; you provided %1.</source>
@@ -27053,8 +25990,8 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>至少需要 5 个收益率; 您提供了 %1 个。</translation>
     </message>
     <message>
-        <source>Benchmark: '%1' is not numeric.</source>
-        <translation>基准: '%1' 不是数值。</translation>
+        <source>Benchmark: &apos;%1&apos; is not numeric.</source>
+        <translation>基准: &apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>Benchmark (%1) and returns (%2) must have the same length.</source>
@@ -27169,8 +26106,8 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>分析因子分位数</translation>
     </message>
     <message>
-        <source>Factor: '%1' is not numeric.</source>
-        <translation>因子: '%1' 不是数值。</translation>
+        <source>Factor: &apos;%1&apos; is not numeric.</source>
+        <translation>因子: &apos;%1&apos; 不是数值。</translation>
     </message>
     <message>
         <source>Quantile analysis needs at least 20 obs; you provided %1.</source>
@@ -28017,8 +26954,8 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
         <translation>管道 ID（必须先创建）</translation>
     </message>
     <message>
-        <source>{"feature_close":[100,102,...],"feature_volume":[1000,1200,...]}</source>
-        <translation>{"feature_close":[100,102,...],"feature_volume":[1000,1200,...]}</translation>
+        <source>{&quot;feature_close&quot;:[100,102,...],&quot;feature_volume&quot;:[1000,1200,...]}</source>
+        <translation>{&quot;feature_close&quot;:[100,102,...],&quot;feature_volume&quot;:[1000,1200,...]}</translation>
     </message>
     <message>
         <source>Data (JSON)</source>
@@ -28059,14 +26996,6 @@ KPSS：H₀ = 平稳。p ≥ 0.05 ⇒ 平稳。
     <message>
         <source>Fields (comma-separated, e.g. $close,$volume,$open)</source>
         <translation>字段（用逗号分隔，例如 $close,$volume,$open）</translation>
-    </message>
-    <message>
-        <source>Start date (YYYY-MM-DD, e.g. 2019-01-01)</source>
-        <translation>开始日期（YYYY-MM-DD，例如 2019-01-01）</translation>
-    </message>
-    <message>
-        <source>End date (YYYY-MM-DD, e.g. 2020-11-10)</source>
-        <translation>结束日期（YYYY-MM-DD，例如 2020-11-10）</translation>
     </message>
     <message>
         <source>FETCH DATA</source>
@@ -28455,137 +27384,6 @@ distributions of future returns, drawdowns, and terminal wealth.</source>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::RegisterScreen</name>
-    <message>
-        <source>CREATE ACCOUNT</source>
-        <translation>创建账户</translation>
-    </message>
-    <message>
-        <source>FIRST NAME</source>
-        <translation>名字</translation>
-    </message>
-    <message>
-        <source>LAST NAME</source>
-        <translation>姓氏</translation>
-    </message>
-    <message>
-        <source>EMAIL</source>
-        <translation>邮箱</translation>
-    </message>
-    <message>
-        <source>CODE</source>
-        <translation>区号</translation>
-    </message>
-    <message>
-        <source>PHONE</source>
-        <translation>电话</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>密码</translation>
-    </message>
-    <message>
-        <source>CONFIRM PASSWORD</source>
-        <translation>确认密码</translation>
-    </message>
-    <message>
-        <source>First</source>
-        <translation>名</translation>
-    </message>
-    <message>
-        <source>Last</source>
-        <translation>姓</translation>
-    </message>
-    <message>
-        <source>user@domain.com</source>
-        <translation>user@domain.com</translation>
-    </message>
-    <message>
-        <source>+1</source>
-        <translation>+86</translation>
-    </message>
-    <message>
-        <source>234 567 8900</source>
-        <translation>138 0000 0000</translation>
-    </message>
-    <message>
-        <source>min 8 characters</source>
-        <translation>至少 8 个字符</translation>
-    </message>
-    <message>
-        <source>re-enter password</source>
-        <translation>再次输入密码</translation>
-    </message>
-    <message>
-        <source>  CREATE ACCOUNT  </source>
-        <translation>  创建账户  </translation>
-    </message>
-    <message>
-        <source>  CREATING...  </source>
-        <translation>  创建中...  </translation>
-    </message>
-    <message>
-        <source>Already have an account?</source>
-        <translation>已有账户？</translation>
-    </message>
-    <message>
-        <source>SIGN IN</source>
-        <translation>登录</translation>
-    </message>
-    <message>
-        <source>VERIFY EMAIL</source>
-        <translation>验证邮箱</translation>
-    </message>
-    <message>
-        <source>VERIFICATION CODE</source>
-        <translation>验证码</translation>
-    </message>
-    <message>
-        <source>enter code from email</source>
-        <translation>请输入邮件中的验证码</translation>
-    </message>
-    <message>
-        <source>  VERIFY  </source>
-        <translation>  验证  </translation>
-    </message>
-    <message>
-        <source>  VERIFYING...  </source>
-        <translation>  验证中...  </translation>
-    </message>
-    <message>
-        <source>DIDN'T RECEIVE? RESEND</source>
-        <translation>没收到？重新发送</translation>
-    </message>
-    <message>
-        <source>BACK TO FORM</source>
-        <translation>返回表单</translation>
-    </message>
-    <message>
-        <source>All fields are required</source>
-        <translation>所有字段均为必填</translation>
-    </message>
-    <message>
-        <source>Country code is required (e.g. +1, +91)</source>
-        <translation>请填写国家区号（例如 +86、+1）</translation>
-    </message>
-    <message>
-        <source>Passwords do not match</source>
-        <translation>两次输入的密码不一致</translation>
-    </message>
-    <message>
-        <source>Password must be at least 8 characters</source>
-        <translation>密码长度至少为 8 个字符</translation>
-    </message>
-    <message>
-        <source>Username must be 3-50 characters</source>
-        <translation>用户名长度必须为 3 至 50 个字符</translation>
-    </message>
-    <message>
-        <source>Enter the verification code</source>
-        <translation>请输入验证码</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::RelationshipMapScreen</name>
     <message>
         <source>CORPORATE INTELLIGENCE MAP</source>
@@ -28755,24 +27553,56 @@ distributions of future returns, drawdowns, and terminal wealth.</source>
         <translation>地缘政治关系网络</translation>
     </message>
     <message>
-        <source>NODES: %1  |  CONFLICTS: %2  |  ORGANIZATIONS: %3</source>
-        <translation>节点：%1  |  冲突：%2  |  组织：%3</translation>
+        <source>ACTORS: —  |  RELATIONSHIPS: —</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACTIVE CONFLICTS</source>
-        <translation>活跃冲突</translation>
+        <source>⟳ REFRESH</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>CRISIS TYPES</source>
-        <translation>危机类型</translation>
+        <source>Refreshing live GDELT events…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ORGANIZATIONS</source>
-        <translation>组织</translation>
+        <source>Live actor→actor events from GDELT (CAMEO-coded).</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>datasets</source>
-        <translation>数据集</translation>
+        <source>Loading live GDELT events…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MATERIAL CONFLICT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOPERATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Goldstein %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 mentions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ACTORS: %1  |  RELATIONSHIPS: %2  |  CONFLICT: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live actor→actor events from GDELT (CAMEO-coded) — %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>recent exports</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>events</source>
+        <translation type="unfinished">事件</translation>
     </message>
 </context>
 <context>
@@ -29080,8 +27910,8 @@ distributions of future returns, drawdowns, and terminal wealth.</source>
         <translation>创建新报告？未保存的更改将丢失。</translation>
     </message>
     <message>
-        <source>Open Terminal Report (*.openmarketterminal);;JSON (*.json)</source>
-        <translation>Open Terminal 报告 (*.openmarketterminal);;JSON (*.json)</translation>
+        <source>OpenMarketTerminal Report (*.openmarketterminal);;JSON (*.json)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save Report</source>
@@ -29562,7 +28392,7 @@ distributions of future returns, drawdowns, and terminal wealth.</source>
         <translation>✗ 服务器返回了 HTML — 可能是登录或拦截页面，而非 RSS。</translation>
     </message>
     <message>
-        <source>⚠ Response doesn't look like RSS/Atom XML (%1 bytes).</source>
+        <source>⚠ Response doesn&apos;t look like RSS/Atom XML (%1 bytes).</source>
         <translation>⚠ 响应看起来不像 RSS/Atom XML（%1 字节）。</translation>
     </message>
     <message>
@@ -29594,7 +28424,7 @@ distributions of future returns, drawdowns, and terminal wealth.</source>
         <translation>服务器返回了 HTML，而非 RSS。</translation>
     </message>
     <message>
-        <source>Response doesn't look like RSS/Atom XML.</source>
+        <source>Response doesn&apos;t look like RSS/Atom XML.</source>
         <translation>响应看起来不像 RSS/Atom XML。</translation>
     </message>
     <message>
@@ -29602,7 +28432,7 @@ distributions of future returns, drawdowns, and terminal wealth.</source>
         <translation>⚠ %1 仍要保存吗？</translation>
     </message>
     <message>
-        <source>URL didn't validate</source>
+        <source>URL didn&apos;t validate</source>
         <translation>URL 未通过验证</translation>
     </message>
     <message>
@@ -29614,7 +28444,7 @@ Save the feed anyway?</source>
 仍要保存该订阅源吗？</translation>
     </message>
     <message>
-        <source>The last URL test didn't return valid RSS. Save anyway?</source>
+        <source>The last URL test didn&apos;t return valid RSS. Save anyway?</source>
         <translation>上次 URL 测试未返回有效的 RSS。仍要保存吗？</translation>
     </message>
 </context>
@@ -29717,11 +28547,11 @@ Save the feed anyway?</source>
         <translation>无法保存该订阅源。详情请查看日志。</translation>
     </message>
     <message>
-        <source>Reset built-in feed "%1" to its default settings? Your edits will be lost.</source>
+        <source>Reset built-in feed &quot;%1&quot; to its default settings? Your edits will be lost.</source>
         <translation>将内置订阅源“%1”重置为默认设置吗？您的编辑将丢失。</translation>
     </message>
     <message>
-        <source>Delete user feed "%1"?</source>
+        <source>Delete user feed &quot;%1&quot;?</source>
         <translation>删除用户订阅源“%1”吗？</translation>
     </message>
     <message>
@@ -29777,7 +28607,7 @@ Save the feed anyway?</source>
         <translation>测试返回了 HTML。</translation>
     </message>
     <message>
-        <source>Response doesn't look like RSS/Atom XML (%1 bytes).</source>
+        <source>Response doesn&apos;t look like RSS/Atom XML (%1 bytes).</source>
         <translation>响应看起来不像 RSS/Atom XML（%1 字节）。</translation>
     </message>
     <message>
@@ -29800,14 +28630,6 @@ Save the feed anyway?</source>
         <translation>自定义</translation>
     </message>
     <message>
-        <source>LOGIC:</source>
-        <translation>逻辑：</translation>
-    </message>
-    <message>
-        <source>+ ADD CONDITION</source>
-        <translation>+ 添加条件</translation>
-    </message>
-    <message>
         <source>SYMBOLS &amp; PARAMETERS</source>
         <translation>代码与参数</translation>
     </message>
@@ -29820,8 +28642,8 @@ Save the feed anyway?</source>
         <translation>时间周期</translation>
     </message>
     <message>
-        <source>LOOKBACK (DAYS)</source>
-        <translation>回溯（天数）</translation>
+        <source>RANGE</source>
+        <translation type="unfinished">范围</translation>
     </message>
     <message>
         <source>DATA SOURCE</source>
@@ -29850,6 +28672,14 @@ Save the feed anyway?</source>
     <message>
         <source>SCAN MARKET</source>
         <translation>扫描市场</translation>
+    </message>
+    <message>
+        <source>+ CREATE ALERT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a condition first.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>SCAN RESULTS</source>
@@ -30133,105 +28963,6 @@ Save the feed anyway?</source>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::screens::SettingsTab</name>
-    <message>
-        <source>POLL refreshes balances on a TTL via the configured RPC. STREAM opens a WebSocket account subscription — requires Helius or a private RPC.</source>
-        <translation>POLL 通过所配置的 RPC 按 TTL 刷新余额。STREAM 会打开 WebSocket 账户订阅 — 需要 Helius 或私有 RPC。</translation>
-    </message>
-    <message>
-        <source>Paste a Helius API key for reliable account-subscribe streaming and parsed transaction history. Stored in SecureStorage; never transmitted off-machine except in RPC requests to api.helius.xyz.</source>
-        <translation>粘贴 Helius API 密钥以获得可靠的账户订阅流和已解析的交易历史。存储于 SecureStorage 中；除向 api.helius.xyz 发送的 RPC 请求外，绝不传输到本机之外。</translation>
-    </message>
-    <message>
-        <source>paste API key…</source>
-        <translation>粘贴 API 密钥…</translation>
-    </message>
-    <message>
-        <source>SAVE</source>
-        <translation>保存</translation>
-    </message>
-    <message>
-        <source>CLEAR</source>
-        <translation>清除</translation>
-    </message>
-    <message>
-        <source>Default slippage tolerance for swaps. Quotes whose route impact exceeds this value are blocked. Adjustable per-swap on the TRADE tab.</source>
-        <translation>兑换的默认滑点容差。路由影响超过此值的报价将被拦截。可在 TRADE 标签页中按每笔兑换调整。</translation>
-    </message>
-    <message>
-        <source>Pump.fun-launched wallets accumulate airdropped junk over time. By default the holdings panel hides tokens that aren't in Jupiter's verified-tagged list. Toggle this on to see every SPL token account in the wallet.</source>
-        <translation>由 Pump.fun 创建的钱包会随时间积累空投垃圾代币。默认情况下，持仓面板会隐藏不在 Jupiter 已验证标签列表中的代币。开启此项可查看钱包中的所有 SPL 代币账户。</translation>
-    </message>
-    <message>
-        <source>Show unverified tokens in the holdings panel</source>
-        <translation>在持仓面板中显示未验证的代币</translation>
-    </message>
-    <message>
-        <source>Stored — input is hidden. Type to replace.</source>
-        <translation>已存储 — 输入已隐藏。输入即可替换。</translation>
-    </message>
-    <message>
-        <source>No key stored. Public RPC will be used.</source>
-        <translation>未存储密钥。将使用公共 RPC。</translation>
-    </message>
-    <message>
-        <source>Empty input — use CLEAR to remove a stored key.</source>
-        <translation>输入为空 — 请使用“清除”来移除已存储的密钥。</translation>
-    </message>
-    <message>
-        <source>Failed: %1</source>
-        <translation>失败：%1</translation>
-    </message>
-    <message>
-        <source>Saved. Restart streaming to use the new key.</source>
-        <translation>已保存。请重启流式传输以使用新密钥。</translation>
-    </message>
-    <message>
-        <source>Cleared. Public RPC will be used.</source>
-        <translation>已清除。将使用公共 RPC。</translation>
-    </message>
-    <message>
-        <source>BALANCE REFRESH</source>
-        <translation>余额刷新</translation>
-    </message>
-    <message>
-        <source>Mirrored on HOME</source>
-        <translation>已镜像至 HOME</translation>
-    </message>
-    <message>
-        <source>POLL</source>
-        <translation>POLL</translation>
-    </message>
-    <message>
-        <source>STREAM</source>
-        <translation>STREAM</translation>
-    </message>
-    <message>
-        <source>HELIUS API KEY</source>
-        <translation>HELIUS API 密钥</translation>
-    </message>
-    <message>
-        <source>optional</source>
-        <translation>可选</translation>
-    </message>
-    <message>
-        <source>DEFAULT SLIPPAGE</source>
-        <translation>默认滑点</translation>
-    </message>
-    <message>
-        <source>1% – 5%</source>
-        <translation>1% – 5%</translation>
-    </message>
-    <message>
-        <source>ASSET FILTERS</source>
-        <translation>资产筛选</translation>
-    </message>
-    <message>
-        <source>affects holdings</source>
-        <translation>影响持仓</translation>
-    </message>
-</context>
-<context>
     <name>openmarketterminal::screens::SetupScreen</name>
     <message>
         <source>We need to download a few tools and data libraries once.
@@ -30320,6 +29051,10 @@ This only happens the first time — future launches are instant.</source>
         <translation>已完成</translation>
     </message>
     <message>
+        <source>Everything is ready! Launching OpenMarketTerminal...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>SKIP &amp; CONTINUE</source>
         <translation>跳过并继续</translation>
     </message>
@@ -30330,10 +29065,6 @@ This only happens the first time — future launches are instant.</source>
     <message>
         <source>Setup in progress — please keep the application open</source>
         <translation>正在安装 — 请保持应用程序打开</translation>
-    </message>
-    <message>
-        <source>Everything is ready! Launching Open Terminal...</source>
-        <translation>一切就绪！正在启动 Open Terminal...</translation>
     </message>
     <message>
         <source>Only the missing pieces will be downloaded. Needs an internet connection.</source>
@@ -30392,10 +29123,6 @@ You can wait or skip and continue with limited functionality.</source>
     <message>
         <source>analytics library list</source>
         <translation>分析库清单</translation>
-    </message>
-    <message>
-        <source>Everything is installed and ready to go.</source>
-        <translation>所有组件均已安装就绪。</translation>
     </message>
 </context>
 <context>
@@ -30693,6 +29420,72 @@ Data will be re-fetched on next access.</source>
 下次访问时将重新获取数据。</translation>
     </message>
     <message>
+        <source>Backup &amp; Restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export all your data (databases, workspaces, files) to a single .zip file you can copy to another machine or a drive. Nothing is uploaded. Secrets in the OS keychain are not included — re-enter them after restoring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Backup…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a folder for the backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your data was backed up to:
+
+%1
+
+Keep it somewhere safe — it is unencrypted personal data.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore Backup…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a backup .zip to restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenMarketTerminal backup (*.zip)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restoring will REPLACE all current data with the backup. Your current data is moved to a &apos;pre-restore&apos; folder first (so you can undo).
+
+The app must restart to finish. Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart to finish</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The backup is staged. OpenMarketTerminal will now close — reopen it to complete the restore.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Clear ALL User Data</source>
         <translation>清除所有用户数据</translation>
     </message>
@@ -30754,36 +29547,128 @@ Are you absolutely sure?</source>
         <translation>描述（可选）</translation>
     </message>
     <message>
+        <source>Bar timeframe the entry/exit rules evaluate on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Templates…</source>
         <translation>模板…</translation>
+    </message>
+    <message>
+        <source>Load a ready-made strategy as a starting point</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Equity</source>
+        <translation type="unfinished">股东权益</translation>
+    </message>
+    <message>
+        <source>Instrument type this strategy trades</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NEW DRAFT</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <source>Backtest</source>
-        <translation>回测</translation>
+        <source>Save this strategy to My Strategies</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deploy ▸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go live (paper or real) with this strategy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NAME</source>
+        <translation type="unfinished">名称</translation>
+    </message>
+    <message>
+        <source>DESC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TYPE</source>
+        <translation type="unfinished">类型</translation>
+    </message>
+    <message>
+        <source>BACKTEST SETUP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>From</source>
+        <translation type="unfinished">起点</translation>
+    </message>
+    <message>
+        <source>To</source>
+        <translation type="unfinished">终点</translation>
+    </message>
+    <message>
+        <source>▶  RUN BACKTEST</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RESULTS</source>
+        <translation type="unfinished">结果</translation>
+    </message>
+    <message>
+        <source>Enter a strategy name before deploying.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Entry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">出场</translation>
+    </message>
+    <message>
+        <source>Deploy — check conditions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is at %2, but some rules may never trigger:
+
+%3
+
+Deploy anyway?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already deployed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An identical deployment is already running:
+
+%1 · %2 · %3 · %4
+
+Deploy another copy anyway?</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Deploy</source>
         <translation>部署</translation>
     </message>
     <message>
-        <source>BACKTEST</source>
-        <translation>回测</translation>
-    </message>
-    <message>
         <source>Capital</source>
         <translation>资金</translation>
-    </message>
-    <message>
-        <source>Start</source>
-        <translation>开始</translation>
-    </message>
-    <message>
-        <source>End</source>
-        <translation>结束</translation>
     </message>
     <message>
         <source>Strategy saved: %1</source>
@@ -30798,10 +29683,6 @@ Are you absolutely sure?</source>
         <translation>正在保存策略…</translation>
     </message>
     <message>
-        <source>Save strategy first.</source>
-        <translation>请先保存策略。</translation>
-    </message>
-    <message>
         <source>Start date must be before end date.</source>
         <translation>开始日期必须早于结束日期。</translation>
     </message>
@@ -30810,12 +29691,12 @@ Are you absolutely sure?</source>
         <translation>正在运行回测…</translation>
     </message>
     <message>
-        <source>Deploying strategy...</source>
-        <translation>正在部署策略…</translation>
-    </message>
-    <message>
         <source>Loaded template: %1</source>
         <translation>已加载模板：%1</translation>
+    </message>
+    <message>
+        <source>EDITING</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Editing: %1</source>
@@ -30949,305 +29830,8 @@ Are you absolutely sure?</source>
         <translation>删除策略</translation>
     </message>
     <message>
-        <source>Delete "%1"?</source>
+        <source>Delete &quot;%1&quot;?</source>
         <translation>删除“%1”？</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::SupportScreen</name>
-    <message>
-        <source>Select a ticket to view details</source>
-        <translation>选择一张工单以查看详情</translation>
-    </message>
-    <message>
-        <source>or create a new support request</source>
-        <translation>或创建一个新的支持请求</translation>
-    </message>
-    <message>
-        <source>＋  Create New Ticket</source>
-        <translation>＋  创建新工单</translation>
-    </message>
-    <message>
-        <source>← Back</source>
-        <translation>← 返回</translation>
-    </message>
-    <message>
-        <source>Create Support Ticket</source>
-        <translation>创建支持工单</translation>
-    </message>
-    <message>
-        <source>Describe your issue in detail. We typically respond within 24 hours.</source>
-        <translation>请详细描述您的问题。我们通常会在 24 小时内回复。</translation>
-    </message>
-    <message>
-        <source>Brief summary of your issue</source>
-        <translation>您问题的简要概述</translation>
-    </message>
-    <message>
-        <source>Subject</source>
-        <translation>主题</translation>
-    </message>
-    <message>
-        <source>Category</source>
-        <translation>类别</translation>
-    </message>
-    <message>
-        <source>Technical</source>
-        <translation>技术</translation>
-    </message>
-    <message>
-        <source>Billing</source>
-        <translation>账单</translation>
-    </message>
-    <message>
-        <source>Feature Request</source>
-        <translation>功能请求</translation>
-    </message>
-    <message>
-        <source>Bug Report</source>
-        <translation>错误报告</translation>
-    </message>
-    <message>
-        <source>Account</source>
-        <translation>账户</translation>
-    </message>
-    <message>
-        <source>Other</source>
-        <translation>其他</translation>
-    </message>
-    <message>
-        <source>Priority</source>
-        <translation>优先级</translation>
-    </message>
-    <message>
-        <source>Low</source>
-        <translation>低</translation>
-    </message>
-    <message>
-        <source>Medium</source>
-        <translation>中</translation>
-    </message>
-    <message>
-        <source>High</source>
-        <translation>高</translation>
-    </message>
-    <message>
-        <source>Description</source>
-        <translation>描述</translation>
-    </message>
-    <message>
-        <source>%1 / 2000</source>
-        <translation>%1 / 2000</translation>
-    </message>
-    <message>
-        <source>Please describe:
-• What were you doing?
-• What did you expect to happen?
-• What actually happened?
-• Steps to reproduce (if applicable)</source>
-        <translation>请描述：
-• 您当时在做什么？
-• 您期望发生什么？
-• 实际发生了什么？
-• 重现步骤（如适用）</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>Submit Ticket →</source>
-        <translation>提交工单 →</translation>
-    </message>
-    <message>
-        <source>Tips for a faster response</source>
-        <translation>加快回复的小贴士</translation>
-    </message>
-    <message>
-        <source>✓  One issue per ticket — easier to track and resolve</source>
-        <translation>✓  每张工单一个问题 — 更易于追踪和解决</translation>
-    </message>
-    <message>
-        <source>✓  Include your OS, version, and any error messages</source>
-        <translation>✓  请提供您的操作系统、版本以及任何错误消息</translation>
-    </message>
-    <message>
-        <source>✓  Describe steps to reproduce if it's a bug</source>
-        <translation>✓  如果是错误，请描述重现步骤</translation>
-    </message>
-    <message>
-        <source>✓  Billing questions resolved within 4 hours</source>
-        <translation>✓  账单问题将在 4 小时内解决</translation>
-    </message>
-    <message>
-        <source>Close Ticket</source>
-        <translation>关闭工单</translation>
-    </message>
-    <message>
-        <source>Reopen</source>
-        <translation>重新打开</translation>
-    </message>
-    <message>
-        <source>This is a demo ticket. Open a real ticket to get support from our team.</source>
-        <translation>这是一张演示工单。请创建真实工单以获取我们团队的支持。</translation>
-    </message>
-    <message>
-        <source>New Ticket</source>
-        <translation>新建工单</translation>
-    </message>
-    <message>
-        <source>✓  This ticket is closed.</source>
-        <translation>✓  此工单已关闭。</translation>
-    </message>
-    <message>
-        <source>Reply</source>
-        <translation>回复</translation>
-    </message>
-    <message>
-        <source>Ctrl+Enter to send</source>
-        <translation>按 Ctrl+Enter 发送</translation>
-    </message>
-    <message>
-        <source>Type your reply…</source>
-        <translation>请输入您的回复…</translation>
-    </message>
-    <message>
-        <source>Send Reply →</source>
-        <translation>发送回复 →</translation>
-    </message>
-    <message>
-        <source>Updating…</source>
-        <translation>正在更新…</translation>
-    </message>
-    <message>
-        <source>Ready</source>
-        <translation>就绪</translation>
-    </message>
-    <message>
-        <source>Welcome to Open Terminal Support</source>
-        <translation>欢迎使用 Open Terminal 支持</translation>
-    </message>
-    <message>
-        <source>No tickets yet</source>
-        <translation>暂无工单</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>演示</translation>
-    </message>
-    <message>
-        <source>Ticket #%1</source>
-        <translation>工单 #%1</translation>
-    </message>
-    <message>
-        <source>%1  ·  %2  ·  Opened %3</source>
-        <translation>%1  ·  %2  ·  开立于 %3</translation>
-    </message>
-    <message>
-        <source>No description provided.</source>
-        <translation>未提供描述。</translation>
-    </message>
-    <message>
-        <source>Support Team</source>
-        <translation>支持团队</translation>
-    </message>
-    <message>
-        <source>1 Jan 2026</source>
-        <translation>2026年1月1日</translation>
-    </message>
-    <message>
-        <source>Welcome to Open Terminal! This demo ticket shows how the support system works.
-Create a real ticket and our team will respond within 24 hours.</source>
-        <translation>欢迎使用 Open Terminal！此演示工单展示了支持系统的工作方式。
-创建一个真实工单，我们的团队将在 24 小时内回复。</translation>
-    </message>
-    <message>
-        <source>You</source>
-        <translation>您</translation>
-    </message>
-    <message>
-        <source>No messages yet — be the first to reply.</source>
-        <translation>暂无消息 — 成为第一个回复的人。</translation>
-    </message>
-    <message>
-        <source>Submitting…</source>
-        <translation>正在提交…</translation>
-    </message>
-    <message>
-        <source>Sending…</source>
-        <translation>正在发送…</translation>
-    </message>
-    <message>
-        <source>OPEN</source>
-        <translation>进行中</translation>
-    </message>
-    <message>
-        <source>IN PROGRESS</source>
-        <translation>处理中</translation>
-    </message>
-    <message>
-        <source>RESOLVED</source>
-        <translation>已解决</translation>
-    </message>
-    <message>
-        <source>CLOSED</source>
-        <translation>休市</translation>
-    </message>
-    <message>
-        <source>PENDING</source>
-        <translation>待处理</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>支持</translation>
-    </message>
-    <message>
-        <source>Tickets</source>
-        <translation>工单</translation>
-    </message>
-    <message>
-        <source>Refresh tickets</source>
-        <translation>刷新工单</translation>
-    </message>
-    <message>
-        <source>＋  New Ticket</source>
-        <translation>＋  新建工单</translation>
-    </message>
-    <message>
-        <source>🔍  Search tickets…</source>
-        <translation>🔍  搜索工单…</translation>
-    </message>
-    <message>
-        <source>All Tickets</source>
-        <translation>全部工单</translation>
-    </message>
-    <message>
-        <source>Open</source>
-        <translation>未处理</translation>
-    </message>
-    <message>
-        <source>In Progress</source>
-        <translation>处理中</translation>
-    </message>
-    <message>
-        <source>Pending</source>
-        <translation>待处理</translation>
-    </message>
-    <message>
-        <source>Resolved</source>
-        <translation>已解决</translation>
-    </message>
-    <message>
-        <source>Closed</source>
-        <translation>已关闭</translation>
-    </message>
-    <message>
-        <source>Total</source>
-        <translation>总计</translation>
-    </message>
-    <message>
-        <source>Done</source>
-        <translation>已完成</translation>
     </message>
 </context>
 <context>
@@ -31478,108 +30062,68 @@ Create a real ticket and our team will respond within 24 hours.</source>
         <translation>服务条款</translation>
     </message>
     <message>
-        <source>Last updated: January 1, 2026</source>
-        <translation>最后更新：2026 年 1 月 1 日</translation>
+        <source>Applies to the open-source release.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACCEPTANCE OF TERMS</source>
-        <translation>条款的接受</translation>
+        <source>FREE AND OPEN SOURCE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>By accessing or using Open Terminal ("the Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, do not use the Service.</source>
-        <translation>通过访问或使用 Open Terminal（“本服务”），即表示您同意受本服务条款的约束。如果您不同意这些条款，请勿使用本服务。</translation>
+        <source>Open Terminal is free, open-source software released under the MIT License. There is no subscription, fee, or billing of any kind. You may use, copy, modify, and redistribute it under the terms of that license.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DESCRIPTION OF SERVICE</source>
-        <translation>服务说明</translation>
+        <source>WHAT OPEN TERMINAL IS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Terminal is a desktop financial intelligence terminal providing market data, analytics, trading tools, and AI-powered research capabilities.</source>
-        <translation>Open Terminal 是一款桌面金融情报终端，提供市场数据、分析、交易工具以及 AI 驱动的研究功能。</translation>
+        <source>Open Terminal is a local-first desktop application that runs entirely on your own computer. It is a research and educational tool — it does not provide financial advice, brokerage services, or any guarantee about the data it displays.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>USER ACCOUNTS AND REGISTRATION</source>
-        <translation>用户账户与注册</translation>
+        <source>PROVIDED &quot;AS IS&quot;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>To access certain features, you must create an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities under your account.</source>
-        <translation>要使用某些功能，您必须创建账户。您有责任对账户凭据保密，并对账户下的所有活动负责。</translation>
+        <source>As stated in the MIT License, the software is provided &quot;AS IS&quot;, without warranty of any kind, express or implied. The authors and contributors are not liable for any claim, damages, or other liability arising from the use of the software.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ACCEPTABLE USE POLICY</source>
-        <translation>可接受使用政策</translation>
+        <source>NOT FINANCIAL ADVICE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>You agree not to:</source>
-        <translation>您同意不得：</translation>
+        <source>Market data, analytics, and AI-generated output are for informational and educational purposes only and do not constitute investment advice. You are solely responsible for your own trading and investment decisions and their outcomes.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use the Service for any unlawful purpose</source>
-        <translation>将本服务用于任何非法目的</translation>
+        <source>THIRD-PARTY SERVICES</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Attempt to gain unauthorized access to any part of the Service</source>
-        <translation>试图未经授权访问本服务的任何部分</translation>
+        <source>When you configure API keys, the app connects directly from your machine to the brokers and data providers you choose. You are responsible for complying with the terms, fees, and usage policies of any third-party service you connect, and for any orders you place through them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Interfere with or disrupt the Service or its servers</source>
-        <translation>干扰或破坏本服务或其服务器</translation>
+        <source>PRIVACY</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reverse engineer, decompile, or disassemble any part of the Service</source>
-        <translation>对本服务的任何部分进行逆向工程、反编译或反汇编</translation>
+        <source>Open Terminal has no server and collects no personal data. Your data stays on your device. See the Privacy Policy for details.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use automated means to access the Service without permission</source>
-        <translation>未经许可使用自动化手段访问本服务</translation>
+        <source>CONTACT</source>
+        <translation type="unfinished">联系方式</translation>
     </message>
     <message>
-        <source>DATA AND PRIVACY</source>
-        <translation>数据与隐私</translation>
+        <source>For questions about these Terms, open an issue in the project repository:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your use of the Service is also governed by our Privacy Policy. By using the Service, you consent to the collection and use of information as described therein.</source>
-        <translation>您对本服务的使用同样受我们的隐私政策约束。使用本服务即表示您同意按其中所述收集和使用信息。</translation>
-    </message>
-    <message>
-        <source>SUBSCRIPTION AND BILLING</source>
-        <translation>订阅与计费</translation>
-    </message>
-    <message>
-        <source>Certain features require a paid subscription. Subscriptions are billed in advance. Refunds are handled according to our refund policy. Credits expire according to plan terms.</source>
-        <translation>某些功能需要付费订阅。订阅费用预先收取。退款按照我们的退款政策处理。积分按照套餐条款到期失效。</translation>
-    </message>
-    <message>
-        <source>DISCLAIMERS AND LIMITATIONS</source>
-        <translation>免责声明与责任限制</translation>
-    </message>
-    <message>
-        <source>The Service is provided "as is" without warranty of any kind. Open Terminal contributors shall not be liable for any indirect, incidental, special, or consequential damages. Financial data and analytics are for informational purposes only and do not constitute investment advice.</source>
-        <translation>本服务按“现状”提供，不附带任何形式的保证。Open Terminal contributors 对任何间接、附带、特殊或后果性损害概不负责。金融数据和分析仅供参考，不构成投资建议。</translation>
-    </message>
-    <message>
-        <source>TERMINATION</source>
-        <translation>终止</translation>
-    </message>
-    <message>
-        <source>We may terminate or suspend your account at any time for violation of these terms. Upon termination, your right to use the Service will immediately cease.</source>
-        <translation>若违反这些条款，我们可随时终止或暂停您的账户。账户终止后，您使用本服务的权利将立即终止。</translation>
-    </message>
-    <message>
-        <source>CHANGES TO TERMS</source>
-        <translation>条款的变更</translation>
-    </message>
-    <message>
-        <source>We reserve the right to modify these terms at any time. Continued use of the Service after changes constitutes acceptance of the modified terms.</source>
-        <translation>我们保留随时修改这些条款的权利。在变更后继续使用本服务即视为接受修改后的条款。</translation>
-    </message>
-    <message>
-        <source>CONTACT INFORMATION</source>
-        <translation>联系信息</translation>
-    </message>
-    <message>
-        <source>For questions about these Terms, contact us at github.com/your-org/open-terminal/issues</source>
-        <translation>如对本条款有任何疑问，请通过 github.com/your-org/open-terminal/issues 联系我们</translation>
+        <source>github.com/Trucker2827/Open-Terminal/issues</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Privacy Policy</source>
@@ -32062,12 +30606,20 @@ Create a real ticket and our team will respond within 24 hours.</source>
         <translation>月度</translation>
     </message>
     <message>
+        <source>Display-only — not connected to a live trade-data feed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Trading Partner</source>
         <translation>贸易伙伴</translation>
     </message>
     <message>
         <source>Total Trade ($M)</source>
         <translation>贸易总额（百万美元）</translation>
+    </message>
+    <message>
+        <source>Static sample — illustrative U.S. goods-trade partners. Not connected to a live trade-data feed; the filters above are inactive.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Table</source>
@@ -32101,14 +30653,6 @@ Create a real ticket and our team will respond within 24 hours.</source>
         <translation>最后更新：2026 年 1 月 1 日</translation>
     </message>
     <message>
-        <source>OPENMARKETTERMINAL TRADEMARKS</source>
-        <translation>OPENMARKETTERMINAL 商标</translation>
-    </message>
-    <message>
-        <source>Open Terminal Logo and associated visual identities</source>
-        <translation>Open Terminal 标志及相关视觉标识</translation>
-    </message>
-    <message>
         <source>THIRD-PARTY TRADEMARKS</source>
         <translation>第三方商标</translation>
     </message>
@@ -32125,48 +30669,52 @@ Create a real ticket and our team will respond within 24 hours.</source>
         <translation>允许的用途：</translation>
     </message>
     <message>
-        <source>Referring to Open Terminal products in editorial or descriptive contexts</source>
-        <translation>在编辑或描述性语境中提及 Open Terminal 产品</translation>
-    </message>
-    <message>
-        <source>Linking to official Open Terminal resources</source>
-        <translation>链接至 Open Terminal 官方资源</translation>
-    </message>
-    <message>
-        <source>Academic or research references</source>
-        <translation>学术或研究引用</translation>
-    </message>
-    <message>
         <source>Prohibited Uses:</source>
         <translation>禁止的用途：</translation>
-    </message>
-    <message>
-        <source>Using Open Terminal marks to imply endorsement or affiliation</source>
-        <translation>使用 Open Terminal 标志以暗示背书或关联关系</translation>
-    </message>
-    <message>
-        <source>Modifying or altering any Open Terminal trademark</source>
-        <translation>修改或更改任何 Open Terminal 商标</translation>
-    </message>
-    <message>
-        <source>Using Open Terminal marks in domain names or product names</source>
-        <translation>在域名或产品名称中使用 Open Terminal 标志</translation>
-    </message>
-    <message>
-        <source>Creating confusingly similar marks</source>
-        <translation>创建容易混淆的近似标志</translation>
     </message>
     <message>
         <source>COPYRIGHT NOTICE</source>
         <translation>版权声明</translation>
     </message>
     <message>
-        <source>Copyright 2024-2026 Open Terminal contributors. All rights reserved.</source>
-        <translation>版权所有 2024-2026 Open Terminal contributors。保留所有权利。</translation>
+        <source>OPEN TERMINAL TRADEMARKS</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This software is licensed under MIT License for open-source use, including personal, educational, and commercial use.</source>
-        <translation>This software is licensed under MIT License for open-source use, including personal, educational, and commercial use.</translation>
+        <source>Open Terminal logos and associated visual identities</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Referring to Open Terminal in editorial or descriptive contexts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identifying forks, packages, and redistributed builds truthfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Academic, research, and community references</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using Open Terminal marks to falsely imply endorsement or official affiliation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Misrepresenting a modified build as the official project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Creating confusingly similar marks for deceptive use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copyright 2026 Open Terminal contributors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This software is licensed under the MIT License for open-source use, including personal, educational, and commercial use.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>DATA PROVIDER ACKNOWLEDGMENTS</source>
@@ -32197,8 +30745,12 @@ Create a real ticket and our team will respond within 24 hours.</source>
         <translation>举报侵权</translation>
     </message>
     <message>
-        <source>To report trademark infringement, contact: github.com/your-org/open-terminal/issues</source>
-        <translation>如需举报商标侵权，请联系：github.com/your-org/open-terminal/issues</translation>
+        <source>To report trademark infringement, open an issue in the project repository.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repository: github.com/your-org/open-terminal</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LEGAL DEPARTMENT</source>
@@ -32207,10 +30759,6 @@ Create a real ticket and our team will respond within 24 hours.</source>
     <message>
         <source>Open Terminal contributors — Legal Department</source>
         <translation>Open Terminal contributors — 法律部门</translation>
-    </message>
-    <message>
-        <source>Email: github.com/your-org/open-terminal/issues</source>
-        <translation>电子邮件：github.com/your-org/open-terminal/issues</translation>
     </message>
 </context>
 <context>
@@ -32377,6 +30925,125 @@ Try a different country code or check the indicator is available</source>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::screens::UniverseScannerPanel</name>
+    <message>
+        <source>STRATEGY</source>
+        <translation type="unfinished">策略</translation>
+    </message>
+    <message>
+        <source>UNIVERSE</source>
+        <translation type="unfinished">范围</translation>
+    </message>
+    <message>
+        <source>US mega-cap preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>US tech preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom symbols</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CUSTOM SYMBOLS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BROKER ACCOUNT</source>
+        <translation type="unfinished">券商账户</translation>
+    </message>
+    <message>
+        <source>EVAL SWEEP (ms)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COOLDOWN (min)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>START SCAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LIVE MATCHES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYMBOL</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>SIGNAL</source>
+        <translation type="unfinished">信号</translation>
+    </message>
+    <message>
+        <source>PRICE</source>
+        <translation type="unfinished">价格</translation>
+    </message>
+    <message>
+        <source>MATCHED RULES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEPLOY</source>
+        <translation type="unfinished">部署</translation>
+    </message>
+    <message>
+        <source>Stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a strategy first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected strategy has no entry conditions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a connected broker account (live feed required).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter custom symbols or pick a universe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not save scan: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>STOP SCAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scanning live — warming history, matches will appear below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MATCH</source>
+        <translation type="unfinished">匹配</translation>
+    </message>
+    <message>
+        <source>BULLISH</source>
+        <translation type="unfinished">看涨</translation>
+    </message>
+    <message>
+        <source>BEARISH</source>
+        <translation type="unfinished">看跌</translation>
+    </message>
+    <message>
+        <source>Strategy no longer selected — cannot deploy.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deployed %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::screens::VoiceConfigSection</name>
     <message>
         <source>VOICE — SPEECH-TO-TEXT &amp; TEXT-TO-SPEECH</source>
@@ -32451,8 +31118,8 @@ Try a different country code or check the indicator is available</source>
         <translation>麦克风增益（麦克风声音过小时调高）</translation>
     </message>
     <message>
-        <source>e.g. 'Headset' (substring match, blank = system default)</source>
-        <translation>例如 'Headset'（子串匹配，留空 = 系统默认）</translation>
+        <source>e.g. &apos;Headset&apos; (substring match, blank = system default)</source>
+        <translation>例如 &apos;Headset&apos;（子串匹配，留空 = 系统默认）</translation>
     </message>
     <message>
         <source>Mic device</source>
@@ -32597,25 +31264,6 @@ Try a different country code or check the indicator is available</source>
     <message>
         <source>Test failed: HTTP %1 — %2</source>
         <translation>测试失败：HTTP %1 — %2</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::WalletActionConfirmDialog</name>
-    <message>
-        <source>Confirm</source>
-        <translation>确认</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>AWAITING CONFIRMATION</source>
-        <translation>等待确认</translation>
-    </message>
-    <message>
-        <source>%1 in %2</source>
-        <translation>%2 中的 %1</translation>
     </message>
 </context>
 <context>
@@ -32990,6 +31638,18 @@ Try a different country code or check the indicator is available</source>
     <message>
         <source>Live Kraken / HyperLiquid ticker strip — configurable pair list</source>
         <translation>实时 Kraken / HyperLiquid 行情条 — 可配置货币对列表</translation>
+    </message>
+    <message>
+        <source>Dinero Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dinero</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Dinero chain stats + a GET DINERO download button (read-only, no trading)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Polymarket</source>
@@ -33407,7 +32067,7 @@ Also verify WTO_API_KEY is set correctly</source>
         <translation>请至少选择一个模型。</translation>
     </message>
     <message>
-        <source>Close every agent's positions and stop the competition?
+        <source>Close every agent&apos;s positions and stop the competition?
 This cannot be undone.</source>
         <translation>平掉所有智能体的头寸并停止竞赛？
 此操作无法撤销。</translation>
@@ -33788,6 +32448,101 @@ Parse error: %3</source>
     <message>
         <source>AVG LEV</source>
         <translation>平均杠杆</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::common::PaperBlotterPanel</name>
+    <message>
+        <source>No open paper positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SQUARE OFF ALL</source>
+        <translation type="unfinished">全部平仓</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation type="unfinished">账户</translation>
+    </message>
+    <message>
+        <source>Symbol</source>
+        <translation type="unfinished">代码</translation>
+    </message>
+    <message>
+        <source>Product</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Side</source>
+        <translation type="unfinished">方向</translation>
+    </message>
+    <message>
+        <source>Qty</source>
+        <translation type="unfinished">数量</translation>
+    </message>
+    <message>
+        <source>Avg</source>
+        <translation type="unfinished">均价</translation>
+    </message>
+    <message>
+        <source>LTP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>P&amp;L</source>
+        <translation type="unfinished">P&amp;L</translation>
+    </message>
+    <message>
+        <source>P&amp;L %</source>
+        <translation type="unfinished">P&amp;L %</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation type="unfinished">类型</translation>
+    </message>
+    <message>
+        <source>Price</source>
+        <translation type="unfinished">价格</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished">状态</translation>
+    </message>
+    <message>
+        <source>Time</source>
+        <translation type="unfinished">时间</translation>
+    </message>
+    <message>
+        <source>Positions</source>
+        <translation type="unfinished">持仓</translation>
+    </message>
+    <message>
+        <source>Orders</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trades</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation type="unfinished">出场</translation>
+    </message>
+    <message>
+        <source>%1 open · unrealized %2%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT</source>
+        <translation type="unfinished">市价</translation>
+    </message>
+    <message>
+        <source>Square off all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close all %1 open paper position(s) at market?</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -34348,6 +33103,10 @@ Keys are stored locally in encrypted secure storage.</source>
         <translation>实时</translation>
     </message>
     <message>
+        <source>SENDING…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>⚠ Enter a valid quantity</source>
         <translation>⚠ 请输入有效数量</translation>
     </message>
@@ -34783,7 +33542,7 @@ Keys are stored locally in encrypted secure storage.</source>
         <translation>移除账户</translation>
     </message>
     <message>
-        <source>Are you sure you want to remove "%1"?
+        <source>Are you sure you want to remove &quot;%1&quot;?
 
 This will delete all saved credentials and the linked paper portfolio.
 This action cannot be undone.</source>
@@ -34797,240 +33556,24 @@ This action cannot be undone.</source>
         <translation>正在连接...</translation>
     </message>
     <message>
-        <source>Error: %1</source>
-        <translation>错误：%1</translation>
-    </message>
-    <message>
-        <source>Connected as %1</source>
-        <translation>已以 %1 身份连接</translation>
-    </message>
-    <message>
-        <source> First-time setup (4 steps)</source>
-        <translation> 首次设置（4 步）</translation>
-    </message>
-    <message>
-        <source>1. Create a Kite Connect app at &lt;a href='https://developers.kite.trade/apps'&gt;developers.kite.trade/apps&lt;/a&gt;.</source>
-        <translation>1. 在 &lt;a href='https://developers.kite.trade/apps'&gt;developers.kite.trade/apps&lt;/a&gt; 创建 Kite Connect 应用。</translation>
-    </message>
-    <message>
-        <source>2. Register redirect URL &lt;b&gt;http://127.0.0.1:5010/&lt;/b&gt; on that app.</source>
-        <translation>2. 在该应用上注册重定向 URL &lt;b&gt;http://127.0.0.1:5010/&lt;/b&gt;。</translation>
-    </message>
-    <message>
-        <source>3. Enable TOTP 2FA on your Zerodha account (&lt;a href='https://support.zerodha.com/category/your-zerodha-account/login-credentials/articles/time-based-otp'&gt;support.zerodha.com&lt;/a&gt;).</source>
-        <translation>3. 在您的 Zerodha 账户上启用 TOTP 双重验证（&lt;a href='https://support.zerodha.com/category/your-zerodha-account/login-credentials/articles/time-based-otp'&gt;support.zerodha.com&lt;/a&gt;）。</translation>
-    </message>
-    <message>
-        <source>4. For auto-login, copy the Base32 TOTP secret during 2FA setup ("Can't scan?" link).</source>
-        <translation>4. 如需自动登录，请在双重验证设置期间复制 Base32 TOTP 密钥（“无法扫描？”链接）。</translation>
-    </message>
-    <message>
-        <source>Auto-login (TOTP)</source>
-        <translation>自动登录 (TOTP)</translation>
-    </message>
-    <message>
-        <source>Browser login</source>
-        <translation>浏览器登录</translation>
-    </message>
-    <message>
-        <source>API KEY</source>
-        <translation>API 密钥</translation>
-    </message>
-    <message>
-        <source>Enter API Key...</source>
-        <translation>输入 API Key...</translation>
-    </message>
-    <message>
-        <source>from developers.kite.trade -&gt; My Apps</source>
-        <translation>来自 developers.kite.trade -&gt; My Apps</translation>
-    </message>
-    <message>
-        <source>API SECRET</source>
-        <translation>API SECRET</translation>
-    </message>
-    <message>
-        <source>Enter API Secret...</source>
-        <translation>输入 API Secret...</translation>
-    </message>
-    <message>
-        <source>same console, shown once - regenerate if lost</source>
-        <translation>同一控制台，仅显示一次 - 丢失需重新生成</translation>
-    </message>
-    <message>
-        <source>KITE USER ID</source>
-        <translation>KITE 用户 ID</translation>
-    </message>
-    <message>
-        <source>e.g. AB1234</source>
-        <translation>例如 AB1234</translation>
-    </message>
-    <message>
-        <source>PASSWORD</source>
-        <translation>密码</translation>
-    </message>
-    <message>
-        <source>Zerodha login password</source>
-        <translation>Zerodha 登录密码</translation>
-    </message>
-    <message>
-        <source>TOTP SECRET</source>
-        <translation>TOTP SECRET</translation>
-    </message>
-    <message>
-        <source>Base32 string</source>
-        <translation>Base32 字符串</translation>
-    </message>
-    <message>
-        <source>Base32 secret from Zerodha 2FA setup</source>
-        <translation>来自 Zerodha 双重验证设置的 Base32 密钥</translation>
-    </message>
-    <message>
-        <source>Open Kite login in browser</source>
-        <translation>在浏览器中打开 Kite 登录</translation>
-    </message>
-    <message>
-        <source>Redirect didn't work? Paste request_token manually</source>
-        <translation>重定向无效？手动粘贴 request_token</translation>
-    </message>
-    <message>
-        <source>Paste request_token here</source>
-        <translation>在此粘贴 request_token</translation>
-    </message>
-    <message>
-        <source>Connect with pasted token</source>
-        <translation>使用粘贴的 token 连接</translation>
-    </message>
-    <message>
-        <source>Missing field: API Key</source>
-        <translation>缺少字段: API Key</translation>
-    </message>
-    <message>
-        <source>Missing field: API Secret</source>
-        <translation>缺少字段: API Secret</translation>
-    </message>
-    <message>
-        <source>Missing field: Kite User ID</source>
-        <translation>缺少字段: Kite User ID</translation>
-    </message>
-    <message>
-        <source>Missing field: Password</source>
-        <translation>缺少字段: 密码</translation>
-    </message>
-    <message>
-        <source>Missing field: TOTP Secret</source>
-        <translation>缺少字段: TOTP Secret</translation>
-    </message>
-    <message>
-        <source>Logging in...</source>
-        <translation>正在登录...</translation>
-    </message>
-    <message>
-        <source>Enter API Key and API Secret first</source>
-        <translation>请先输入 API Key 和 API Secret</translation>
-    </message>
-    <message>
-        <source>Port 5010 busy - use manual paste fallback</source>
-        <translation>端口 5010 被占用 - 请改用手动粘贴方式</translation>
-    </message>
-    <message>
-        <source>Exchanging token...</source>
-        <translation>正在交换 token...</translation>
-    </message>
-    <message>
-        <source>Browser login timed out - try again or paste manually</source>
-        <translation>浏览器登录超时 - 请重试或手动粘贴</translation>
-    </message>
-    <message>
-        <source>Waiting for browser login on port %1 (120s)...</source>
-        <translation>正在等待端口 %1 上的浏览器登录（120 秒）...</translation>
-    </message>
-    <message>
-        <source>Enter API Key, API Secret, and paste request_token</source>
-        <translation>请输入 API Key、API Secret，并粘贴 request_token</translation>
-    </message>
-    <message>
-        <source>Could not find request_token in pasted text</source>
-        <translation>在粘贴的文本中未找到 request_token</translation>
-    </message>
-    <message>
         <source> First-time setup (3 steps)</source>
         <translation> 首次设置（3 步）</translation>
     </message>
     <message>
-        <source>1. Create an API app at &lt;a href='https://myapi.fyers.in/dashboard/'&gt;myapi.fyers.in/dashboard&lt;/a&gt;.</source>
-        <translation>1. 在 &lt;a href='https://myapi.fyers.in/dashboard/'&gt;myapi.fyers.in/dashboard&lt;/a&gt; 创建 API 应用。</translation>
+        <source>Rename Account</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>2. Set &lt;b&gt;Redirect URL&lt;/b&gt; to &lt;b&gt;http://127.0.0.1:5011/&lt;/b&gt; in app settings.</source>
-        <translation>2. 在应用设置中将&lt;b&gt;重定向 URL&lt;/b&gt; 设为 &lt;b&gt;http://127.0.0.1:5011/&lt;/b&gt;。</translation>
+        <source>Select an account first, then rename it.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>3. Note your &lt;b&gt;Client ID&lt;/b&gt; (e.g. ABCXYZ-100) and &lt;b&gt;Secret Key&lt;/b&gt;.</source>
-        <translation>3. 记下您的 &lt;b&gt;Client ID&lt;/b&gt;（例如 ABCXYZ-100）和 &lt;b&gt;Secret Key&lt;/b&gt;。</translation>
+        <source>New account name:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>CLIENT ID</source>
-        <translation>CLIENT ID</translation>
-    </message>
-    <message>
-        <source>e.g. ABCXYZ-100</source>
-        <translation>例如 ABCXYZ-100</translation>
-    </message>
-    <message>
-        <source>from myapi.fyers.in -&gt; My Apps</source>
-        <translation>来自 myapi.fyers.in -&gt; My Apps</translation>
-    </message>
-    <message>
-        <source>SECRET KEY</source>
-        <translation>SECRET KEY</translation>
-    </message>
-    <message>
-        <source>Enter Secret Key...</source>
-        <translation>输入 Secret Key...</translation>
-    </message>
-    <message>
-        <source>shown once during app creation - regenerate if lost</source>
-        <translation>在应用创建期间仅显示一次 - 丢失需重新生成</translation>
-    </message>
-    <message>
-        <source>Open Fyers login in browser</source>
-        <translation>在浏览器中打开 Fyers 登录</translation>
-    </message>
-    <message>
-        <source>Redirect didn't work? Paste auth_code manually</source>
-        <translation>重定向无效？手动粘贴 auth_code</translation>
-    </message>
-    <message>
-        <source>Paste auth_code or full redirect URL here</source>
-        <translation>在此粘贴 auth_code 或完整的重定向 URL</translation>
-    </message>
-    <message>
-        <source>Connect with pasted auth code</source>
-        <translation>使用粘贴的 auth code 连接</translation>
-    </message>
-    <message>
-        <source>Enter Client ID and Secret Key first</source>
-        <translation>请先输入 Client ID 和 Secret Key</translation>
-    </message>
-    <message>
-        <source>Port 5011 busy — use manual paste fallback below</source>
-        <translation>端口 5011 被占用 — 请使用下方手动粘贴方式</translation>
-    </message>
-    <message>
-        <source>Exchanging auth code...</source>
-        <translation>正在交换授权码…</translation>
-    </message>
-    <message>
-        <source>Browser login timed out — try again or paste manually</source>
-        <translation>浏览器登录超时 — 请重试或手动粘贴</translation>
-    </message>
-    <message>
-        <source>Enter Client ID, Secret Key, and paste auth code</source>
-        <translation>请输入 Client ID、Secret Key 并粘贴授权码</translation>
-    </message>
-    <message>
-        <source>1. Create a free account at &lt;a href='https://app.metaapi.cloud'&gt;app.metaapi.cloud&lt;/a&gt;.</source>
-        <translation>1. 在 &lt;a href='https://app.metaapi.cloud'&gt;app.metaapi.cloud&lt;/a&gt; 创建免费账户。</translation>
+        <source>1. Create a free account at &lt;a href=&apos;https://app.metaapi.cloud&apos;&gt;app.metaapi.cloud&lt;/a&gt;.</source>
+        <translation>1. 在 &lt;a href=&apos;https://app.metaapi.cloud&apos;&gt;app.metaapi.cloud&lt;/a&gt; 创建免费账户。</translation>
     </message>
     <message>
         <source>2. Generate an auth token from the API Access section.</source>
@@ -35049,8 +33592,8 @@ This action cannot be undone.</source>
         <translation>输入 MetaAPI 授权令牌…</translation>
     </message>
     <message>
-        <source>&lt;a href='https://app.metaapi.cloud/api-access/generate-token' style='color:%1;font-size:10px;'&gt;Get Token →&lt;/a&gt;</source>
-        <translation>&lt;a href='https://app.metaapi.cloud/api-access/generate-token' style='color:%1;font-size:10px;'&gt;获取令牌 →&lt;/a&gt;</translation>
+        <source>&lt;a href=&apos;https://app.metaapi.cloud/api-access/generate-token&apos; style=&apos;color:%1;font-size:10px;&apos;&gt;Get Token →&lt;/a&gt;</source>
+        <translation>&lt;a href=&apos;https://app.metaapi.cloud/api-access/generate-token&apos; style=&apos;color:%1;font-size:10px;&apos;&gt;获取令牌 →&lt;/a&gt;</translation>
     </message>
     <message>
         <source>MT4 LOGIN</source>
@@ -35123,10 +33666,6 @@ This action cannot be undone.</source>
     <message>
         <source>Creating MT4 bridge...</source>
         <translation>正在创建 MT4 桥接…</translation>
-    </message>
-    <message>
-        <source>Connected</source>
-        <translation>已连接</translation>
     </message>
     <message>
         <source>Auto — execute immediately</source>
@@ -35267,6 +33806,10 @@ This action cannot be undone.</source>
         <translation>数量</translation>
     </message>
     <message>
+        <source>Product</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Avg Price</source>
         <translation>均价</translation>
     </message>
@@ -35311,8 +33854,156 @@ This action cannot be undone.</source>
         <translation>时间</translation>
     </message>
     <message>
+        <source>AVAILABLE BALANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USED MARGIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOTAL EQUITY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REALIZED P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UNREALIZED P&amp;L</source>
+        <translation type="unfinished">未实现 P&amp;L</translation>
+    </message>
+    <message>
+        <source>HOLDINGS VALUE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPENING BALANCE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MARGIN USED %</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>COLLATERAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NET P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TODAY&apos;S P&amp;L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WIN RATE</source>
+        <translation type="unfinished">胜率</translation>
+    </message>
+    <message>
+        <source>PROFIT FACTOR</source>
+        <translation type="unfinished">盈利因子</translation>
+    </message>
+    <message>
+        <source>TOTAL TRADES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AVG WIN</source>
+        <translation type="unfinished">平均盈利</translation>
+    </message>
+    <message>
+        <source>AVG LOSS</source>
+        <translation type="unfinished">平均亏损</translation>
+    </message>
+    <message>
+        <source>TURNOVER</source>
+        <translation type="unfinished">换手率</translation>
+    </message>
+    <message>
+        <source>LARGEST WIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LARGEST LOSS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOTAL CHARGES</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total P&amp;L  --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off all winning positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Winning Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will close ALL positions currently in profit.
+
+Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off all losing positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off Losing Positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will close ALL positions currently in loss.
+
+Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total P&amp;L  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MKT</source>
+        <translation type="unfinished">市价</translation>
+    </message>
+    <message>
+        <source>SELL</source>
+        <translation type="unfinished">SELL</translation>
+    </message>
+    <message>
+        <source>Sell / exit %1 — opens an order ticket pre-filled with the held quantity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>→ CNC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Convert to CNC delivery (carry overnight, locks full cash)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square off %1 — sells the full holding at market</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Action</source>
         <translation>操作</translation>
+    </message>
+    <message>
+        <source>Collapse panel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expand panel</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Date</source>
@@ -35379,42 +34070,6 @@ This action cannot be undone.</source>
         <translation>回报率 %</translation>
     </message>
     <message>
-        <source>Available Balance</source>
-        <translation>可用余额</translation>
-    </message>
-    <message>
-        <source>Used Margin</source>
-        <translation>已用保证金</translation>
-    </message>
-    <message>
-        <source>Total Balance</source>
-        <translation>总余额</translation>
-    </message>
-    <message>
-        <source>Collateral</source>
-        <translation>抵押品</translation>
-    </message>
-    <message>
-        <source>Total P&amp;L</source>
-        <translation>总盈亏</translation>
-    </message>
-    <message>
-        <source>Win Rate</source>
-        <translation>胜率</translation>
-    </message>
-    <message>
-        <source>Total Trades</source>
-        <translation>总交易数</translation>
-    </message>
-    <message>
-        <source>Largest Win</source>
-        <translation>最大盈利</translation>
-    </message>
-    <message>
-        <source>Largest Loss</source>
-        <translation>最大亏损</translation>
-    </message>
-    <message>
         <source>Square Off All Positions</source>
         <translation>平掉所有持仓</translation>
     </message>
@@ -35427,6 +34082,32 @@ Are you sure?</source>
 确定吗？</translation>
     </message>
     <message>
+        <source>Buy / Add  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell / Reduce  %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REPLICATE → PAPER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off All Holdings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will place MARKET SELL orders to exit ALL %1 holding(s).
+
+Positions are NOT affected. Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DATE</source>
+        <translation type="unfinished">日期</translation>
+    </message>
+    <message>
         <source>Cancel All Orders</source>
         <translation>取消所有订单</translation>
     </message>
@@ -35437,10 +34118,6 @@ Are you sure?</source>
         <translation>这将取消所有挂单。
 
 确定吗？</translation>
-    </message>
-    <message>
-        <source>--- RECENT TRADES ---</source>
-        <translation>--- 近期成交 ---</translation>
     </message>
     <message>
         <source>EDIT</source>
@@ -35501,6 +34178,41 @@ Are you sure?</source>
         <source>CHART</source>
         <translation>图表</translation>
     </message>
+    <message>
+        <source>Buy @ %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell @ %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::equity::EquityChartPanel</name>
+    <message>
+        <source>EXIT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LONG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SHORT</source>
+        <translation type="unfinished">做空</translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::screens::equity::EquityOrderBook</name>
@@ -35509,12 +34221,31 @@ Are you sure?</source>
         <translation>市场深度</translation>
     </message>
     <message>
-        <source>Spread: --</source>
-        <translation>价差: --</translation>
+        <source>L1 · synthetic</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Spread: %1 (%2%)</source>
-        <translation>价差: %1 (%2%)</translation>
+        <source>L2 · %1×%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1  %2
+Size  %3
+Cumulative  %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASK</source>
+        <translation type="unfinished">卖价</translation>
+    </message>
+    <message>
+        <source>BID</source>
+        <translation type="unfinished">买价</translation>
+    </message>
+    <message>
+        <source>
+Orders  %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No depth data</source>
@@ -35525,12 +34256,20 @@ Are you sure?</source>
         <translation>价格</translation>
     </message>
     <message>
-        <source>QTY</source>
-        <translation>数量</translation>
+        <source>SIZE</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>ORDERS</source>
-        <translation>订单</translation>
+        <source>TOTAL</source>
+        <translation type="unfinished">总计</translation>
+    </message>
+    <message>
+        <source>SPREAD</source>
+        <translation type="unfinished">价差</translation>
+    </message>
+    <message>
+        <source>%1% %2</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -35568,28 +34307,32 @@ Are you sure?</source>
         <translation>SL-L</translation>
     </message>
     <message>
+        <source>LTP --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bal --</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>PRODUCT</source>
         <translation>产品类型</translation>
-    </message>
-    <message>
-        <source>Intraday (MIS)</source>
-        <translation>日内 (MIS)</translation>
-    </message>
-    <message>
-        <source>Delivery (CNC)</source>
-        <translation>交割 (CNC)</translation>
-    </message>
-    <message>
-        <source>Margin (NRML)</source>
-        <translation>保证金 (NRML)</translation>
     </message>
     <message>
         <source>EXCHANGE</source>
         <translation>交易所</translation>
     </message>
     <message>
-        <source>MKT: --</source>
-        <translation>市价: --</translation>
+        <source>Intraday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delivery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Margin</source>
+        <translation type="unfinished">保证金</translation>
     </message>
     <message>
         <source>QTY</source>
@@ -35736,8 +34479,12 @@ Are you sure?</source>
         <translation>卖出 %1</translation>
     </message>
     <message>
-        <source>MKT: %1%2</source>
-        <translation>市价: %1%2</translation>
+        <source>Bal %1%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LTP %1%2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>LIVE</source>
@@ -35746,10 +34493,6 @@ Are you sure?</source>
     <message>
         <source>Est: %1%2</source>
         <translation>预估: %1%2</translation>
-    </message>
-    <message>
-        <source>Margin: %1%2</source>
-        <translation>保证金: %1%2</translation>
     </message>
     <message>
         <source>Enter expiry, ATM strike (and width where required).</source>
@@ -35771,6 +34514,14 @@ Are you sure?</source>
         <translation>筛选…</translation>
     </message>
     <message>
+        <source>Active watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New / Rename / Delete watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add symbol...</source>
         <translation>添加代码…</translation>
     </message>
@@ -35786,1456 +34537,41 @@ Are you sure?</source>
         <source>CHG%</source>
         <translation>CHG%</translation>
     </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::BuilderAnalyticsRibbon</name>
     <message>
-        <source>Premium</source>
-        <translation>权利金</translation>
+        <source>New watchlist…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Max Profit</source>
-        <translation>最大盈利</translation>
+        <source>Rename…</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Max Loss</source>
-        <translation>最大亏损</translation>
+        <source>Delete</source>
+        <translation type="unfinished">删除</translation>
     </message>
     <message>
-        <source>Breakevens</source>
-        <translation>盈亏平衡点</translation>
+        <source>New Watchlist</source>
+        <translation type="unfinished">新建自选股清单</translation>
     </message>
     <message>
-        <source>POP</source>
-        <translation>POP</translation>
+        <source>Name:</source>
+        <translation type="unfinished">名称：</translation>
     </message>
     <message>
-        <source>Delta</source>
-        <translation>Delta</translation>
+        <source>Rename Watchlist</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Gamma</source>
-        <translation>Gamma</translation>
+        <source>Delete Watchlist</source>
+        <translation type="unfinished">删除自选股清单</translation>
     </message>
     <message>
-        <source>Theta</source>
-        <translation>Theta</translation>
+        <source>Delete &quot;%1&quot;?</source>
+        <translation type="unfinished">删除“%1”？</translation>
     </message>
     <message>
-        <source>Vega</source>
-        <translation>Vega</translation>
-    </message>
-    <message>
-        <source>Margin</source>
-        <translation>保证金</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::BuilderSubTab</name>
-    <message>
-        <source>SAVE</source>
-        <translation>保存</translation>
-    </message>
-    <message>
-        <source>LOAD</source>
-        <translation>加载</translation>
-    </message>
-    <message>
-        <source>TARGET +</source>
-        <translation>目标 +</translation>
-    </message>
-    <message>
-        <source>Days from today for the dashed target-day P/L curve. 0 = T+0.</source>
-        <translation>虚线目标日盈亏曲线距今天的天数。0 = T+0。</translation>
-    </message>
-    <message>
-        <source>PCR</source>
-        <translation>PCR</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>TRADE ALL (PAPER)</source>
-        <translation>全部交易（模拟）</translation>
-    </message>
-    <message>
-        <source>Build a strategy first — Trade All needs at least one active leg.</source>
-        <translation>请先构建策略 —— 全部交易至少需要一个活跃腿。</translation>
-    </message>
-    <message>
-        <source>No chain yet</source>
-        <translation>暂无期权链</translation>
-    </message>
-    <message>
-        <source>Open the Chain tab first so a chain snapshot is loaded.</source>
-        <translation>请先打开期权链标签页，以加载期权链快照。</translation>
-    </message>
-    <message>
-        <source>Could not build strategy</source>
-        <translation>无法构建策略</translation>
-    </message>
-    <message>
-        <source>Custom</source>
-        <translation>自定义</translation>
-    </message>
-    <message>
-        <source>Place all active legs as paper orders.</source>
-        <translation>将所有活跃腿作为模拟订单下单。</translation>
-    </message>
-    <message>
-        <source>Placed %1 paper orders for %2 (%3).</source>
-        <translation>已为 %2（%3）下达 %1 笔模拟订单。</translation>
-    </message>
-    <message>
-        <source>Placed %1 of %2 paper orders. %3 failed:
-%4</source>
-        <translation>已下达 %2 笔中的 %1 笔模拟订单。%3 笔失败：
-%4</translation>
-    </message>
-    <message>
-        <source>Paper orders dispatched</source>
-        <translation>模拟订单已发送</translation>
-    </message>
-    <message>
-        <source>Nothing to save</source>
-        <translation>无内容可保存</translation>
-    </message>
-    <message>
-        <source>Build a strategy first.</source>
-        <translation>请先构建策略。</translation>
-    </message>
-    <message>
-        <source>Save failed</source>
-        <translation>保存失败</translation>
-    </message>
-    <message>
-        <source>Save strategy</source>
-        <translation>保存策略</translation>
-    </message>
-    <message>
-        <source>Name</source>
-        <translation>名称</translation>
-    </message>
-    <message>
-        <source>My strategy</source>
-        <translation>我的策略</translation>
-    </message>
-    <message>
-        <source>(no saved strategies)</source>
-        <translation>（无已保存策略）</translation>
-    </message>
-    <message>
-        <source>Load failed</source>
-        <translation>加载失败</translation>
-    </message>
-    <message>
-        <source>Delete: %1</source>
-        <translation>删除：%1</translation>
-    </message>
-    <message>
-        <source>Delete saved strategy</source>
-        <translation>删除已保存策略</translation>
-    </message>
-    <message>
-        <source>Delete '%1'? This can't be undone.</source>
-        <translation>删除“%1”？此操作无法撤销。</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::ChainSubTab</name>
-    <message>
-        <source>Connect a broker to load F&amp;O data.</source>
-        <translation>连接券商以加载 F&amp;O 数据。</translation>
-    </message>
-    <message>
-        <source>Failed to load %1 instruments: %2</source>
-        <translation>加载 %1 个工具失败：%2</translation>
-    </message>
-    <message>
-        <source>No broker accounts or data sources configured.</source>
-        <translation>未配置券商账户或数据源。</translation>
-    </message>
-    <message>
-        <source>Select a broker.</source>
-        <translation>请选择券商。</translation>
-    </message>
-    <message>
-        <source>Databento selected — enter your API key in Settings &gt; Credentials to load US options data.</source>
-        <translation>已选择 Databento —— 请在“设置 &gt; 凭据”中输入您的 API 密钥以加载美国期权数据。</translation>
-    </message>
-    <message>
-        <source>Databento configuration error.</source>
-        <translation>Databento 配置错误。</translation>
-    </message>
-    <message>
-        <source>Loading %1 instruments...</source>
-        <translation>正在加载 %1 个工具…</translation>
-    </message>
-    <message>
-        <source>No account configured for %1. Connect one in Equity Trading.</source>
-        <translation>未为 %1 配置账户。请在股票交易中连接一个。</translation>
-    </message>
-    <message>
-        <source>Downloading %1 instruments from broker...</source>
-        <translation>正在从券商下载 %1 个工具…</translation>
-    </message>
-    <message>
-        <source>No NFO instruments cached for %1.</source>
-        <translation>未为 %1 缓存 NFO 工具。</translation>
-    </message>
-    <message>
-        <source>Loading expiries for %1 from Databento...</source>
-        <translation>正在从 Databento 加载 %1 的到期日…</translation>
-    </message>
-    <message>
-        <source>No expiries found for %1. Check Databento API key and OPRA access.</source>
-        <translation>未找到 %1 的到期日。请检查 Databento API 密钥和 OPRA 访问权限。</translation>
-    </message>
-    <message>
-        <source>No expiries cached for %1.</source>
-        <translation>未为 %1 缓存到期日。</translation>
-    </message>
-    <message>
-        <source>Pick a broker, underlying, and expiry.</source>
-        <translation>请选择券商、标的物和到期日。</translation>
-    </message>
-    <message>
-        <source>Chain unavailable: %1</source>
-        <translation>期权链不可用：%1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FiiDiiChart</name>
-    <message>
-        <source>Daily Net Flows (₹ Cr)</source>
-        <translation>每日净流量（₹ 千万）</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FiiDiiSubTab</name>
-    <message>
-        <source>FII / DII flows — fetching…</source>
-        <translation>FII / DII 流量 —— 正在获取…</translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation>刷新</translation>
-    </message>
-    <message>
-        <source>Date</source>
-        <translation>日期</translation>
-    </message>
-    <message>
-        <source>FII Buy</source>
-        <translation>FII 买入</translation>
-    </message>
-    <message>
-        <source>FII Sell</source>
-        <translation>FII 卖出</translation>
-    </message>
-    <message>
-        <source>FII Net</source>
-        <translation>FII 净额</translation>
-    </message>
-    <message>
-        <source>DII Buy</source>
-        <translation>DII 买入</translation>
-    </message>
-    <message>
-        <source>DII Sell</source>
-        <translation>DII 卖出</translation>
-    </message>
-    <message>
-        <source>DII Net</source>
-        <translation>DII 净额</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — error: %1</source>
-        <translation>FII / DII 流量 —— 错误：%1</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — refreshing…</source>
-        <translation>FII / DII 流量 —— 正在刷新…</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — no data yet. Try refreshing after 6 PM IST.</source>
-        <translation>FII / DII 流量 —— 暂无数据。请在 IST 下午 6 点后尝试刷新。</translation>
-    </message>
-    <message>
-        <source>FII / DII flows — last update: %1   ·   %2 days cached</source>
-        <translation>FII / DII 流量 —— 上次更新：%1   ·   已缓存 %2 天</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FnoHeaderBar</name>
-    <message>
-        <source>REFRESH</source>
-        <translation>刷新</translation>
-    </message>
-    <message>
-        <source>Broker:</source>
-        <translation>券商：</translation>
-    </message>
-    <message>
-        <source>Underlying:</source>
-        <translation>标的物：</translation>
-    </message>
-    <message>
-        <source>Expiry:</source>
-        <translation>到期日：</translation>
-    </message>
-    <message>
-        <source>Spot</source>
-        <translation>现货</translation>
-    </message>
-    <message>
-        <source>Day Change</source>
-        <translation>当日涨跌</translation>
-    </message>
-    <message>
-        <source>ATM</source>
-        <translation>ATM</translation>
-    </message>
-    <message>
-        <source>PCR</source>
-        <translation>PCR</translation>
-    </message>
-    <message>
-        <source>Max Pain</source>
-        <translation>最大痛点</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>IV Pctile</source>
-        <translation>IV 百分位</translation>
-    </message>
-    <message>
-        <source>Current ATM IV %1 ranks at %2th percentile of %3 days of history.</source>
-        <translation>当前 ATM IV %1 位于 %3 天历史的第 %2 百分位。</translation>
-    </message>
-    <message>
-        <source>Needs ≥30 days of data — have %1.</source>
-        <translation>需要 ≥30 天数据 —— 现有 %1。</translation>
-    </message>
-    <message>
-        <source>Updated %1</source>
-        <translation>已更新 %1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::FnoScreen</name>
-    <message>
-        <source>Chain</source>
-        <translation>期权链</translation>
-    </message>
-    <message>
-        <source>Builder</source>
-        <translation>构建器</translation>
-    </message>
-    <message>
-        <source>OI</source>
-        <translation>OI</translation>
-    </message>
-    <message>
-        <source>Multi-Stra</source>
-        <translation>多策略</translation>
-    </message>
-    <message>
-        <source>FII / DII</source>
-        <translation>FII / DII</translation>
-    </message>
-    <message>
-        <source>Screener</source>
-        <translation>筛选器</translation>
-    </message>
-    <message>
-        <source>Live option chain (Phase 2)</source>
-        <translation>实时期权链（第 2 阶段）</translation>
-    </message>
-    <message>
-        <source>Strategy builder + payoff (Phase 5)</source>
-        <translation>策略构建器 + 损益图（第 5 阶段）</translation>
-    </message>
-    <message>
-        <source>Open Interest analytics (Phase 7)</source>
-        <translation>未平仓合约分析（第 7 阶段）</translation>
-    </message>
-    <message>
-        <source>Multi straddle / strangle charts (Phase 9)</source>
-        <translation>多跨式 / 宽跨式图表（第 9 阶段）</translation>
-    </message>
-    <message>
-        <source>Institutional flows (Phase 8)</source>
-        <translation>机构资金流（第 8 阶段）</translation>
-    </message>
-    <message>
-        <source>Chain screener (Phase 9)</source>
-        <translation>期权链筛选器（第 9 阶段）</translation>
-    </message>
-    <message>
-        <source>%1 — coming in a later phase</source>
-        <translation>%1 —— 将在后续阶段推出</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::IntradayOIChart</name>
-    <message>
-        <source>Intraday OI</source>
-        <translation>日内 OI</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::LegEditorModel</name>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>On</source>
-        <translation>启用</translation>
-    </message>
-    <message>
-        <source>B/S</source>
-        <translation>买/卖</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>类型</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>行权价</translation>
-    </message>
-    <message>
-        <source>Lots</source>
-        <translation>手数</translation>
-    </message>
-    <message>
-        <source>Entry</source>
-        <translation>入场价</translation>
-    </message>
-    <message>
-        <source>IV</source>
-        <translation>IV</translation>
-    </message>
-    <message>
-        <source>LTP</source>
-        <translation>LTP</translation>
-    </message>
-    <message>
-        <source>Delta</source>
-        <translation>Delta</translation>
-    </message>
-    <message>
-        <source>P&amp;L</source>
-        <translation>P&amp;L</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MaxPainChart</name>
-    <message>
-        <source>Max Pain Profile</source>
-        <translation>最大痛点分布</translation>
-    </message>
-    <message>
-        <source>Pain</source>
-        <translation>痛点</translation>
-    </message>
-    <message>
-        <source>Max Pain</source>
-        <translation>最大痛点</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStraddleChart</name>
-    <message>
-        <source>Synthetic Premium (intraday)</source>
-        <translation>合成权利金（日内）</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStraddleSubTab</name>
-    <message>
-        <source>Type</source>
-        <translation>类型</translation>
-    </message>
-    <message>
-        <source>Anchor</source>
-        <translation>锚定</translation>
-    </message>
-    <message>
-        <source>ADD</source>
-        <translation>添加</translation>
-    </message>
-    <message>
-        <source>Double-click an entry to remove it.</source>
-        <translation>双击条目即可将其移除。</translation>
-    </message>
-    <message>
-        <source>Straddle %1</source>
-        <translation>跨式 %1</translation>
-    </message>
-    <message>
-        <source>Strangle %1C / %2P</source>
-        <translation>宽跨式 %1C / %2P</translation>
-    </message>
-    <message>
-        <source>Double-click to remove.</source>
-        <translation>双击即可移除。</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::MultiStrikeOIChart</name>
-    <message>
-        <source>Open Interest by Strike</source>
-        <translation>按行权价划分的未平仓合约</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OIBuildupModel</name>
-    <message>
-        <source>Long Build-up</source>
-        <translation>多头建仓</translation>
-    </message>
-    <message>
-        <source>Short Build-up</source>
-        <translation>空头建仓</translation>
-    </message>
-    <message>
-        <source>Short Covering</source>
-        <translation>空头回补</translation>
-    </message>
-    <message>
-        <source>Long Unwinding</source>
-        <translation>多头平仓</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>行权价</translation>
-    </message>
-    <message>
-        <source>CE Action</source>
-        <translation>CE 动作</translation>
-    </message>
-    <message>
-        <source>CE Δ%</source>
-        <translation>CE Δ%</translation>
-    </message>
-    <message>
-        <source>CE ΔOI%</source>
-        <translation>CE ΔOI%</translation>
-    </message>
-    <message>
-        <source>PE Action</source>
-        <translation>PE 动作</translation>
-    </message>
-    <message>
-        <source>PE Δ%</source>
-        <translation>PE Δ%</translation>
-    </message>
-    <message>
-        <source>PE ΔOI%</source>
-        <translation>PE ΔOI%</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OISubTab</name>
-    <message>
-        <source>STRIKE</source>
-        <translation>行权价</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OptionChainModel</name>
-    <message>
-        <source>OI</source>
-        <translation>OI</translation>
-    </message>
-    <message>
-        <source>Chg OI</source>
-        <translation>OI 变动</translation>
-    </message>
-    <message>
-        <source>Volume</source>
-        <translation>成交量</translation>
-    </message>
-    <message>
-        <source>IV</source>
-        <translation>IV</translation>
-    </message>
-    <message>
-        <source>LTP</source>
-        <translation>LTP</translation>
-    </message>
-    <message>
-        <source>Strike</source>
-        <translation>行权价</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::OrderConfirmDialog</name>
-    <message>
-        <source>Confirm Paper Orders</source>
-        <translation>确认模拟订单</translation>
-    </message>
-    <message>
-        <source>%1  —  paper trade preview</source>
-        <translation>%1  —  模拟交易预览</translation>
-    </message>
-    <message>
-        <source>%1   ·   Expiry %2   ·   Spot %3</source>
-        <translation>%1   ·   到期日 %2   ·   现货 %3</translation>
-    </message>
-    <message>
-        <source>Symbol</source>
-        <translation>代码</translation>
-    </message>
-    <message>
-        <source>B/S</source>
-        <translation>买/卖</translation>
-    </message>
-    <message>
-        <source>Qty</source>
-        <translation>数量</translation>
-    </message>
-    <message>
-        <source>Type</source>
-        <translation>类型</translation>
-    </message>
-    <message>
-        <source>Entry</source>
-        <translation>入场价</translation>
-    </message>
-    <message>
-        <source>Net Premium</source>
-        <translation>净权利金</translation>
-    </message>
-    <message>
-        <source>Max Profit / Loss</source>
-        <translation>最大盈利 / 亏损</translation>
-    </message>
-    <message>
-        <source>Basket Margin</source>
-        <translation>组合保证金</translation>
-    </message>
-    <message>
-        <source>Loading…</source>
-        <translation>正在加载…</translation>
-    </message>
-    <message>
-        <source>CANCEL</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>PLACE PAPER ORDERS</source>
-        <translation>下达模拟订单</translation>
-    </message>
-    <message>
-        <source>BUY</source>
-        <translation>BUY</translation>
-    </message>
-    <message>
-        <source>SELL</source>
-        <translation>SELL</translation>
-    </message>
-    <message>
-        <source>Broker %1 not registered</source>
-        <translation>券商 %1 未注册</translation>
-    </message>
-    <message>
-        <source>no active legs</source>
-        <translation>无活跃腿</translation>
-    </message>
-    <message>
-        <source>— (timeout)</source>
-        <translation>—（超时）</translation>
-    </message>
-    <message>
-        <source>Initial: ₹ %1   ·   Final (after netting): ₹ %2</source>
-        <translation>初始：₹ %1   ·   最终（净额结算后）：₹ %2</translation>
-    </message>
-    <message>
-        <source>Margin unavailable</source>
-        <translation>保证金不可用</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::PayoffChartWidget</name>
-    <message>
-        <source>Spot: %1
-Expiry P/L: %2
-Target P/L: %3</source>
-        <translation>现货：%1
-到期盈亏：%2
-目标盈亏：%3</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::ScreenedChainModel</name>
-    <message>
-        <source>Strike</source>
-        <translation>行权价</translation>
-    </message>
-    <message>
-        <source>CE IV</source>
-        <translation>CE IV</translation>
-    </message>
-    <message>
-        <source>CE OI</source>
-        <translation>CE OI</translation>
-    </message>
-    <message>
-        <source>CE Δ%</source>
-        <translation>CE Δ%</translation>
-    </message>
-    <message>
-        <source>PE Δ%</source>
-        <translation>PE Δ%</translation>
-    </message>
-    <message>
-        <source>PE OI</source>
-        <translation>PE OI</translation>
-    </message>
-    <message>
-        <source>PE IV</source>
-        <translation>PE IV</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::TemplatePickerPanel</name>
-    <message>
-        <source>WIDTH</source>
-        <translation>宽度</translation>
-    </message>
-    <message>
-        <source>SHIFT</source>
-        <translation>偏移</translation>
-    </message>
-    <message>
-        <source>LOTS</source>
-        <translation>手数</translation>
-    </message>
-    <message>
-        <source>USE</source>
-        <translation>使用</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::fno::TemplateToolbar</name>
-    <message>
-        <source>TEMPLATE</source>
-        <translation>模板</translation>
-    </message>
-    <message>
-        <source>W:</source>
-        <translation>W:</translation>
-    </message>
-    <message>
-        <source>S:</source>
-        <translation>S:</translation>
-    </message>
-    <message>
-        <source>L:</source>
-        <translation>L:</translation>
-    </message>
-    <message>
-        <source>+ ADD LEG</source>
-        <translation>+ 添加腿</translation>
-    </message>
-    <message>
-        <source>USE</source>
-        <translation>使用</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::ActiveLocksPanel</name>
-    <message>
-        <source>No active locks. Lock $FNCPT above to start earning yield.</source>
-        <translation>暂无活跃锁仓。请在上方锁定 $FNCPT 以开始赚取收益。</translation>
-    </message>
-    <message>
-        <source>Locks feed error: %1</source>
-        <translation>锁仓数据源错误：%1</translation>
-    </message>
-    <message>
-        <source>Extend lock…</source>
-        <translation>延长锁仓…</translation>
-    </message>
-    <message>
-        <source>Withdraw</source>
-        <translation>提取</translation>
-    </message>
-    <message>
-        <source>Available after %1</source>
-        <translation>%1 后可用</translation>
-    </message>
-    <message>
-        <source>openmarketterminal_lock not deployed — Settings &gt; Lock program ID</source>
-        <translation>openmarketterminal_lock 未部署 — 设置 &gt; 锁仓程序 ID</translation>
-    </message>
-    <message>
-        <source>Extend flow lands with the Anchor program.</source>
-        <translation>延长流程将随 Anchor 程序上线。</translation>
-    </message>
-    <message>
-        <source>Withdraw flow lands with the Anchor program.</source>
-        <translation>提取流程将随 Anchor 程序上线。</translation>
-    </message>
-    <message>
-        <source>ACTIVE LOCKS</source>
-        <translation>活跃锁仓</translation>
-    </message>
-    <message>
-        <source>0 positions · 0 veFNCPT</source>
-        <translation>0 个仓位 · 0 veFNCPT</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>实时</translation>
-    </message>
-    <message>
-        <source>LOCKED</source>
-        <translation>已锁定</translation>
-    </message>
-    <message>
-        <source>DURATION</source>
-        <translation>期限</translation>
-    </message>
-    <message>
-        <source>UNLOCKS</source>
-        <translation>解锁时间</translation>
-    </message>
-    <message>
-        <source>WEIGHT</source>
-        <translation>权重</translation>
-    </message>
-    <message>
-        <source>YIELD (LIFETIME)</source>
-        <translation>收益（累计）</translation>
-    </message>
-    <message>
-        <source>TOTAL</source>
-        <translation>总计</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>演示</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::BuybackBurnPanel</name>
-    <message>
-        <source>Open burn transaction in Solscan</source>
-        <translation>在 Solscan 中打开销毁交易</translation>
-    </message>
-    <message>
-        <source>subs %1 · pred-mkt %2 · misc %3</source>
-        <translation>订阅 %1 · 预测市场 %2 · 其他 %3</translation>
-    </message>
-    <message>
-        <source>Treasury feed error: %1</source>
-        <translation>金库数据源错误：%1</translation>
-    </message>
-    <message>
-        <source>Demo signature — connect a treasury endpoint for a real burn tx.</source>
-        <translation>演示签名 — 请连接金库端点以生成真实的销毁交易。</translation>
-    </message>
-    <message>
-        <source>BUYBACK &amp; BURN</source>
-        <translation>回购与销毁</translation>
-    </message>
-    <message>
-        <source>epoch — · — → —</source>
-        <translation>epoch — · — → —</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>实时</translation>
-    </message>
-    <message>
-        <source>THIS EPOCH</source>
-        <translation>本周期</translation>
-    </message>
-    <message>
-        <source>REVENUE</source>
-        <translation>收入</translation>
-    </message>
-    <message>
-        <source>BUYBACK (50%)</source>
-        <translation>回购 (50%)</translation>
-    </message>
-    <message>
-        <source>STAKER YIELD (25%)</source>
-        <translation>质押者收益 (25%)</translation>
-    </message>
-    <message>
-        <source>TREASURY TOPUP (25%)</source>
-        <translation>金库注资 (25%)</translation>
-    </message>
-    <message>
-        <source>$FNCPT BOUGHT</source>
-        <translation>已购买 $FNCPT</translation>
-    </message>
-    <message>
-        <source>$FNCPT BURNED</source>
-        <translation>已销毁 $FNCPT</translation>
-    </message>
-    <message>
-        <source>BURN TX</source>
-        <translation>销毁交易</translation>
-    </message>
-    <message>
-        <source>ALL-TIME</source>
-        <translation>历史累计</translation>
-    </message>
-    <message>
-        <source>BURNED</source>
-        <translation>已销毁</translation>
-    </message>
-    <message>
-        <source>SUPPLY REMAINING</source>
-        <translation>剩余供应量</translation>
-    </message>
-    <message>
-        <source>SPENT ON BUYBACK</source>
-        <translation>回购支出</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>演示</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::FeeDiscountPanel</name>
-    <message>
-        <source>PROJECTED SAVINGS  ·  reference $%1 SKU</source>
-        <translation>预计节省  ·  参考 $%1 SKU</translation>
-    </message>
-    <message>
-        <source>Hold ≥ %1 $FNCPT to qualify for the discount on premium screens, AI reports, and deep backtests.</source>
-        <translation>持有 ≥ %1 $FNCPT 即可在高级屏幕、AI 报告和深度回测上享受折扣。</translation>
-    </message>
-    <message>
-        <source>Acquire %1 more $FNCPT to unlock %2% off.</source>
-        <translation>再获取 %1 $FNCPT 即可解锁 %2% 折扣。</translation>
-    </message>
-    <message>
-        <source>FEE DISCOUNT</source>
-        <translation>费用折扣</translation>
-    </message>
-    <message>
-        <source>HOLDING</source>
-        <translation>持有量</translation>
-    </message>
-    <message>
-        <source>THRESHOLD</source>
-        <translation>阈值</translation>
-    </message>
-    <message>
-        <source>APPLIED TO</source>
-        <translation>适用于</translation>
-    </message>
-    <message>
-        <source>● %1% OFF ACTIVE</source>
-        <translation>● %1% 折扣已生效</translation>
-    </message>
-    <message>
-        <source>LOCKED</source>
-        <translation>已锁定</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::HoldingsTable</name>
-    <message>
-        <source>Hide unverified</source>
-        <translation>隐藏未验证</translation>
-    </message>
-    <message>
-        <source>Show all</source>
-        <translation>显示全部</translation>
-    </message>
-    <message>
-        <source>Unverified mint: %1</source>
-        <translation>未验证的铸币地址：%1</translation>
-    </message>
-    <message>
-        <source>TOTAL %1  ·  %2 verified</source>
-        <translation>总计 %1  ·  %2 已验证</translation>
-    </message>
-    <message>
-        <source>  ·  %1 unverified%2</source>
-        <translation>  ·  %1 未验证%2</translation>
-    </message>
-    <message>
-        <source> hidden</source>
-        <translation> 已隐藏</translation>
-    </message>
-    <message>
-        <source>  ·  %1 without price</source>
-        <translation>  ·  %1 无价格</translation>
-    </message>
-    <message>
-        <source>TOKEN</source>
-        <translation>代币</translation>
-    </message>
-    <message>
-        <source>BALANCE</source>
-        <translation>余额</translation>
-    </message>
-    <message>
-        <source>PRICE</source>
-        <translation>价格</translation>
-    </message>
-    <message>
-        <source>USD VALUE</source>
-        <translation>USD 价值</translation>
-    </message>
-    <message>
-        <source>% OF PORT</source>
-        <translation>占组合 %</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::LockPanel</name>
-    <message>
-        <source>MAX</source>
-        <translation>最大</translation>
-    </message>
-    <message>
-        <source>Available: —</source>
-        <translation>可用：—</translation>
-    </message>
-    <message>
-        <source>Choose an amount and duration.</source>
-        <translation>请选择金额和期限。</translation>
-    </message>
-    <message>
-        <source>LOCK</source>
-        <translation>锁仓</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to lock $FNCPT.</source>
-        <translation>请连接钱包以锁定 $FNCPT。</translation>
-    </message>
-    <message>
-        <source>Available: %1 $FNCPT</source>
-        <translation>可用：%1 $FNCPT</translation>
-    </message>
-    <message>
-        <source>%1 / week (USDC) — %2% weekly real yield at %3 stake</source>
-        <translation>%1 / 周 (USDC) — 在 %3 质押下每周实际收益 %2%</translation>
-    </message>
-    <message>
-        <source>waiting for revenue + spot price…</source>
-        <translation>等待收入 + 现货价格…</translation>
-    </message>
-    <message>
-        <source>DEMO — openmarketterminal_lock not deployed; configure SecureStorage openmarketterminal.lock_program_id to enable real locks.</source>
-        <translation>演示 — openmarketterminal_lock 未部署；请在 SecureStorage 中配置 openmarketterminal.lock_program_id 以启用真实锁仓。</translation>
-    </message>
-    <message>
-        <source>Ready. Click LOCK to build the transaction.</source>
-        <translation>已就绪。点击“锁仓”以构建交易。</translation>
-    </message>
-    <message>
-        <source>Amount exceeds available $FNCPT.</source>
-        <translation>金额超过可用的 $FNCPT。</translation>
-    </message>
-    <message>
-        <source>Building lock transaction…</source>
-        <translation>正在构建锁仓交易…</translation>
-    </message>
-    <message>
-        <source>Aborted.</source>
-        <translation>已中止。</translation>
-    </message>
-    <message>
-        <source>Approve in your wallet to escrow $FNCPT under the openmarketterminal_lock program. The terminal does not hold your funds — the on-chain program does, and only releases them after the unlock date.</source>
-        <translation>请在钱包中批准，将 $FNCPT 托管至 openmarketterminal_lock 程序。终端不会持有您的资金 — 由链上程序托管，且仅在解锁日期后释放。</translation>
-    </message>
-    <message>
-        <source>Locked $FNCPT cannot be withdrawn before the unlock date. If you need liquidity sooner, do not lock.</source>
-        <translation>锁定的 $FNCPT 在解锁日期之前无法提取。如需更早动用流动性，请勿锁仓。</translation>
-    </message>
-    <message>
-        <source>Awaiting wallet signature…</source>
-        <translation>等待钱包签名…</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>已取消。</translation>
-    </message>
-    <message>
-        <source>STAKE / LOCK</source>
-        <translation>质押 / 锁仓</translation>
-    </message>
-    <message>
-        <source>veFNCPT — locked $FNCPT earns USDC yield</source>
-        <translation>veFNCPT — 锁定的 $FNCPT 赚取 USDC 收益</translation>
-    </message>
-    <message>
-        <source>AMOUNT</source>
-        <translation>金额</translation>
-    </message>
-    <message>
-        <source>TOKEN</source>
-        <translation>代币</translation>
-    </message>
-    <message>
-        <source>$FNCPT</source>
-        <translation>$FNCPT</translation>
-    </message>
-    <message>
-        <source>DURATION</source>
-        <translation>期限</translation>
-    </message>
-    <message>
-        <source>3 MO</source>
-        <translation>3 个月</translation>
-    </message>
-    <message>
-        <source>6 MO</source>
-        <translation>6 个月</translation>
-    </message>
-    <message>
-        <source>1 YR</source>
-        <translation>1 年</translation>
-    </message>
-    <message>
-        <source>2 YR</source>
-        <translation>2 年</translation>
-    </message>
-    <message>
-        <source>4 YR</source>
-        <translation>4 年</translation>
-    </message>
-    <message>
-        <source>WEIGHT</source>
-        <translation>权重</translation>
-    </message>
-    <message>
-        <source>EST. YIELD</source>
-        <translation>预计收益</translation>
-    </message>
-    <message>
-        <source>TIER</source>
-        <translation>等级</translation>
-    </message>
-    <message>
-        <source>LOCK $FNCPT</source>
-        <translation>锁定 $FNCPT</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::MarketsListPanel</name>
-    <message>
-        <source>MARKET</source>
-        <translation>市场</translation>
-    </message>
-    <message>
-        <source>YES</source>
-        <translation>是</translation>
-    </message>
-    <message>
-        <source>NO</source>
-        <translation>否</translation>
-    </message>
-    <message>
-        <source>24h VOL</source>
-        <translation>24h 成交量</translation>
-    </message>
-    <message>
-        <source>EXPIRES</source>
-        <translation>到期</translation>
-    </message>
-    <message>
-        <source>Demo dataset. Set `openmarketterminal.markets_endpoint` in SecureStorage and deploy the openmarketterminal_market Anchor program for live trading.</source>
-        <translation>演示数据集。请在 SecureStorage 中设置 `openmarketterminal.markets_endpoint` 并部署 openmarketterminal_market Anchor 程序以进行实盘交易。</translation>
-    </message>
-    <message>
-        <source>Open TerminalInternalAdapter not registered</source>
-        <translation>Open TerminalInternalAdapter 未注册</translation>
-    </message>
-    <message>
-        <source>MARKETS</source>
-        <translation>市场</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>演示</translation>
-    </message>
-    <message>
-        <source>ERROR</source>
-        <translation>错误</translation>
-    </message>
-    <message>
-        <source>● LIVE</source>
-        <translation>● 实时</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::SupplyChartPanel</name>
-    <message>
-        <source>Supply history feed error: %1</source>
-        <translation>供应历史数据源错误：%1</translation>
-    </message>
-    <message>
-        <source>SUPPLY CHART · 12 MONTHS</source>
-        <translation>供应量图表 · 12 个月</translation>
-    </message>
-    <message>
-        <source>● TOTAL  ● CIRCULATING  ● BURNED</source>
-        <translation>● 总量  ● 流通量  ● 已销毁</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>实时</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>演示</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::SwapPanel</name>
-    <message>
-        <source>MAX</source>
-        <translation>最大</translation>
-    </message>
-    <message>
-        <source>Balance: —</source>
-        <translation>余额：—</translation>
-    </message>
-    <message>
-        <source>Quotes refresh as you type.</source>
-        <translation>报价随输入实时刷新。</translation>
-    </message>
-    <message>
-        <source>SWAP</source>
-        <translation>兑换</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to swap.</source>
-        <translation>请连接钱包以进行兑换。</translation>
-    </message>
-    <message>
-        <source>Price unavailable: %1. Try again in a moment.</source>
-        <translation>价格不可用：%1。请稍后重试。</translation>
-    </message>
-    <message>
-        <source>Balance: 0 %1</source>
-        <translation>余额：0 %1</translation>
-    </message>
-    <message>
-        <source>Balance: %1 %2</source>
-        <translation>余额：%1 %2</translation>
-    </message>
-    <message>
-        <source>Waiting for spot prices…</source>
-        <translation>等待现货价格…</translation>
-    </message>
-    <message>
-        <source>set by PumpSwap; capped by slippage</source>
-        <translation>由 PumpSwap 设定；受滑点上限限制</translation>
-    </message>
-    <message>
-        <source>Ready. Click SWAP to build the transaction.</source>
-        <translation>已就绪。点击“兑换”以构建交易。</translation>
-    </message>
-    <message>
-        <source>This pair isn't routable in Phase 2. PumpPortal supports SOL ↔ $FNCPT only; a generalised router lands in Phase 3.</source>
-        <translation>此交易对在第 2 阶段无法路由。PumpPortal 仅支持 SOL ↔ $FNCPT；通用路由器将在第 3 阶段上线。</translation>
-    </message>
-    <message>
-        <source>Swap service unavailable.</source>
-        <translation>兑换服务不可用。</translation>
-    </message>
-    <message>
-        <source>Building swap transaction…</source>
-        <translation>正在构建兑换交易…</translation>
-    </message>
-    <message>
-        <source>Cancelled.</source>
-        <translation>已取消。</translation>
-    </message>
-    <message>
-        <source>via PumpPortal · pool=auto</source>
-        <translation>通过 PumpPortal · pool=auto</translation>
-    </message>
-    <message>
-        <source>YOU PAY</source>
-        <translation>您支付</translation>
-    </message>
-    <message>
-        <source>FROM</source>
-        <translation>从</translation>
-    </message>
-    <message>
-        <source>YOU RECEIVE (EST.)</source>
-        <translation>您收到（预计）</translation>
-    </message>
-    <message>
-        <source>TO</source>
-        <translation>到</translation>
-    </message>
-    <message>
-        <source>ROUTE</source>
-        <translation>路由</translation>
-    </message>
-    <message>
-        <source>PRICE IMPACT</source>
-        <translation>价格影响</translation>
-    </message>
-    <message>
-        <source>MAX SLIPPAGE</source>
-        <translation>最大滑点</translation>
-    </message>
-    <message>
-        <source>estimate unavailable</source>
-        <translation>无法估算</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::TierPanel</name>
-    <message>
-        <source>basic API quota</source>
-        <translation>基础 API 配额</translation>
-    </message>
-    <message>
-        <source>premium screens</source>
-        <translation>高级屏幕</translation>
-    </message>
-    <message>
-        <source>all agents + arena</source>
-        <translation>全部智能体 + 竞技场</translation>
-    </message>
-    <message>
-        <source>Connect a wallet to see your tier.</source>
-        <translation>请连接钱包以查看您的等级。</translation>
-    </message>
-    <message>
-        <source>Next: lock %1 to reach the next tier.</source>
-        <translation>下一步：锁定 %1 以达到下一等级。</translation>
-    </message>
-    <message>
-        <source>All Open Terminal features unlocked.</source>
-        <translation>已解锁所有 Open Terminal 功能。</translation>
-    </message>
-    <message>
-        <source>TIER</source>
-        <translation>等级</translation>
-    </message>
-    <message>
-        <source>current FREE</source>
-        <translation>当前 免费</translation>
-    </message>
-    <message>
-        <source>[locked]</source>
-        <translation>[已锁定]</translation>
-    </message>
-    <message>
-        <source>BRONZE</source>
-        <translation>青铜</translation>
-    </message>
-    <message>
-        <source>100+ veFNCPT</source>
-        <translation>100+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>SILVER</source>
-        <translation>白银</translation>
-    </message>
-    <message>
-        <source>1,000+ veFNCPT</source>
-        <translation>1,000+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>GOLD</source>
-        <translation>黄金</translation>
-    </message>
-    <message>
-        <source>10,000+ veFNCPT</source>
-        <translation>10,000+ veFNCPT</translation>
-    </message>
-    <message>
-        <source>[achieved]</source>
-        <translation>[已达成]</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::panels::TreasuryPanel</name>
-    <message>
-        <source>Open Squads vault in browser</source>
-        <translation>在浏览器中打开 Squads 金库</translation>
-    </message>
-    <message>
-        <source>Treasury feed error: %1</source>
-        <translation>资金库数据源错误：%1</translation>
-    </message>
-    <message>
-        <source>TREASURY</source>
-        <translation>资金库</translation>
-    </message>
-    <message>
-        <source>LIVE</source>
-        <translation>实时</translation>
-    </message>
-    <message>
-        <source>USDC RESERVES</source>
-        <translation>USDC 储备</translation>
-    </message>
-    <message>
-        <source>SOL RESERVES</source>
-        <translation>SOL 储备</translation>
-    </message>
-    <message>
-        <source>TOTAL USD</source>
-        <translation>美元总额</translation>
-    </message>
-    <message>
-        <source>RUNWAY @ CURRENT</source>
-        <translation>当前消耗下可维持期</translation>
-    </message>
-    <message>
-        <source>MULTI-SIG</source>
-        <translation>多重签名</translation>
-    </message>
-    <message>
-        <source>DEMO</source>
-        <translation>演示</translation>
+        <source>Remove %1</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37721,10 +35057,6 @@ to place orders</source>
         <translation>Polymarket</translation>
     </message>
     <message>
-        <source>&lt;b&gt;Kalshi (CFTC-regulated)&lt;/b&gt;&lt;br&gt;Generate an API key + RSA private key in your Kalshi dashboard (&lt;code&gt;api.elections.kalshi.com&lt;/code&gt;). Requests are signed with RSA-PSS (key stays local, encrypted in your OS credential manager).&lt;br&gt;&lt;br&gt;Use &lt;b&gt;Demo mode&lt;/b&gt; to target &lt;code&gt;demo-api.kalshi.co&lt;/code&gt; for testing.</source>
-        <translation>&lt;b&gt;Kalshi（受 CFTC 监管）&lt;/b&gt;&lt;br&gt;在您的 Kalshi 仪表板（&lt;code&gt;api.elections.kalshi.com&lt;/code&gt;）中生成 API 密钥 + RSA 私钥。请求使用 RSA-PSS 签名（密钥保留在本地，加密存储在您的操作系统凭据管理器中）。&lt;br&gt;&lt;br&gt;使用&lt;b&gt;演示模式&lt;/b&gt;可指向 &lt;code&gt;demo-api.kalshi.co&lt;/code&gt; 进行测试。</translation>
-    </message>
-    <message>
         <source>00000000-0000-0000-0000-000000000000</source>
         <translation>00000000-0000-0000-0000-000000000000</translation>
     </message>
@@ -37757,6 +35089,22 @@ to place orders</source>
         <translation>Kalshi</translation>
     </message>
     <message>
+        <source>Testing connection...</source>
+        <translation type="unfinished">正在测试连接…</translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Connection OK. %1&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Connection test failed: %1&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Kalshi (CFTC-regulated)&lt;/b&gt;&lt;br&gt;Generate an API key + RSA private key in your Kalshi dashboard (&lt;code&gt;external-api.kalshi.com&lt;/code&gt;). Requests are signed with RSA-PSS (key stays local, encrypted in your OS credential manager).&lt;br&gt;&lt;br&gt;Keep &lt;b&gt;Demo mode&lt;/b&gt; on to target &lt;code&gt;external-api.demo.kalshi.co&lt;/code&gt; for testing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>L2 API credentials: derived (%1…)</source>
         <translation>L2 API 凭据：已派生 (%1…)</translation>
     </message>
@@ -37769,20 +35117,20 @@ to place orders</source>
         <translation>已从安全存储加载 Kalshi 凭据。</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key is required.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;私钥为必填项。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key is required.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;私钥为必填项。&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key should be 0x + 64 hex chars.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;私钥应为 0x + 64 个十六进制字符。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key should be 0x + 64 hex chars.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;私钥应为 0x + 64 个十六进制字符。&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#16a34a'&gt;Polymarket credentials saved.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#16a34a'&gt;Polymarket 凭据已保存。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Polymarket credentials saved.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#16a34a&apos;&gt;Polymarket 凭据已保存。&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Save failed — see logs.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;保存失败 — 请查看日志。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Save failed — see logs.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;保存失败 — 请查看日志。&lt;/span&gt;</translation>
     </message>
     <message>
         <source>Clear Polymarket credentials?</source>
@@ -37797,16 +35145,16 @@ to place orders</source>
         <translation>Polymarket 凭据已清除。</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Both API Key ID and PEM private key are required.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;API 密钥 ID 和 PEM 私钥均为必填项。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Both API Key ID and PEM private key are required.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;API 密钥 ID 和 PEM 私钥均为必填项。&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Private key must be a PEM-encoded RSA key.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;私钥必须是 PEM 编码的 RSA 密钥。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Private key must be a PEM-encoded RSA key.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#dc2626&apos;&gt;私钥必须是 PEM 编码的 RSA 密钥。&lt;/span&gt;</translation>
     </message>
     <message>
-        <source>&lt;span style='color:#16a34a'&gt;Kalshi credentials saved.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#16a34a'&gt;Kalshi 凭据已保存。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Kalshi credentials saved.&lt;/span&gt;</source>
+        <translation>&lt;span style=&apos;color:#16a34a&apos;&gt;Kalshi 凭据已保存。&lt;/span&gt;</translation>
     </message>
     <message>
         <source>Clear Kalshi credentials?</source>
@@ -37821,24 +35169,28 @@ to place orders</source>
         <translation>Kalshi 凭据已清除。</translation>
     </message>
     <message>
-        <source>Select Kalshi private key (PEM)</source>
-        <translation>选择 Kalshi 私钥 (PEM)</translation>
+        <source>Select Kalshi credential file</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>PEM files (*.pem *.key);;All files (*)</source>
-        <translation>PEM 文件 (*.pem *.key);;所有文件 (*)</translation>
+        <source>Kalshi credential files (*.rtf *.pem *.key);;All files (*)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;Could not read %1.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;无法读取 %1。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;Could not read %1: %2&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>&lt;span style='color:#dc2626'&gt;%1 does not look like a PEM file.&lt;/span&gt;</source>
-        <translation>&lt;span style='color:#dc2626'&gt;%1 看起来不是 PEM 文件。&lt;/span&gt;</translation>
+        <source>&lt;span style=&apos;color:#dc2626&apos;&gt;%1 does not contain a PEM private key.&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Loaded PEM from %1.</source>
-        <translation>已从 %1 加载 PEM。</translation>
+        <source>Loaded private key from %1. Enter the API Key ID, then save.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;span style=&apos;color:#16a34a&apos;&gt;Imported Kalshi API Key ID and private key from %1. Demo mode is on.&lt;/span&gt;</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37898,6 +35250,10 @@ to place orders</source>
         <translation>持仓</translation>
     </message>
     <message>
+        <source>SQUARE OFF ALL</source>
+        <translation type="unfinished">全部平仓</translation>
+    </message>
+    <message>
         <source>Symbol</source>
         <translation>代码</translation>
     </message>
@@ -37922,12 +35278,55 @@ to place orders</source>
         <translation>无活动账户 — 点击齿轮进行配置</translation>
     </message>
     <message>
+        <source>Exit</source>
+        <translation type="unfinished">出场</translation>
+    </message>
+    <message>
         <source>Configure — Holdings</source>
         <translation>配置 — 持仓</translation>
     </message>
     <message>
         <source>Broker account</source>
         <translation>券商账户</translation>
+    </message>
+    <message>
+        <source>Square Off Holding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Place a MARKET SELL order for %1 %2 (CNC)?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell order placed for %1 (order %2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to square off %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square Off All Holdings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No holdings to square off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This will place MARKET SELL orders to exit ALL %1 holding(s) in this account.
+
+Positions are NOT affected. Continue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1 sell order(s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placed %1 order(s). %2 failed:
+%3</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -37977,6 +35376,41 @@ to place orders</source>
     <message>
         <source>Symbol</source>
         <translation>代码</translation>
+    </message>
+</context>
+<context>
+    <name>openmarketterminal::screens::widgets::DineroNetworkWidget</name>
+    <message>
+        <source>DINERO NETWORK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK HEIGHT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MONEY SUPPLY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK TIME</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BLOCK REWARD</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GET DINERO  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Block Explorer  ↗</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -38562,7 +35996,7 @@ Create one from the Portfolio tab.</source>
 请在投资组合选项卡中创建一个。</translation>
     </message>
     <message>
-        <source>'%1' has no holdings.
+        <source>&apos;%1&apos; has no holdings.
 Add positions from the Portfolio tab.</source>
         <translation>“%1” 没有持仓。
 请在投资组合选项卡中添加头寸。</translation>
@@ -38643,8 +36077,30 @@ Add positions from the Portfolio tab.</source>
         <translation>预计总额  --</translation>
     </message>
     <message>
-        <source>PLACE ORDER</source>
-        <translation>下单</translation>
+        <source>REVIEW ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW BUY ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW SELL ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REVIEW SHORT ORDER</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Order ticket — not sent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 %3 @ %4
+
+Quick Trade builds an order ticket for review; it does not place orders. To route this to your broker, use the Equity Trading screen. No order has been sent.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>EST. TOTAL  $%1</source>
@@ -38659,18 +36115,6 @@ Add positions from the Portfolio tab.</source>
         <translation>卖价  —</translation>
     </message>
     <message>
-        <source>PLACE BUY ORDER</source>
-        <translation>下买单</translation>
-    </message>
-    <message>
-        <source>PLACE SELL ORDER</source>
-        <translation>下卖单</translation>
-    </message>
-    <message>
-        <source>PLACE SHORT ORDER</source>
-        <translation>下做空单</translation>
-    </message>
-    <message>
         <source>Quick Trade</source>
         <translation>快速交易</translation>
     </message>
@@ -38681,16 +36125,6 @@ Add positions from the Portfolio tab.</source>
     <message>
         <source>market price ($%1)</source>
         <translation>市价（$%1）</translation>
-    </message>
-    <message>
-        <source>Order Submitted</source>
-        <translation>订单已提交</translation>
-    </message>
-    <message>
-        <source>%1 %2 %3 @ %4
-Order sent to trading engine.</source>
-        <translation>%1 %2 %3 @ %4
-订单已发送至交易引擎。</translation>
     </message>
 </context>
 <context>
@@ -38710,22 +36144,6 @@ Order sent to trading engine.</source>
     <message>
         <source>CHG%</source>
         <translation>CHG%</translation>
-    </message>
-    <message>
-        <source>COMMODITIES</source>
-        <translation>大宗商品</translation>
-    </message>
-    <message>
-        <source>CRYPTOCURRENCY</source>
-        <translation>加密货币</translation>
-    </message>
-    <message>
-        <source>FOREX - MAJOR PAIRS</source>
-        <translation>外汇 - 主要货币对</translation>
-    </message>
-    <message>
-        <source>GLOBAL INDICES</source>
-        <translation>全球指数</translation>
     </message>
 </context>
 <context>
@@ -39088,8 +36506,20 @@ Build with Qt6 Multimedia for inline playback.</source>
         <translation>电视直播 — %1</translation>
     </message>
     <message>
-        <source>yt-dlp not found. Bundle yt-dlp.exe next to Open Terminal.exe.</source>
-        <translation>未找到 yt-dlp。请将 yt-dlp.exe 与 Open Terminal.exe 放在一起。</translation>
+        <source>yt-dlp not found. Bundle yt-dlp.exe next to OpenMarketTerminal.exe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>YouTube is blocking automated playback (sign-in required). Make sure you&apos;re logged into YouTube in Chrome, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This channel is not live right now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Couldn&apos;t read Chrome cookies for YouTube sign-in. Open Chrome and sign into YouTube, then retry.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>yt-dlp error: %1</source>
@@ -39261,6 +36691,17 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::services::dinero::DineroRpcClient</name>
+    <message>
+        <source>Dinero network unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bad response from Dinero RPC</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::surface::Surface3DWidget</name>
     <message>
         <source>3D NOT APPLICABLE</source>
@@ -39356,6 +36797,10 @@ X-API-Key: xyz</translation>
     <message>
         <source>Fetch failed</source>
         <translation>获取失败</translation>
+    </message>
+    <message>
+        <source>Synthetic demo data — not from a live source</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -39602,20 +37047,12 @@ X-API-Key: xyz</translation>
         <translation>设置</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>论坛</translation>
-    </message>
-    <message>
         <source>Equity Trading</source>
         <translation>股票交易</translation>
     </message>
     <message>
         <source>Algo Trading</source>
         <translation>算法交易</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>操作中心</translation>
     </message>
     <message>
         <source>Alpha Arena</source>
@@ -39628,10 +37065,6 @@ X-API-Key: xyz</translation>
     <message>
         <source>Derivatives</source>
         <translation>衍生品</translation>
-    </message>
-    <message>
-        <source>F&amp;O</source>
-        <translation>F&amp;O</translation>
     </message>
     <message>
         <source>Equity Research</source>
@@ -39734,10 +37167,6 @@ X-API-Key: xyz</translation>
         <translation>关于</translation>
     </message>
     <message>
-        <source>Support</source>
-        <translation>支持</translation>
-    </message>
-    <message>
         <source>Stock</source>
         <translation>股票</translation>
     </message>
@@ -39824,6 +37253,14 @@ X-API-Key: xyz</translation>
         <source>Search actions, layouts… (Esc to cancel, Enter to run)</source>
         <translation>搜索操作、布局…（Esc 取消，Enter 运行）</translation>
     </message>
+    <message>
+        <source>Open %1 in Equity Research</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ticker shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>openmarketterminal::ui::ComponentBrowserDialog</name>
@@ -39893,6 +37330,21 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::ui::KLineChartWidget</name>
+    <message>
+        <source>Buy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to watchlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::ui::LayoutOpenDialog</name>
     <message>
         <source>Open Layout</source>
@@ -39937,6 +37389,13 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
+    <name>openmarketterminal::ui::ProvenanceBadge</name>
+    <message>
+        <source>no data source</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>openmarketterminal::ui::PushpinBar</name>
     <message>
         <source>Drag any symbol here to pin</source>
@@ -39946,16 +37405,16 @@ X-API-Key: xyz</translation>
 <context>
     <name>openmarketterminal::ui::QuickCommandBar</name>
     <message>
-        <source>Type a command (e.g. 'layout switch "Morning"', AAPL, ?). Esc to dismiss.</source>
-        <translation>输入命令（例如 'layout switch "Morning"'、AAPL、?）。按 Esc 关闭。</translation>
+        <source>Type a command (e.g. &apos;layout switch &quot;Morning&quot;&apos;, AAPL, ?). Esc to dismiss.</source>
+        <translation>输入命令（例如 &apos;layout switch &quot;Morning&quot;&apos;、AAPL、?）。按 Esc 关闭。</translation>
     </message>
     <message>
-        <source>Help: type any verb (e.g. 'layout switch') or a ticker (AAPL).</source>
-        <translation>帮助：输入任意动词（例如 'layout switch'）或代码（AAPL）。</translation>
+        <source>Help: type any verb (e.g. &apos;layout switch&apos;) or a ticker (AAPL).</source>
+        <translation>帮助：输入任意动词（例如 &apos;layout switch&apos;）或代码（AAPL）。</translation>
     </message>
     <message>
-        <source>Published %1 to group A</source>
-        <translation>已将 %1 发布到组 A</translation>
+        <source>Opened %1 in Equity Research</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Unknown command</source>
@@ -40010,28 +37469,8 @@ X-API-Key: xyz</translation>
         <translation> 实时</translation>
     </message>
     <message>
-        <source>View Plans &amp; Pricing</source>
-        <translation>查看套餐与价格</translation>
-    </message>
-    <message>
-        <source>CHAT</source>
-        <translation>聊天</translation>
-    </message>
-    <message>
-        <source>Switch to Chat Mode (F9)</source>
-        <translation>切换至聊天模式 (F9)</translation>
-    </message>
-    <message>
         <source>LOGOUT</source>
         <translation>退出登录</translation>
-    </message>
-    <message>
-        <source>%1 CR</source>
-        <translation>%1 积分</translation>
-    </message>
-    <message>
-        <source>FREE</source>
-        <translation>免费</translation>
     </message>
     <message>
         <source>File</source>
@@ -40048,6 +37487,14 @@ X-API-Key: xyz</translation>
     <message>
         <source>(single monitor)</source>
         <translation>（仅一个显示器）</translation>
+    </message>
+    <message>
+        <source>Close Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close All Windows</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>New Layout</source>
@@ -40134,20 +37581,8 @@ X-API-Key: xyz</translation>
         <translation>衍生品</translation>
     </message>
     <message>
-        <source>F&amp;&amp;O</source>
-        <translation>期货与期权</translation>
-    </message>
-    <message>
         <source>Watchlist</source>
         <translation>自选列表</translation>
-    </message>
-    <message>
-        <source>Crypto</source>
-        <translation>加密货币</translation>
-    </message>
-    <message>
-        <source>Crypto Center</source>
-        <translation>加密中心</translation>
     </message>
     <message>
         <source>Research &amp; Intelligence</source>
@@ -40214,16 +37649,8 @@ X-API-Key: xyz</translation>
         <translation>笔记</translation>
     </message>
     <message>
-        <source>Forum</source>
-        <translation>论坛</translation>
-    </message>
-    <message>
         <source>Docs</source>
         <translation>文档</translation>
-    </message>
-    <message>
-        <source>Support</source>
-        <translation>支持</translation>
     </message>
     <message>
         <source>About</source>
@@ -40346,40 +37773,8 @@ X-API-Key: xyz</translation>
         <translation>帮助</translation>
     </message>
     <message>
-        <source>About Open Terminal</source>
-        <translation>关于 Open Terminal</translation>
-    </message>
-    <message>
-        <source>Help Center</source>
-        <translation>帮助中心</translation>
-    </message>
-    <message>
-        <source>Contact Us</source>
-        <translation>联系我们</translation>
-    </message>
-    <message>
-        <source>Terms of Service</source>
-        <translation>服务条款</translation>
-    </message>
-    <message>
-        <source>Privacy Policy</source>
-        <translation>隐私政策</translation>
-    </message>
-    <message>
-        <source>Trademarks</source>
-        <translation>商标</translation>
-    </message>
-    <message>
-        <source>Check for Updates</source>
-        <translation>检查更新</translation>
-    </message>
-    <message>
-        <source>Logout</source>
-        <translation>退出登录</translation>
-    </message>
-    <message>
-        <source>Action Center</source>
-        <translation>操作中心</translation>
+        <source>About OpenMarketTerminal</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -40461,12 +37856,12 @@ X-API-Key: xyz</translation>
         <translation>出场</translation>
     </message>
     <message>
-        <source>Entry $</source>
-        <translation>入场价 $</translation>
+        <source>Entry %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exit $</source>
-        <translation>出场价 $</translation>
+        <source>Final %1%2</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Qty</source>
@@ -40481,16 +37876,16 @@ X-API-Key: xyz</translation>
         <translation>P&amp;L %</translation>
     </message>
     <message>
+        <source>Exit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bars</source>
         <translation>K线数</translation>
     </message>
     <message>
         <source>Reason</source>
         <translation>原因</translation>
-    </message>
-    <message>
-        <source>Final $%1</source>
-        <translation>最终 $%1</translation>
     </message>
     <message>
         <source>Excellent</source>
@@ -40733,77 +38128,10 @@ X-API-Key: xyz</translation>
     </message>
 </context>
 <context>
-    <name>openmarketterminal::wallet::ConnectWalletDialog</name>
+    <name>openmarketterminal::ui::algo::SymbolChipInput</name>
     <message>
-        <source>Connect Wallet</source>
-        <translation>连接钱包</translation>
-    </message>
-    <message>
-        <source>Connect your Solana wallet</source>
-        <translation>连接您的 Solana 钱包</translation>
-    </message>
-    <message>
-        <source>Opening your browser to complete the handshake…</source>
-        <translation>正在打开浏览器以完成握手…</translation>
-    </message>
-    <message>
-        <source>Reopen browser</source>
-        <translation>重新打开浏览器</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>cancelled by user</source>
-        <translation>已被用户取消</translation>
-    </message>
-    <message>
-        <source>could not start local bridge server</source>
-        <translation>无法启动本地桥接服务器</translation>
-    </message>
-    <message>
-        <source>Browser opened. Approve the connection and the signature in your wallet.</source>
-        <translation>浏览器已打开。请在钱包中批准连接和签名。</translation>
-    </message>
-    <message>
-        <source>signature verification failed</source>
-        <translation>签名验证失败</translation>
-    </message>
-    <message>
-        <source>timed out waiting for browser callback</source>
-        <translation>等待浏览器回调超时</translation>
-    </message>
-    <message>
-        <source>bridge error: %1</source>
-        <translation>桥接错误：%1</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::wallet::SignTransactionDialog</name>
-    <message>
-        <source>Sign transaction</source>
-        <translation>签署交易</translation>
-    </message>
-    <message>
-        <source>Approve the transaction in your wallet to complete this action.</source>
-        <translation>请在钱包中批准交易以完成此操作。</translation>
-    </message>
-    <message>
-        <source>Opening your browser to relay the transaction…</source>
-        <translation>正在打开浏览器以转发交易…</translation>
-    </message>
-    <message>
-        <source>Reopen browser</source>
-        <translation>重新打开浏览器</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>Browser opened. Approve the transaction in your wallet. The terminal is waiting on a single-use loopback bridge — this dialog will close automatically when the wallet returns the signature.</source>
-        <translation>浏览器已打开。请在钱包中批准交易。终端正在等待一次性回环桥接 — 当钱包返回签名时，此对话框将自动关闭。</translation>
+        <source>type a ticker…</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -41165,46 +38493,6 @@ to edit properties</source>
     <message>
         <source>Continue on Fail</source>
         <translation>失败时继续</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::OrderConfirmDialog</name>
-    <message>
-        <source>Confirm Order</source>
-        <translation>确认订单</translation>
-    </message>
-    <message>
-        <source>Est. value</source>
-        <translation>预估价值</translation>
-    </message>
-    <message>
-        <source>Send Order</source>
-        <translation>发送订单</translation>
-    </message>
-    <message>
-        <source>⚠  SEMI-AUTO — review before sending</source>
-        <translation>⚠  半自动 — 发送前请审核</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::PendingOrdersBadge</name>
-    <message>
-        <source>Orders awaiting approval — click to review</source>
-        <translation>订单正在等待审批 — 点击查看</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::screens::PendingOrdersPanel</name>
-    <message>
-        <source>PENDING ORDERS</source>
-        <translation>待处理订单</translation>
-    </message>
-</context>
-<context>
-    <name>openmarketterminal::ui::PhoneCodeComboBox</name>
-    <message>
-        <source>Search country…</source>
-        <translation>搜索国家…</translation>
     </message>
 </context>
 </TS>

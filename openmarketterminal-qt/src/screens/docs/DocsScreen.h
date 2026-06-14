@@ -59,6 +59,7 @@ class DocsScreen : public QWidget {
 
     // Trading
     QWidget* page_crypto_trading();
+    QWidget* page_equity_trading();
     QWidget* page_paper_trading();
     QWidget* page_algo_trading();
     QWidget* page_backtesting();
