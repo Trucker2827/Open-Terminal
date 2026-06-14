@@ -5,11 +5,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <cstdio>
-
-// The plan names a helper `emit`, which collides with Qt's `emit` keyword macro
-// (expands to nothing). This TU defines no signals/slots, so dropping the macro
-// here lets the plan's helper name stand verbatim.
-#undef emit
+#include <optional>
 
 namespace openmarketterminal::cli {
 
@@ -30,22 +26,23 @@ static int usage() {
         "openterminalcli [--json] [--profile <name>] <group> <command> [args]\n"
         "  status\n  version\n"
         "  mcp list | describe <tool> | call <tool> '<json>'\n"
-        "  hub topics | peek <topic> | request <topic> [k=v...]\n"
+        "  hub topics | peek <topic> | request <topic>\n"
         "  quote <SYM...>\n");
     return 2;
 }
 
 // Resolve the running instance into a client, or print + return an exit code.
-static bool make_client(const GlobalOpts& opts, BridgeClient*& out, int& exit_code) {
+static std::optional<BridgeClient> make_client(const GlobalOpts& opts, int& exit_code) {
     auto r = resolve(opts.profile);
-    if (auto* d = std::get_if<Discovered>(&r)) { out = new BridgeClient(d->info); return true; }
+    if (auto* d = std::get_if<Discovered>(&r)) return BridgeClient(d->info);
     std::fprintf(stderr, "%s (profile '%s')\n",
                  describe(std::get<DiscoveryError>(r)), qUtf8Printable(opts.profile));
-    exit_code = 3; return false;
+    exit_code = 3;
+    return std::nullopt;
 }
 
-// Map a ClientResult to (printed output + exit code). `data_key` empty = print whole body.
-static int emit(const GlobalOpts& opts, const ClientResult& r) {
+// Map a ClientResult to (printed output + exit code).
+static int emit_result(const GlobalOpts& opts, const ClientResult& r) {
     if (r.status == ClientStatus::Unauthorized) { std::fprintf(stderr, "%s\n", qUtf8Printable(r.error)); return 4; }
     if (r.status != ClientStatus::Ok)           { std::fprintf(stderr, "%s\n", qUtf8Printable(r.error)); return 6; }
     if (r.body.contains("success") && !r.body.value("success").toBool()) {
@@ -86,67 +83,71 @@ int dispatch(QStringList args) {
     if (group == "mcp") {
         const QString sub = args.isEmpty() ? QString() : args.takeFirst();
         if (sub.isEmpty()) { std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2; }
-        BridgeClient* c = nullptr; int code = 0;
-        if (!make_client(opts, c, code)) return code;
+        int code = 0;
+        auto c = make_client(opts, code);
+        if (!c) return code;
 
         if (sub == "list") {
-            auto r = c->get_tools(); delete c; return emit(opts, r);
+            auto r = c->get_tools(); return emit_result(opts, r);
         }
         if (sub == "describe") {
-            if (args.isEmpty()) { delete c; std::fprintf(stderr, "usage: mcp describe <tool>\n"); return 2; }
+            if (args.isEmpty()) { std::fprintf(stderr, "usage: mcp describe <tool>\n"); return 2; }
             const QString want = args.first();
-            auto r = c->get_tools(); delete c;
-            if (r.status != ClientStatus::Ok) return emit(opts, r);
-            for (const auto v : r.body.value("tools").toArray()) {
+            auto r = c->get_tools();
+            if (r.status != ClientStatus::Ok) return emit_result(opts, r);
+            for (const auto& v : r.body.value("tools").toArray()) {
                 if (v.toObject().value("name").toString() == want) {
-                    std::printf("%s\n", QJsonDocument(v.toObject()).toJson(QJsonDocument::Indented).constData());
+                    std::printf("%s\n", QJsonDocument(v.toObject()).toJson(
+                        opts.json ? QJsonDocument::Compact : QJsonDocument::Indented).constData());
                     return 0;
                 }
             }
-            std::fprintf(stderr, "no such tool: %s\n", qUtf8Printable(want)); return 5;
+            std::fprintf(stderr, "no such tool: %s\n", qUtf8Printable(want)); return 2;
         }
         if (sub == "call") {
-            if (args.size() < 1) { delete c; std::fprintf(stderr, "usage: mcp call <tool> '<json>'\n"); return 2; }
+            if (args.size() < 1) { std::fprintf(stderr, "usage: mcp call <tool> '<json>'\n"); return 2; }
             const QString tool = args.takeFirst();
             QJsonObject a;
             if (!args.isEmpty()) {
                 const QJsonDocument d = QJsonDocument::fromJson(args.first().toUtf8());
-                if (!d.isObject()) { delete c; std::fprintf(stderr, "args must be a JSON object\n"); return 2; }
+                if (!d.isObject()) { std::fprintf(stderr, "args must be a JSON object\n"); return 2; }
                 a = d.object();
             }
-            auto r = c->call_tool(tool, a); delete c; return emit(opts, r);
+            auto r = c->call_tool(tool, a); return emit_result(opts, r);
         }
-        delete c; std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2;
+        std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2;
     }
     if (group == "quote") {
         if (args.isEmpty()) { std::fprintf(stderr, "usage: quote <SYM...>\n"); return 2; }
-        BridgeClient* c = nullptr; int code = 0;
-        if (!make_client(opts, c, code)) return code;
+        int code = 0;
+        auto c = make_client(opts, code);
+        if (!c) return code;
         int rc = 0;
         for (const QString& sym : args) {
             auto r = c->call_tool("get_quote", QJsonObject{{"symbol", sym}});
-            const int e = emit(opts, r);
+            const int e = emit_result(opts, r);
             if (e != 0) rc = e;
         }
-        delete c; return rc;
+        return rc;
     }
 
     if (group == "hub") {
         const QString sub = args.isEmpty() ? QString() : args.takeFirst();
         if (sub.isEmpty()) { std::fprintf(stderr, "usage: hub topics|peek|request\n"); return 2; }
-        BridgeClient* c = nullptr; int code = 0;
-        if (!make_client(opts, c, code)) return code;
+        int code = 0;
+        auto c = make_client(opts, code);
+        if (!c) return code;
         ClientResult r;
         if (sub == "topics") {
             r = c->call_tool("datahub_list_topics", {});
         } else if (sub == "peek" || sub == "request") {
-            if (args.isEmpty()) { delete c; std::fprintf(stderr, "usage: hub %s <topic>\n", qUtf8Printable(sub)); return 2; }
+            if (args.isEmpty()) { std::fprintf(stderr, "usage: hub %s <topic>\n", qUtf8Printable(sub)); return 2; }
             const QString tool = (sub == "peek") ? "datahub_peek" : "datahub_request";
             r = c->call_tool(tool, QJsonObject{{"topic", args.first()}});
         } else {
-            delete c; std::fprintf(stderr, "usage: hub topics|peek|request\n"); return 2;
+            std::fprintf(stderr, "usage: hub topics|peek|request\n"); return 2;
         }
-        delete c; return emit(opts, r);
+        return emit_result(opts, r);
     }
 
     std::fprintf(stderr, "error: unknown command '%s'\n", qUtf8Printable(group));
