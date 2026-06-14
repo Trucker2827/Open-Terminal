@@ -1,9 +1,15 @@
 #include "cli/CommandDispatch.h"
 #include "cli/BridgeDiscovery.h"
+#include "cli/BridgeClient.h"
 #include <QCoreApplication>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <cstdio>
+
+// The plan names a helper `emit`, which collides with Qt's `emit` keyword macro
+// (expands to nothing). This TU defines no signals/slots, so dropping the macro
+// here lets the plan's helper name stand verbatim.
+#undef emit
 
 namespace openmarketterminal::cli {
 
@@ -29,6 +35,28 @@ static int usage() {
     return 2;
 }
 
+// Resolve the running instance into a client, or print + return an exit code.
+static bool make_client(const GlobalOpts& opts, BridgeClient*& out, int& exit_code) {
+    auto r = resolve(opts.profile);
+    if (auto* d = std::get_if<Discovered>(&r)) { out = new BridgeClient(d->info); return true; }
+    std::fprintf(stderr, "%s (profile '%s')\n",
+                 describe(std::get<DiscoveryError>(r)), qUtf8Printable(opts.profile));
+    exit_code = 3; return false;
+}
+
+// Map a ClientResult to (printed output + exit code). `data_key` empty = print whole body.
+static int emit(const GlobalOpts& opts, const ClientResult& r) {
+    if (r.status == ClientStatus::Unauthorized) { std::fprintf(stderr, "%s\n", qUtf8Printable(r.error)); return 4; }
+    if (r.status != ClientStatus::Ok)           { std::fprintf(stderr, "%s\n", qUtf8Printable(r.error)); return 6; }
+    if (r.body.contains("success") && !r.body.value("success").toBool()) {
+        std::fprintf(stderr, "tool error: %s\n", qUtf8Printable(r.body.value("error").toString("(no message)")));
+        return 5;
+    }
+    std::printf("%s\n", QJsonDocument(r.body).toJson(
+        opts.json ? QJsonDocument::Compact : QJsonDocument::Indented).constData());
+    return 0;
+}
+
 int dispatch(QStringList args) {
     GlobalOpts opts;
     if (!parse_global_opts(args, opts)) { std::fprintf(stderr, "error: --profile requires a value\n"); return 2; }
@@ -51,10 +79,46 @@ int dispatch(QStringList args) {
             }
             return 0;
         }
-        std::fprintf(stderr, "%s\n", describe(std::get<DiscoveryError>(r)));
+        std::fprintf(stderr, "%s (profile '%s')\n",
+                     describe(std::get<DiscoveryError>(r)), qUtf8Printable(opts.profile));
         return 3;
     }
-    // mcp / hub / quote wired in Tasks 7,8.
+    if (group == "mcp") {
+        const QString sub = args.isEmpty() ? QString() : args.takeFirst();
+        if (sub.isEmpty()) { std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2; }
+        BridgeClient* c = nullptr; int code = 0;
+        if (!make_client(opts, c, code)) return code;
+
+        if (sub == "list") {
+            auto r = c->get_tools(); delete c; return emit(opts, r);
+        }
+        if (sub == "describe") {
+            if (args.isEmpty()) { delete c; std::fprintf(stderr, "usage: mcp describe <tool>\n"); return 2; }
+            const QString want = args.first();
+            auto r = c->get_tools(); delete c;
+            if (r.status != ClientStatus::Ok) return emit(opts, r);
+            for (const auto v : r.body.value("tools").toArray()) {
+                if (v.toObject().value("name").toString() == want) {
+                    std::printf("%s\n", QJsonDocument(v.toObject()).toJson(QJsonDocument::Indented).constData());
+                    return 0;
+                }
+            }
+            std::fprintf(stderr, "no such tool: %s\n", qUtf8Printable(want)); return 5;
+        }
+        if (sub == "call") {
+            if (args.size() < 1) { delete c; std::fprintf(stderr, "usage: mcp call <tool> '<json>'\n"); return 2; }
+            const QString tool = args.takeFirst();
+            QJsonObject a;
+            if (!args.isEmpty()) {
+                const QJsonDocument d = QJsonDocument::fromJson(args.first().toUtf8());
+                if (!d.isObject()) { delete c; std::fprintf(stderr, "args must be a JSON object\n"); return 2; }
+                a = d.object();
+            }
+            auto r = c->call_tool(tool, a); delete c; return emit(opts, r);
+        }
+        delete c; std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2;
+    }
+    // hub / quote wired in Task 8.
     std::fprintf(stderr, "error: unknown command '%s'\n", qUtf8Printable(group));
     return 2;
 }
