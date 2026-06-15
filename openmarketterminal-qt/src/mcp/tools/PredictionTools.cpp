@@ -151,12 +151,54 @@ bool bridge_failed(const std::shared_ptr<BridgeState>& st, const QString& what, 
 }
 
 // Best-effort current mid price for an asset via the adapter order book, using
-// the same CORRELATED + TIMED bridge as pm_get_order_book. Returns nullopt when
-// the book/adapter is unavailable, the request times out, or no two-sided
-// market exists — callers must treat that as "price not available", NOT a hard
-// failure (one position's network error must never break the portfolio read).
-std::optional<double> best_effort_mid(pred::PredictionExchangeAdapter* a, const QString& asset_id) {
-    if (!a || asset_id.isEmpty())
+// the shared pm_fetch_order_book bridge. Returns nullopt when the book/adapter
+// is unavailable, the request times out, or no two-sided market exists —
+// callers must treat that as "price not available", NOT a hard failure (one
+// position's network error must never break the portfolio read).
+std::optional<double> best_effort_mid(const QString& venue, const QString& asset_id) {
+    const auto book = pm_fetch_order_book(venue, asset_id);
+    if (!book)
+        return std::nullopt;
+
+    double best_bid = -std::numeric_limits<double>::infinity();
+    bool has_bid = false;
+    for (const auto& lvl : book->bids)
+        if (lvl.price > best_bid) {
+            best_bid = lvl.price;
+            has_bid = true;
+        }
+    double best_ask = std::numeric_limits<double>::infinity();
+    bool has_ask = false;
+    for (const auto& lvl : book->asks)
+        if (lvl.price < best_ask) {
+            best_ask = lvl.price;
+            has_ask = true;
+        }
+
+    if (has_bid && has_ask)
+        return (best_bid + best_ask) / 2.0;
+    if (has_bid)
+        return best_bid;
+    if (has_ask)
+        return best_ask;
+    return std::nullopt;
+}
+
+} // namespace
+
+// ── Shared async→sync bridge fetchers (exported; see PredictionTools.h) ───────
+//
+// Centralize the CORRELATED + TIMED broadcast bridge once so both the read
+// tools below AND OrderFlowTools' prepare_order PM path share a single audited
+// implementation. nullopt on unknown venue / no data / error / 15s timeout.
+
+std::optional<pred::PredictionOrderBook> pm_fetch_order_book(const QString& venue,
+                                                             const QString& asset_id) {
+    const QString v = venue.trimmed().toLower();
+    if (v.isEmpty() || asset_id.isEmpty())
+        return std::nullopt;
+    auto* a = pred::PredictionExchangeRegistry::instance().adapter(v);
+    if (!a)
         return std::nullopt;
 
     auto st = std::make_shared<BridgeState>();
@@ -205,32 +247,69 @@ std::optional<double> best_effort_mid(pred::PredictionExchangeAdapter* a, const 
 
     if (!st->ok)
         return std::nullopt;
-
-    double best_bid = -std::numeric_limits<double>::infinity();
-    bool has_bid = false;
-    for (const auto& lvl : book.bids)
-        if (lvl.price > best_bid) {
-            best_bid = lvl.price;
-            has_bid = true;
-        }
-    double best_ask = std::numeric_limits<double>::infinity();
-    bool has_ask = false;
-    for (const auto& lvl : book.asks)
-        if (lvl.price < best_ask) {
-            best_ask = lvl.price;
-            has_ask = true;
-        }
-
-    if (has_bid && has_ask)
-        return (best_bid + best_ask) / 2.0;
-    if (has_bid)
-        return best_bid;
-    if (has_ask)
-        return best_ask;
-    return std::nullopt;
+    return book;
 }
 
-} // namespace
+std::optional<pred::PredictionMarket> pm_fetch_market(const QString& venue,
+                                                      const QString& market_id) {
+    const QString v = venue.trimmed().toLower();
+    if (v.isEmpty() || market_id.isEmpty())
+        return std::nullopt;
+    auto* a = pred::PredictionExchangeRegistry::instance().adapter(v);
+    if (!a)
+        return std::nullopt;
+
+    auto st = std::make_shared<BridgeState>();
+    pred::PredictionMarket market;
+    detail::run_async_wait(a, [a, v, market_id, st, &market](auto signal_done) {
+        auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
+        auto finalize = [st, conns, signal_done]() {
+            for (const auto& c : *conns)
+                QObject::disconnect(c);
+            conns->clear();
+            signal_done();
+        };
+        conns->append(QObject::connect(
+            a, &pred::PredictionExchangeAdapter::market_detail_ready, a,
+            [st, market_id, &market, finalize](const pred::PredictionMarket& m) {
+                QMutexLocker lk(&st->m);
+                if (st->finished)
+                    return;
+                if (m.key.market_id != market_id)
+                    return;  // broadcast for another market → ignore, keep waiting
+                market = m;
+                st->ok = true;
+                st->finished = true;
+                finalize();
+            }));
+        conns->append(QObject::connect(
+            a, &pred::PredictionExchangeAdapter::error_occurred, a,
+            [st, finalize](const QString& ctx, const QString& msg) {
+                QMutexLocker lk(&st->m);
+                if (st->finished)
+                    return;
+                st->error = msg.isEmpty() ? ctx : (ctx + ": " + msg);
+                st->finished = true;
+                finalize();
+            }));
+        QTimer::singleShot(kBridgeTimeoutMs, a, [st, finalize]() {
+            QMutexLocker lk(&st->m);
+            if (st->finished)
+                return;
+            st->timed_out = true;
+            st->finished = true;
+            finalize();
+        });
+        pred::MarketKey key;
+        key.exchange_id = v;
+        key.market_id = market_id;
+        a->fetch_market(key);
+    });
+
+    if (!st->ok)
+        return std::nullopt;
+    return market;
+}
 
 std::vector<ToolDef> get_prediction_tools() {
     std::vector<ToolDef> tools;
@@ -342,57 +421,10 @@ std::vector<ToolDef> get_prediction_tools() {
             if (market_id.isEmpty())
                 return ToolResult::fail("Missing 'market_id'");
 
-            auto st = std::make_shared<BridgeState>();
-            pred::PredictionMarket market;
-            detail::run_async_wait(a, [a, venue, market_id, st, &market](auto signal_done) {
-                auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
-                auto finalize = [st, conns, signal_done]() {
-                    for (const auto& c : *conns)
-                        QObject::disconnect(c);
-                    conns->clear();
-                    signal_done();
-                };
-                conns->append(QObject::connect(
-                    a, &pred::PredictionExchangeAdapter::market_detail_ready, a,
-                    [st, market_id, &market, finalize](const pred::PredictionMarket& m) {
-                        QMutexLocker lk(&st->m);
-                        if (st->finished)
-                            return;
-                        if (m.key.market_id != market_id)
-                            return;  // broadcast for another market → ignore, keep waiting
-                        market = m;
-                        st->ok = true;
-                        st->finished = true;
-                        finalize();
-                    }));
-                conns->append(QObject::connect(
-                    a, &pred::PredictionExchangeAdapter::error_occurred, a,
-                    [st, finalize](const QString& ctx, const QString& msg) {
-                        QMutexLocker lk(&st->m);
-                        if (st->finished)
-                            return;
-                        st->error = msg.isEmpty() ? ctx : (ctx + ": " + msg);
-                        st->finished = true;
-                        finalize();
-                    }));
-                QTimer::singleShot(kBridgeTimeoutMs, a, [st, finalize]() {
-                    QMutexLocker lk(&st->m);
-                    if (st->finished)
-                        return;
-                    st->timed_out = true;
-                    st->finished = true;
-                    finalize();
-                });
-                pred::MarketKey key;
-                key.exchange_id = venue;
-                key.market_id = market_id;
-                a->fetch_market(key);
-            });
-
-            ToolResult out;
-            if (bridge_failed(st, "pm_get_market", out))
-                return out;
-            return ToolResult::ok_data(market_to_json(market));
+            const auto market = pm_fetch_market(venue, market_id);
+            if (!market)
+                return ToolResult::fail("No data for pm_get_market on " + venue);
+            return ToolResult::ok_data(market_to_json(*market));
         };
         tools.push_back(std::move(t));
     }
@@ -422,54 +454,10 @@ std::vector<ToolDef> get_prediction_tools() {
             if (asset_id.isEmpty())
                 return ToolResult::fail("Missing 'asset_id'");
 
-            auto st = std::make_shared<BridgeState>();
-            pred::PredictionOrderBook book;
-            detail::run_async_wait(a, [a, asset_id, st, &book](auto signal_done) {
-                auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
-                auto finalize = [st, conns, signal_done]() {
-                    for (const auto& c : *conns)
-                        QObject::disconnect(c);
-                    conns->clear();
-                    signal_done();
-                };
-                conns->append(QObject::connect(
-                    a, &pred::PredictionExchangeAdapter::order_book_ready, a,
-                    [st, asset_id, &book, finalize](const pred::PredictionOrderBook& b) {
-                        QMutexLocker lk(&st->m);
-                        if (st->finished)
-                            return;
-                        if (b.asset_id != asset_id)
-                            return;  // book for another asset → ignore, keep waiting
-                        book = b;
-                        st->ok = true;
-                        st->finished = true;
-                        finalize();
-                    }));
-                conns->append(QObject::connect(
-                    a, &pred::PredictionExchangeAdapter::error_occurred, a,
-                    [st, finalize](const QString& ctx, const QString& msg) {
-                        QMutexLocker lk(&st->m);
-                        if (st->finished)
-                            return;
-                        st->error = msg.isEmpty() ? ctx : (ctx + ": " + msg);
-                        st->finished = true;
-                        finalize();
-                    }));
-                QTimer::singleShot(kBridgeTimeoutMs, a, [st, finalize]() {
-                    QMutexLocker lk(&st->m);
-                    if (st->finished)
-                        return;
-                    st->timed_out = true;
-                    st->finished = true;
-                    finalize();
-                });
-                a->fetch_order_book(asset_id);
-            });
-
-            ToolResult out;
-            if (bridge_failed(st, "pm_get_order_book", out))
-                return out;
-            return ToolResult::ok_data(order_book_to_json(book));
+            const auto book = pm_fetch_order_book(venue, asset_id);
+            if (!book)
+                return ToolResult::fail("No data for pm_get_order_book on " + venue);
+            return ToolResult::ok_data(order_book_to_json(*book));
         };
         tools.push_back(std::move(t));
     }
@@ -580,8 +568,6 @@ std::vector<ToolDef> get_prediction_tools() {
             if (open.is_err())
                 return ToolResult::fail(QString::fromStdString(open.error()));
 
-            auto& registry = pred::PredictionExchangeRegistry::instance();
-
             QJsonArray positions;
             double total_unrealized = 0.0;
             for (const PmPosition& p : open.value()) {
@@ -596,13 +582,11 @@ std::vector<ToolDef> get_prediction_tools() {
                 };
                 // Best-effort live price — a failure on one position must not break
                 // the whole portfolio read.
-                if (auto* a = registry.adapter(p.venue.trimmed().toLower())) {
-                    if (auto mid = best_effort_mid(a, p.asset_id)) {
-                        const double pnl = mark_to_market(p, *mid);
-                        row["current_price"] = *mid;
-                        row["unrealized_pnl"] = pnl;
-                        total_unrealized += pnl;
-                    }
+                if (auto mid = best_effort_mid(p.venue, p.asset_id)) {
+                    const double pnl = mark_to_market(p, *mid);
+                    row["current_price"] = *mid;
+                    row["unrealized_pnl"] = pnl;
+                    total_unrealized += pnl;
                 }
                 positions.append(row);
             }

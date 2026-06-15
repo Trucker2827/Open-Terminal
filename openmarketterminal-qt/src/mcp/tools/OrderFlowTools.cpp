@@ -12,8 +12,11 @@
 #include "core/logging/Logger.h"
 #include "mcp/ToolSchemaBuilder.h"
 #include "mcp/tools/DataHubPeekHelpers.h"
+#include "mcp/tools/PredictionTools.h"
 #include "mcp/tools/SettingsGate.h"
+#include "services/prediction/PredictionTypes.h"
 #include "storage/repositories/OrderDraftRepository.h"
+#include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
 #include "trading/TradingTypes.h"
@@ -24,6 +27,7 @@
 #include <QJsonDocument>
 #include <QUuid>
 
+#include <limits>
 #include <optional>
 
 namespace openmarketterminal::mcp::tools {
@@ -239,6 +243,250 @@ void audit_submit(const QString& account, const QString& mode, const QJsonObject
                  decision, reason, rv);
 }
 
+// ── prediction-market path (asset_class == "prediction") ────────────────────
+//
+// Resolve the best executable price + market metadata from the LIVE order book
+// via the shared READ-ONLY bridge (pm_fetch_market / pm_fetch_order_book — the
+// fetch helpers never touch the adapter's live order methods), then run a
+// DETERMINISTIC PM risk floor. Mirrors the equity floor: caps come ONLY from
+// GUI-only cli.risk.* keys with finite defaults.
+
+namespace pred = openmarketterminal::services::prediction;
+
+struct PmResolved {
+    bool ok = false;
+    QString reason;
+    double price = 0.0;     // executable price for `side` (buy→best_ask, sell→best_bid)
+    double best_bid = 0.0;  // 0.0 ⇒ no bid side present
+    double best_ask = 0.0;  // 0.0 ⇒ no ask side present
+    double liquidity = 0.0;
+    QString category;
+    QString end_date_iso;
+};
+
+PmResolved pm_resolve(const QString& venue, const QString& market_id, const QString& asset_id,
+                      const QString& side) {
+    PmResolved r;
+
+    const auto market = pm_fetch_market(venue, market_id);
+    if (!market) {
+        r.reason = QStringLiteral("market not found");
+        return r;
+    }
+    r.category = market->category;
+    r.liquidity = market->liquidity;
+    r.end_date_iso = market->end_date_iso;
+
+    const auto book = pm_fetch_order_book(venue, asset_id);
+    if (!book || (book->bids.isEmpty() && book->asks.isEmpty())) {
+        r.reason = QStringLiteral("no price available for risk check");
+        return r;
+    }
+
+    bool has_bid = false, has_ask = false;
+    double best_bid = -std::numeric_limits<double>::infinity();
+    double best_ask = std::numeric_limits<double>::infinity();
+    for (const auto& lvl : book->bids)
+        if (lvl.price > best_bid) {
+            best_bid = lvl.price;
+            has_bid = true;
+        }
+    for (const auto& lvl : book->asks)
+        if (lvl.price < best_ask) {
+            best_ask = lvl.price;
+            has_ask = true;
+        }
+    r.best_bid = has_bid ? best_bid : 0.0;
+    r.best_ask = has_ask ? best_ask : 0.0;
+
+    const bool buy = (side == QLatin1String("buy"));
+    if ((buy && !has_ask) || (!buy && !has_bid)) {
+        r.reason = QStringLiteral("no price available for risk check");
+        return r;
+    }
+    r.price = buy ? best_ask : best_bid;
+    r.ok = true;
+    return r;
+}
+
+RiskVerdict pm_risk_floor_check(const QString& category, const QString& /*side*/, double contracts,
+                                double fill_price, double best_bid, double best_ask,
+                                double liquidity, const QString& end_date_iso) {
+    RiskVerdict rv;
+    // Caps from the GUI-only cli.risk.* namespace, each with a finite default.
+    const double max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
+    const double max_qty = read_cap(QStringLiteral("cli.risk.max_position_qty"), 10000.0);
+    const double max_topic = read_cap(QStringLiteral("cli.risk.max_exposure_per_topic"), 10000.0);
+    const double min_liq = read_cap(QStringLiteral("cli.risk.pm_min_liquidity"), 1000.0);
+    const double max_spread = read_cap(QStringLiteral("cli.risk.pm_max_spread"), 0.10);
+    const double min_hours = read_cap(QStringLiteral("cli.risk.pm_min_hours_to_resolution"), 1.0);
+
+    const double stake = contracts * fill_price;
+    rv.max_order_value = max_order_value;
+    rv.max_position_qty = max_qty;
+    rv.order_value = stake;
+    rv.max_loss = stake;  // a long prediction can lose its full stake.
+
+    if (stake > max_order_value) {
+        rv.reason = QStringLiteral("exceeds max order value (%1 > %2)")
+                        .arg(stake, 0, 'f', 2).arg(max_order_value, 0, 'f', 2);
+        return rv;
+    }
+    if (contracts > max_qty) {
+        rv.reason = QStringLiteral("exceeds max position size (%1 > %2)")
+                        .arg(contracts, 0, 'f', 2).arg(max_qty, 0, 'f', 2);
+        return rv;
+    }
+    const auto open_stake = PmPaperRepository::instance().open_stake_in_category(category);
+    const double existing = open_stake.is_ok() ? open_stake.value() : 0.0;
+    if (existing + stake > max_topic) {
+        rv.reason = QStringLiteral("exceeds max exposure for topic '%1' (%2 > %3)")
+                        .arg(category).arg(existing + stake, 0, 'f', 2).arg(max_topic, 0, 'f', 2);
+        return rv;
+    }
+    if (liquidity < min_liq) {
+        rv.reason = QStringLiteral("market too illiquid (liquidity %1 < %2)")
+                        .arg(liquidity, 0, 'f', 2).arg(min_liq, 0, 'f', 2);
+        return rv;
+    }
+    if (best_bid > 0.0 && best_ask > 0.0 && (best_ask - best_bid) > max_spread) {
+        rv.reason = QStringLiteral("spread too wide (%1 > %2)")
+                        .arg(best_ask - best_bid, 0, 'f', 4).arg(max_spread, 0, 'f', 4);
+        return rv;
+    }
+    if (!end_date_iso.trimmed().isEmpty()) {
+        const QDateTime end = QDateTime::fromString(end_date_iso.trimmed(), Qt::ISODate);
+        if (end.isValid()) {
+            const double hours = QDateTime::currentDateTimeUtc().secsTo(end) / 3600.0;
+            if (hours < min_hours) {
+                rv.reason = QStringLiteral("too close to resolution (%1h < %2h)")
+                                .arg(hours, 0, 'f', 2).arg(min_hours, 0, 'f', 2);
+                return rv;
+            }
+        }
+        // Unparseable end_date ⇒ treat as OK (don't block on missing data).
+    }
+
+    rv.ok = true;
+    rv.reason = QStringLiteral("within risk limits");
+    return rv;
+}
+
+ToolResult prepare_prediction_order(const QJsonObject& args) {
+    const QString venue = args.value("venue").toString().trimmed().toLower();
+    const QString market_id = args.value("market_id").toString().trimmed();
+    const QString asset_id = args.value("asset_id").toString().trimmed();
+    const QString outcome = args.value("outcome").toString().trimmed();
+    const QString side = args.value("side").toString().trimmed().toLower();
+    const double contracts = args.value("contracts").toDouble(0.0);
+    const QString account = QStringLiteral("pm-paper");
+    const RiskVerdict empty_rv;
+
+    // Malformed input → fail (only DECISIONS use ok_data).
+    if (venue.isEmpty())
+        return ToolResult::fail("Missing 'venue'");
+    if (asset_id.isEmpty())
+        return ToolResult::fail("Missing 'asset_id'");
+    if (outcome.isEmpty())
+        return ToolResult::fail("Missing 'outcome'");
+    if (contracts <= 0.0)
+        return ToolResult::fail("'contracts' must be > 0");
+    if (side != QLatin1String("buy") && side != QLatin1String("sell"))
+        return ToolResult::fail("Invalid 'side' (expected buy/sell)");
+    if (args.contains("limit_price") && args.value("limit_price").isDouble()) {
+        const double lp = args.value("limit_price").toDouble();
+        if (lp < 0.0 || lp > 1.0)
+            return ToolResult::fail("'limit_price' must be in [0,1] for prediction orders");
+    }
+
+    auto reject = [&](const QString& reason, const RiskVerdict& rv) -> ToolResult {
+        audit_prepare(account, args, "rejected", reason, rv);
+        LOG_INFO(TAG, "prepare_order (prediction) rejected: " + reason);
+        return ToolResult::ok_data(QJsonObject{
+            {"status", "rejected"}, {"reason", reason}, {"checks", QJsonArray{reason}}});
+    };
+
+    // Venue allow-list (policy decision, not malformed input).
+    if (!mcp::cli_venue_allowed(venue))
+        return reject(QStringLiteral("venue '%1' not in allowed venues — enable in GUI Settings")
+                          .arg(venue),
+                      empty_rv);
+
+    // SELL requires an existing open position — short-open is not enabled in Phase B.
+    if (side == QLatin1String("sell")) {
+        auto open = PmPaperRepository::instance().get_open(venue, asset_id);
+        const bool has_pos = open.is_ok() && open.value().has_value();
+        if (!has_pos)
+            return reject(
+                QStringLiteral("no open position to sell; short-open is not enabled in Phase B"),
+                empty_rv);
+    }
+
+    // Resolve best price + market metadata from the LIVE book (read-only bridge).
+    const PmResolved r = pm_resolve(venue, market_id, asset_id, side);
+    if (!r.ok)
+        return reject(r.reason, empty_rv);
+
+    // Deterministic PM risk floor.
+    const RiskVerdict rv = pm_risk_floor_check(r.category, side, contracts, r.price, r.best_bid,
+                                               r.best_ask, r.liquidity, r.end_date_iso);
+    if (!rv.ok) {
+        audit_prepare(account, args, "rejected", rv.reason, rv);
+        LOG_INFO(TAG, "prepare_order (prediction) rejected: " + rv.reason);
+        return ToolResult::ok_data(QJsonObject{
+            {"status", "rejected"},
+            {"reason", rv.reason},
+            {"risk_status", "failed"},
+            {"stake", rv.order_value},
+            {"max_loss", rv.max_loss},
+            {"fill_price", r.price},
+            {"checks", QJsonArray{rv.reason}},
+        });
+    }
+
+    // PASS → persist a draft carrying the normalized PM intent, audit "prepared".
+    const QString draft_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    const QString expires = QDateTime::currentDateTimeUtc().addSecs(5 * 60).toString(Qt::ISODate);
+
+    QJsonObject intent{
+        {"asset_class", "prediction"}, {"venue", venue},   {"market_id", market_id},
+        {"asset_id", asset_id},        {"outcome", outcome}, {"side", side},
+        {"contracts", contracts},      {"category", r.category},
+    };
+    if (args.contains("limit_price") && args.value("limit_price").isDouble())
+        intent["limit_price"] = args.value("limit_price").toDouble();
+
+    OrderDraft draft;
+    draft.draft_id = draft_id;
+    draft.intent_json = QString::fromUtf8(QJsonDocument(intent).toJson(QJsonDocument::Compact));
+    draft.risk_verdict_json =
+        QString::fromUtf8(QJsonDocument(verdict_to_json(rv)).toJson(QJsonDocument::Compact));
+    draft.account = account;
+    draft.mode_hint = "paper";
+    draft.status = "prepared";
+    draft.created_at = now;
+    draft.expires_at = expires;
+
+    auto ins = OrderDraftRepository::instance().insert(draft);
+    if (!ins.is_ok())
+        return ToolResult::fail("Failed to persist draft: " + QString::fromStdString(ins.error()));
+
+    audit_prepare(account, intent, "prepared", rv.reason, rv);
+    LOG_INFO(TAG, "prepare_order (prediction) prepared draft " + draft_id);
+
+    return ToolResult::ok_data(QJsonObject{
+        {"status", "prepared"},
+        {"draft_id", draft_id},
+        {"risk_status", "passed"},
+        {"stake", rv.order_value},
+        {"max_loss", rv.max_loss},
+        {"fill_price", r.price},
+        {"expires_at", expires},
+        {"checks", QJsonArray{rv.reason}},
+    });
+}
+
 } // namespace
 
 std::vector<ToolDef> get_order_flow_tools() {
@@ -259,18 +507,37 @@ std::vector<ToolDef> get_order_flow_tools() {
         t.is_destructive = false; // non-destructive: drafts + audits only, never executes
         t.input_schema =
             ToolSchemaBuilder()
-                .string("symbol", "Trading symbol (e.g. AAPL)").required().length(1, 32)
+                // ── shared discriminator ──
+                .string("asset_class", "Asset class: equity (default) or prediction")
+                    .enums({"equity", "prediction"})
                 .string("side", "Order side").required().enums({"buy", "sell"})
-                .number("quantity", "Order quantity (must be > 0)").required().min(0.0)
-                .string("order_type", "Order type").default_str("market")
+                .number("limit_price",
+                        "Equity: limit price (required for limit/stop_limit). "
+                        "Prediction: probability in [0,1] (optional)")
+                // ── equity fields (optional at schema; validated in the equity path) ──
+                .string("symbol", "Equity trading symbol (e.g. AAPL)").length(1, 32)
+                .number("quantity", "Equity order quantity (must be > 0)").min(0.0)
+                .string("order_type", "Equity order type").default_str("market")
                     .enums({"market", "limit", "stop", "stop_limit"})
-                .number("limit_price", "Limit price (required for limit/stop_limit orders)")
                 .string("exchange", "Exchange / venue (optional)")
                 .string("account", "Account identifier (optional)")
                 .string("strategy", "Originating strategy name (optional)")
                 .string("reason", "Free-text rationale for the intent (optional)")
+                // ── prediction fields (optional at schema; validated in the PM path) ──
+                .string("venue", "Prediction venue (polymarket | kalshi) — prediction only")
+                .string("market_id", "Prediction market id — prediction only")
+                .string("asset_id", "Prediction outcome asset id — prediction only")
+                .string("outcome", "Prediction outcome name — prediction only")
+                .number("contracts", "Prediction contracts (must be > 0) — prediction only").min(0.0)
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
+            // 0. Discriminate by asset_class. Prediction → the PM path; anything
+            //    else → the UNCHANGED equity path below.
+            const QString asset_class =
+                args.value("asset_class").toString("equity").trimmed().toLower();
+            if (asset_class == QLatin1String("prediction"))
+                return prepare_prediction_order(args);
+
             // 1-2. Parse + validate + build the UnifiedOrder (malformed → fail).
             const OrderBuild b = build_order_from_intent(args);
             if (!b.ok)

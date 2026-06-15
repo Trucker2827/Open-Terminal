@@ -9,6 +9,7 @@
 // HOME before any repo call.
 
 #include <QtTest>
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -21,8 +22,10 @@
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
+#include "storage/repositories/OrderDraftRepository.h"
 #include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/repositories/TradeAuditRepository.h"
 #include "storage/sqlite/Database.h"
 
 #include <memory>
@@ -53,14 +56,28 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
         m.liquidity = 1234.5;
         m.volume = 6789.0;
         m.outcomes = {{"Yes", "asset-yes", 0.62}, {"No", "asset-no", 0.38}};
+        // Risk-floor fixtures keyed by market_id (Task 4):
+        if (market_id == "mkt-expo")
+            m.category = "expo";                    // isolated topic for exposure test
+        if (market_id == "mkt-illiquid")
+            m.liquidity = 10.0;                     // < default pm_min_liquidity (1000)
+        if (market_id == "mkt-near")
+            m.end_date_iso =                        // < default pm_min_hours_to_resolution (1)
+                QDateTime::currentDateTimeUtc().addSecs(30 * 60).toString(Qt::ISODate);
         return m;
     }
     static pred::PredictionOrderBook fixture_book(const QString& asset_id) {
         pred::PredictionOrderBook b;
         b.asset_id = asset_id;
         b.tick_size = 0.01;
-        b.bids = {{0.40, 100.0}, {0.39, 50.0}};   // highest first
-        b.asks = {{0.45, 80.0}, {0.46, 60.0}};    // lowest first
+        if (asset_id == "asset-wide") {
+            // spread 0.20 > default pm_max_spread (0.10)
+            b.bids = {{0.30, 100.0}, {0.29, 50.0}};   // highest first
+            b.asks = {{0.50, 80.0}, {0.51, 60.0}};    // lowest first
+        } else {
+            b.bids = {{0.40, 100.0}, {0.39, 50.0}};   // highest first
+            b.asks = {{0.45, 80.0}, {0.46, 60.0}};    // lowest first; spread 0.05
+        }
         return b;
     }
 
@@ -417,6 +434,177 @@ class TstPmPaper : public QObject {
         QVERIFY(qFuzzyCompare(repo.cash().value(), cash_before_broke));
         QVERIFY2(!repo.get_open(venue, "expensive-asset").value().has_value(),
                  "a rejected buy must not create a position");
+    }
+
+    // ── Task 4: prepare_order prediction branch + deterministic PM risk floor ─
+
+    void set_setting(const QString& key, const QString& value) {
+        auto r = SettingsRepository::instance().set(key, value, "cli");
+        QVERIFY2(r.is_ok(), qPrintable("set " + key + " failed"));
+    }
+
+    // A valid BUY prediction intent within caps is PREPARED: status "prepared"
+    // with a draft_id; the draft row exists (account pm-paper); a prepare/prepared
+    // audit row is recorded. stake = contracts * best_ask = 10 * 0.45 = 4.5.
+    void pm_prepare_valid_buy_prepares_draft() {
+        set_setting("cli.allowed_venues", "polymarket");
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-1"}, {"asset_id", "asset-yes"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10}});
+        QVERIFY2(res.success, qPrintable("pm prepare should succeed: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("prepared"));
+        QCOMPARE(data.value("risk_status").toString(), QStringLiteral("passed"));
+        QVERIFY(qFuzzyCompare(data.value("fill_price").toDouble(), 0.45));
+        QVERIFY(qFuzzyCompare(data.value("stake").toDouble(), 4.5));
+        QVERIFY(qFuzzyCompare(data.value("max_loss").toDouble(), 4.5));
+
+        const QString draft_id = data.value("draft_id").toString();
+        QVERIFY2(!draft_id.isEmpty(), "prepared result must carry a draft_id");
+
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), qPrintable("draft row must exist for " + draft_id));
+        QCOMPARE(got.value().status, QStringLiteral("prepared"));
+        QCOMPARE(got.value().account, QStringLiteral("pm-paper"));
+        QCOMPARE(got.value().mode_hint, QStringLiteral("paper"));
+
+        auto recent = TradeAuditRepository::instance().recent(50);
+        QVERIFY2(recent.is_ok(), "audit recent() failed");
+        bool found = false;
+        for (const TradeAuditRow& r : recent.value())
+            if (r.tool == "prepare_order" && r.phase == "prepare" && r.decision == "prepared") {
+                found = true;
+                break;
+            }
+        QVERIFY2(found, "expected a prepare/prepared audit row");
+    }
+
+    // Oversized stake (contracts * price > max_order_value default) is REJECTED.
+    void pm_prepare_oversized_stake_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        // 60000 * 0.45 = 27000 > 25000 default max_order_value (checked first).
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-1"}, {"asset_id", "asset-yes"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 60000}});
+        QVERIFY2(res.success, qPrintable("risk rejection is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("max order value", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        QVERIFY2(data.value("draft_id").toString().isEmpty(), "rejected must carry no draft_id");
+    }
+
+    // Over-exposure: pre-seed an open position near the per-topic cap, then a buy
+    // that pushes category stake over the (small) cap → REJECTED (exposure).
+    void pm_prepare_over_exposure_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.risk.max_exposure_per_topic", "50");
+
+        PmPosition seed;
+        seed.venue = "polymarket";
+        seed.market_id = "mkt-expo";
+        seed.asset_id = "expo-seed";
+        seed.outcome = "Yes";
+        seed.category = "expo"; // matches fixture_market("mkt-expo")
+        seed.contracts = 100;
+        seed.avg_price = 0.45;
+        seed.cost_basis = 45.0;
+        seed.opened_at = "2026-06-15T10:00:00Z";
+        seed.status = "open";
+        QVERIFY2(PmPaperRepository::instance().insert_open(seed).is_ok(), "seed insert failed");
+
+        // stake = 20 * 0.45 = 9 → 45 + 9 = 54 > 50 cap.
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-expo"}, {"asset_id", "asset-yes"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 20}});
+        set_setting("cli.risk.max_exposure_per_topic", "10000"); // restore
+        QVERIFY2(res.success, qPrintable("decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("exposure", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+    }
+
+    // Illiquid market (liquidity below default pm_min_liquidity) is REJECTED.
+    void pm_prepare_illiquid_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-illiquid"}, {"asset_id", "asset-yes"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10}});
+        QVERIFY2(res.success, qPrintable("decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("illiquid", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+    }
+
+    // Wide-spread book (ask - bid > default pm_max_spread) is REJECTED.
+    void pm_prepare_wide_spread_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-1"}, {"asset_id", "asset-wide"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10}});
+        QVERIFY2(res.success, qPrintable("decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("spread", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+    }
+
+    // Near resolution (end_date within pm_min_hours_to_resolution) is REJECTED.
+    void pm_prepare_near_resolution_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-near"}, {"asset_id", "asset-yes"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10}});
+        QVERIFY2(res.success, qPrintable("decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("resolution", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+    }
+
+    // Venue not in cli.allowed_venues → REJECTED before any fetch.
+    void pm_prepare_venue_not_allowed_rejected() {
+        set_setting("cli.allowed_venues", ""); // clear allow-list
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-1"}, {"asset_id", "asset-yes"},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10}});
+        set_setting("cli.allowed_venues", "polymarket"); // restore
+        QVERIFY2(res.success, qPrintable("decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("venue", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+    }
+
+    // side=sell with no open position → REJECTED (short-open not enabled in Phase B).
+    void pm_prepare_sell_without_position_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-1"}, {"asset_id", "asset-never-held"},
+                        {"outcome", "Yes"}, {"side", "sell"}, {"contracts", 10}});
+        QVERIFY2(res.success, qPrintable("decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("no open position", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
     }
 
     void cleanupTestCase() { rt_.shutdown(); }
