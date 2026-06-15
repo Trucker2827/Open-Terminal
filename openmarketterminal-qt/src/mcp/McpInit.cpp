@@ -32,6 +32,7 @@
 #include "mcp/tools/NewsTools.h"
 #include "mcp/tools/AgenticMemoryTools.h"
 #include "mcp/tools/NotesTools.h"
+#include "mcp/tools/OrderFlowTools.h"
 #include "mcp/tools/PaperTradingTools.h"
 #include "mcp/tools/PortfolioTools.h"
 #include "mcp/tools/ProfileTools.h"
@@ -80,6 +81,9 @@ void register_core_tools() {
 
     // paper trading tab
     provider.register_tools(tools::get_paper_trading_tools());
+
+    // ai-trading two-phase order flow (prepare_order; submit_order in Task 4)
+    provider.register_tools(tools::get_order_flow_tools());
 
     // live broker trading (order placement/cancel, account state, market data)
     provider.register_tools(tools::get_live_trading_tools());

@@ -1009,6 +1009,7 @@ set(MCP_SOURCES
     src/mcp/tools/PortfolioTools.cpp
     src/mcp/tools/CryptoTradingTools.cpp
     src/mcp/tools/PaperTradingTools.cpp
+    src/mcp/tools/OrderFlowTools.cpp
     src/mcp/tools/LiveTradingTools.cpp
     src/mcp/tools/EdgarTools.cpp
     src/mcp/tools/MAAnalyticsTools.cpp
@@ -2354,6 +2355,7 @@ set_source_files_properties(
     src/mcp/tools/PortfolioTools.cpp
     src/mcp/tools/CryptoTradingTools.cpp
     src/mcp/tools/PaperTradingTools.cpp
+    src/mcp/tools/OrderFlowTools.cpp
     src/mcp/tools/LiveTradingTools.cpp
     src/mcp/tools/EdgarTools.cpp
     src/mcp/tools/MAAnalyticsTools.cpp

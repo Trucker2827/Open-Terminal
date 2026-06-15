@@ -11,6 +11,7 @@
 
 #include <QtTest>
 #include <QTemporaryDir>
+#include <QJsonObject>
 
 #include "core/headless/HeadlessRuntime.h"
 #include "storage/repositories/OrderDraftRepository.h"
@@ -119,6 +120,79 @@ class TstOrderFlow : public QObject {
             }
         }
         QVERIFY2(found, "appended audit row not found in recent()");
+    }
+
+    // ── Task 3: prepare_order tool ──────────────────────────────────────────
+
+    // A valid LIMIT intent within the deterministic caps is PREPARED: the tool
+    // returns status "prepared" with a draft_id, the draft row exists in the
+    // OrderDraftRepository, and a prepare-phase audit row records "prepared".
+    void prepare_order_within_caps_prepares_draft() {
+        // qty 10 @ 200 = order_value 2000 < 25000 default cap.
+        auto res = rt_.call_tool("prepare_order",
+                                 QJsonObject{{"symbol", "AAPL"},
+                                             {"side", "buy"},
+                                             {"quantity", 10},
+                                             {"order_type", "limit"},
+                                             {"limit_price", 200}});
+        QVERIFY2(res.success, qPrintable("prepare_order should succeed: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("prepared"));
+
+        const QString draft_id = data.value("draft_id").toString();
+        QVERIFY2(!draft_id.isEmpty(), "prepared result must carry a draft_id");
+
+        // The draft is durably persisted.
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), qPrintable("draft row must exist for " + draft_id));
+        QCOMPARE(got.value().status, QStringLiteral("prepared"));
+        QCOMPARE(got.value().mode_hint, QStringLiteral("paper"));
+
+        // A prepare-phase audit row records the "prepared" decision.
+        auto recent = TradeAuditRepository::instance().recent(50);
+        QVERIFY2(recent.is_ok(), "audit recent() failed");
+        bool found = false;
+        for (const TradeAuditRow& r : recent.value()) {
+            if (r.tool == "prepare_order" && r.phase == "prepare" && r.decision == "prepared") {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY2(found, "expected a prepare/prepared audit row for prepare_order");
+    }
+
+    // An oversized intent (order_value above the max-order-value cap) is REJECTED
+    // by the deterministic risk floor: status "rejected" with a max-order-value
+    // reason, NO draft_id in the result, and a "rejected" audit row.
+    void prepare_order_oversized_is_rejected() {
+        // qty 1000 @ 200 = order_value 200000 > 25000 default cap.
+        auto res = rt_.call_tool("prepare_order",
+                                 QJsonObject{{"symbol", "AAPL"},
+                                             {"side", "buy"},
+                                             {"quantity", 1000},
+                                             {"order_type", "limit"},
+                                             {"limit_price", 200}});
+        // A risk rejection is a valid verdict, returned via ok_data.
+        QVERIFY2(res.success, qPrintable("risk rejection is a valid verdict: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("max order value", Qt::CaseInsensitive),
+                 qPrintable("reason must mention max order value: " + data.value("reason").toString()));
+        // No usable draft created — the rejected verdict carries no draft_id.
+        QVERIFY2(data.value("draft_id").toString().isEmpty(),
+                 "rejected result must NOT carry a draft_id");
+
+        // An audit row records the "rejected" decision for prepare_order.
+        auto recent = TradeAuditRepository::instance().recent(50);
+        QVERIFY2(recent.is_ok(), "audit recent() failed");
+        bool found = false;
+        for (const TradeAuditRow& r : recent.value()) {
+            if (r.tool == "prepare_order" && r.phase == "prepare" && r.decision == "rejected") {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY2(found, "expected a prepare/rejected audit row for prepare_order");
     }
 
     void cleanupTestCase() { rt_.shutdown(); }
