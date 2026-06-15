@@ -49,4 +49,16 @@ QStringList cli_allowed_venues();
 /// cli_allowed_venues(). Default-deny: false when the list is empty.
 bool cli_venue_allowed(const QString& venue);
 
+/// `cli.kill_switch` == "true" — the PANIC button (Phase C). When engaged it
+/// halts ALL AI trading (paper AND live): every order-flow handler checks this
+/// FIRST and short-circuits to a recorded refusal before any drafting or
+/// execution. GUI-only (a human owns it; the CLI/agent can never write it).
+/// Default false.
+bool cli_kill_switch_engaged();
+
+/// The single account the AI may LIVE-trade, read from `cli.allowed_account`
+/// (default ""), trimmed. Empty/unset → "" (default-deny: no account is allowed
+/// until a human names one in GUI Settings). Consumed by later live-trade tasks.
+QString cli_allowed_account();
+
 } // namespace openmarketterminal::mcp

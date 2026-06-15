@@ -334,6 +334,37 @@ void SecuritySection::build_ui() {
     capture_row_labels(row_cli_expo, &row_cli_expo_lbl_, &row_cli_expo_desc_);
     vl->addWidget(row_cli_expo);
 
+    // AI-trading constitution (Phase C): the kill switch (panic button), the
+    // single account the AI may live-trade, and the max daily loss cap. GUI-only
+    // (cli.* keys the CLI/agent can never write).
+    cli_kill_switch_toggle_ = new QCheckBox(tr("Kill switch — halt all AI trading"));
+    cli_kill_switch_toggle_->setStyleSheet(check_ss());
+    auto* row_cli_kill = make_row(
+        tr("Kill Switch"), cli_kill_switch_toggle_,
+        tr("PANIC button. When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it."));
+    capture_row_labels(row_cli_kill, &row_cli_kill_lbl_, &row_cli_kill_desc_);
+    vl->addWidget(row_cli_kill);
+
+    cli_allowed_account_edit_ = new QLineEdit;
+    cli_allowed_account_edit_->setPlaceholderText(tr("e.g. acct-1"));
+    cli_allowed_account_edit_->setFixedWidth(280);
+    cli_allowed_account_edit_->setStyleSheet(input_ss());
+    auto* row_cli_acct = make_row(
+        tr("AI-allowed account id"), cli_allowed_account_edit_,
+        tr("The single account the AI agent may LIVE-trade. Empty means none is allowed."));
+    capture_row_labels(row_cli_acct, &row_cli_acct_lbl_, &row_cli_acct_desc_);
+    vl->addWidget(row_cli_acct);
+
+    cli_max_daily_loss_edit_ = new QLineEdit;
+    cli_max_daily_loss_edit_->setPlaceholderText(tr("e.g. 5000"));
+    cli_max_daily_loss_edit_->setFixedWidth(200);
+    cli_max_daily_loss_edit_->setStyleSheet(input_ss());
+    auto* row_cli_dloss = make_row(
+        tr("Max daily loss ($)"), cli_max_daily_loss_edit_,
+        tr("Maximum total loss (USD) the AI agent may incur in a single day before trading is halted."));
+    capture_row_labels(row_cli_dloss, &row_cli_dloss_lbl_, &row_cli_dloss_desc_);
+    vl->addWidget(row_cli_dloss);
+
     vl->addSpacing(16);
 
     // ── SAVE ──────────────────────────────────────────────────────────────────
@@ -380,6 +411,18 @@ void SecuritySection::build_ui() {
         }
         if (cli_max_exposure_edit_) {
             repo.set("cli.risk.max_exposure_per_topic", cli_max_exposure_edit_->text().trimmed(), "cli");
+        }
+        // AI-trading constitution (Phase C): kill switch + allowed account + daily
+        // loss cap. Stored under cli.* so the CLI/agent reads them but can never write.
+        if (cli_kill_switch_toggle_) {
+            repo.set("cli.kill_switch",
+                     cli_kill_switch_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        if (cli_allowed_account_edit_) {
+            repo.set("cli.allowed_account", cli_allowed_account_edit_->text().trimmed(), "cli");
+        }
+        if (cli_max_daily_loss_edit_) {
+            repo.set("cli.risk.max_daily_loss", cli_max_daily_loss_edit_->text().trimmed(), "cli");
         }
         // Notify listeners. These cli.* flags are read directly from the DB by
         // the CLI's headless auth-checker on every tool call, so revoking
@@ -488,6 +531,12 @@ void SecuritySection::retranslateUi() {
     if (row_cli_venues_desc_) row_cli_venues_desc_->setText(tr("Comma-separated venues the AI agent may trade (e.g. polymarket, kalshi). Empty means none are allowed."));
     if (row_cli_expo_lbl_)    row_cli_expo_lbl_->setText(tr("Max exposure per topic ($)"));
     if (row_cli_expo_desc_)   row_cli_expo_desc_->setText(tr("Maximum total stake (USD) the AI agent may hold open in a single topic/category."));
+    if (row_cli_kill_lbl_)    row_cli_kill_lbl_->setText(tr("Kill Switch"));
+    if (row_cli_kill_desc_)   row_cli_kill_desc_->setText(tr("PANIC button. When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it."));
+    if (row_cli_acct_lbl_)    row_cli_acct_lbl_->setText(tr("AI-allowed account id"));
+    if (row_cli_acct_desc_)   row_cli_acct_desc_->setText(tr("The single account the AI agent may LIVE-trade. Empty means none is allowed."));
+    if (row_cli_dloss_lbl_)   row_cli_dloss_lbl_->setText(tr("Max daily loss ($)"));
+    if (row_cli_dloss_desc_)  row_cli_dloss_desc_->setText(tr("Maximum total loss (USD) the AI agent may incur in a single day before trading is halted."));
 
     // Checkbox texts.
     if (sec_autolock_toggle_)  sec_autolock_toggle_->setText(tr("Enable auto-lock on inactivity"));
@@ -496,6 +545,7 @@ void SecuritySection::retranslateUi() {
     if (cli_trading_toggle_)        cli_trading_toggle_->setText(tr("Allow CLI trading / destructive actions"));
     if (cli_paper_trading_toggle_)  cli_paper_trading_toggle_->setText(tr("Allow CLI paper trading"));
     if (cli_live_trading_toggle_)   cli_live_trading_toggle_->setText(tr("Arm CLI LIVE trading (advanced)"));
+    if (cli_kill_switch_toggle_)    cli_kill_switch_toggle_->setText(tr("Kill switch — halt all AI trading"));
 
     // PIN field placeholders.
     if (sec_current_pin_) sec_current_pin_->setPlaceholderText(tr("Current PIN"));
@@ -503,6 +553,8 @@ void SecuritySection::retranslateUi() {
     if (sec_confirm_pin_) sec_confirm_pin_->setPlaceholderText(tr("Confirm PIN"));
     if (cli_allowed_venues_edit_) cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. polymarket, kalshi"));
     if (cli_max_exposure_edit_)   cli_max_exposure_edit_->setPlaceholderText(tr("e.g. 500"));
+    if (cli_allowed_account_edit_) cli_allowed_account_edit_->setPlaceholderText(tr("e.g. acct-1"));
+    if (cli_max_daily_loss_edit_)  cli_max_daily_loss_edit_->setPlaceholderText(tr("e.g. 5000"));
 
     // Buttons. The change-PIN button toggles label with form visibility.
     if (sec_change_pin_btn_)
@@ -605,6 +657,21 @@ void SecuritySection::reload() {
         const QSignalBlocker b(cli_max_exposure_edit_);
         auto r = repo.get("cli.risk.max_exposure_per_topic", "");
         cli_max_exposure_edit_->setText(r.is_ok() ? r.value() : QString());
+    }
+    if (cli_kill_switch_toggle_) {
+        const QSignalBlocker b(cli_kill_switch_toggle_);
+        auto r = repo.get("cli.kill_switch", "false");
+        cli_kill_switch_toggle_->setChecked(r.is_ok() && r.value() == "true");
+    }
+    if (cli_allowed_account_edit_) {
+        const QSignalBlocker b(cli_allowed_account_edit_);
+        auto r = repo.get("cli.allowed_account", "");
+        cli_allowed_account_edit_->setText(r.is_ok() ? r.value() : QString());
+    }
+    if (cli_max_daily_loss_edit_) {
+        const QSignalBlocker b(cli_max_daily_loss_edit_);
+        auto r = repo.get("cli.risk.max_daily_loss", "");
+        cli_max_daily_loss_edit_->setText(r.is_ok() ? r.value() : QString());
     }
 
     refresh_audit_log();

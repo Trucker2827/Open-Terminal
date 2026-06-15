@@ -47,6 +47,11 @@ class SecuritySection : public QWidget {
     // AI-trading constitution (Phase B): allowed venues + per-topic exposure cap.
     QLineEdit*   cli_allowed_venues_edit_   = nullptr;
     QLineEdit*   cli_max_exposure_edit_     = nullptr;
+
+    // AI-trading constitution (Phase C): kill switch + allowed account + daily-loss cap.
+    QCheckBox*   cli_kill_switch_toggle_    = nullptr;
+    QLineEdit*   cli_allowed_account_edit_  = nullptr;
+    QLineEdit*   cli_max_daily_loss_edit_   = nullptr;
     QListWidget* sec_audit_list_       = nullptr;
     QLabel*      sec_lockout_status_   = nullptr;
     QPushButton* sec_change_pin_btn_   = nullptr;
@@ -84,6 +89,9 @@ class SecuritySection : public QWidget {
     QLabel* row_cli_live_lbl_    = nullptr;  QLabel* row_cli_live_desc_    = nullptr;
     QLabel* row_cli_venues_lbl_  = nullptr;  QLabel* row_cli_venues_desc_  = nullptr;
     QLabel* row_cli_expo_lbl_    = nullptr;  QLabel* row_cli_expo_desc_    = nullptr;
+    QLabel* row_cli_kill_lbl_    = nullptr;  QLabel* row_cli_kill_desc_    = nullptr;
+    QLabel* row_cli_acct_lbl_    = nullptr;  QLabel* row_cli_acct_desc_    = nullptr;
+    QLabel* row_cli_dloss_lbl_   = nullptr;  QLabel* row_cli_dloss_desc_   = nullptr;
 };
 
 } // namespace openmarketterminal::screens

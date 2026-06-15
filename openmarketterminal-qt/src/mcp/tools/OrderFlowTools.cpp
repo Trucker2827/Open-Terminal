@@ -651,6 +651,19 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .number("contracts", "Prediction contracts (must be > 0) — prediction only").min(0.0)
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
+            // -1. KILL SWITCH FIRST (Phase C): the human-owned panic button halts
+            //     ALL AI trading — paper AND live, equity AND prediction — before
+            //     any parse / price-resolve / draft. Record the refusal, then
+            //     short-circuit. (account unknown this early → "" ; mode is forced
+            //     "paper" by audit_prepare; intent = raw args.)
+            if (mcp::cli_kill_switch_engaged()) {
+                audit_prepare(QString(), args, QStringLiteral("kill_switch"),
+                              QStringLiteral("kill switch engaged"), RiskVerdict{});
+                LOG_WARN(TAG, "prepare_order rejected: kill switch engaged");
+                return ToolResult::ok_data(QJsonObject{
+                    {"status", "rejected"}, {"reason", "kill switch engaged"}});
+            }
+
             // 0. Discriminate by asset_class. Prediction → the PM path; anything
             //    else → the UNCHANGED equity path below.
             const QString asset_class =
@@ -753,6 +766,20 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .string("mode", "Execution mode").required().enums({"paper", "live"})
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
+            // KILL SWITCH FIRST (Phase C): the human-owned panic button halts ALL
+            // AI trading — paper AND live, equity AND prediction — BEFORE the draft
+            // load or any execution. Record the refusal, then short-circuit.
+            // (account unknown this early → "" ; mode from args, default "paper".)
+            if (mcp::cli_kill_switch_engaged()) {
+                const QString km = args.value("mode").toString().trimmed().toLower();
+                audit_submit(QString(), km.isEmpty() ? QStringLiteral("paper") : km, args,
+                             QStringLiteral("kill_switch"), QStringLiteral("kill switch engaged"),
+                             RiskVerdict{});
+                LOG_WARN(TAG, "submit_order rejected: kill switch engaged");
+                return ToolResult::ok_data(QJsonObject{
+                    {"status", "rejected"}, {"reason", "kill switch engaged"}});
+            }
+
             // Malformed input → fail (decisions use ok_data; only bad input fails).
             const QString draft_id = args["draft_id"].toString().trimmed();
             if (draft_id.isEmpty())

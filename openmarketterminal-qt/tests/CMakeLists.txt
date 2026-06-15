@@ -125,3 +125,12 @@ add_executable(tst_pm_paper tst_pm_paper.cpp)
 target_include_directories(tst_pm_paper PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_pm_paper PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_pm_paper COMMAND tst_pm_paper)
+
+# AI-Trading Substrate Phase C Task 1 — kill switch + allowed-account
+# constitution: the SettingsGate readers (cli_kill_switch_engaged /
+# cli_allowed_account), the kill-switch short-circuit in BOTH order-flow
+# handlers, and the keystone refusal of these GUI-only keys via set_setting.
+add_executable(tst_live_trading tst_live_trading.cpp)
+target_include_directories(tst_live_trading PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_live_trading PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_live_trading COMMAND tst_live_trading)

@@ -59,6 +59,15 @@ bool cli_venue_allowed(const QString& venue) {
     return cli_allowed_venues().contains(venue.trimmed().toLower());
 }
 
+bool cli_kill_switch_engaged() {
+    return flag_true(QStringLiteral("cli.kill_switch"));
+}
+
+QString cli_allowed_account() {
+    auto r = SettingsRepository::instance().get(QStringLiteral("cli.allowed_account"), QString());
+    return r.is_ok() ? r.value().trimmed() : QString();
+}
+
 bool is_settings_write_tool(const QString& name) {
     // The headless auth-checker classifies on the caller-supplied name, which may
     // be a legacy alias, while `is_destructive` comes from the resolved def.
