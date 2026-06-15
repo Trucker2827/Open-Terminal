@@ -106,3 +106,12 @@ add_executable(tst_serve_command
 target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_serve_command PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_serve_command COMMAND tst_serve_command)
+
+# AI-Trading Substrate Phase A Task 2 — storage layer for the two-phase order
+# flow: the v049 migration (order_drafts + trade_audit) and the two repositories
+# that read/write them. Brings up a real DB under a QTemporaryDir HOME via
+# HeadlessRuntime (same Widgets-free link set as tst_settings_gate).
+add_executable(tst_order_flow tst_order_flow.cpp)
+target_include_directories(tst_order_flow PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_order_flow PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_order_flow COMMAND tst_order_flow)
