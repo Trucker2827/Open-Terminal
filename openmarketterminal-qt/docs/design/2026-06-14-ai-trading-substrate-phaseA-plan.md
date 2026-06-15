@@ -22,14 +22,19 @@
 - Auth-checkers to carve out: daemon `src/cli/ServeCommand.cpp:52-56` (read-only: Verified→deny, is_destructive→deny, settings-write→deny); headless `src/core/headless/HeadlessRuntime.cpp:95+` (Verified→deny, settings-write→gate, destructive→`cli_trading_allowed`).
 - `SettingsGate.{h,cpp}` (`src/mcp/tools/`): `cli_trading_allowed()`, `cli_settings_write_allowed()`, `is_settings_write_tool()`. Add the new helpers here.
 - Migrations: last is `v048`; **next = `v049`**. Register via `register_all_migrations()` (`src/storage/sqlite/migrations/RegisterAllMigrations.cpp`).
-- Risk floor: `PositionManager` (`src/trading/PositionManager.{h,cpp}`) holds `max_order_value_`/`max_daily_loss_` (`<=0` = no cap). **The implementer must pin its callable check API** (`grep -n "max_order_value\|max_daily_loss\|bool \|Result\|allow\|reject" src/trading/PositionManager.{h,cpp}`); if there's no standalone check usable from a tool handler, implement a small `RiskFloor::check(order, account)` helper that reads the same caps from settings — see Task 3.
+
+### Threat-model decisions (resolved before build — apply across tasks)
+- **Risk floor (T3):** `PositionManager` (`src/algo_engine/PositionManager.{h,cpp}`) is **stateful, per-deployment** (caps are constructor args; it offers `bool validate_order_value(double qty, double price) const`) — NOT a clean per-order checker for a tool. Phase A implements a small standalone `RiskFloor` helper (Task 3) that reads caps from **GUI-only `cli.risk.*` keys** with **conservative FINITE defaults** (never "no cap"). Mirror `validate_order_value`'s value formula.
+- **Keystone denylist = the `cli.` prefix (T1).** `is_gui_only_setting(key)` returns `key.startsWith("cli.")` — the AI cannot write ANY `cli.*` control knob via the tool layer. This covers the three trading toggles AND the `cli.risk.*` caps in ONE rule, so *raising a risk cap is as impossible for the AI as arming trading* (closes the "bypass the floor through the settings door" gap). **Verified safe:** `cli.*` keys are written ONLY by the GUI (`SecuritySection.cpp` via `repo.set` directly, NOT through `set_setting`) and read by `SettingsGate` — blocking the prefix in `set_setting`'s handler breaks no legitimate flow.
+- **`set_setting` is the SOLE tool writing arbitrary settings keys** (`SettingsRepository::set(key,value,cat)` at `SettingsTools.cpp:65`). `set_active_llm` writes the LLM-config repo (enum-constrained, cannot touch `cli.*`). So the denylist in `set_setting`'s handler is the complete keystone — no other write tool exists. The T1 keystone test must also assert the DB value is unchanged (not just that the call failed).
+- **Destructive permit chain (T4) — carve-out is necessary AND sufficient.** In the daemon process the active `auth_checker_` is ServeCommand's lambda and it is the SOLE gate: `McpProvider::call_tool` (`McpProvider.cpp:248-284`) fully delegates to the checker; there is NO independent `tls_destructive_allowed` check on the internal-tool path (that flag is read only by the *external* MCP branch `McpService.cpp:384` and the *GUI* AgentService checker — neither on the daemon `submit_order` path). So the `submit_order` carve-out in ServeCommand both (a) lets `submit_order paper` through with nothing lower blocking it, and (b) keeps every OTHER destructive tool denied. Do NOT add redundant thread-local plumbing. T5 must concretely fire `live_place_order` over the daemon bridge and assert DENIED.
 
 ---
 
 ## File Structure
 - Modify: `src/mcp/tools/SettingsGate.{h,cpp}` (new gate helpers + the GUI-only-key denylist), `src/mcp/tools/SettingsTools.cpp` (enforce the denylist in `set_setting`), `src/screens/settings/SecuritySection.{h,cpp}` (two new GUI toggles).
 - Create: `src/storage/sqlite/migrations/v049_ai_trading.cpp` (order_drafts + trade_audit), `src/storage/repositories/OrderDraftRepository.{h,cpp}`, `src/storage/repositories/TradeAuditRepository.{h,cpp}`.
-- Create: `src/mcp/tools/OrderFlowTools.{h,cpp}` (`prepare_order`, `submit_order`, `list_drafts`, `cancel_draft`) + a `RiskFloor` helper (or reuse PositionManager).
+- Create: `src/mcp/tools/OrderFlowTools.{h,cpp}` (`prepare_order`, `submit_order`, `list_drafts`, `cancel_draft`) + a standalone `RiskFloor` helper (GUI-only `cli.risk.*` caps; see T3).
 - Modify: `src/mcp/McpInit.cpp` (register the new tools in `register_core_tools`), `src/cli/ServeCommand.cpp` + `src/core/headless/HeadlessRuntime.cpp` (the `submit_order` carve-out), `CMakeLists.txt` (+`MigrationRunner.h` decl, register v049).
 - Tests: `tests/tst_trading_gate_keystone.cpp`, `tests/tst_order_flow.cpp`, `tests/e2e_paper_trade.sh`.
 
@@ -45,12 +50,14 @@
 bool cli_paper_trading_allowed();
 /// `cli.live_trading_armed` == "true" — the Phase-C live-arming flag. Default false.
 bool cli_live_armed();
-/// True iff `key` is a trading-control toggle that MUST be GUI-only — the
+/// True iff `key` is a CLI/agent-control knob that MUST be GUI-only — the
 /// settings-WRITE path refuses to change these even when cli.allow_settings_write
-/// is on, so a CLI/AI agent can never arm or enable its own trading.
+/// is on, so a CLI/AI agent can never arm/enable its own trading OR raise its own
+/// risk caps. Implemented as the `cli.` prefix (covers the trading toggles AND the
+/// cli.risk.* caps in one rule).
 bool is_gui_only_setting(const QString& key);
 ```
-`SettingsGate.cpp`: implement the two readers (mirror `cli_trading_allowed`); `is_gui_only_setting` returns true for exactly `{"cli.allow_trading","cli.live_trading_armed","cli.allow_paper_trading"}`.
+`SettingsGate.cpp`: implement the two readers (mirror `cli_trading_allowed`); `is_gui_only_setting` returns `key.startsWith(QLatin1String("cli."))`. (This is the resolved keystone decision — it blocks the whole `cli.*` namespace, so `cli.allow_trading`, `cli.live_trading_armed`, `cli.allow_paper_trading`, `cli.allow_settings_write`, and the `cli.risk.*` caps are all GUI-only.)
 
 - [ ] **Step 2: Enforce the denylist in `set_setting`** — `SettingsTools.cpp`, at the TOP of the `set_setting` handler (before any write):
 ```cpp
@@ -63,8 +70,8 @@ bool is_gui_only_setting(const QString& key);
 
 - [ ] **Step 3: Failing test** — `tests/tst_trading_gate_keystone.cpp` (links `openterminal_core Qt6::Core Qt6::Test`): with a temp HOME + opened DB,
   - `cli_paper_trading_allowed()`/`cli_live_armed()` default false; true after writing the key directly to the DB.
-  - `is_gui_only_setting("cli.allow_trading")` / `"cli.live_trading_armed"` / `"cli.allow_paper_trading"` → true; `is_gui_only_setting("general.theme")` → false.
-  - **The keystone:** call the `set_setting` tool (via `McpProvider::call_tool`) with `{key:"cli.allow_trading", value:"true"}` → result `success==false` and the error mentions GUI-only; confirm the DB value did NOT change. (Even simulate `cli.allow_settings_write=true` first — still refused.)
+  - `is_gui_only_setting("cli.allow_trading")` / `"cli.live_trading_armed"` / `"cli.allow_paper_trading"` / `"cli.risk.max_order_value"` → true; `is_gui_only_setting("general.theme")` → false.
+  - **The keystone:** call the `set_setting` tool (via `McpProvider::call_tool`) with `{key:"cli.allow_trading", value:"true"}` → result `success==false` and the error mentions GUI-only; **confirm the DB value did NOT change** (`SettingsRepository::get("cli.allow_trading")` still default/absent). Repeat for `cli.risk.max_order_value` (proves the floor can't be raised via the tool). (Even simulate `cli.allow_settings_write=true` first — still refused.)
   Run → FAIL (helpers/denylist absent) → implement → PASS:
 ```bash
 cmake --build /tmp/ot-build-test --target tst_trading_gate_keystone && ctest --test-dir /tmp/ot-build-test -R tst_trading_gate_keystone --output-on-failure
@@ -99,11 +106,15 @@ cmake --build /tmp/ot-build-test --target tst_trading_gate_keystone && ctest --t
 
 **Files:** Create `src/mcp/tools/OrderFlowTools.{h,cpp}` (+ a `RiskFloor` helper); Modify `src/mcp/McpInit.cpp`, `CMakeLists.txt`; Test extend `tests/tst_order_flow.cpp`.
 
-- [ ] **Step 1: Pin the risk floor.** `grep -n "max_order_value\|max_daily_loss\|bool .*(.*Order\|reject\|allow" src/trading/PositionManager.{h,cpp}`. If a standalone check usable from a tool exists, call it. Else implement `RiskFloor::check(const UnifiedOrder& o, const QString& account) -> {bool ok; QString reason; double max_loss;}` in OrderFlowTools.cpp reading the caps from settings (`risk.max_order_value`, `risk.max_position_qty`, `risk.max_daily_loss`; `<=0` = no cap), computing `order_value = quantity*price` (use last quote for market orders), rejecting if over a cap. State which path you took.
+- [ ] **Step 1: RiskFloor helper (decided — standalone, GUI-only caps).** `PositionManager` is stateful/per-deployment (see Threat-model decisions), so implement a standalone `RiskFloor::check(const UnifiedOrder& o, const QString& account) -> {bool ok; QString reason; double order_value; double max_loss;}` in OrderFlowTools.cpp. Read caps from the **GUI-only `cli.risk.*`** keys via `SettingsRepository::get`, each with a **conservative FINITE default** (NOT "no cap"):
+  - `cli.risk.max_order_value` default `25000.0`
+  - `cli.risk.max_position_qty` default `10000.0`
+  - `cli.risk.max_daily_loss` default `5000.0`
+  Compute `order_value = quantity * price` (for market orders use the last quote from DataHub; if no price is resolvable, reject "no price for risk check"). Reject if `order_value > max_order_value` ("exceeds max order value") or `quantity > max_position_qty` ("exceeds max position size"). Mirror `PositionManager::validate_order_value`'s value formula. (Caps are GUI-only by the T1 prefix rule, so the AI cannot raise them — the floor is unbypassable.)
 
 - [ ] **Step 2: `prepare_order` tool** (category `trading`, **is_destructive=false**, auth None): parse the structured intent (`symbol, side, quantity, order_type, limit_price?, account?, strategy?, reason?`) → build `UnifiedOrder`; validate (symbol non-empty, side/order_type valid, account resolves — default to the paper account; limit order needs a price); run the risk floor; on pass persist an `order_drafts` row (status `prepared`, `expires_at` = now+5min) + append a `trade_audit` (phase `prepare`, decision `prepared`) and return `{status:"prepared", draft_id, risk_status:"passed", max_loss, checks:[...]}`. On fail: audit (decision `rejected`) + return `{status:"rejected", reason, checks}`. Register in `register_core_tools` (McpInit.cpp). Add OrderFlowTools.cpp to `MCP_SOURCES`/core.
 
-- [ ] **Step 3: Test** — extend `tst_order_flow.cpp`: a valid intent → `prepare_order` returns `prepared` + a draft exists + an audit row; an oversized intent (over a configured `risk.max_order_value`) → `rejected` with a risk reason + an audit `rejected` row + NO usable draft. Run → FAIL → implement → PASS.
+- [ ] **Step 3: Test** — extend `tst_order_flow.cpp`: a valid intent → `prepare_order` returns `prepared` + a draft exists + an audit row; an oversized intent (over the default `cli.risk.max_order_value`=25000, e.g. qty 1000 @ 200) → `rejected` with a risk reason + an audit `rejected` row + NO usable draft. Run → FAIL → implement → PASS.
 
 - [ ] **Step 4: Commit** `feat(trading): prepare_order — validate + risk floor + draft` + Co-Authored-By.
 
@@ -134,11 +145,11 @@ cmake --build /tmp/ot-build-test --target tst_trading_gate_keystone && ctest --t
             return true;
         });
 ```
-(The live branch is structurally present but resolves false in Phase A since the toggles default off + submit_order's handler hard-offs live anyway — defense in depth.) Include `SettingsGate.h`.
+(The live branch is structurally present but resolves false in Phase A since the toggles default off + submit_order's handler hard-offs live anyway — defense in depth.) Include `SettingsGate.h`. **This lambda is the SOLE daemon gate** (no lower thread-local check — see Threat-model decisions); so it must return true ONLY for `submit_order paper` (toggle on) and false for every other destructive tool — which the structure above does.
 
 - [ ] **Step 3: The carve-out — headless** (`HeadlessRuntime.cpp` checker). Add the same `submit_order` branch (paper→`cli_paper_trading_allowed`; live→`cli_trading_allowed && cli_live_armed`) before its destructive handling, so `openterminalcli --headless submit_order` honors the paper gate too.
 
-- [ ] **Step 4: Test** — extend `tst_order_flow.cpp`: prepare a valid intent, then `submit_order paper` with `cli.allow_paper_trading` written true → `filled` (or a clean paper result) + draft `submitted` + audit `submit` row; with the toggle false → `rejected "paper trading disabled"`; `mode=live` → `rejected "live trading disabled"` regardless; an expired/missing draft → `rejected`; a draft whose risk now fails the re-check (lower a cap between prepare and submit) → `rejected` at submit (proves re-validation). Run → FAIL → implement → PASS.
+- [ ] **Step 4: Test** — extend `tst_order_flow.cpp`: prepare a valid intent, then `submit_order paper` with `cli.allow_paper_trading` written true → `filled` (or a clean paper result) + draft `submitted` + audit `submit` row; with the toggle false → `rejected "paper trading disabled"`; `mode=live` → `rejected "live trading disabled"` regardless; an expired/missing draft → `rejected`; a draft whose risk now fails the re-check (write `cli.risk.max_order_value` to a value below the prepared order's value between prepare and submit) → `rejected` at submit (proves re-validation reads fresh caps). Run → FAIL → implement → PASS.
 
 - [ ] **Step 5: Build + headless smoke (no GUI):**
 ```bash
@@ -159,7 +170,7 @@ Expected: prepare returns a draft; submit live → rejected "live trading disabl
 
 - [ ] **Step 1: e2e script** — `tests/e2e_paper_trade.sh` (chmod +x), throwaway `--profile paper-e2e-$$`, NO GUI:
   - Arm paper by writing `cli.allow_paper_trading=true` into the throwaway profile's DB via the bridge/headless is impossible (GUI-only) — so the script writes it directly with `sqlite3` on the throwaway profile DB (documented: simulating the human GUI toggle), OR runs the daemon and notes the toggle must be set in Settings. Then:
-  - start `serve` on the profile; `prepare_order` (valid) → capture `draft_id`; `submit_order {draft_id, paper}` → assert `filled`/success; `submit_order {…, live}` → assert rejected "live trading disabled"; `set_setting cli.allow_trading true` → assert REFUSED (keystone); `serve --stop`.
+  - start `serve` on the profile; `prepare_order` (valid) → capture `draft_id`; `submit_order {draft_id, paper}` → assert `filled`/success; `submit_order {…, live}` → assert rejected "live trading disabled"; `set_setting cli.allow_trading true` → assert REFUSED (keystone); **`live_place_order {…}` over the daemon bridge → assert DENIED** (proves the carve-out is `submit_order`-only and did not open other destructive tools); `serve --stop`.
   - Use `timeout` watchdogs; assert no hang; clean up the profile.
 - [ ] **Step 2: Run it; paste output** (each assertion PASS/FAIL).
 - [ ] **Step 3: Full regression (paste):** `ctest --test-dir /tmp/ot-build-test --output-on-failure` (all tst_* incl the new three); `cmake --build /tmp/ot-build-ht --target OpenMarketTerminal openterminalcli`; GUI selftests loop (all exit 0); headless one-shot `--headless mcp list | head -c 80`.
@@ -171,7 +182,7 @@ Expected: prepare returns a draft; submit live → rejected "live trading disabl
 ## Self-Review
 **Spec coverage:** two-phase (T3 prepare, T4 submit) ✓; risk floor at prepare+submit (T3 + T4 re-check) ✓; draft+audit tables (T2) ✓; gate ladder + carve-out (T4) ✓; keystone GUI-only toggles (T1) ✓; revocable live-recheck (T4 submit re-reads settings; no token) ✓; live hard-off (T4) ✓; audit (T2/T3/T4) ✓; e2e + matrix (T5) ✓. Phase B/C deferred (noted).
 
-**Known discovery points (verification-bounded):** the `PositionManager` callable risk API vs a small `RiskFloor` helper (T3 Step 1 — grep + stated fallback); the paper-account id resolution (mirror `pt_place_order`); exact `set_setting` handler var names (T1 Step 2). Each named with the grep + a fallback.
+**Resolved before build (was discovery, now decided):** risk-floor source = standalone `RiskFloor` over GUI-only `cli.risk.*` caps with finite defaults (T3); keystone = `cli.` prefix denylist in the sole writer `set_setting` (T1); daemon carve-out is the sole gate, no lower thread-local check (T4). **Remaining minor groundings (with fallbacks):** paper-account id resolution (mirror `pt_place_order` at `PaperTradingTools.cpp:117`); exact `set_setting` handler var names (`SettingsTools.cpp:57-65`).
 
 **Type consistency:** `cli_paper_trading_allowed`/`cli_live_armed`/`is_gui_only_setting` (T1) used in T4 carve-outs; `order_drafts`/`trade_audit`/the repos (T2) used in T3/T4; `prepare_order`/`submit_order` names consistent; `UnifiedOrder`/`UnifiedTrading::place_order` match the real API.
 
