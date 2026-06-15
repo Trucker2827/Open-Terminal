@@ -364,9 +364,12 @@ void TerminalMcpBridge::handle_post_tool(QTcpSocket* sock, const QJsonObject& bo
         });
     } else {
         // External path is already non-blocking on main —
-        // McpService::execute_openai_function_async handles the QtConcurrent::run
-        // wrapping for blocking JSON-RPC clients. Keep the guard on the main
-        // thread (unchanged behavior). Build the wire-form name it expects.
+        // McpService::execute_openai_function_async runs the external call on the
+        // GLOBAL pool, so this guard's thread-local (set here on main) is NOT read
+        // where the external auth check happens. The external branch is therefore
+        // fail-closed: the destructive thread-local doesn't reach the external
+        // read, and gating falls to ToolConfirmationGate. Pre-existing behavior,
+        // unchanged. Build the wire-form name execute_openai_function_async expects.
         CallFlagGuard guard(destructive_ok);
         const QString fn = server_id + "__" + McpProvider::encode_tool_name_for_wire(tool_name);
         future = McpService::instance().execute_openai_function_async(fn, args);

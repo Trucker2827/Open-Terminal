@@ -7,6 +7,7 @@
 #include "mcp/tools/SettingsGate.h"
 #include <QCoreApplication>
 #include <QSocketNotifier>
+#include <QThread>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <cstdio>
@@ -128,9 +129,23 @@ int serve_stop(const QString& profile) {
         std::fprintf(stderr, "failed to signal daemon pid %lld\n", static_cast<long long>(info->pid));
         return 7;
     }
-#endif
+    // Grace: wait up to ~5s for clean exit; escalate to SIGKILL if still alive.
+    for (int i = 0; i < 50 && is_pid_alive(info->pid); ++i)
+        QThread::msleep(100);
+    if (is_pid_alive(info->pid)) {
+        std::fprintf(stderr, "daemon pid %lld did not exit on SIGTERM; sending SIGKILL\n",
+                     static_cast<long long>(info->pid));
+        ::kill(static_cast<pid_t>(info->pid), SIGKILL);
+        for (int i = 0; i < 20 && is_pid_alive(info->pid); ++i) QThread::msleep(100);
+        // A SIGKILLed daemon can't run its aboutToQuit cleanup, so the stale
+        // bridge.json may remain; remove it so the next attach/serve is clean.
+        remove_bridge_file(profile_root_for(profile));
+        std::printf("daemon pid %lld force-stopped (SIGKILL)\n", static_cast<long long>(info->pid));
+        return 0;
+    }
     std::printf("sent SIGTERM to daemon pid %lld\n", static_cast<long long>(info->pid));
     return 0;
+#endif
 }
 
 } // namespace openmarketterminal::cli
