@@ -310,11 +310,15 @@ class TstOrderFlow : public QObject {
         set_gate("cli.allow_paper_trading", "false");
     }
 
-    // LIVE hard-off: even with BOTH live gates ARMED (so the checker carve-out
-    // lets the call through), the HANDLER refuses — live NEVER reaches a broker.
-    // The draft is untouched. This exercises the handler's hard-off directly.
-    void submit_live_hard_off_even_when_armed() {
+    // LIVE default-deny (Phase C, Task 3): even with BOTH live gates ARMED (so
+    // the checker carve-out lets the call through), the HANDLER refuses when no
+    // allowed account is configured — the default-deny live floor. Live NEVER
+    // reaches a broker and the draft is untouched. (The full gated live path —
+    // FakeBroker fill, daily-loss, revocability — is exercised in
+    // tst_live_trading; this pins the equity handler's allowed-account floor.)
+    void submit_live_default_deny_no_allowed_account() {
         // Arm the live gates so the checker passes and the handler is the refuser.
+        // cli.allowed_account is left UNSET (default-deny).
         set_gate("cli.allow_trading", "true");
         set_gate("cli.live_trading_armed", "true");
         const QString draft_id = prepare_valid_draft();
@@ -322,13 +326,14 @@ class TstOrderFlow : public QObject {
 
         auto res = rt_.call_tool("submit_order",
                                  QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
-        QVERIFY2(res.success, qPrintable("live hard-off is a decision (ok_data): " + res.error));
+        QVERIFY2(res.success, qPrintable("live default-deny is a decision (ok_data): " + res.error));
         const QJsonObject data = res.data.toObject();
         QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
-        QVERIFY2(data.value("reason").toString().contains("live trading disabled", Qt::CaseInsensitive),
-                 qPrintable("reason must mention live trading disabled: " + data.value("reason").toString()));
+        QVERIFY2(data.value("reason").toString().contains("no allowed account", Qt::CaseInsensitive),
+                 qPrintable("reason must be the allowed-account floor: " + data.value("reason").toString()));
 
-        // NEVER executed: draft remains prepared.
+        // NEVER executed: the floor is BEFORE the reserve, so the draft remains
+        // prepared (no broker call, no reservation).
         auto got = OrderDraftRepository::instance().get(draft_id);
         QVERIFY2(got.is_ok(), "draft must still exist");
         QCOMPARE(got.value().status, QStringLiteral("prepared"));

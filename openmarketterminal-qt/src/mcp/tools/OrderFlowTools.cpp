@@ -12,6 +12,7 @@
 #include "core/logging/Logger.h"
 #include "mcp/ToolSchemaBuilder.h"
 #include "mcp/tools/DataHubPeekHelpers.h"
+#include "mcp/tools/LivePnl.h"
 #include "mcp/tools/PmPaperEngine.h"
 #include "mcp/tools/PredictionTools.h"
 #include "mcp/tools/SettingsGate.h"
@@ -20,6 +21,7 @@
 #include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
+#include "trading/AccountManager.h"
 #include "trading/TradingTypes.h"
 #include "trading/UnifiedTrading.h"
 
@@ -918,16 +920,120 @@ std::vector<ToolDef> get_order_flow_tools() {
                 });
             }
             if (mode == QLatin1String("live")) {
-                // HARD-OFF: live never reaches a broker in Phase A (paper-first).
-                // No UnifiedTrading / broker call on this path — defense in depth
-                // behind the checker, which also denies live at Phase A defaults.
-                audit_submit(draft.account, QStringLiteral("live"), intent, "denied",
-                             "live trading disabled (paper-first; not yet enabled)", rv);
-                LOG_WARN(TAG, "submit_order live HARD-OFF for draft " + draft_id);
+                // ── REAL-MONEY EQUITY LIVE PATH (Phase C, Task 3) ──────────────
+                // The kill switch was already enforced at the handler top (Task 1)
+                // and the equity risk floor (rv) was RE-RUN fresh above. Every
+                // remaining gate below is re-read LIVE (revocable) and the real
+                // broker call — place_order(account, order) — is reachable ONLY
+                // after ALL of them pass, in this order:
+                //   armed → allowed-account → daily-loss → reserve → place_order.
+
+                // (1) ARMED — BOTH the trading gate AND the live-arming flag must
+                //     be on. The checker may have opened the door; the handler is
+                //     the final authority (a human can un-arm mid-flight).
+                if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed())) {
+                    const QString reason =
+                        QStringLiteral("live trading not armed — arm in GUI Settings");
+                    audit_submit(draft.account, QStringLiteral("live"), intent, "denied",
+                                 reason, rv);
+                    LOG_WARN(TAG, "submit_order live denied (not armed) draft " + draft_id);
+                    return ToolResult::ok_data(QJsonObject{
+                        {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+                }
+
+                // (2) ALLOWED ACCOUNT — the single human-named live account. The AI
+                //     only references this id; it never configures the account/mode.
+                const QString acct = mcp::cli_allowed_account();
+                if (acct.isEmpty()
+                    || !trading::AccountManager::instance().has_account(acct)) {
+                    const QString reason =
+                        QStringLiteral("no allowed account configured for AI trading");
+                    audit_submit(draft.account, QStringLiteral("live"), intent, "denied",
+                                 reason, rv);
+                    return ToolResult::ok_data(QJsonObject{
+                        {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+                }
+                // If the stored intent explicitly NAMES a different account, refuse:
+                // the AI may trade only the human-named allowed account. (Checked on
+                // the raw intent field, NOT draft.account — which defaults to
+                // "paper-default" when no account was named, and would otherwise
+                // reject every legitimate no-account submit.)
+                const QString intent_account = intent.value("account").toString().trimmed();
+                if (!intent_account.isEmpty() && intent_account != acct) {
+                    const QString reason =
+                        QStringLiteral("account not allowed for AI trading");
+                    audit_submit(draft.account, QStringLiteral("live"), intent, "denied",
+                                 reason, rv);
+                    return ToolResult::ok_data(QJsonObject{
+                        {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+                }
+
+                // (3) DAILY-LOSS FLOOR — the running realized-loss tally plus this
+                //     order's max_loss must stay within the GUI-only daily cap.
+                if (!mcp::tools::daily_loss_ok(rv.max_loss)) {
+                    const QString reason = QStringLiteral("daily loss limit reached");
+                    audit_submit(acct, QStringLiteral("live"), intent, "denied", reason, rv);
+                    LOG_WARN(TAG, "submit_order live denied (daily loss) draft " + draft_id);
+                    return ToolResult::ok_data(QJsonObject{
+                        {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+                }
+
+                // (4) RESERVE — atomically claim the draft BEFORE the irreversible
+                //     broker call (compare-and-set prepared→submitting). A duplicate
+                //     or concurrent submit loses the race, so a real fill can never
+                //     be double-executed.
+                auto reserve =
+                    OrderDraftRepository::instance().reserve_for_submit(draft_id);
+                if (!reserve.is_ok() || !reserve.value()) {
+                    const QString reason =
+                        QStringLiteral("draft already used or not reservable");
+                    audit_submit(acct, QStringLiteral("live"), intent, "rejected", reason, rv);
+                    return ToolResult::ok_data(QJsonObject{
+                        {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+                }
+
+                // (5) FIRE — every gate passed. Route to the broker via the account
+                //     overload: place_order(account_id, order) dispatches by the
+                //     account's trading_mode (live/sandbox/demo → broker; else paper
+                //     sim). Reuse the order built + risk-checked above.
+                trading::UnifiedOrderResponse resp =
+                    trading::UnifiedTrading::instance().place_order(acct, b.order);
+
+                OrderDraftRepository::instance().update_status(
+                    draft_id, resp.success ? "submitted" : "submit_failed");
+
+                // Record the fill in the LIVE realized-P&L ledger. The broker
+                // response carries NO fill price, so we record at the price the
+                // equity floor resolved/used for rv (documented approximation).
+                // Venue is "equity"; instrument is the symbol. BUY opens/adds,
+                // SELL closes/reduces.
+                if (resp.success) {
+                    if (b.order.side == OrderSide::Buy)
+                        mcp::tools::record_open(acct, QStringLiteral("equity"),
+                                                b.order.symbol, b.order.quantity,
+                                                b.resolved_price);
+                    else
+                        mcp::tools::record_close(acct, QStringLiteral("equity"),
+                                                 b.order.symbol, b.order.quantity,
+                                                 b.resolved_price);
+                }
+
+                const QString decision = resp.success ? QStringLiteral("filled")
+                                                      : QStringLiteral("rejected");
+                // trade_audit.reason is NOT NULL — synthesize a non-empty reason if
+                // the broker returned an empty message.
+                QString msg = resp.message.trimmed();
+                if (msg.isEmpty())
+                    msg = resp.success ? QStringLiteral("filled")
+                                       : QStringLiteral("rejected");
+                audit_submit(acct, QStringLiteral("live"), intent, decision, msg, rv);
+                LOG_WARN(TAG, "submit_order LIVE " + decision + " draft " + draft_id);
                 return ToolResult::ok_data(QJsonObject{
-                    {"status", "rejected"},
-                    {"reason", "live trading disabled (paper-first; not yet enabled)"},
+                    {"status", decision},
+                    {"order_id", resp.order_id},
+                    {"account", acct},
                     {"mode", "live"},
+                    {"message", msg},
                 });
             }
 

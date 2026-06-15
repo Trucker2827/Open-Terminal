@@ -127,4 +127,8 @@ bool BrokerRegistry::has(const QString& broker_id) const {
     return brokers_.count(broker_id) > 0;
 }
 
+void BrokerRegistry::register_broker_for_test(const QString& broker_id, BrokerPtr broker) {
+    brokers_[broker_id] = std::move(broker);
+}
+
 } // namespace openmarketterminal::trading

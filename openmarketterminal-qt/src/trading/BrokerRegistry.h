@@ -25,6 +25,11 @@ class BrokerRegistry {
     QStringList list_brokers() const;
     bool has(const QString& broker_id) const;
 
+    // Test seam — register (or replace) a broker implementation under an
+    // arbitrary id. Used ONLY by unit tests to inject a fake/sandbox broker;
+    // it is never called on any production code path.
+    void register_broker_for_test(const QString& broker_id, BrokerPtr broker);
+
     BrokerRegistry(const BrokerRegistry&) = delete;
     BrokerRegistry& operator=(const BrokerRegistry&) = delete;
 
