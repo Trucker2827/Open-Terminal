@@ -39,7 +39,10 @@ PmFill buy_to_open(const QString& venue, const QString& market_id, const QString
         const PmPosition& old = existing.value().value();
         const double new_contracts = old.contracts + contracts;
         const double new_cost = old.cost_basis + cost;
-        auto upd = repo.set_contracts(old.id, new_contracts, new_cost, "open");
+        // Re-blend the average so mark-to-market reflects the true cost/contract
+        // after averaging in (not the first-entry price).
+        const double new_avg = new_contracts > 0.0 ? new_cost / new_contracts : fill_price;
+        auto upd = repo.set_contracts(old.id, new_contracts, new_cost, new_avg, "open");
         if (upd.is_err())
             return PmFill{false, QString::fromStdString(upd.error()), {}, 0, 0, 0};
     } else {
@@ -90,7 +93,8 @@ PmFill sell_to_close(const QString& venue, const QString& asset_id, double contr
     const double new_cost =
         pos.contracts > 0.0 ? pos.cost_basis * (new_contracts / pos.contracts) : 0.0;
     const QString status = new_contracts <= kCloseEps ? "closed" : "open";
-    auto upd = repo.set_contracts(pos.id, new_contracts, new_cost, status);
+    // Selling part of a lot does not change the remaining lot's average cost.
+    auto upd = repo.set_contracts(pos.id, new_contracts, new_cost, pos.avg_price, status);
     if (upd.is_err())
         return PmFill{false, QString::fromStdString(upd.error()), {}, 0, 0, 0};
 

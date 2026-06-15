@@ -351,6 +351,10 @@ class TstPmPaper : public QObject {
         QCOMPARE(g2.value()->contracts, 150.0);
         QVERIFY(qFuzzyCompare(g2.value()->cost_basis, 100.0));
         QVERIFY(qFuzzyCompare(g2.value()->cost_basis / g2.value()->contracts, 100.0 / 150.0));
+        // The persisted avg_price is re-blended (not the first-entry 0.60), so
+        // mark-to-market over the stored position is correct after averaging in.
+        QVERIFY(qFuzzyCompare(g2.value()->avg_price, 100.0 / 150.0));
+        QVERIFY(qFuzzyCompare(mark_to_market(*g2.value(), 0.70), (0.70 - 100.0 / 150.0) * 150.0));
 
         // sell_to_close(60 @ 0.70) → contracts 90, proceeds 42 → cash 99942,
         // cost_basis pro-rata = 100 * (90/150) = 60.

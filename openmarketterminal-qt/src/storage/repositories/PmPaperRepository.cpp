@@ -71,9 +71,10 @@ Result<qint64> PmPaperRepository::insert_open(const PmPosition& p) {
 }
 
 Result<void> PmPaperRepository::set_contracts(qint64 id, double contracts, double cost_basis,
-                                              const QString& status) {
-    return exec_write("UPDATE pm_paper_positions SET contracts = ?, cost_basis = ?, status = ? WHERE id = ?",
-                      {contracts, cost_basis, status, id});
+                                              double avg_price, const QString& status) {
+    return exec_write(
+        "UPDATE pm_paper_positions SET contracts = ?, cost_basis = ?, avg_price = ?, status = ? WHERE id = ?",
+        {contracts, cost_basis, avg_price, status, id});
 }
 
 Result<QVector<PmPosition>> PmPaperRepository::list_open() {

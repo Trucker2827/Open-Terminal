@@ -38,8 +38,11 @@ class PmPaperRepository : public BaseRepository<PmPosition> {
     Result<std::optional<PmPosition>> get_open(const QString& venue, const QString& asset_id);
     /// Insert a new position row; returns its autoincrement id.
     Result<qint64> insert_open(const PmPosition& p);
-    /// Update contracts/cost_basis/status for the row with the given id.
-    Result<void> set_contracts(qint64 id, double contracts, double cost_basis, const QString& status);
+    /// Update contracts/cost_basis/avg_price/status for the row with the given id.
+    /// avg_price is the blended cost/contracts so mark-to-market stays correct
+    /// after averaging into an existing position.
+    Result<void> set_contracts(qint64 id, double contracts, double cost_basis, double avg_price,
+                               const QString& status);
     /// All currently-open positions.
     Result<QVector<PmPosition>> list_open();
     /// Sum of cost_basis across all OPEN positions in a category.
