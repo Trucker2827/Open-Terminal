@@ -12,11 +12,16 @@
 #   - submit_order PAPER routes via the daemon: the submit_order CARVE-OUT lets it
 #     past the read-only auth gate AND the handler executes on the paper rail
 #     (status "filled"). This is the headline.
-#   - submit_order LIVE is refused EVEN WITH THE LIVE GATES FULLY ARMED: the
-#     handler is the last line of defence and hard-offs ("live trading disabled"),
-#     and the draft NEVER walks to "submitted". Arming is STRENGTHENING — it
-#     strips the checker's protection so the handler alone must refuse (mirrors
-#     the unit test submit_live_hard_off_even_when_armed). Live never executes.
+#   - submit_order LIVE is refused EVEN WITH THE LIVE GATES ARMED: arming
+#     (allow_trading + live_trading_armed) is STRENGTHENING — it strips the
+#     checker's outer protection so the request reaches the HANDLER, whose
+#     Phase-C gate stack then rejects it. Here arming is on but NO allowed
+#     account is configured (cli.allowed_account unset → default-deny), so the
+#     handler returns status "rejected" with reason "no allowed account
+#     configured for AI trading" (a structured GATE reason — NOT the removed
+#     Phase-A hard-off string "live trading disabled"). The draft NEVER walks to
+#     "submitted". Live never executes. (Mirrors unit (b) live_no_allowed_account
+#     and the live e2e #2/#5.)
 #   - The keystone holds over the daemon: set_setting on a cli.* key is DENIED
 #     (exit 5 + "auth") even with trading armed — the read-only gate blocks it.
 #   - The carve-out is submit_order-ONLY: another destructive tool
@@ -173,10 +178,12 @@ echo "PASS: paper draft walked prepared -> submitted in DB"
 
 # ============================================================================
 # Step 5 — submit_order LIVE over the daemon. Gates are ARMED, so the request
-# reaches the HANDLER, which hard-offs. A live fill would be success:true too —
-# so we assert status=="rejected" AND reason "live trading disabled", AND that
-# the draft NEVER walked to submitted (persistence-layer non-execution proof).
-# (1st draft is now "submitted", so prepare a 2nd.)
+# reaches the HANDLER, whose Phase-C gate stack rejects it (no allowed account
+# configured → default-deny). A live fill would be success:true too — so we
+# assert status=="rejected" AND a structured GATE reason ("no allowed account"),
+# AND that the reason is NOT the removed Phase-A hard-off ("live trading
+# disabled"), AND that the draft NEVER walked to submitted (persistence-layer
+# non-execution proof). (1st draft is now "submitted", so prepare a 2nd.)
 # ============================================================================
 P2_OUT=$(wd 30 "$CLI" --json --profile "$PROF" mcp call prepare_order \
          '{"symbol":"AAPL","side":"buy","quantity":10,"order_type":"limit","limit_price":200}' 2>&1)
@@ -188,14 +195,19 @@ L_OUT=$(wd 30 "$CLI" --json --profile "$PROF" mcp call submit_order \
 L_RC=$?
 L_STATUS=$(printf '%s' "$L_OUT" | json_field status)
 L_REASON=$(printf '%s' "$L_OUT" | json_field reason)
+# Guard: the removed Phase-A hard-off string must NOT reappear (that text being
+# gone is the whole point of Phase C — the gate stack replaced it).
+if printf '%s' "$L_OUT" | grep -qi "live trading disabled"; then
+    fail "submit_order LIVE returned the REMOVED Phase-A hard-off text (gate stack bypassed?): $L_OUT"
+fi
 if [ $L_RC -eq 0 ] && [ "$L_STATUS" = "rejected" ] \
-       && printf '%s' "$L_REASON" | grep -qi "live trading disabled"; then
-    echo "PASS: submit_order LIVE refused by HANDLER (status=rejected, '$L_REASON')"
+       && printf '%s' "$L_REASON" | grep -qi "no allowed account"; then
+    echo "PASS: submit_order LIVE rejected by HANDLER gate stack (status=rejected, '$L_REASON')"
 elif [ $L_RC -eq 5 ] && printf '%s' "$L_OUT" | grep -qi "auth"; then
     # Fallback: the checker denied live before the handler — also "never executes".
     echo "PASS: submit_order LIVE denied by checker (exit 5 + auth) -> $L_OUT"
 else
-    fail "submit_order LIVE neither hard-off nor auth-denied (rc=$L_RC status=$L_STATUS out=$L_OUT)"
+    fail "submit_order LIVE neither gate-rejected nor auth-denied (rc=$L_RC status=$L_STATUS out=$L_OUT)"
 fi
 # Persistence proof: live NEVER executed — draft 2 is still "prepared".
 D2_DB=$(sqlite3 "$DB" "SELECT status FROM order_drafts WHERE draft_id='$DID2';")
