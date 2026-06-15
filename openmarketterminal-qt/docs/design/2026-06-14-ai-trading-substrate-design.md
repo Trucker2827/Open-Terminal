@@ -10,11 +10,38 @@ A safety substrate that lets an AI agent (Claude/Codex) **propose** trades while
 
 **The governing rule:** the AI can *propose*; the CLI can *transmit*; only the **daemon** can *approve and execute*. The AI must never be able to arm or bypass its own trading.
 
+## Two-layer constitutional model (the design philosophy)
+
+The substrate is **not** "restrict the AI at every step" — that would make automation pointless. It is a **constitution**: a human sets the rules of the game once, then the AI plays freely inside them. Two layers, cleanly separated:
+
+- **Layer 1 — Human authority (the arena walls).** A human, only in the GUI, sets the *constitutional controls*: whether AI live trading is on, max daily loss, max order size, max exposure per market/topic, the allowed account, allowed venues, allowed strategy universe, and the kill switch. The AI can **read** these but can **never change** them. These are the walls; the AI cannot move them.
+- **Layer 2 — AI autonomy (play inside the arena).** Once the human enables AI trading, the AI operates **without per-trade human confirmation**: it prepares and submits orders, cancels/replaces, rebalances, exits positions, selects among the allowed markets, sizes within the caps, and runs continuously over the daemon/CLI. No random friction — that is the whole point of the automation.
+
+**Human-owned controls (GUI-only — the AI cannot write any of these):**
+- Enable/disable AI live trading (`cli.allow_trading`, `cli.live_trading_armed`)
+- Enable AI paper trading (`cli.allow_paper_trading`)
+- Max daily loss (`cli.risk.max_daily_loss`)
+- Max order size (`cli.risk.max_order_value`), max position size (`cli.risk.max_position_qty`)
+- Max exposure per market/topic (`cli.risk.max_exposure_*` — Phase B)
+- Allowed account (`cli.allowed_account` — Phase C)
+- Allowed venues (`cli.allowed_venues` — Phase B/C)
+- Allowed strategy universe (`cli.allowed_strategies` — Phase C)
+- Kill switch (`cli.kill_switch` — Phase C; always available, always honored)
+- The settings-write grant itself (`cli.allow_settings_write`)
+
+**AI-owned actions (free once the human has enabled the relevant mode):**
+- Prepare orders; submit orders (paper now, live when armed) — **no per-trade confirmation**
+- Cancel / replace orders; rebalance; exit positions (Phase C action set)
+- Select among the *allowed* markets; size trades *within* the caps
+- Run continuously through the daemon/CLI; log reasoning and results (audited)
+
+**Why this is already enforceable for free:** the keystone is implemented as a single rule — `is_gui_only_setting(key) == key.startsWith("cli.")` — so the **entire `cli.*` namespace is constitutional**. Every control above is GUI-only the moment it is named under `cli.*`; adding a new wall (exposure cap, allowed-venues list, kill switch) needs **no change to the lock**. The AI can never raise its own limits, switch paper→live, disable the kill switch, or change the account/venues/strategy universe, because all of those are `cli.*` writes the `set_setting` tool refuses. Everything *inside* the walls is the AI's to do, freely.
+
 ## Phasing (per user)
 
 - **Phase A — Equity paper MVP (this spec's buildable scope):** `prepare_order` + `submit_order` on the proven `UnifiedTrading` equity paper rail; `order_drafts` table; `trade_audit` table; deterministic risk floor at prepare AND submit; `cli.allow_paper_trading` toggle (default off); **live hard-off** (`submit_order mode=live` → "live disabled").
 - **Phase B — Prediction-market paper:** the same substrate, new venue: `market_id`/`contract`(YES/NO)/`side`, probability-edge metadata, max-loss-from-contracts math, PM-specific risk (per-topic cap, liquidity/spread, settlement-proximity), wired to the Polymarket/Kalshi adapters in a paper/sim mode.
-- **Phase C — Live submit:** only after the paper path is proven; still behind `cli.allow_trading` + arming + re-check-at-submit + the risk floor. (Coinbase PM adapter, if pursued, is its own venue add — availability uncertain.)
+- **Phase C — Human-enabled AI live mode:** only after the paper path is proven. A human arms live in the GUI (`cli.allow_trading` + `cli.live_trading_armed`). Then the AI **submits live orders automatically, with NO per-trade human confirmation** — real automation, not a toy. The daemon still enforces the fixed, human-set constitutional limits (max daily loss / order size / exposure / allowed account+venues+strategies) re-checked fresh at every submit; the **AI cannot raise any of them**; the **kill switch is always available and always honored**; everything is audited. This phase also extends the AI action set beyond submit (cancel/replace, rebalance, exit) — those become AI-owned over the daemon *only when live is armed*, gated the same way the `submit_order` carve-out is (the action reaches its handler; the handler enforces the live + risk + allowed-universe constitution). (Coinbase PM adapter, if pursued, is its own venue add — availability uncertain.)
 
 This document specifies the **full substrate architecture** but scopes the implementation **plan to Phase A**. The security properties (live hard-off, AI-can't-arm, risk floor, audit) are designed into Phase A even though live executes only in Phase C — the substrate must be safe from the first commit.
 
@@ -98,9 +125,14 @@ Structured rejections everywhere: `{status:"rejected", reason, checks?}` (exit/`
 - **Re-check race** (state changes between submit's re-check and execution) — the window is small; the risk floor + paper-first bound the damage; Phase C live would tighten this.
 
 ## Follow-ups (out of Phase A scope)
-- **Phase B:** PM venue (Polymarket/Kalshi paper), the `market_id`/`contract` intent shape, max-loss-from-contracts, per-topic/liquidity/spread/settlement risk checks.
-- **Phase C:** live execution arming flow (the human GUI arm step), live re-check hardening, kill-switch UX.
-- The `openterminalcli ai run strategy <name> --mode paper` higher-level loop.
+- **Phase B:** PM venue (Polymarket/Kalshi paper), the `market_id`/`contract` intent shape, max-loss-from-contracts, per-topic/liquidity/spread/settlement risk checks. Adds the constitutional controls `cli.risk.max_exposure_*` (per market/topic) and `cli.allowed_venues` — both GUI-only for free under the `cli.` prefix.
+- **Phase C — human-enabled AI live mode (real automation, no per-trade confirm):**
+  - GUI arm step (human flips `cli.allow_trading` + `cli.live_trading_armed`); after that, the AI submits live with NO per-trade prompt.
+  - New constitutional controls (all GUI-only via the `cli.` prefix): `cli.allowed_account`, `cli.allowed_strategies`, `cli.kill_switch` (always honored — when set, every submit/cancel/replace is refused regardless of other gates).
+  - **Enforce `cli.risk.max_daily_loss`** as a real running-P&L check (the recorded-but-not-yet-enforced cap from Phase A) — requires a fills/P&L tally in `trade_audit`/positions.
+  - Extend the AI action set beyond submit: `cancel_order`/`replace_order`/`rebalance`/`exit_position` become AI-owned over the daemon **only when live is armed**, each via the same "checker opens the door → handler is the final authority (live + risk + allowed-universe + kill-switch)" pattern as the `submit_order` carve-out. No per-action human confirmation.
+  - Live re-check hardening + **atomic reserve-before-execute** (the Phase-A `reserve_for_submit` CAS already lands this for submit; apply the same to cancel/replace), isolate the AI paper/live session from the process-global `UnifiedTrading::session_`, canonicalize the action-name match in the daemon checker.
+- The `openterminalcli ai run strategy <name> --mode paper|live` higher-level loop — runs continuously inside the constitution.
 - Per-sync-handler timeout (daemon throughput hardening, from the off-thread debt) — relevant once submit runs real work.
 - Coinbase PM adapter (availability uncertain).
 
