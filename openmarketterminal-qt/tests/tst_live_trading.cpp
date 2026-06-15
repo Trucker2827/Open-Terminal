@@ -23,9 +23,12 @@
 #include <QTemporaryDir>
 
 #include "core/headless/HeadlessRuntime.h"
+#include "mcp/tools/LivePnl.h"
 #include "mcp/tools/SettingsGate.h"
+#include "storage/repositories/LivePnlRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
+#include "storage/sqlite/Database.h"
 
 using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
@@ -59,6 +62,16 @@ class TstLiveTrading : public QObject {
         qputenv("HOME", home_.path().toUtf8());
         auto r = rt_.init("default");
         QVERIFY2(r.ok, qPrintable(r.error));
+    }
+
+    // Wipe the live-P&L tables before EACH slot so every P&L assertion can use
+    // absolute spec values: daily_pnl is ONE cumulative row per UTC day shared by
+    // the whole run, and live_positions rows persist. The kill-switch / keystone
+    // slots never touch these tables, so the wipe is harmless for them. Runs after
+    // initTestCase, so the v051 tables already exist.
+    void init() {
+        Database::instance().execute("DELETE FROM daily_pnl", {});
+        Database::instance().execute("DELETE FROM live_positions", {});
     }
 
     // ── Layer 3 (run FIRST): KEYSTONE — set_setting refuses these GUI-only keys.
@@ -149,6 +162,58 @@ class TstLiveTrading : public QObject {
         QVERIFY2(audit_has("submit_order", "kill switch engaged"),
                  "kill-switch submit refusal must write a trade_audit row");
         set_key("cli.kill_switch", "false");
+    }
+
+    // ── Phase C, Task 2: live realized-P&L ledger + daily-loss gate ──────────
+    void realized_pnl_round_trip_records_loss() {
+        mcp::tools::record_open("acct", "equity", "AAPL", 100, 150.0);
+        const double realized = mcp::tools::record_close("acct", "equity", "AAPL", 100, 140.0);
+        QVERIFY2(qFuzzyCompare(realized, -1000.0), "(140-150)*100 = -1000");
+        auto t = LivePnlRepository::instance().realized_today(mcp::tools::today_utc());
+        QVERIFY(t.is_ok());
+        QVERIFY2(qFuzzyCompare(t.value(), -1000.0), "daily_pnl tally must hold -1000");
+    }
+
+    void daily_loss_gate_blocks_at_cap_after_loss() {
+        mcp::tools::record_open("acct", "equity", "AAPL", 100, 150.0);
+        mcp::tools::record_close("acct", "equity", "AAPL", 100, 140.0);  // realized -1000
+        // today_loss = 1000, default cap = 5000.
+        QVERIFY2(mcp::tools::daily_loss_ok(3000.0), "1000+3000 <= 5000 must pass");
+        QVERIFY2(!mcp::tools::daily_loss_ok(4001.0), "1000+4001 > 5000 must block");
+    }
+
+    void daily_loss_gate_profit_floors_today_loss_at_zero() {
+        mcp::tools::record_open("acct", "equity", "AAPL", 100, 140.0);
+        const double realized = mcp::tools::record_close("acct", "equity", "AAPL", 100, 150.0);
+        QVERIFY2(qFuzzyCompare(realized, 1000.0), "(150-140)*100 = +1000");
+        // Profit must NOT expand headroom into negative — today_loss floors at 0.
+        QVERIFY2(mcp::tools::daily_loss_ok(5000.0), "0+5000 <= 5000 must pass");
+        QVERIFY2(!mcp::tools::daily_loss_ok(5001.0), "0+5001 > 5000 must block");
+    }
+
+    void partial_close_reduces_qty_and_cost_basis_prorata() {
+        mcp::tools::record_open("acct", "equity", "AAPL", 100, 150.0);
+        const double realized = mcp::tools::record_close("acct", "equity", "AAPL", 40, 150.0);
+        QVERIFY2(qFuzzyIsNull(realized), "close at avg_cost yields 0 realized");
+        auto pos = LivePnlRepository::instance().get_open("acct", "equity", "AAPL");
+        QVERIFY(pos.is_ok() && pos.value().has_value());
+        QVERIFY2(qFuzzyCompare(pos.value().value().qty, 60.0), "100-40 = 60 left");
+        QVERIFY2(qFuzzyCompare(pos.value().value().cost_basis, 60.0 * 150.0),
+                 "cost_basis pro-rata = 60*150 = 9000");
+    }
+
+    void close_then_reopen_same_instrument_no_unique_conflict() {
+        mcp::tools::record_open("acct", "equity", "AAPL", 100, 150.0);
+        mcp::tools::record_close("acct", "equity", "AAPL", 100, 150.0);  // fully closed
+        auto closed = LivePnlRepository::instance().get_open("acct", "equity", "AAPL");
+        QVERIFY(closed.is_ok());
+        QVERIFY2(!closed.value().has_value(), "fully-closed position leaves no OPEN row");
+        // Re-open the same instrument: must create a fresh OPEN row (no UNIQUE clash).
+        mcp::tools::record_open("acct", "equity", "AAPL", 50, 200.0);
+        auto reopened = LivePnlRepository::instance().get_open("acct", "equity", "AAPL");
+        QVERIFY(reopened.is_ok() && reopened.value().has_value());
+        QVERIFY2(qFuzzyCompare(reopened.value().value().qty, 50.0), "re-opened qty = 50");
+        QVERIFY2(qFuzzyCompare(reopened.value().value().avg_cost, 200.0), "re-opened avg = 200");
     }
 
     void cleanupTestCase() { rt_.shutdown(); }

@@ -876,6 +876,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/OrderDraftRepository.cpp
     src/storage/repositories/TradeAuditRepository.cpp
     src/storage/repositories/PmPaperRepository.cpp
+    src/storage/repositories/LivePnlRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -936,6 +937,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v048_scrub_hosted_llm_proxy.cpp
     src/storage/sqlite/migrations/v049_ai_trading.cpp
     src/storage/sqlite/migrations/v050_pm_paper.cpp
+    src/storage/sqlite/migrations/v051_live_pnl.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -1014,6 +1016,7 @@ set(MCP_SOURCES
     src/mcp/tools/OrderFlowTools.cpp
     src/mcp/tools/PredictionTools.cpp
     src/mcp/tools/PmPaperEngine.cpp
+    src/mcp/tools/LivePnl.cpp
     src/mcp/tools/LiveTradingTools.cpp
     src/mcp/tools/EdgarTools.cpp
     src/mcp/tools/MAAnalyticsTools.cpp
@@ -2208,6 +2211,7 @@ set_source_files_properties(
     src/storage/repositories/OrderDraftRepository.cpp
     src/storage/repositories/TradeAuditRepository.cpp
     src/storage/repositories/PmPaperRepository.cpp
+    src/storage/repositories/LivePnlRepository.cpp
     # Migration files — each defines sql() helper in anonymous namespace
     src/storage/sqlite/migrations/v001_initial.cpp
     src/storage/sqlite/migrations/v002_llm_chat.cpp
@@ -2258,6 +2262,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v048_scrub_hosted_llm_proxy.cpp
     src/storage/sqlite/migrations/v049_ai_trading.cpp
     src/storage/sqlite/migrations/v050_pm_paper.cpp
+    src/storage/sqlite/migrations/v051_live_pnl.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
@@ -2364,6 +2369,7 @@ set_source_files_properties(
     src/mcp/tools/OrderFlowTools.cpp
     src/mcp/tools/PredictionTools.cpp
     src/mcp/tools/PmPaperEngine.cpp
+    src/mcp/tools/LivePnl.cpp
     src/mcp/tools/LiveTradingTools.cpp
     src/mcp/tools/EdgarTools.cpp
     src/mcp/tools/MAAnalyticsTools.cpp
