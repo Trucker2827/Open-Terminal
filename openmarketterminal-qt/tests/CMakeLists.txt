@@ -75,6 +75,14 @@ target_include_directories(tst_settings_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_settings_gate PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_settings_gate COMMAND tst_settings_gate)
 
+# Paper Strategy-Loop Driver Task 1 — StrategyRunner harness. Pure fakes for the
+# ToolCaller/Strategy seams; touches the real kill-switch read, so it links the
+# same Widgets-free set as tst_settings_gate (Core/Network/Sql/Test).
+add_executable(tst_strategy_loop tst_strategy_loop.cpp)
+target_include_directories(tst_strategy_loop PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_strategy_loop PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_strategy_loop COMMAND tst_strategy_loop)
+
 # AI-Trading Substrate Phase A Task 1 — the SECURITY KEYSTONE: the settings-WRITE
 # tool path must refuse any cli.* key (arm/enable trading, raise risk caps) even
 # when cli.allow_settings_write is on, so a CLI/AI agent can't escalate itself.
