@@ -485,6 +485,31 @@ class TstLiveTrading : public QObject {
         clear_live_keys();
     }
 
+    // (h) The DIRECT live_* broker tools must NEVER be an ungated path to real
+    //     money. Even fully armed (allow_trading + live_trading_armed + an allowed
+    //     account), live_place_order over the headless host is DENIED by the
+    //     auth-checker — the AI's ONLY live path is the gated submit_order. (Before
+    //     the headless checker was reconciled with the daemon, this fired a real
+    //     order gated by cli.allow_trading alone, bypassing the whole constitution.)
+    void live_direct_tool_denied_even_when_armed() {
+        const QString acct = setup_fake_account();
+        set_key("cli.allow_trading", "true");
+        set_key("cli.live_trading_armed", "true");
+        set_key("cli.allowed_account", acct);
+
+        auto res = rt_.call_tool("live_place_order",
+                                 QJsonObject{{"account_id", acct}, {"symbol", "AAPL"},
+                                             {"side", "buy"}, {"quantity", 1}});
+        QVERIFY2(!res.success,
+                 "direct live_place_order MUST be denied even when fully armed — it "
+                 "bypasses the kill-switch/armed/allowed-account/daily-loss stack");
+        // And it left no live position (no broker call happened).
+        auto pos = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
+        QVERIFY2(pos.is_ok() && !pos.value().has_value(),
+                 "denied direct live tool must not have recorded a fill");
+        clear_live_keys();
+    }
+
     // (g) Revocable: a draft prepared while armed must STILL be denied — with NO
     //     execution — if the human un-arms before submit. Every gate is re-read
     //     live, so revoking arming after prepare halts the order. As with (a),
