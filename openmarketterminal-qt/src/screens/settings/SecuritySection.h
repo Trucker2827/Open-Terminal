@@ -41,6 +41,8 @@ class SecuritySection : public QWidget {
     // CLI capability gates (default off; persisted as cli.allow_*).
     QCheckBox*   cli_settings_write_toggle_ = nullptr;
     QCheckBox*   cli_trading_toggle_        = nullptr;
+    QCheckBox*   cli_paper_trading_toggle_  = nullptr;
+    QCheckBox*   cli_live_trading_toggle_   = nullptr;
     QListWidget* sec_audit_list_       = nullptr;
     QLabel*      sec_lockout_status_   = nullptr;
     QPushButton* sec_change_pin_btn_   = nullptr;
@@ -74,6 +76,8 @@ class SecuritySection : public QWidget {
     QLabel* row_minimize_lbl_    = nullptr;  QLabel* row_minimize_desc_    = nullptr;
     QLabel* row_cli_write_lbl_   = nullptr;  QLabel* row_cli_write_desc_   = nullptr;
     QLabel* row_cli_trade_lbl_   = nullptr;  QLabel* row_cli_trade_desc_   = nullptr;
+    QLabel* row_cli_paper_lbl_   = nullptr;  QLabel* row_cli_paper_desc_   = nullptr;
+    QLabel* row_cli_live_lbl_    = nullptr;  QLabel* row_cli_live_desc_    = nullptr;
 };
 
 } // namespace openmarketterminal::screens

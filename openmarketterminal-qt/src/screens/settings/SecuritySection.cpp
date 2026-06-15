@@ -296,6 +296,22 @@ void SecuritySection::build_ui() {
     capture_row_labels(row_cli_trade, &row_cli_trade_lbl_, &row_cli_trade_desc_);
     vl->addWidget(row_cli_trade);
 
+    cli_paper_trading_toggle_ = new QCheckBox(tr("Allow CLI paper trading"));
+    cli_paper_trading_toggle_->setStyleSheet(check_ss());
+    auto* row_cli_paper = make_row(
+        tr("CLI Paper Trading"), cli_paper_trading_toggle_,
+        tr("When on, the command-line interface / AI agent may submit simulated (paper) orders. No real money. Off by default."));
+    capture_row_labels(row_cli_paper, &row_cli_paper_lbl_, &row_cli_paper_desc_);
+    vl->addWidget(row_cli_paper);
+
+    cli_live_trading_toggle_ = new QCheckBox(tr("Arm CLI LIVE trading (advanced)"));
+    cli_live_trading_toggle_->setStyleSheet(check_ss());
+    auto* row_cli_live = make_row(
+        tr("CLI LIVE Trading (advanced)"), cli_live_trading_toggle_,
+        tr("Arms LIVE order execution for the command-line interface / AI agent. Real money. Only a human can set this here; the CLI/agent can never arm itself. Off by default."));
+    capture_row_labels(row_cli_live, &row_cli_live_lbl_, &row_cli_live_desc_);
+    vl->addWidget(row_cli_live);
+
     vl->addSpacing(16);
 
     // ── SAVE ──────────────────────────────────────────────────────────────────
@@ -326,6 +342,14 @@ void SecuritySection::build_ui() {
         if (cli_trading_toggle_) {
             repo.set("cli.allow_trading",
                      cli_trading_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        if (cli_paper_trading_toggle_) {
+            repo.set("cli.allow_paper_trading",
+                     cli_paper_trading_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        if (cli_live_trading_toggle_) {
+            repo.set("cli.live_trading_armed",
+                     cli_live_trading_toggle_->isChecked() ? "true" : "false", "cli");
         }
         // Notify listeners. These cli.* flags are read directly from the DB by
         // the CLI's headless auth-checker on every tool call, so revoking
@@ -426,12 +450,18 @@ void SecuritySection::retranslateUi() {
     if (row_cli_write_desc_)  row_cli_write_desc_->setText(tr("When on, the command-line interface may change app settings (config-write tools). Reads are always allowed."));
     if (row_cli_trade_lbl_)   row_cli_trade_lbl_->setText(tr("CLI Trading / Destructive"));
     if (row_cli_trade_desc_)  row_cli_trade_desc_->setText(tr("When on, the command-line interface may run destructive / trading-execution tools (live orders, Python exec, agent mutation). The app's risk limits and kill-switch still apply."));
+    if (row_cli_paper_lbl_)   row_cli_paper_lbl_->setText(tr("CLI Paper Trading"));
+    if (row_cli_paper_desc_)  row_cli_paper_desc_->setText(tr("When on, the command-line interface / AI agent may submit simulated (paper) orders. No real money. Off by default."));
+    if (row_cli_live_lbl_)    row_cli_live_lbl_->setText(tr("CLI LIVE Trading (advanced)"));
+    if (row_cli_live_desc_)   row_cli_live_desc_->setText(tr("Arms LIVE order execution for the command-line interface / AI agent. Real money. Only a human can set this here; the CLI/agent can never arm itself. Off by default."));
 
     // Checkbox texts.
     if (sec_autolock_toggle_)  sec_autolock_toggle_->setText(tr("Enable auto-lock on inactivity"));
     if (sec_lock_on_minimize_) sec_lock_on_minimize_->setText(tr("Lock when the window is minimized"));
     if (cli_settings_write_toggle_) cli_settings_write_toggle_->setText(tr("Allow CLI to write settings"));
     if (cli_trading_toggle_)        cli_trading_toggle_->setText(tr("Allow CLI trading / destructive actions"));
+    if (cli_paper_trading_toggle_)  cli_paper_trading_toggle_->setText(tr("Allow CLI paper trading"));
+    if (cli_live_trading_toggle_)   cli_live_trading_toggle_->setText(tr("Arm CLI LIVE trading (advanced)"));
 
     // PIN field placeholders.
     if (sec_current_pin_) sec_current_pin_->setPlaceholderText(tr("Current PIN"));
@@ -519,6 +549,16 @@ void SecuritySection::reload() {
         const QSignalBlocker b(cli_trading_toggle_);
         auto r = repo.get("cli.allow_trading", "false");
         cli_trading_toggle_->setChecked(r.is_ok() && r.value() == "true");
+    }
+    if (cli_paper_trading_toggle_) {
+        const QSignalBlocker b(cli_paper_trading_toggle_);
+        auto r = repo.get("cli.allow_paper_trading", "false");
+        cli_paper_trading_toggle_->setChecked(r.is_ok() && r.value() == "true");
+    }
+    if (cli_live_trading_toggle_) {
+        const QSignalBlocker b(cli_live_trading_toggle_);
+        auto r = repo.get("cli.live_trading_armed", "false");
+        cli_live_trading_toggle_->setChecked(r.is_ok() && r.value() == "true");
     }
 
     refresh_audit_log();

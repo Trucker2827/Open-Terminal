@@ -25,4 +25,17 @@ bool cli_settings_write_allowed();
 /// trading gate. Settings READ tools are non-destructive and never match.
 bool is_settings_write_tool(const QString& name);
 
+/// `cli.allow_paper_trading` == "true" — gates submit_order mode=paper. Default false.
+bool cli_paper_trading_allowed();
+
+/// `cli.live_trading_armed` == "true" — the Phase-C live-arming flag. Default false.
+bool cli_live_armed();
+
+/// True iff `key` is a CLI/agent-control knob that MUST be GUI-only — the
+/// settings-WRITE path refuses to change these even when cli.allow_settings_write
+/// is on, so a CLI/AI agent can never arm/enable its own trading OR raise its own
+/// risk caps. Implemented as the `cli.` prefix (covers the trading toggles AND the
+/// cli.risk.* caps in one rule).
+bool is_gui_only_setting(const QString& key);
+
 } // namespace openmarketterminal::mcp

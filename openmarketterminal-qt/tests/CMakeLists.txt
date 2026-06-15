@@ -75,6 +75,15 @@ target_include_directories(tst_settings_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_settings_gate PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_settings_gate COMMAND tst_settings_gate)
 
+# AI-Trading Substrate Phase A Task 1 — the SECURITY KEYSTONE: the settings-WRITE
+# tool path must refuse any cli.* key (arm/enable trading, raise risk caps) even
+# when cli.allow_settings_write is on, so a CLI/AI agent can't escalate itself.
+# Same Widgets-free link set as tst_settings_gate (HeadlessRuntime live path).
+add_executable(tst_trading_gate_keystone tst_trading_gate_keystone.cpp)
+target_include_directories(tst_trading_gate_keystone PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_trading_gate_keystone PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_trading_gate_keystone COMMAND tst_trading_gate_keystone)
+
 # Phase 2b Task 1 — the shared register_all_data_services() helper must bring up
 # all 11 data services FAST and one-shot-safely (no socket/spawn/hang at
 # registration). Widgets-free link set (Core/Network/Sql/Test) so QTEST_MAIN

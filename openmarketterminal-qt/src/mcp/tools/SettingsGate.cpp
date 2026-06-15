@@ -25,6 +25,18 @@ bool cli_settings_write_allowed() {
     return flag_true(QStringLiteral("cli.allow_settings_write"));
 }
 
+bool cli_paper_trading_allowed() {
+    return flag_true(QStringLiteral("cli.allow_paper_trading"));
+}
+
+bool cli_live_armed() {
+    return flag_true(QStringLiteral("cli.live_trading_armed"));
+}
+
+bool is_gui_only_setting(const QString& key) {
+    return key.startsWith(QLatin1String("cli."));
+}
+
 bool is_settings_write_tool(const QString& name) {
     // The headless auth-checker classifies on the caller-supplied name, which may
     // be a legacy alias, while `is_destructive` comes from the resolved def.

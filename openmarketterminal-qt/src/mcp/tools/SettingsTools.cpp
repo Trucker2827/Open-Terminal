@@ -5,6 +5,7 @@
 #include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
 #include "mcp/ToolSchemaBuilder.h"
+#include "mcp/tools/SettingsGate.h"
 #include "storage/repositories/LlmConfigRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 
@@ -58,6 +59,15 @@ std::vector<ToolDef> get_settings_tools() {
             QString key = args["key"].toString();
             QString value = args["value"].toString();
             QString cat = args["category"].toString("general");
+
+            // SECURITY KEYSTONE: cli.* keys (trading toggles + cli.risk.* caps)
+            // are GUI-only. Refuse them here even when cli.allow_settings_write is
+            // on, so a CLI/AI agent can never arm/enable its own trading or raise
+            // its own risk caps. Only the human GUI Settings screen writes these
+            // (via SettingsRepository::set directly, bypassing this tool path).
+            if (mcp::is_gui_only_setting(key))
+                return ToolResult::fail("Setting '" + key +
+                    "' is GUI-only and cannot be changed via the CLI/agent — toggle it in Settings.");
 
             if (key.isEmpty())
                 return ToolResult::fail("Missing 'key'");
