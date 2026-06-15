@@ -490,8 +490,8 @@ std::vector<ToolDef> get_fast_live_tools() {
             "account), a deterministic risk floor against GUI-owned caps, and the daily-loss "
             "floor; the real broker order fires ONLY when every gate passes — otherwise it is "
             "rejected. The AI cannot arm itself, raise the caps, or choose the account. side "
-            "buy/sell; order_type market/limit/stop/stop_limit; limit_price required for "
-            "limit/stop_limit. Returns status filled/rejected.";
+            "buy/sell; order_type market/limit; limit_price required for limit orders. "
+            "Returns status filled/rejected.";
         t.category = "fast-live";
         t.auth_required = AuthLevel::Authenticated;
         t.is_destructive = true;
@@ -501,8 +501,8 @@ std::vector<ToolDef> get_fast_live_tools() {
                 .string("side", "Order side").required().enums({"buy", "sell"})
                 .number("quantity", "Order quantity (must be > 0)").required().min(0.0)
                 .string("order_type", "Order type").default_str("market")
-                    .enums({"market", "limit", "stop", "stop_limit"})
-                .number("limit_price", "Limit price (required for limit/stop_limit)")
+                    .enums({"market", "limit"})
+                .number("limit_price", "Limit price (required for limit orders)")
                 .string("exchange", "Exchange / venue (optional)")
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
@@ -659,7 +659,7 @@ std::vector<ToolDef> get_fast_live_tools() {
             "deterministic risk floor against GUI-owned caps on the WHOLE new order, and the "
             "daily-loss floor; the broker modify fires ONLY when every gate passes — otherwise it is "
             "rejected and the original order is left untouched. side buy/sell; order_type "
-            "market/limit/stop/stop_limit; limit_price required for limit/stop_limit. Returns status "
+            "market/limit; limit_price required for limit orders. Returns status "
             "replaced/rejected.";
         t.category = "fast-live";
         t.auth_required = AuthLevel::Authenticated;
