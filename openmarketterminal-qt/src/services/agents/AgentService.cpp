@@ -149,6 +149,17 @@ AgentService::AgentService(QObject* parent) : QObject(parent) {
                     return true;
                 return mcp::cli_trading_allowed() && mcp::cli_live_armed();
             }
+            // Fast-live carve-out (Phase D) — IDENTICAL predicate in all three
+            // hosts (daemon/headless/GUI), so the fast-trading substrate is
+            // reachable the same way everywhere. The fast-live tool set is allowed
+            // ONLY when fully armed: base trading + base live arm + the SECOND fast
+            // arm (cli.fast_live_armed, GUI-only). It bypasses the per-call
+            // confirmation gate below exactly like the submit_order carve-out; the
+            // fast handlers re-enforce kill-switch + allowed-account. (When the fast
+            // tools are built they must NOT be classified live-execution, since the
+            // other hosts deny those outright.)
+            if (mcp::is_fast_live_tool(tool_name))
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed() && mcp::cli_fast_live_armed();
             if (is_destructive && !mcp::TerminalMcpBridge::is_destructive_allowed()) {
                 const auto desc = describe_tool_action(tool_name, args);
                 return mcp::ToolConfirmationGate::instance().request(desc.first, desc.second);

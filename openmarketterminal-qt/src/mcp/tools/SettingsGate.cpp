@@ -3,6 +3,8 @@
 #include "mcp/McpProvider.h"
 #include "storage/repositories/SettingsRepository.h"
 
+#include <QSet>
+
 namespace openmarketterminal::mcp {
 
 namespace {
@@ -31,6 +33,10 @@ bool cli_paper_trading_allowed() {
 
 bool cli_live_armed() {
     return flag_true(QStringLiteral("cli.live_trading_armed"));
+}
+
+bool cli_fast_live_armed() {
+    return flag_true(QStringLiteral("cli.fast_live_armed"));
 }
 
 bool is_gui_only_setting(const QString& key) {
@@ -76,6 +82,22 @@ bool is_settings_write_tool(const QString& name) {
     const QString canonical = McpProvider::instance().resolve_canonical_name(name);
     auto t = McpProvider::instance().find_tool(canonical);
     return t && t->category == QLatin1String("settings") && t->is_destructive;
+}
+
+bool is_fast_live_tool(const QString& name) {
+    // The fast-live tool set (Phase D). Membership is decided on the canonical
+    // NAME alone — NOT on a registered category — because the auth-checker must
+    // gate these even before the tools are registered (the gate ships first, the
+    // tools land in later tasks). Resolve the canonical name first so a legacy
+    // alias can't dodge the fast-arm gate.
+    static const QSet<QString> kFastLiveTools = {
+        QStringLiteral("fast_submit_order"), QStringLiteral("cancel_order"),
+        QStringLiteral("replace_order"),     QStringLiteral("exit_position"),
+        QStringLiteral("get_positions"),     QStringLiteral("get_open_orders"),
+        QStringLiteral("get_fills"),
+    };
+    const QString canonical = McpProvider::instance().resolve_canonical_name(name);
+    return kFastLiveTools.contains(canonical);
 }
 
 bool is_live_execution_tool(const QString& name) {

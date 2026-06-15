@@ -132,6 +132,15 @@ InitResult HeadlessRuntime::init(const QString& profile) {
                 return mcp::cli_settings_write_allowed();
             if (mcp::is_live_execution_tool(tool))
                 return false; // direct live-broker tools never bypass the gated submit_order path
+            // Fast-live carve-out (Phase D) — IDENTICAL predicate in all three
+            // hosts. The fast-live tool set is reachable ONLY when fully armed:
+            // base trading + base live arm + the SECOND fast arm. Placed AFTER the
+            // is_live_execution_tool denial so raw live_* stay denied. (When the
+            // fast tools are built they must NOT be category "live-trading" +
+            // destructive, or is_live_execution_tool above would deny them before
+            // this gate fires.)
+            if (mcp::is_fast_live_tool(tool))
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed() && mcp::cli_fast_live_armed();
             if (is_destructive)
                 return mcp::cli_trading_allowed();
             return true;

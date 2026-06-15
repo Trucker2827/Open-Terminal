@@ -143,3 +143,8 @@ add_executable(tst_live_trading tst_live_trading.cpp)
 target_include_directories(tst_live_trading PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_live_trading PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_live_trading COMMAND tst_live_trading)
+
+add_executable(tst_fast_live tst_fast_live.cpp)
+target_include_directories(tst_fast_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_fast_live PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_fast_live COMMAND tst_fast_live)

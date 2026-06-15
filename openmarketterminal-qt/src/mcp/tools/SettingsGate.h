@@ -40,6 +40,24 @@ bool cli_paper_trading_allowed();
 /// `cli.live_trading_armed` == "true" — the Phase-C live-arming flag. Default false.
 bool cli_live_armed();
 
+/// `cli.fast_live_armed` == "true" — the Phase-D FAST-live-arming flag, a SECOND
+/// arm on top of cli.live_trading_armed. The fast-live tool set (fast_submit_order
+/// / cancel_order / replace_order / exit_position / get_positions / get_open_orders
+/// / get_fills) is reachable ONLY when cli_trading_allowed() && cli_live_armed() &&
+/// cli_fast_live_armed() are ALL true. GUI-only (cli.* — the CLI/AI can never write
+/// it). Default false.
+bool cli_fast_live_armed();
+
+/// True iff `name` resolves to a fast-live trading tool: one of EXACTLY
+/// fast_submit_order / cancel_order / replace_order / exit_position /
+/// get_positions / get_open_orders / get_fills. AI-facing auth-checkers route a
+/// match to the fast-arm gate (cli_trading_allowed() && cli_live_armed() &&
+/// cli_fast_live_armed()) — strictly stronger than the submit_order live path.
+/// Membership is by canonical NAME only (resolve_canonical_name to defeat
+/// aliases): the predicate must hold even before these tools are registered, so
+/// this does NOT consult find_tool / a category.
+bool is_fast_live_tool(const QString& name);
+
 /// True iff `key` is a CLI/agent-control knob that MUST be GUI-only — the
 /// settings-WRITE path refuses to change these even when cli.allow_settings_write
 /// is on, so a CLI/AI agent can never arm/enable its own trading OR raise its own

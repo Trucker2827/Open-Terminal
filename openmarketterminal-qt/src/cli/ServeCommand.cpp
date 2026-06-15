@@ -59,6 +59,15 @@ int serve_run(const QString& profile) {
                 if (mode == "paper") return true;                // reach the handler; it enforces the toggle + executes
                 return mcp::cli_trading_allowed() && mcp::cli_live_armed();  // live: reach the handler only when armed (handler enforces the full stack)
             }
+            // Fast-live carve-out (Phase D) — IDENTICAL predicate in all three
+            // hosts. The fast-live tool set is reachable ONLY when fully armed:
+            // base trading + base live arm + the SECOND fast arm. Raw live_* are
+            // NOT in this set, so they fall through to the destructive denial
+            // below and stay denied. (When the fast tools are built they must NOT
+            // be classified live-execution, or the AI-facing hosts that deny those
+            // would block them before this gate fires.)
+            if (mcp::is_fast_live_tool(tool))
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed() && mcp::cli_fast_live_armed();
             if (is_destructive) return false;            // daemon MVP: no writes/destructive
             if (mcp::is_settings_write_tool(tool)) return false;
             return true;

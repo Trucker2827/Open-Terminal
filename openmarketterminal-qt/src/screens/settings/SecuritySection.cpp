@@ -312,6 +312,14 @@ void SecuritySection::build_ui() {
     capture_row_labels(row_cli_live, &row_cli_live_lbl_, &row_cli_live_desc_);
     vl->addWidget(row_cli_live);
 
+    cli_fast_live_toggle_ = new QCheckBox(tr("Arm FAST live mode (advanced)"));
+    cli_fast_live_toggle_->setStyleSheet(check_ss());
+    auto* row_cli_fast = make_row(
+        tr("FAST Live Mode (advanced)"), cli_fast_live_toggle_,
+        tr("Arms the low-latency fast-trading tool set for the AI agent — a SECOND arm on top of LIVE trading. Real money. Requires CLI LIVE trading to also be armed. Only a human can set this here; the CLI/agent can never arm itself. Off by default."));
+    capture_row_labels(row_cli_fast, &row_cli_fast_lbl_, &row_cli_fast_desc_);
+    vl->addWidget(row_cli_fast);
+
     // AI-trading constitution (Phase B): which venues the agent may trade and the
     // per-topic exposure cap. GUI-only (cli.* keys the CLI/agent can never write).
     cli_allowed_venues_edit_ = new QLineEdit;
@@ -403,6 +411,10 @@ void SecuritySection::build_ui() {
         if (cli_live_trading_toggle_) {
             repo.set("cli.live_trading_armed",
                      cli_live_trading_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        if (cli_fast_live_toggle_) {
+            repo.set("cli.fast_live_armed",
+                     cli_fast_live_toggle_->isChecked() ? "true" : "false", "cli");
         }
         // AI-trading constitution (Phase B): allowed venues + per-topic exposure
         // cap. Stored under cli.* so the CLI/agent reads them but can never write.
@@ -527,6 +539,8 @@ void SecuritySection::retranslateUi() {
     if (row_cli_paper_desc_)  row_cli_paper_desc_->setText(tr("When on, the command-line interface / AI agent may submit simulated (paper) orders. No real money. Off by default."));
     if (row_cli_live_lbl_)    row_cli_live_lbl_->setText(tr("CLI LIVE Trading (advanced)"));
     if (row_cli_live_desc_)   row_cli_live_desc_->setText(tr("Arms LIVE order execution for the command-line interface / AI agent. Real money. Only a human can set this here; the CLI/agent can never arm itself. Off by default."));
+    if (row_cli_fast_lbl_)    row_cli_fast_lbl_->setText(tr("FAST Live Mode (advanced)"));
+    if (row_cli_fast_desc_)   row_cli_fast_desc_->setText(tr("Arms the low-latency fast-trading tool set for the AI agent — a SECOND arm on top of LIVE trading. Real money. Requires CLI LIVE trading to also be armed. Only a human can set this here; the CLI/agent can never arm itself. Off by default."));
     if (row_cli_venues_lbl_)  row_cli_venues_lbl_->setText(tr("Allowed AI venues (comma list)"));
     if (row_cli_venues_desc_) row_cli_venues_desc_->setText(tr("Comma-separated venues the AI agent may trade (e.g. polymarket, kalshi). Empty means none are allowed."));
     if (row_cli_expo_lbl_)    row_cli_expo_lbl_->setText(tr("Max exposure per topic ($)"));
@@ -545,6 +559,7 @@ void SecuritySection::retranslateUi() {
     if (cli_trading_toggle_)        cli_trading_toggle_->setText(tr("Allow CLI trading / destructive actions"));
     if (cli_paper_trading_toggle_)  cli_paper_trading_toggle_->setText(tr("Allow CLI paper trading"));
     if (cli_live_trading_toggle_)   cli_live_trading_toggle_->setText(tr("Arm CLI LIVE trading (advanced)"));
+    if (cli_fast_live_toggle_)      cli_fast_live_toggle_->setText(tr("Arm FAST live mode (advanced)"));
     if (cli_kill_switch_toggle_)    cli_kill_switch_toggle_->setText(tr("Kill switch — halt all AI trading"));
 
     // PIN field placeholders.
@@ -647,6 +662,11 @@ void SecuritySection::reload() {
         const QSignalBlocker b(cli_live_trading_toggle_);
         auto r = repo.get("cli.live_trading_armed", "false");
         cli_live_trading_toggle_->setChecked(r.is_ok() && r.value() == "true");
+    }
+    if (cli_fast_live_toggle_) {
+        const QSignalBlocker b(cli_fast_live_toggle_);
+        auto r = repo.get("cli.fast_live_armed", "false");
+        cli_fast_live_toggle_->setChecked(r.is_ok() && r.value() == "true");
     }
     if (cli_allowed_venues_edit_) {
         const QSignalBlocker b(cli_allowed_venues_edit_);
