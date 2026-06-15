@@ -75,6 +75,13 @@ class TstTradingGateKeystone : public QObject {
         QVERIFY(mcp::is_gui_only_setting("cli.risk.max_order_value"));
         QVERIFY2(!mcp::is_gui_only_setting("general.theme"),
                  "non-cli key must NOT be GUI-only");
+        // Case-variant evasion must NOT slip past the chokepoint. The match is
+        // deliberately case-insensitive so it can't depend on downstream readers
+        // normalising the key.
+        QVERIFY2(mcp::is_gui_only_setting("CLI.allow_trading"),
+                 "case-variant cli.* must still be GUI-only");
+        QVERIFY2(mcp::is_gui_only_setting("Cli.Risk.Max_Order_Value"),
+                 "mixed-case cli.* must still be GUI-only");
     }
 
     // ── Layer 3: THE KEYSTONE ──────────────────────────────────────────────────
@@ -104,9 +111,10 @@ class TstTradingGateKeystone : public QObject {
             QVERIFY2(!res.success, "set_setting must refuse cli.allow_trading even with write permission");
             QVERIFY2(res.error.contains("GUI-only"),
                      qPrintable("refusal must be the GUI-only denylist, not the gate: " + res.error));
-            // Sentinel proves NO write happened (not merely that it still equals "false").
+            // Sentinel proves NO write happened — the row must never have been
+            // created, so the default sentinel comes back verbatim.
             auto chk = SettingsRepository::instance().get("cli.allow_trading", "__unset__");
-            QVERIFY2(chk.is_ok() && chk.value() != "true",
+            QVERIFY2(chk.is_ok() && chk.value() == "__unset__",
                      qPrintable("cli.allow_trading must NOT have been written: "
                                 + (chk.is_ok() ? chk.value() : QString("<err>"))));
         }
@@ -122,6 +130,21 @@ class TstTradingGateKeystone : public QObject {
             auto chk = SettingsRepository::instance().get("cli.risk.max_order_value", "__unset__");
             QVERIFY2(chk.is_ok() && chk.value() == "__unset__",
                      qPrintable("cli.risk.max_order_value must NOT have been written: "
+                                + (chk.is_ok() ? chk.value() : QString("<err>"))));
+        }
+
+        // (c) Case-variant of a cli.* key — must ALSO be refused by the live
+        // tool path (not just the classifier), and must not create a shadow row.
+        {
+            auto res = rt_.call_tool(
+                "set_setting",
+                QJsonObject{{"key", "CLI.allow_trading"}, {"value", "true"}});
+            QVERIFY2(!res.success, "set_setting must refuse a case-variant cli.* key");
+            QVERIFY2(res.error.contains("GUI-only"),
+                     qPrintable("case-variant refusal must be the GUI-only denylist: " + res.error));
+            auto chk = SettingsRepository::instance().get("CLI.allow_trading", "__unset__");
+            QVERIFY2(chk.is_ok() && chk.value() == "__unset__",
+                     qPrintable("case-variant cli.* must NOT have been written: "
                                 + (chk.is_ok() ? chk.value() : QString("<err>"))));
         }
 

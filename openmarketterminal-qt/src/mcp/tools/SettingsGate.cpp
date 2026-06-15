@@ -34,7 +34,13 @@ bool cli_live_armed() {
 }
 
 bool is_gui_only_setting(const QString& key) {
-    return key.startsWith(QLatin1String("cli."));
+    // Case-insensitive on purpose: this is the single security chokepoint that
+    // keeps a CLI/AI agent from writing any cli.* control knob. Matching must NOT
+    // depend on downstream readers normalising the key — a future cli.risk.* cap
+    // loader doing a NOCASE/LIKE lookup must not be able to reopen the hole via a
+    // case-variant write. (Whitespace is inert: SQLite '=' never trims, so a
+    // padded key can't collide with the canonical row under any collation.)
+    return key.startsWith(QLatin1String("cli."), Qt::CaseInsensitive);
 }
 
 bool is_settings_write_tool(const QString& name) {
