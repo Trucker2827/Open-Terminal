@@ -657,7 +657,10 @@ std::vector<ToolDef> get_order_flow_tools() {
             //     short-circuit. (account unknown this early → "" ; mode is forced
             //     "paper" by audit_prepare; intent = raw args.)
             if (mcp::cli_kill_switch_engaged()) {
-                audit_prepare(QString(), args, QStringLiteral("kill_switch"),
+                // account unknown this early — pass empty-but-NON-NULL ("" not
+                // QString()) so the trade_audit.account NOT NULL bind succeeds and
+                // the refusal is actually recorded.
+                audit_prepare(QStringLiteral(""), args, QStringLiteral("kill_switch"),
                               QStringLiteral("kill switch engaged"), RiskVerdict{});
                 LOG_WARN(TAG, "prepare_order rejected: kill switch engaged");
                 return ToolResult::ok_data(QJsonObject{
@@ -772,7 +775,9 @@ std::vector<ToolDef> get_order_flow_tools() {
             // (account unknown this early → "" ; mode from args, default "paper".)
             if (mcp::cli_kill_switch_engaged()) {
                 const QString km = args.value("mode").toString().trimmed().toLower();
-                audit_submit(QString(), km.isEmpty() ? QStringLiteral("paper") : km, args,
+                // empty-but-NON-NULL account ("" not QString()) so the
+                // trade_audit.account NOT NULL bind succeeds and the refusal records.
+                audit_submit(QStringLiteral(""), km.isEmpty() ? QStringLiteral("paper") : km, args,
                              QStringLiteral("kill_switch"), QStringLiteral("kill switch engaged"),
                              RiskVerdict{});
                 LOG_WARN(TAG, "submit_order rejected: kill switch engaged");

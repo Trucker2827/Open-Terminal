@@ -272,7 +272,9 @@ void EquityTradingScreen::hub_subscribe_market_quotes() {
 void EquityTradingScreen::load_candles_for(const QString& symbol) {
     if (symbol.isEmpty())
         return;
-    if (focused_is_paper_) {
+    const auto account = AccountManager::instance().get_account(focused_account_id_);
+    const bool is_paper = account.account_id.isEmpty() || account.trading_mode == QLatin1String("paper");
+    if (is_paper) {
         fetch_paper_candles(symbol);
         return;
     }

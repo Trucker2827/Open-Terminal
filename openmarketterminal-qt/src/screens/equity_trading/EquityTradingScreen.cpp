@@ -458,10 +458,8 @@ void EquityTradingScreen::setup_ui() {
     // watchlist uses, so it sets the selected symbol, fetches candles + orderbook).
     connect(bottom_panel_, &EquityBottomPanel::chart_symbol_requested, this,
             &EquityTradingScreen::on_symbol_selected);
-    connect(chart_, &EquityChartPanel::timeframe_changed, this, [this](const QString& tf) {
-        auto* stream = DataStreamManager::instance().stream_for(focused_account_id_);
-        if (stream)
-            stream->fetch_candles(selected_symbol_, tf);
+    connect(chart_, &EquityChartPanel::timeframe_changed, this, [this](const QString&) {
+        load_candles_for(selected_symbol_);
     });
     connect(chart_, &EquityChartPanel::buy_requested, this, &EquityTradingScreen::on_chart_buy_requested);
     connect(chart_, &EquityChartPanel::sell_requested, this, &EquityTradingScreen::on_chart_sell_requested);
@@ -584,7 +582,7 @@ void EquityTradingScreen::on_instruments_ready(const QString& broker_id) {
     if (stream) {
         stream->set_selected_symbol(selected_symbol_, selected_exchange_);
         stream->subscribe_symbols(QStringLiteral("equity:watchlist"), effective_symbols());
-        stream->fetch_candles(selected_symbol_, chart_->current_timeframe());
+        load_candles_for(selected_symbol_);
         stream->fetch_orderbook(selected_symbol_);
         stream->fetch_time_sales(selected_symbol_);
     }
@@ -732,7 +730,7 @@ void EquityTradingScreen::init_focused_account() {
     if (stream) {
         stream->set_selected_symbol(selected_symbol_, selected_exchange_);
         stream->subscribe_symbols(QStringLiteral("equity:watchlist"), effective_symbols());
-        stream->fetch_candles(selected_symbol_, chart_->current_timeframe());
+        load_candles_for(selected_symbol_);
         stream->fetch_orderbook(selected_symbol_);
         stream->fetch_time_sales(selected_symbol_);
         stream->fetch_calendar();

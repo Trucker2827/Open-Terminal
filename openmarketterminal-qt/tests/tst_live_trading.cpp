@@ -25,6 +25,7 @@
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/tools/SettingsGate.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/repositories/TradeAuditRepository.h"
 
 using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
@@ -38,6 +39,18 @@ class TstLiveTrading : public QObject {
     static void set_key(const QString& key, const QString& val) {
         auto r = SettingsRepository::instance().set(key, val, "cli");
         QVERIFY2(r.is_ok(), "SettingsRepository::set failed — settings table absent?");
+    }
+
+    // True iff a recent trade_audit row matches the given tool + reason. Used to
+    // prove a refusal was actually recorded (a NULL account would drop the row).
+    static bool audit_has(const QString& tool, const QString& reason) {
+        auto r = TradeAuditRepository::instance().recent(100);
+        if (!r.is_ok())
+            return false;
+        for (const auto& row : r.value())
+            if (row.tool == tool && row.reason == reason)
+                return true;
+        return false;
     }
 
   private slots:
@@ -115,6 +128,10 @@ class TstLiveTrading : public QObject {
         const QJsonObject data = res.data.toObject();
         QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
         QCOMPARE(data.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        // The refusal MUST be audited (account is "" not NULL → the NOT NULL bind
+        // succeeds; a dropped row would mean the halt left no trail).
+        QVERIFY2(audit_has("prepare_order", "kill switch engaged"),
+                 "kill-switch prepare refusal must write a trade_audit row");
         set_key("cli.kill_switch", "false");
     }
 
@@ -129,6 +146,8 @@ class TstLiveTrading : public QObject {
         const QJsonObject data = res.data.toObject();
         QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
         QCOMPARE(data.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        QVERIFY2(audit_has("submit_order", "kill switch engaged"),
+                 "kill-switch submit refusal must write a trade_audit row");
         set_key("cli.kill_switch", "false");
     }
 
