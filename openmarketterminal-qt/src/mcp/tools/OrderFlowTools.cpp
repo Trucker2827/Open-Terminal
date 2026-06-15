@@ -108,12 +108,14 @@ RiskVerdict risk_floor_check(const UnifiedOrder& o, double resolved_price) {
     // these — see SettingsGate::is_gui_only_setting), each with a finite default.
     rv.max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
     rv.max_position_qty = read_cap(QStringLiteral("cli.risk.max_position_qty"), 10000.0);
-    // The daily-loss cap is RECORDED (returned + audited) but NOT yet enforced as a
-    // running-loss check — that needs a P&L tally across fills, which is Phase C.
-    // It is surfaced now so the configured ceiling is visible in the audit trail.
-    rv.max_loss = read_cap(QStringLiteral("cli.risk.max_daily_loss"), 5000.0);
 
     rv.order_value = o.quantity * resolved_price;
+    // max_loss is THIS order's worst-case loss — a long's full notional. The live
+    // equity submit path feeds it to daily_loss_ok, which reads the daily cap
+    // internally and checks (today_loss + this order's max_loss) <= cap. It must
+    // be the order's loss, NOT the cap itself (feeding the cap would reject every
+    // order the instant today's realized loss is non-zero).
+    rv.max_loss = rv.order_value;
 
     if (rv.order_value > rv.max_order_value) {
         rv.ok = false;

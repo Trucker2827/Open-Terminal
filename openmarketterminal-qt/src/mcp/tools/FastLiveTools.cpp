@@ -218,7 +218,7 @@ struct FastRiskVerdict {
     bool ok = false;
     QString reason;
     double order_value = 0.0;
-    double max_loss = 0.0;        // the GUI daily-loss cap, fed to daily_loss_ok
+    double max_loss = 0.0;        // THIS order's worst-case loss (its notional), fed to daily_loss_ok
     double max_order_value = 0.0;
     double max_position_qty = 0.0;
 };
@@ -230,8 +230,12 @@ FastRiskVerdict fast_risk_floor(const UnifiedOrder& o, double resolved_price) {
     FastRiskVerdict rv;
     rv.max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
     rv.max_position_qty = read_cap(QStringLiteral("cli.risk.max_position_qty"), 10000.0);
-    rv.max_loss = read_cap(QStringLiteral("cli.risk.max_daily_loss"), 5000.0);
     rv.order_value = o.quantity * resolved_price;
+    // A long's worst-case loss is its full notional. daily_loss_ok reads the cap
+    // internally and checks (today_loss + THIS order's max_loss) <= cap — so it
+    // must receive the order's loss, NOT the cap itself (feeding the cap would
+    // reject every order the instant today's realized loss is non-zero).
+    rv.max_loss = rv.order_value;
 
     if (rv.order_value > rv.max_order_value) {
         rv.reason = QStringLiteral("exceeds max order value (%1 > %2)")
@@ -490,7 +494,8 @@ std::vector<ToolDef> get_fast_live_tools() {
             "account), a deterministic risk floor against GUI-owned caps, and the daily-loss "
             "floor; the real broker order fires ONLY when every gate passes — otherwise it is "
             "rejected. The AI cannot arm itself, raise the caps, or choose the account. side "
-            "buy/sell; order_type market/limit; limit_price required for limit orders. "
+            "buy/sell; order_type market/limit/stop/stop_limit; limit_price required for "
+            "limit/stop_limit orders; trigger_price (>0) required for stop/stop_limit orders. "
             "Returns status filled/rejected.";
         t.category = "fast-live";
         t.auth_required = AuthLevel::Authenticated;
@@ -501,8 +506,9 @@ std::vector<ToolDef> get_fast_live_tools() {
                 .string("side", "Order side").required().enums({"buy", "sell"})
                 .number("quantity", "Order quantity (must be > 0)").required().min(0.0)
                 .string("order_type", "Order type").default_str("market")
-                    .enums({"market", "limit"})
-                .number("limit_price", "Limit price (required for limit orders)")
+                    .enums({"market", "limit", "stop", "stop_limit"})
+                .number("limit_price", "Limit price (required for limit/stop_limit orders)")
+                .number("trigger_price", "Trigger/stop level (required >0 for stop/stop_limit)")
                 .string("exchange", "Exchange / venue (optional)")
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
@@ -520,6 +526,10 @@ std::vector<ToolDef> get_fast_live_tools() {
                 args.contains("limit_price") && args.value("limit_price").isDouble();
             if (has_limit_arg)
                 intent["limit_price"] = args.value("limit_price").toDouble();
+            const bool has_trigger_arg =
+                args.contains("trigger_price") && args.value("trigger_price").isDouble();
+            if (has_trigger_arg)
+                intent["trigger_price"] = args.value("trigger_price").toDouble();
 
             // 1. FULL fast-live gate (kill switch → arms → allowed account).
             auto g = fast_live_gate();
@@ -549,10 +559,19 @@ std::vector<ToolDef> get_fast_live_tools() {
             }
             const bool needs_limit =
                 (*otype == OrderType::Limit || *otype == OrderType::StopLossLimit);
+            const bool needs_trigger =
+                (*otype == OrderType::StopLoss || *otype == OrderType::StopLossLimit);
             const double limit_price = has_limit_arg ? args.value("limit_price").toDouble() : 0.0;
             if (needs_limit && limit_price <= 0.0) {
                 const QString reason =
                     QStringLiteral("'limit_price' must be > 0 for limit/stop_limit orders");
+                fast_derisk_audit("fast_submit_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+            const double trigger_price = has_trigger_arg ? args.value("trigger_price").toDouble() : 0.0;
+            if (needs_trigger && trigger_price <= 0.0) {
+                const QString reason =
+                    QStringLiteral("trigger_price required (>0) for stop/stop_limit");
                 fast_derisk_audit("fast_submit_order", g.account, "rejected", reason, intent);
                 return rejected(reason);
             }
@@ -564,13 +583,17 @@ std::vector<ToolDef> get_fast_live_tools() {
             order.order_type = *otype;
             order.quantity = quantity;
             order.price = needs_limit ? limit_price : 0.0;
+            order.stop_price = needs_trigger ? trigger_price : 0.0;
 
-            // 3. Resolve the price used by the risk floor. Limit/stop_limit carry
-            //    their own; market/stop fall back to the freshest cached last
-            //    price. Unpriceable → reject (the value cap can't be enforced).
+            // 3. Resolve the price used by the risk floor. limit/stop_limit carry
+            //    their own limit; a plain stop uses its trigger level (where it'll
+            //    execute near); a market order falls back to the freshest cached
+            //    last price. Unpriceable → reject (the value cap can't be enforced).
             double resolved_price = 0.0;
             if (needs_limit) {
                 resolved_price = limit_price;
+            } else if (needs_trigger) {
+                resolved_price = trigger_price;
             } else if (const auto q = detail::peek_quote(symbol); q && q->price > 0.0) {
                 resolved_price = q->price;
             } else {
@@ -659,7 +682,8 @@ std::vector<ToolDef> get_fast_live_tools() {
             "deterministic risk floor against GUI-owned caps on the WHOLE new order, and the "
             "daily-loss floor; the broker modify fires ONLY when every gate passes — otherwise it is "
             "rejected and the original order is left untouched. side buy/sell; order_type "
-            "market/limit; limit_price required for limit orders. Returns status "
+            "market/limit/stop/stop_limit; limit_price required for limit/stop_limit orders; "
+            "trigger_price (>0) required for stop/stop_limit orders. Returns status "
             "replaced/rejected.";
         t.category = "fast-live";
         t.auth_required = AuthLevel::Authenticated;
@@ -673,6 +697,7 @@ std::vector<ToolDef> get_fast_live_tools() {
                 .string("order_type", "Order type").default_str("limit")
                     .enums({"market", "limit", "stop", "stop_limit"})
                 .number("limit_price", "Limit price (required for limit/stop_limit)")
+                .number("trigger_price", "Trigger/stop level (required >0 for stop/stop_limit)")
                 .string("exchange", "Exchange / venue (optional)")
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
@@ -692,6 +717,10 @@ std::vector<ToolDef> get_fast_live_tools() {
                 args.contains("limit_price") && args.value("limit_price").isDouble();
             if (has_limit_arg)
                 intent["limit_price"] = args.value("limit_price").toDouble();
+            const bool has_trigger_arg =
+                args.contains("trigger_price") && args.value("trigger_price").isDouble();
+            if (has_trigger_arg)
+                intent["trigger_price"] = args.value("trigger_price").toDouble();
 
             // 1. FULL fast-live gate (kill switch → arms → allowed account).
             auto g = fast_live_gate();
@@ -721,10 +750,19 @@ std::vector<ToolDef> get_fast_live_tools() {
             }
             const bool needs_limit =
                 (*otype == OrderType::Limit || *otype == OrderType::StopLossLimit);
+            const bool needs_trigger =
+                (*otype == OrderType::StopLoss || *otype == OrderType::StopLossLimit);
             const double limit_price = has_limit_arg ? args.value("limit_price").toDouble() : 0.0;
             if (needs_limit && limit_price <= 0.0) {
                 const QString reason =
                     QStringLiteral("'limit_price' must be > 0 for limit/stop_limit orders");
+                fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+            const double trigger_price = has_trigger_arg ? args.value("trigger_price").toDouble() : 0.0;
+            if (needs_trigger && trigger_price <= 0.0) {
+                const QString reason =
+                    QStringLiteral("trigger_price required (>0) for stop/stop_limit");
                 fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
                 return rejected(reason);
             }
@@ -736,13 +774,17 @@ std::vector<ToolDef> get_fast_live_tools() {
             order.order_type = *otype;
             order.quantity = quantity;
             order.price = needs_limit ? limit_price : 0.0;
+            order.stop_price = needs_trigger ? trigger_price : 0.0;
 
-            // 3. Resolve the price used by the risk floor. Limit/stop_limit carry
-            //    their own; market/stop fall back to the freshest cached last
-            //    price. Unpriceable → reject (the value cap can't be enforced).
+            // 3. Resolve the price used by the risk floor. limit/stop_limit carry
+            //    their own limit; a plain stop uses its trigger level (where it'll
+            //    execute near); a market order falls back to the freshest cached
+            //    last price. Unpriceable → reject (the value cap can't be enforced).
             double resolved_price = 0.0;
             if (needs_limit) {
                 resolved_price = limit_price;
+            } else if (needs_trigger) {
+                resolved_price = trigger_price;
             } else if (const auto q = detail::peek_quote(symbol); q && q->price > 0.0) {
                 resolved_price = q->price;
             } else {
@@ -778,6 +820,8 @@ std::vector<ToolDef> get_fast_live_tools() {
                              {"side", side_str}};
             if (needs_limit)
                 mods["price"] = limit_price;
+            if (needs_trigger)
+                mods["trigger_price"] = trigger_price;
             trading::UnifiedOrderResponse resp =
                 trading::UnifiedTrading::instance().modify_order(g.account, order_id, mods);
 

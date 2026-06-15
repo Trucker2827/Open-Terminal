@@ -601,6 +601,15 @@ class TstFastLive : public QObject {
                            {"limit_price", 200}, {"exchange", "NASDAQ"}};
     }
 
+    // A within-caps plain-stop order (market-on-trigger): trigger_price set, NO
+    // limit price. A valid exchange is mandatory (OrderValidator runs before the
+    // broker) and OrderValidator requires stop_price>0 for SL/SL-M orders.
+    static QJsonObject stop_args(double qty, double trigger) {
+        return QJsonObject{{"symbol", "AAPL"}, {"side", "buy"},
+                           {"quantity", qty},  {"order_type", "stop"},
+                           {"trigger_price", trigger}, {"exchange", "NASDAQ"}};
+    }
+
     // ── CONTRACT: registers category "fast-live" + is_destructive=true. The
     // destructive pairing makes the host's is_fast_live_tool checker gate it on
     // the full fast-arm predicate (unlike the non-destructive reads). ──
@@ -721,6 +730,104 @@ class TstFastLive : public QObject {
         clear_keys();
     }
 
+    // ── FIX B: a SMALL realized loss must NOT reject every subsequent order.
+    // Seed -100 (today_loss 100, default cap 5000). A within-headroom order's
+    // worst-case loss is its notional (5*200=1000); 100+1000 <= 5000 → ALLOWED
+    // (filled). BEFORE the fix daily_loss_ok was (wrongly) fed the CAP itself
+    // (5000): 100+5000 > 5000 → every order after the first cent of loss was
+    // rejected. This slot is RED on the old code, GREEN on the fix. ──
+    void fast_submit_small_loss_still_allows_within_cap() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto seed =
+            LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), -100.0);
+        QVERIFY2(seed.is_ok(), "seed add_realized must succeed");
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5)); // notional 1000
+        QVERIFY2(res.success, qPrintable("within-cap submit must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(FakeBroker::place_calls, 1);
+        // Undo the seed so later slots see a clean tally.
+        LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), 100.0);
+        clear_keys();
+    }
+
+    // ── FIX B: the gate STILL rejects when the running loss plus THIS order's
+    // worst-case loss would breach the cap. Seed -100; a 25*200=5000 notional →
+    // 100+5000 > 5000 → "daily loss limit reached". 5000 <= the 25000 default
+    // order-value cap, so the order clears the value floor first and the
+    // daily-loss floor is the one that fires. The broker is NEVER called. ──
+    void fast_submit_loss_plus_order_over_cap_rejected() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto seed =
+            LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), -100.0);
+        QVERIFY2(seed.is_ok(), "seed add_realized must succeed");
+        auto res = rt_.call_tool("fast_submit_order", submit_args(25)); // notional 5000
+        QVERIFY2(res.success, qPrintable("daily-loss is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("daily loss"),
+                 qPrintable("reason must be the daily-loss floor: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::place_calls, 0);
+        LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), 100.0);
+        clear_keys();
+    }
+
+    // ── FIX A: a plain stop (market-on-trigger) wires trigger_price into
+    // order.stop_price and fires through the broker with price 0. The risk floor
+    // references the trigger level (210) as the resolved price. ──
+    void fast_submit_stop_wires_trigger_price() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool("fast_submit_order", stop_args(5, 210));
+        QVERIFY2(res.success, qPrintable("armed stop submit must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(FakeBroker::place_calls, 1);
+        QCOMPARE(FakeBroker::last_order.order_type, trading::OrderType::StopLoss);
+        QCOMPARE(FakeBroker::last_order.stop_price, 210.0);
+        QCOMPARE(FakeBroker::last_order.price, 0.0);
+        clear_keys();
+    }
+
+    // ── FIX A: a stop_limit carries BOTH the trigger (stop_price) and the limit
+    // (price). The risk floor references the limit price (205). ──
+    void fast_submit_stop_limit_wires_both_prices() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool(
+            "fast_submit_order",
+            QJsonObject{{"symbol", "AAPL"}, {"side", "buy"},        {"quantity", 5},
+                        {"order_type", "stop_limit"}, {"trigger_price", 210},
+                        {"limit_price", 205}, {"exchange", "NASDAQ"}});
+        QVERIFY2(res.success, qPrintable("armed stop_limit submit must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(FakeBroker::last_order.order_type, trading::OrderType::StopLossLimit);
+        QCOMPARE(FakeBroker::last_order.stop_price, 210.0);
+        QCOMPARE(FakeBroker::last_order.price, 205.0);
+        clear_keys();
+    }
+
+    // ── FIX A: a stop WITHOUT trigger_price is rejected before the broker. ──
+    void fast_submit_stop_without_trigger_rejected() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool(
+            "fast_submit_order",
+            QJsonObject{{"symbol", "AAPL"}, {"side", "buy"}, {"quantity", 5},
+                        {"order_type", "stop"}, {"exchange", "NASDAQ"}});
+        QVERIFY2(res.success,
+                 qPrintable("missing trigger is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("trigger_price required"),
+                 qPrintable("reason must be the trigger check: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::place_calls, 0);
+        clear_keys();
+    }
+
     // ════════════════════════════════════════════════════════════════════
     // Task 5: replace_order — the gated, risk-floored LIVE order MODIFY
     // ════════════════════════════════════════════════════════════════════
@@ -826,6 +933,43 @@ class TstFastLive : public QObject {
         QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
         QVERIFY2(d.value("reason").toString().contains("no allowed account"),
                  qPrintable("reason: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::modify_calls, 0);
+        clear_keys();
+    }
+
+    // ── FIX A: replace_order with order_type "stop" wires trigger_price into the
+    // broker modify mods (and the risk floor references the trigger level). ──
+    void replace_order_stop_wires_trigger_price() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool(
+            "replace_order",
+            QJsonObject{{"order_id", "O1"}, {"symbol", "AAPL"}, {"side", "buy"},
+                        {"quantity", 5}, {"order_type", "stop"}, {"trigger_price", 210}});
+        QVERIFY2(res.success, qPrintable("armed stop replace must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("replaced"));
+        QCOMPARE(FakeBroker::modify_calls, 1);
+        QCOMPARE(FakeBroker::last_modify_id, QStringLiteral("O1"));
+        QCOMPARE(FakeBroker::last_mods.value("trigger_price").toDouble(), 210.0);
+        clear_keys();
+    }
+
+    // ── FIX A: replace_order stop WITHOUT trigger_price is rejected before the
+    // broker (modify_order is never called). ──
+    void replace_order_stop_without_trigger_rejected() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool(
+            "replace_order",
+            QJsonObject{{"order_id", "O1"}, {"symbol", "AAPL"}, {"side", "buy"},
+                        {"quantity", 5}, {"order_type", "stop"}});
+        QVERIFY2(res.success,
+                 qPrintable("missing trigger is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("trigger_price required"),
+                 qPrintable("reason must be the trigger check: " + d.value("reason").toString()));
         QCOMPARE(FakeBroker::modify_calls, 0);
         clear_keys();
     }

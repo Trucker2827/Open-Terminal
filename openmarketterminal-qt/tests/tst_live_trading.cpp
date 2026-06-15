@@ -440,6 +440,27 @@ class TstLiveTrading : public QObject {
         clear_live_keys();
     }
 
+    // (d2) FIX B regression: a SMALL realized loss must NOT reject every order.
+    //     Seed -100 (today_loss 100, default cap 5000). The order's worst-case
+    //     loss is its notional (10*100=1000); 100+1000 <= 5000 → filled. Before
+    //     the fix the live equity path fed daily_loss_ok the daily CAP (5000):
+    //     100+5000 > 5000 → wrongly rejected the instant ANY loss existed. The
+    //     per-slot init() wipe of daily_pnl means no manual seed-undo. This slot
+    //     is RED on the pre-fix risk_floor_check (max_loss=cap), GREEN on the fix
+    //     (max_loss=order_value). ──
+    void live_small_loss_still_fills_within_cap() {
+        const QString acct = setup_fake_account();
+        const QString id = prepare_equity_draft(); // order_value 10*100 = 1000
+        QVERIFY2(!id.isEmpty(), "prepare_equity_draft must yield a draft");
+        LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), -100.0);
+        set_key("cli.allow_trading", "true");
+        set_key("cli.live_trading_armed", "true");
+        set_key("cli.allowed_account", acct);
+        const QJsonObject d = submit_live(id);
+        QCOMPARE(d.value("status").toString(), QStringLiteral("filled"));
+        clear_live_keys();
+    }
+
     // (e) Kill switch DOMINATES: even fully armed with a valid account, the
     //     panic button short-circuits at the handler top → "kill switch engaged".
     void live_kill_switch_dominates() {
