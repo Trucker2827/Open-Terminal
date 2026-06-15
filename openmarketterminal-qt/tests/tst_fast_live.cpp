@@ -30,7 +30,9 @@
 
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpProvider.h"
+#include "mcp/tools/LivePnl.h"
 #include "mcp/tools/SettingsGate.h"
+#include "storage/repositories/LivePnlRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
 #include "trading/AccountManager.h"
@@ -55,11 +57,16 @@ class FakeBroker : public trading::IBroker {
     static inline QString last_cancel_id;
     static inline int close_calls = 0;
     static inline QString last_close_symbol;
+    // One-shot place_order recorder (Task 4).
+    static inline int place_calls = 0;
+    static inline trading::UnifiedOrder last_order;
     static void reset_derisk_counters() {
         cancel_calls = 0;
         last_cancel_id.clear();
         close_calls = 0;
         last_close_symbol.clear();
+        place_calls = 0;
+        last_order = trading::UnifiedOrder{};
     }
 
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
@@ -72,7 +79,9 @@ class FakeBroker : public trading::IBroker {
         return {true, "FAKE-TOKEN", "", "", "", ""};
     }
     trading::OrderPlaceResponse place_order(const trading::BrokerCredentials&,
-                                            const trading::UnifiedOrder&) override {
+                                            const trading::UnifiedOrder& order) override {
+        ++place_calls;
+        last_order = order;
         return {true, QStringLiteral("FAKE-1"), QString()};
     }
     trading::ApiResponse<QJsonObject> modify_order(const trading::BrokerCredentials&,
@@ -562,6 +571,139 @@ class TstFastLive : public QObject {
         QVERIFY2(d.value("reason").toString().contains("no allowed account"),
                  qPrintable("reason: " + d.value("reason").toString()));
         QCOMPARE(FakeBroker::close_calls, 0);
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Task 4: fast_submit_order — the ONE-SHOT gated LIVE order
+    // ════════════════════════════════════════════════════════════════════
+
+    // A within-caps limit order against the FakeBroker. A non-empty VALID
+    // exchange is mandatory: UnifiedTrading::place_order runs OrderValidator,
+    // which requires it, BEFORE routing to the broker.
+    static QJsonObject submit_args(double qty) {
+        return QJsonObject{{"symbol", "AAPL"},  {"side", "buy"},
+                           {"quantity", qty},   {"order_type", "limit"},
+                           {"limit_price", 200}, {"exchange", "NASDAQ"}};
+    }
+
+    // ── CONTRACT: registers category "fast-live" + is_destructive=true. The
+    // destructive pairing makes the host's is_fast_live_tool checker gate it on
+    // the full fast-arm predicate (unlike the non-destructive reads). ──
+    void fast_submit_registers_fast_live_destructive() {
+        const auto tools = mcp::McpProvider::instance().audit_all_tools();
+        bool seen = false;
+        for (const auto& t : tools) {
+            if (t.name != QLatin1String("fast_submit_order"))
+                continue;
+            seen = true;
+            QCOMPARE(t.category, QStringLiteral("fast-live"));
+            QVERIFY2(t.is_destructive, "fast_submit_order must be destructive");
+            QVERIFY2(t.has_handler, "fast_submit_order must have a handler");
+        }
+        QVERIFY2(seen, "fast_submit_order not registered");
+    }
+
+    // ── HAPPY: fully fast-armed + within caps → status "filled", FakeBroker
+    // received the order, a live_positions row exists, and a non-empty
+    // fast_submit_order/live/filled audit row is written. ──
+    void fast_submit_happy_fills_records_and_audits() {
+        FakeBroker::reset_derisk_counters();
+        const QString acct = arm_fast_live();
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(FakeBroker::place_calls, 1);
+        QCOMPARE(FakeBroker::last_order.symbol, QStringLiteral("AAPL"));
+        QCOMPARE(FakeBroker::last_order.quantity, 5.0);
+        // The fill is recorded in the live realized-P&L ledger.
+        auto open = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
+        QVERIFY2(open.is_ok() && open.value().has_value(),
+                 "a live_positions row must exist after a fill");
+        QCOMPARE(open.value()->qty, 5.0);
+        QVERIFY2(has_audit("fast_submit_order", "filled"),
+                 "fast_submit_order must write a non-empty 'filled' audit row");
+        clear_keys();
+    }
+
+    // ── GATE: NOT fast-armed (base live still armed) → DESTRUCTIVE, so the host
+    // auth-checker (3-arm predicate) DENIES before the handler runs → res.success
+    // FALSE and the broker is NEVER touched. ──
+    void fast_submit_not_fast_armed_denied_by_host() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.fast_live_armed", "false");
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(!res.success, "not-fast-armed fast_submit_order must be DENIED by the host checker");
+        QCOMPARE(FakeBroker::place_calls, 0);
+        clear_keys();
+    }
+
+    // ── GATE: kill switch engaged (still fully fast-armed) → host checker (3
+    // arms) lets it THROUGH; the handler's fast_live_gate rejects (success==TRUE,
+    // status "rejected", reason "kill switch engaged"). Broker never touched. ──
+    void fast_submit_kill_switch_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.kill_switch", "true");
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success, qPrintable("kill switch is a handler-gate rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QCOMPARE(d.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        QCOMPARE(FakeBroker::place_calls, 0);
+        clear_keys();
+    }
+
+    // ── GATE: armed but no allowed account → handler's fast_live_gate rejects. ──
+    void fast_submit_no_allowed_account_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.allowed_account", "");
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success,
+                 qPrintable("missing allowed account is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("no allowed account"),
+                 qPrintable("reason: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::place_calls, 0);
+        clear_keys();
+    }
+
+    // ── FLOOR: oversized (qty 1000 @ 200 = 200000 > the 25000 default cap) →
+    // rejected at the deterministic floor, the broker is NEVER called. ──
+    void fast_submit_oversized_rejected_at_floor_no_broker() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool("fast_submit_order", submit_args(1000));
+        QVERIFY2(res.success, qPrintable("oversized is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("max order value"),
+                 qPrintable("reason must be the order-value floor: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::place_calls, 0); // floor gates BEFORE the broker
+        clear_keys();
+    }
+
+    // ── DAILY-LOSS: pre-seed a realized loss over the GUI default cap (5000) →
+    // rejected at the daily-loss floor, the broker is NEVER called. ──
+    void fast_submit_daily_loss_rejected_no_broker() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto seed =
+            LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), -6000.0);
+        QVERIFY2(seed.is_ok(), "seed add_realized must succeed");
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success, qPrintable("daily-loss is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("daily loss"),
+                 qPrintable("reason must be the daily-loss floor: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::place_calls, 0);
+        // Undo the seed so later slots see a clean tally.
+        LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), 6000.0);
         clear_keys();
     }
 
