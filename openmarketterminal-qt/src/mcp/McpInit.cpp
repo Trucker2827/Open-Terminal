@@ -21,6 +21,7 @@
 #include "mcp/tools/DBnomicsTools.h"
 #include "mcp/tools/EdgarTools.h"
 #include "mcp/tools/EquityResearchTools.h"
+#include "mcp/tools/FastLiveTools.h"
 #include "mcp/tools/FileManagerTools.h"
 #include "mcp/tools/GeopoliticsTools.h"
 #include "mcp/tools/GovDataTools.h"
@@ -91,6 +92,9 @@ void register_core_tools() {
 
     // live broker trading (order placement/cancel, account state, market data)
     provider.register_tools(tools::get_live_trading_tools());
+
+    // fast live mode read tools (get_positions/get_open_orders/get_fills), gated
+    provider.register_tools(tools::get_fast_live_tools());
 
     // sec edgar (CIK resolution, XBRL financials, filing search)
     provider.register_tools(tools::get_edgar_tools());

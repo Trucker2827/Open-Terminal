@@ -1018,6 +1018,7 @@ set(MCP_SOURCES
     src/mcp/tools/PmPaperEngine.cpp
     src/mcp/tools/LivePnl.cpp
     src/mcp/tools/LiveTradingTools.cpp
+    src/mcp/tools/FastLiveTools.cpp
     src/mcp/tools/EdgarTools.cpp
     src/mcp/tools/MAAnalyticsTools.cpp
     src/mcp/tools/AltInvestmentsTools.cpp
@@ -2374,6 +2375,7 @@ set_source_files_properties(
     src/mcp/tools/PmPaperEngine.cpp
     src/mcp/tools/LivePnl.cpp
     src/mcp/tools/LiveTradingTools.cpp
+    src/mcp/tools/FastLiveTools.cpp
     src/mcp/tools/EdgarTools.cpp
     src/mcp/tools/MAAnalyticsTools.cpp
     src/mcp/tools/AltInvestmentsTools.cpp

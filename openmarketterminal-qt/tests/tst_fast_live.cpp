@@ -29,11 +29,112 @@
 #include <QTemporaryDir>
 
 #include "core/headless/HeadlessRuntime.h"
+#include "mcp/McpProvider.h"
 #include "mcp/tools/SettingsGate.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "trading/AccountManager.h"
+#include "trading/BrokerInterface.h"
+#include "trading/BrokerRegistry.h"
+#include "trading/TradingTypes.h"
+
+#include <QJsonArray>
 
 using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
+
+// ── FakeBroker — a minimal sandbox IBroker the fast-live READ tools route to.
+// get_positions emits one fixture position; get_orders emits two fixture orders
+// (one "filled", one "open") so get_fills / get_open_orders prove their status
+// partition. Every other method is a harmless stub. NO real credentials.
+class FakeBroker : public trading::IBroker {
+  public:
+    trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
+    const char* name() const override { return "FakeBroker"; }
+    const char* base_url() const override { return "https://fake.invalid"; }
+    trading::BrokerProfile profile() const override { return {}; }
+
+    trading::TokenExchangeResponse exchange_token(const QString&, const QString&,
+                                                  const QString&) override {
+        return {true, "FAKE-TOKEN", "", "", "", ""};
+    }
+    trading::OrderPlaceResponse place_order(const trading::BrokerCredentials&,
+                                            const trading::UnifiedOrder&) override {
+        return {true, QStringLiteral("FAKE-1"), QString()};
+    }
+    trading::ApiResponse<QJsonObject> modify_order(const trading::BrokerCredentials&,
+                                                   const QString&,
+                                                   const QJsonObject&) override {
+        return {};
+    }
+    trading::ApiResponse<QJsonObject> cancel_order(const trading::BrokerCredentials&,
+                                                   const QString&) override {
+        return {};
+    }
+    trading::ApiResponse<QVector<trading::BrokerOrderInfo>>
+    get_orders(const trading::BrokerCredentials&) override {
+        trading::BrokerOrderInfo filled;
+        filled.order_id = "F1";
+        filled.symbol = "AAPL";
+        filled.side = "BUY";
+        filled.quantity = 10;
+        filled.filled_qty = 10;
+        filled.avg_price = 100.5;
+        filled.status = "filled";
+        trading::BrokerOrderInfo open;
+        open.order_id = "O1";
+        open.symbol = "MSFT";
+        open.side = "BUY";
+        open.quantity = 5;
+        open.filled_qty = 0;
+        open.price = 200.0;
+        open.status = "open";
+        trading::ApiResponse<QVector<trading::BrokerOrderInfo>> resp;
+        resp.success = true;
+        resp.data = QVector<trading::BrokerOrderInfo>{filled, open};
+        return resp;
+    }
+    trading::ApiResponse<QJsonObject>
+    get_trade_book(const trading::BrokerCredentials&) override {
+        return {};
+    }
+    trading::ApiResponse<QVector<trading::BrokerPosition>>
+    get_positions(const trading::BrokerCredentials&) override {
+        trading::BrokerPosition p;
+        p.symbol = "AAPL";
+        p.exchange = "NASDAQ";
+        p.quantity = 10;
+        p.avg_price = 100.5;
+        p.ltp = 105.0;
+        p.pnl = 45.0;
+        p.side = "BUY";
+        trading::ApiResponse<QVector<trading::BrokerPosition>> resp;
+        resp.success = true;
+        resp.data = QVector<trading::BrokerPosition>{p};
+        return resp;
+    }
+    trading::ApiResponse<QVector<trading::BrokerHolding>>
+    get_holdings(const trading::BrokerCredentials&) override {
+        return {};
+    }
+    trading::ApiResponse<trading::BrokerFunds>
+    get_funds(const trading::BrokerCredentials&) override {
+        return {};
+    }
+    trading::ApiResponse<QVector<trading::BrokerQuote>>
+    get_quotes(const trading::BrokerCredentials&, const QVector<QString>&) override {
+        return {};
+    }
+    trading::ApiResponse<QVector<trading::BrokerCandle>>
+    get_history(const trading::BrokerCredentials&, const QString&, const QString&,
+                const QString&, const QString&) override {
+        return {};
+    }
+
+  protected:
+    QMap<QString, QString> auth_headers(const trading::BrokerCredentials&) const override {
+        return {};
+    }
+};
 
 class TstFastLive : public QObject {
     Q_OBJECT
@@ -54,8 +155,36 @@ class TstFastLive : public QObject {
 
     void clear_keys() {
         for (const char* k : {"cli.allow_trading", "cli.live_trading_armed",
-                              "cli.fast_live_armed", "cli.allow_settings_write"})
+                              "cli.fast_live_armed", "cli.allow_settings_write",
+                              "cli.kill_switch"})
             SettingsRepository::instance().set(QString::fromLatin1(k), "false", "cli");
+        SettingsRepository::instance().set("cli.allowed_account", "", "cli");
+    }
+
+    // Register the FakeBroker + a sandbox account, returning the account id.
+    // Safe to call repeatedly (mirrors tst_live_trading::setup_fake_account).
+    QString setup_fake_account() {
+        trading::BrokerRegistry::instance().register_broker_for_test(
+            "fake", std::make_unique<FakeBroker>());
+        auto acct = trading::AccountManager::instance().add_account("fake", "Test");
+        trading::AccountManager::instance().set_trading_mode(acct.account_id, "sandbox");
+        trading::BrokerCredentials creds;
+        creds.broker_id = "fake";
+        creds.access_token = "FAKE-TOKEN"; // non-empty so the read path reaches the broker
+        trading::AccountManager::instance().save_credentials(acct.account_id, creds);
+        return acct.account_id;
+    }
+
+    // Fully fast-arm the constitution against the FakeBroker account, returning
+    // that account id. (base trading + base live arm + the SECOND fast arm.)
+    QString arm_fast_live() {
+        const QString acct = setup_fake_account();
+        set_key("cli.allow_trading", "true");
+        set_key("cli.live_trading_armed", "true");
+        set_key("cli.fast_live_armed", "true");
+        set_key("cli.kill_switch", "false");
+        set_key("cli.allowed_account", acct);
+        return acct;
     }
 
   private slots:
@@ -128,6 +257,123 @@ class TstFastLive : public QObject {
         set_key("cli.live_trading_armed", "false");
         QVERIFY2(!fast_gate_open(), "fast gate MUST shut if base live arm is revoked");
 
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Task 2: the fast-live READ tools (get_positions/get_open_orders/get_fills)
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── CONTRACT: the 3 reads register with category "fast-live" (NOT
+    // "live-trading") and is_destructive=false. This pairing is load-bearing:
+    // category "live-trading" + destructive would make is_live_execution_tool
+    // DENY them at the host before the fast-arm gate fires; and a non-None /
+    // destructive read would trip the Phase 6.12 confirmation modal. ──
+    void fast_live_reads_register_with_fast_live_category() {
+        const auto tools = mcp::McpProvider::instance().audit_all_tools();
+        int found = 0;
+        for (const char* nm : {"get_positions", "get_open_orders", "get_fills"}) {
+            bool seen = false;
+            for (const auto& t : tools) {
+                if (t.name != QLatin1String(nm))
+                    continue;
+                seen = true;
+                ++found;
+                QCOMPARE(t.category, QStringLiteral("fast-live"));
+                QVERIFY2(!t.is_destructive, qPrintable(QString(nm) + " read must be non-destructive"));
+                QVERIFY2(t.has_handler, qPrintable(QString(nm) + " must have a handler"));
+            }
+            QVERIFY2(seen, qPrintable(QString("tool not registered: ") + nm));
+        }
+        QCOMPARE(found, 3);
+    }
+
+    // ── HAPPY: fully fast-armed → get_positions returns the fixture position. ──
+    void get_positions_armed_returns_fixture() {
+        arm_fast_live();
+        auto res = rt_.call_tool("get_positions", QJsonObject{});
+        QVERIFY2(res.success, qPrintable("armed get_positions must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QVERIFY2(!d.contains("status"), "armed read must not be a structured rejection");
+        const QJsonArray positions = d.value("positions").toArray();
+        QCOMPARE(positions.size(), 1);
+        QCOMPARE(positions.at(0).toObject().value("symbol").toString(), QStringLiteral("AAPL"));
+        QCOMPARE(positions.at(0).toObject().value("quantity").toDouble(), 10.0);
+        clear_keys();
+    }
+
+    // ── HAPPY: get_open_orders → only the non-terminal ("open") order. ──
+    void get_open_orders_armed_filters_to_working() {
+        arm_fast_live();
+        auto res = rt_.call_tool("get_open_orders", QJsonObject{});
+        QVERIFY2(res.success, qPrintable("armed get_open_orders must succeed: " + res.error));
+        const QJsonArray orders = res.data.toObject().value("orders").toArray();
+        QCOMPARE(orders.size(), 1);
+        QCOMPARE(orders.at(0).toObject().value("order_id").toString(), QStringLiteral("O1"));
+        QCOMPARE(orders.at(0).toObject().value("status").toString(), QStringLiteral("open"));
+        clear_keys();
+    }
+
+    // ── HAPPY: get_fills → only the filled order (complement of open_orders). ──
+    void get_fills_armed_filters_to_filled() {
+        arm_fast_live();
+        auto res = rt_.call_tool("get_fills", QJsonObject{});
+        QVERIFY2(res.success, qPrintable("armed get_fills must succeed: " + res.error));
+        const QJsonArray fills = res.data.toObject().value("fills").toArray();
+        QCOMPARE(fills.size(), 1);
+        QCOMPARE(fills.at(0).toObject().value("order_id").toString(), QStringLiteral("F1"));
+        QCOMPARE(fills.at(0).toObject().value("status").toString(), QStringLiteral("filled"));
+        clear_keys();
+    }
+
+    // ── GATE: un-arm the SECOND fast arm → handler-gate rejection. The host
+    // auth-checker is BYPASSED for these reads (McpProvider only consults it when
+    // auth_required != None || is_destructive, and the reads are None +
+    // non-destructive), so the authoritative gate is the handler's
+    // fast_live_gate(): all three arms must hold. Account stays set + kill switch
+    // off, so gate check #2 (the arms) is the one that fires — asserting the
+    // specific reason proves it's the ARMS check, not the account/kill checks. ──
+    void get_positions_not_fast_armed_rejected_in_handler() {
+        arm_fast_live();
+        set_key("cli.fast_live_armed", "false"); // base live still armed
+        auto res = rt_.call_tool("get_positions", QJsonObject{});
+        QVERIFY2(res.success,
+                 qPrintable("un-armed read is a handler-gate rejection, not a host denial: "
+                            + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("not armed"),
+                 qPrintable("reason must be the fast-arm check: " + d.value("reason").toString()));
+        clear_keys();
+    }
+
+    // ── GATE: kill switch engaged (still fully fast-armed) → the host checker
+    // (which gates only on the three arms) lets it THROUGH to the handler, whose
+    // fast_live_gate returns a structured rejection. res.success==TRUE here. ──
+    void get_positions_kill_switch_rejected_in_handler() {
+        arm_fast_live();
+        set_key("cli.kill_switch", "true");
+        auto res = rt_.call_tool("get_positions", QJsonObject{});
+        QVERIFY2(res.success,
+                 qPrintable("kill switch is a handler-gate rejection, not a host denial: "
+                            + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QCOMPARE(d.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        clear_keys();
+    }
+
+    // ── GATE: armed but no allowed account → handler-gate rejection. ──
+    void get_positions_no_allowed_account_rejected_in_handler() {
+        arm_fast_live();
+        set_key("cli.allowed_account", ""); // default-deny
+        auto res = rt_.call_tool("get_positions", QJsonObject{});
+        QVERIFY2(res.success,
+                 qPrintable("missing allowed account is a handler-gate rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("no allowed account"),
+                 qPrintable("reason: " + d.value("reason").toString()));
         clear_keys();
     }
 
