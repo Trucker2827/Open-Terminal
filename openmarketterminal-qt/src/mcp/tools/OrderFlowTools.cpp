@@ -381,13 +381,16 @@ std::vector<ToolDef> get_order_flow_tools() {
                 return ToolResult::ok_data(
                     QJsonObject{{"status", "rejected"}, {"reason", "draft not found"}});
             }
-            const OrderDraft draft = dr.value();
+            const OrderDraft& draft = dr.value();
             const QString audit_mode = mode.isEmpty() ? QStringLiteral("paper") : mode;
 
             // 2. Must be a fresh, unused, unexpired draft.
             const QDateTime expires = QDateTime::fromString(draft.expires_at, Qt::ISODate);
+            // Fail closed: a missing/malformed expiry (never written by a real
+            // prepare_order, which always stamps a valid ISODate) is treated as
+            // expired rather than silently non-expired.
             const bool is_expired =
-                expires.isValid() && expires <= QDateTime::currentDateTimeUtc();
+                !expires.isValid() || expires <= QDateTime::currentDateTimeUtc();
             if (draft.status != QLatin1String("prepared") || is_expired) {
                 audit_submit(draft.account, audit_mode, QJsonObject{{"draft_id", draft_id}},
                              "rejected", "draft expired or already used", empty_rv);
@@ -439,6 +442,20 @@ std::vector<ToolDef> get_order_flow_tools() {
                         {"status", "rejected"},
                         {"reason", "paper trading disabled — enable in GUI Settings"}});
                 }
+                // Reserve the draft BEFORE executing: a concurrent/duplicate
+                // submit then sees status != "prepared" and is rejected, so a
+                // fill can never be double-executed, and a failed status write
+                // can never silently follow a fill. (Critical once a live path
+                // exists; harmless-but-correct for paper.)
+                auto reserve =
+                    OrderDraftRepository::instance().update_status(draft_id, "submitting");
+                if (!reserve.is_ok()) {
+                    audit_submit(draft.account, QStringLiteral("paper"), intent, "rejected",
+                                 "could not reserve draft for submit", rv);
+                    return ToolResult::ok_data(QJsonObject{
+                        {"status", "rejected"},
+                        {"reason", "could not reserve draft for submit"}});
+                }
                 // Execute on the PAPER rail via the SESSION overload (NOT the
                 // account overload, which is the LIVE broker path).
                 auto& ut = trading::UnifiedTrading::instance();
@@ -447,7 +464,8 @@ std::vector<ToolDef> get_order_flow_tools() {
                     ut.init_session("paper", "paper"); // $100k paper portfolio
                 trading::UnifiedOrderResponse resp = ut.place_order(b.order);
 
-                OrderDraftRepository::instance().update_status(draft_id, "submitted");
+                OrderDraftRepository::instance().update_status(
+                    draft_id, resp.success ? "submitted" : "submit_failed");
                 const QString decision = resp.success ? QStringLiteral("filled")
                                                       : QStringLiteral("rejected");
                 audit_submit(draft.account, QStringLiteral("paper"), intent, decision,
@@ -474,7 +492,9 @@ std::vector<ToolDef> get_order_flow_tools() {
                 });
             }
 
-            // Schema enum should catch this; defensive only.
+            // Schema enum should catch this; defensive only. Audited like every
+            // other terminal path for completeness.
+            audit_submit(draft.account, audit_mode, intent, "rejected", "unknown mode", rv);
             return ToolResult::ok_data(
                 QJsonObject{{"status", "rejected"}, {"reason", "unknown mode"}});
         };

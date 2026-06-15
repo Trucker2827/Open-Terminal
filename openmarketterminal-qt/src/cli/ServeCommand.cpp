@@ -53,7 +53,9 @@ int serve_run(const QString& profile) {
         [](const QString& tool, const QJsonObject& args, mcp::AuthLevel required, bool is_destructive) {
             if (required >= mcp::AuthLevel::Verified) return false;
             if (tool == "submit_order") {
-                const QString mode = args.value("mode").toString();
+                // Normalize identically to the handler so a case/whitespace variant
+                // can't take a different branch than the handler will.
+                const QString mode = args.value("mode").toString().trimmed().toLower();
                 if (mode == "paper") return true;                // reach the handler; it enforces the toggle + executes
                 return mcp::cli_trading_allowed() && mcp::cli_live_armed();  // live: false in Phase A
             }
