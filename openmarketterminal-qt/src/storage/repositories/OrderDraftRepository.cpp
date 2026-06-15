@@ -41,4 +41,16 @@ Result<void> OrderDraftRepository::update_status(const QString& draft_id, const 
     return exec_write("UPDATE order_drafts SET status = ? WHERE draft_id = ?", {status, draft_id});
 }
 
+Result<bool> OrderDraftRepository::reserve_for_submit(const QString& draft_id) {
+    // Compare-and-set: the WHERE clause makes the claim atomic — only the first
+    // submit of a prepared draft changes a row; any concurrent/duplicate submit
+    // matches zero rows and loses the race.
+    auto r = db().execute("UPDATE order_drafts SET status = 'submitting' "
+                          "WHERE draft_id = ? AND status = 'prepared'",
+                          {draft_id});
+    if (r.is_err())
+        return Result<bool>::err(r.error());
+    return Result<bool>::ok(r.value().numRowsAffected() == 1);
+}
+
 } // namespace openmarketterminal

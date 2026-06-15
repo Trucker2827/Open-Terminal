@@ -92,6 +92,9 @@ RiskVerdict risk_floor_check(const UnifiedOrder& o, double resolved_price) {
     // these — see SettingsGate::is_gui_only_setting), each with a finite default.
     rv.max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
     rv.max_position_qty = read_cap(QStringLiteral("cli.risk.max_position_qty"), 10000.0);
+    // The daily-loss cap is RECORDED (returned + audited) but NOT yet enforced as a
+    // running-loss check — that needs a P&L tally across fills, which is Phase C.
+    // It is surfaced now so the configured ceiling is visible in the audit trail.
     rv.max_loss = read_cap(QStringLiteral("cli.risk.max_daily_loss"), 5000.0);
 
     rv.order_value = o.quantity * resolved_price;
@@ -442,22 +445,29 @@ std::vector<ToolDef> get_order_flow_tools() {
                         {"status", "rejected"},
                         {"reason", "paper trading disabled — enable in GUI Settings"}});
                 }
-                // Reserve the draft BEFORE executing: a concurrent/duplicate
-                // submit then sees status != "prepared" and is rejected, so a
-                // fill can never be double-executed, and a failed status write
-                // can never silently follow a fill. (Critical once a live path
-                // exists; harmless-but-correct for paper.)
-                auto reserve =
-                    OrderDraftRepository::instance().update_status(draft_id, "submitting");
-                if (!reserve.is_ok()) {
+                // Atomically reserve the draft BEFORE executing (compare-and-set
+                // prepared→submitting). Only the winner proceeds; a concurrent or
+                // duplicate submit loses the race and is rejected, so a fill can
+                // never be double-executed and a failed status write can never
+                // silently follow a fill. (Critical once a live path exists;
+                // correct-and-cheap for paper.)
+                auto reserve = OrderDraftRepository::instance().reserve_for_submit(draft_id);
+                if (!reserve.is_ok() || !reserve.value()) {
                     audit_submit(draft.account, QStringLiteral("paper"), intent, "rejected",
-                                 "could not reserve draft for submit", rv);
+                                 "draft already used or not reservable", rv);
                     return ToolResult::ok_data(QJsonObject{
                         {"status", "rejected"},
-                        {"reason", "could not reserve draft for submit"}});
+                        {"reason", "draft already used or not reservable"}});
                 }
                 // Execute on the PAPER rail via the SESSION overload (NOT the
                 // account overload, which is the LIVE broker path).
+                // NOTE: init_session mutates the process-global UnifiedTrading
+                // session_. In the daemon/headless host this is benign — only this
+                // tool touches session_, so it is always "paper". In a GUI process
+                // with an AI client attached, GUI live trading uses the
+                // account-aware place_order(account_id, …) overload that ignores
+                // session_, so this can only ever flip the shared session toward
+                // paper, never toward unintended live.
                 auto& ut = trading::UnifiedTrading::instance();
                 auto sess = ut.get_session();
                 if (!sess || sess->mode != QLatin1String("paper"))

@@ -251,6 +251,31 @@ class TstOrderFlow : public QObject {
         QVERIFY2(found, "expected a submit/paper audit row for submit_order");
     }
 
+    // Double-submit of the same draft must be rejected: the atomic reservation
+    // (compare-and-set prepared→submitting) means only the first submit wins;
+    // the second sees a non-prepared draft and is refused — a fill cannot be
+    // replayed off one draft.
+    void submit_paper_double_submit_is_rejected() {
+        set_gate("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_valid_draft();
+        QVERIFY2(!draft_id.isEmpty(), "prepare should yield a draft_id");
+
+        auto first = rt_.call_tool("submit_order",
+                                   QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(first.success, qPrintable("first submit must reach the handler: " + first.error));
+        QCOMPARE(first.data.toObject().value("status").toString(), QStringLiteral("filled"));
+
+        auto second = rt_.call_tool("submit_order",
+                                    QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(second.success, qPrintable("second submit is a decision (ok_data): " + second.error));
+        QCOMPARE(second.data.toObject().value("status").toString(), QStringLiteral("rejected"));
+
+        // Still exactly one consumed draft; status did not bounce back to prepared.
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), "draft must still exist after double submit");
+        QCOMPARE(got.value().status, QStringLiteral("submitted"));
+    }
+
     // PAPER with the gate OFF: the handler is the final authority — it re-checks
     // the toggle LIVE and refuses, NEVER executing. Draft stays "prepared".
     void submit_paper_rejected_when_disabled() {
