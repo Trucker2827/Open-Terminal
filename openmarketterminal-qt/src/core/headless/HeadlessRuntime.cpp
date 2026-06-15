@@ -100,16 +100,16 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     //     `return true` below and run unauthenticated — this closes that gap.)
     //   • settings-WRITE tool (category "settings" && is_destructive, e.g.
     //     set_setting; Authenticated) → allow iff cli_settings_write_allowed().
-    //   • any other destructive / trading-execution tool → DENY (matches the
-    //     daemon ServeCommand checker). The AI's ONLY live-execution path is the
-    //     gated `submit_order` carve-out above (kill-switch → armed →
-    //     allowed-account → fresh risk floor → daily-loss → reserve). The direct
-    //     `live_*` broker tools (live_place_order/live_smart_order/live_close_*/
-    //     live_cancel_*) and other destructive tools must NOT bypass that stack —
-    //     before Phase C this was `cli_trading_allowed()`, which (once a human set
-    //     cli.allow_trading=true to enable live) would have fired real orders
-    //     gated by that flag alone, sidestepping the kill switch / arm /
-    //     allowed-account / daily-loss constitution.
+    //   • direct live-broker EXECUTION tool (is_live_execution_tool:
+    //     live_place_order/live_smart_order/live_close_*/live_cancel_*) → DENY.
+    //     These place REAL orders WITHOUT the Phase-C constitution (kill switch /
+    //     arm / allowed-account / daily-loss). The AI's ONLY live path is the
+    //     gated `submit_order` carve-out above. Before Phase C they were allowed
+    //     by `cli_trading_allowed()`, which — once a human set cli.allow_trading=
+    //     true to enable live — would have fired real orders gated by that flag
+    //     alone, sidestepping the whole constitution.
+    //   • any OTHER destructive tool (destructive data tools, paper, etc.) →
+    //     allow iff cli_trading_allowed() (unchanged CLI policy).
     //   • everything else reaching the checker (non-destructive, incl. settings
     //     READS) → allowed (the user owns the read tool).
     //
@@ -130,8 +130,10 @@ InitResult HeadlessRuntime::init(const QString& profile) {
             }
             if (mcp::is_settings_write_tool(tool))
                 return mcp::cli_settings_write_allowed();
+            if (mcp::is_live_execution_tool(tool))
+                return false; // direct live-broker tools never bypass the gated submit_order path
             if (is_destructive)
-                return false; // direct destructive tools never bypass the submit_order gate stack
+                return mcp::cli_trading_allowed();
             return true;
         });
 

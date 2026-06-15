@@ -78,4 +78,17 @@ bool is_settings_write_tool(const QString& name) {
     return t && t->category == QLatin1String("settings") && t->is_destructive;
 }
 
+bool is_live_execution_tool(const QString& name) {
+    // A direct live-broker EXECUTION tool (category "live-trading" + destructive:
+    // live_place_order / live_smart_order / live_cancel_* / live_close_*). These
+    // place/modify REAL orders and are NOT routed through the Phase-C constitution
+    // (kill switch / arm / allowed-account / daily-loss), so the AI-facing hosts
+    // must deny them outright — the AI's only live path is the gated submit_order
+    // carve-out. (The non-destructive live-trading READ tools are not matched.)
+    // Resolve the canonical name first so an alias can't dodge the classifier.
+    const QString canonical = McpProvider::instance().resolve_canonical_name(name);
+    auto t = McpProvider::instance().find_tool(canonical);
+    return t && t->category == QLatin1String("live-trading") && t->is_destructive;
+}
+
 } // namespace openmarketterminal::mcp

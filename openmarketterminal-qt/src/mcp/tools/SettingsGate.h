@@ -26,6 +26,14 @@ bool cli_settings_write_allowed();
 /// trading gate. Settings READ tools are non-destructive and never match.
 bool is_settings_write_tool(const QString& name);
 
+/// True iff `name` resolves to a direct live-broker EXECUTION tool (category
+/// "live-trading" && is_destructive: live_place_order / live_smart_order /
+/// live_cancel_* / live_close_*). AI-facing auth-checkers DENY these outright —
+/// they place real orders without the Phase-C constitution (kill switch / arm /
+/// allowed-account / daily-loss); the AI's only live path is the gated
+/// submit_order carve-out. Non-destructive live-trading READ tools never match.
+bool is_live_execution_tool(const QString& name);
+
 /// `cli.allow_paper_trading` == "true" — gates submit_order mode=paper. Default false.
 bool cli_paper_trading_allowed();
 
