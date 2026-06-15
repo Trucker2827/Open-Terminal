@@ -19,6 +19,8 @@
 
 #include <QDateTime>
 
+#include <cmath>
+
 namespace openmarketterminal::mcp::tools {
 
 namespace {
@@ -84,14 +86,20 @@ double record_close(const QString& account, const QString& venue, const QString&
 }
 
 bool daily_loss_ok(double prospective_max_loss) {
-    const double realized = LivePnlRepository::instance().realized_today(today_utc()).value();
+    // Fail closed on a DB error — never let a trade through when the tally can't
+    // be read.
+    auto realized_r = LivePnlRepository::instance().realized_today(today_utc());
+    if (realized_r.is_err())
+        return false;
+    const double realized = realized_r.value();
     // Conservative: profits never expand headroom into negative.
     const double today_loss = realized < 0 ? -realized : 0.0;
-    // Cap is the GUI-only cli.risk.max_daily_loss (AI cannot write it); ≤0 → finite
-    // default, never "no cap".
-    double cap = SettingsRepository::instance().get("cli.risk.max_daily_loss", "5000").value().toDouble();
-    if (cap <= 0)
-        cap = 5000;
+    // Cap is the GUI-only cli.risk.max_daily_loss (AI cannot write it); a
+    // non-positive / non-finite value → finite default, never "no cap".
+    auto cap_r = SettingsRepository::instance().get("cli.risk.max_daily_loss", "5000");
+    double cap = cap_r.is_ok() ? cap_r.value().toDouble() : 5000.0;
+    if (cap <= 0 || !std::isfinite(cap))
+        cap = 5000.0;
     return (today_loss + prospective_max_loss) <= cap;
 }
 

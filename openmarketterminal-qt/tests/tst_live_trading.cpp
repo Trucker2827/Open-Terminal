@@ -174,6 +174,19 @@ class TstLiveTrading : public QObject {
         QVERIFY2(qFuzzyCompare(t.value(), -1000.0), "daily_pnl tally must hold -1000");
     }
 
+    // record_open into an EXISTING open position must re-blend the average (the
+    // path T3/T4 hit when the AI adds to a held live position) — a wrong avg here
+    // would mis-state realized P&L and thus the daily-loss gate.
+    void record_open_weighted_average_into_existing_position() {
+        mcp::tools::record_open("acct", "equity", "MSFT", 100, 150.0);
+        mcp::tools::record_open("acct", "equity", "MSFT", 50, 180.0);
+        auto p = LivePnlRepository::instance().get_open("acct", "equity", "MSFT");
+        QVERIFY(p.is_ok() && p.value().has_value());
+        QCOMPARE(p.value()->qty, 150.0);
+        QVERIFY2(qFuzzyCompare(p.value()->cost_basis, 24000.0), "100*150 + 50*180 = 24000");
+        QVERIFY2(qFuzzyCompare(p.value()->avg_cost, 160.0), "24000/150 = 160 (re-blended, not 150)");
+    }
+
     void daily_loss_gate_blocks_at_cap_after_loss() {
         mcp::tools::record_open("acct", "equity", "AAPL", 100, 150.0);
         mcp::tools::record_close("acct", "equity", "AAPL", 100, 140.0);  // realized -1000
