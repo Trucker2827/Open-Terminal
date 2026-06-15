@@ -11,6 +11,7 @@ add_test(NAME tst_bridge_discovery_file COMMAND tst_bridge_discovery_file)
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscovery.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp

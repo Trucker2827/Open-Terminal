@@ -1,4 +1,5 @@
 #include "cli/CommandDispatch.h"
+#include "cli/AiRunCommand.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
 #include "cli/ServeCommand.h"
@@ -33,7 +34,9 @@ static int usage() {
         "  status\n  version\n"
         "  mcp list | describe <tool> | call <tool> '<json>'\n"
         "  hub topics | peek <topic> | request <topic>\n"
-        "  quote <SYM...>\n");
+        "  quote <SYM...>\n"
+        "  ai run strategy <meanrev|claude> --mode paper [--interval-sec N]\n"
+        "                  [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
     return 2;
 }
 
@@ -268,6 +271,18 @@ int dispatch(QStringList args) {
         int code = 0;
         if (!prepare_transport(opts, c, code)) return code;
         return exec_tool(opts, c, tool, tool_args);
+    }
+
+    if (group == "ai") {
+        // Only `ai run strategy <name> …` is wired (paper strategy loop).
+        const QString sub = args.isEmpty() ? QString() : args.takeFirst();
+        const QString what = args.isEmpty() ? QString() : args.takeFirst();
+        if (sub == "run" && what == "strategy")
+            return ai_run_strategy(opts, args);  // args == tokens after "ai run strategy"
+        std::fprintf(stderr,
+                     "usage: ai run strategy <meanrev|claude> --mode paper "
+                     "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
+        return 2;
     }
 
     std::fprintf(stderr, "error: unknown command '%s'\n", qUtf8Printable(group));
