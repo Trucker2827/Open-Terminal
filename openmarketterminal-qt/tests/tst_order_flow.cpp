@@ -15,6 +15,7 @@
 
 #include "core/headless/HeadlessRuntime.h"
 #include "storage/repositories/OrderDraftRepository.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
 #include "storage/sqlite/Database.h"
 
@@ -193,6 +194,168 @@ class TstOrderFlow : public QObject {
             }
         }
         QVERIFY2(found, "expected a prepare/rejected audit row for prepare_order");
+    }
+
+    // ── Task 4: submit_order tool ───────────────────────────────────────────
+
+    // Helpers: write the GUI-owned gates/caps directly (simulating the GUI
+    // toggle). The tool path can't write these — the keystone blocks it — but a
+    // direct repo write models the human flipping the switch in GUI Settings.
+    void set_gate(const QString& key, const QString& value) {
+        auto r = SettingsRepository::instance().set(key, value, "cli");
+        QVERIFY2(r.is_ok(), qPrintable("set " + key + " failed"));
+    }
+    QString prepare_valid_draft() {
+        // qty 10 @ 200 = order_value 2000 < 25000 default cap.
+        auto res = rt_.call_tool("prepare_order",
+                                 QJsonObject{{"symbol", "AAPL"},
+                                             {"side", "buy"},
+                                             {"quantity", 10},
+                                             {"order_type", "limit"},
+                                             {"limit_price", 200}});
+        if (!res.success)
+            return QString();
+        return res.data.toObject().value("draft_id").toString();
+    }
+
+    // PAPER happy path: with the paper gate ON, a prepared draft submits and
+    // executes on the paper rail. Draft walks prepared → submitted; a submit
+    // audit row is recorded.
+    void submit_paper_executes_when_enabled() {
+        set_gate("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_valid_draft();
+        QVERIFY2(!draft_id.isEmpty(), "prepare should yield a draft_id");
+
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(res.success, qPrintable("submit_order paper must reach the handler: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        const QString status = data.value("status").toString();
+        // Prefer "filled"; the paper engine should fill a simple limit order.
+        QCOMPARE(status, QStringLiteral("filled"));
+
+        // The draft was consumed (status walked to "submitted").
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), "draft must still exist after submit");
+        QCOMPARE(got.value().status, QStringLiteral("submitted"));
+
+        // A submit-phase audit row records the decision.
+        auto recent = TradeAuditRepository::instance().recent(50);
+        QVERIFY2(recent.is_ok(), "audit recent() failed");
+        bool found = false;
+        for (const TradeAuditRow& r : recent.value())
+            if (r.tool == "submit_order" && r.phase == "submit" && r.mode == "paper") {
+                found = true;
+                break;
+            }
+        QVERIFY2(found, "expected a submit/paper audit row for submit_order");
+    }
+
+    // PAPER with the gate OFF: the handler is the final authority — it re-checks
+    // the toggle LIVE and refuses, NEVER executing. Draft stays "prepared".
+    void submit_paper_rejected_when_disabled() {
+        set_gate("cli.allow_paper_trading", "false");
+        const QString draft_id = prepare_valid_draft();
+        QVERIFY2(!draft_id.isEmpty(), "prepare should yield a draft_id");
+
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(res.success, qPrintable("paper-disabled is a decision (ok_data): " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("paper trading disabled", Qt::CaseInsensitive),
+                 qPrintable("reason must mention paper trading disabled: " + data.value("reason").toString()));
+
+        // Not executed: the draft is still prepared, not submitted.
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), "draft must still exist");
+        QCOMPARE(got.value().status, QStringLiteral("prepared"));
+
+        // Audit decision is "denied".
+        auto recent = TradeAuditRepository::instance().recent(50);
+        QVERIFY2(recent.is_ok(), "audit recent() failed");
+        bool found = false;
+        for (const TradeAuditRow& r : recent.value())
+            if (r.tool == "submit_order" && r.decision == "denied" && r.mode == "paper") {
+                found = true;
+                break;
+            }
+        QVERIFY2(found, "expected a submit/denied audit row");
+
+        set_gate("cli.allow_paper_trading", "false");
+    }
+
+    // LIVE hard-off: even with BOTH live gates ARMED (so the checker carve-out
+    // lets the call through), the HANDLER refuses — live NEVER reaches a broker.
+    // The draft is untouched. This exercises the handler's hard-off directly.
+    void submit_live_hard_off_even_when_armed() {
+        // Arm the live gates so the checker passes and the handler is the refuser.
+        set_gate("cli.allow_trading", "true");
+        set_gate("cli.live_trading_armed", "true");
+        const QString draft_id = prepare_valid_draft();
+        QVERIFY2(!draft_id.isEmpty(), "prepare should yield a draft_id");
+
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        QVERIFY2(res.success, qPrintable("live hard-off is a decision (ok_data): " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("live trading disabled", Qt::CaseInsensitive),
+                 qPrintable("reason must mention live trading disabled: " + data.value("reason").toString()));
+
+        // NEVER executed: draft remains prepared.
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), "draft must still exist");
+        QCOMPARE(got.value().status, QStringLiteral("prepared"));
+
+        // Defaults-off invariant too: with the gates reset, the checker itself
+        // denies live (call returns !success) — proving "never executes" holds
+        // independent of the toggles.
+        set_gate("cli.allow_trading", "false");
+        set_gate("cli.live_trading_armed", "false");
+        auto res2 = rt_.call_tool("submit_order",
+                                  QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        QVERIFY2(!res2.success, "live must be denied at the checker when not armed");
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("prepared"));
+    }
+
+    // A missing draft id is a rejected decision, not a crash/execution.
+    void submit_missing_draft_rejected() {
+        auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", "nonexistent-draft"}, {"mode", "paper"}});
+        QVERIFY2(res.success, qPrintable("missing draft is a decision (ok_data): " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("draft not found", Qt::CaseInsensitive),
+                 qPrintable("reason must mention draft not found: " + data.value("reason").toString()));
+    }
+
+    // REVOCABLE re-check: a draft prepared within caps is REJECTED at submit
+    // after the cap is lowered below its value — proving submit re-reads FRESH
+    // caps and re-runs the floor (it does NOT trust the draft's stored verdict).
+    void submit_revocable_risk_recheck() {
+        set_gate("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_valid_draft(); // value 2000, passes at 25000
+        QVERIFY2(!draft_id.isEmpty(), "prepare should yield a draft_id");
+
+        // Lower the cap below the order value AFTER prepare.
+        set_gate("cli.risk.max_order_value", "100");
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        // Restore the cap regardless of outcome.
+        set_gate("cli.risk.max_order_value", "25000");
+
+        QVERIFY2(res.success, qPrintable("risk rejection is a decision (ok_data): " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("max order value", Qt::CaseInsensitive),
+                 qPrintable("reason must mention max order value: " + data.value("reason").toString()));
+
+        // Not executed: draft remains prepared (re-check fired before submit).
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QVERIFY2(got.is_ok(), "draft must still exist");
+        QCOMPARE(got.value().status, QStringLiteral("prepared"));
     }
 
     void cleanupTestCase() { rt_.shutdown(); }

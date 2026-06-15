@@ -93,10 +93,16 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     // NOTE: the ToolConfirmationGate presenter below is NOT the enforcement
     // floor for MCP tool calls — McpProvider never consults it on this path.
     mcp::McpProvider::instance().set_auth_checker(
-        [](const QString& tool, const QJsonObject& /*args*/, mcp::AuthLevel required,
+        [](const QString& tool, const QJsonObject& args, mcp::AuthLevel required,
            bool is_destructive) {
             if (required >= mcp::AuthLevel::Verified)
                 return false;
+            if (tool == "submit_order") {
+                const QString mode = args.value("mode").toString();
+                if (mode == "paper")
+                    return true; // reach the handler; it enforces the toggle + executes
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed(); // live: false in Phase A
+            }
             if (mcp::is_settings_write_tool(tool))
                 return mcp::cli_settings_write_allowed();
             if (is_destructive)

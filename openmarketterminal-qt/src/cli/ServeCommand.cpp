@@ -50,8 +50,13 @@ int serve_run(const QString& profile) {
     // task initializes McpService (external MCP servers) in the daemon, those
     // calls would bypass this checker and need their own read-only gate.
     mcp::McpProvider::instance().set_auth_checker(
-        [](const QString& tool, const QJsonObject&, mcp::AuthLevel required, bool is_destructive) {
+        [](const QString& tool, const QJsonObject& args, mcp::AuthLevel required, bool is_destructive) {
             if (required >= mcp::AuthLevel::Verified) return false;
+            if (tool == "submit_order") {
+                const QString mode = args.value("mode").toString();
+                if (mode == "paper") return true;                // reach the handler; it enforces the toggle + executes
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed();  // live: false in Phase A
+            }
             if (is_destructive) return false;            // daemon MVP: no writes/destructive
             if (mcp::is_settings_write_tool(tool)) return false;
             return true;
