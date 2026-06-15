@@ -43,6 +43,22 @@ bool is_gui_only_setting(const QString& key) {
     return key.startsWith(QLatin1String("cli."), Qt::CaseInsensitive);
 }
 
+QStringList cli_allowed_venues() {
+    auto r = SettingsRepository::instance().get(QStringLiteral("cli.allowed_venues"), QString());
+    const QString raw = r.is_ok() ? r.value() : QString();
+    QStringList out;
+    for (const QString& part : raw.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        const QString v = part.trimmed().toLower();
+        if (!v.isEmpty())
+            out.append(v);
+    }
+    return out;
+}
+
+bool cli_venue_allowed(const QString& venue) {
+    return cli_allowed_venues().contains(venue.trimmed().toLower());
+}
+
 bool is_settings_write_tool(const QString& name) {
     // The headless auth-checker classifies on the caller-supplied name, which may
     // be a legacy alias, while `is_destructive` comes from the resolved def.

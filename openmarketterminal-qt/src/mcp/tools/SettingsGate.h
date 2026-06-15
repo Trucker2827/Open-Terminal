@@ -8,6 +8,7 @@
 // touches the app's deterministic risk limits / kill-switch.
 
 #include <QString>
+#include <QStringList>
 
 namespace openmarketterminal::mcp {
 
@@ -37,5 +38,15 @@ bool cli_live_armed();
 /// risk caps. Implemented as the `cli.` prefix (covers the trading toggles AND the
 /// cli.risk.* caps in one rule).
 bool is_gui_only_setting(const QString& key);
+
+/// The venues an AI/CLI agent is allowed to trade, read from `cli.allowed_venues`
+/// (default ""). The setting is a comma-separated list; each non-empty part is
+/// trimmed and lowercased. Empty/unset → empty list (default-deny: no venue is
+/// allowed until a human names it in GUI Settings).
+QStringList cli_allowed_venues();
+
+/// True iff `venue` (case-insensitively, ignoring surrounding whitespace) is in
+/// cli_allowed_venues(). Default-deny: false when the list is empty.
+bool cli_venue_allowed(const QString& venue);
 
 } // namespace openmarketterminal::mcp

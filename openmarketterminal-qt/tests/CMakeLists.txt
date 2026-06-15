@@ -115,3 +115,13 @@ add_executable(tst_order_flow tst_order_flow.cpp)
 target_include_directories(tst_order_flow PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_order_flow PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_order_flow COMMAND tst_order_flow)
+
+# AI-Trading Substrate Phase B Task 1 — storage + constitution readers for the
+# prediction-market paper book: the v050 migration (pm_paper_account +
+# pm_paper_positions), PmPaperRepository, and the SettingsGate venue helpers.
+# Brings up a real DB under a QTemporaryDir HOME via HeadlessRuntime (same
+# Widgets-free link set as tst_order_flow).
+add_executable(tst_pm_paper tst_pm_paper.cpp)
+target_include_directories(tst_pm_paper PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_pm_paper PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_pm_paper COMMAND tst_pm_paper)

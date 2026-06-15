@@ -312,6 +312,28 @@ void SecuritySection::build_ui() {
     capture_row_labels(row_cli_live, &row_cli_live_lbl_, &row_cli_live_desc_);
     vl->addWidget(row_cli_live);
 
+    // AI-trading constitution (Phase B): which venues the agent may trade and the
+    // per-topic exposure cap. GUI-only (cli.* keys the CLI/agent can never write).
+    cli_allowed_venues_edit_ = new QLineEdit;
+    cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. polymarket, kalshi"));
+    cli_allowed_venues_edit_->setFixedWidth(280);
+    cli_allowed_venues_edit_->setStyleSheet(input_ss());
+    auto* row_cli_venues = make_row(
+        tr("Allowed AI venues (comma list)"), cli_allowed_venues_edit_,
+        tr("Comma-separated venues the AI agent may trade (e.g. polymarket, kalshi). Empty means none are allowed."));
+    capture_row_labels(row_cli_venues, &row_cli_venues_lbl_, &row_cli_venues_desc_);
+    vl->addWidget(row_cli_venues);
+
+    cli_max_exposure_edit_ = new QLineEdit;
+    cli_max_exposure_edit_->setPlaceholderText(tr("e.g. 500"));
+    cli_max_exposure_edit_->setFixedWidth(200);
+    cli_max_exposure_edit_->setStyleSheet(input_ss());
+    auto* row_cli_expo = make_row(
+        tr("Max exposure per topic ($)"), cli_max_exposure_edit_,
+        tr("Maximum total stake (USD) the AI agent may hold open in a single topic/category."));
+    capture_row_labels(row_cli_expo, &row_cli_expo_lbl_, &row_cli_expo_desc_);
+    vl->addWidget(row_cli_expo);
+
     vl->addSpacing(16);
 
     // ── SAVE ──────────────────────────────────────────────────────────────────
@@ -350,6 +372,14 @@ void SecuritySection::build_ui() {
         if (cli_live_trading_toggle_) {
             repo.set("cli.live_trading_armed",
                      cli_live_trading_toggle_->isChecked() ? "true" : "false", "cli");
+        }
+        // AI-trading constitution (Phase B): allowed venues + per-topic exposure
+        // cap. Stored under cli.* so the CLI/agent reads them but can never write.
+        if (cli_allowed_venues_edit_) {
+            repo.set("cli.allowed_venues", cli_allowed_venues_edit_->text().trimmed(), "cli");
+        }
+        if (cli_max_exposure_edit_) {
+            repo.set("cli.risk.max_exposure_per_topic", cli_max_exposure_edit_->text().trimmed(), "cli");
         }
         // Notify listeners. These cli.* flags are read directly from the DB by
         // the CLI's headless auth-checker on every tool call, so revoking
@@ -454,6 +484,10 @@ void SecuritySection::retranslateUi() {
     if (row_cli_paper_desc_)  row_cli_paper_desc_->setText(tr("When on, the command-line interface / AI agent may submit simulated (paper) orders. No real money. Off by default."));
     if (row_cli_live_lbl_)    row_cli_live_lbl_->setText(tr("CLI LIVE Trading (advanced)"));
     if (row_cli_live_desc_)   row_cli_live_desc_->setText(tr("Arms LIVE order execution for the command-line interface / AI agent. Real money. Only a human can set this here; the CLI/agent can never arm itself. Off by default."));
+    if (row_cli_venues_lbl_)  row_cli_venues_lbl_->setText(tr("Allowed AI venues (comma list)"));
+    if (row_cli_venues_desc_) row_cli_venues_desc_->setText(tr("Comma-separated venues the AI agent may trade (e.g. polymarket, kalshi). Empty means none are allowed."));
+    if (row_cli_expo_lbl_)    row_cli_expo_lbl_->setText(tr("Max exposure per topic ($)"));
+    if (row_cli_expo_desc_)   row_cli_expo_desc_->setText(tr("Maximum total stake (USD) the AI agent may hold open in a single topic/category."));
 
     // Checkbox texts.
     if (sec_autolock_toggle_)  sec_autolock_toggle_->setText(tr("Enable auto-lock on inactivity"));
@@ -467,6 +501,8 @@ void SecuritySection::retranslateUi() {
     if (sec_current_pin_) sec_current_pin_->setPlaceholderText(tr("Current PIN"));
     if (sec_new_pin_)     sec_new_pin_->setPlaceholderText(tr("New PIN"));
     if (sec_confirm_pin_) sec_confirm_pin_->setPlaceholderText(tr("Confirm PIN"));
+    if (cli_allowed_venues_edit_) cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. polymarket, kalshi"));
+    if (cli_max_exposure_edit_)   cli_max_exposure_edit_->setPlaceholderText(tr("e.g. 500"));
 
     // Buttons. The change-PIN button toggles label with form visibility.
     if (sec_change_pin_btn_)
@@ -559,6 +595,16 @@ void SecuritySection::reload() {
         const QSignalBlocker b(cli_live_trading_toggle_);
         auto r = repo.get("cli.live_trading_armed", "false");
         cli_live_trading_toggle_->setChecked(r.is_ok() && r.value() == "true");
+    }
+    if (cli_allowed_venues_edit_) {
+        const QSignalBlocker b(cli_allowed_venues_edit_);
+        auto r = repo.get("cli.allowed_venues", "");
+        cli_allowed_venues_edit_->setText(r.is_ok() ? r.value() : QString());
+    }
+    if (cli_max_exposure_edit_) {
+        const QSignalBlocker b(cli_max_exposure_edit_);
+        auto r = repo.get("cli.risk.max_exposure_per_topic", "");
+        cli_max_exposure_edit_->setText(r.is_ok() ? r.value() : QString());
     }
 
     refresh_audit_log();

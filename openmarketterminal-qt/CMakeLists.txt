@@ -875,6 +875,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/AccountRepository.cpp
     src/storage/repositories/OrderDraftRepository.cpp
     src/storage/repositories/TradeAuditRepository.cpp
+    src/storage/repositories/PmPaperRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -934,6 +935,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v047_algo_multileg_trades.cpp
     src/storage/sqlite/migrations/v048_scrub_hosted_llm_proxy.cpp
     src/storage/sqlite/migrations/v049_ai_trading.cpp
+    src/storage/sqlite/migrations/v050_pm_paper.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -2203,6 +2205,7 @@ set_source_files_properties(
     src/storage/repositories/AccountRepository.cpp
     src/storage/repositories/OrderDraftRepository.cpp
     src/storage/repositories/TradeAuditRepository.cpp
+    src/storage/repositories/PmPaperRepository.cpp
     # Migration files — each defines sql() helper in anonymous namespace
     src/storage/sqlite/migrations/v001_initial.cpp
     src/storage/sqlite/migrations/v002_llm_chat.cpp
@@ -2252,6 +2255,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v047_algo_multileg_trades.cpp
     src/storage/sqlite/migrations/v048_scrub_hosted_llm_proxy.cpp
     src/storage/sqlite/migrations/v049_ai_trading.cpp
+    src/storage/sqlite/migrations/v050_pm_paper.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
