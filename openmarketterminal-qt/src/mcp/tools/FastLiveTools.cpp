@@ -25,12 +25,17 @@
 #include "mcp/tools/FastLiveTools.h"
 
 #include "core/logging/Logger.h"
+#include "mcp/ToolSchemaBuilder.h"
 #include "mcp/tools/SettingsGate.h"
+#include "storage/repositories/TradeAuditRepository.h"
 #include "trading/AccountManager.h"
 #include "trading/BrokerInterface.h"
 #include "trading/TradingTypes.h"
+#include "trading/UnifiedTrading.h"
 
+#include <QDateTime>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 
 namespace openmarketterminal::mcp::tools {
@@ -131,6 +136,28 @@ IBroker* resolve_gated_broker(const QString& account, BrokerCredentials& creds, 
     }
     creds = mgr.load_credentials(account);
     return broker;
+}
+
+// Append one append-only trade_audit row for a fast-live de-risking action. Every
+// terminal path (gate-denied or broker-returned) records a row; `reason` must be
+// non-empty (trade_audit.reason is NOT NULL and a blank reason is useless in the
+// log). Risk snapshot is empty — these tools only REDUCE exposure, so there is no
+// risk floor to record.
+void fast_derisk_audit(const QString& tool, const QString& account, const QString& decision,
+                       const QString& reason, const QJsonObject& intent) {
+    TradeAuditRow row;
+    row.ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    row.phase = QStringLiteral("fast-live");
+    row.tool = tool;
+    row.account = account;
+    row.mode = QStringLiteral("live");
+    row.intent_json = QString::fromUtf8(QJsonDocument(intent).toJson(QJsonDocument::Compact));
+    row.decision = decision;
+    row.reason = reason;
+    row.risk_snapshot_json = QStringLiteral("{}");
+    auto r = TradeAuditRepository::instance().append(row);
+    if (!r.is_ok())
+        LOG_WARN(TAG, "fast trade_audit append failed: " + QString::fromStdString(r.error()));
 }
 
 } // namespace
@@ -244,6 +271,108 @@ std::vector<ToolDef> get_fast_live_tools() {
             LOG_INFO(TAG, QString("fast get_fills: %1 (%2)")
                               .arg(fills.size()).arg(g.account));
             return ToolResult::ok_data(QJsonObject{{"fills", fills}});
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── cancel_order (DE-RISKING, destructive) ───────────────────────────────
+    // Cancel a single open LIVE order on the AI's allowed account. De-risking →
+    // NO order-value risk floor, but the full fast-live gate still applies (the
+    // host checker requires the three arms; the handler re-applies kill switch +
+    // arms + allowed-account). Routes ONLY through UnifiedTrading — never a raw
+    // adapter. Every terminal path writes a trade_audit row.
+    {
+        ToolDef t;
+        t.name = "cancel_order";
+        t.description =
+            "Fast Live Mode: cancel a single open LIVE order on the AI's allowed account.";
+        t.category = "fast-live";
+        t.auth_required = AuthLevel::Authenticated;
+        t.is_destructive = true;
+        t.input_schema = ToolSchemaBuilder()
+                             .string("order_id", "Broker order ID to cancel")
+                             .required()
+                             .build();
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const QString order_id = args.value("order_id").toString().trimmed();
+            const QJsonObject intent{{"order_id", order_id}};
+
+            auto g = fast_live_gate();
+            if (!g.ok) {
+                fast_derisk_audit("cancel_order", g.account, "denied", g.reason, intent);
+                return rejected(g.reason);
+            }
+
+            auto resp = trading::UnifiedTrading::instance().cancel_order(g.account, order_id);
+            const QString status = resp.success ? QStringLiteral("cancelled")
+                                                 : QStringLiteral("rejected");
+            // resp.message is the broker error (empty on success); never audit a
+            // blank reason — fall back to the terminal status word.
+            const QString reason = resp.message.isEmpty() ? status : resp.message;
+            fast_derisk_audit("cancel_order", g.account, status, reason, intent);
+            LOG_INFO(TAG, QString("fast cancel_order: %1 -> %2 (%3)")
+                              .arg(order_id, status, g.account));
+            return ToolResult::ok_data(QJsonObject{{"status", status},
+                                                   {"order_id", order_id},
+                                                   {"message", resp.message},
+                                                   {"mode", "live"}});
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── exit_position (DE-RISKING, destructive) ──────────────────────────────
+    // Close/reduce a single LIVE position by symbol (places a market counter-order
+    // via UnifiedTrading). De-risking → NO order-value floor (it only reduces
+    // exposure). Full fast-live gate applies. A missing position returns the
+    // broker's clean "Position not found" error → rejected, never a crash.
+    {
+        ToolDef t;
+        t.name = "exit_position";
+        t.description =
+            "Fast Live Mode: close (square off) a single LIVE position by symbol on "
+            "the AI's allowed account.";
+        t.category = "fast-live";
+        t.auth_required = AuthLevel::Authenticated;
+        t.is_destructive = true;
+        t.input_schema = ToolSchemaBuilder()
+                             .string("symbol", "Symbol of the position to close")
+                             .required()
+                             .length(1, 64)
+                             .string("exchange", "Exchange of the position (optional)")
+                             .string("product", "Product type filter (optional: MIS/CNC/NRML)")
+                             .build();
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const QString symbol = args.value("symbol").toString().trimmed();
+            const QString exchange = args.value("exchange").toString().trimmed();
+            const QString product = args.value("product").toString().trimmed();
+            const QJsonObject intent{
+                {"symbol", symbol}, {"exchange", exchange}, {"product", product}};
+
+            auto g = fast_live_gate();
+            if (!g.ok) {
+                fast_derisk_audit("exit_position", g.account, "denied", g.reason, intent);
+                return rejected(g.reason);
+            }
+
+            auto resp =
+                trading::UnifiedTrading::instance().close_position(g.account, symbol, exchange, product);
+            const bool ok = resp.success;
+            const QString status = ok ? QStringLiteral("closed") : QStringLiteral("rejected");
+            // ApiResponse carries the error in .error; on success it's empty —
+            // record a non-empty reason either way (trade_audit.reason NOT NULL).
+            const QString message = ok ? QStringLiteral("position closed")
+                                       : (resp.error.isEmpty() ? QStringLiteral("close failed")
+                                                               : resp.error);
+            fast_derisk_audit("exit_position", g.account, status, message, intent);
+            LOG_INFO(TAG, QString("fast exit_position: %1 -> %2 (%3)")
+                              .arg(symbol, status, g.account));
+            QJsonObject out{{"status", status},
+                            {"symbol", symbol},
+                            {"message", message},
+                            {"mode", "live"}};
+            if (ok && resp.data)
+                out["order_id"] = resp.data->order_id;
+            return ToolResult::ok_data(out);
         };
         tools.push_back(std::move(t));
     }

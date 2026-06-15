@@ -32,6 +32,7 @@
 #include "mcp/McpProvider.h"
 #include "mcp/tools/SettingsGate.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/repositories/TradeAuditRepository.h"
 #include "trading/AccountManager.h"
 #include "trading/BrokerInterface.h"
 #include "trading/BrokerRegistry.h"
@@ -48,6 +49,19 @@ using namespace openmarketterminal::headless;
 // partition. Every other method is a harmless stub. NO real credentials.
 class FakeBroker : public trading::IBroker {
   public:
+    // De-risking call recorders (Task 3). Static so the test can read them after
+    // the broker instance has been moved into the registry; reset in-slot.
+    static inline int cancel_calls = 0;
+    static inline QString last_cancel_id;
+    static inline int close_calls = 0;
+    static inline QString last_close_symbol;
+    static void reset_derisk_counters() {
+        cancel_calls = 0;
+        last_cancel_id.clear();
+        close_calls = 0;
+        last_close_symbol.clear();
+    }
+
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
     const char* name() const override { return "FakeBroker"; }
     const char* base_url() const override { return "https://fake.invalid"; }
@@ -67,8 +81,22 @@ class FakeBroker : public trading::IBroker {
         return {};
     }
     trading::ApiResponse<QJsonObject> cancel_order(const trading::BrokerCredentials&,
-                                                   const QString&) override {
-        return {};
+                                                   const QString& order_id) override {
+        ++cancel_calls;
+        last_cancel_id = order_id;
+        trading::ApiResponse<QJsonObject> resp;
+        resp.success = true;
+        return resp;
+    }
+    // De-risking close — record + succeed. We override (rather than lean on the
+    // IBroker default, which requires p.exchange == exchange and would return
+    // "Position not found" for exit_position{symbol:"AAPL"} with no exchange).
+    trading::ApiResponse<trading::OrderPlaceResponse>
+    close_position(const trading::BrokerCredentials&, const QString& symbol, const QString&,
+                   const QString&) override {
+        ++close_calls;
+        last_close_symbol = symbol;
+        return {true, trading::OrderPlaceResponse{true, QStringLiteral("CLOSE-1"), {}}, {}};
     }
     trading::ApiResponse<QVector<trading::BrokerOrderInfo>>
     get_orders(const trading::BrokerCredentials&) override {
@@ -374,6 +402,166 @@ class TstFastLive : public QObject {
         QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
         QVERIFY2(d.value("reason").toString().contains("no allowed account"),
                  qPrintable("reason: " + d.value("reason").toString()));
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Task 3: the fast-live DE-RISKING tools (cancel_order / exit_position)
+    // ════════════════════════════════════════════════════════════════════
+
+    // Most-recent audit row matching tool+decision, asserting reason is non-empty
+    // (trade_audit.reason is NOT NULL — a blank reason would still insert, so we
+    // guard the constraint here). Returns true if such a row exists.
+    static bool has_audit(const QString& tool, const QString& decision) {
+        auto r = TradeAuditRepository::instance().recent(50);
+        if (!r.is_ok())
+            return false;
+        for (const auto& row : r.value())
+            if (row.tool == tool && row.decision == decision && !row.reason.isEmpty()
+                && row.mode == QLatin1String("live"))
+                return true;
+        return false;
+    }
+
+    // ── CONTRACT: both de-risking tools register as category "fast-live" +
+    // is_destructive=true. category "fast-live" (NOT "live-trading") keeps
+    // is_live_execution_tool from denying them; destructive makes the host
+    // checker fire (unlike the reads). ──
+    void derisk_tools_register_fast_live_destructive() {
+        const auto tools = mcp::McpProvider::instance().audit_all_tools();
+        int found = 0;
+        for (const char* nm : {"cancel_order", "exit_position"}) {
+            bool seen = false;
+            for (const auto& t : tools) {
+                if (t.name != QLatin1String(nm))
+                    continue;
+                seen = true;
+                ++found;
+                QCOMPARE(t.category, QStringLiteral("fast-live"));
+                QVERIFY2(t.is_destructive, qPrintable(QString(nm) + " must be destructive"));
+                QVERIFY2(t.has_handler, qPrintable(QString(nm) + " must have a handler"));
+            }
+            QVERIFY2(seen, qPrintable(QString("tool not registered: ") + nm));
+        }
+        QCOMPARE(found, 2);
+    }
+
+    // ── HAPPY: fully fast-armed → cancel_order routes to the broker, returns
+    // status "cancelled", records the broker call + a non-empty audit row. ──
+    void cancel_order_armed_cancels_and_audits() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool("cancel_order", QJsonObject{{"order_id", "O1"}});
+        QVERIFY2(res.success, qPrintable("armed cancel_order must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("cancelled"));
+        QCOMPARE(d.value("order_id").toString(), QStringLiteral("O1"));
+        QCOMPARE(FakeBroker::cancel_calls, 1);
+        QCOMPARE(FakeBroker::last_cancel_id, QStringLiteral("O1"));
+        QVERIFY2(has_audit("cancel_order", "cancelled"),
+                 "cancel_order must write a non-empty 'cancelled' audit row");
+        clear_keys();
+    }
+
+    // ── HAPPY: fully fast-armed → exit_position closes the position, status
+    // "closed", records the broker close call + a non-empty audit row. ──
+    void exit_position_armed_closes_and_audits() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool("exit_position", QJsonObject{{"symbol", "AAPL"}});
+        QVERIFY2(res.success, qPrintable("armed exit_position must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("closed"));
+        QCOMPARE(d.value("symbol").toString(), QStringLiteral("AAPL"));
+        QCOMPARE(FakeBroker::close_calls, 1);
+        QCOMPARE(FakeBroker::last_close_symbol, QStringLiteral("AAPL"));
+        QVERIFY2(has_audit("exit_position", "closed"),
+                 "exit_position must write a non-empty 'closed' audit row");
+        clear_keys();
+    }
+
+    // ── GATE: NOT fast-armed (base live still armed) → DESTRUCTIVE, so the host
+    // auth-checker (3-arm predicate) DENIES before the handler runs → res.success
+    // is FALSE (a host denial, not a structured rejection), and the broker is
+    // never touched. ──
+    void cancel_order_not_fast_armed_denied_by_host() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.fast_live_armed", "false");
+        auto res = rt_.call_tool("cancel_order", QJsonObject{{"order_id", "O1"}});
+        QVERIFY2(!res.success, "not-fast-armed cancel_order must be DENIED by the host checker");
+        QCOMPARE(FakeBroker::cancel_calls, 0);
+        clear_keys();
+    }
+
+    void exit_position_not_fast_armed_denied_by_host() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.fast_live_armed", "false");
+        auto res = rt_.call_tool("exit_position", QJsonObject{{"symbol", "AAPL"}});
+        QVERIFY2(!res.success, "not-fast-armed exit_position must be DENIED by the host checker");
+        QCOMPARE(FakeBroker::close_calls, 0);
+        clear_keys();
+    }
+
+    // ── GATE: kill switch engaged (still fully fast-armed) → host checker (3
+    // arms) lets it THROUGH; the handler's fast_live_gate returns a structured
+    // rejection (res.success==TRUE, status "rejected", reason "kill switch
+    // engaged"). The broker is never touched. ──
+    void cancel_order_kill_switch_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.kill_switch", "true");
+        auto res = rt_.call_tool("cancel_order", QJsonObject{{"order_id", "O1"}});
+        QVERIFY2(res.success, qPrintable("kill switch is a handler-gate rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QCOMPARE(d.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        QCOMPARE(FakeBroker::cancel_calls, 0);
+        clear_keys();
+    }
+
+    void exit_position_kill_switch_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.kill_switch", "true");
+        auto res = rt_.call_tool("exit_position", QJsonObject{{"symbol", "AAPL"}});
+        QVERIFY2(res.success, qPrintable("kill switch is a handler-gate rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QCOMPARE(d.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        QCOMPARE(FakeBroker::close_calls, 0);
+        clear_keys();
+    }
+
+    // ── GATE: armed but no allowed account → host checker passes (3 arms set),
+    // handler's fast_live_gate rejects (res.success==TRUE, status "rejected",
+    // reason mentions "no allowed account"). ──
+    void cancel_order_no_allowed_account_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.allowed_account", "");
+        auto res = rt_.call_tool("cancel_order", QJsonObject{{"order_id", "O1"}});
+        QVERIFY2(res.success, qPrintable("missing allowed account is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("no allowed account"),
+                 qPrintable("reason: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::cancel_calls, 0);
+        clear_keys();
+    }
+
+    void exit_position_no_allowed_account_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.allowed_account", "");
+        auto res = rt_.call_tool("exit_position", QJsonObject{{"symbol", "AAPL"}});
+        QVERIFY2(res.success, qPrintable("missing allowed account is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("no allowed account"),
+                 qPrintable("reason: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::close_calls, 0);
         clear_keys();
     }
 
