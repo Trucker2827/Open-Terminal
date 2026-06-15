@@ -107,12 +107,15 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             if (subo.value(QStringLiteral("status")).toString() == QLatin1String("filled")) {
                 ++summary.filled;
                 log(QStringLiteral("filled draft ") + draft_id);
+                // on_fill notifies the strategy of ACTUAL fills only — a rejected
+                // submit never happened, so a strategy tracking positions here must
+                // not book it.
+                s.on_fill(intent, subo);
             } else {
                 ++summary.rejected;
                 log(QStringLiteral("submit rejected draft ") + draft_id + QStringLiteral(": ") +
                     sub_reason);
             }
-            s.on_fill(intent, subo);
         }
 
         if (halt)
