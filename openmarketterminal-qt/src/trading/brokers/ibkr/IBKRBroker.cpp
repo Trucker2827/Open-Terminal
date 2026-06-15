@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMutex>
 #include <QTimeZone>
 
 #include <algorithm>
@@ -141,6 +142,66 @@ QString IBKRBroker::checked_error(const BrokerHttpResponse& resp, const QString&
     return fallback;
 }
 
+// ---------- conid resolution ----------
+
+QString IBKRBroker::parse_conid_from_secdef(const QByteArray& body, const QString& symbol) {
+    QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isArray())
+        return {};
+    const QJsonArray arr = doc.array();
+    const QString want = symbol.toUpper();
+
+    // conid as a string, handling both string and numeric JSON forms — mirrors
+    // the existing get_quotes pattern (toVariant().toLongLong()).
+    auto conid_str = [](const QJsonObject& o) -> QString {
+        return QString::number(o.value("conid").toVariant().toLongLong());
+    };
+
+    QString fallback; // first symbol-match, regardless of sections
+
+    // STK preference: scan for a symbol-match whose sections include STK.
+    for (const QJsonValue& v : arr) {
+        const QJsonObject o = v.toObject();
+        if (o.value("symbol").toString().toUpper() != want)
+            continue;
+        if (fallback.isEmpty())
+            fallback = conid_str(o);
+        const QJsonArray sections = o.value("sections").toArray();
+        for (const QJsonValue& s : sections) {
+            if (s.toObject().value("secType").toString() == "STK")
+                return conid_str(o);
+        }
+    }
+    // Fallback: first element whose symbol matched the request.
+    return fallback;
+}
+
+QString IBKRBroker::resolve_conid(const QString& symbol, const QString& gw,
+                                  const QMap<QString, QString>& headers, QString* err) {
+    static QMutex cache_mtx;
+    static QMap<QString, QString> cache; // upper(symbol) -> conid
+    const QString key = symbol.toUpper();
+    {
+        QMutexLocker lock(&cache_mtx);
+        auto it = cache.find(key);
+        if (it != cache.end())
+            return it.value();
+    }
+    auto& http = BrokerHttp::instance();
+    auto resp = http.get(gw + "/v1/api/iserver/secdef/search?symbol=" + symbol, headers);
+    if (!resp.success) {
+        if (err)
+            *err = checked_error(resp, "secdef/search failed");
+        return {};
+    }
+    QString conid = parse_conid_from_secdef(resp.raw_body.toUtf8(), symbol);
+    if (!conid.isEmpty()) {
+        QMutexLocker lock(&cache_mtx);
+        cache.insert(key, conid);
+    }
+    return conid;
+}
+
 // ---------- Auth headers ----------
 // No Authorization header — gateway uses local browser session cookie
 
@@ -188,12 +249,22 @@ OrderPlaceResponse IBKRBroker::place_order(const BrokerCredentials& creds, const
     QString gw = gateway_url(creds);
     QString acct = creds.user_id.isEmpty() ? creds.api_key : creds.user_id;
 
-    // conid: symbol format "NASDAQ:AAPL:265598" — conid is the 3rd part
+    // conid: prefer instrument_token, then the "EXCH:SYMBOL:CONID" form,
+    // then resolve a plain ticker via secdef/search.
     QString conid = order.instrument_token;
     if (conid.isEmpty()) {
         QStringList parts = order.symbol.split(":");
         if (parts.size() >= 3)
             conid = parts[2];
+    }
+    if (conid.isEmpty() && !order.symbol.isEmpty()) {
+        // plain ticker (e.g. "AAPL") or "EXCH:SYM" — resolve the contract
+        const QString sym = order.symbol.contains(":") ? order.symbol.section(':', -1) : order.symbol;
+        QString err;
+        conid = resolve_conid(sym, gw, auth_headers(creds), &err);
+        if (conid.isEmpty())
+            return {false, "", "IBKR place_order: could not resolve conid for " + sym +
+                                   (err.isEmpty() ? "" : " — " + err)};
     }
     if (conid.isEmpty())
         return {false, "", "IBKR place_order: conid required (symbol format: EXCHANGE:SYMBOL:CONID)"};
@@ -511,10 +582,23 @@ ApiResponse<QVector<BrokerQuote>> IBKRBroker::get_quotes(const BrokerCredentials
 
     for (const QString& sym : symbols) {
         QStringList parts = sym.split(":");
-        if (parts.size() < 3)
-            continue;
-        QString conid = parts[2];
-        QString name = parts[1];
+        QString conid;
+        QString name;
+        if (parts.size() >= 3) {
+            // "EXCH:SYMBOL:CONID" fast path — conid already known.
+            conid = parts[2];
+            name = parts[1];
+        } else {
+            // plain ticker (or "EXCH:SYM") — resolve via secdef/search.
+            const QString plain = sym.contains(":") ? sym.section(':', -1) : sym;
+            QString err;
+            conid = resolve_conid(plain, gw, auth_headers(creds), &err);
+            if (conid.isEmpty())
+                continue; // skip this symbol; don't abort the whole batch
+            // Map the resolved conid back to the plain symbol the caller passed
+            // so the returned quote.symbol is what they asked for.
+            name = sym;
+        }
         conids.append(conid);
         conid_to_name[conid] = name;
     }
@@ -569,9 +653,19 @@ ApiResponse<QVector<BrokerCandle>> IBKRBroker::get_history(const BrokerCredentia
     int64_t ts = now_ts();
     QString gw = gateway_url(creds);
 
-    // Extract conid from symbol "NASDAQ:AAPL:265598"
+    // conid: "EXCH:SYMBOL:CONID" fast path, else resolve the plain ticker.
     QStringList parts = symbol.split(":");
     QString conid = (parts.size() >= 3) ? parts[2] : "";
+    if (conid.isEmpty() && !symbol.isEmpty()) {
+        const QString sym = symbol.contains(":") ? symbol.section(':', -1) : symbol;
+        QString err;
+        conid = resolve_conid(sym, gw, auth_headers(creds), &err);
+        if (conid.isEmpty())
+            return {false, std::nullopt,
+                    "get_history: could not resolve conid for " + sym +
+                        (err.isEmpty() ? "" : " — " + err),
+                    ts};
+    }
     if (conid.isEmpty())
         return {false, std::nullopt, "get_history: conid required (format EXCHANGE:SYMBOL:CONID)", ts};
 

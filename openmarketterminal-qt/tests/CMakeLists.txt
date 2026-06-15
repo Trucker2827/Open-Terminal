@@ -148,3 +148,10 @@ add_executable(tst_fast_live tst_fast_live.cpp)
 target_include_directories(tst_fast_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_fast_live PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_fast_live COMMAND tst_fast_live)
+
+# IBKR conid resolution — pure parser parse_conid_from_secdef (symbol→conid
+# from /iserver/secdef/search). Fixtures only, no gateway/network.
+add_executable(tst_ibkr_conid tst_ibkr_conid.cpp)
+target_include_directories(tst_ibkr_conid PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ibkr_conid PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_ibkr_conid COMMAND tst_ibkr_conid)

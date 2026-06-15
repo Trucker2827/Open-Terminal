@@ -69,12 +69,22 @@ class IBKRBroker : public IBroker {
     static bool is_token_expired(const BrokerHttpResponse& resp);
     static QString checked_error(const BrokerHttpResponse& resp, const QString& fallback);
 
+    /// Parse the conid for a stock (STK) contract matching `symbol` from a
+    /// /iserver/secdef/search response body. Returns "" if no match / malformed.
+    /// Pure (no I/O) — unit-tested.
+    static QString parse_conid_from_secdef(const QByteArray& body, const QString& symbol);
+
   protected:
     QMap<QString, QString> auth_headers(const BrokerCredentials& creds) const override;
 
   private:
     // Extract gateway base URL from access_token (stored as gateway URL)
     static QString gateway_url(const BrokerCredentials& creds);
+
+    /// Resolve a plain symbol to an IBKR conid via /iserver/secdef/search.
+    /// Caches results (conids are stable). Returns "" and sets *err on failure.
+    static QString resolve_conid(const QString& symbol, const QString& gw,
+                                 const QMap<QString, QString>& headers, QString* err);
 
     /// IBKR "tif" is GTC for delivery, DAY otherwise — modelled as `product_or(...)`.
     static const BrokerEnumMap<QString>& ibkr_enum_map();
