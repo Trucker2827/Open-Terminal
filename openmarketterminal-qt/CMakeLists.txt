@@ -1159,6 +1159,7 @@ set(SERVICE_SOURCES
     src/services/data_normalization/DataNormalizationService.cpp
     src/services/data_normalization/DataMappingTestClient.cpp
     src/services/ai_strategy/StrategyRunner.cpp
+    src/services/ai_strategy/MeanReversionStrategy.cpp
     src/core/services/Services.cpp
     src/python/ScriptCatalog.cpp
     # NewsService split; see NewsService.cpp header.
