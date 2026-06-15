@@ -125,6 +125,28 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(s.fills.size(), 1); // on_fill invoked once.
     }
 
+    // A NON-halting submit rejection (e.g. a risk-floor reject) must NOT fire
+    // on_fill — the order never executed, so a position-tracking strategy must
+    // not book it. Gates the fix that scopes on_fill to the "filled" branch:
+    // making on_fill unconditional makes this fail.
+    void submit_rejected_does_not_fire_on_fill() {
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("D1"));
+        tc.enqueue("submit_order", submit_rejected("exceeds max order value"));
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}}};
+
+        StrategyRunner runner;
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+
+        QCOMPARE(sum.prepared, 1);
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(sum.rejected, 1);
+        QVERIFY2(s.fills.isEmpty(), "on_fill must NOT fire on a rejected (non-filled) submit");
+        QVERIFY2(!sum.halted_by_kill_switch, "a plain risk rejection must not halt the loop");
+    }
+
     // prepare rejected → no submit; counted as rejected.
     void rejected_no_submit() {
         FakeToolCaller tc;
