@@ -607,6 +607,232 @@ class TstPmPaper : public QObject {
                  qPrintable("reason: " + data.value("reason").toString()));
     }
 
+    // ── Task 5: submit_order prediction branch (paper engine / live hard-off) ─
+
+    // Helper: prepare a valid PM BUY and return its draft_id (caller sets gates).
+    QString prepare_pm_buy(const QString& asset_id, double contracts,
+                           const QString& market_id = QStringLiteral("mkt-1")) {
+        auto res = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", market_id}, {"asset_id", asset_id},
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", contracts}});
+        if (!res.success)
+            return {};
+        const QJsonObject d = res.data.toObject();
+        if (d.value("status").toString() != QLatin1String("prepared"))
+            return {};
+        return d.value("draft_id").toString();
+    }
+
+    bool find_submit_audit(const QString& decision, const QString& mode) {
+        auto recent = TradeAuditRepository::instance().recent(50);
+        if (!recent.is_ok())
+            return false;
+        for (const TradeAuditRow& r : recent.value())
+            if (r.tool == "submit_order" && r.phase == "submit" && r.decision == decision &&
+                r.mode == mode)
+                return true;
+        return false;
+    }
+
+    // PAPER happy (BUY): toggle on, prepare a valid BUY, submit paper → "filled",
+    // a position row exists, cash debited, draft "submitted", a submit/paper audit.
+    void pm_submit_paper_happy_buy() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+
+        const QString draft_id = prepare_pm_buy("sub-buy", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        const double cash_before = PmPaperRepository::instance().cash().value();
+
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(res.success, qPrintable("paper submit is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(data.value("mode").toString(), QStringLiteral("paper"));
+        QCOMPARE(data.value("action").toString(), QStringLiteral("buy_to_open"));
+        QVERIFY(qFuzzyCompare(data.value("contracts").toDouble(), 10.0));
+        QVERIFY(qFuzzyCompare(data.value("fill_price").toDouble(), 0.45));  // best_ask
+
+        auto open = PmPaperRepository::instance().get_open("polymarket", "sub-buy");
+        QVERIFY2(open.value().has_value(), "a paper position must exist after the fill");
+        QCOMPARE(open.value()->contracts, 10.0);
+
+        QVERIFY2(qFuzzyCompare(PmPaperRepository::instance().cash().value(), cash_before - 4.5),
+                 "cash debited by 10 * 0.45 = 4.5");
+
+        auto got = OrderDraftRepository::instance().get(draft_id);
+        QCOMPARE(got.value().status, QStringLiteral("submitted"));
+
+        QVERIFY2(find_submit_audit("filled", "paper"), "expected a submit/paper filled audit row");
+    }
+
+    // PAPER toggle OFF after prepare → "rejected" (paper disabled), no position,
+    // draft NOT "submitted".
+    void pm_submit_paper_toggle_off_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("sub-toggle", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        set_setting("cli.allow_paper_trading", "false");  // revoked after prepare
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        set_setting("cli.allow_paper_trading", "true");  // restore
+        QVERIFY2(res.success, qPrintable("paper-disabled is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("paper trading disabled", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+
+        QVERIFY2(!PmPaperRepository::instance().get_open("polymarket", "sub-toggle").value().has_value(),
+                 "a rejected paper submit must not open a position");
+        QVERIFY2(OrderDraftRepository::instance().get(draft_id).value().status !=
+                     QLatin1String("submitted"),
+                 "draft must not be marked submitted");
+    }
+
+    // Venue cleared after prepare → "rejected" (venue not allowed), no position.
+    void pm_submit_venue_not_allowed_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("sub-venue", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        set_setting("cli.allowed_venues", "");  // revoke venue after prepare
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        set_setting("cli.allowed_venues", "polymarket");  // restore
+        QVERIFY2(res.success, qPrintable("venue-denied is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("venue", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+
+        QVERIFY2(!PmPaperRepository::instance().get_open("polymarket", "sub-venue").value().has_value(),
+                 "a venue-denied submit must not open a position");
+    }
+
+    // LIVE hard-off: submit mode=live → "rejected" (live disabled), no position.
+    // Defense in depth — ZERO engine/adapter calls on this path.
+    void pm_submit_live_hard_off() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("sub-live", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        // Arm BOTH live gates so the checker carve-out lets the call reach the
+        // HANDLER — proving the handler itself is the hard-off refuser.
+        set_setting("cli.allow_trading", "true");
+        set_setting("cli.live_trading_armed", "true");
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        set_setting("cli.allow_trading", "false");
+        set_setting("cli.live_trading_armed", "false");
+        QVERIFY2(res.success, qPrintable("live hard-off is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QCOMPARE(data.value("mode").toString(), QStringLiteral("live"));
+        QVERIFY2(data.value("reason").toString().contains("live trading disabled", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+
+        // The handler never executed: no position opened, draft untouched.
+        QVERIFY2(!PmPaperRepository::instance().get_open("polymarket", "sub-live").value().has_value(),
+                 "live hard-off must NEVER open a position");
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("prepared"));
+    }
+
+    // SELL-to-close happy: pre-open a position via the engine, prepare a partial
+    // SELL, submit paper → position reduced, cash credited at best_bid.
+    void pm_submit_sell_to_close_happy() {
+        using openmarketterminal::mcp::tools::buy_to_open;
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+
+        // Pre-open 20 @ 0.45 directly on the engine.
+        auto pre = buy_to_open("polymarket", "mkt-1", "sub-sell", "Yes", "weather", 20, 0.45);
+        QVERIFY2(pre.ok, qPrintable("pre-open failed: " + pre.reason));
+
+        // Prepare a SELL of 8 contracts.
+        auto prep = rt_.call_tool(
+            "prepare_order",
+            QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                        {"market_id", "mkt-1"}, {"asset_id", "sub-sell"},
+                        {"outcome", "Yes"}, {"side", "sell"}, {"contracts", 8}});
+        QVERIFY2(prep.success, qPrintable("prepare sell: " + prep.error));
+        const QString draft_id = prep.data.toObject().value("draft_id").toString();
+        QVERIFY2(!draft_id.isEmpty(), "prepared SELL must carry a draft_id");
+
+        const double cash_before = PmPaperRepository::instance().cash().value();
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(res.success, qPrintable("sell submit: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(data.value("action").toString(), QStringLiteral("sell_to_close"));
+        QVERIFY(qFuzzyCompare(data.value("fill_price").toDouble(), 0.40));  // best_bid
+
+        auto open = PmPaperRepository::instance().get_open("polymarket", "sub-sell");
+        QVERIFY2(open.value().has_value(), "partial sell leaves an open position");
+        QCOMPARE(open.value()->contracts, 12.0);  // 20 - 8
+
+        QVERIFY2(qFuzzyCompare(PmPaperRepository::instance().cash().value(), cash_before + 3.2),
+                 "cash credited by 8 * 0.40 = 3.2");
+    }
+
+    // Revocable re-check: prepare within caps, then LOWER max_order_value below the
+    // staked value → submit paper rejected at SUBMIT (fresh risk), no fill.
+    void pm_submit_revocable_recheck_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        // 100 * 0.45 = 45 stake (within the 25000 default at prepare).
+        const QString draft_id = prepare_pm_buy("sub-revoke", 100);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        set_setting("cli.risk.max_order_value", "10");  // below 45 → rejects at submit
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        set_setting("cli.risk.max_order_value", "25000");  // restore
+        QVERIFY2(res.success, qPrintable("risk re-check is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("max order value", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+
+        QVERIFY2(!PmPaperRepository::instance().get_open("polymarket", "sub-revoke").value().has_value(),
+                 "a risk-rejected submit must NOT fill");
+    }
+
+    // Double-submit: the same buy draft submitted twice → 2nd rejected (the draft
+    // is consumed), only one position effect.
+    void pm_submit_double_submit_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("sub-double", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        auto first = rt_.call_tool("submit_order",
+                                   QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(first.success, qPrintable("first submit: " + first.error));
+        QCOMPARE(first.data.toObject().value("status").toString(), QStringLiteral("filled"));
+
+        auto second = rt_.call_tool("submit_order",
+                                    QJsonObject{{"draft_id", draft_id}, {"mode", "paper"}});
+        QVERIFY2(second.success, qPrintable("second submit is a decision: " + second.error));
+        const QJsonObject data = second.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("already used", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+
+        auto open = PmPaperRepository::instance().get_open("polymarket", "sub-double");
+        QVERIFY2(open.value().has_value(), "the one successful submit must have opened a position");
+        QCOMPARE(open.value()->contracts, 10.0);  // not 20 — the 2nd submit had no effect
+    }
+
     void cleanupTestCase() { rt_.shutdown(); }
 };
 

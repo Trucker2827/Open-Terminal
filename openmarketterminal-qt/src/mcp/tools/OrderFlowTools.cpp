@@ -12,6 +12,7 @@
 #include "core/logging/Logger.h"
 #include "mcp/ToolSchemaBuilder.h"
 #include "mcp/tools/DataHubPeekHelpers.h"
+#include "mcp/tools/PmPaperEngine.h"
 #include "mcp/tools/PredictionTools.h"
 #include "mcp/tools/SettingsGate.h"
 #include "services/prediction/PredictionTypes.h"
@@ -487,6 +488,125 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
     });
 }
 
+// ── prediction submit path (asset_class == "prediction") ─────────────────────
+//
+// Re-validate FRESH (re-resolve the book, RE-RUN the PM risk floor — revocable),
+// gate by mode, then for paper execute on the PM PAPER engine (BUY-to-open /
+// SELL-to-close — pure DB writes, NEVER the adapter's live order methods). LIVE
+// is a HARD-OFF: a string rejection with ZERO engine/adapter calls.
+ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& intent,
+                                   const QString& mode, const QString& draft_id,
+                                   const QString& audit_mode) {
+    const RiskVerdict empty_rv;
+    const QString venue = intent.value("venue").toString().trimmed().toLower();
+    const QString market_id = intent.value("market_id").toString().trimmed();
+    const QString asset_id = intent.value("asset_id").toString().trimmed();
+    const QString outcome = intent.value("outcome").toString().trimmed();
+    const QString side = intent.value("side").toString().trimmed().toLower();
+    const double contracts = intent.value("contracts").toDouble(0.0);
+
+    // 1. Re-resolve the executable price + market metadata from the LIVE book.
+    const PmResolved r = pm_resolve(venue, market_id, asset_id, side);
+    if (!r.ok) {
+        audit_submit(draft.account, audit_mode, intent, "rejected", r.reason, empty_rv);
+        LOG_INFO(TAG, "submit_order (prediction) rejected: " + r.reason);
+        return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", r.reason}});
+    }
+
+    // 2. RE-RUN the deterministic PM risk floor against FRESH caps + book
+    //    (revocable — the stored verdict is NOT trusted).
+    const RiskVerdict rv = pm_risk_floor_check(r.category, side, contracts, r.price, r.best_bid,
+                                               r.best_ask, r.liquidity, r.end_date_iso);
+    if (!rv.ok) {
+        audit_submit(draft.account, audit_mode, intent, "rejected", rv.reason, rv);
+        LOG_INFO(TAG, "submit_order (prediction) risk re-check rejected: " + rv.reason);
+        return ToolResult::ok_data(QJsonObject{
+            {"status", "rejected"},
+            {"reason", rv.reason},
+            {"risk_status", "failed"},
+            {"stake", rv.order_value},
+            {"max_loss", rv.max_loss},
+        });
+    }
+
+    // 3. Gate by mode.
+    if (mode == QLatin1String("paper")) {
+        // The handler is the final authority: re-check the GUI toggle LIVE
+        // (revocable). The checker only opened the door to reach here.
+        if (!mcp::cli_paper_trading_allowed()) {
+            audit_submit(draft.account, QStringLiteral("paper"), intent, "denied",
+                         "paper trading disabled — enable in GUI Settings", rv);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"},
+                {"reason", "paper trading disabled — enable in GUI Settings"}});
+        }
+        if (!mcp::cli_venue_allowed(venue)) {
+            const QString reason =
+                QStringLiteral("venue '%1' not in allowed venues").arg(venue);
+            audit_submit(draft.account, QStringLiteral("paper"), intent, "denied", reason, rv);
+            return ToolResult::ok_data(
+                QJsonObject{{"status", "rejected"}, {"reason", reason}});
+        }
+        // Atomically reserve the draft BEFORE executing (compare-and-set
+        // prepared→submitting). A concurrent or duplicate submit loses the race
+        // and is rejected, so a fill can never be double-executed.
+        auto reserve = OrderDraftRepository::instance().reserve_for_submit(draft_id);
+        if (!reserve.is_ok() || !reserve.value()) {
+            audit_submit(draft.account, QStringLiteral("paper"), intent, "rejected",
+                         "draft already used or not reservable", rv);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"}, {"reason", "draft already used or not reservable"}});
+        }
+        // Execute on the PM PAPER engine using the RESOLVED book price (NOT the
+        // AI's limit_price). Category is market-derived (from pm_resolve). These
+        // are pure DB writes — NEVER the adapter's place_order/cancel_order.
+        const PmFill fill =
+            (side == QLatin1String("buy"))
+                ? buy_to_open(venue, market_id, asset_id, outcome, r.category, contracts, r.price)
+                : sell_to_close(venue, asset_id, contracts, r.price);
+
+        OrderDraftRepository::instance().update_status(
+            draft_id, fill.ok ? "submitted" : "submit_failed");
+        const QString decision = fill.ok ? QStringLiteral("filled") : QStringLiteral("rejected");
+        // A successful PmFill carries an EMPTY reason; the trade_audit.reason
+        // column is NOT NULL, so synthesize an informative non-empty reason.
+        QString fill_reason = fill.reason.trimmed();
+        if (fill_reason.isEmpty())
+            fill_reason = fill.ok ? QStringLiteral("%1 %2 @ %3")
+                                        .arg(fill.action)
+                                        .arg(fill.contracts, 0, 'f', 2)
+                                        .arg(fill.fill_price, 0, 'f', 4)
+                                  : QStringLiteral("rejected");
+        audit_submit(draft.account, QStringLiteral("paper"), intent, decision, fill_reason, rv);
+        LOG_INFO(TAG, "submit_order (prediction) paper " + decision + " draft " + draft_id);
+        return ToolResult::ok_data(QJsonObject{
+            {"status", decision},
+            {"action", fill.action},
+            {"contracts", fill.contracts},
+            {"fill_price", fill.fill_price},
+            {"cash_after", fill.cash_after},
+            {"mode", "paper"},
+        });
+    }
+    if (mode == QLatin1String("live")) {
+        // HARD-OFF: live NEVER reaches an engine/adapter in Phase B (paper-first).
+        // ZERO PmPaperEngine / adapter calls on this path.
+        audit_submit(draft.account, QStringLiteral("live"), intent, "denied",
+                     "live trading disabled (paper-first; not yet enabled)", rv);
+        LOG_WARN(TAG, "submit_order (prediction) live HARD-OFF for draft " + draft_id);
+        return ToolResult::ok_data(QJsonObject{
+            {"status", "rejected"},
+            {"reason", "live trading disabled (paper-first; not yet enabled)"},
+            {"mode", "live"},
+        });
+    }
+
+    // Schema enum should catch this; defensive only.
+    audit_submit(draft.account, audit_mode, intent, "rejected", "unknown mode", rv);
+    return ToolResult::ok_data(
+        QJsonObject{{"status", "rejected"}, {"reason", "unknown mode"}});
+}
+
 } // namespace
 
 std::vector<ToolDef> get_order_flow_tools() {
@@ -672,6 +792,16 @@ std::vector<ToolDef> get_order_flow_tools() {
             //    against FRESH caps — the stored verdict is NOT trusted (revocable).
             const QJsonObject intent =
                 QJsonDocument::fromJson(draft.intent_json.toUtf8()).object();
+
+            // Discriminate by asset_class. Prediction → the PM submit path
+            // (re-resolve fresh, RE-RUN the PM floor, gate, paper-execute on the
+            // PM paper engine / live hard-off). Anything else → the UNCHANGED
+            // equity submit path below.
+            const QString asset_class =
+                intent.value("asset_class").toString("equity").trimmed().toLower();
+            if (asset_class == QLatin1String("prediction"))
+                return submit_prediction_order(draft, intent, mode, draft_id, audit_mode);
+
             const OrderBuild b = build_order_from_intent(intent);
             if (!b.ok) {
                 audit_submit(draft.account, audit_mode, intent, "rejected",
