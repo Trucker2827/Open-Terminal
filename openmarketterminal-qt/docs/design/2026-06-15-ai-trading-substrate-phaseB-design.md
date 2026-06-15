@@ -110,7 +110,10 @@ Structured rejections (`{status:"rejected", reason, checks?}`), distinct reasons
 - **Phase C live PM**: the adapter's live `place_order`/`cancel_order` behind `cli.allow_trading`+`cli.live_trading_armed` + the PM floor + the carve-out extended to cancel/replace (per the parent spec's Phase C).
 - Coinbase PM adapter (availability uncertain).
 
-## Open questions (non-blocking)
-- Paper account seed size + whether shorting (SELL to open) is allowed in the MVP or BUY-to-open only (proposed: BUY-to-open + SELL-to-close only for the MVP; short-open is a follow-up — simpler max-loss + position model).
-- Exposure "topic" = market `category` vs `tags` (proposed: `category`; revisit if too coarse).
-- Default finite values for the new PM caps (`pm_min_liquidity`, `pm_max_spread`, `pm_min_hours_to_resolution`, `max_exposure_per_topic`) — tune in the plan.
+## Resolved decisions
+- **BUY-to-open + SELL-to-close ONLY** for Phase B (user, 2026-06-15). A paper SELL may only reduce/close an existing long position in that `asset_id`; SELL-to-open (shorting) is rejected ("no open position to sell; short-open is not enabled in Phase B"). This keeps the max-loss model simple (a long can lose at most its stake `fill_price × contracts`) and the position model single-sided.
+- Exposure "topic" = market `category` (revisit if too coarse).
+
+## Open questions (non-blocking — tune in the plan)
+- Paper account seed size (proposed $100k, mirroring the equity paper portfolio).
+- Default finite values for the new PM caps (`pm_min_liquidity`, `pm_max_spread`, `pm_min_hours_to_resolution`, `max_exposure_per_topic`).
