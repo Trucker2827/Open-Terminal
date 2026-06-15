@@ -18,6 +18,7 @@
 #include "mcp/McpTypes.h"
 #include "mcp/TerminalMcpBridge.h"
 #include "mcp/ToolConfirmationGate.h"
+#include "mcp/tools/SettingsGate.h"
 #include "python/PythonRunner.h"
 #include "storage/cache/CacheManager.h"
 #include "storage/repositories/LlmConfigRepository.h"
@@ -135,6 +136,19 @@ AgentService::AgentService(QObject* parent) : QObject(parent) {
            bool is_destructive) -> bool {
             if (required >= mcp::AuthLevel::Verified)
                 return false;
+            // submit_order carve-out — identical to the daemon (ServeCommand) and
+            // headless (HeadlessRuntime) checkers, so the AI-trading substrate is
+            // reachable the same way from every host. Paper submits reach the
+            // handler (which enforces cli.allow_paper_trading + the risk floor +
+            // the kill switch — all checked LIVE there), with NO per-trade
+            // confirmation dialog; live requires the GUI-only arm toggles. Every
+            // OTHER destructive tool still falls through to the confirmation gate.
+            if (tool_name == QLatin1String("submit_order")) {
+                const QString mode = args.value("mode").toString().trimmed().toLower();
+                if (mode == QLatin1String("paper"))
+                    return true;
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed();
+            }
             if (is_destructive && !mcp::TerminalMcpBridge::is_destructive_allowed()) {
                 const auto desc = describe_tool_action(tool_name, args);
                 return mcp::ToolConfirmationGate::instance().request(desc.first, desc.second);
