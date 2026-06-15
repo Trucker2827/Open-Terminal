@@ -8,13 +8,16 @@
 // ToolResult via detail::run_async_wait. The bridge is CORRELATED (accept only
 // the emission whose payload id matches the request; ignore the rest) and TIMED
 // (a 15s QTimer::singleShot guarantees the single daemon worker can never wedge
-// permanently on a never-matching fetch). All shared state is heap-allocated
-// (shared_ptr) and captured by value so no slot/timer ever touches freed worker
-// stack after the handler returns.
+// permanently on a never-matching fetch). Lifetime safety: the result storage is
+// worker-stack captured by reference, but every slot/timer guards on a heap
+// `finished` flag taken under a shared_ptr mutex BEFORE touching it — the first
+// terminal event writes the result then signal_done()s (the worker is still
+// blocked at that point), and every later/queued slot observes `finished` and
+// returns without dereferencing the (possibly unwound) stack. The value-captured
+// shared_ptr `signal_done`/state keep the wait alive for a late timer.
 
 #include "mcp/tools/PredictionTools.h"
 
-#include "core/logging/Logger.h"
 #include "mcp/ToolSchemaBuilder.h"
 #include "mcp/tools/ThreadHelper.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
@@ -38,7 +41,6 @@ namespace {
 
 namespace pred = openmarketterminal::services::prediction;
 
-constexpr const char* TAG = "PredictionTools";
 constexpr int kBridgeTimeoutMs = 15000;
 
 // ── JSON shaping ─────────────────────────────────────────────────────────────
@@ -470,7 +472,6 @@ std::vector<ToolDef> get_prediction_tools() {
         tools.push_back(std::move(t));
     }
 
-    Q_UNUSED(TAG);
     return tools;
 }
 
