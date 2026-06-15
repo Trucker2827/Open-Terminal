@@ -24,6 +24,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUuid>
+#include <QtConcurrent>
 
 namespace openmarketterminal::mcp {
 
@@ -68,7 +69,11 @@ TerminalMcpBridge& TerminalMcpBridge::instance() {
     return s;
 }
 
-TerminalMcpBridge::TerminalMcpBridge(QObject* parent) : QObject(parent) {}
+TerminalMcpBridge::TerminalMcpBridge(QObject* parent) : QObject(parent) {
+    // Single worker → internal tool dispatch is serialized off the event-loop
+    // thread (no new concurrent service access; the loop stays responsive).
+    tool_pool_.setMaxThreadCount(1);
+}
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -346,17 +351,25 @@ void TerminalMcpBridge::handle_post_tool(QTcpSocket* sock, const QJsonObject& bo
         !destructive_token_.isEmpty() && destructive_hdr == destructive_token_;
 
     QFuture<ToolResult> future;
-    {
+    if (server_id == INTERNAL_SERVER_ID) {
+        // Run the (possibly blocking, sync) handler on a dedicated single
+        // worker so the event loop stays responsive (SIGTERM / serve --stop
+        // keep working). The CallFlagGuard MUST be set on this worker thread,
+        // because the auth checker reads the thread-local flags during dispatch
+        // (which now runs here, not on the main thread). Serialized (pool size
+        // 1) → no new concurrent access to services.
+        future = QtConcurrent::run(&tool_pool_, [tool_name, args, destructive_ok]() {
+            CallFlagGuard guard(destructive_ok);
+            return McpProvider::instance().call_tool(tool_name, args);
+        });
+    } else {
+        // External path is already non-blocking on main —
+        // McpService::execute_openai_function_async handles the QtConcurrent::run
+        // wrapping for blocking JSON-RPC clients. Keep the guard on the main
+        // thread (unchanged behavior). Build the wire-form name it expects.
         CallFlagGuard guard(destructive_ok);
-        if (server_id == INTERNAL_SERVER_ID) {
-            future = McpProvider::instance().call_tool_async(tool_name, args);
-        } else {
-            // External — McpService::execute_openai_function_async handles the
-            // QtConcurrent::run wrapping for blocking JSON-RPC clients. Build
-            // the wire-form name it expects.
-            const QString fn = server_id + "__" + McpProvider::encode_tool_name_for_wire(tool_name);
-            future = McpService::instance().execute_openai_function_async(fn, args);
-        }
+        const QString fn = server_id + "__" + McpProvider::encode_tool_name_for_wire(tool_name);
+        future = McpService::instance().execute_openai_function_async(fn, args);
     }
 
     auto* watcher = new QFutureWatcher<ToolResult>(this);

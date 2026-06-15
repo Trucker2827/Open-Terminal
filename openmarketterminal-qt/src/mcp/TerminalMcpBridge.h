@@ -23,6 +23,7 @@
 #include <QJsonArray>
 #include <QObject>
 #include <QString>
+#include <QThreadPool>
 
 class QTcpServer;
 class QTcpSocket;
@@ -127,6 +128,7 @@ class TerminalMcpBridge : public QObject {
     QString discovery_root_;  // profile root where bridge.json was written
     QString owner_kind_ = "gui";  // tag written to bridge.json: "gui" | "daemon"
     QHash<QTcpSocket*, RequestState> states_;
+    QThreadPool tool_pool_;  // serialized off-main tool dispatch (maxThreadCount=1)
 };
 
 } // namespace openmarketterminal::mcp

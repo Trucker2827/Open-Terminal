@@ -1,5 +1,5 @@
 # QtTest suite (built only when OPENMARKETTERMINAL_BUILD_TESTS=ON).
-find_package(Qt6 REQUIRED COMPONENTS Test Network)
+find_package(Qt6 REQUIRED COMPONENTS Test Network Concurrent)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
@@ -28,6 +28,19 @@ add_executable(tst_bridge_client
 target_include_directories(tst_bridge_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_bridge_client PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME tst_bridge_client COMMAND tst_bridge_client)
+
+# Off-thread dispatch proof — drives the REAL TerminalMcpBridge (in
+# openterminal_core) via BridgeClient against a probe tool and asserts the
+# handler ran OFF the main thread, plus the CallFlagGuard thread-locals gate
+# correctly on the worker. Links the core lib (bridge + McpProvider live there)
+# and compiles the CLI-layer client sources.
+add_executable(tst_bridge_offthread
+    tst_bridge_offthread.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
+target_include_directories(tst_bridge_offthread PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_bridge_offthread PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Concurrent Qt6::Sql Qt6::Test)
+add_test(NAME tst_bridge_offthread COMMAND tst_bridge_offthread)
 
 add_executable(tst_datahub_hook tst_datahub_hook.cpp
     ${CMAKE_SOURCE_DIR}/src/datahub/DataHub.cpp
