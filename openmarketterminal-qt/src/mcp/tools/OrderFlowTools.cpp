@@ -16,6 +16,9 @@
 #include "mcp/tools/PmPaperEngine.h"
 #include "mcp/tools/PredictionTools.h"
 #include "mcp/tools/SettingsGate.h"
+#include "mcp/tools/ThreadHelper.h"
+#include "services/prediction/PredictionExchangeAdapter.h"
+#include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
 #include "storage/repositories/OrderDraftRepository.h"
 #include "storage/repositories/PmPaperRepository.h"
@@ -28,9 +31,15 @@
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMetaObject>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QTimer>
 #include <QUuid>
+#include <QVector>
 
 #include <limits>
+#include <memory>
 #include <optional>
 
 namespace openmarketterminal::mcp::tools {
@@ -490,12 +499,105 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
     });
 }
 
+// ── prediction LIVE async→sync bridge ────────────────────────────────────────
+//
+// Fire the adapter's ASYNC place_order and block the daemon worker until the
+// adapter answers, mirroring pm_fetch_order_book EXACTLY: heap-allocated shared
+// state (so the connected slots / timeout timer only ever touch shared state,
+// never freed worker stack), `finished` flag taken under the state mutex (first
+// terminal event wins), connections disconnected in finalize(), and a MANDATORY
+// 15s one-shot timeout (with `a` as context) so the single worker can never
+// wedge. OrderResult carries NO client_order_id, so correlation is accept-first
+// — safe on the single-worker host (only one in-flight place_order at a time).
+struct PmPlaceResult {
+    bool ok = false;
+    QString reason;    // non-empty: order_id on success, error/timeout on failure
+    QString order_id;
+};
+
+PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req) {
+    PmPlaceResult out;
+    auto* a = pred::PredictionExchangeRegistry::instance().adapter(venue.trimmed().toLower());
+    if (!a) {
+        out.reason = QStringLiteral("no adapter for venue '%1'").arg(venue);
+        return out;
+    }
+
+    struct PlaceState {
+        QMutex m;
+        bool finished = false;  // first terminal event wins
+        bool ok = false;
+        bool timed_out = false;
+        QString error;
+        QString order_id;
+    };
+    auto st = std::make_shared<PlaceState>();
+
+    detail::run_async_wait(a, [a, req, st](auto signal_done) {
+        auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
+        auto finalize = [st, conns, signal_done]() {
+            for (const auto& c : *conns)
+                QObject::disconnect(c);
+            conns->clear();
+            signal_done();
+        };
+        conns->append(QObject::connect(
+            a, &pred::PredictionExchangeAdapter::order_placed, a,
+            [st, finalize](const pred::OrderResult& r) {
+                QMutexLocker lk(&st->m);
+                if (st->finished)
+                    return;
+                st->ok = r.ok;
+                st->order_id = r.order_id;
+                if (!r.ok)
+                    st->error = r.error_message.isEmpty() ? r.error_code : r.error_message;
+                st->finished = true;
+                finalize();
+            }));
+        conns->append(QObject::connect(
+            a, &pred::PredictionExchangeAdapter::error_occurred, a,
+            [st, finalize](const QString& ctx, const QString& msg) {
+                QMutexLocker lk(&st->m);
+                if (st->finished)
+                    return;
+                st->error = msg.isEmpty() ? ctx : (ctx + ": " + msg);
+                st->finished = true;
+                finalize();
+            }));
+        QTimer::singleShot(15000, a, [st, finalize]() {
+            QMutexLocker lk(&st->m);
+            if (st->finished)
+                return;
+            st->timed_out = true;
+            st->finished = true;
+            finalize();
+        });
+        // FIRE the irreversible real-money call LAST, after the handshake is wired.
+        a->place_order(req);
+    });
+
+    if (st->timed_out) {
+        out.reason = QStringLiteral("place_order timed out after 15s");
+        return out;
+    }
+    if (!st->ok) {
+        out.order_id = st->order_id;
+        out.reason = st->error.isEmpty() ? QStringLiteral("place_order rejected") : st->error;
+        return out;
+    }
+    out.ok = true;
+    out.order_id = st->order_id;
+    out.reason = st->order_id.isEmpty() ? QStringLiteral("filled") : st->order_id;
+    return out;
+}
+
 // ── prediction submit path (asset_class == "prediction") ─────────────────────
 //
 // Re-validate FRESH (re-resolve the book, RE-RUN the PM risk floor — revocable),
 // gate by mode, then for paper execute on the PM PAPER engine (BUY-to-open /
 // SELL-to-close — pure DB writes, NEVER the adapter's live order methods). LIVE
-// is a HARD-OFF: a string rejection with ZERO engine/adapter calls.
+// mirrors the equity rail: armed → venue-allowed + credentials → daily-loss →
+// reserve → adapter->place_order (bridged) → live ledger → audit mode "live".
 ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& intent,
                                    const QString& mode, const QString& draft_id,
                                    const QString& audit_mode) {
@@ -591,14 +693,99 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         });
     }
     if (mode == QLatin1String("live")) {
-        // HARD-OFF: live NEVER reaches an engine/adapter in Phase B (paper-first).
-        // ZERO PmPaperEngine / adapter calls on this path.
-        audit_submit(draft.account, QStringLiteral("live"), intent, "denied",
-                     "live trading disabled (paper-first; not yet enabled)", rv);
-        LOG_WARN(TAG, "submit_order (prediction) live HARD-OFF for draft " + draft_id);
+        // GATED live execution — mirror the equity rail. The kill switch was
+        // already enforced at the handler top. Each gate is re-read LIVE here
+        // (revocable): the checker only opened the door; the handler is the final
+        // authority. adapter->place_order fires ONLY after EVERY gate passes.
+
+        // (1) ARMED — BOTH the trading gate AND the live-arming flag must be on.
+        if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed())) {
+            const QString reason =
+                QStringLiteral("live trading not armed — arm in GUI Settings");
+            audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+            LOG_WARN(TAG, "submit_order (prediction) live denied (not armed) draft " + draft_id);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+
+        // (2) VENUE ALLOWED + CREDENTIALS — PM has no AccountManager account;
+        //     gate on the venue allow-list AND the adapter actually holding
+        //     credentials (configured in the GUI). The AI never configures these.
+        if (!mcp::cli_venue_allowed(venue)) {
+            const QString reason =
+                QStringLiteral("venue '%1' not in allowed venues").arg(venue);
+            audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+        auto* adapter = pred::PredictionExchangeRegistry::instance().adapter(venue);
+        if (!adapter || !adapter->has_credentials()) {
+            const QString reason =
+                QStringLiteral("no credentials for venue '%1' — configure in GUI").arg(venue);
+            audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+
+        // (3) DAILY-LOSS FLOOR — running realized loss + this order's max_loss
+        //     (the PM stake) must stay within the GUI-only daily cap.
+        if (!mcp::tools::daily_loss_ok(rv.max_loss)) {
+            const QString reason = QStringLiteral("daily loss limit reached");
+            audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+            LOG_WARN(TAG, "submit_order (prediction) live denied (daily loss) draft " + draft_id);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+
+        // (4) RESERVE — atomically claim the draft BEFORE the irreversible adapter
+        //     call (compare-and-set prepared→submitting). A duplicate/concurrent
+        //     submit loses the race, so a real fill can never be double-executed.
+        auto reserve = OrderDraftRepository::instance().reserve_for_submit(draft_id);
+        if (!reserve.is_ok() || !reserve.value()) {
+            const QString reason = QStringLiteral("draft already used or not reservable");
+            audit_submit(draft.account, QStringLiteral("live"), intent, "rejected", reason, rv);
+            return ToolResult::ok_data(QJsonObject{
+                {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+
+        // (5) FIRE — every gate passed. Build the OrderRequest from the intent at
+        //     the RESOLVED book price (r.price — NEVER the AI's limit), then route
+        //     through the adapter via the timed async→sync bridge.
+        pred::OrderRequest oreq;
+        oreq.key.exchange_id = venue;
+        oreq.key.market_id = market_id;
+        oreq.asset_id = asset_id;
+        oreq.side = side.toUpper();  // "BUY" / "SELL"
+        const QString ot = intent.value("order_type").toString().trimmed();
+        oreq.order_type = ot.isEmpty() ? QStringLiteral("limit") : ot;
+        oreq.price = r.price;
+        oreq.size = contracts;
+        oreq.client_order_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+        const PmPlaceResult pr = pm_place_live(venue, oreq);
+
+        OrderDraftRepository::instance().update_status(
+            draft_id, pr.ok ? "submitted" : "submit_failed");
+
+        // Record the fill in the LIVE realized-P&L ledger at the RESOLVED price.
+        // PM has no AccountManager account → account "" ; venue is the exchange;
+        // instrument is the asset_id. BUY opens/adds, SELL closes/reduces.
+        if (pr.ok) {
+            if (side == QLatin1String("buy"))
+                mcp::tools::record_open(QStringLiteral(""), venue, asset_id, contracts, r.price);
+            else
+                mcp::tools::record_close(QStringLiteral(""), venue, asset_id, contracts, r.price);
+        }
+
+        const QString decision = pr.ok ? QStringLiteral("filled") : QStringLiteral("rejected");
+        // trade_audit.reason is NOT NULL — pr.reason is always non-empty (order_id
+        // on success, error/timeout on failure).
+        audit_submit(QStringLiteral(""), QStringLiteral("live"), intent, decision, pr.reason, rv);
+        LOG_WARN(TAG, "submit_order (prediction) LIVE " + decision + " draft " + draft_id);
         return ToolResult::ok_data(QJsonObject{
-            {"status", "rejected"},
-            {"reason", "live trading disabled (paper-first; not yet enabled)"},
+            {"status", decision},
+            {"order_id", pr.order_id},
+            {"venue", venue},
             {"mode", "live"},
         });
     }

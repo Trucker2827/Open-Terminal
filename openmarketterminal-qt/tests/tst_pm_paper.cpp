@@ -22,6 +22,7 @@
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
+#include "storage/repositories/LivePnlRepository.h"
 #include "storage/repositories/OrderDraftRepository.h"
 #include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -124,13 +125,36 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
     void unsubscribe_market(const QStringList&) override {}
     bool is_ws_connected() const override { return false; }
 
-    bool has_credentials() const override { return false; }
+    // ── Live-submit seam (Task 4) ────────────────────────────────────────────
+    // creds_ defaults TRUE so the gated live path can reach place_order; the
+    // no-credentials gate test flips it false and MUST restore (process-global
+    // singleton shared across slots). last_req_ records the request the bridge
+    // actually fired so the happy-path test can assert the RESOLVED price/size.
+    bool creds_ = true;
+    pred::OrderRequest last_req_;
+
+    bool has_credentials() const override { return creds_; }
     QString account_label() const override { return {}; }
     void fetch_balance() override {}
     void fetch_positions() override {}
     void fetch_open_orders() override {}
     void fetch_user_activity(int) override {}
-    void place_order(const pred::OrderRequest&) override {}
+    void place_order(const pred::OrderRequest& req) override {
+        last_req_ = req;
+        // Async fill on the event loop while run_async_wait blocks the worker —
+        // exercising the real correlated+timed bridge. A success OrderResult.
+        QMetaObject::invokeMethod(
+            this,
+            [this, req] {
+                pred::OrderResult r;
+                r.ok = true;
+                r.order_id = "PM-FAKE-1";
+                r.status = "FILLED";
+                r.filled = req.size;
+                emit order_placed(r);
+            },
+            Qt::QueuedConnection);
+    }
     void cancel_order(const QString&) override {}
     void cancel_all_for_market(const pred::MarketKey&, const QString&) override {}
 
@@ -716,32 +740,187 @@ class TstPmPaper : public QObject {
                  "a venue-denied submit must not open a position");
     }
 
-    // LIVE hard-off: submit mode=live → "rejected" (live disabled), no position.
-    // Defense in depth — ZERO engine/adapter calls on this path.
-    void pm_submit_live_hard_off() {
-        set_setting("cli.allowed_venues", "polymarket");
-        set_setting("cli.allow_paper_trading", "true");
-        const QString draft_id = prepare_pm_buy("sub-live", 10);
-        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+    // ── Task 4 (Phase C): submit_order mode "live" — gated adapter execution ──
 
-        // Arm BOTH live gates so the checker carve-out lets the call reach the
-        // HANDLER — proving the handler itself is the hard-off refuser.
+    // Handle to the process-global fake adapter (registered in initTestCase).
+    FakePredictionAdapter* fake_adapter() {
+        return static_cast<FakePredictionAdapter*>(
+            pred::PredictionExchangeRegistry::instance().adapter("polymarket"));
+    }
+    // No OPEN live ledger row for the PM (account ""/venue/asset) → adapter never
+    // reached. The real-money safety property for every gate rejection.
+    void verify_no_live_position(const QString& asset_id) {
+        auto pos = LivePnlRepository::instance().get_open("", "polymarket", asset_id);
+        QVERIFY2(pos.is_ok(), "live get_open must not error");
+        QVERIFY2(!pos.value().has_value(),
+                 qPrintable("a gated-out live submit must NOT record a live position: " + asset_id));
+    }
+    void arm_live() {
         set_setting("cli.allow_trading", "true");
         set_setting("cli.live_trading_armed", "true");
-        auto res = rt_.call_tool("submit_order",
-                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+    }
+    void disarm_live() {
         set_setting("cli.allow_trading", "false");
         set_setting("cli.live_trading_armed", "false");
-        QVERIFY2(res.success, qPrintable("live hard-off is a decision: " + res.error));
+    }
+
+    // HAPPY PATH: armed + venue allowed + credentials → the adapter is fired
+    // through the timed bridge and FILLS. The recorded OrderRequest carries the
+    // RESOLVED best_ask (0.45) and contracts (10) — NOT the AI's limit — a live
+    // ledger row is opened at 0.45, and the fill is audited under mode "live".
+    void pm_submit_live_happy_fills_via_adapter() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-happy", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+
+        arm_live();
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY2(res.success, qPrintable("live submit is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(data.value("mode").toString(), QStringLiteral("live"));
+        QCOMPARE(data.value("order_id").toString(), QStringLiteral("PM-FAKE-1"));
+        QCOMPARE(data.value("venue").toString(), QStringLiteral("polymarket"));
+
+        // The adapter received the request built at the RESOLVED price/size.
+        const pred::OrderRequest& req = fake_adapter()->last_req_;
+        QCOMPARE(req.asset_id, QStringLiteral("live-happy"));
+        QCOMPARE(req.side, QStringLiteral("BUY"));
+        QCOMPARE(req.size, 10.0);
+        QVERIFY2(qFuzzyCompare(req.price, 0.45), "OrderRequest must carry the RESOLVED best_ask 0.45");
+        QCOMPARE(req.key.exchange_id, QStringLiteral("polymarket"));
+        QVERIFY2(!req.client_order_id.isEmpty(), "a client_order_id must be generated");
+
+        // A live ledger row opened at the resolved price (NOT the AI's limit).
+        auto pos = LivePnlRepository::instance().get_open("", "polymarket", "live-happy");
+        QVERIFY2(pos.is_ok() && pos.value().has_value(),
+                 "the live fill must record an OPEN live_positions row");
+        QCOMPARE(pos.value()->qty, 10.0);
+        QVERIFY2(qFuzzyCompare(pos.value()->avg_cost, 0.45), "recorded at resolved price 0.45");
+
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("submitted"));
+        QVERIFY2(find_submit_audit("filled", "live"), "the live fill must be audited mode 'live'");
+    }
+
+    // GATE — NOT ARMED: venue allowed + creds present, but the live arming toggle
+    // is OFF. The headless auth-checker carve-out only opens the door when BOTH
+    // toggles are on, so an un-armed live submit is DENIED at the checker (before
+    // the handler) — res.success false. Either way the adapter is never reached
+    // (no live position). Mirrors the equity live_not_armed_rejected test.
+    void pm_submit_live_not_armed_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-noarm", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        fake_adapter()->creds_ = true;
+
+        disarm_live();  // explicitly NOT armed
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        QVERIFY2(!res.success, "un-armed live submit must be denied at the gate stack");
+        verify_no_live_position("live-noarm");
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("prepared"));
+    }
+
+    // GATE — VENUE NOT ALLOWED: armed + creds, but cli.allowed_venues cleared →
+    // rejected before the adapter (no live position).
+    void pm_submit_live_venue_not_allowed_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-venue", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        fake_adapter()->creds_ = true;
+
+        arm_live();
+        set_setting("cli.allowed_venues", "");  // revoke venue after prepare
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        set_setting("cli.allowed_venues", "polymarket");  // restore
+        disarm_live();
+        QVERIFY2(res.success, qPrintable("venue-denied is a decision: " + res.error));
         const QJsonObject data = res.data.toObject();
         QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
-        QCOMPARE(data.value("mode").toString(), QStringLiteral("live"));
-        QVERIFY2(data.value("reason").toString().contains("live trading disabled", Qt::CaseInsensitive),
+        QVERIFY2(data.value("reason").toString().contains("venue", Qt::CaseInsensitive),
                  qPrintable("reason: " + data.value("reason").toString()));
+        verify_no_live_position("live-venue");
+    }
 
-        // The handler never executed: no position opened, draft untouched.
-        QVERIFY2(!PmPaperRepository::instance().get_open("polymarket", "sub-live").value().has_value(),
-                 "live hard-off must NEVER open a position");
+    // GATE — NO CREDENTIALS: armed + venue allowed, but the adapter has no creds
+    // → rejected before place_order (no live position). MUST restore creds_.
+    void pm_submit_live_no_credentials_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-nocreds", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+
+        fake_adapter()->creds_ = false;  // no credentials configured
+        arm_live();
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->creds_ = true;  // RESTORE — shared singleton
+        QVERIFY2(res.success, qPrintable("no-creds is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("no credentials", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        verify_no_live_position("live-nocreds");
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("prepared"));
+    }
+
+    // GATE — DAILY-LOSS HALT: armed + venue + creds, but the daily-loss cap is set
+    // below this order's stake → rejected before the adapter (no live position).
+    void pm_submit_live_daily_loss_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-dloss", 10);  // stake 10*0.45=4.5
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        fake_adapter()->creds_ = true;
+
+        set_setting("cli.risk.max_daily_loss", "1");  // 0 + 4.5 > 1 → halt
+        arm_live();
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        set_setting("cli.risk.max_daily_loss", "5000");  // restore
+        QVERIFY2(res.success, qPrintable("daily-loss is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("daily loss", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        verify_no_live_position("live-dloss");
+    }
+
+    // GATE — KILL SWITCH DOMINATES: fully armed + venue + creds, but the panic
+    // button short-circuits at the handler top → "kill switch engaged".
+    void pm_submit_live_kill_switch_dominates() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-kill", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        fake_adapter()->creds_ = true;
+
+        arm_live();
+        set_setting("cli.kill_switch", "true");
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        set_setting("cli.kill_switch", "false");  // restore
+        disarm_live();
+        QVERIFY2(res.success, qPrintable("kill-switch is a decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("kill switch", Qt::CaseInsensitive),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        verify_no_live_position("live-kill");
         QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
                  QStringLiteral("prepared"));
     }
