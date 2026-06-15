@@ -19,10 +19,14 @@
 #include "mcp/tools/PredictionTools.h"
 
 #include "mcp/ToolSchemaBuilder.h"
+#include "mcp/tools/PmPaperEngine.h"
 #include "mcp/tools/ThreadHelper.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
+#include "storage/repositories/PmPaperRepository.h"
+
+#include <optional>
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -144,6 +148,86 @@ bool bridge_failed(const std::shared_ptr<BridgeState>& st, const QString& what, 
         return true;
     }
     return false;
+}
+
+// Best-effort current mid price for an asset via the adapter order book, using
+// the same CORRELATED + TIMED bridge as pm_get_order_book. Returns nullopt when
+// the book/adapter is unavailable, the request times out, or no two-sided
+// market exists — callers must treat that as "price not available", NOT a hard
+// failure (one position's network error must never break the portfolio read).
+std::optional<double> best_effort_mid(pred::PredictionExchangeAdapter* a, const QString& asset_id) {
+    if (!a || asset_id.isEmpty())
+        return std::nullopt;
+
+    auto st = std::make_shared<BridgeState>();
+    pred::PredictionOrderBook book;
+    detail::run_async_wait(a, [a, asset_id, st, &book](auto signal_done) {
+        auto conns = std::make_shared<QVector<QMetaObject::Connection>>();
+        auto finalize = [st, conns, signal_done]() {
+            for (const auto& c : *conns)
+                QObject::disconnect(c);
+            conns->clear();
+            signal_done();
+        };
+        conns->append(QObject::connect(
+            a, &pred::PredictionExchangeAdapter::order_book_ready, a,
+            [st, asset_id, &book, finalize](const pred::PredictionOrderBook& b) {
+                QMutexLocker lk(&st->m);
+                if (st->finished)
+                    return;
+                if (b.asset_id != asset_id)
+                    return;  // book for another asset → ignore, keep waiting
+                book = b;
+                st->ok = true;
+                st->finished = true;
+                finalize();
+            }));
+        conns->append(QObject::connect(
+            a, &pred::PredictionExchangeAdapter::error_occurred, a,
+            [st, finalize](const QString& ctx, const QString& msg) {
+                QMutexLocker lk(&st->m);
+                if (st->finished)
+                    return;
+                st->error = msg.isEmpty() ? ctx : (ctx + ": " + msg);
+                st->finished = true;
+                finalize();
+            }));
+        QTimer::singleShot(kBridgeTimeoutMs, a, [st, finalize]() {
+            QMutexLocker lk(&st->m);
+            if (st->finished)
+                return;
+            st->timed_out = true;
+            st->finished = true;
+            finalize();
+        });
+        a->fetch_order_book(asset_id);
+    });
+
+    if (!st->ok)
+        return std::nullopt;
+
+    double best_bid = -std::numeric_limits<double>::infinity();
+    bool has_bid = false;
+    for (const auto& lvl : book.bids)
+        if (lvl.price > best_bid) {
+            best_bid = lvl.price;
+            has_bid = true;
+        }
+    double best_ask = std::numeric_limits<double>::infinity();
+    bool has_ask = false;
+    for (const auto& lvl : book.asks)
+        if (lvl.price < best_ask) {
+            best_ask = lvl.price;
+            has_ask = true;
+        }
+
+    if (has_bid && has_ask)
+        return (best_bid + best_ask) / 2.0;
+    if (has_bid)
+        return best_bid;
+    if (has_ask)
+        return best_ask;
+    return std::nullopt;
 }
 
 } // namespace
@@ -468,6 +552,66 @@ std::vector<ToolDef> get_prediction_tools() {
             for (const auto& m : markets)
                 arr.append(market_to_json(m));
             return ToolResult::ok_data(QJsonObject{{"markets", arr}});
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── pm_paper_portfolio ─────────────────────────────────────────────────
+    {
+        ToolDef t;
+        t.name = "pm_paper_portfolio";
+        t.description =
+            "Read the prediction-market PAPER portfolio: cash balance plus every "
+            "open paper position with its cost basis, and — best-effort — the live "
+            "current price (order-book mid) and unrealized P&L. Positions whose live "
+            "book is unavailable are returned without a current_price/unrealized_pnl.";
+        t.category = "prediction";
+        t.auth_required = AuthLevel::None;
+        t.is_destructive = false;
+        t.input_schema = ToolSchemaBuilder().build();
+        t.handler = [](const QJsonObject&) -> ToolResult {
+            auto& repo = PmPaperRepository::instance();
+
+            auto cash = repo.cash();
+            if (cash.is_err())
+                return ToolResult::fail(QString::fromStdString(cash.error()));
+
+            auto open = repo.list_open();
+            if (open.is_err())
+                return ToolResult::fail(QString::fromStdString(open.error()));
+
+            auto& registry = pred::PredictionExchangeRegistry::instance();
+
+            QJsonArray positions;
+            double total_unrealized = 0.0;
+            for (const PmPosition& p : open.value()) {
+                QJsonObject row{
+                    {"venue", p.venue},
+                    {"market_id", p.market_id},
+                    {"asset_id", p.asset_id},
+                    {"outcome", p.outcome},
+                    {"contracts", p.contracts},
+                    {"avg_price", p.avg_price},
+                    {"cost_basis", p.cost_basis},
+                };
+                // Best-effort live price — a failure on one position must not break
+                // the whole portfolio read.
+                if (auto* a = registry.adapter(p.venue.trimmed().toLower())) {
+                    if (auto mid = best_effort_mid(a, p.asset_id)) {
+                        const double pnl = mark_to_market(p, *mid);
+                        row["current_price"] = *mid;
+                        row["unrealized_pnl"] = pnl;
+                        total_unrealized += pnl;
+                    }
+                }
+                positions.append(row);
+            }
+
+            return ToolResult::ok_data(QJsonObject{
+                {"cash", cash.value()},
+                {"positions", positions},
+                {"total_unrealized", total_unrealized},
+            });
         };
         tools.push_back(std::move(t));
     }

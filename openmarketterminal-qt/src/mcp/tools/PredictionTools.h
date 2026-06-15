@@ -20,7 +20,7 @@
 namespace openmarketterminal::mcp::tools {
 
 /// The prediction-market read tool group: pm_search_markets, pm_get_market,
-/// pm_get_order_book, pm_list_markets.
+/// pm_get_order_book, pm_list_markets, pm_paper_portfolio.
 std::vector<ToolDef> get_prediction_tools();
 
 } // namespace openmarketterminal::mcp::tools

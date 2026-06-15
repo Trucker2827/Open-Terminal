@@ -16,6 +16,7 @@
 
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
+#include "mcp/tools/PmPaperEngine.h"
 #include "mcp/tools/SettingsGate.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
@@ -305,6 +306,113 @@ class TstPmPaper : public QObject {
             QJsonObject{{"venue", "nope"}, {"asset_id", "x"}});
         QVERIFY2(!res.success, "unknown venue must fail");
         QVERIFY(res.error.contains("venue", Qt::CaseInsensitive));
+    }
+
+    // ── Paper fill engine (Task 3) ────────────────────────────────────────
+    //
+    // One ordered slot walks a full position lifecycle so cash stays
+    // deterministic across the open → average → partial-sell → close → re-buy
+    // sequence, then exercises every rejection path. The engine operates
+    // directly on PmPaperRepository (no adapter needed): pure DB writes.
+    void engine_buy_sell_lifecycle() {
+        using openmarketterminal::mcp::tools::buy_to_open;
+        using openmarketterminal::mcp::tools::mark_to_market;
+        using openmarketterminal::mcp::tools::sell_to_close;
+        auto& repo = PmPaperRepository::instance();
+
+        // Reset cash to a known 100000 baseline (prior slots debited it).
+        auto c0 = repo.cash();
+        QVERIFY2(c0.is_ok(), "cash() baseline read failed");
+        QVERIFY2(repo.adjust_cash(100000.0 - c0.value()).is_ok(), "cash reset failed");
+        QVERIFY(qFuzzyCompare(repo.cash().value(), 100000.0));
+
+        const QString venue = "polymarket", mkt = "mkt-eng", asset = "eng-asset",
+                      outcome = "YES", cat = "crypto";
+
+        // buy_to_open(100 @ 0.60) → cost 60, cash 99940, 100 @ 0.60.
+        auto f1 = buy_to_open(venue, mkt, asset, outcome, cat, 100, 0.60);
+        QVERIFY2(f1.ok, qPrintable(f1.reason));
+        QCOMPARE(f1.action, QStringLiteral("buy_to_open"));
+        QVERIFY(qFuzzyCompare(f1.cash_after, 99940.0));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), 99940.0));
+        auto g1 = repo.get_open(venue, asset);
+        QVERIFY(g1.value().has_value());
+        QCOMPARE(g1.value()->contracts, 100.0);
+        QVERIFY(qFuzzyCompare(g1.value()->avg_price, 0.60));
+        QVERIFY(qFuzzyCompare(g1.value()->cost_basis, 60.0));
+
+        // buy_to_open same asset (50 @ 0.80) → contracts 150, cost 100,
+        // avg = cost_basis/contracts = 100/150 ≈ 0.6667, cash 99900.
+        auto f2 = buy_to_open(venue, mkt, asset, outcome, cat, 50, 0.80);
+        QVERIFY2(f2.ok, qPrintable(f2.reason));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), 99900.0));
+        auto g2 = repo.get_open(venue, asset);
+        QVERIFY(g2.value().has_value());
+        QCOMPARE(g2.value()->contracts, 150.0);
+        QVERIFY(qFuzzyCompare(g2.value()->cost_basis, 100.0));
+        QVERIFY(qFuzzyCompare(g2.value()->cost_basis / g2.value()->contracts, 100.0 / 150.0));
+
+        // sell_to_close(60 @ 0.70) → contracts 90, proceeds 42 → cash 99942,
+        // cost_basis pro-rata = 100 * (90/150) = 60.
+        auto s1 = sell_to_close(venue, asset, 60, 0.70);
+        QVERIFY2(s1.ok, qPrintable(s1.reason));
+        QCOMPARE(s1.action, QStringLiteral("sell_to_close"));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), 99942.0));
+        auto g3 = repo.get_open(venue, asset);
+        QVERIFY(g3.value().has_value());
+        QCOMPARE(g3.value()->contracts, 90.0);
+        QVERIFY(qFuzzyCompare(g3.value()->cost_basis, 60.0));
+        QCOMPARE(g3.value()->status, QStringLiteral("open"));
+
+        // sell_to_close(90 @ 0.50) → contracts 0, status "closed",
+        // proceeds 45 → cash 99987. get_open now finds nothing (closed).
+        auto s2 = sell_to_close(venue, asset, 90, 0.50);
+        QVERIFY2(s2.ok, qPrintable(s2.reason));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), 99987.0));
+        auto g4 = repo.get_open(venue, asset);
+        QVERIFY2(!g4.value().has_value(), "position must be closed (no open row)");
+
+        // close → re-buy SAME asset (50 @ 0.55): succeeds and yields a FRESH
+        // open row (proves no UNIQUE conflict + one-open invariant across a
+        // lifecycle). cost 27.5 → cash 99959.5.
+        auto f3 = buy_to_open(venue, mkt, asset, outcome, cat, 50, 0.55);
+        QVERIFY2(f3.ok, qPrintable(f3.reason));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), 99959.5));
+        auto g5 = repo.get_open(venue, asset);
+        QVERIFY2(g5.value().has_value(), "re-buy must reopen a fresh OPEN row");
+        QCOMPARE(g5.value()->contracts, 50.0);
+        QVERIFY(qFuzzyCompare(g5.value()->avg_price, 0.55));
+        QCOMPARE(g5.value()->status, QStringLiteral("open"));
+        QVERIFY2(g5.value()->id != g1.value()->id, "re-buy must be a NEW row, not the closed one");
+
+        // mark_to_market on the 50 @ 0.55 position at 0.65 → (0.65-0.55)*50 = 5.0.
+        const double pnl = mark_to_market(g5.value().value(), 0.65);
+        QVERIFY(qFuzzyCompare(pnl, 5.0));
+
+        // sell_to_close(1000 @ 0.50) on the 50-held position → rejected, no mutation.
+        const double cash_before_overflow = repo.cash().value();
+        auto s_over = sell_to_close(venue, asset, 1000, 0.50);
+        QVERIFY2(!s_over.ok, "selling more than held must be rejected");
+        QVERIFY2(s_over.reason.contains("cannot sell more than held"),
+                 qPrintable("unexpected reason: " + s_over.reason));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), cash_before_overflow));
+        QCOMPARE(repo.get_open(venue, asset).value()->contracts, 50.0);
+
+        // sell_to_close on an UNHELD asset → rejected (short-open disabled).
+        auto s_short = sell_to_close(venue, "never-held-asset", 10, 0.50);
+        QVERIFY2(!s_short.ok, "selling an unheld asset must be rejected");
+        QVERIFY2(s_short.reason.contains("short-open is not enabled"),
+                 qPrintable("unexpected reason: " + s_short.reason));
+
+        // buy_to_open with cost exceeding cash → rejected, cash unchanged.
+        const double cash_before_broke = repo.cash().value();
+        auto f_broke = buy_to_open(venue, mkt, "expensive-asset", outcome, cat, 1e9, 1.0);
+        QVERIFY2(!f_broke.ok, "a buy exceeding cash must be rejected");
+        QVERIFY2(f_broke.reason.contains("insufficient paper cash"),
+                 qPrintable("unexpected reason: " + f_broke.reason));
+        QVERIFY(qFuzzyCompare(repo.cash().value(), cash_before_broke));
+        QVERIFY2(!repo.get_open(venue, "expensive-asset").value().has_value(),
+                 "a rejected buy must not create a position");
     }
 
     void cleanupTestCase() { rt_.shutdown(); }
