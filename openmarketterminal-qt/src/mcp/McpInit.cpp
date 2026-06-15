@@ -35,6 +35,7 @@
 #include "mcp/tools/OrderFlowTools.h"
 #include "mcp/tools/PaperTradingTools.h"
 #include "mcp/tools/PortfolioTools.h"
+#include "mcp/tools/PredictionTools.h"
 #include "mcp/tools/ProfileTools.h"
 #include "mcp/tools/PythonTools.h"
 #include "mcp/tools/QuantLabTools.h"
@@ -81,6 +82,9 @@ void register_core_tools() {
 
     // paper trading tab
     provider.register_tools(tools::get_paper_trading_tools());
+
+    // prediction markets — read tools (search/get/list markets, order book)
+    provider.register_tools(tools::get_prediction_tools());
 
     // ai-trading two-phase order flow (prepare_order; submit_order in Task 4)
     provider.register_tools(tools::get_order_flow_tools());

@@ -9,16 +9,115 @@
 // HOME before any repo call.
 
 #include <QtTest>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QMetaObject>
 #include <QTemporaryDir>
 
 #include "core/headless/HeadlessRuntime.h"
+#include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
+#include "services/prediction/PredictionExchangeAdapter.h"
+#include "services/prediction/PredictionExchangeRegistry.h"
+#include "services/prediction/PredictionTypes.h"
 #include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 
+#include <memory>
+
 using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
+
+namespace pred = openmarketterminal::services::prediction;
+
+// ── Fake prediction adapter (Phase B, Task 2 bridge seam) ────────────────────
+//
+// Stands in for the real Polymarket adapter so the PM read tools can be tested
+// without network. Emits its fixtures via QueuedConnection so the *_ready signal
+// fires on the event loop WHILE run_async_wait blocks the worker — exercising
+// the real async→sync bridge. fetch_order_book deliberately emits a WRONG asset
+// id FIRST, then the requested one, to prove the bridge's id-correlation ignores
+// the broadcast mismatch (the bug this task exists to prevent).
+class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
+    Q_OBJECT
+  public:
+    static pred::PredictionMarket fixture_market(const QString& market_id) {
+        pred::PredictionMarket m;
+        m.key.exchange_id = "polymarket";
+        m.key.market_id = market_id;
+        m.question = "Will it rain tomorrow?";
+        m.category = "weather";
+        m.end_date_iso = "2026-12-31T00:00:00Z";
+        m.liquidity = 1234.5;
+        m.volume = 6789.0;
+        m.outcomes = {{"Yes", "asset-yes", 0.62}, {"No", "asset-no", 0.38}};
+        return m;
+    }
+    static pred::PredictionOrderBook fixture_book(const QString& asset_id) {
+        pred::PredictionOrderBook b;
+        b.asset_id = asset_id;
+        b.tick_size = 0.01;
+        b.bids = {{0.40, 100.0}, {0.39, 50.0}};   // highest first
+        b.asks = {{0.45, 80.0}, {0.46, 60.0}};    // lowest first
+        return b;
+    }
+
+    QString id() const override { return "polymarket"; }
+    QString display_name() const override { return "Fake Polymarket"; }
+    pred::ExchangeCapabilities capabilities() const override { return {}; }
+
+    void list_markets(const QString&, const QString&, int, int) override {
+        QMetaObject::invokeMethod(
+            this, [this] { emit markets_ready({fixture_market("mkt-1")}); }, Qt::QueuedConnection);
+    }
+    void list_events(const QString&, const QString&, int, int) override {}
+    void search(const QString&, int) override {
+        QMetaObject::invokeMethod(
+            this,
+            [this] { emit search_results_ready({fixture_market("mkt-1")}, {}); },
+            Qt::QueuedConnection);
+    }
+    void list_tags() override {}
+    void fetch_market(const pred::MarketKey& key) override {
+        const QString mid = key.market_id;
+        // Emit a detail for a DIFFERENT market first → must be ignored.
+        QMetaObject::invokeMethod(
+            this, [this] { emit market_detail_ready(fixture_market("other-market")); },
+            Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this, [this, mid] { emit market_detail_ready(fixture_market(mid)); },
+            Qt::QueuedConnection);
+    }
+    void fetch_event(const pred::MarketKey&) override {}
+    void fetch_order_book(const QString& asset_id) override {
+        // Broadcast for the WRONG asset first, then the requested one.
+        QMetaObject::invokeMethod(
+            this, [this] { emit order_book_ready(fixture_book("WRONG-ASSET")); },
+            Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this, [this, asset_id] { emit order_book_ready(fixture_book(asset_id)); },
+            Qt::QueuedConnection);
+    }
+    void fetch_price_history(const QString&, const QString&, int) override {}
+    void fetch_recent_trades(const pred::MarketKey&, int) override {}
+
+    void subscribe_market(const QStringList&) override {}
+    void unsubscribe_market(const QStringList&) override {}
+    bool is_ws_connected() const override { return false; }
+
+    bool has_credentials() const override { return false; }
+    QString account_label() const override { return {}; }
+    void fetch_balance() override {}
+    void fetch_positions() override {}
+    void fetch_open_orders() override {}
+    void fetch_user_activity(int) override {}
+    void place_order(const pred::OrderRequest&) override {}
+    void cancel_order(const QString&) override {}
+    void cancel_all_for_market(const pred::MarketKey&, const QString&) override {}
+
+    void ensure_registered_with_hub() override {}
+};
 
 class TstPmPaper : public QObject {
     Q_OBJECT
@@ -30,6 +129,14 @@ class TstPmPaper : public QObject {
     void initTestCase() {
         QVERIFY(home_.isValid());
         qputenv("HOME", home_.path().toUtf8());
+
+        // Register the fake adapter for id "polymarket" BEFORE rt_.init().
+        // The registry is a process-global singleton and the headless init guard
+        // (`if(!reg.adapter("polymarket"))`) means whoever registers first wins —
+        // so the fake must go in first to displace the real network adapter.
+        pred::PredictionExchangeRegistry::instance().register_adapter(
+            std::make_unique<FakePredictionAdapter>());
+
         auto r = rt_.init("default");
         QVERIFY2(r.ok, qPrintable(r.error));
     }
@@ -139,6 +246,65 @@ class TstPmPaper : public QObject {
         QCOMPARE(venues.size(), 2);
         QVERIFY2(venues.contains("polymarket") && venues.contains("kalshi"),
                  "allowed venues must be normalised to lowercase");
+    }
+
+    // ── PM read tools over the async→sync bridge (Task 2) ─────────────────
+
+    // pm_get_order_book correlates the broadcast order_book_ready by asset_id:
+    // the fake emits a WRONG asset first, then the requested one — the tool must
+    // return the requested asset's book with best_bid/best_ask/spread computed.
+    void pm_get_order_book_correlates_and_computes() {
+        auto res = rt_.call_tool(
+            "pm_get_order_book",
+            QJsonObject{{"venue", "polymarket"}, {"asset_id", "asset-yes"}});
+        QVERIFY2(res.success, qPrintable("pm_get_order_book failed: " + res.error));
+
+        const QJsonObject book = res.data.toObject();
+        QCOMPARE(book.value("asset_id").toString(), QStringLiteral("asset-yes"));
+        QCOMPARE(book.value("best_bid").toDouble(), 0.40);
+        QCOMPARE(book.value("best_ask").toDouble(), 0.45);
+        QVERIFY(qFuzzyCompare(book.value("spread").toDouble(), 0.05));
+        QCOMPARE(book.value("bids").toArray().size(), 2);
+        QCOMPARE(book.value("asks").toArray().size(), 2);
+    }
+
+    // pm_get_market correlates market_detail_ready by market_id (ignores the
+    // broadcast detail for "other-market" the fake emits first).
+    void pm_get_market_returns_fixture() {
+        auto res = rt_.call_tool(
+            "pm_get_market",
+            QJsonObject{{"venue", "polymarket"}, {"market_id", "mkt-42"}});
+        QVERIFY2(res.success, qPrintable("pm_get_market failed: " + res.error));
+
+        const QJsonObject m = res.data.toObject();
+        QCOMPARE(m.value("market_id").toString(), QStringLiteral("mkt-42"));
+        QCOMPARE(m.value("question").toString(), QStringLiteral("Will it rain tomorrow?"));
+        QCOMPARE(m.value("category").toString(), QStringLiteral("weather"));
+        QCOMPARE(m.value("liquidity").toDouble(), 1234.5);
+        QCOMPARE(m.value("outcomes").toArray().size(), 2);
+        QCOMPARE(m.value("outcomes").toArray().at(0).toObject().value("asset_id").toString(),
+                 QStringLiteral("asset-yes"));
+    }
+
+    // pm_search_markets accepts the first search_results_ready emission.
+    void pm_search_markets_returns_fixture() {
+        auto res = rt_.call_tool(
+            "pm_search_markets",
+            QJsonObject{{"venue", "polymarket"}, {"query", "rain"}});
+        QVERIFY2(res.success, qPrintable("pm_search_markets failed: " + res.error));
+
+        const QJsonArray markets = res.data.toObject().value("markets").toArray();
+        QCOMPARE(markets.size(), 1);
+        QCOMPARE(markets.at(0).toObject().value("market_id").toString(), QStringLiteral("mkt-1"));
+    }
+
+    // Unknown venue fails clean (no hang) without ever touching an adapter.
+    void pm_unknown_venue_fails_clean() {
+        auto res = rt_.call_tool(
+            "pm_get_order_book",
+            QJsonObject{{"venue", "nope"}, {"asset_id", "x"}});
+        QVERIFY2(!res.success, "unknown venue must fail");
+        QVERIFY(res.error.contains("venue", Qt::CaseInsensitive));
     }
 
     void cleanupTestCase() { rt_.shutdown(); }

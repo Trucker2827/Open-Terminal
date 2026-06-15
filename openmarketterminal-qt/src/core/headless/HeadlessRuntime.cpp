@@ -9,6 +9,9 @@
 #include "mcp/tools/SettingsGate.h"
 #include "services/DataServices.h"
 #include "services/markets/MarketDataService.h"
+#include "services/prediction/PredictionExchangeRegistry.h"
+#include "services/prediction/kalshi/KalshiAdapter.h"
+#include "services/prediction/polymarket/PolymarketAdapter.h"
 #include "storage/secure/SecureStorage.h"
 #include "storage/sqlite/CacheDatabase.h"
 #include "storage/sqlite/Database.h"
@@ -66,6 +69,18 @@ InitResult HeadlessRuntime::init(const QString& profile) {
     // register_all_data_services() (which documents why the GUI's 11th producer,
     // RelationshipMapService, is GUI-only and excluded here).
     openmarketterminal::services::register_all_data_services();
+
+    // Register the prediction-market exchange adapters so the PM read tools can
+    // resolve them headless (the GUI does the same in main.cpp). The
+    // `if(!reg.adapter(...))` guard is idempotent AND lets a test pre-register a
+    // fake adapter for the same id and win.
+    {
+        auto& reg = services::prediction::PredictionExchangeRegistry::instance();
+        if (!reg.adapter("polymarket"))
+            reg.register_adapter(std::make_unique<services::prediction::polymarket_ns::PolymarketAdapter>());
+        if (!reg.adapter("kalshi"))
+            reg.register_adapter(std::make_unique<services::prediction::kalshi_ns::KalshiAdapter>());
+    }
 
     // REAL enforcement of the two CLI capability gates: McpProvider consults the
     // installed AuthChecker for any tool with auth_required != None OR
