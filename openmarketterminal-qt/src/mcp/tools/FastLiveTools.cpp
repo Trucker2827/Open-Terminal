@@ -625,16 +625,15 @@ std::vector<ToolDef> get_fast_live_tools() {
             trading::UnifiedOrderResponse resp =
                 trading::UnifiedTrading::instance().place_order(g.account, order);
 
-            // Record the fill in the LIVE realized-P&L ledger at the resolved
-            // price (the broker response carries no fill price). Venue "equity";
-            // instrument = symbol. BUY opens/adds, SELL closes/reduces.
+            // Record the fill in the LIVE realized-P&L ledger, best-effort
+            // reconciled to the broker's ACTUAL fill price (the place_order
+            // response carries none). reconcile_and_record queries the broker once
+            // for resp.order_id and records at the broker's avg fill price when
+            // available (>0), else at the resolved price (the floor). Venue
+            // "equity"; instrument = symbol. BUY opens/adds, SELL closes/reduces.
             if (resp.success) {
-                if (order.side == OrderSide::Buy)
-                    record_open(g.account, QStringLiteral("equity"), order.symbol, order.quantity,
-                                resolved_price);
-                else
-                    record_close(g.account, QStringLiteral("equity"), order.symbol, order.quantity,
-                                 resolved_price);
+                reconcile_and_record(g.account, QStringLiteral("equity"), order.symbol, order.side,
+                                     order.quantity, resolved_price, resp.order_id);
             }
 
             const QString status =

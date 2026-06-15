@@ -1194,20 +1194,18 @@ std::vector<ToolDef> get_order_flow_tools() {
                 OrderDraftRepository::instance().update_status(
                     draft_id, resp.success ? "submitted" : "submit_failed");
 
-                // Record the fill in the LIVE realized-P&L ledger. The broker
-                // response carries NO fill price, so we record at the price the
-                // equity floor resolved/used for rv (documented approximation).
+                // Record the fill in the LIVE realized-P&L ledger, best-effort
+                // reconciled to the broker's ACTUAL fill price (the place_order
+                // response carries none). reconcile_and_record queries the broker
+                // once for resp.order_id and records at the broker's avg fill price
+                // when available (>0), else at the resolved price (the floor).
                 // Venue is "equity"; instrument is the symbol. BUY opens/adds,
                 // SELL closes/reduces.
                 if (resp.success) {
-                    if (b.order.side == OrderSide::Buy)
-                        mcp::tools::record_open(acct, QStringLiteral("equity"),
-                                                b.order.symbol, b.order.quantity,
-                                                b.resolved_price);
-                    else
-                        mcp::tools::record_close(acct, QStringLiteral("equity"),
-                                                 b.order.symbol, b.order.quantity,
-                                                 b.resolved_price);
+                    mcp::tools::reconcile_and_record(acct, QStringLiteral("equity"),
+                                                     b.order.symbol, b.order.side,
+                                                     b.order.quantity, b.resolved_price,
+                                                     resp.order_id);
                 }
 
                 const QString decision = resp.success ? QStringLiteral("filled")

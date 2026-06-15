@@ -42,6 +42,8 @@
 
 #include <QJsonArray>
 
+#include <optional>
+
 using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
 
@@ -64,6 +66,11 @@ class FakeBroker : public trading::IBroker {
     static inline int modify_calls = 0;
     static inline QString last_modify_id;
     static inline QJsonObject last_mods;
+    // Broker-fill reconciliation fixture (Task 6). When set, get_orders ALSO
+    // returns this order so reconcile_and_record can find the just-placed
+    // order_id ("FAKE-1") and read its actual avg fill price. Default empty so
+    // the Task 2 read slots (get_fills/get_open_orders) see only F1/O1.
+    static inline std::optional<trading::BrokerOrderInfo> reconcile_order;
     static void reset_derisk_counters() {
         cancel_calls = 0;
         last_cancel_id.clear();
@@ -74,6 +81,7 @@ class FakeBroker : public trading::IBroker {
         modify_calls = 0;
         last_modify_id.clear();
         last_mods = QJsonObject{};
+        reconcile_order.reset();
     }
 
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
@@ -141,7 +149,10 @@ class FakeBroker : public trading::IBroker {
         open.status = "open";
         trading::ApiResponse<QVector<trading::BrokerOrderInfo>> resp;
         resp.success = true;
-        resp.data = QVector<trading::BrokerOrderInfo>{filled, open};
+        QVector<trading::BrokerOrderInfo> orders{filled, open};
+        if (reconcile_order.has_value())
+            orders.push_back(*reconcile_order);
+        resp.data = orders;
         return resp;
     }
     trading::ApiResponse<QJsonObject>
@@ -647,6 +658,65 @@ class TstFastLive : public QObject {
         QCOMPARE(open.value()->qty, 5.0);
         QVERIFY2(has_audit("fast_submit_order", "filled"),
                  "fast_submit_order must write a non-empty 'filled' audit row");
+        clear_keys();
+    }
+
+    // ── RECONCILE (Task 6): the broker reports a DIFFERENT actual fill price
+    // (199.50) than the submitted limit (200). After the fill the live_positions
+    // avg_cost MUST reflect the BROKER fill price — proving reconciliation, not
+    // the resolved 200 estimate. (FakeBroker::place_order returns order_id
+    // "FAKE-1"; the reconcile fixture is keyed to that id.) ──
+    void fast_submit_reconciles_to_broker_fill_price() {
+        FakeBroker::reset_derisk_counters();
+        const QString acct = arm_fast_live();
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1"; // the id FakeBroker::place_order returns
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 5;
+        fill.filled_qty = 5;
+        fill.avg_price = 199.50; // actual fill, BELOW the 200 limit
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5)); // limit 200
+        QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
+        QCOMPARE(res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        auto open = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
+        QVERIFY2(open.is_ok() && open.value().has_value(),
+                 "a live_positions row must exist after a fill");
+        QVERIFY2(qFuzzyCompare(open.value()->avg_cost, 199.50),
+                 qPrintable(QStringLiteral("avg_cost must be the BROKER fill 199.50, not the "
+                                           "resolved 200; got ")
+                            + QString::number(open.value()->avg_cost)));
+        clear_keys();
+    }
+
+    // ── FALLBACK (Task 6): the broker reports the order NOT-yet-filled (no avg
+    // price). Reconciliation must fall back to the resolved/limit price (200).
+    // (This slot is GREEN on the old code too — it guards against a blind
+    // avg_price read without the >0 guard.) ──
+    void fast_submit_falls_back_to_resolved_when_no_fill_price() {
+        FakeBroker::reset_derisk_counters();
+        const QString acct = arm_fast_live();
+        trading::BrokerOrderInfo pending;
+        pending.order_id = "FAKE-1";
+        pending.symbol = "AAPL";
+        pending.side = "BUY";
+        pending.quantity = 5;
+        pending.filled_qty = 0;
+        pending.avg_price = 0; // no actual fill price yet
+        pending.status = "open";
+        FakeBroker::reconcile_order = pending;
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5)); // limit 200
+        QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
+        QCOMPARE(res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        auto open = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
+        QVERIFY2(open.is_ok() && open.value().has_value(),
+                 "a live_positions row must exist after a fill");
+        QVERIFY2(qFuzzyCompare(open.value()->avg_cost, 200.0),
+                 qPrintable(QStringLiteral("avg_cost must fall back to the resolved 200 when the "
+                                           "broker has no fill price; got ")
+                            + QString::number(open.value()->avg_cost)));
         clear_keys();
     }
 

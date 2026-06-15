@@ -14,8 +14,11 @@
 
 #include "mcp/tools/LivePnl.h"
 
+#include "core/logging/Logger.h"
 #include "storage/repositories/LivePnlRepository.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "trading/AccountManager.h"
+#include "trading/BrokerInterface.h"
 
 #include <QDateTime>
 
@@ -83,6 +86,65 @@ double record_close(const QString& account, const QString& venue, const QString&
 
     repo.add_realized(today_utc(), realized);
     return realized;
+}
+
+ReconciledFill reconcile_and_record(const QString& account, const QString& venue,
+                                    const QString& instrument, trading::OrderSide side,
+                                    double qty, double resolved_price, const QString& order_id) {
+    using namespace openmarketterminal::trading;
+
+    ReconciledFill out;
+    out.price = resolved_price; // floor — the resolved/submitted price always wins on doubt
+    out.qty = qty;
+    out.reconciled = false;
+
+    // Best-effort: one-shot broker query for the just-placed order's ACTUAL fill.
+    // Every failure mode (no order_id, no broker, no creds, order not found / not
+    // yet filled / no avg price) leaves the resolved price as the floor. We never
+    // throw and never block beyond this single get_orders call.
+    if (!order_id.isEmpty() && !account.isEmpty()) {
+        auto& mgr = AccountManager::instance();
+        if (IBroker* broker = mgr.broker_for(account)) {
+            const BrokerCredentials creds = mgr.load_credentials(account);
+            const auto resp = broker->get_orders(creds);
+            if (resp.success && resp.data.has_value()) {
+                for (const auto& o : resp.data.value()) {
+                    if (o.order_id != order_id)
+                        continue;
+                    // Only an actual avg fill price (>0) reconciles; status alone
+                    // (e.g. "filled" with avg_price 0) is not enough to trust.
+                    if (o.avg_price > 0.0) {
+                        out.price = o.avg_price;
+                        if (o.filled_qty > 0.0)
+                            out.qty = o.filled_qty;
+                        out.reconciled = true;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Audit honestly which path was taken — broker fill vs resolved fallback.
+    if (out.reconciled)
+        LOG_INFO("LivePnl",
+                 QStringLiteral("fill reconciled order %1: broker %2 (qty %3) vs resolved %4")
+                     .arg(order_id)
+                     .arg(out.price)
+                     .arg(out.qty)
+                     .arg(resolved_price));
+    else
+        LOG_INFO("LivePnl",
+                 QStringLiteral("fill NOT reconciled order %1: using resolved %2 (qty %3)")
+                     .arg(order_id)
+                     .arg(resolved_price)
+                     .arg(out.qty));
+
+    if (side == OrderSide::Buy)
+        record_open(account, venue, instrument, out.qty, out.price);
+    else
+        record_close(account, venue, instrument, out.qty, out.price);
+    return out;
 }
 
 bool daily_loss_ok(double prospective_max_loss) {
