@@ -10,11 +10,13 @@
 #include <QTemporaryDir>
 
 #include "mcp/McpTypes.h"
+#include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/Strategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
 
 using namespace openmarketterminal;
+using ai_strategy::LlmStrategy;
 using ai_strategy::MarketSnapshot;
 using ai_strategy::MeanReversionStrategy;
 using ai_strategy::RunConfig;
@@ -256,6 +258,94 @@ class TstStrategyLoop : public QObject {
         s.propose(snap(100));
         s.propose(snap(100));
         QVERIFY(s.propose(snap(102)).isEmpty()); // not holding ⇒ no close.
+    }
+
+    // ── LlmStrategy (Task 3) ─────────────────────────────────────────────────
+    // Fully fake-driven: a CompletionFn lambda returns canned text; the LLM
+    // output is UNTRUSTED, so parse_intents only enforces structural sanity +
+    // universe membership and must NEVER throw.
+
+    static QStringList aapl_universe() { return {QStringLiteral("AAPL")}; }
+
+    // Clean array, symbol in universe ⇒ exactly one intent with those fields.
+    void llm_clean_array_one_intent() {
+        const QString reply =
+            R"([{"symbol":"AAPL","side":"buy","quantity":5,"order_type":"limit","limit_price":200}])";
+        const auto intents = LlmStrategy::parse_intents(reply, aapl_universe());
+        QCOMPARE(intents.size(), 1);
+        const TradeIntent& i = intents.first();
+        QCOMPARE(i.value("symbol").toString(), QStringLiteral("AAPL"));
+        QCOMPARE(i.value("side").toString(), QStringLiteral("buy"));
+        QVERIFY(qFuzzyCompare(i.value("quantity").toDouble(), 5.0));
+        QCOMPARE(i.value("order_type").toString(), QStringLiteral("limit"));
+        QVERIFY(qFuzzyCompare(i.value("limit_price").toDouble(), 200.0));
+    }
+
+    // Prose + markdown fence around the JSON ⇒ still parses one intent.
+    void llm_prose_wrapped_parses() {
+        const QString reply =
+            "Sure, here you go:\n```json\n"
+            R"([ {"symbol":"AAPL","side":"sell","quantity":1,"order_type":"limit","limit_price":210} ])"
+            "\n```";
+        const auto intents = LlmStrategy::parse_intents(reply, aapl_universe());
+        QCOMPARE(intents.size(), 1);
+        QCOMPARE(intents.first().value("side").toString(), QStringLiteral("sell"));
+    }
+
+    // Empty array ⇒ zero intents.
+    void llm_empty_array_zero() {
+        QCOMPARE(LlmStrategy::parse_intents(QStringLiteral("[]"), aapl_universe()).size(), 0);
+    }
+
+    // Pure prose / not JSON ⇒ zero intents, no throw.
+    void llm_malformed_zero_no_throw() {
+        QCOMPARE(LlmStrategy::parse_intents(QStringLiteral("not json at all"), aapl_universe()).size(),
+                 0);
+    }
+
+    // Empty completion ⇒ zero intents (no '[' delimiter).
+    void llm_empty_completion_zero() {
+        QCOMPARE(LlmStrategy::parse_intents(QString(), aapl_universe()).size(), 0);
+    }
+
+    // Symbol outside the allowed universe ⇒ dropped.
+    void llm_out_of_universe_dropped() {
+        const QString reply = R"([{"symbol":"TSLA","side":"buy","quantity":1}])";
+        QCOMPARE(LlmStrategy::parse_intents(reply, aapl_universe()).size(), 0);
+    }
+
+    // Missing side/quantity, and missing symbol ⇒ both dropped.
+    void llm_missing_fields_dropped() {
+        QCOMPARE(LlmStrategy::parse_intents(R"([{"symbol":"AAPL"}])", aapl_universe()).size(), 0);
+        QCOMPARE(LlmStrategy::parse_intents(R"([{"side":"buy","quantity":1}])", aapl_universe()).size(),
+                 0);
+    }
+
+    // propose() drives the seam: prompt carries the universe, and a null
+    // CompletionFn yields a clean empty result (no throw, no crash).
+    void llm_propose_prompt_has_universe_and_parses() {
+        QString captured;
+        LlmStrategy::CompletionFn fake = [&](const QString& prompt) -> QString {
+            captured = prompt;
+            return R"([{"symbol":"AAPL","side":"buy","quantity":2,"order_type":"limit","limit_price":150}])";
+        };
+        // Universe carries MSFT, which is NOT a quote symbol — so asserting the
+        // prompt contains "MSFT" gates universe interpolation specifically (it
+        // cannot leak in via the quotes JSON).
+        LlmStrategy strat({QStringLiteral("AAPL"), QStringLiteral("MSFT")}, fake);
+
+        MarketSnapshot s;
+        s.quotes["AAPL"] = 150.0;
+        const auto intents = strat.propose(s);
+
+        QCOMPARE(intents.size(), 1);
+        QCOMPARE(intents.first().value("symbol").toString(), QStringLiteral("AAPL"));
+        QVERIFY2(captured.contains(QStringLiteral("MSFT")),
+                 "prompt must include the allowed universe symbols");
+
+        // Null completion function ⇒ clean empty, never invoked.
+        LlmStrategy null_strat(aapl_universe(), nullptr);
+        QVERIFY(null_strat.propose(s).isEmpty());
     }
 };
 
