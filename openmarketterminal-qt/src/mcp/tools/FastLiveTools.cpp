@@ -633,6 +633,170 @@ std::vector<ToolDef> get_fast_live_tools() {
         tools.push_back(std::move(t));
     }
 
+    // ── replace_order (MODIFY an open LIVE order, destructive) ────────────────
+    // Modify an open LIVE order's size/price/type/side. Unlike cancel/exit (pure
+    // de-risking), a modify can INCREASE exposure (bigger size, worse price) — so
+    // the FULL equity risk floor + daily-loss floor run on the WHOLE new order,
+    // exactly like fast_submit_order. The real broker call —
+    // UnifiedTrading::modify_order(g.account, order_id, mods) — is reachable ONLY
+    // after the full gate stack:
+    //   1. fast_live_gate()  (kill switch → the three arms → allowed account)
+    //   2. parse + build the NEW UnifiedOrder (malformed → structured rejection)
+    //   3. resolve the price for the risk check (limit → limit_price;
+    //      market/stop → freshest cached last price; none → reject)
+    //   4. the deterministic equity risk floor (GUI-only caps; AI cannot raise)
+    //   5. the daily-loss floor
+    // The original order is left UNTOUCHED if any gate/floor fails (modify only
+    // fires last). Routes ONLY to g.account. NO raw adapter. No ledger record — a
+    // modify isn't a fill; reconciliation against the eventual fill is the
+    // documented follow-up. Every terminal path writes a trade_audit row.
+    {
+        ToolDef t;
+        t.name = "replace_order";
+        t.description =
+            "Fast Live Mode: MODIFY an open LIVE order (size/price/type/side) on the AI's allowed "
+            "account. Runs the fast-live gate (kill switch + the three arms + allowed account), the "
+            "deterministic risk floor against GUI-owned caps on the WHOLE new order, and the "
+            "daily-loss floor; the broker modify fires ONLY when every gate passes — otherwise it is "
+            "rejected and the original order is left untouched. side buy/sell; order_type "
+            "market/limit/stop/stop_limit; limit_price required for limit/stop_limit. Returns status "
+            "replaced/rejected.";
+        t.category = "fast-live";
+        t.auth_required = AuthLevel::Authenticated;
+        t.is_destructive = true;
+        t.input_schema =
+            ToolSchemaBuilder()
+                .string("order_id", "Broker order ID to modify").required().length(1, 128)
+                .string("symbol", "Trading symbol (e.g. AAPL)").required().length(1, 32)
+                .string("side", "Order side").required().enums({"buy", "sell"})
+                .number("quantity", "New order quantity (must be > 0)").required().min(0.0)
+                .string("order_type", "Order type").default_str("limit")
+                    .enums({"market", "limit", "stop", "stop_limit"})
+                .number("limit_price", "Limit price (required for limit/stop_limit)")
+                .string("exchange", "Exchange / venue (optional)")
+                .build();
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const QString order_id = args.value("order_id").toString().trimmed();
+            const QString symbol = args.value("symbol").toString().trimmed();
+            const QString side_str = args.value("side").toString().trimmed();
+            const double quantity = args.value("quantity").toDouble(0.0);
+            const QString otype_str = args.value("order_type").toString("limit");
+            const QString exchange = args.value("exchange").toString().trimmed();
+            QJsonObject intent{{"order_id", order_id},
+                               {"symbol", symbol},
+                               {"side", side_str},
+                               {"quantity", quantity},
+                               {"order_type", otype_str},
+                               {"exchange", exchange}};
+            const bool has_limit_arg =
+                args.contains("limit_price") && args.value("limit_price").isDouble();
+            if (has_limit_arg)
+                intent["limit_price"] = args.value("limit_price").toDouble();
+
+            // 1. FULL fast-live gate (kill switch → arms → allowed account).
+            auto g = fast_live_gate();
+            if (!g.ok) {
+                fast_derisk_audit("replace_order", g.account, "denied", g.reason, intent);
+                return rejected(g.reason);
+            }
+
+            // 2. Parse + build the NEW order (malformed → structured rejection + audit).
+            const auto side = parse_side(side_str);
+            if (!side) {
+                const QString reason = QStringLiteral("invalid 'side' (expected buy/sell)");
+                fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+            const auto otype = parse_order_type(otype_str);
+            if (!otype) {
+                const QString reason =
+                    QStringLiteral("invalid 'order_type' (expected market/limit/stop/stop_limit)");
+                fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+            if (quantity <= 0.0) {
+                const QString reason = QStringLiteral("'quantity' must be > 0");
+                fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+            const bool needs_limit =
+                (*otype == OrderType::Limit || *otype == OrderType::StopLossLimit);
+            const double limit_price = has_limit_arg ? args.value("limit_price").toDouble() : 0.0;
+            if (needs_limit && limit_price <= 0.0) {
+                const QString reason =
+                    QStringLiteral("'limit_price' must be > 0 for limit/stop_limit orders");
+                fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+
+            trading::UnifiedOrder order;
+            order.symbol = symbol;
+            order.exchange = exchange;
+            order.side = *side;
+            order.order_type = *otype;
+            order.quantity = quantity;
+            order.price = needs_limit ? limit_price : 0.0;
+
+            // 3. Resolve the price used by the risk floor. Limit/stop_limit carry
+            //    their own; market/stop fall back to the freshest cached last
+            //    price. Unpriceable → reject (the value cap can't be enforced).
+            double resolved_price = 0.0;
+            if (needs_limit) {
+                resolved_price = limit_price;
+            } else if (const auto q = detail::peek_quote(symbol); q && q->price > 0.0) {
+                resolved_price = q->price;
+            } else {
+                const QString reason = QStringLiteral("no price available for risk check");
+                fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);
+                return rejected(reason);
+            }
+
+            // 4. Deterministic equity risk floor on the WHOLE new order (GUI-only
+            //    caps — AI cannot raise). A modify can grow size/worsen price, so
+            //    the new order is re-floored exactly like a fresh submit.
+            const FastRiskVerdict rv = fast_risk_floor(order, resolved_price);
+            if (!rv.ok) {
+                fast_derisk_audit("replace_order", g.account, "rejected", rv.reason, intent);
+                LOG_WARN(TAG, "replace_order rejected at floor: " + rv.reason);
+                return rejected(rv.reason);
+            }
+
+            // 5. Daily-loss floor.
+            if (!daily_loss_ok(rv.max_loss)) {
+                const QString reason = QStringLiteral("daily loss limit reached");
+                fast_derisk_audit("replace_order", g.account, "denied", reason, intent);
+                LOG_WARN(TAG, "replace_order denied (daily loss)");
+                return rejected(reason);
+            }
+
+            // 6. FIRE — every gate passed. Build the modifications object (the
+            //    standard set) and route to the broker via the account overload
+            //    (dispatches by g.account's trading_mode: sandbox in tests). NEVER
+            //    an arg-supplied account; NO raw adapter.
+            QJsonObject mods{{"quantity", quantity},
+                             {"order_type", otype_str},
+                             {"side", side_str}};
+            if (needs_limit)
+                mods["price"] = limit_price;
+            trading::UnifiedOrderResponse resp =
+                trading::UnifiedTrading::instance().modify_order(g.account, order_id, mods);
+
+            const QString status =
+                resp.success ? QStringLiteral("replaced") : QStringLiteral("rejected");
+            // resp.message is the broker error (empty on success); never audit a
+            // blank reason — fall back to the terminal status word.
+            const QString reason = resp.message.isEmpty() ? status : resp.message;
+            fast_derisk_audit("replace_order", g.account, status, reason, intent);
+            LOG_WARN(TAG, QString("replace_order: %1 -> %2 (%3)")
+                              .arg(order_id, status, g.account));
+            return ToolResult::ok_data(QJsonObject{{"status", status},
+                                                   {"order_id", order_id},
+                                                   {"message", resp.message},
+                                                   {"mode", "live"}});
+        };
+        tools.push_back(std::move(t));
+    }
+
     return tools;
 }
 

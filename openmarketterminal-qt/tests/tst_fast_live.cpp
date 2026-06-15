@@ -60,6 +60,10 @@ class FakeBroker : public trading::IBroker {
     // One-shot place_order recorder (Task 4).
     static inline int place_calls = 0;
     static inline trading::UnifiedOrder last_order;
+    // modify_order recorder (Task 5).
+    static inline int modify_calls = 0;
+    static inline QString last_modify_id;
+    static inline QJsonObject last_mods;
     static void reset_derisk_counters() {
         cancel_calls = 0;
         last_cancel_id.clear();
@@ -67,6 +71,9 @@ class FakeBroker : public trading::IBroker {
         last_close_symbol.clear();
         place_calls = 0;
         last_order = trading::UnifiedOrder{};
+        modify_calls = 0;
+        last_modify_id.clear();
+        last_mods = QJsonObject{};
     }
 
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
@@ -84,10 +91,17 @@ class FakeBroker : public trading::IBroker {
         last_order = order;
         return {true, QStringLiteral("FAKE-1"), QString()};
     }
+    // Modify — record + succeed (Task 5). Mirrors the cancel_order recorder shape;
+    // the default {} returns success=false, which would mask a real "replaced".
     trading::ApiResponse<QJsonObject> modify_order(const trading::BrokerCredentials&,
-                                                   const QString&,
-                                                   const QJsonObject&) override {
-        return {};
+                                                   const QString& order_id,
+                                                   const QJsonObject& mods) override {
+        ++modify_calls;
+        last_modify_id = order_id;
+        last_mods = mods;
+        trading::ApiResponse<QJsonObject> resp;
+        resp.success = true;
+        return resp;
     }
     trading::ApiResponse<QJsonObject> cancel_order(const trading::BrokerCredentials&,
                                                    const QString& order_id) override {
@@ -704,6 +718,115 @@ class TstFastLive : public QObject {
         QCOMPARE(FakeBroker::place_calls, 0);
         // Undo the seed so later slots see a clean tally.
         LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), 6000.0);
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // Task 5: replace_order — the gated, risk-floored LIVE order MODIFY
+    // ════════════════════════════════════════════════════════════════════
+
+    // The new order params for a modify. No exchange needed: modify_order routes
+    // straight to broker->modify_order (NO OrderValidator, unlike place_order), so
+    // the only use of these params is building the UnifiedOrder for the risk floor.
+    static QJsonObject replace_args(double qty, double limit_price) {
+        return QJsonObject{{"order_id", "O1"}, {"symbol", "AAPL"},
+                           {"side", "buy"},     {"quantity", qty},
+                           {"order_type", "limit"}, {"limit_price", limit_price}};
+    }
+
+    // ── CONTRACT: registers category "fast-live" + is_destructive=true. The
+    // destructive pairing makes the host's is_fast_live_tool checker gate it on the
+    // full fast-arm predicate — so the not-fast-armed slot below proves real host
+    // gating on a REGISTERED tool, not an unknown-tool artifact. ──
+    void replace_order_registers_fast_live_destructive() {
+        const auto tools = mcp::McpProvider::instance().audit_all_tools();
+        bool seen = false;
+        for (const auto& t : tools) {
+            if (t.name != QLatin1String("replace_order"))
+                continue;
+            seen = true;
+            QCOMPARE(t.category, QStringLiteral("fast-live"));
+            QVERIFY2(t.is_destructive, "replace_order must be destructive");
+            QVERIFY2(t.has_handler, "replace_order must have a handler");
+        }
+        QVERIFY2(seen, "replace_order not registered");
+    }
+
+    // ── HAPPY: fully fast-armed + within caps → status "replaced", FakeBroker
+    // received the modify for order_id "O1", and a non-empty replace_order/live/
+    // replaced audit row is written. ──
+    void replace_order_happy_replaces_and_audits() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool("replace_order", replace_args(5, 201));
+        QVERIFY2(res.success, qPrintable("armed replace_order must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("replaced"));
+        QCOMPARE(d.value("order_id").toString(), QStringLiteral("O1"));
+        QCOMPARE(FakeBroker::modify_calls, 1);
+        QCOMPARE(FakeBroker::last_modify_id, QStringLiteral("O1"));
+        QVERIFY2(has_audit("replace_order", "replaced"),
+                 "replace_order must write a non-empty 'replaced' audit row");
+        clear_keys();
+    }
+
+    // ── FLOOR: oversized new params (qty 1000 @ 200 = 200000 > the 25000 default
+    // cap) → rejected at the deterministic floor, modify_order is NEVER called. ──
+    void replace_order_oversized_rejected_at_floor_no_broker() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        auto res = rt_.call_tool("replace_order", replace_args(1000, 200));
+        QVERIFY2(res.success, qPrintable("oversized is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("max order value"),
+                 qPrintable("reason must be the order-value floor: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::modify_calls, 0); // floor gates BEFORE the broker
+        clear_keys();
+    }
+
+    // ── GATE: NOT fast-armed (base live still armed) → DESTRUCTIVE, so the host
+    // auth-checker (3-arm predicate) DENIES before the handler runs → res.success
+    // FALSE and the broker is NEVER touched. ──
+    void replace_order_not_fast_armed_denied_by_host() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.fast_live_armed", "false");
+        auto res = rt_.call_tool("replace_order", replace_args(5, 201));
+        QVERIFY2(!res.success, "not-fast-armed replace_order must be DENIED by the host checker");
+        QCOMPARE(FakeBroker::modify_calls, 0);
+        clear_keys();
+    }
+
+    // ── GATE: kill switch engaged (still fully fast-armed) → host checker (3 arms)
+    // lets it THROUGH; the handler's fast_live_gate rejects (success==TRUE, status
+    // "rejected", reason "kill switch engaged"). Broker never touched. ──
+    void replace_order_kill_switch_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.kill_switch", "true");
+        auto res = rt_.call_tool("replace_order", replace_args(5, 201));
+        QVERIFY2(res.success, qPrintable("kill switch is a handler-gate rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QCOMPARE(d.value("reason").toString(), QStringLiteral("kill switch engaged"));
+        QCOMPARE(FakeBroker::modify_calls, 0);
+        clear_keys();
+    }
+
+    // ── GATE: armed but no allowed account → handler's fast_live_gate rejects. ──
+    void replace_order_no_allowed_account_rejected_in_handler() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        set_key("cli.allowed_account", "");
+        auto res = rt_.call_tool("replace_order", replace_args(5, 201));
+        QVERIFY2(res.success,
+                 qPrintable("missing allowed account is a handler rejection: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        QCOMPARE(d.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(d.value("reason").toString().contains("no allowed account"),
+                 qPrintable("reason: " + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::modify_calls, 0);
         clear_keys();
     }
 
