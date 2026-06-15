@@ -947,8 +947,11 @@ std::vector<ToolDef> get_order_flow_tools() {
             "the deterministic risk floor against FRESH GUI-owned caps (revocable — a lowered "
             "cap rejects here even if prepare passed), gates by mode, and audits the decision. "
             "mode=paper executes on the paper engine IFF paper trading is enabled in GUI "
-            "Settings; mode=live is hard-disabled in Phase A (paper-first) and NEVER reaches a "
-            "broker. Returns status filled/rejected.";
+            "Settings; mode=live places a REAL order ONLY when a human has armed live "
+            "(cli.allow_trading + cli.live_trading_armed), designated an allowed account, the "
+            "kill switch is off, and the order is within the risk + daily-loss caps — otherwise "
+            "it is rejected. The AI cannot arm itself or change those controls. Returns status "
+            "filled/rejected.";
         t.category = "trading";
         t.auth_required = AuthLevel::Authenticated;
         t.is_destructive = true;
@@ -1016,8 +1019,8 @@ std::vector<ToolDef> get_order_flow_tools() {
 
             // Discriminate by asset_class. Prediction → the PM submit path
             // (re-resolve fresh, RE-RUN the PM floor, gate, paper-execute on the
-            // PM paper engine / live hard-off). Anything else → the UNCHANGED
-            // equity submit path below.
+            // PM paper engine, or gated live execution via the adapter). Anything
+            // else → the UNCHANGED equity submit path below.
             const QString asset_class =
                 intent.value("asset_class").toString("equity").trimmed().toLower();
             if (asset_class == QLatin1String("prediction"))

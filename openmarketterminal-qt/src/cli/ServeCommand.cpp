@@ -57,7 +57,7 @@ int serve_run(const QString& profile) {
                 // can't take a different branch than the handler will.
                 const QString mode = args.value("mode").toString().trimmed().toLower();
                 if (mode == "paper") return true;                // reach the handler; it enforces the toggle + executes
-                return mcp::cli_trading_allowed() && mcp::cli_live_armed();  // live: false in Phase A
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed();  // live: reach the handler only when armed (handler enforces the full stack)
             }
             if (is_destructive) return false;            // daemon MVP: no writes/destructive
             if (mcp::is_settings_write_tool(tool)) return false;

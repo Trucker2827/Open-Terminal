@@ -126,7 +126,7 @@ InitResult HeadlessRuntime::init(const QString& profile) {
                 const QString mode = args.value("mode").toString().trimmed().toLower();
                 if (mode == "paper")
                     return true; // reach the handler; it enforces the toggle + executes
-                return mcp::cli_trading_allowed() && mcp::cli_live_armed(); // live: false in Phase A
+                return mcp::cli_trading_allowed() && mcp::cli_live_armed(); // live: reach the handler only when armed (handler enforces the full stack)
             }
             if (mcp::is_settings_write_tool(tool))
                 return mcp::cli_settings_write_allowed();
