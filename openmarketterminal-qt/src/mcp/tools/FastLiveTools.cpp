@@ -255,13 +255,14 @@ FastRiskVerdict fast_risk_floor(const UnifiedOrder& o, double resolved_price) {
     return rv;
 }
 
-} // namespace
+// ── per-tool builders ─────────────────────────────────────────────────────────
+// Each builder constructs one ToolDef (name/category/auth/is_destructive/schema/
+// handler) verbatim; get_fast_live_tools() just assembles them in order. The
+// builders call the shared helpers above exactly as the former inline handlers
+// did — purely a structural split, no behavior change.
 
-std::vector<ToolDef> get_fast_live_tools() {
-    std::vector<ToolDef> tools;
-
-    // ── get_positions ──────────────────────────────────────────────────────
-    {
+// ── get_positions ──────────────────────────────────────────────────────
+ToolDef build_get_positions() {
         ToolDef t;
         t.name = "get_positions";
         t.description =
@@ -292,11 +293,11 @@ std::vector<ToolDef> get_fast_live_tools() {
                               .arg(positions.size()).arg(g.account));
             return ToolResult::ok_data(QJsonObject{{"positions", positions}});
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
-    // ── get_open_orders ────────────────────────────────────────────────────
-    {
+// ── get_open_orders ────────────────────────────────────────────────────
+ToolDef build_get_open_orders() {
         ToolDef t;
         t.name = "get_open_orders";
         t.description =
@@ -328,14 +329,14 @@ std::vector<ToolDef> get_fast_live_tools() {
                               .arg(orders.size()).arg(g.account));
             return ToolResult::ok_data(QJsonObject{{"orders", orders}});
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
-    // ── get_fills ──────────────────────────────────────────────────────────
-    // Sourced from get_orders() filtered to a filled status — there is no
-    // distinct broker fills-array accessor (get_trade_book returns opaque
-    // broker JSON). Filled is the complement-sharing predicate of get_open_orders.
-    {
+// ── get_fills ──────────────────────────────────────────────────────────
+// Sourced from get_orders() filtered to a filled status — there is no
+// distinct broker fills-array accessor (get_trade_book returns opaque
+// broker JSON). Filled is the complement-sharing predicate of get_open_orders.
+ToolDef build_get_fills() {
         ToolDef t;
         t.name = "get_fills";
         t.description =
@@ -367,16 +368,16 @@ std::vector<ToolDef> get_fast_live_tools() {
                               .arg(fills.size()).arg(g.account));
             return ToolResult::ok_data(QJsonObject{{"fills", fills}});
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
-    // ── cancel_order (DE-RISKING, destructive) ───────────────────────────────
-    // Cancel a single open LIVE order on the AI's allowed account. De-risking →
-    // NO order-value risk floor, but the full fast-live gate still applies (the
-    // host checker requires the three arms; the handler re-applies kill switch +
-    // arms + allowed-account). Routes ONLY through UnifiedTrading — never a raw
-    // adapter. Every terminal path writes a trade_audit row.
-    {
+// ── cancel_order (DE-RISKING, destructive) ───────────────────────────────
+// Cancel a single open LIVE order on the AI's allowed account. De-risking →
+// NO order-value risk floor, but the full fast-live gate still applies (the
+// host checker requires the three arms; the handler re-applies kill switch +
+// arms + allowed-account). Routes ONLY through UnifiedTrading — never a raw
+// adapter. Every terminal path writes a trade_audit row.
+ToolDef build_cancel_order() {
         ToolDef t;
         t.name = "cancel_order";
         t.description =
@@ -412,15 +413,15 @@ std::vector<ToolDef> get_fast_live_tools() {
                                                    {"message", resp.message},
                                                    {"mode", "live"}});
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
-    // ── exit_position (DE-RISKING, destructive) ──────────────────────────────
-    // Close/reduce a single LIVE position by symbol (places a market counter-order
-    // via UnifiedTrading). De-risking → NO order-value floor (it only reduces
-    // exposure). Full fast-live gate applies. A missing position returns the
-    // broker's clean "Position not found" error → rejected, never a crash.
-    {
+// ── exit_position (DE-RISKING, destructive) ──────────────────────────────
+// Close/reduce a single LIVE position by symbol (places a market counter-order
+// via UnifiedTrading). De-risking → NO order-value floor (it only reduces
+// exposure). Full fast-live gate applies. A missing position returns the
+// broker's clean "Position not found" error → rejected, never a crash.
+ToolDef build_exit_position() {
         ToolDef t;
         t.name = "exit_position";
         t.description =
@@ -469,23 +470,23 @@ std::vector<ToolDef> get_fast_live_tools() {
                 out["order_id"] = resp.data->order_id;
             return ToolResult::ok_data(out);
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
-    // ── fast_submit_order (ONE-SHOT live order, destructive) ──────────────────
-    // The single most safety-critical fast-live tool: a one-shot LIVE order with
-    // NO two-phase draft. The real broker call —
-    // UnifiedTrading::place_order(g.account, order) — is reachable ONLY after the
-    // FULL gate stack, in this order:
-    //   1. fast_live_gate()  (kill switch → the three arms → allowed account)
-    //   2. parse + build the UnifiedOrder (malformed → structured rejection)
-    //   3. resolve the price for the risk check (limit → limit_price;
-    //      market/stop → freshest cached last price; none → reject)
-    //   4. the deterministic equity risk floor (GUI-only caps; AI cannot raise)
-    //   5. the daily-loss floor (running realized loss + this order's max_loss)
-    // Routes ONLY to g.account (the GUI-named allowed account — NEVER an arg).
-    // NO raw adapter. Every terminal path writes a trade_audit row (mode "live").
-    {
+// ── fast_submit_order (ONE-SHOT live order, destructive) ──────────────────
+// The single most safety-critical fast-live tool: a one-shot LIVE order with
+// NO two-phase draft. The real broker call —
+// UnifiedTrading::place_order(g.account, order) — is reachable ONLY after the
+// FULL gate stack, in this order:
+//   1. fast_live_gate()  (kill switch → the three arms → allowed account)
+//   2. parse + build the UnifiedOrder (malformed → structured rejection)
+//   3. resolve the price for the risk check (limit → limit_price;
+//      market/stop → freshest cached last price; none → reject)
+//   4. the deterministic equity risk floor (GUI-only caps; AI cannot raise)
+//   5. the daily-loss floor (running realized loss + this order's max_loss)
+// Routes ONLY to g.account (the GUI-named allowed account — NEVER an arg).
+// NO raw adapter. Every terminal path writes a trade_audit row (mode "live").
+ToolDef build_fast_submit_order() {
         ToolDef t;
         t.name = "fast_submit_order";
         t.description =
@@ -652,27 +653,27 @@ std::vector<ToolDef> get_fast_live_tools() {
                                                    {"mode", "live"},
                                                    {"message", resp.message}});
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
-    // ── replace_order (MODIFY an open LIVE order, destructive) ────────────────
-    // Modify an open LIVE order's size/price/type/side. Unlike cancel/exit (pure
-    // de-risking), a modify can INCREASE exposure (bigger size, worse price) — so
-    // the FULL equity risk floor + daily-loss floor run on the WHOLE new order,
-    // exactly like fast_submit_order. The real broker call —
-    // UnifiedTrading::modify_order(g.account, order_id, mods) — is reachable ONLY
-    // after the full gate stack:
-    //   1. fast_live_gate()  (kill switch → the three arms → allowed account)
-    //   2. parse + build the NEW UnifiedOrder (malformed → structured rejection)
-    //   3. resolve the price for the risk check (limit → limit_price;
-    //      market/stop → freshest cached last price; none → reject)
-    //   4. the deterministic equity risk floor (GUI-only caps; AI cannot raise)
-    //   5. the daily-loss floor
-    // The original order is left UNTOUCHED if any gate/floor fails (modify only
-    // fires last). Routes ONLY to g.account. NO raw adapter. No ledger record — a
-    // modify isn't a fill; reconciliation against the eventual fill is the
-    // documented follow-up. Every terminal path writes a trade_audit row.
-    {
+// ── replace_order (MODIFY an open LIVE order, destructive) ────────────────
+// Modify an open LIVE order's size/price/type/side. Unlike cancel/exit (pure
+// de-risking), a modify can INCREASE exposure (bigger size, worse price) — so
+// the FULL equity risk floor + daily-loss floor run on the WHOLE new order,
+// exactly like fast_submit_order. The real broker call —
+// UnifiedTrading::modify_order(g.account, order_id, mods) — is reachable ONLY
+// after the full gate stack:
+//   1. fast_live_gate()  (kill switch → the three arms → allowed account)
+//   2. parse + build the NEW UnifiedOrder (malformed → structured rejection)
+//   3. resolve the price for the risk check (limit → limit_price;
+//      market/stop → freshest cached last price; none → reject)
+//   4. the deterministic equity risk floor (GUI-only caps; AI cannot raise)
+//   5. the daily-loss floor
+// The original order is left UNTOUCHED if any gate/floor fails (modify only
+// fires last). Routes ONLY to g.account. NO raw adapter. No ledger record — a
+// modify isn't a fill; reconciliation against the eventual fill is the
+// documented follow-up. Every terminal path writes a trade_audit row.
+ToolDef build_replace_order() {
         ToolDef t;
         t.name = "replace_order";
         t.description =
@@ -837,9 +838,20 @@ std::vector<ToolDef> get_fast_live_tools() {
                                                    {"message", resp.message},
                                                    {"mode", "live"}});
         };
-        tools.push_back(std::move(t));
-    }
+        return t;
+}
 
+} // namespace
+
+std::vector<ToolDef> get_fast_live_tools() {
+    std::vector<ToolDef> tools;
+    tools.push_back(build_get_positions());
+    tools.push_back(build_get_open_orders());
+    tools.push_back(build_get_fills());
+    tools.push_back(build_cancel_order());
+    tools.push_back(build_exit_position());
+    tools.push_back(build_fast_submit_order());
+    tools.push_back(build_replace_order());
     return tools;
 }
 
