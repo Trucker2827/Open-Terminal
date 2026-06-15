@@ -2747,6 +2747,11 @@ qt6_add_lupdate(OpenMarketTerminal
 if(APPLE)
     set_target_properties(OpenMarketTerminal PROPERTIES
         OUTPUT_NAME                     "OpenTerminal"
+        # FROZEN — do NOT change. macOS keys the per-app data directory
+        # (~/Library/Application Support/<id>/) off this string, and that dir
+        # holds every user's encrypted broker credentials. Renaming it orphans
+        # those credentials. scripts/release/verify-bundle-id.sh enforces this at
+        # release time; a change here needs a matching data-dir migration.
         MACOSX_BUNDLE_GUI_IDENTIFIER    "org.openterminal.OpenTerminal"
         MACOSX_BUNDLE_BUNDLE_NAME       "Open Terminal"
         MACOSX_BUNDLE_BUNDLE_VERSION    "${CMAKE_PROJECT_VERSION}"
