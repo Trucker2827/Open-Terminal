@@ -27,10 +27,10 @@ PmFill buy_to_open(const QString& venue, const QString& market_id, const QString
     if (cash.value() - cost < 0.0)
         return PmFill{false, "insufficient paper cash", {}, 0, 0, 0};
 
-    auto adj = repo.adjust_cash(-cost);
-    if (adj.is_err())
-        return PmFill{false, QString::fromStdString(adj.error()), {}, 0, 0, 0};
-
+    // Do the read + the position write BEFORE the cash debit, so a failed
+    // read/write never leaves cash debited with no position recorded. (Fully
+    // atomic cash+position would need a DB transaction; on local SQLite a mid-op
+    // write failure is effectively impossible, so this ordering suffices.)
     auto existing = repo.get_open(venue, asset_id);
     if (existing.is_err())
         return PmFill{false, QString::fromStdString(existing.error()), {}, 0, 0, 0};
@@ -62,6 +62,10 @@ PmFill buy_to_open(const QString& venue, const QString& market_id, const QString
             return PmFill{false, QString::fromStdString(ins.error()), {}, 0, 0, 0};
     }
 
+    auto adj = repo.adjust_cash(-cost);
+    if (adj.is_err())
+        return PmFill{false, QString::fromStdString(adj.error()), {}, 0, 0, 0};
+
     auto cash_after = repo.cash();
     const double cash_now = cash_after.is_ok() ? cash_after.value() : (cash.value() - cost);
     return PmFill{true, {}, "buy_to_open", contracts, fill_price, cash_now};
@@ -85,18 +89,20 @@ PmFill sell_to_close(const QString& venue, const QString& asset_id, double contr
                       {}, 0, 0, 0};
 
     const double proceeds = contracts * fill_price;
-    auto adj = repo.adjust_cash(proceeds);
-    if (adj.is_err())
-        return PmFill{false, QString::fromStdString(adj.error()), {}, 0, 0, 0};
-
     const double new_contracts = pos.contracts - contracts;
     const double new_cost =
         pos.contracts > 0.0 ? pos.cost_basis * (new_contracts / pos.contracts) : 0.0;
     const QString status = new_contracts <= kCloseEps ? "closed" : "open";
-    // Selling part of a lot does not change the remaining lot's average cost.
+    // Write the reduced position BEFORE crediting cash, so a failed write never
+    // leaves cash credited with the position untouched. Selling part of a lot
+    // does not change the remaining lot's average cost.
     auto upd = repo.set_contracts(pos.id, new_contracts, new_cost, pos.avg_price, status);
     if (upd.is_err())
         return PmFill{false, QString::fromStdString(upd.error()), {}, 0, 0, 0};
+
+    auto adj = repo.adjust_cash(proceeds);
+    if (adj.is_err())
+        return PmFill{false, QString::fromStdString(adj.error()), {}, 0, 0, 0};
 
     auto cash_after = repo.cash();
     const double cash_now = cash_after.is_ok() ? cash_after.value() : 0.0;
