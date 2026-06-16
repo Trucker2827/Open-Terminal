@@ -65,6 +65,11 @@ QVector<ObserverJournalService::Block> ObserverJournalService::readBlocks() cons
             cur.markdown = ln + "\n";
             in = true;
         } else if (in) {
+            // A block ends at the next header (handled above), at the journal's append
+            // marker, or at a "---" section rule — otherwise the final block would
+            // absorb the marker + trailing notes to EOF.
+            const QString t = ln.trimmed();
+            if (t == "---" || t.startsWith("<!--")) { flush(); in = false; continue; }
             cur.markdown += ln + "\n";
             if (cur.alert.isEmpty() && ln.contains("ALERT")) {
                 const int p = ln.indexOf("ALERT:**");

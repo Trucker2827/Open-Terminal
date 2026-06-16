@@ -77,6 +77,7 @@ private slots:
         QVERIFY(b.has_value());
         QCOMPARE(b->kind, QString("weekly"));
         QVERIFY(b->markdown.contains("no demonstrated edge"));
+        QVERIFY(!b->markdown.contains("Next daily read"));   // block must end at the marker, not absorb it
     }
 
     void recent_alerts_filters_and_extracts() {

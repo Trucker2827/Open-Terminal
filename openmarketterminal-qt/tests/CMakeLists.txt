@@ -12,6 +12,7 @@ add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscovery.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
