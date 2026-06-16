@@ -75,13 +75,26 @@ class CoinbaseService:
         # own arm on top of DRY_RUN. Disarmed (default) → preview only, even when
         # the global DRY_RUN is false (which is fine for Alpaca paper fills).
         armed = self.settings.coinbase_allow_trading
+        allowlist = self.settings.coinbase_symbol_allowlist()
+        symbol_allowed = product_id.strip().upper() in allowlist  # empty set => False (fail-closed)
         if self.settings.dry_run or not armed:
             out = {"ok": True, "dry_run": True, "would_submit": risk_report}
             if not self.settings.dry_run and not armed:
                 out["disarmed"] = True
                 out["note"] = ("Coinbase real execution is DISARMED (COINBASE_ALLOW_TRADING=false) — "
                                "this is a preview. Arm it deliberately for a live crypto session.")
+            if not symbol_allowed:
+                out["live_execution_blocked"] = (
+                    f"would be blocked for live execution: symbol {product_id} not allowlisted "
+                    "(COINBASE_ALLOWED_SYMBOLS)")
             return out
+
+        # Armed + live: enforce the symbol allowlist BEFORE any create_order.
+        # Fail-closed — empty allowlist blocks everything.
+        if not symbol_allowed:
+            raise TradingBlocked(
+                f"symbol {product_id} not in COINBASE_ALLOWED_SYMBOLS — refusing live Coinbase order "
+                f"(allowed: {sorted(allowlist) or 'NONE'})")
 
         client_order_id = str(uuid.uuid4())
         order_configuration: dict[str, Any]

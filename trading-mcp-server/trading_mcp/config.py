@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # AND this armed. Default off — observe/simulate by default, execute only when
     # deliberately armed for a session.
     coinbase_allow_trading: bool = False
+    # Comma-separated symbols allowed to EXECUTE real Coinbase orders when armed.
+    # Fail-closed: empty = nothing may execute (NOT "allow everything").
+    coinbase_allowed_symbols: str = ""
 
     @field_validator("coinbase_api_secret")
     @classmethod
@@ -43,6 +46,11 @@ class Settings(BaseSettings):
         if value:
             return value.replace("\\n", "\n")
         return value
+
+    def coinbase_symbol_allowlist(self) -> set[str]:
+        """Normalized (uppercase, stripped) set of symbols allowed for live
+        Coinbase execution. Empty set => nothing allowed (fail-closed)."""
+        return {s.strip().upper() for s in self.coinbase_allowed_symbols.split(",") if s.strip()}
 
 
 @lru_cache(maxsize=1)

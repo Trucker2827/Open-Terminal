@@ -101,7 +101,7 @@ class _FakeClient:
 def _coinbase_live(resp_dict, price=50000.0):
     # dry_run=False + ARMED so place_order reaches create_order; stub client + lookups (no network).
     s = Settings(trading_mode="paper", dry_run=False, max_order_notional_usd=100000.0,
-                 enable_coinbase=True, coinbase_allow_trading=True,
+                 enable_coinbase=True, coinbase_allow_trading=True, coinbase_allowed_symbols="BTC-USD",
                  coinbase_api_key="x", coinbase_api_secret="x")
     svc = CoinbaseService(s, RiskManager(s))
     svc._estimate_price = lambda product_id: price
@@ -132,9 +132,9 @@ class _GuardClient:
     def create_order(self, **kw):
         raise AssertionError("create_order called while Coinbase is DISARMED")
 
-def _coinbase_arm(armed, client, price=50000.0):
+def _coinbase_arm(armed, client, price=50000.0, allowlist="BTC-USD"):
     s = Settings(trading_mode="paper", dry_run=False, max_order_notional_usd=100000.0,
-                 enable_coinbase=True, coinbase_allow_trading=armed,
+                 enable_coinbase=True, coinbase_allow_trading=armed, coinbase_allowed_symbols=allowlist,
                  coinbase_api_key="x", coinbase_api_secret="x")
     svc = CoinbaseService(s, RiskManager(s))
     svc._estimate_price = lambda product_id: price
@@ -159,6 +159,39 @@ class TestCoinbaseExecutionArm(unittest.TestCase):
         r = _coinbase_arm(True, _FakeClient(resp)).place_order("BTC-USD", "buy", 0.001, "limit", limit_price=50000)
         self.assertTrue(r["ok"])
         self.assertEqual(r["order_id"], "ARMED-1")
+
+
+class TestCoinbaseSymbolAllowlist(unittest.TestCase):
+    """Armed Coinbase may only execute allowlisted symbols; fail-closed on empty."""
+
+    def test_disarmed_nonallowlisted_is_preview_no_submit(self):
+        r = _coinbase_arm(False, _GuardClient(), allowlist="BTC-USD").place_order(
+            "DOGE-USD", "buy", 1, "limit", limit_price=0.1)
+        self.assertTrue(r["dry_run"])
+        self.assertTrue(r.get("disarmed"))
+        self.assertNotIn("order_id", r)
+
+    def test_armed_allowlisted_submits(self):
+        resp = _FakeResp({"success": True, "success_response": {"order_id": "OK-BTC"}})
+        r = _coinbase_arm(True, _FakeClient(resp), allowlist="BTC-USD").place_order(
+            "BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+        self.assertEqual(r["order_id"], "OK-BTC")
+
+    def test_armed_nonallowlisted_blocked_no_submit(self):
+        with self.assertRaises(TradingBlocked):  # ETH-USD not in {BTC-USD}
+            _coinbase_arm(True, _GuardClient(), allowlist="BTC-USD").place_order(
+                "ETH-USD", "buy", 0.01, "limit", limit_price=2000)
+
+    def test_armed_empty_allowlist_blocks_everything(self):
+        with self.assertRaises(TradingBlocked):  # fail-closed
+            _coinbase_arm(True, _GuardClient(), allowlist="").place_order(
+                "BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+
+    def test_allowlist_is_case_insensitive(self):
+        resp = _FakeResp({"success": True, "success_response": {"order_id": "OK-LC"}})
+        r = _coinbase_arm(True, _FakeClient(resp), allowlist="BTC-USD").place_order(
+            "btc-usd", "buy", 0.001, "limit", limit_price=50000)
+        self.assertEqual(r["order_id"], "OK-LC")
 
 
 class TestMcpToolSchemas(unittest.TestCase):
