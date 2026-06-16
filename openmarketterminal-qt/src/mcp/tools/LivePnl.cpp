@@ -111,6 +111,11 @@ ReconciledFill reconcile_and_record(const QString& account, const QString& venue
                 for (const auto& o : resp.data.value()) {
                     if (o.order_id != order_id)
                         continue;
+                    // Capture the broker's reported status whenever the order is found —
+                    // regardless of whether it has a fill price. This lets callers
+                    // surface the honest state ("accepted", "open", "partially_filled",
+                    // "filled", …) rather than the optimistic "filled" they assumed.
+                    out.status = o.status;
                     // Only an actual avg fill price (>0) reconciles; status alone
                     // (e.g. "filled" with avg_price 0) is not enough to trust.
                     if (o.avg_price > 0.0) {

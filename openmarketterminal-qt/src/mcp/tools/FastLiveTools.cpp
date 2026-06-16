@@ -595,8 +595,8 @@ ToolDef build_fast_submit_order() {
                 resolved_price = limit_price;
             } else if (needs_trigger) {
                 resolved_price = trigger_price;
-            } else if (const auto q = detail::peek_quote(symbol); q && q->price > 0.0) {
-                resolved_price = q->price;
+            } else if (const auto p = detail::peek_or_fetch_quote_price(symbol); p && *p > 0.0) {
+                resolved_price = *p;
             } else {
                 const QString reason = QStringLiteral("no price available for risk check");
                 fast_derisk_audit("fast_submit_order", g.account, "rejected", reason, intent);
@@ -632,13 +632,18 @@ ToolDef build_fast_submit_order() {
             // for resp.order_id and records at the broker's avg fill price when
             // available (>0), else at the resolved price (the floor). Venue
             // "equity"; instrument = symbol. BUY opens/adds, SELL closes/reduces.
-            if (resp.success) {
-                reconcile_and_record(g.account, QStringLiteral("equity"), order.symbol, order.side,
-                                     order.quantity, resolved_price, resp.order_id);
+            // Honest status: the broker's real status (e.g. filled/accepted/
+            // partially_filled), or "submitted" when the order couldn't be
+            // found/reconciled yet. A rejected broker response → "rejected".
+            QString status;
+            if (!resp.success) {
+                status = QStringLiteral("rejected");
+            } else {
+                const auto rf = reconcile_and_record(g.account, QStringLiteral("equity"),
+                                                     order.symbol, order.side, order.quantity,
+                                                     resolved_price, resp.order_id);
+                status = rf.status.isEmpty() ? QStringLiteral("submitted") : rf.status.toLower();
             }
-
-            const QString status =
-                resp.success ? QStringLiteral("filled") : QStringLiteral("rejected");
             // trade_audit.reason is NOT NULL — synthesize a non-empty reason when
             // the broker returns an empty message (a fill commonly does).
             QString reason = resp.message.trimmed();
@@ -785,8 +790,8 @@ ToolDef build_replace_order() {
                 resolved_price = limit_price;
             } else if (needs_trigger) {
                 resolved_price = trigger_price;
-            } else if (const auto q = detail::peek_quote(symbol); q && q->price > 0.0) {
-                resolved_price = q->price;
+            } else if (const auto p = detail::peek_or_fetch_quote_price(symbol); p && *p > 0.0) {
+                resolved_price = *p;
             } else {
                 const QString reason = QStringLiteral("no price available for risk check");
                 fast_derisk_audit("replace_order", g.account, "rejected", reason, intent);

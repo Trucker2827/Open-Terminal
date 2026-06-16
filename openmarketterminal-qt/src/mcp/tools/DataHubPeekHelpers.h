@@ -22,4 +22,11 @@ QJsonObject quote_to_json(const openmarketterminal::services::QuoteData& q);
 /// Fresh cached general news feed from `news:general`.
 std::optional<QVector<openmarketterminal::services::NewsArticle>> peek_news_general();
 
+/// Cache-first price: peek_quote first; on a miss, falls back to a synchronous
+/// MarketDataService fetch (the same path get_quote uses). Returns the price
+/// (>0) or nullopt. Blocks the calling thread until the fetch callback fires
+/// when the cache is empty; the calling thread must NOT be the main thread
+/// in GUI builds (run_async_wait handles the cross-thread post).
+std::optional<double> peek_or_fetch_quote_price(const QString& symbol);
+
 } // namespace openmarketterminal::mcp::tools::detail

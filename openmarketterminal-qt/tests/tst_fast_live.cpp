@@ -29,7 +29,18 @@
 #include <QTemporaryDir>
 
 #include "core/headless/HeadlessRuntime.h"
+#include "datahub/DataHub.h"
 #include "mcp/McpProvider.h"
+#include "mcp/tools/DataHubPeekHelpers.h"
+#include "services/markets/MarketDataService.h"
+
+#include <QMetaType>
+// QuoteData metatype — declared here so the headless test can call
+// QVariant::fromValue<QuoteData> without pulling in DataHubMetaTypes.h
+// (which transitively depends on QtGui/QColor). The specialization is
+// identical to the one in DataHubMetaTypes.h; the two TUs never see each
+// other in this compilation unit so there is no ODR conflict.
+Q_DECLARE_METATYPE(openmarketterminal::services::QuoteData)
 #include "mcp/tools/LivePnl.h"
 #include "mcp/tools/SettingsGate.h"
 #include "storage/repositories/LivePnlRepository.h"
@@ -42,6 +53,7 @@
 
 #include <QJsonArray>
 
+#include <chrono>
 #include <optional>
 
 using namespace openmarketterminal;
@@ -640,10 +652,22 @@ class TstFastLive : public QObject {
 
     // ── HAPPY: fully fast-armed + within caps → status "filled", FakeBroker
     // received the order, a live_positions row exists, and a non-empty
-    // fast_submit_order/live/filled audit row is written. ──
+    // fast_submit_order/live/filled audit row is written.
+    // reconcile_order is set with status "filled" + matching order_id "FAKE-1"
+    // so the status comes from the broker's ACTUAL response, not a hard-coded string. ──
     void fast_submit_happy_fills_records_and_audits() {
         FakeBroker::reset_derisk_counters();
         const QString acct = arm_fast_live();
+        // Honest reconcile fixture: FakeBroker::place_order returns "FAKE-1".
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1";
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 5;
+        fill.filled_qty = 5;
+        fill.avg_price = 200.0; // at the submitted limit price
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
         auto res = rt_.call_tool("fast_submit_order", submit_args(5));
         QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
         const QJsonObject d = res.data.toObject();
@@ -692,9 +716,9 @@ class TstFastLive : public QObject {
     }
 
     // ── FALLBACK (Task 6): the broker reports the order NOT-yet-filled (no avg
-    // price). Reconciliation must fall back to the resolved/limit price (200).
-    // (This slot is GREEN on the old code too — it guards against a blind
-    // avg_price read without the >0 guard.) ──
+    // price). Reconciliation must fall back to the resolved/limit price (200) for
+    // the P&L ledger, AND the reported status is the broker's honest "open" (not
+    // the optimistic "filled" the old code hardcoded). ──
     void fast_submit_falls_back_to_resolved_when_no_fill_price() {
         FakeBroker::reset_derisk_counters();
         const QString acct = arm_fast_live();
@@ -709,10 +733,11 @@ class TstFastLive : public QObject {
         FakeBroker::reconcile_order = pending;
         auto res = rt_.call_tool("fast_submit_order", submit_args(5)); // limit 200
         QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
-        QCOMPARE(res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        // Honest status: broker says "open" (not filled yet) → must NOT say "filled".
+        QCOMPARE(res.data.toObject().value("status").toString(), QStringLiteral("open"));
         auto open = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
         QVERIFY2(open.is_ok() && open.value().has_value(),
-                 "a live_positions row must exist after a fill");
+                 "a live_positions row must exist even when broker has no fill price");
         QVERIFY2(qFuzzyCompare(open.value()->avg_cost, 200.0),
                  qPrintable(QStringLiteral("avg_cost must fall back to the resolved 200 when the "
                                            "broker has no fill price; got ")
@@ -809,6 +834,16 @@ class TstFastLive : public QObject {
     void fast_submit_small_loss_still_allows_within_cap() {
         FakeBroker::reset_derisk_counters();
         arm_fast_live();
+        // Honest reconcile fixture: FakeBroker::place_order returns "FAKE-1".
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1";
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 5;
+        fill.filled_qty = 5;
+        fill.avg_price = 200.0;
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
         auto seed =
             LivePnlRepository::instance().add_realized(mcp::tools::today_utc(), -100.0);
         QVERIFY2(seed.is_ok(), "seed add_realized must succeed");
@@ -850,6 +885,16 @@ class TstFastLive : public QObject {
     void fast_submit_stop_wires_trigger_price() {
         FakeBroker::reset_derisk_counters();
         arm_fast_live();
+        // Honest reconcile fixture: FakeBroker::place_order returns "FAKE-1".
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1";
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 5;
+        fill.filled_qty = 5;
+        fill.avg_price = 210.0; // near the trigger price
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
         auto res = rt_.call_tool("fast_submit_order", stop_args(5, 210));
         QVERIFY2(res.success, qPrintable("armed stop submit must succeed: " + res.error));
         const QJsonObject d = res.data.toObject();
@@ -866,6 +911,16 @@ class TstFastLive : public QObject {
     void fast_submit_stop_limit_wires_both_prices() {
         FakeBroker::reset_derisk_counters();
         arm_fast_live();
+        // Honest reconcile fixture: FakeBroker::place_order returns "FAKE-1".
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1";
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 5;
+        fill.filled_qty = 5;
+        fill.avg_price = 205.0; // at the limit price
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
         auto res = rt_.call_tool(
             "fast_submit_order",
             QJsonObject{{"symbol", "AAPL"}, {"side", "buy"},        {"quantity", 5},
@@ -1041,6 +1096,104 @@ class TstFastLive : public QObject {
         QVERIFY2(d.value("reason").toString().contains("trigger_price required"),
                  qPrintable("reason must be the trigger check: " + d.value("reason").toString()));
         QCOMPARE(FakeBroker::modify_calls, 0);
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // BUG #2 regression tests — honest broker status (fix: capture rf.status)
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── NEUTER-PROOF target: reverted code (resp.success ? "filled" : "rejected")
+    // returns "filled" here, but the broker actually says "accepted". ──
+    void fast_submit_broker_accepted_status_not_filled() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        // Broker accepted the order but it isn't filled yet (after-hours resting limit).
+        trading::BrokerOrderInfo accepted;
+        accepted.order_id = "FAKE-1"; // matches FakeBroker::place_order's return
+        accepted.symbol = "AAPL";
+        accepted.side = "BUY";
+        accepted.quantity = 5;
+        accepted.filled_qty = 0;
+        accepted.avg_price = 0.0; // not filled
+        accepted.status = "accepted";
+        FakeBroker::reconcile_order = accepted;
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        // MUST report the broker's honest "accepted", NOT "filled".
+        QCOMPARE(d.value("status").toString(), QStringLiteral("accepted"));
+        QCOMPARE(FakeBroker::place_calls, 1);
+        clear_keys();
+    }
+
+    // ── Order not found in broker's order list → status is "submitted" (honest
+    // fallback: we know the broker accepted it but can't confirm the final state). ──
+    void fast_submit_no_reconcile_order_not_found_reports_submitted() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        // reconcile_order is NOT set: get_orders returns only the F1/O1 fixtures
+        // which have IDs "F1"/"O1", not "FAKE-1". reconcile_and_record won't find it.
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success, qPrintable("armed fast_submit_order must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        // Order placed successfully but not found in reconciliation → "submitted".
+        QCOMPARE(d.value("status").toString(), QStringLiteral("submitted"));
+        QCOMPARE(FakeBroker::place_calls, 1);
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // BUG #1 regression test — market order price fetch (cache hit path)
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── Seed the DataHub quote cache for AAPL, then submit a MARKET order.
+    // On cache hit, peek_or_fetch_quote_price returns the seeded price and the
+    // order is NOT rejected with "no price available for risk check".
+    //
+    // NOTE: this test exercises the CACHE HIT path of peek_or_fetch_quote_price
+    // (both old and new code handle a cache hit). The actual bug fix is the
+    // CACHE MISS → synchronous fetch fallback, which requires a live network call
+    // and is integration-verified (not tested headlessly to avoid flakes). ──
+    void fast_submit_market_order_with_seeded_cache_resolves_price() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        // Seed the DataHub cache with a known AAPL price (60 s TTL → fresh).
+        openmarketterminal::services::QuoteData q;
+        q.symbol = QStringLiteral("AAPL");
+        q.name = QStringLiteral("Apple Inc.");
+        q.price = 150.0;
+        openmarketterminal::datahub::DataHub::instance().publish(
+            QStringLiteral("market:quote:AAPL"),
+            QVariant::fromValue(q),
+            std::chrono::milliseconds{60000});
+        // Guard: if peek_quote can't retrieve what we just published (metatype not
+        // registered, TTL mismatch, wrong thread), fail fast here rather than
+        // hanging on a network call inside peek_or_fetch_quote_price.
+        QVERIFY2(openmarketterminal::mcp::tools::detail::peek_quote("AAPL").has_value(),
+                 "seeded QuoteData must be retrievable via peek_quote before submitting");
+        // Set up a reconcile fixture so we get "filled" status (not "submitted").
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1";
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 2;
+        fill.filled_qty = 2;
+        fill.avg_price = 150.0;
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
+        // Submit a MARKET order (no limit_price → falls through to cache lookup).
+        auto res = rt_.call_tool(
+            "fast_submit_order",
+            QJsonObject{{"symbol", "AAPL"}, {"side", "buy"}, {"quantity", 2},
+                        {"order_type", "market"}, {"exchange", "NASDAQ"}});
+        QVERIFY2(res.success, qPrintable("market order must succeed: " + res.error));
+        const QJsonObject d = res.data.toObject();
+        // Must NOT be rejected with "no price available for risk check".
+        QVERIFY2(d.value("status").toString() != QStringLiteral("rejected"),
+                 qPrintable("market order with seeded cache must NOT be rejected; reason: "
+                            + d.value("reason").toString()));
+        QCOMPARE(FakeBroker::place_calls, 1);
         clear_keys();
     }
 

@@ -27,6 +27,7 @@ struct ReconciledFill {
     double price = 0;        // price actually recorded into the ledger
     double qty = 0;          // qty actually recorded
     bool reconciled = false; // true iff the broker's actual avg fill price was used
+    QString status;          // broker's reported order status; empty if the order wasn't found
 };
 
 /// Best-effort broker-fill reconciliation for a LIVE fill, shared by both fill

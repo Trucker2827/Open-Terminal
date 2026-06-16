@@ -6,6 +6,7 @@
 #include "mcp/tools/DataHubPeekHelpers.h"
 
 #include "datahub/DataHub.h"
+#include "mcp/tools/ThreadHelper.h"
 
 #include <QDateTime>
 
@@ -59,6 +60,39 @@ std::optional<QVector<openmarketterminal::services::NewsArticle>> peek_news_gene
             return articles;
     }
     return std::nullopt;
+}
+
+std::optional<double> peek_or_fetch_quote_price(const QString& symbol) {
+    // Cache hit: peek_quote gives a fresh cached price — cheap, no network.
+    if (const auto q = peek_quote(symbol); q && q->price > 0.0)
+        return q->price;
+
+    // Cache miss: synchronous fetch via MarketDataService (same path as get_quote).
+    // run_async_wait posts to the service's thread and blocks the calling thread
+    // until the callback fires — safe from worker threads in the MCP handler pool.
+    auto* svc = &openmarketterminal::services::MarketDataService::instance();
+    const QString sym = symbol.trimmed().toUpper();
+    bool ok = false;
+    double price = 0.0;
+    run_async_wait(svc, [svc, sym, &ok, &price](auto signal_done) {
+        svc->fetch_quotes({sym}, [&ok, &price, sym, signal_done](
+                                     bool success,
+                                     QVector<openmarketterminal::services::QuoteData> quotes) {
+            if (success) {
+                for (const auto& candidate : quotes) {
+                    if (candidate.symbol.compare(sym, Qt::CaseInsensitive) == 0
+                        && candidate.price > 0.0) {
+                        price = candidate.price;
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+            signal_done();
+        });
+    });
+
+    return ok ? std::optional<double>{price} : std::nullopt;
 }
 
 } // namespace openmarketterminal::mcp::tools::detail
