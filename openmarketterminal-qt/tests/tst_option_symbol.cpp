@@ -9,11 +9,13 @@ class TestOptionSymbol : public QObject {
     void occSymbolsAreOptions();
     void nonOptionsAreOne();
     void malformedIsOne();
+    void trailingNewlineRejected();
 };
 
 void TestOptionSymbol::occSymbolsAreOptions() {
     for (const char* s : {"AAPL260821C00110000","SPY261218P00450000","F270115C00012500",
-                          "TSLA260116P00250000","A260821C00050000"}) {
+                          "TSLA260116P00250000","A260821C00050000",
+                          "GOOGL260821C00110000","ABCDEF260821C00110000"}) {
         QVERIFY2(is_occ_option_symbol(s), s);
         QCOMPARE(option_contract_multiplier(s), 100);
     }
@@ -30,6 +32,11 @@ void TestOptionSymbol::malformedIsOne() {
         QVERIFY2(!is_occ_option_symbol(s), s);
         QCOMPARE(option_contract_multiplier(s), 1);
     }
+}
+
+void TestOptionSymbol::trailingNewlineRejected() {
+    QVERIFY(!is_occ_option_symbol("AAPL260821C00110000\n"));   // \z, not $: trailing newline must NOT match
+    QCOMPARE(option_contract_multiplier("AAPL260821C00110000\n"), 1);
 }
 
 QTEST_MAIN(TestOptionSymbol)

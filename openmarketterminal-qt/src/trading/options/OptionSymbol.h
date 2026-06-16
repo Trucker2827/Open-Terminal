@@ -5,6 +5,7 @@ namespace openmarketterminal::trading {
 
 /// True iff `symbol` is an OCC option symbol: root(1-6 A-Z) + YYMMDD + C|P + 8-digit strike.
 /// Equity ("AAPL"), crypto ("BTC/USD"), and "EXCH:SYM:CONID" never match.
+/// Standard OCC compact form only — adjusted option roots with embedded digits (e.g. "AAPL1...") are intentionally out of scope.
 bool is_occ_option_symbol(const QString& symbol);
 
 /// Shares represented per unit: 100 for an OCC option symbol, else 1.
