@@ -195,6 +195,46 @@ class AlpacaService:
             return {"ok": False, "error": "could not parse bars from SDK response", "raw_shape": str(type(raw))}
         return self.backtest_strategy_from_bars(bars, short_window, long_window, fee_bps)
 
+    @staticmethod
+    def backtest_mean_reversion_from_bars(bars: list[dict[str, Any]], window: int = 20, k: float = 1.0,
+                                          fee_bps: float = 0.0) -> dict[str, Any]:
+        # Long-only mean reversion: BUY when close < MA - k*σ (oversold), EXIT when
+        # close >= MA (reverted to the mean). Opposite logic to the crossover.
+        import statistics
+        closes = [float(b["close"]) for b in bars if b.get("close") is not None]
+        if len(closes) < window + 2:
+            return {"ok": False, "error": "not enough bars"}
+        fee = max(0.0, fee_bps) / 10000.0
+        cash, position = 1.0, 0.0
+        trades = []
+        for i in range(window, len(closes)):
+            w = closes[i - window:i]
+            ma = sum(w) / window
+            sd = statistics.pstdev(w)
+            price = closes[i]
+            if position == 0 and price < ma - k * sd:
+                position = (cash * (1.0 - fee)) / price
+                cash = 0
+                trades.append({"i": i, "action": "buy", "price": price})
+            elif position > 0 and price >= ma:
+                cash = position * price * (1.0 - fee)
+                position = 0
+                trades.append({"i": i, "action": "sell", "price": price})
+        final_value = cash + position * closes[-1]
+        return {"ok": True, "starting_value": 1.0, "ending_value": final_value,
+                "return_pct": (final_value - 1.0) * 100, "trades": trades, "fee_bps": fee_bps, "window": window, "k": k}
+
+    def backtest_mean_reversion(self, ticker: str, asset_class: str = "stock", days: int = 120, window: int = 20,
+                                k: float = 1.0, fee_bps: float = 0.0) -> dict[str, Any]:
+        data = self.get_historical_data(ticker, timeframe="1Day", asset_class=asset_class, days=days)
+        raw = data.get("bars", {})
+        bars = raw.get("data", {}).get(ticker) if isinstance(raw, dict) else None
+        if not bars and isinstance(raw, dict) and ticker in raw:
+            bars = raw[ticker]
+        if not isinstance(bars, list):
+            return {"ok": False, "error": "could not parse bars from SDK response", "raw_shape": str(type(raw))}
+        return self.backtest_mean_reversion_from_bars(bars, window, k, fee_bps)
+
     def _estimate_price(self, symbol: str, asset_class: str) -> float | None:
         # Best-effort latest trade price for sizing a MARKET order. Fail-SAFE:
         # any error returns None, and the risk manager then BLOCKS the order

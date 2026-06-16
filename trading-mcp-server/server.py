@@ -119,6 +119,13 @@ def backtest_strategy(ticker: str, asset_class: str = "stock", days: int = 120, 
 
 @mcp.tool()
 @tool_error
+def backtest_mean_reversion(ticker: str, asset_class: str = "stock", days: int = 120, window: int = 20, k: float = 1.0, fee_bps: float = 0.0) -> dict:
+    """Long-only mean-reversion backtest (buy when close < MA - k*sigma, exit at MA) on Alpaca daily bars. fee_bps = per-side cost."""
+    return alpaca.backtest_mean_reversion(ticker, asset_class, days, window, k, fee_bps)
+
+
+@mcp.tool()
+@tool_error
 def coinbase_send_crypto(asset: str, amount: float, destination: str, network: str | None = None, confirmation_token: str | None = None) -> dict:
     """Guarded crypto withdrawal/transfer placeholder. Disabled unless explicitly enabled and backend implemented."""
     return coinbase.send_crypto(asset, amount, destination, network, confirmation_token)

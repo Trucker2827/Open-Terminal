@@ -60,6 +60,14 @@ def main():
     assert bt_fee["ok"] is True
     assert bt_fee["return_pct"] < bt["return_pct"]
 
+    # Mean-reversion backtest: runs on an oscillating series; fees never increase return.
+    import math
+    osc = [{"close": 100 + 10 * math.sin(i / 3.0)} for i in range(80)]
+    mr = AlpacaService.backtest_mean_reversion_from_bars(osc, window=20, k=1.0)
+    mr_fee = AlpacaService.backtest_mean_reversion_from_bars(osc, window=20, k=1.0, fee_bps=50)
+    assert mr["ok"] is True and "return_pct" in mr
+    assert mr_fee["return_pct"] <= mr["return_pct"]
+
     live = Settings(dry_run=False, trading_mode="live", enable_alpaca=False, enable_coinbase=False)
     live_risk = RiskManager(live)
     expect_block(lambda: live_risk.check_trade(
