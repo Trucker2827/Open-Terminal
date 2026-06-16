@@ -16,7 +16,7 @@ static const char* kJournal =
     "## 2026-06-16 08:57 (auto)\n"
     "- **Snapshot** — BTC $65,000\n"
     "- **Regime** — BTC: chop (no edge)\n"
-    "- _nothing notable_\n\n"
+    "- **⚠️ ALERT:** BTC older example alert\n\n"
     "## 2026-06-17 08:57 (auto)\n"
     "- **Snapshot** — BTC $60,000\n"
     "- **Regime** — BTC: breakdown\n"
@@ -81,10 +81,15 @@ private slots:
     }
 
     void recent_alerts_filters_and_extracts() {
-        auto alerts = ObserverJournalService::instance().recentAlerts(10);
-        QCOMPARE(alerts.size(), 1);                              // only the 06-17 block fired
-        QCOMPARE(alerts[0].title, QString("2026-06-17 08:57 (auto)"));
+        auto& svc = ObserverJournalService::instance();
+        auto alerts = svc.recentAlerts(10);
+        QCOMPARE(alerts.size(), 2);                              // both daily blocks fired
+        QCOMPARE(alerts[0].title, QString("2026-06-17 08:57 (auto)"));  // newest first
+        QCOMPARE(alerts[1].title, QString("2026-06-16 08:57 (auto)"));  // older second
         QVERIFY(alerts[0].alert.startsWith("BTC broke support"));   // markdown prefix stripped
+        auto one = svc.recentAlerts(1);
+        QCOMPARE(one.size(), 1);                                 // limit truncates...
+        QCOMPARE(one[0].title, QString("2026-06-17 08:57 (auto)"));  // ...to the newest
     }
 
     void history_parses_jsonl_and_tails() {
