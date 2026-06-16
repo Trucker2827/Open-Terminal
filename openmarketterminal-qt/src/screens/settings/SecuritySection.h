@@ -53,6 +53,7 @@ class SecuritySection : public QWidget {
     QCheckBox*   cli_kill_switch_toggle_    = nullptr;
     QLineEdit*   cli_allowed_account_edit_  = nullptr;
     QLineEdit*   cli_max_daily_loss_edit_   = nullptr;
+    QLineEdit*   cli_max_order_value_edit_  = nullptr;
     QListWidget* sec_audit_list_       = nullptr;
     QLabel*      sec_lockout_status_   = nullptr;
     QPushButton* sec_change_pin_btn_   = nullptr;
@@ -94,6 +95,7 @@ class SecuritySection : public QWidget {
     QLabel* row_cli_kill_lbl_    = nullptr;  QLabel* row_cli_kill_desc_    = nullptr;
     QLabel* row_cli_acct_lbl_    = nullptr;  QLabel* row_cli_acct_desc_    = nullptr;
     QLabel* row_cli_dloss_lbl_   = nullptr;  QLabel* row_cli_dloss_desc_   = nullptr;
+    QLabel* row_cli_ordval_lbl_  = nullptr;  QLabel* row_cli_ordval_desc_  = nullptr;
 };
 
 } // namespace openmarketterminal::screens

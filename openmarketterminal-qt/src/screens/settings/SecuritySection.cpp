@@ -373,6 +373,16 @@ void SecuritySection::build_ui() {
     capture_row_labels(row_cli_dloss, &row_cli_dloss_lbl_, &row_cli_dloss_desc_);
     vl->addWidget(row_cli_dloss);
 
+    cli_max_order_value_edit_ = new QLineEdit;
+    cli_max_order_value_edit_->setPlaceholderText(tr("e.g. 50"));
+    cli_max_order_value_edit_->setFixedWidth(200);
+    cli_max_order_value_edit_->setStyleSheet(input_ss());
+    auto* row_cli_ordval = make_row(
+        tr("Max order value ($)"), cli_max_order_value_edit_,
+        tr("Maximum notional value (USD) of any single order the AI agent may place. Unset = 25000."));
+    capture_row_labels(row_cli_ordval, &row_cli_ordval_lbl_, &row_cli_ordval_desc_);
+    vl->addWidget(row_cli_ordval);
+
     vl->addSpacing(16);
 
     // ── SAVE ──────────────────────────────────────────────────────────────────
@@ -435,6 +445,9 @@ void SecuritySection::build_ui() {
         }
         if (cli_max_daily_loss_edit_) {
             repo.set("cli.risk.max_daily_loss", cli_max_daily_loss_edit_->text().trimmed(), "cli");
+        }
+        if (cli_max_order_value_edit_) {
+            repo.set("cli.risk.max_order_value", cli_max_order_value_edit_->text().trimmed(), "cli");
         }
         // Notify listeners. These cli.* flags are read directly from the DB by
         // the CLI's headless auth-checker on every tool call, so revoking
@@ -551,6 +564,8 @@ void SecuritySection::retranslateUi() {
     if (row_cli_acct_desc_)   row_cli_acct_desc_->setText(tr("The single account the AI agent may LIVE-trade. Empty means none is allowed."));
     if (row_cli_dloss_lbl_)   row_cli_dloss_lbl_->setText(tr("Max daily loss ($)"));
     if (row_cli_dloss_desc_)  row_cli_dloss_desc_->setText(tr("Maximum total loss (USD) the AI agent may incur in a single day before trading is halted."));
+    if (row_cli_ordval_lbl_)  row_cli_ordval_lbl_->setText(tr("Max order value ($)"));
+    if (row_cli_ordval_desc_) row_cli_ordval_desc_->setText(tr("Maximum notional value (USD) of any single order the AI agent may place. Unset = 25000."));
 
     // Checkbox texts.
     if (sec_autolock_toggle_)  sec_autolock_toggle_->setText(tr("Enable auto-lock on inactivity"));
@@ -692,6 +707,11 @@ void SecuritySection::reload() {
         const QSignalBlocker b(cli_max_daily_loss_edit_);
         auto r = repo.get("cli.risk.max_daily_loss", "");
         cli_max_daily_loss_edit_->setText(r.is_ok() ? r.value() : QString());
+    }
+    if (cli_max_order_value_edit_) {
+        const QSignalBlocker b(cli_max_order_value_edit_);
+        auto r = repo.get("cli.risk.max_order_value", "");
+        cli_max_order_value_edit_->setText(r.is_ok() ? r.value() : QString());
     }
 
     refresh_audit_log();
