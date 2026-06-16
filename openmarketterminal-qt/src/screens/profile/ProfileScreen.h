@@ -41,11 +41,8 @@ class ProfileScreen : public QWidget {
     // Overview
     QLabel* ov_username_ = nullptr;
     QLabel* ov_email_ = nullptr;
-    QLabel* ov_user_type_ = nullptr;
     QLabel* ov_phone_ = nullptr;
     QLabel* ov_country_ = nullptr;
-    QLabel* ov_verified_ = nullptr;
-    QLabel* ov_mfa_ = nullptr;
 
     // Security
     QLabel* sec_api_key_ = nullptr;
@@ -67,6 +64,7 @@ class ProfileScreen : public QWidget {
     QWidget* make_stat_box(const QString& label, QLabel*& value_out, const QString& color);
 
     void show_logout_confirm();
+    void show_edit_profile();
 
   private slots:
     void on_section_changed(int index);

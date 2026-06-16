@@ -3,6 +3,7 @@
 #include "auth/AuthManager.h"
 #include "core/currency/Currency.h"
 #include "core/logging/Logger.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
 
 #include <QApplication>
@@ -221,13 +222,25 @@ QWidget* ProfileScreen::build_overview() {
     auto* avl = qobject_cast<QVBoxLayout*>(acct->layout());
     avl->addWidget(make_data_row(tr("USERNAME"), ov_username_));
     avl->addWidget(make_data_row(tr("EMAIL"), ov_email_));
-    avl->addWidget(make_data_row(tr("USER TYPE"), ov_user_type_));
     avl->addWidget(make_data_row(tr("PHONE"), ov_phone_));
     avl->addWidget(make_data_row(tr("COUNTRY"), ov_country_));
-    avl->addWidget(make_data_row(tr("EMAIL VERIFIED"), ov_verified_));
-    avl->addWidget(make_data_row(tr("2FA ENABLED"), ov_mfa_));
-    // LOCAL-FIRST FORK: EDIT PROFILE / DELETE ACCOUNT drove UserApi remote
-    // account mutations that were removed. Only the local LOGOUT action remains.
+    // Edit Profile button row
+    auto* ep_row = new QWidget(this);
+    ep_row->setStyleSheet("background:transparent;");
+    auto* ep_rl = new QHBoxLayout(ep_row);
+    ep_rl->setContentsMargins(12, 8, 12, 8);
+    ep_rl->setSpacing(0);
+    auto* ep_btn = new QPushButton(tr("EDIT PROFILE"));
+    ep_btn->setFixedHeight(26);
+    ep_btn->setCursor(Qt::PointingHandCursor);
+    ep_btn->setStyleSheet(
+        QString("QPushButton{background:rgba(217,119,6,0.12);color:%1;border:1px solid rgba(217,119,6,0.4);padding:0 12px;"
+                "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{background:%1;color:%2;}")
+            .arg(ui::colors::AMBER(), ui::colors::BG_BASE()));
+    connect(ep_btn, &QPushButton::clicked, this, &ProfileScreen::show_edit_profile);
+    ep_rl->addWidget(ep_btn);
+    ep_rl->addStretch();
+    avl->addWidget(ep_row);
     grid->addWidget(acct, 0, 0, 1, 2);
 
     auto* actions = make_panel(tr("QUICK ACTIONS"));
@@ -386,23 +399,25 @@ QWidget* ProfileScreen::build_support() {
 }
 
 void ProfileScreen::refresh_all() {
+    // LOCAL-FIRST: populate Overview from local SettingsRepository (no login required).
+    auto& repo = openmarketterminal::SettingsRepository::instance();
+    const auto r_uname   = repo.get("profile.username", "");
+    const auto r_email   = repo.get("profile.email",    "");
+    const auto r_phone   = repo.get("profile.phone",    "");
+    const auto r_country = repo.get("profile.country",  "");
+    const QString uname   = (r_uname.is_ok()   && !r_uname.value().isEmpty())   ? r_uname.value()   : QString();
+    const QString email   = (r_email.is_ok()   && !r_email.value().isEmpty())   ? r_email.value()   : QString();
+    const QString phone   = (r_phone.is_ok()   && !r_phone.value().isEmpty())   ? r_phone.value()   : QString();
+    const QString country = (r_country.is_ok() && !r_country.value().isEmpty()) ? r_country.value() : QString();
+
+    username_header_->setText(uname.isEmpty() ? tr("Local Profile") : uname);
+    ov_username_->setText(uname.isEmpty()   ? tr("Not set") : uname);
+    ov_email_->setText(email.isEmpty()      ? tr("Not set") : email);
+    ov_phone_->setText(phone.isEmpty()      ? tr("Not set") : phone);
+    ov_country_->setText(country.isEmpty()  ? tr("Not set") : country);
+
+    // Security tab — still reads from auth session (those rows remain remote-backed).
     const auto& s = auth::AuthManager::instance().session();
-    if (!s.authenticated)
-        return;
-    username_header_->setText(s.user_info.username.isEmpty() ? s.user_info.email : s.user_info.username);
-    ov_username_->setText(s.user_info.username.isEmpty() ? tr("N/A") : s.user_info.username);
-    ov_email_->setText(s.user_info.email.isEmpty() ? tr("N/A") : s.user_info.email);
-    ov_user_type_->setText(tr("REGISTERED"));
-    ov_phone_->setText(s.user_info.phone.isEmpty() ? "\xe2\x80\x94" : s.user_info.phone);
-    ov_country_->setText(s.user_info.country.isEmpty() ? "\xe2\x80\x94" : s.user_info.country);
-    ov_verified_->setText(s.user_info.is_verified ? tr("YES") : tr("NO"));
-    ov_verified_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
-                                    .arg(s.user_info.is_verified ? ui::colors::POSITIVE() : ui::colors::NEGATIVE())
-                                    .arg(MF));
-    ov_mfa_->setText(s.user_info.mfa_enabled ? tr("YES") : tr("NO"));
-    ov_mfa_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
-                               .arg(s.user_info.mfa_enabled ? ui::colors::POSITIVE() : ui::colors::NEGATIVE())
-                               .arg(MF));
     sec_verified_->setText(s.user_info.is_verified ? tr("YES") : tr("NO"));
     sec_verified_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
                                      .arg(s.user_info.is_verified ? ui::colors::POSITIVE() : ui::colors::NEGATIVE())
@@ -411,6 +426,86 @@ void ProfileScreen::refresh_all() {
     sec_mfa_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
                                 .arg(s.user_info.mfa_enabled ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY())
                                 .arg(MF));
+}
+
+void ProfileScreen::show_edit_profile() {
+    auto& repo = openmarketterminal::SettingsRepository::instance();
+    const auto r_uname   = repo.get("profile.username", "");
+    const auto r_email   = repo.get("profile.email",    "");
+    const auto r_phone   = repo.get("profile.phone",    "");
+    const auto r_country = repo.get("profile.country",  "");
+    const QString cur_uname   = (r_uname.is_ok()   && !r_uname.value().isEmpty())   ? r_uname.value()   : QString();
+    const QString cur_email   = (r_email.is_ok()   && !r_email.value().isEmpty())   ? r_email.value()   : QString();
+    const QString cur_phone   = (r_phone.is_ok()   && !r_phone.value().isEmpty())   ? r_phone.value()   : QString();
+    const QString cur_country = (r_country.is_ok() && !r_country.value().isEmpty()) ? r_country.value() : QString();
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Edit Profile"));
+    dlg.setModal(true);
+    dlg.setMinimumWidth(360);
+    dlg.setStyleSheet(QString("background:%1;color:%2;")
+                          .arg(ui::colors::BG_BASE(), ui::colors::TEXT_PRIMARY()));
+    auto* vl = new QVBoxLayout(&dlg);
+    vl->setContentsMargins(16, 16, 16, 16);
+    vl->setSpacing(10);
+
+    auto make_field = [&](const QString& label, const QString& value) -> QLineEdit* {
+        auto* lbl = new QLabel(label);
+        lbl->setStyleSheet(
+            QString("color:%1;font-size:11px;font-weight:700;background:transparent;letter-spacing:0.5px;%2")
+                .arg(ui::colors::TEXT_SECONDARY(), MF));
+        vl->addWidget(lbl);
+        auto* ed = new QLineEdit(value);
+        ed->setStyleSheet(
+            QString("QLineEdit{background:%1;color:%2;border:1px solid %3;padding:4px 8px;font-size:13px;%4}"
+                    "QLineEdit:focus{border:1px solid %5;}")
+                .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                     ui::colors::AMBER()));
+        vl->addWidget(ed);
+        return ed;
+    };
+
+    auto* uname_edit   = make_field(tr("USERNAME"), cur_uname);
+    auto* email_edit   = make_field(tr("EMAIL"),    cur_email);
+    auto* phone_edit   = make_field(tr("PHONE"),    cur_phone);
+    auto* country_edit = make_field(tr("COUNTRY"),  cur_country);
+
+    auto* btn_row = new QWidget(&dlg);
+    btn_row->setStyleSheet("background:transparent;");
+    auto* brl = new QHBoxLayout(btn_row);
+    brl->setContentsMargins(0, 4, 0, 0);
+    brl->setSpacing(8);
+    brl->addStretch();
+
+    auto* cancel_btn = new QPushButton(tr("CANCEL"));
+    cancel_btn->setFixedHeight(26);
+    cancel_btn->setStyleSheet(
+        QString("QPushButton{background:%1;color:%2;border:1px solid %3;padding:0 12px;"
+                "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{color:%4;}")
+            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY(), ui::colors::BORDER_DIM(),
+                 ui::colors::TEXT_PRIMARY()));
+    connect(cancel_btn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    brl->addWidget(cancel_btn);
+
+    auto* save_btn = new QPushButton(tr("SAVE"));
+    save_btn->setFixedHeight(26);
+    save_btn->setStyleSheet(
+        QString("QPushButton{background:rgba(217,119,6,0.12);color:%1;border:1px solid rgba(217,119,6,0.4);padding:0 12px;"
+                "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{background:%1;color:%2;}")
+            .arg(ui::colors::AMBER(), ui::colors::BG_BASE()));
+    connect(save_btn, &QPushButton::clicked, &dlg, [=, this, &dlg]() {
+        auto& r = openmarketterminal::SettingsRepository::instance();
+        r.set("profile.username", uname_edit->text().trimmed(),   "profile");
+        r.set("profile.email",    email_edit->text().trimmed(),    "profile");
+        r.set("profile.phone",    phone_edit->text().trimmed(),    "profile");
+        r.set("profile.country",  country_edit->text().trimmed(),  "profile");
+        refresh_all();
+        dlg.accept();
+    });
+    brl->addWidget(save_btn);
+    vl->addWidget(btn_row);
+
+    dlg.exec();
 }
 
 void ProfileScreen::show_logout_confirm() {
