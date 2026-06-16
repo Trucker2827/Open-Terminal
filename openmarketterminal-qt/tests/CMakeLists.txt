@@ -149,6 +149,15 @@ target_include_directories(tst_fast_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_fast_live PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_fast_live COMMAND tst_fast_live)
 
+# AI-Activity Feed Task 1 — TradeAuditRepository::append() publishes a
+# "trade.audit" EventBus event on successful insert (fire-and-forget for the
+# GUI feed/toast). Brings up a real DB via HeadlessRuntime (same Widgets-free
+# link set as tst_fast_live).
+add_executable(tst_ai_activity tst_ai_activity.cpp)
+target_include_directories(tst_ai_activity PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_activity PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_activity COMMAND tst_ai_activity)
+
 # IBKR conid resolution — pure parser parse_conid_from_secdef (symbol→conid
 # from /iserver/secdef/search). Fixtures only, no gateway/network.
 add_executable(tst_ibkr_conid tst_ibkr_conid.cpp)

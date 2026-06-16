@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include <QVariantMap>
 
 namespace openmarketterminal {
 
@@ -33,5 +34,10 @@ class TradeAuditRepository : public BaseRepository<TradeAuditRow> {
     TradeAuditRepository() = default;
     static TradeAuditRow map_row(QSqlQuery& q);
 };
+
+/// Lossless map↔row helpers for serialising TradeAuditRow to/from a QVariantMap
+/// (used by the EventBus "trade.audit" payload and any other in-process consumers).
+QVariantMap audit_row_to_map(const TradeAuditRow& row);
+TradeAuditRow audit_row_from_map(const QVariantMap& m);
 
 } // namespace openmarketterminal
