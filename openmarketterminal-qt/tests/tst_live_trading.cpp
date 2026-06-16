@@ -531,6 +531,27 @@ class TstLiveTrading : public QObject {
         clear_live_keys();
     }
 
+    // (i) CLASSIFIER GUARD for the GUI auth-checker deny. The GUI AgentService
+    //     auth-checker denies raw live-execution tools via mcp::is_live_execution_tool
+    //     BEFORE the destructive-grant confirmation branch — without it, the CLI
+    //     trading token (which makes is_destructive_allowed() true) would let
+    //     live_place_order place REAL orders bypassing the Phase-C constitution.
+    //     The GUI checker is gui_mode-only (not directly invokable here), so the
+    //     strongest deterministic guard is the classifier it relies on, asserted
+    //     where the tool registry is populated (this headless binary registers all
+    //     live-trading tools). Every destructive live-execution tool MUST classify
+    //     true; a non-destructive READ (get_quote) MUST classify false, proving the
+    //     classifier distinguishes execution tools from reads (not just category).
+    void live_execution_tools_classified() {
+        for (const char* t : {"live_place_order", "live_smart_order", "live_cancel_order",
+                              "live_cancel_all_orders", "live_close_position",
+                              "live_close_all_positions"})
+            QVERIFY2(mcp::is_live_execution_tool(QString::fromLatin1(t)), t);
+        // A non-destructive read tool must NOT be classified live-execution.
+        QVERIFY2(!mcp::is_live_execution_tool(QStringLiteral("get_quote")),
+                 "non-destructive read get_quote must not be live-execution-classified");
+    }
+
     // (g) Revocable: a draft prepared while armed must STILL be denied — with NO
     //     execution — if the human un-arms before submit. Every gate is re-read
     //     live, so revoking arming after prepare halts the order. As with (a),

@@ -160,6 +160,15 @@ AgentService::AgentService(QObject* parent) : QObject(parent) {
             // other hosts deny those outright.)
             if (mcp::is_fast_live_tool(tool_name))
                 return mcp::cli_trading_allowed() && mcp::cli_live_armed() && mcp::cli_fast_live_armed();
+            // Raw live-execution tools (live_place_order / live_cancel_* /
+            // live_close_* — category "live-trading" + destructive) are NEVER
+            // reachable by ANY AI/CLI caller, even with a destructive grant (the
+            // in-app agent's destructive token). They bypass the Phase-C
+            // constitution (arm / allowed-account / kill-switch / daily-loss), so
+            // the AI's only live path is the gated submit_order / fast-live
+            // carve-outs above. Mirrors HeadlessRuntime + ServeCommand.
+            if (mcp::is_live_execution_tool(tool_name))
+                return false;
             if (is_destructive && !mcp::TerminalMcpBridge::is_destructive_allowed()) {
                 const auto desc = describe_tool_action(tool_name, args);
                 return mcp::ToolConfirmationGate::instance().request(desc.first, desc.second);
