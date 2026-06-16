@@ -5,11 +5,12 @@
     { "id": "markets",           "title": "Markets",            "category": "Core",        "description": "Cross-asset market overview and movers",                   "tags": ["markets","overview","movers"] },
     { "id": "watchlist",         "title": "Watchlist",          "category": "Core",        "description": "Symbol lists with live quotes",                             "tags": ["watchlist","quotes","symbols"] },
     { "id": "news",              "title": "News",               "category": "Core",        "description": "Global news wire with category filters and sentiment",     "tags": ["news","wire","headlines"] },
+    { "id": "observer",          "title": "Observer",           "category": "Research",    "description": "Read-only BTC/ETH observation journal: daily lesson, weekly review, alerts", "tags": ["observer","observe","journal","crypto watch","btc","eth","review"] },
 
     { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Order entry + real-time book for Kraken / HyperLiquid",    "tags": ["crypto","trading","order"] },
     { "id": "equity_trading",    "title": "Equity Trading",     "category": "Trading",     "description": "Multi-account equity trading across 16+ brokers",          "tags": ["equity","trading","brokers"] },
-    { "id": "algo_trading",      "title": "Algo Trading",       "category": "Trading",     "description": "Strategy runner, order router, and execution analytics",   "tags": ["algo","strategy","execution"] },
-    { "id": "backtesting",       "title": "Backtesting",        "category": "Trading",     "description": "Historical strategy simulation and reporting",             "tags": ["backtest","simulation"] },
+    { "id": "algo_trading",      "title": "Strategies",         "category": "Strategies",  "description": "Build, test, scan, alert, and deploy trading strategies",    "tags": ["algo","strategy","execution"] },
+    { "id": "backtesting",       "title": "Strategy Lab",       "category": "Strategies",  "description": "Advanced historical simulation and provider comparison",     "tags": ["backtest","simulation","advanced"] },
     { "id": "trade_viz",         "title": "Trade Viz",          "category": "Trading",     "description": "Order and position visualisation on price charts",         "tags": ["trade","visualise","orders"] },
 
     { "id": "portfolio",         "title": "Portfolio",          "category": "Research",    "description": "Holdings, P&L, allocation and performance attribution",    "tags": ["portfolio","pnl","holdings"] },
@@ -19,8 +20,8 @@
     { "id": "ma_analytics",      "title": "M&A Analytics",      "category": "Research",    "description": "Deal comparables, accretion/dilution, event studies",      "tags": ["m&a","deals","comparables"] },
     { "id": "alt_investments",   "title": "Alt. Investments",   "category": "Research",    "description": "Private markets, real assets, infrastructure screens",     "tags": ["alts","private","infra"] },
 
-    { "id": "quantlib",          "title": "QuantLib Suite",     "category": "QuantLib",    "description": "18 quantitative analysis tools — curves, models, risk",    "tags": ["quantlib","curves","models"] },
-    { "id": "ai_quant_lab",      "title": "AI Quant Lab",       "category": "AI",          "description": "ML factor discovery, HFT, RL trading, vision quant",       "tags": ["ai","quant","ml"] },
+    { "id": "quantlib",          "title": "Pricing Lab",        "category": "Labs",        "description": "Local QuantLib pricing tools for derivatives and risk",     "tags": ["quantlib","curves","models","pricing"] },
+    { "id": "ai_quant_lab",      "title": "Quant Lab",          "category": "Labs",        "description": "Experimental AI/ML quantitative research modules",          "tags": ["ai","quant","ml","lab"] },
     { "id": "alpha_arena",       "title": "Alpha Arena",        "category": "AI",          "description": "Competitive strategy arena with leaderboards",             "tags": ["alpha","arena","contest"] },
     { "id": "agent_config",      "title": "Agent Config",       "category": "AI",          "description": "LLM agent framework configuration (hedge fund, macro)",    "tags": ["agents","llm","config"] },
     { "id": "mcp_servers",       "title": "MCP Servers",        "category": "AI",          "description": "Model Context Protocol server management",                 "tags": ["mcp","tools","servers"] },
@@ -37,8 +38,8 @@
     { "id": "polymarket",        "title": "Prediction Markets", "category": "Geopolitics", "description": "Polymarket and Kalshi event odds + order book",           "tags": ["polymarket","kalshi","prediction"] },
     { "id": "relationship_map",  "title": "Relationship Map",   "category": "Geopolitics", "description": "Entity relationship graph explorer",                      "tags": ["relationship","graph","entities"] },
 
-    { "id": "node_editor",       "title": "Node Editor",        "category": "Tools",       "description": "Visual workflow node editor with 12 node categories",     "tags": ["workflow","nodes","visual"] },
-    { "id": "code_editor",       "title": "Code Editor",        "category": "Tools",       "description": "In-app code cells — Python, SQL, shell",                  "tags": ["code","python","cells"] },
+    { "id": "node_editor",       "title": "Workflows",          "category": "Automation",  "description": "Advanced visual workflow automation",                      "tags": ["workflow","nodes","visual","automation"] },
+    { "id": "code_editor",       "title": "Notebooks",          "category": "Research",    "description": "Research notebooks with a persistent Python kernel",        "tags": ["code","python","cells","notebooks"] },
     { "id": "excel",             "title": "Excel",              "category": "Tools",       "description": "Spreadsheet grid with formulas, XLSX import/export",       "tags": ["excel","xlsx","spreadsheet"] },
     { "id": "report_builder",    "title": "Report Builder",     "category": "Tools",       "description": "PDF/HTML reports from terminal data",                     "tags": ["report","pdf","builder"] },
     { "id": "data_sources",      "title": "Data Sources",       "category": "Tools",       "description": "100+ connectors — APIs, DBs, websockets",                  "tags": ["data","sources","connectors"] },
