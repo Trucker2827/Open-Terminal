@@ -23,6 +23,7 @@ class ObserverJournalPanel : public QWidget {
     void refresh();
 
     observer::JournalView view_ = observer::JournalView::Latest;
+    QString last_md_;            // last rendered markdown; skip re-render (and scroll reset) if unchanged
     QTextEdit* display_ = nullptr;
     QTimer* timer_ = nullptr;
 };

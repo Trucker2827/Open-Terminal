@@ -61,6 +61,10 @@ void ObserverJournalPanel::set_view(JournalView v) {
 
 void ObserverJournalPanel::refresh() {
     const QString md = observer::markdown_for(view_, services::ObserverJournalService::instance());
+    // The 5s poll would otherwise reset scroll position/selection on every tick;
+    // only re-render when the content (or the selected view) actually changed.
+    if (md == last_md_) return;
+    last_md_ = md;
     display_->setHtml(ui::MarkdownRenderer::render(md));
 }
 
