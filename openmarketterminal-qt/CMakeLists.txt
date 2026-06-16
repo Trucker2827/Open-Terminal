@@ -1846,6 +1846,8 @@ set(APP_SOURCES
     src/app/DockScreenRouter_Materialize.cpp
     src/app/TerminalShell.cpp
     src/app/MonitorPickerDialog.cpp
+    # AI-activity feed (Task 3 — main-thread notifier: trade.audit → toast + typed signal)
+    src/app/AiActivityNotifier.cpp
 )
 
 # All screen files compiled individually — they have local statics/functions that

@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/TradeAuditRepository.h"
+#include <QMetaType>
 #include <QString>
 
 namespace openmarketterminal::trading {
@@ -16,3 +17,6 @@ struct ActivityView {
 ActivityView format_activity(const TradeAuditRow& row);
 
 } // namespace openmarketterminal::trading
+
+// Required so a queued signal can carry ActivityView across threads (Task 3+).
+Q_DECLARE_METATYPE(openmarketterminal::trading::ActivityView)
