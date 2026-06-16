@@ -18,6 +18,7 @@
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
 #include "storage/sqlite/Database.h"
+#include "trading/OrderValidator.h"
 
 using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
@@ -386,6 +387,51 @@ class TstOrderFlow : public QObject {
         auto got = OrderDraftRepository::instance().get(draft_id);
         QVERIFY2(got.is_ok(), "draft must still exist");
         QCOMPARE(got.value().status, QStringLiteral("prepared"));
+    }
+
+    // ── OPTIONS ×100 (SLOW rail): risk_floor_check inside prepare_order MUST
+    // apply the ×100 option contract multiplier. With a 50,000 cap, an OCC
+    // option order of qty 1 @ 1000 (raw 1,000 × 100 = 100,000) is REJECTED
+    // at the floor with "max order value"; the SAME raw notional submitted as
+    // a plain equity (×1 = 1,000 < 50,000) must be PREPARED — not rejected.
+    // This pins the slow-rail risk floor against the same production code that
+    // fast_submit_option_uses_100x_multiplier covers on the FAST rail.
+    void prepare_order_option_uses_100x_multiplier() {
+        set_gate("cli.risk.max_order_value", "50000");
+
+        // OCC option: 1 × 1000 × 100 = 100,000 > 50,000 → rejected at the floor.
+        auto opt = rt_.call_tool("prepare_order",
+                                 QJsonObject{{"symbol", "AAPL260821C00110000"},
+                                             {"side", "buy"},
+                                             {"quantity", 1},
+                                             {"order_type", "limit"},
+                                             {"limit_price", 1000}});
+        QVERIFY2(opt.success, qPrintable("risk rejection is a valid verdict: " + opt.error));
+        const QJsonObject od = opt.data.toObject();
+        QCOMPARE(od.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(od.value("reason").toString().contains("max order value", Qt::CaseInsensitive),
+                 qPrintable("option must be rejected at the order-value floor ×100: "
+                            + od.value("reason").toString()));
+
+        // Same raw notional as EQUITY: 1 × 1000 × 1 = 1,000 < 50,000 → prepared.
+        auto eq = rt_.call_tool("prepare_order",
+                                QJsonObject{{"symbol", "AAPL"},
+                                            {"side", "buy"},
+                                            {"quantity", 1},
+                                            {"order_type", "limit"},
+                                            {"limit_price", 1000}});
+        QVERIFY2(eq.success, qPrintable("equity prepare must succeed: " + eq.error));
+        QVERIFY2(!eq.data.toObject().value("reason").toString().contains(
+                     "max order value", Qt::CaseInsensitive),
+                 "equity at the same raw notional must NOT hit the order-value cap");
+
+        set_gate("cli.risk.max_order_value", "25000"); // restore conservative default
+    }
+
+    // ── OPRA is a valid exchange: the Alpaca options venue must be accepted by
+    // OrderValidator so that options orders do not fail the exchange check.
+    void opra_is_valid_exchange() {
+        QVERIFY(trading::OrderValidator::is_valid_exchange("OPRA"));
     }
 
     void cleanupTestCase() { rt_.shutdown(); }
