@@ -251,6 +251,15 @@ QJsonObject ExchangeDaemonPool::call(const QString& exchange,
                 if (d.isObject())
                     return d.toObject();
             }
+            // Surface daemon-side failures — ccxt errors (auth, bad key, etc.)
+            // come back as {"success":false,"error":...,"code":...} and were
+            // previously swallowed, leaving the UI blank with no diagnostic.
+            if (resp.contains("error") || !resp.value("success").toBool(true)) {
+                LOG_WARN(kPoolTag, QString("Daemon call failed: %1/%2 → [%3] %4")
+                                       .arg(exchange, method,
+                                            resp.value("code").toString("ERROR"),
+                                            resp.value("error").toString()));
+            }
             return resp;
         }
         response_ready_.wait(&mutex_, 50);

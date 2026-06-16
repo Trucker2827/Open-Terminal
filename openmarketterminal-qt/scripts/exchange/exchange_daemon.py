@@ -86,6 +86,21 @@ _exchange_pool = {}      # key -> ccxt.Exchange
 _credentials = {}        # exchange_id -> dict
 
 
+def _normalize_pem(secret):
+    """Coinbase CDP keys are EC private-key PEMs. When copied from the JSON the
+    platform hands out, the newlines arrive as the literal two characters
+    backslash-n (and sometimes backslash-r-backslash-n) rather than real line
+    breaks. ccxt's PEM parser then fails deep inside ECDSA decoding with an
+    opaque "index out of range" IndexError. Convert those literal escapes back
+    to real newlines so the key parses. Only PEM-shaped secrets are touched —
+    base64/hex secrets for other exchanges are returned unchanged."""
+    if not isinstance(secret, str) or "-----BEGIN" not in secret:
+        return secret
+    if "\\n" not in secret and "\\r" not in secret:
+        return secret
+    return secret.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+
 def _get_exchange(exchange_id, need_auth=False):
     """Get or create a cached exchange instance."""
     key = (exchange_id, need_auth)
@@ -106,13 +121,13 @@ def _get_exchange(exchange_id, need_auth=False):
         if creds.get("api_key"):
             config["apiKey"] = creds["api_key"]
         if creds.get("secret"):
-            config["secret"] = creds["secret"]
+            config["secret"] = _normalize_pem(creds["secret"])
         if creds.get("password"):
             config["password"] = creds["password"]
         if creds.get("wallet_address"):
             config["walletAddress"] = creds["wallet_address"]
         if creds.get("private_key"):
-            config["privateKey"] = creds["private_key"]
+            config["privateKey"] = _normalize_pem(creds["private_key"])
 
     exchange_class = getattr(ccxt, exchange_id)
     exchange = exchange_class(config)
