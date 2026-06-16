@@ -3,9 +3,52 @@
 #include "mcp/tools/CryptoTradingTools.h"
 
 #include "core/logging/Logger.h"
+#include "mcp/tools/LivePnl.h"
+#include "mcp/tools/SettingsGate.h"
+#include "storage/repositories/SettingsRepository.h"
+#include "storage/repositories/TradeAuditRepository.h"
+#include "trading/CryptoRisk.h"
 #include "trading/ExchangeService.h"
 
+#include <QDateTime>
+#include <QJsonDocument>
+
 namespace openmarketterminal::mcp::tools {
+
+namespace {
+constexpr const char* kCryptoTag = "CryptoTradingTools";
+
+// Mirrors FastLiveTools::read_cap (anon-ns there, not exported): a missing /
+// empty / garbage / non-positive value falls back to the conservative finite
+// default — NEVER "no cap".
+double crypto_read_cap(const QString& key, double default_val) {
+    auto r = SettingsRepository::instance().get(key, QString());
+    if (!r.is_ok())
+        return default_val;
+    bool ok = false;
+    const double v = r.value().toDouble(&ok);
+    return (!ok || v <= 0.0) ? default_val : v;
+}
+
+// Mirrors FastLiveTools::fast_derisk_audit but phase="crypto-live". Every
+// terminal path (gate-denied or exchange-returned) records an append-only row.
+void crypto_exec_audit(const QString& tool, const QString& venue, const QString& decision,
+                       const QString& reason, const QJsonObject& intent) {
+    TradeAuditRow row;
+    row.ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    row.phase = QStringLiteral("crypto-live");
+    row.tool = tool;
+    row.account = venue;
+    row.mode = QStringLiteral("live");
+    row.intent_json = QString::fromUtf8(QJsonDocument(intent).toJson(QJsonDocument::Compact));
+    row.decision = decision;
+    row.reason = reason;
+    row.risk_snapshot_json = QStringLiteral("{}");
+    auto r = TradeAuditRepository::instance().append(row);
+    if (!r.is_ok())
+        LOG_WARN(kCryptoTag, "crypto trade_audit append failed: " + QString::fromStdString(r.error()));
+}
+} // namespace
 
 std::vector<ToolDef> get_crypto_trading_tools() {
     std::vector<ToolDef> tools;
@@ -230,6 +273,142 @@ std::vector<ToolDef> get_crypto_trading_tools() {
                     return ToolResult::fail(r.value("error").toString());
                 return ToolResult::ok_data(r);
             } catch (const std::exception& e) {
+                return ToolResult::fail(e.what());
+            }
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── crypto_submit_order (GATED, real-money) ────────────────────────
+    {
+        ToolDef t;
+        t.name = "crypto_submit_order";
+        t.description = "Place a spot order on the configured crypto exchange (market or limit). "
+                        "Gated: requires the live arms; enforces kill-switch, allowed-venue, and the "
+                        "deterministic risk floor (cli.risk.max_order_value / max_daily_loss).";
+        t.category = "crypto-trading";
+        t.is_destructive = true;
+        t.auth_required = AuthLevel::Authenticated;
+        t.input_schema.properties = QJsonObject{
+            {"symbol", QJsonObject{{"type", "string"}, {"description", "Pair (e.g. BTC/USD)"}}},
+            {"side", QJsonObject{{"type", "string"}, {"description", "buy or sell"}}},
+            {"quantity", QJsonObject{{"type", "number"}, {"description", "Base-asset amount (> 0)"}}},
+            {"order_type", QJsonObject{{"type", "string"}, {"description", "market or limit (default market)"}}},
+            {"limit_price", QJsonObject{{"type", "number"}, {"description", "Required for limit orders"}}}};
+        t.input_schema.required = {"symbol", "side", "quantity"};
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const QString symbol = args.value("symbol").toString().trimmed();
+            const QString side = args.value("side").toString().trimmed().toLower();
+            const double quantity = args.value("quantity").toDouble(0.0);
+            const QString otype = args.value("order_type").toString("market").trimmed().toLower();
+            auto& svc = trading::ExchangeService::instance();
+            const QString venue = svc.get_exchange();
+            QJsonObject intent{{"symbol", symbol}, {"side", side}, {"quantity", quantity},
+                               {"order_type", otype}};
+            if (args.contains("limit_price")) intent["limit_price"] = args.value("limit_price").toDouble();
+
+            if (mcp::cli_kill_switch_engaged()) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "kill switch engaged", intent);
+                return ToolResult::fail("Refused: kill switch engaged");
+            }
+            if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed() && mcp::cli_fast_live_armed())) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "not armed", intent);
+                return ToolResult::fail("Refused: live trading not armed");
+            }
+            if (venue.isEmpty()) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "no exchange configured", intent);
+                return ToolResult::fail("No exchange configured");
+            }
+            if (!mcp::cli_venue_allowed(venue)) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "venue not allowed: " + venue, intent);
+                return ToolResult::fail("Refused: venue not allowed (" + venue + ")");
+            }
+            if (side != "buy" && side != "sell") {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "invalid side", intent);
+                return ToolResult::fail("side must be buy or sell");
+            }
+
+            double price = 0.0;
+            if (otype == "limit") {
+                price = args.value("limit_price").toDouble(0.0);
+            } else {
+                price = svc.get_cached_price(symbol).last;
+                if (price <= 0.0) {
+                    try { price = svc.fetch_ticker(symbol).last; } catch (...) { price = 0.0; }
+                }
+            }
+            const double cap = crypto_read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
+            const auto rv = trading::crypto_risk_verdict(quantity, price, cap);
+            if (!rv.ok) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", rv.reason, intent);
+                return ToolResult::fail("Risk floor: " + rv.reason);
+            }
+            if (!daily_loss_ok(rv.order_value)) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "daily loss cap", intent);
+                return ToolResult::fail("Risk floor: daily loss cap would be exceeded");
+            }
+
+            try {
+                const double limit_px = (otype == "limit") ? price : 0.0;
+                const QJsonObject res = svc.place_exchange_order(symbol, side, otype, quantity, limit_px);
+                if (res.contains("error") || (res.contains("success") && !res.value("success").toBool())) {
+                    const QString msg = res.value("error").toString(res.value("message").toString("exchange error"));
+                    crypto_exec_audit("crypto_submit_order", venue, "rejected", msg, intent);
+                    return ToolResult::fail("Exchange rejected order: " + msg);
+                }
+                const QString status = res.value("status").toString(res.value("data").toObject().value("status").toString("submitted"));
+                crypto_exec_audit("crypto_submit_order", venue, status.isEmpty() ? "submitted" : status, "", intent);
+                return ToolResult::ok_data(res);
+            } catch (const std::exception& e) {
+                crypto_exec_audit("crypto_submit_order", venue, "rejected", e.what(), intent);
+                return ToolResult::fail(e.what());
+            }
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── crypto_cancel_order (GATED) ────────────────────────────────────
+    {
+        ToolDef t;
+        t.name = "crypto_cancel_order";
+        t.description = "Cancel an open order on the configured crypto exchange. Gated: requires the live arms.";
+        t.category = "crypto-trading";
+        t.is_destructive = true;
+        t.auth_required = AuthLevel::Authenticated;
+        t.input_schema.properties = QJsonObject{
+            {"order_id", QJsonObject{{"type", "string"}, {"description", "Exchange order id"}}},
+            {"symbol", QJsonObject{{"type", "string"}, {"description", "Pair the order is on (e.g. BTC/USD)"}}}};
+        t.input_schema.required = {"order_id", "symbol"};
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const QString order_id = args.value("order_id").toString().trimmed();
+            const QString symbol = args.value("symbol").toString().trimmed();
+            auto& svc = trading::ExchangeService::instance();
+            const QString venue = svc.get_exchange();
+            QJsonObject intent{{"order_id", order_id}, {"symbol", symbol}};
+            if (mcp::cli_kill_switch_engaged()) {
+                crypto_exec_audit("crypto_cancel_order", venue, "denied", "kill switch engaged", intent);
+                return ToolResult::fail("Refused: kill switch engaged");
+            }
+            if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed() && mcp::cli_fast_live_armed())) {
+                crypto_exec_audit("crypto_cancel_order", venue, "denied", "not armed", intent);
+                return ToolResult::fail("Refused: live trading not armed");
+            }
+            if (venue.isEmpty() || !mcp::cli_venue_allowed(venue)) {
+                crypto_exec_audit("crypto_cancel_order", venue, "denied", "venue not allowed", intent);
+                return ToolResult::fail("Refused: venue not allowed");
+            }
+            if (order_id.isEmpty() || symbol.isEmpty())
+                return ToolResult::fail("order_id and symbol are required");
+            try {
+                const QJsonObject res = svc.cancel_exchange_order(order_id, symbol);
+                if (res.contains("error")) {
+                    crypto_exec_audit("crypto_cancel_order", venue, "rejected", res.value("error").toString(), intent);
+                    return ToolResult::fail("Cancel failed: " + res.value("error").toString());
+                }
+                crypto_exec_audit("crypto_cancel_order", venue, "cancelled", "", intent);
+                return ToolResult::ok_data(res);
+            } catch (const std::exception& e) {
+                crypto_exec_audit("crypto_cancel_order", venue, "rejected", e.what(), intent);
                 return ToolResult::fail(e.what());
             }
         };
