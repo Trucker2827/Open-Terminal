@@ -30,7 +30,9 @@
 
 #include <QDateTime>
 #include <QPointer>
+#include <QSet>
 #include <QTimer>
+#include <QtConcurrent>
 
 namespace openmarketterminal::screens {
 
@@ -58,6 +60,11 @@ void EquityTradingScreen::hub_subscribe_streaming() {
     auto& hub = datahub::DataHub::instance();
     hub.unsubscribe(this);
     hub_active_ = false;
+
+    // Stop any running broker quote poll so re-subscribes (focus/symbol/mode
+    // change) don't stack multiple timers. Restarted below for live accounts.
+    if (quote_poll_timer_)
+        quote_poll_timer_->stop();
 
     if (focused_account_id_.isEmpty())
         return;
@@ -153,13 +160,20 @@ void EquityTradingScreen::hub_subscribe_streaming() {
                       });
     }
 
-    // Quotes for the ticker + watchlist come from the free MarketDataService feed
-    // (broker-independent, reliable) in BOTH paper and live mode — the per-broker
-    // quote stream is not reliably populated. Live mode keeps the broker
-    // positions/orders/balance topics above; only the price feed is unified here.
-    hub_subscribe_market_quotes();
-
     hub_active_ = true;
+
+    // Live broker accounts: poll the broker's reliable snapshot quotes
+    // (e.g. Alpaca data.alpaca.markets) for the ticker/watchlist/chart, instead
+    // of the flaky free yfinance feed. Paper mode (returned above) keeps yfinance.
+    // hub_active_ is set above so the immediate fire passes poll_broker_quotes()'s guard.
+    if (!quote_poll_timer_) {
+        quote_poll_timer_ = new QTimer(this);
+        quote_poll_timer_->setInterval(4000);  // 4s; Alpaca data is fine at this cadence
+        connect(quote_poll_timer_, &QTimer::timeout, this, &EquityTradingScreen::poll_broker_quotes);
+    }
+    poll_broker_quotes();  // fire once immediately (don't wait 4s for the first quote)
+    quote_poll_timer_->start();
+
     LOG_INFO(TAG, QString("Hub subscribed: %1 / %2").arg(bid, aid));
 }
 
@@ -241,6 +255,51 @@ void EquityTradingScreen::hub_subscribe_market_quotes() {
     }
 }
 
+// Live mode: fetch the focused broker's reliable snapshot quotes (Alpaca data,
+// etc.) off the main thread and route each through apply_equity_quote() on the
+// main thread — the same handler the free yfinance feed uses. Replaces the flaky
+// free feed for connected brokers. Called immediately on (re)subscribe and every
+// 4s by quote_poll_timer_.
+void EquityTradingScreen::poll_broker_quotes() {
+    if (!hub_active_ || focused_is_paper_ || focused_account_id_.isEmpty())
+        return;
+    const QString bid = broker_id_for_focused();
+    if (bid.isEmpty())
+        return;
+    trading::IBroker* broker = BrokerRegistry::instance().get(bid);
+    if (!broker)
+        return;
+    // Gather the symbols to quote: selected + watchlist + positions (dedup, skip empty).
+    QSet<QString> set;
+    set.insert(selected_symbol_);
+    for (const auto& s : watchlist_symbols_)
+        set.insert(s);
+    for (const auto& s : position_symbols_)
+        set.insert(s);
+    QVector<QString> symbols;
+    for (const auto& s : set)
+        if (!s.isEmpty())
+            symbols.append(s);
+    if (symbols.isEmpty())
+        return;
+    // Load creds on the main thread (cheap, cached), pass to the worker.
+    const auto creds = AccountManager::instance().load_credentials(focused_account_id_);
+    QPointer<EquityTradingScreen> self = this;
+    (void)QtConcurrent::run([self, broker, creds, symbols]() {
+        if (!self)
+            return;
+        auto resp = broker->get_quotes(creds, symbols);  // blocking HTTP — off main thread
+        QMetaObject::invokeMethod(self, [self, resp]() {
+            if (!self)
+                return;
+            if (resp.success && resp.data.has_value()) {
+                for (const auto& q : resp.data.value())
+                    self->apply_equity_quote(q.symbol, q);
+            }
+        });
+    });
+}
+
 // Route a candle request to the right source: paper → free MarketDataService
 // history (yfinance); live → the connected broker's candle endpoint.
 void EquityTradingScreen::load_candles_for(const QString& symbol) {
@@ -291,6 +350,8 @@ void EquityTradingScreen::fetch_paper_candles(const QString& symbol) {
 }
 
 void EquityTradingScreen::hub_unsubscribe_all() {
+    if (quote_poll_timer_)
+        quote_poll_timer_->stop();  // stop the live broker quote poll on hide/teardown
     if (!hub_active_)
         return;
     datahub::DataHub::instance().unsubscribe(this);

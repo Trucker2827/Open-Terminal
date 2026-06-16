@@ -188,6 +188,9 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     // Subscribe to the free MarketDataService quote feed (yfinance) — used for the
     // ticker + watchlist price feed in both paper and live mode.
     void hub_subscribe_market_quotes();
+    // Live-mode: fetch the broker's reliable snapshot quotes off-thread and apply
+    // them on the main thread (Alpaca data, etc.) for the ticker/watchlist/chart.
+    void poll_broker_quotes();
     // Per-tick UI + paper-engine update shared by the broker and free feeds.
     void apply_equity_quote(const QString& sym, const trading::BrokerQuote& quote);
     // Candle source router: paper → free yfinance history; live → broker.
@@ -246,6 +249,7 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     // ── Timers (only UI-local timers remain; data timers are in AccountDataStream) ──
     QTimer* clock_timer_ = nullptr;
     QTimer* market_clock_timer_ = nullptr;
+    QTimer* quote_poll_timer_ = nullptr;   // live-mode broker snapshot-quote poll (Alpaca etc.)
 
     // ── Multi-account state ──
     QString focused_account_id_;          // the account targeted by order entry + chart
