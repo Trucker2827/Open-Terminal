@@ -86,3 +86,25 @@ python tests_smoke.py
 ```
 
 The smoke test does not touch broker APIs. It verifies config parsing, dry-run behavior, risk blocking, and the simple backtest function.
+
+## Verification status (read before going live)
+
+This fork hardened the safety layer. What is and isn't verified:
+
+**Verified (tested / run):**
+- `safety.check_trade` is **fail-closed**: a sized order with no determinable price is **blocked**, never allowed to skip `MAX_ORDER_NOTIONAL_USD` (the old market-order bypass). Covered by `tests_smoke.py` + neuter-checked.
+- `MAX_POSITION_NOTIONAL_USD` is enforced on BUYs (was previously dead). Covered by the smoke test.
+- OCC options → 100× notional. Server starts and all 10 tools register on Python **3.11 and 3.14**.
+- Network transport (sse/streamable-http) is refused unless `TRADING_MCP_ALLOW_HTTP=true` **and** the host is loopback. stdio is the default.
+
+**NOT yet verified (needs a one-time live paper smoke — no API keys in this environment):**
+- The SDK **price** lookups (`_estimate_price`) and **position** lookups (`_current_position_notional`) on both venues are written against the official alpaca-py / coinbase-advanced-py APIs but have **not been executed**. Failure modes:
+  - If a price lookup's shape is wrong → it returns `None` → the order **fails closed (blocked)**. Safe, but market orders would then be unusable until fixed.
+  - If a position lookup's shape is wrong → it returns `None` → the position cap is **skipped (fails open)** for that order. The per-order notional cap still applies.
+
+**Discriminating test (run this with paper keys before trusting market orders):**
+1. Put paper Alpaca keys in `.env`, `TRADING_MODE=paper`, `DRY_RUN=true`.
+2. Call `place_order` (market) on a liquid symbol (e.g. AAPL). A sized `would_submit` preview ⇒ price plumbing works; a "no price available" block ⇒ the price lookup needs fixing for your SDK version.
+3. Buy a symbol you already hold ⇒ confirm `current_position_notional` arrives as a number (position cap live), not `None`.
+
+Requires Python 3.11+ (verified on 3.11 and 3.14).
