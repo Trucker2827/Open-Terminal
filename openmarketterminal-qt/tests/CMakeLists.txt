@@ -164,3 +164,11 @@ add_executable(tst_ibkr_conid tst_ibkr_conid.cpp)
 target_include_directories(tst_ibkr_conid PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_ibkr_conid PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_ibkr_conid COMMAND tst_ibkr_conid)
+
+# Alpaca options v1 Task 1 — pure OCC option symbol detector. No Qt-widget deps;
+# links openterminal_core (OptionSymbol.cpp lives there) so the risk floor
+# (Task 2) can use it without re-linking.
+add_executable(tst_option_symbol tst_option_symbol.cpp)
+target_include_directories(tst_option_symbol PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_option_symbol PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_option_symbol COMMAND tst_option_symbol)
