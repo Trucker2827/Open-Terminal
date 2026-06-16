@@ -82,10 +82,13 @@ Options trading additionally requires `ALLOW_OPTIONS_TRADING=true`. Crypto withd
 ## Test
 
 ```bash
-python tests_smoke.py
+python tests_smoke.py                       # RiskManager logic + backtest
+python -m unittest test_place_order -v       # the place_order TOOL path (no keys/network)
 ```
 
 The smoke test does not touch broker APIs. It verifies config parsing, dry-run behavior, risk blocking, and the simple backtest function.
+
+`test_place_order.py` drives the real `place_order` flow (stubbing only the SDK price/position lookups) and locks four behaviors on both venues: within-cap dry-run preview, order-cap block, position-cap block + sell exemption, and fail-closed market-order-with-no-price. Neuter-verified (disabling the fail-closed guard fails the market-no-price cases).
 
 ## Verification status (read before going live)
 
