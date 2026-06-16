@@ -21,6 +21,7 @@
 #include "core/session/SessionManager.h"
 #include "screens/common/ComingSoonScreen.h"
 #include "screens/about/AboutScreen.h"
+#include "screens/observer/ObserverJournalPanel.h"
 #include "screens/agent_config/AgentConfigScreen.h"
 #include "screens/ai_chat/AiChatScreen.h"
 #include "screens/ai_quant_lab/AIQuantLabScreen.h"
@@ -227,6 +228,7 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("profile", []() { return new screens::ProfileScreen; });
     dock_router_->register_factory("settings", []() { return new screens::SettingsScreen; });
     dock_router_->register_factory("about", []() { return new screens::AboutScreen; });
+    dock_router_->register_factory("observer", []() { return new screens::ObserverJournalPanel; });
     dock_router_->register_factory("dinero", []() { return new screens::DineroScreen; });
     dock_router_->register_factory("notes", []() { return new screens::NotesScreen; });
 

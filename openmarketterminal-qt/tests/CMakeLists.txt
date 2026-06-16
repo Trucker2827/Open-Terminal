@@ -188,3 +188,24 @@ add_executable(tst_observer_journal
 target_include_directories(tst_observer_journal PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_observer_journal PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_observer_journal COMMAND tst_observer_journal)
+
+# Observer MCP tool — get_observations handler over ObserverJournalService.
+# Compiles the tool + service sources (Qt6::Core only); invokes the handler
+# directly against a QTemporaryDir fixture, no MCP provider/runtime bring-up.
+add_executable(tst_observer_tools
+    tst_observer_tools.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp/tools/ObserverTools.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/observer/ObserverJournalService.cpp)
+target_include_directories(tst_observer_tools PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_observer_tools PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_observer_tools COMMAND tst_observer_tools)
+
+# Observer GUI view-selection logic — the pure (Core-only) markdown_for() that the
+# QWidget panel renders. No Widgets/markdown link; fixture-driven.
+add_executable(tst_observer_view
+    tst_observer_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/observer/ObserverJournalView.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/observer/ObserverJournalService.cpp)
+target_include_directories(tst_observer_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_observer_view PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_observer_view COMMAND tst_observer_view)

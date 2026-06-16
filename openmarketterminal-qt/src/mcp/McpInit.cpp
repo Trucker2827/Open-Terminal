@@ -33,6 +33,7 @@
 #include "mcp/tools/NewsTools.h"
 #include "mcp/tools/AgenticMemoryTools.h"
 #include "mcp/tools/NotesTools.h"
+#include "mcp/tools/ObserverTools.h"
 #include "mcp/tools/OptionsTools.h"
 #include "mcp/tools/OrderFlowTools.h"
 #include "mcp/tools/PaperTradingTools.h"
@@ -75,6 +76,9 @@ void register_core_tools() {
 
     // notes tab
     provider.register_tools(tools::get_notes_tools());
+
+    // observer journal (read-only views of the headless BTC/ETH observer)
+    provider.register_tools(tools::get_observer_tools());
 
     // agentic mode — Letta tier-3 archival memory (agent-callable mid-step)
     provider.register_tools(tools::get_agentic_memory_tools());
