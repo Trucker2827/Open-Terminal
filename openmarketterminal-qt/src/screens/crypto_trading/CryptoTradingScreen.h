@@ -165,6 +165,11 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     int last_ws_state_ = -1;
     int last_ws_status_label_state_ = -1;  // separate from last_ws_state_ since update_clock is 1Hz
     void apply_feed_mode(bool ws_connected);
+    // Reflect whether the last authenticated daemon call (live balance) succeeded
+    // on the API/DAEMON status chrome. Truthful "account reachable" signal —
+    // distinct from the public WS feed pill (ws_status_). -1 = unknown/neutral.
+    void set_live_auth_indicator(bool ok);
+    int last_auth_state_ = -1;
 
     QStringList watchlist_symbols_ = {
         "BTC/USDT",  "ETH/USDT",  "SOL/USDT",  "BNB/USDT",  "XRP/USDT",   "DOGE/USDT", "ADA/USDT",

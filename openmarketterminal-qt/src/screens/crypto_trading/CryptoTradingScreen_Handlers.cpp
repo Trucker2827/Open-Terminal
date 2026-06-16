@@ -202,21 +202,43 @@ void CryptoTradingScreen::on_mode_toggled() {
         async_fetch_trading_fees(); // populate the Fees tab once on entering live
     } else {
         live_data_timer_->stop();
+        // Leaving live mode → the auth indicator is no longer meaningful; reset
+        // the API/DAEMON chrome to neutral.
+        last_auth_state_ = -1;
+        for (QWidget* w : {static_cast<QWidget*>(api_btn_), static_cast<QWidget*>(ws_transport_)}) {
+            if (!w)
+                continue;
+            w->setProperty("authed", QVariant());
+            w->style()->unpolish(w);
+            w->style()->polish(w);
+        }
         refresh_portfolio();
     }
 }
 
 void CryptoTradingScreen::on_api_clicked() {
     auto* dlg = new CryptoCredentials(exchange_id_, this);
+
+    // If credentials are already stored for this exchange, open the dialog in
+    // "connected" mode (pre-filled non-secret fields + status) rather than a
+    // blank form — otherwise a connected user sees an empty entry screen and
+    // can't tell they're already set up.
+    const ExchangeCredentials existing = ExchangeService::instance().get_credentials();
+    const bool have_existing = !existing.api_key.isEmpty() || !existing.wallet_address.isEmpty();
+    if (have_existing)
+        dlg->mark_connected(existing.api_key, existing.password, existing.wallet_address);
+
     connect(dlg, &CryptoCredentials::credentials_saved, this,
-            [this](const QString& key, const QString& secret, const QString& pw, const QString& wallet,
-                   const QString& pk) {
+            [this, existing](const QString& key, const QString& secret, const QString& pw, const QString& wallet,
+                             const QString& pk) {
                 ExchangeCredentials creds;
                 creds.api_key = key;
-                creds.secret = secret;
+                // Secret/private-key left blank in connected mode → keep the
+                // stored value (it is never shown in the dialog).
+                creds.secret = secret.isEmpty() ? existing.secret : secret;
                 creds.password = pw;
                 creds.wallet_address = wallet;
-                creds.private_key = pk;
+                creds.private_key = pk.isEmpty() ? existing.private_key : pk;
                 ExchangeService::instance().set_credentials(creds);
                 LOG_INFO(TAG, "Credentials saved for " + exchange_id_);
             });

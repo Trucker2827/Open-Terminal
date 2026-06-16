@@ -488,7 +488,16 @@ void CryptoOrderEntry::set_order_type(int idx) {
     update_cost_preview();
 }
 
-void CryptoOrderEntry::set_balance(double balance) {
+// The quote/cash currency to label money figures with. Prefers the actual
+// account balance currency reported by the exchange (e.g. Coinbase settles in
+// USD even though the display pair reads BTC/USDT), falling back to the pair's
+// quote when no live balance currency is known (paper mode, other exchanges).
+QString CryptoOrderEntry::quote_label() const {
+    return balance_currency_.isEmpty() ? quote_of(current_symbol_) : balance_currency_;
+}
+
+void CryptoOrderEntry::set_balance(double balance, const QString& currency) {
+    balance_currency_ = currency.trimmed().toUpper();
     balance_ = balance;
     balance_label_->setText(QString("$%1").arg(balance, 0, 'f', 2));
     update_cost_preview();
@@ -515,7 +524,7 @@ void CryptoOrderEntry::set_symbol(const QString& symbol) {
     // Update unit suffix labels (base on qty, quote on price/stop) by looking
     // up the children we tagged with the ftRoleUnit dynamic property.
     const QString base = base_of(symbol);
-    const QString quote = quote_of(symbol);
+    const QString quote = quote_label(); // current_symbol_ updated above
     for (auto* lbl : findChildren<QLabel*>()) {
         const auto role = lbl->property("ftRoleUnit");
         if (!role.isValid()) continue;
@@ -630,7 +639,7 @@ void CryptoOrderEntry::update_cost_preview() {
         if (limit_p > 0) price = limit_p;
     }
 
-    const QString quote = quote_of(current_symbol_);
+    const QString quote = quote_label();
     const QString base  = base_of(current_symbol_);
     auto fmt_money = [&](double v) { return QString("%1 %2").arg(v, 0, 'f', 2).arg(quote); };
     auto fmt_base  = [&](double v) { return QString("%1 %2").arg(v, 0, 'f', 6).arg(base); };

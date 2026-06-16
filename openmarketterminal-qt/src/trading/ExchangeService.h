@@ -40,6 +40,7 @@ class ExchangeService : public QObject {
     void set_exchange(const QString& exchange_id);
     QString get_exchange() const;
     void set_credentials(const ExchangeCredentials& creds);
+    ExchangeCredentials get_credentials() const;
 
     bool wait_for_daemon_ready(int timeout_ms = 8000);
 

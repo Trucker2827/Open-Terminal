@@ -17,7 +17,9 @@ class CryptoOrderEntry : public QWidget {
   public:
     explicit CryptoOrderEntry(QWidget* parent = nullptr);
 
-    void set_balance(double balance);
+    // currency: the actual account balance currency (e.g. "USD"); when empty,
+    // money figures fall back to the display pair's quote symbol.
+    void set_balance(double balance, const QString& currency = {});
     void set_current_price(double price);
     void set_mode(bool is_paper);
     void set_symbol(const QString& symbol);
@@ -47,6 +49,7 @@ class CryptoOrderEntry : public QWidget {
 
   private:
     void update_cost_preview();
+    QString quote_label() const;
     void set_buy_side(bool is_buy);
     void set_order_type(int idx);
     void retranslateUi();
@@ -121,6 +124,7 @@ class CryptoOrderEntry : public QWidget {
 
     // State
     double balance_ = 0;
+    QString balance_currency_; // actual account balance currency (e.g. "USD"); empty → use pair quote
     double current_price_ = 0;
     bool is_paper_ = true;
     bool is_buy_side_ = true;

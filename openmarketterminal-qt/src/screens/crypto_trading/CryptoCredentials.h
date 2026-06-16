@@ -25,6 +25,12 @@ class CryptoCredentials : public QDialog {
     void set_values(const QString& key, const QString& secret, const QString& password,
                     const QString& wallet_address, const QString& private_key);
 
+    // Put the dialog into "already connected" mode: pre-fill the non-secret
+    // fields (key/password/wallet), show a green connected status, and let the
+    // user save without re-typing the secret (left blank → keep current). The
+    // secret/private-key are deliberately NOT pre-filled so they're never shown.
+    void mark_connected(const QString& key, const QString& password, const QString& wallet_address);
+
   signals:
     void credentials_saved(const QString& api_key, const QString& api_secret, const QString& password,
                            const QString& wallet_address, const QString& private_key);
@@ -50,6 +56,7 @@ class CryptoCredentials : public QDialog {
     QLineEdit* private_key_edit_ = nullptr;
     QLabel* status_label_ = nullptr;
     QString exchange_id_;
+    bool has_saved_secret_ = false; // connected mode — secret may be left blank to keep current
 
     // Text-bearing widgets (cached for retranslateUi)
     QLabel* title_label_ = nullptr;

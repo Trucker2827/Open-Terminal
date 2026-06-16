@@ -106,16 +106,47 @@ void CryptoTradingScreen::async_fetch_live_balance() {
         if (!self)
             return;
         auto result = ExchangeService::instance().fetch_balance();
+        // The daemon returns {"balances": {CUR: {free, used, total}}} with zero
+        // balances filtered out, or {"error": ...} on a failed authenticated
+        // call. A clean fetch is the truthful "live connection works" signal —
+        // WS being up does not mean the account is reachable.
+        const bool authed = !result.contains("error");
+        if (!authed) {
+            LOG_WARN("CryptoTrading", "Live balance error: " + result.value("error").toString());
+        } else {
+            // Keys only — never amounts or credentials. DEBUG: fires every poll.
+            LOG_DEBUG("CryptoTrading", "Live balance currencies: " +
+                                           QStringList(result.value("balances").toObject().keys()).join(", "));
+        }
         QMetaObject::invokeMethod(
             self,
-            [self, result]() {
+            [self, result, authed]() {
                 if (!self)
                     return;
-                double total = result.value("total").toObject().value("USDT").toDouble();
-                double free = result.value("free").toObject().value("USDT").toDouble();
-                double used = result.value("used").toObject().value("USDT").toDouble();
+                self->set_live_auth_indicator(authed);
+                const QJsonObject balances = result.value("balances").toObject();
+                // Pick the cash/quote currency to display. The displayed pair's
+                // quote (e.g. USDT) may be remapped on the exchange — Coinbase
+                // settles in USD — so try the pair quote first, then common
+                // fiat/stablecoins, then fall back to the single largest holding.
+                const QString pair_quote = self->selected_symbol_.section('/', 1, 1).toUpper();
+                QString ccy;
+                for (const QString& cand : {pair_quote, QStringLiteral("USD"), QStringLiteral("USDC"),
+                                            QStringLiteral("USDT"), QStringLiteral("USDE")}) {
+                    if (!cand.isEmpty() && balances.contains(cand)) {
+                        ccy = cand;
+                        break;
+                    }
+                }
+                if (ccy.isEmpty() && !balances.isEmpty())
+                    ccy = balances.keys().first();
+
+                const QJsonObject b = balances.value(ccy).toObject();
+                const double total = b.value("total").toDouble();
+                const double free = b.value("free").toDouble();
+                const double used = b.value("used").toDouble();
                 self->bottom_panel_->set_live_balance(free, total, used);
-                self->order_entry_->set_balance(free);
+                self->order_entry_->set_balance(free, ccy);
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);

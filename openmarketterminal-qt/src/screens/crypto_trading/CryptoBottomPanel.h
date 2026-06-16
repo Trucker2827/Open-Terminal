@@ -64,6 +64,7 @@ class CryptoBottomPanel : public QWidget {
 
   private:
     void retranslateUi();
+    void update_my_trades_empty_text(); // mode-aware empty-state for the MY TRADES tab
     void setup_positions_tab();
     void setup_orders_tab();
     void setup_trades_tab();

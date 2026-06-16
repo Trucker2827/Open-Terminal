@@ -55,6 +55,26 @@ void CryptoTradingScreen::apply_feed_mode(bool ws_connected) {
     LOG_INFO(TAG, ws_connected ? "WS connected" : "WS disconnected (waiting for reconnect)");
 }
 
+void CryptoTradingScreen::set_live_auth_indicator(bool ok) {
+    const int desired = ok ? 1 : 0;
+    if (desired == last_auth_state_)
+        return;
+    last_auth_state_ = desired;
+    const QString state = ok ? QStringLiteral("ok") : QStringLiteral("error");
+    auto apply = [&state](QWidget* w) {
+        if (!w)
+            return;
+        w->setProperty("authed", state);
+        w->style()->unpolish(w);
+        w->style()->polish(w);
+    };
+    apply(api_btn_);
+    apply(ws_transport_);
+    if (api_btn_)
+        api_btn_->setToolTip(ok ? tr("Authenticated — live account reachable")
+                                : tr("Authentication failed — check API credentials"));
+}
+
 void CryptoTradingScreen::flush_ws_updates() {
     apply_feed_mode(ExchangeService::instance().is_ws_connected());
 

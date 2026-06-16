@@ -252,8 +252,7 @@ void CryptoBottomPanel::retranslateUi() {
     if (positions_empty_label_) positions_empty_label_->setText(tr("No open positions."));
     if (orders_empty_label_)    orders_empty_label_->setText(tr("No active orders."));
     if (trades_empty_label_)    trades_empty_label_->setText(tr("No trade history yet."));
-    if (my_trades_empty_label_)
-        my_trades_empty_label_->setText(tr("No exchange-side fills.\nConnect an API key in LIVE mode to populate."));
+    update_my_trades_empty_text();
     if (fees_empty_label_)      fees_empty_label_->setText(tr("No fee schedule loaded."));
 
     // Bulk action buttons
@@ -749,8 +748,20 @@ void CryptoBottomPanel::set_market_info(const MarketInfoData& info) {
         next_funding_label_->setText(QDateTime::fromSecsSinceEpoch(info.next_funding_time).toString("HH:mm:ss"));
 }
 
+void CryptoBottomPanel::update_my_trades_empty_text() {
+    if (!my_trades_empty_label_)
+        return;
+    // In live mode the user is (or should be) connected, so the empty tab means
+    // "no fills on this market" — not "go connect a key", which read as broken
+    // to a connected user. Keep the connect hint only for paper mode.
+    my_trades_empty_label_->setText(
+        is_paper_ ? tr("Exchange fills appear in LIVE mode with a connected API key.")
+                  : tr("No exchange-side fills on this market yet."));
+}
+
 void CryptoBottomPanel::set_mode(bool is_paper) {
     is_paper_ = is_paper;
+    update_my_trades_empty_text();
 }
 
 void CryptoBottomPanel::set_account_id(const QString& account_id) {

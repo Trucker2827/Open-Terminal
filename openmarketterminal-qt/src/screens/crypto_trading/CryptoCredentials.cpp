@@ -304,14 +304,33 @@ void CryptoCredentials::set_values(const QString& key, const QString& secret, co
     private_key_edit_->setText(pk);
 }
 
+void CryptoCredentials::mark_connected(const QString& key, const QString& pw, const QString& wallet) {
+    has_saved_secret_ = true;
+    if (key_edit_)
+        key_edit_->setText(key);
+    if (password_edit_)
+        password_edit_->setText(pw);
+    if (wallet_edit_)
+        wallet_edit_->setText(wallet);
+    // Secret/private-key stay blank but advertise that one is stored.
+    const QString keep = tr("Saved ✓ — leave blank to keep current key");
+    if (secret_multiline_)
+        secret_multiline_->setPlaceholderText(keep);
+    else if (secret_edit_)
+        secret_edit_->setPlaceholderText(keep);
+    if (private_key_edit_)
+        private_key_edit_->setPlaceholderText(keep);
+    set_status(tr("● Connected to %1").arg(exchange_id_.toUpper()), "credStatusOk");
+}
+
 void CryptoCredentials::on_save() {
     const bool wallet_auth = (exchange_id_.compare(QStringLiteral("hyperliquid"), Qt::CaseInsensitive) == 0);
     if (wallet_auth) {
-        if (wallet_address().isEmpty() || private_key().isEmpty()) {
+        if (wallet_address().isEmpty() || (private_key().isEmpty() && !has_saved_secret_)) {
             set_status(tr("Wallet address and private key are required"), "credStatusErr");
             return;
         }
-    } else if (api_key().isEmpty() || api_secret().isEmpty()) {
+    } else if (api_key().isEmpty() || (api_secret().isEmpty() && !has_saved_secret_)) {
         set_status(tr("API key and secret are required"), "credStatusErr");
         return;
     }

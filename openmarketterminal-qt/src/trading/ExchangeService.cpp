@@ -88,6 +88,10 @@ void ExchangeService::set_credentials(const ExchangeCredentials& creds) {
     active_session()->set_credentials(creds);
 }
 
+ExchangeCredentials ExchangeService::get_credentials() const {
+    return active_session()->get_credentials();
+}
+
 bool ExchangeService::wait_for_daemon_ready(int timeout_ms) {
     return ExchangeDaemonPool::instance().wait_for_ready(timeout_ms);
 }
