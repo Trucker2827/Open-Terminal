@@ -78,7 +78,12 @@ def build_block(history):
     n = len(history)
     week = history[-WINDOW_DAYS:] if n > WINDOW_DAYS else history
     span = (f"{week[0]['date']}…{week[-1]['date']}" if week else "no data")
-    btc_s = score_history(history, "btc")   # score the full history, not just the window
+    # Score the FULL history (more samples = a more honest verdict), not just the 7-day
+    # window shown in "Observed". Note: the scorer treats breakdown/trend_down as an
+    # immediate short (direction -1) — i.e. it measures the regime's *directional* edge,
+    # which is more generous than the conservative paper ideas ("wait for a reclaim").
+    # So a positive reading here is a hypothesis to forward-test, never a green light.
+    btc_s = score_history(history, "btc")
     eth_s = score_history(history, "eth")
     leader_days = sum(1 for h in week if h.get("leader") == "ETH")
     lines = [
@@ -86,8 +91,8 @@ def build_block(history):
         f"- **Observed** — {n} day(s) of history total ({span} shown). "
         f"BTC regimes: {fmt_counts(regime_counts(week, 'btc'))} · "
         f"ETH regimes: {fmt_counts(regime_counts(week, 'eth'))} · ETH led {leader_days}/{len(week)} days.",
-        f"- **What would have worked (symmetric, {WEEKLY_HORIZON}d horizon, {WEEKLY_FEE_BPS:.0f}bps/side)** — "
-        f"BTC: {fmt_score(btc_s)}",
+        f"- **What would have worked (symmetric, all recorded signals, {WEEKLY_HORIZON}d horizon, "
+        f"{WEEKLY_FEE_BPS:.0f}bps/side)** — BTC: {fmt_score(btc_s)}",
         f"  - ETH: {fmt_score(eth_s)}",
         f"- **Net lesson** — {_net_lesson(btc_s, eth_s)}",
         "- **Next** — keep observing; only revisit arming *paper* (never live) if expectancy turns "
