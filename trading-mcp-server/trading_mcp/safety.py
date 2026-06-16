@@ -75,6 +75,7 @@ class RiskManager:
         estimated_price: float | None,
         confirmation_token: str | None,
         asset_class: str | None = None,
+        current_position_notional: float | None = None,
     ) -> dict:
         self.bucket.check()
         if quantity <= 0:
@@ -89,12 +90,29 @@ class RiskManager:
             raise TradingBlocked("options trading disabled; set ALLOW_OPTIONS_TRADING=true to enable")
 
         multiplier = option_contract_multiplier(symbol) if option else 1
-        notional = None
-        if estimated_price is not None:
-            notional = abs(quantity * estimated_price * multiplier)
-            if notional > self.settings.max_order_notional_usd:
+        # FAIL-CLOSED: a sized order MUST have a determinable price, or we cannot
+        # enforce the notional cap. Refuse rather than silently skip it (this is
+        # what allowed unbounded market orders before).
+        if estimated_price is None:
+            raise TradingBlocked(
+                "cannot determine order notional (no price available) — refusing to size-check. "
+                "Provide limit_price, or ensure a market price can be fetched for this symbol."
+            )
+        notional = abs(quantity * estimated_price * multiplier)
+        if notional > self.settings.max_order_notional_usd:
+            raise TradingBlocked(
+                f"order notional ${notional:,.2f} exceeds MAX_ORDER_NOTIONAL_USD ${self.settings.max_order_notional_usd:,.2f}"
+            )
+
+        # POSITION CAP: only a BUY increases (long) exposure; a sell reduces it.
+        # Best-effort — enforced when the caller supplies the current position
+        # notional. (Short selling is out of scope for this cap in v1.)
+        if normalized_side == "buy" and current_position_notional is not None:
+            projected = abs(current_position_notional) + notional
+            if projected > self.settings.max_position_notional_usd:
                 raise TradingBlocked(
-                    f"order notional ${notional:,.2f} exceeds MAX_ORDER_NOTIONAL_USD ${self.settings.max_order_notional_usd:,.2f}"
+                    f"projected position notional ${projected:,.2f} exceeds "
+                    f"MAX_POSITION_NOTIONAL_USD ${self.settings.max_position_notional_usd:,.2f}"
                 )
 
         if self.settings.trading_mode == "live" and self.settings.require_confirmation:
