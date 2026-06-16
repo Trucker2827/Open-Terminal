@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 from typing import Literal
 from mcp.server.fastmcp import FastMCP
@@ -128,10 +126,25 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
 
-    # Official MCP SDK versions differ slightly by transport support. stdio is the safest default.
+    # stdio is the safe default for a trading server: a local subprocess with no
+    # network listener. A network transport (sse/streamable-http) has NO built-in
+    # auth here, so it is a deliberate opt-in and loopback-only.
     if args.transport == "stdio":
         mcp.run(transport="stdio")
     else:
+        import os
+        if os.environ.get("TRADING_MCP_ALLOW_HTTP", "").strip().lower() not in {"1", "true", "yes"}:
+            raise SystemExit(
+                f"Refusing to start '{args.transport}': network transports are disabled by default.\n"
+                "stdio is the safe path for a trading server. If you truly need a network transport,\n"
+                "set TRADING_MCP_ALLOW_HTTP=true, keep --host 127.0.0.1, and never expose it without\n"
+                "auth + firewall + HTTPS."
+            )
+        if args.host not in {"127.0.0.1", "localhost", "::1"}:
+            raise SystemExit(
+                f"Refusing to bind non-loopback host {args.host!r}. Use 127.0.0.1; a public bind on a\n"
+                "trading server with no auth is dangerous."
+            )
         mcp.run(transport=args.transport, host=args.host, port=args.port)
 
 
