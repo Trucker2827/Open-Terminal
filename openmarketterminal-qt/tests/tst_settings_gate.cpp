@@ -76,6 +76,15 @@ class TstSettingsGate : public QObject {
         set_key("cli.allow_settings_write", "false");
     }
 
+    void crypto_exec_tools_route_to_fast_live_gate() {
+        // The two crypto execution tools must be gated as fast-live (arms required),
+        // and must NOT be on the raw live_* deny-list.
+        QVERIFY(mcp::is_fast_live_tool(QStringLiteral("crypto_submit_order")));
+        QVERIFY(mcp::is_fast_live_tool(QStringLiteral("crypto_cancel_order")));
+        QVERIFY(!mcp::is_live_execution_tool(QStringLiteral("crypto_submit_order")));
+        QVERIFY(!mcp::is_live_execution_tool(QStringLiteral("crypto_cancel_order")));
+    }
+
     // set_setting must be classified as a settings-WRITE tool; get_setting must not.
     void classification_rule() {
         QVERIFY2(mcp::is_settings_write_tool("set_setting"),

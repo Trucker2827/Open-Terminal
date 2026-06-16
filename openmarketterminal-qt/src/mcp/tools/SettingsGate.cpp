@@ -95,6 +95,7 @@ bool is_fast_live_tool(const QString& name) {
         QStringLiteral("replace_order"),     QStringLiteral("exit_position"),
         QStringLiteral("get_positions"),     QStringLiteral("get_open_orders"),
         QStringLiteral("get_fills"),
+        QStringLiteral("crypto_submit_order"), QStringLiteral("crypto_cancel_order"),
     };
     const QString canonical = McpProvider::instance().resolve_canonical_name(name);
     return kFastLiveTools.contains(canonical);
