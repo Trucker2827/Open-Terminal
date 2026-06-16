@@ -27,6 +27,7 @@
 #include "trading/AccountManager.h"
 #include "trading/TradingTypes.h"
 #include "trading/UnifiedTrading.h"
+#include "trading/options/OptionSymbol.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -109,7 +110,7 @@ RiskVerdict risk_floor_check(const UnifiedOrder& o, double resolved_price) {
     rv.max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
     rv.max_position_qty = read_cap(QStringLiteral("cli.risk.max_position_qty"), 10000.0);
 
-    rv.order_value = o.quantity * resolved_price;
+    rv.order_value = o.quantity * resolved_price * trading::option_contract_multiplier(o.symbol);
     // max_loss is THIS order's worst-case loss — a long's full notional. The live
     // equity submit path feeds it to daily_loss_ok, which reads the daily cap
     // internally and checks (today_loss + this order's max_loss) <= cap. It must

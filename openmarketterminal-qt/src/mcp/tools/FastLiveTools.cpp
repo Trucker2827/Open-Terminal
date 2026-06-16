@@ -35,6 +35,7 @@
 #include "trading/BrokerInterface.h"
 #include "trading/TradingTypes.h"
 #include "trading/UnifiedTrading.h"
+#include "trading/options/OptionSymbol.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -230,7 +231,7 @@ FastRiskVerdict fast_risk_floor(const UnifiedOrder& o, double resolved_price) {
     FastRiskVerdict rv;
     rv.max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
     rv.max_position_qty = read_cap(QStringLiteral("cli.risk.max_position_qty"), 10000.0);
-    rv.order_value = o.quantity * resolved_price;
+    rv.order_value = o.quantity * resolved_price * trading::option_contract_multiplier(o.symbol);
     // A long's worst-case loss is its full notional. daily_loss_ok reads the cap
     // internally and checks (today_loss + THIS order's max_loss) <= cap — so it
     // must receive the order's loss, NOT the cap itself (feeding the cap would

@@ -9,7 +9,7 @@ const QSet<QString>& OrderValidator::valid_exchanges() {
         "NSE_INDEX", "BSE_INDEX", "MCX_INDEX",
         // US / global
         "NYSE", "NASDAQ", "AMEX", "ARCA", "BATS", "CBOE", "LSE", "TSX",
-        "XETRA", "EURONEXT", "XNYS", "XNAS",
+        "XETRA", "EURONEXT", "XNYS", "XNAS", "OPRA",
         // crypto / forex
         "CRYPTO", "FOREX"};
     return kExchanges;

@@ -809,6 +809,42 @@ class TstFastLive : public QObject {
         clear_keys();
     }
 
+    // ── OPTIONS ×100: an option contract is 100 shares. The order-value floor
+    // MUST size option notional ×100. With a 50,000 cap, an OCC-symbol order of
+    // 1 × 1000 (raw 1,000) is 100,000 ×100 → REJECTED at the floor with "max
+    // order value"; the SAME raw notional as a plain equity (×1 = 1,000) must
+    // NOT hit that cap. Proves the deterministic floor counts option exposure. ──
+    void fast_submit_option_uses_100x_multiplier() {
+        FakeBroker::reset_derisk_counters();
+        arm_fast_live();
+        SettingsRepository::instance().set("cli.risk.max_order_value", "50000");
+        // OCC option: 1 × 1000 × 100 = 100,000 > 50,000 -> REJECTED at the floor.
+        auto opt = rt_.call_tool("fast_submit_order",
+                                 QJsonObject{{"symbol", "AAPL260821C00110000"},
+                                             {"side", "buy"},
+                                             {"quantity", 1},
+                                             {"order_type", "limit"},
+                                             {"limit_price", 1000}});
+        const QJsonObject od = opt.data.toObject();
+        QCOMPARE(od.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(od.value("reason").toString().contains("max order value"),
+                 qPrintable("option must be rejected at the order-value floor ×100: "
+                            + od.value("reason").toString()));
+        // Same raw notional as EQUITY: 1 × 1000 × 1 = 1,000 < 50,000 -> must NOT
+        // hit the order-value cap.
+        auto eq = rt_.call_tool("fast_submit_order",
+                                QJsonObject{{"symbol", "AAPL"},
+                                            {"side", "buy"},
+                                            {"quantity", 1},
+                                            {"order_type", "limit"},
+                                            {"limit_price", 1000},
+                                            {"exchange", "NASDAQ"}});
+        QVERIFY2(!eq.data.toObject().value("reason").toString().contains("max order value"),
+                 "equity at same raw notional must NOT hit the order-value cap");
+        SettingsRepository::instance().set("cli.risk.max_order_value", ""); // restore default
+        clear_keys();
+    }
+
     // ── DAILY-LOSS: pre-seed a realized loss over the GUI default cap (5000) →
     // rejected at the daily-loss floor, the broker is NEVER called. ──
     void fast_submit_daily_loss_rejected_no_broker() {
