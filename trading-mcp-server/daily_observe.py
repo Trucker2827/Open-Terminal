@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Headless daily BTC/ETH observation — OBSERVATION ONLY (never trades).
 
-Run by OS cron. Pulls live data via the trading_mcp READ paths only, appends a
-dated entry to trade-journal.md, detects key-level breaks / relative-strength
-flips / large moves vs the prior run (state in observe_state.json), and fires a
-macOS desktop notification on any alert. No LLM, no order placement, no settings
-changes — it imports the read tools and calls only get_product / get_historical_data.
+Run by launchd/cron. Pulls live data via the trading_mcp READ paths only, computes
+a deterministic "trade lesson" (regime / relative strength / volatility / levels to
+watch / a PAPER-ONLY idea / the honest reason for no action — all rule-based, no LLM),
+appends it to trade-journal.md, persists a per-day snapshot to observe_history.jsonl
+(ground truth for the weekly review), detects key-level breaks / RS flips / large moves
+vs the prior run, and fires a best-effort macOS notification on any alert.
+
+No LLM, no order placement, no settings changes — it imports the read tools and calls
+only get_product / get_historical_data. An flock lockfile prevents two runs (e.g. a
+launchd wake catch-up + a manual kickstart) from interleaving on the journal/state.
 """
 import datetime
+import fcntl
 import json
 import os
 import subprocess
@@ -15,17 +21,23 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-os.chdir(HERE)  # so .env and the trading_mcp package resolve regardless of cron's cwd
+os.chdir(HERE)  # so .env and the trading_mcp package resolve regardless of the caller's cwd
 sys.path.insert(0, str(HERE))
 
-from trading_mcp.config import get_settings          # noqa: E402
-from trading_mcp.safety import RiskManager            # noqa: E402
-from trading_mcp.coinbase_tools import CoinbaseService  # noqa: E402
-from trading_mcp.alpaca_tools import AlpacaService    # noqa: E402
+from trading_mcp.config import get_settings              # noqa: E402
+from trading_mcp.safety import RiskManager               # noqa: E402
+from trading_mcp.coinbase_tools import CoinbaseService   # noqa: E402
+from trading_mcp.alpaca_tools import AlpacaService       # noqa: E402
+from trading_mcp.thesis import (                         # noqa: E402
+    classify_regime, vol_state, watch_levels, thesis_text, REGIME_LABEL,
+)
 
 STATE = HERE / "observe_state.json"
+HISTORY = HERE / "observe_history.jsonl"
 JOURNAL = HERE / "trade-journal.md"
+LOCK = HERE / "observe.lock"            # shared with weekly_review.py
 ALERT_24H_PCT = 8.0
+HISTORY_DAYS = 90                        # enough for MA50 + a vol percentile
 
 
 def num(x):
@@ -35,26 +47,46 @@ def num(x):
         return None
 
 
+def acquire_lock():
+    """Non-blocking flock on observe.lock. Returns the open handle (keep it alive for
+    the run; the OS releases it on process exit) or None if another run holds it."""
+    f = open(LOCK, "w")
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
 def read_symbol(cb, al, cb_sym, al_sym):
     prod = cb.client.get_product(cb_sym)
     d = prod.to_dict() if hasattr(prod, "to_dict") else (prod if isinstance(prod, dict) else {})
     price = num(d.get("price"))
     chg24 = num(d.get("price_percentage_change_24h"))
-    hd = al.get_historical_data(al_sym, "1Day", "crypto", 30)
+    hd = al.get_historical_data(al_sym, "1Day", "crypto", HISTORY_DAYS)
     raw = hd.get("bars", {})
     bars = (raw.get("data", {}) or {}).get(al_sym) if isinstance(raw, dict) else None
     if not bars and isinstance(raw, dict):
         bars = raw.get(al_sym)
-    closes = [num(b.get("close")) for b in (bars or []) if b.get("close") is not None]
-    hi30 = max(closes) if closes else None
-    lo30 = min(closes) if closes else None
+    closes = [c for c in (num(b.get("close")) for b in (bars or [])) if c is not None]
+    # Use the live Coinbase print as the freshest "today" close so break detection
+    # tests the current price, not a stale daily bar.
+    if closes and price:
+        closes = closes[:-1] + [price]
+    hi30 = max(closes[-30:]) if closes else None
+    lo30 = min(closes[-30:]) if closes else None
     pos = (price - lo30) / (hi30 - lo30) * 100 if (price and hi30 and lo30 and hi30 > lo30) else None
     r7 = (price / closes[-7] - 1) * 100 if (price and len(closes) >= 7) else None
-    return {"price": price, "chg24": chg24, "hi30": hi30, "lo30": lo30, "pos": pos, "r7": r7}
+    reg = classify_regime(closes) if closes else {"regime": "unclear"}
+    return {"price": price, "chg24": chg24, "hi30": hi30, "lo30": lo30, "pos": pos, "r7": r7,
+            "regime": reg.get("regime", "unclear"),
+            "vol": vol_state(closes) if closes else None,
+            "levels": watch_levels(closes) if closes else None}
 
 
 def notify(title, msg):
-    # Best-effort macOS notification. From cron it may not reach the Aqua session;
+    # Best-effort macOS notification. From launchd it may not reach the Aqua session;
     # the journal + log line are the reliable channels.
     try:
         subprocess.run(["osascript", "-e",
@@ -78,17 +110,37 @@ def detect_alerts(btc, eth, leader, prior):
     return alerts
 
 
-def journal_line(nm, d):
-    return (f"- **{nm}** ${d['price']:,.2f} · 24h {d['chg24']:+.2f}% · 7d {d['r7']:+.1f}% · "
-            f"30d ${d['lo30']:,.0f}–${d['hi30']:,.0f} · at {d['pos']:.0f}% of range")
+def _vol_str(v):
+    return f"{v['label']} ({v['daily_pct']:.1f}%/day, {v['pctile']:.0f}th pctile)" if v else "n/a"
+
+
+def _levels_str(lv):
+    return (f"support ${lv['support']:,.0f} / MA20 ${lv['ma20']:,.0f} / resistance ${lv['resistance']:,.0f}"
+            if lv else "n/a")
+
+
+def build_lesson(btc, eth, leader):
+    """The deterministic 'trade lesson' block — list of markdown lines."""
+    bi, br = thesis_text(btc["regime"], btc["levels"]) if btc["levels"] else ("(no data)", "(no data)")
+    ei, er = thesis_text(eth["regime"], eth["levels"]) if eth["levels"] else ("(no data)", "(no data)")
+    return [
+        f"- **Snapshot** — BTC ${btc['price']:,.0f} (24h {btc['chg24']:+.1f}%, 7d {btc['r7']:+.1f}%) · "
+        f"ETH ${eth['price']:,.0f} (24h {eth['chg24']:+.1f}%, 7d {eth['r7']:+.1f}%)",
+        f"- **Regime** — BTC: {REGIME_LABEL.get(btc['regime'], btc['regime'])} · "
+        f"ETH: {REGIME_LABEL.get(eth['regime'], eth['regime'])}",
+        f"- **Relative strength (7d)** — {leader} leading ({eth['r7']:+.1f}% ETH vs {btc['r7']:+.1f}% BTC)",
+        f"- **Volatility** — BTC {_vol_str(btc['vol'])} · ETH {_vol_str(eth['vol'])}",
+        f"- **Watch tomorrow** — BTC: {_levels_str(btc['levels'])} · ETH: {_levels_str(eth['levels'])}",
+        f"- **Paper idea (not live)** — BTC: {bi}",
+        f"  - ETH: {ei}",
+        f"- **Reason for no action** — BTC: {br}  ETH: {er}",
+    ]
 
 
 def append_journal(now, btc, eth, leader, alerts):
-    lines = [f"\n## {now} (auto)", journal_line("BTC", btc), journal_line("ETH", eth),
-             f"- **Relative (7d):** {leader} leading ({eth['r7']:+.1f}% ETH vs {btc['r7']:+.1f}% BTC)"]
+    lines = [f"\n## {now} (auto)"] + build_lesson(btc, eth, leader)
     lines.append("- **⚠️ ALERT:** " + "; ".join(alerts) if alerts else "- _nothing notable_")
-    lines.append(f"- **Levels to watch:** BTC ${btc['lo30']:,.0f}/${btc['hi30']:,.0f} · "
-                 f"ETH ${eth['lo30']:,.0f}/${eth['hi30']:,.0f}")
+    lines.append("- **Review (fill later):** _did the watched level break/hold? forward 1–3d move vs this read?_")
     block = "\n".join(lines) + "\n"
     text = JOURNAL.read_text() if JOURNAL.exists() else "# Trade Journal\n\n# Daily Observations (live cadence)\n"
     marker = "<!-- Next daily read appends here"
@@ -100,20 +152,54 @@ def append_journal(now, btc, eth, leader, alerts):
     JOURNAL.write_text(text)
 
 
+def append_history(date, btc, eth, leader):
+    """Persist a per-day snapshot for the weekly review. Idempotent per date (a re-run
+    on the same day replaces that day's record rather than duplicating it)."""
+    rec = {"date": date, "leader": leader}
+    for nm, d in (("btc", btc), ("eth", eth)):
+        lv = d.get("levels") or {}
+        rec[nm] = {"price": d["price"], "regime": d["regime"],
+                   "support": lv.get("support"), "resistance": lv.get("resistance"),
+                   "ma20": lv.get("ma20"),
+                   "vol": (d["vol"]["daily_pct"] if d.get("vol") else None)}
+    existing = []
+    if HISTORY.exists():
+        for line in HISTORY.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if o.get("date") != date:
+                existing.append(o)
+    existing.append(rec)
+    HISTORY.write_text("\n".join(json.dumps(o) for o in existing) + "\n")
+
+
 def main():
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts = datetime.datetime.now()
+    now = ts.strftime("%Y-%m-%d %H:%M")
+    today = ts.strftime("%Y-%m-%d")
+
+    lock = acquire_lock()  # noqa: F841 — held for the whole run; released on exit
+    if lock is None:
+        print(f"[{now}] observe: another run holds the lock, skipping")
+        return
+
     s = get_settings()
     cb = CoinbaseService(s, RiskManager(s))
     al = AlpacaService(s, RiskManager(s))
     try:
         btc = read_symbol(cb, al, "BTC-USD", "BTC/USD")
         eth = read_symbol(cb, al, "ETH-USD", "ETH/USD")
-    except Exception as e:  # never crash the cron job
+    except Exception as e:  # never crash the scheduled job
         print(f"[{now}] observe ERROR: {type(e).__name__}: {e}")
-        sys.exit(0)
+        return
     if not (btc["price"] and eth["price"]):
         print(f"[{now}] observe: incomplete data, skipping")
-        sys.exit(0)
+        return
 
     leader = "ETH" if (eth["r7"] or 0) > (btc["r7"] or 0) else "BTC"
     prior = {}
@@ -125,9 +211,11 @@ def main():
     alerts = detect_alerts(btc, eth, leader, prior)
 
     append_journal(now, btc, eth, leader, alerts)
-    STATE.write_text(json.dumps({"ts": now, "btc": btc, "eth": eth, "leader": leader}, indent=2))
+    append_history(today, btc, eth, leader)
+    STATE.write_text(json.dumps({"ts": now, "btc": btc, "eth": eth, "leader": leader}, indent=2, default=str))
 
-    summary = f"[{now}] BTC ${btc['price']:,.0f} ETH ${eth['price']:,.0f} leader {leader}"
+    summary = (f"[{now}] BTC ${btc['price']:,.0f} ({REGIME_LABEL.get(btc['regime'], btc['regime'])}) "
+               f"ETH ${eth['price']:,.0f} ({REGIME_LABEL.get(eth['regime'], eth['regime'])}) leader {leader}")
     if alerts:
         summary += " | ALERTS: " + "; ".join(alerts)
         notify("Crypto watch", "; ".join(alerts))
