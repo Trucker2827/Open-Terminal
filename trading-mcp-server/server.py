@@ -1,5 +1,10 @@
 import argparse
 from typing import Literal
+
+from dotenv import load_dotenv
+
+load_dotenv()  # populate os.environ from .env (so TRADING_MCP_ALLOW_HTTP etc. are visible)
+
 from mcp.server.fastmcp import FastMCP
 
 from trading_mcp.config import get_settings
