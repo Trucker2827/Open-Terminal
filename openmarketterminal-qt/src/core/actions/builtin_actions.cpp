@@ -747,6 +747,7 @@ void register_builtins() {
     register_screen("markets", "Markets", {"mkt", "markets", "market monitor"});
     register_screen("watchlist", "Watchlist", {"wl", "watchlist"});
     register_screen("news", "News", {"news", "top", "headlines"});
+    register_screen("observer", "Observer", {"observe", "observer", "journal", "crypto watch", "btc eth"});
     register_screen("portfolio", "Portfolio", {"port", "portfolio", "holdings"});
     register_screen("equity_research", "Equity Research", {"eq", "des", "fa", "equity research", "company"});
     register_screen("economics", "Economics", {"econ", "ecst", "macro", "economics"});

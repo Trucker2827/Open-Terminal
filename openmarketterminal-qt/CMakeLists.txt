@@ -1414,6 +1414,8 @@ set(SCREEN_SOURCES
     src/screens/settings/VoiceConfigSection.cpp
     src/screens/settings/AiActivitySection.cpp
     src/screens/about/AboutScreen.cpp
+    src/screens/observer/ObserverJournalView.cpp
+    src/screens/observer/ObserverJournalPanel.cpp
     src/screens/trade_viz/TradeVizScreen.cpp
     # DocsScreen split into pages files; see DocsScreen.cpp header.
     src/screens/docs/DocsScreen.cpp
@@ -1864,6 +1866,8 @@ set(APP_SOURCES
 set_source_files_properties(
     src/screens/common/ComingSoonScreen.cpp
     src/screens/about/AboutScreen.cpp
+    src/screens/observer/ObserverJournalView.cpp
+    src/screens/observer/ObserverJournalPanel.cpp
     src/screens/agent_config/AgentChatPanel.cpp
     src/screens/agent_config/AgentConfigScreen.cpp
     src/screens/agent_config/AgentsViewPanel.cpp
