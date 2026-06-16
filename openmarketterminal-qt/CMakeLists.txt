@@ -1008,6 +1008,7 @@ set(MCP_SOURCES
     src/mcp/tools/WatchlistTools.cpp
     src/mcp/tools/NewsTools.cpp
     src/mcp/tools/NotesTools.cpp
+    src/mcp/tools/ObserverTools.cpp
     src/mcp/tools/AgenticMemoryTools.cpp
     src/mcp/tools/FileManagerTools.cpp
     src/mcp/tools/AiChatTools.cpp
@@ -2377,6 +2378,7 @@ set_source_files_properties(
     src/mcp/tools/WatchlistTools.cpp
     src/mcp/tools/NewsTools.cpp
     src/mcp/tools/NotesTools.cpp
+    src/mcp/tools/ObserverTools.cpp
     src/mcp/tools/AgenticMemoryTools.cpp
     src/mcp/tools/FileManagerTools.cpp
     src/mcp/tools/AiChatTools.cpp
