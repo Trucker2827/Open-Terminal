@@ -44,7 +44,7 @@ QWidget* BacktestingScreen::build_top_bar() {
     const int font_px = ui::fonts::TINY;
 
     // Brand chip
-    brand_label_ = new QLabel(tr("BACKTESTING"), bar);
+    brand_label_ = new QLabel(tr("STRATEGY LAB"), bar);
     brand_label_->setAlignment(Qt::AlignCenter);
     apply_pill_geometry(brand_label_);
     brand_label_->setStyleSheet(pill_qss("QLabel",

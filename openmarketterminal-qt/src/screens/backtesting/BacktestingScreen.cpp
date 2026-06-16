@@ -109,7 +109,7 @@ void BacktestingScreen::changeEvent(QEvent* e) {
 
 void BacktestingScreen::retranslateUi() {
     // Top bar (provider/command buttons carry service-provided names — data).
-    if (brand_label_) brand_label_->setText(tr("BACKTESTING"));
+    if (brand_label_) brand_label_->setText(tr("STRATEGY LAB"));
     if (run_button_)  run_button_->setText(tr("RUN"));
 
     // Left panel section/field titles.

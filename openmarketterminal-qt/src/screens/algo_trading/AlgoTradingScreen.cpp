@@ -124,7 +124,7 @@ QWidget* AlgoTradingScreen::build_top_bar() {
     hl->setSpacing(8);
 
     // Title + subtitle matching Economics header style
-    title_label_ = new QLabel(tr("ALGO TRADING"), bar);
+    title_label_ = new QLabel(tr("STRATEGIES"), bar);
     title_label_->setStyleSheet(QString("color:%1; font-size:12px; font-weight:700;"
                                          "letter-spacing:1.5px; background:transparent;")
                                     .arg(ui::colors::TEXT_PRIMARY()));
@@ -238,7 +238,7 @@ void AlgoTradingScreen::changeEvent(QEvent* event) {
 }
 
 void AlgoTradingScreen::retranslateUi() {
-    if (title_label_)   title_label_->setText(tr("ALGO TRADING"));
+    if (title_label_)   title_label_->setText(tr("STRATEGIES"));
     if (engine_caption_) engine_caption_->setText(tr("ENGINE:"));
     if (status_label_)  status_label_->setText(tr("IDLE"));
     if (deploy_count_label_) deploy_count_label_->setText(tr("%1 LIVE").arg(active_deployments_));

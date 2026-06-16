@@ -189,7 +189,7 @@ QWidget* CodeEditorScreen::build_header() {
     hl->setContentsMargins(14, 0, 12, 0);
     hl->setSpacing(8);
 
-    header_title_ = new QLabel(tr("OPENMARKETTERMINAL NOTEBOOK"), bar);
+    header_title_ = new QLabel(tr("NOTEBOOKS"), bar);
     header_title_->setObjectName("nbHeaderTitle");
     header_title_->setStyleSheet(QString("font-family:%1; font-size:%2px;").arg(fonts::DATA_FAMILY).arg(fonts::SMALL));
     hl->addWidget(header_title_);
@@ -1014,7 +1014,7 @@ void CodeEditorScreen::changeEvent(QEvent* event) {
 
 void CodeEditorScreen::retranslateUi() {
     // Header
-    if (header_title_) header_title_->setText(tr("OPENMARKETTERMINAL NOTEBOOK"));
+    if (header_title_) header_title_->setText(tr("NOTEBOOKS"));
     const QStringList tab_labels = {tr("LIBRARY"), tr("EDITOR")};
     for (int i = 0; i < view_btns_.size() && i < tab_labels.size(); ++i)
         view_btns_[i]->setText(tab_labels[i]);
@@ -1033,7 +1033,7 @@ void CodeEditorScreen::retranslateUi() {
     if (py_label_) py_label_->setText(tr("Python"));
     refresh_kernel_label();
     if (lib_toolbar_lbl_)
-        lib_toolbar_lbl_->setText(tr("OPENMARKETTERMINAL NOTEBOOK LIBRARY — curated finance, economics, trading, "
+        lib_toolbar_lbl_->setText(tr("NOTEBOOK LIBRARY — curated finance, economics, trading, "
                                      "investing, portfolio & quant notebooks"));
 
     // Status bar

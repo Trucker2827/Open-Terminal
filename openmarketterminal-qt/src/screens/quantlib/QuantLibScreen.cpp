@@ -200,7 +200,7 @@ QWidget* QuantLibScreen::create_header() {
 
     auto* title_col = new QVBoxLayout;
     title_col->setSpacing(0);
-    header_title_ = new QLabel(tr("QUANTLIB SUITE"));
+    header_title_ = new QLabel(tr("PRICING LAB"));
     header_title_->setObjectName("qlHeaderTitle");
     header_sub_ = new QLabel(tr("Local QuantLib pricing engine (QuantLib + scipy)"));
     header_sub_->setObjectName("qlHeaderSub");
@@ -424,7 +424,7 @@ QWidget* QuantLibScreen::create_status_bar() {
     auto* hl = new QHBoxLayout(bar);
     hl->setContentsMargins(16, 0, 16, 0);
 
-    status_left_ = new QLabel(tr("QUANTLIB SUITE"));
+    status_left_ = new QLabel(tr("PRICING LAB"));
     status_left_->setObjectName("qlStatusText");
     hl->addWidget(status_left_);
     hl->addStretch(1);
@@ -457,8 +457,8 @@ void QuantLibScreen::changeEvent(QEvent* event) {
 void QuantLibScreen::retranslateUi() {
     // Fixed chrome. Module/panel/endpoint names are API-catalog data and are
     // intentionally not translated.
-    if (header_title_)         header_title_->setText(tr("QUANTLIB SUITE"));
-    if (header_sub_)           header_sub_->setText(tr("Remote pricing client — requires an external QuantLib server"));
+    if (header_title_)         header_title_->setText(tr("PRICING LAB"));
+    if (header_sub_)           header_sub_->setText(tr("Local QuantLib pricing engine (QuantLib + scipy)"));
     if (header_badge_) {
         auto r = SettingsRepository::instance().get(QStringLiteral("connectors.quantlib_url"));
         const bool configured = r.is_ok() && !r.value().trimmed().isEmpty();
@@ -468,7 +468,7 @@ void QuantLibScreen::retranslateUi() {
     if (endpoint_panel_title_) endpoint_panel_title_->setText(tr("ENDPOINT"));
     if (json_body_label_)      json_body_label_->setText(tr("REQUEST BODY (JSON)"));
     if (results_title_)        results_title_->setText(tr("RESULTS"));
-    if (status_left_)          status_left_->setText(tr("QUANTLIB SUITE"));
+    if (status_left_)          status_left_->setText(tr("PRICING LAB"));
     if (exec_btn_ && !loading_) exec_btn_->setText(tr("EXECUTE COMPUTATION"));
 
     // Status module prefix (module name itself is data)

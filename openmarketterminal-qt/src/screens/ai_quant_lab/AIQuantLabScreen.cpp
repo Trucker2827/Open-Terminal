@@ -469,7 +469,7 @@ void AIQuantLabScreen::changeEvent(QEvent* event) {
 }
 
 void AIQuantLabScreen::retranslateUi() {
-    if (brand_lbl_)        brand_lbl_->setText(tr("AI QUANT LAB"));
+    if (brand_lbl_)        brand_lbl_->setText(tr("QUANT LAB"));
     if (module_count_lbl_) module_count_lbl_->setText(tr("%1 MODULES").arg(modules_.size()));
     if (sidebar_title_)    sidebar_title_->setText(tr("MODULES"));
     if (info_title_)       info_title_->setText(tr("MODULE INFO"));
