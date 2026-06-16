@@ -1,9 +1,15 @@
 #include "trading/CryptoRisk.h"
 
+#include <cmath>
+
 namespace openmarketterminal::trading {
 
 CryptoRiskVerdict crypto_risk_verdict(double quantity, double resolved_price, double max_order_value) {
     CryptoRiskVerdict v;
+    if (!std::isfinite(quantity) || !std::isfinite(resolved_price) || !std::isfinite(max_order_value)) {
+        v.reason = QStringLiteral("non-finite input");
+        return v;
+    }
     if (quantity <= 0.0) {
         v.reason = QStringLiteral("quantity must be > 0");
         return v;
