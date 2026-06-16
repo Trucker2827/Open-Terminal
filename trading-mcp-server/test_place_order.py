@@ -90,5 +90,28 @@ class TestCoinbasePlaceOrder(unittest.TestCase):
             _coinbase(price=100.0).place_order("BTC-USD", "buy", 10, "market")  # 1000 > 500
 
 
+class TestMcpToolSchemas(unittest.TestCase):
+    """Guards the @tool_error signature-preservation regression: every tool must
+    advertise its REAL parameters, not the wrapper's (*args, **kwargs)."""
+
+    def _schemas(self):
+        import asyncio
+        import server
+        return {t.name: (t.inputSchema or {}) for t in asyncio.run(server.mcp.list_tools())}
+
+    def test_place_order_exposes_named_params(self):
+        props = (self._schemas()["place_order"].get("properties") or {})
+        for p in ("symbol", "side", "quantity", "type", "limit_price", "venue"):
+            self.assertIn(p, props)
+        self.assertNotIn("args", props)
+        self.assertNotIn("kwargs", props)
+
+    def test_no_tool_leaks_varargs_schema(self):
+        for name, schema in self._schemas().items():
+            props = schema.get("properties") or {}
+            self.assertNotIn("args", props, f"{name} leaked *args into its schema")
+            self.assertNotIn("kwargs", props, f"{name} leaked **kwargs into its schema")
+
+
 if __name__ == "__main__":
     unittest.main()

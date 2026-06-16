@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from typing import Any, Callable
@@ -27,15 +28,17 @@ def json_safe(value: Any) -> Any:
 
 
 def tool_error(fn: Callable[..., Any]) -> Callable[..., Any]:
+    # functools.wraps sets __wrapped__, so inspect.signature() (used by FastMCP to
+    # build each tool's input schema) follows through to fn's REAL parameters.
+    # Without it the wrapper's (*args, **kwargs) signature leaks into the schema
+    # and every tool becomes uncallable (clients must pass the named params).
+    @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return fn(*args, **kwargs)
         except Exception as exc:  # MCP tools should return structured errors, not tracebacks.
             logging.getLogger(fn.__module__).exception("tool failed: %s", fn.__name__)
             return {"ok": False, "error_type": exc.__class__.__name__, "error": str(exc)}
-    wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
-    wrapper.__annotations__ = getattr(fn, "__annotations__", {})
     return wrapper
 
 
