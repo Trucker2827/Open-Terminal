@@ -1,0 +1,10 @@
+mcp[cli]>=1.10.0
+alpaca-py>=0.40.0
+coinbase-advanced-py>=1.8.0
+python-dotenv>=1.0.1
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+pandas>=2.2.2
+numpy>=1.26.4
+cachetools>=5.3.3
+pytest>=8.2.0
