@@ -29,7 +29,7 @@ class UnifiedTrading : public QObject {
     UnifiedOrderResponse cancel_order(const QString& order_id);
 
     // Account-aware order routing (new — uses AccountManager for credentials)
-    UnifiedOrderResponse place_order(const QString& account_id, const UnifiedOrder& order);
+    UnifiedOrderResponse place_order(const QString& account_id, UnifiedOrder order);
     UnifiedOrderResponse cancel_order(const QString& account_id, const QString& order_id);
     UnifiedOrderResponse modify_order(const QString& account_id, const QString& order_id,
                                       const QJsonObject& modifications);

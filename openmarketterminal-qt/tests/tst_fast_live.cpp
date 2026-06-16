@@ -99,7 +99,11 @@ class FakeBroker : public trading::IBroker {
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
     const char* name() const override { return "FakeBroker"; }
     const char* base_url() const override { return "https://fake.invalid"; }
-    trading::BrokerProfile profile() const override { return {}; }
+    trading::BrokerProfile profile() const override {
+        trading::BrokerProfile p;
+        p.default_exchange = "NASDAQ";
+        return p;
+    }
 
     trading::TokenExchangeResponse exchange_token(const QString&, const QString&,
                                                   const QString&) override {
@@ -1194,6 +1198,52 @@ class TstFastLive : public QObject {
                  qPrintable("market order with seeded cache must NOT be rejected; reason: "
                             + d.value("reason").toString()));
         QCOMPARE(FakeBroker::place_calls, 1);
+        clear_keys();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // BUG #3 regression test — default exchange from broker profile
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── A LIMIT order WITHOUT an "exchange" key must NOT be rejected with
+    // "Validation failed: Exchange is required". UnifiedTrading::place_order must
+    // default order.exchange from the account's broker profile (here "NASDAQ" from
+    // FakeBroker::profile().default_exchange) BEFORE running OrderValidator. ──
+    // NEUTER-PROOF: without the defaulting block in UnifiedTrading::place_order,
+    // the validator sees an empty exchange and rejects; place_calls stays 0 and the
+    // message contains "Exchange is required". The discriminating assertion is
+    // place_calls==1 (broker was reached) — it cannot be satisfied without the fix.
+    void fast_submit_order_without_exchange_defaults_from_profile() {
+        FakeBroker::reset_derisk_counters();
+        const QString acct = arm_fast_live();
+        // Reconcile fixture: FakeBroker::place_order returns "FAKE-1".
+        trading::BrokerOrderInfo fill;
+        fill.order_id = "FAKE-1";
+        fill.symbol = "AAPL";
+        fill.side = "BUY";
+        fill.quantity = 1;
+        fill.filled_qty = 1;
+        fill.avg_price = 200.0;
+        fill.status = "filled";
+        FakeBroker::reconcile_order = fill;
+        // Deliberately omit "exchange" — the bug this test gates.
+        QJsonObject args{{"symbol", "AAPL"}, {"side", "buy"},
+                         {"quantity", 1}, {"order_type", "limit"},
+                         {"limit_price", 200}};
+        auto res = rt_.call_tool("fast_submit_order", args);
+        QVERIFY2(res.success, qPrintable("fast_submit_order must succeed (handler-level): " + res.error));
+        const QJsonObject d = res.data.toObject();
+        const QString status = d.value("status").toString();
+        const QString msg = d.value("message").toString();
+        // Primary: broker was reached — impossible without the fix.
+        QCOMPARE(FakeBroker::place_calls, 1);
+        // Secondary: status must not be the validation rejection.
+        QVERIFY2(status != QStringLiteral("rejected"),
+                 qPrintable("order without exchange must NOT be rejected; status=" + status
+                            + " message=" + msg));
+        QVERIFY2(!msg.contains("Exchange is required"),
+                 qPrintable("message must NOT contain 'Exchange is required': " + msg));
+        QCOMPARE(status, QStringLiteral("filled"));
         clear_keys();
     }
 

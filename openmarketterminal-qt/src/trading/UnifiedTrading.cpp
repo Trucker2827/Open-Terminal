@@ -177,10 +177,19 @@ UnifiedOrderResponse UnifiedTrading::cancel_order(const QString& order_id) {
 // Account-Aware Order Routing (new multi-account API)
 // ============================================================================
 
-UnifiedOrderResponse UnifiedTrading::place_order(const QString& account_id, const UnifiedOrder& order) {
+UnifiedOrderResponse UnifiedTrading::place_order(const QString& account_id, UnifiedOrder order) {
     auto account = AccountManager::instance().get_account(account_id);
     if (account.account_id.isEmpty())
         return {false, "", "Account not found: " + account_id, ""};
+
+    // Default the exchange from the account's broker profile when the caller
+    // omitted it. US brokers (e.g. Alpaca) don't need an exchange — the adapter
+    // sends just the symbol — but OrderValidator requires a valid value. Brokers
+    // that need a specific exchange can still pass one explicitly.
+    if (order.exchange.trimmed().isEmpty()) {
+        if (IBroker* b = AccountManager::instance().broker_for(account_id))
+            order.exchange = b->profile().default_exchange;
+    }
 
     // Pre-flight validation (Phase 3 §9).
     auto vr = OrderValidator::validate(order);
