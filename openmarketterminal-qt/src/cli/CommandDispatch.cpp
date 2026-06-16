@@ -1,5 +1,6 @@
 #include "cli/CommandDispatch.h"
 #include "cli/AiRunCommand.h"
+#include "cli/ObserveCommand.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
 #include "cli/ServeCommand.h"
@@ -32,6 +33,7 @@ static int usage() {
     std::fprintf(stderr,
         "openterminalcli [--json] [--headless] [--profile <name>] <group> <command> [args]\n"
         "  status\n  version\n"
+        "  observe latest | week | alerts [N]\n"
         "  mcp list | describe <tool> | call <tool> '<json>'\n"
         "  hub topics | peek <topic> | request <topic>\n"
         "  quote <SYM...>\n"
@@ -174,6 +176,10 @@ int dispatch(QStringList args) {
         std::fprintf(stderr, "%s (profile '%s')\n",
                      describe(std::get<DiscoveryError>(r)), qUtf8Printable(opts.profile));
         return 3;
+    }
+    if (group == "observe") {
+        // Pure-local read of the headless observer's journal (no transport).
+        return observe_command(opts, args);
     }
     if (group == "serve") {
         const QString sub = args.isEmpty() ? QString() : args.first();

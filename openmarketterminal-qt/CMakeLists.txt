@@ -1154,6 +1154,7 @@ set(SERVICE_SOURCES
     src/services/python_cli/PythonCliService.cpp
     src/services/markets/MarketDataService.cpp
     src/services/markets/MarketSearchService.cpp
+    src/services/observer/ObserverJournalService.cpp
     src/services/connectors/YahooConnector.cpp
     src/services/connectors/WorldBankConnector.cpp
     src/services/connectors/FredConnector.cpp
@@ -3155,6 +3156,7 @@ add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
     src/cli/AiRunCommand.cpp
+    src/cli/ObserveCommand.cpp
     src/cli/ServeCommand.cpp
     src/cli/BridgeDiscovery.cpp
     src/cli/BridgeClient.cpp
