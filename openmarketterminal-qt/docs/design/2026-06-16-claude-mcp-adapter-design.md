@@ -1,6 +1,6 @@
 # OpenTerminal → Claude Code MCP Adapter — Design Spec
 
-**Status:** Approved direction (1a + 3a: bridge the running terminal into Claude Code as native MCP tools). **Real-money-capable surface (gated server-side).**
+**Status:** Approved (1a + 3a: bridge the running terminal into Claude Code as native MCP tools). **Scope locked: READ-ONLY v1** — native tools cover the curated catalog (data/analysis/balances/market); real-money execution is NOT exposed natively and stays on the deliberate `openterminalcli mcp call` path.
 **Date:** 2026-06-16
 
 ## Goal
@@ -20,16 +20,14 @@ Claude Code ──(MCP stdio, newline-delimited JSON-RPC 2.0)──► adapter (
 ## MCP methods implemented (minimal server)
 - `initialize` → `{protocolVersion: "2024-11-05", capabilities: {tools: {}}, serverInfo: {name: "openterminal", version: "0.1"}}`.
 - `notifications/initialized` → no response (notification).
-- `tools/list` → run `openterminalcli --json mcp list` → parse `{"tools":[{name, description, inputSchema, serverId}]}` → return MCP `{tools: [{name, description, inputSchema}]}`. **Merge** the static execution-tool allowlist (below). De-dupe by name.
+- `tools/list` → run `openterminalcli --json mcp list` → parse `{"tools":[{name, description, inputSchema, serverId}]}` → return MCP `{tools: [{name, description, inputSchema}]}`. **Pure passthrough of the curated catalog** (which already excludes the gated execution tools — exactly the read-only scope we want for v1; no static allowlist).
 - `tools/call` (`{name, arguments}`) → run `openterminalcli --json mcp call <name> '<arguments-json>'`.
   - exit 0 → stdout is the result JSON; return `{content: [{type: "text", text: <stdout>}]}`.
   - non-zero / stderr `tool error: <msg>` → return `{content: [{type: "text", text: <msg>}], isError: true}` (an MCP tool error, not a protocol error — so the agent sees the failure and can react).
 - Unknown method → JSON-RPC error `-32601`.
 
-## The hidden-execution-tools allowlist (the one real wrinkle)
-`openterminalcli mcp list` returns a **curated catalog that omits the gated execution tools** (`crypto_submit_order`, `crypto_cancel_order`, `fast_submit_order`, `cancel_order`) — though `mcp call` executes them fine. For Claude Code to invoke a tool natively it must appear in `tools/list`. So the adapter carries a **small static table** of those tools' names + input schemas (hand-written, mirroring their real schemas) and merges them into `tools/list`.
-
-**Decision (flag for user):** this exposes **real-money execution** as native Claude Code tools. The server-side gates (kill-switch → arms → venue/allowed-account → risk floor → audit) apply identically regardless of whether a tool is invoked via Bash or native MCP — invocation path does not weaken any gate. v1 includes the execution tools (consistent with "drive the terminal"); if the user prefers, v1 can ship **read-only** (omit the allowlist) and execution stays via Bash.
+## Execution tools: intentionally NOT exposed (v1 read-only)
+`openterminalcli mcp list` returns a **curated catalog that already omits the gated execution tools** (`crypto_submit_order`, `crypto_cancel_order`, `fast_submit_order`, `cancel_order`). For v1 the adapter is a **pure passthrough**, so that omission is the feature: real-money execution is **not** a native Claude Code tool and continues to require the deliberate `openterminalcli mcp call` Bash motion. (The server-side gates apply on either path; the read-only choice is about keeping live order placement an explicit, separate action rather than a frictionless native tool.) Exposing execution natively — via a small static allowlist merged into `tools/list` — is a documented **follow-up**, not v1.
 
 ## Data flow (example)
 ```
@@ -46,7 +44,7 @@ Claude Code → tools/call {name: "get_crypto_balance", arguments: {}}
 - Adapter never writes to stdout except framed JSON-RPC (logs go to stderr only — stdout pollution breaks the MCP transport).
 
 ## Testing
-- **Unit (stdio protocol, no Claude Code, no terminal):** pipe a scripted JSON-RPC session into the adapter (`initialize` → `notifications/initialized` → `tools/list` → `tools/call`) with `openterminalcli` stubbed via a fake on `$PATH`/`$OPENTERMINAL_CLI`; assert: valid `initialize` result; `tools/list` includes a stub tool **and** the static execution tools; `tools/call` success maps stdout→content; `tool error:` maps to `isError`; unknown method → `-32601`; stdout contains only JSON-RPC (no stray prints). A Python `unittest` driving the adapter as a subprocess.
+- **Unit (stdio protocol, no Claude Code, no terminal):** pipe a scripted JSON-RPC session into the adapter (`initialize` → `notifications/initialized` → `tools/list` → `tools/call`) with `openterminalcli` stubbed via a fake set through `$OPENTERMINAL_CLI`; assert: valid `initialize` result; `tools/list` passes through the stub's catalog tools (and, since v1 is read-only, adds **no** extra/execution tools); `tools/call` success maps stdout→content; `tool error:` maps to `isError`; unknown method → `-32601`; stdout contains only JSON-RPC (no stray prints). A Python `unittest` driving the adapter as a subprocess.
 - **Integration (manual):** `claude mcp add openterminal -- python3 <path>` with the app running → confirm `mcp__openterminal__get_ticker` etc. appear and a read call returns live data. (Done by the operator/me in-session, not a subagent.)
 
 ## Files
@@ -56,12 +54,13 @@ Claude Code → tools/call {name: "get_crypto_balance", arguments: {}}
 - **No C++ changes.** No change to the terminal, the bridge, or any tool.
 
 ## Risks
-- **Real-money tools become native** — mitigated: gates are server-side and invocation-path-independent; documented; user can opt read-only.
+- (Resolved for v1) Real-money tools are **not** exposed natively — read-only scope.
 - **Process-spawn per call** (~tens of ms latency) — acceptable for interactive use; a direct-HTTP-to-bridge optimization is a possible follow-up (would re-implement discovery + the GET/POST bridge protocol — deferred).
 - **Ephemeral CLI path** (`/tmp/ot-build-ht`) — mitigated by `$OPENTERMINAL_CLI`; a stable install path is a follow-up.
 - **Catalog drift** — if the hidden execution-tool schemas change, the static allowlist goes stale; mitigated by keeping the allowlist minimal (name + the few required params) and noting it in the README.
 
 ## Follow-ups (out of scope)
+- **Expose execution tools natively** (static allowlist merged into `tools/list` for `crypto_submit_order`/`crypto_cancel_order`/`fast_submit_order`/`cancel_order`) — deferred from v1 by the read-only decision.
 - Direct HTTP-to-bridge (skip the `openterminalcli` subprocess).
 - Auto-resolve a stable installed `openterminalcli`.
 - Surface the full (uncurated) tool catalog if the bridge later exposes one.
