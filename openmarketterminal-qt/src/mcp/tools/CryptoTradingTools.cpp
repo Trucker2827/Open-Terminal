@@ -159,6 +159,83 @@ std::vector<ToolDef> get_crypto_trading_tools() {
         tools.push_back(std::move(t));
     }
 
+    // ── get_crypto_balance ─────────────────────────────────────────────
+    {
+        ToolDef t;
+        t.name = "get_crypto_balance";
+        t.description = "Get account balances (per-currency free/used/total) from the configured crypto exchange.";
+        t.category = "crypto-trading";
+        t.handler = [](const QJsonObject&) -> ToolResult {
+            auto& svc = trading::ExchangeService::instance();
+            if (svc.get_exchange().isEmpty())
+                return ToolResult::fail("No exchange configured");
+            try {
+                const QJsonObject r = svc.fetch_balance();
+                if (r.contains("error"))
+                    return ToolResult::fail(r.value("error").toString());
+                return ToolResult::ok_data(r);
+            } catch (const std::exception& e) {
+                return ToolResult::fail(e.what());
+            }
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── get_crypto_open_orders ─────────────────────────────────────────
+    {
+        ToolDef t;
+        t.name = "get_crypto_open_orders";
+        t.description = "Get open orders on the configured crypto exchange (optionally filtered by symbol).";
+        t.category = "crypto-trading";
+        t.input_schema.properties = QJsonObject{
+            {"symbol", QJsonObject{{"type", "string"}, {"description", "Optional pair filter (e.g. BTC/USD)"}}}};
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            auto& svc = trading::ExchangeService::instance();
+            if (svc.get_exchange().isEmpty())
+                return ToolResult::fail("No exchange configured");
+            try {
+                const QJsonObject r = svc.fetch_open_orders_live(args.value("symbol").toString().trimmed());
+                if (r.contains("error"))
+                    return ToolResult::fail(r.value("error").toString());
+                return ToolResult::ok_data(r);
+            } catch (const std::exception& e) {
+                return ToolResult::fail(e.what());
+            }
+        };
+        tools.push_back(std::move(t));
+    }
+
+    // ── get_crypto_trades ──────────────────────────────────────────────
+    {
+        ToolDef t;
+        t.name = "get_crypto_trades";
+        t.description = "Get recent personal fills for a symbol on the configured crypto exchange.";
+        t.category = "crypto-trading";
+        t.input_schema.properties = QJsonObject{
+            {"symbol", QJsonObject{{"type", "string"}, {"description", "Trading pair (e.g. BTC/USD)"}}},
+            {"limit", QJsonObject{{"type", "integer"}, {"description", "Max fills (default 50, cap 200)"}}}};
+        t.input_schema.required = {"symbol"};
+        t.handler = [](const QJsonObject& args) -> ToolResult {
+            const QString symbol = args.value("symbol").toString().trimmed();
+            if (symbol.isEmpty())
+                return ToolResult::fail("Missing 'symbol'");
+            int limit = args.value("limit").toInt(50);
+            if (limit <= 0 || limit > 200) limit = 50;
+            auto& svc = trading::ExchangeService::instance();
+            if (svc.get_exchange().isEmpty())
+                return ToolResult::fail("No exchange configured");
+            try {
+                const QJsonObject r = svc.fetch_my_trades(symbol, limit);
+                if (r.contains("error"))
+                    return ToolResult::fail(r.value("error").toString());
+                return ToolResult::ok_data(r);
+            } catch (const std::exception& e) {
+                return ToolResult::fail(e.what());
+            }
+        };
+        tools.push_back(std::move(t));
+    }
+
     return tools;
 }
 
