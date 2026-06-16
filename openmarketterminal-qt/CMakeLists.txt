@@ -1106,6 +1106,8 @@ set(TRADING_SOURCES
     src/trading/instruments/SymbolResolver.cpp
     # Unified cross-broker search — additional broker instrument sources
     src/trading/instruments/InstrumentSources.cpp
+    # AI-activity feed (Task 2 — pure formatter)
+    src/trading/ai_activity/AiActivityFormat.cpp
 )
 
 # Algo Engine (native C++ trading engine — replaces Python algo runner)

@@ -1,4 +1,5 @@
 #include "storage/repositories/TradeAuditRepository.h"
+#include "trading/ai_activity/AiActivityFormat.h"
 #include "core/events/EventBus.h"
 #include "core/headless/HeadlessRuntime.h"
 #include <QtTest>
@@ -16,6 +17,10 @@ class TestAiActivity : public QObject {
     void initTestCase();
     void cleanupTestCase();
     void appendPublishesTradeAuditEvent();
+    void formatToastsTerminalOutcomes();
+    void formatNoToastForPrepareOrValidation();
+    void formatSeverityMapping();
+    void formatMessageAndMalformedIntent();
 };
 
 void TestAiActivity::initTestCase() {
@@ -47,6 +52,45 @@ void TestAiActivity::appendPublishesTradeAuditEvent() {
     QCOMPARE(got.value("reason").toString(),          QString("filled"));
     QCOMPARE(got.value("risk_snapshot_json").toString(), QString(R"({"x":1})"));
     EventBus::instance().unsubscribe(id);
+}
+
+using openmarketterminal::trading::format_activity;
+using Sev = openmarketterminal::trading::ActivityView::Severity;
+static openmarketterminal::TradeAuditRow mkrow(const QString& phase, const QString& tool,
+        const QString& decision, const QString& mode = "live", const QString& intent = "{}") {
+    openmarketterminal::TradeAuditRow r; r.ts="2026-06-15T20:00:00Z"; r.phase=phase; r.tool=tool;
+    r.decision=decision; r.mode=mode; r.intent_json=intent; r.reason=decision;
+    r.risk_snapshot_json="{}"; return r;
+}
+
+void TestAiActivity::formatToastsTerminalOutcomes() {
+    for (const char* d : {"filled","partially_filled","accepted","submitted","new","open",
+                          "cancelled","canceled","rejected","denied"})
+        QVERIFY2(format_activity(mkrow("fast","fast_submit_order",d)).toast, d);
+    QVERIFY(format_activity(mkrow("submit","submit_order","FILLED")).toast);  // case-insensitive
+}
+void TestAiActivity::formatNoToastForPrepareOrValidation() {
+    QVERIFY(!format_activity(mkrow("prepare","prepare_order","ok")).toast);
+    QVERIFY(!format_activity(mkrow("prepare","prepare_order","filled")).toast);  // prepare never toasts
+    for (const char* d : {"ok","draft","valid","prepared",""})
+        QVERIFY2(!format_activity(mkrow("submit","submit_order",d)).toast, d);
+}
+void TestAiActivity::formatSeverityMapping() {
+    QCOMPARE(format_activity(mkrow("fast","fast_submit_order","filled")).severity, Sev::Success);
+    QCOMPARE(format_activity(mkrow("fast","cancel_order","cancelled")).severity, Sev::Success);
+    QCOMPARE(format_activity(mkrow("fast","fast_submit_order","accepted")).severity, Sev::Info);
+    QCOMPARE(format_activity(mkrow("submit","submit_order","rejected")).severity, Sev::Error);
+    QCOMPARE(format_activity(mkrow("fast","fast_submit_order","denied")).severity, Sev::Error);
+}
+void TestAiActivity::formatMessageAndMalformedIntent() {
+    auto v = format_activity(mkrow("fast","fast_submit_order","filled","live",
+                                   R"({"symbol":"AAPL","side":"buy","quantity":1})"));
+    QVERIFY(v.message.contains("fast_submit_order"));
+    QVERIFY(v.message.contains("AAPL"));
+    QVERIFY(v.message.contains("filled"));
+    QVERIFY(v.message.contains("live"));
+    auto v2 = format_activity(mkrow("fast","fast_submit_order","filled","live","not json"));
+    QVERIFY(v2.message.contains("fast_submit_order"));  // malformed intent → safe fallback, no crash
 }
 
 QTEST_MAIN(TestAiActivity)
