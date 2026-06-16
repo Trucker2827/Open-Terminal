@@ -397,8 +397,10 @@ std::vector<ToolDef> get_crypto_trading_tools() {
                 crypto_exec_audit("crypto_cancel_order", venue, "denied", "venue not allowed", intent);
                 return ToolResult::fail("Refused: venue not allowed");
             }
-            if (order_id.isEmpty() || symbol.isEmpty())
+            if (order_id.isEmpty() || symbol.isEmpty()) {
+                crypto_exec_audit("crypto_cancel_order", venue, "denied", "missing order_id or symbol", intent);
                 return ToolResult::fail("order_id and symbol are required");
+            }
             try {
                 const QJsonObject res = svc.cancel_exchange_order(order_id, symbol);
                 if (res.contains("error")) {

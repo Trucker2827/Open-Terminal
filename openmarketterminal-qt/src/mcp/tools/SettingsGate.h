@@ -50,7 +50,8 @@ bool cli_fast_live_armed();
 
 /// True iff `name` resolves to a fast-live trading tool: one of EXACTLY
 /// fast_submit_order / cancel_order / replace_order / exit_position /
-/// get_positions / get_open_orders / get_fills. AI-facing auth-checkers route a
+/// get_positions / get_open_orders / get_fills / crypto_submit_order /
+/// crypto_cancel_order. AI-facing auth-checkers route a
 /// match to the fast-arm gate (cli_trading_allowed() && cli_live_armed() &&
 /// cli_fast_live_armed()) — strictly stronger than the submit_order live path.
 /// Membership is by canonical NAME only (resolve_canonical_name to defeat
