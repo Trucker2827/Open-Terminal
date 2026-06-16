@@ -4,6 +4,7 @@
 #include "services/llm/LlmService.h"
 #include "storage/repositories/LlmConfigRepository.h"
 #include "ui/notifications/DesktopNotifier.h"
+#include "app/AiActivityNotifier.h"
 #include "app/MonitorPickerDialog.h"
 #include "app/WindowFrame.h"
 #include "app/TerminalShell.h"
@@ -846,6 +847,12 @@ int main(int argc, char* argv[]) {
     // Native desktop notifications (Win toast / macOS Notification Center / Linux
     // libnotify) via a tray icon — also surfaces every in-app ToastService toast.
     openmarketterminal::ui::DesktopNotifier::instance().init();
+
+    // Construct the AI-activity notifier on the main thread NOW so its EventBus
+    // subscription (queued) is live from boot — toasts then fire on ANY screen,
+    // not only after the Settings → AI Activity tab is first opened. Thread
+    // affinity is fixed to the main thread by this first call.
+    (void) openmarketterminal::app::AiActivityNotifier::instance();
 
     // ── Python environment check ─────────────────────────────────────────────
     // check_status() fast path (sentinel + markers present) is synchronous and
