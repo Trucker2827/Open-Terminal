@@ -22,6 +22,8 @@ def json_safe(value: Any) -> Any:
         return [json_safe(v) for v in value]
     if hasattr(value, "model_dump"):
         return json_safe(value.model_dump())
+    if hasattr(value, "to_dict"):  # coinbase-advanced-py response objects
+        return json_safe(value.to_dict())
     if hasattr(value, "dict"):
         return json_safe(value.dict())
     return str(value)

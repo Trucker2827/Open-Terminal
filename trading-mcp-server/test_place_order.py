@@ -90,6 +90,42 @@ class TestCoinbasePlaceOrder(unittest.TestCase):
             _coinbase(price=100.0).place_order("BTC-USD", "buy", 10, "market")  # 1000 > 500
 
 
+class _FakeResp:
+    def __init__(self, d): self._d = d
+    def to_dict(self): return self._d
+
+class _FakeClient:
+    def __init__(self, resp): self._resp = resp
+    def create_order(self, **kw): return self._resp
+
+def _coinbase_live(resp_dict, price=50000.0):
+    # dry_run=False so place_order reaches create_order; stub client + lookups (no network).
+    s = Settings(trading_mode="paper", dry_run=False, max_order_notional_usd=100000.0,
+                 enable_coinbase=True, coinbase_api_key="x", coinbase_api_secret="x")
+    svc = CoinbaseService(s, RiskManager(s))
+    svc._estimate_price = lambda product_id: price
+    svc._current_position_notional = lambda product_id, p: None
+    svc._client = _FakeClient(_FakeResp(resp_dict))
+    return svc
+
+class TestCoinbaseOrderResult(unittest.TestCase):
+    """The order_id bug: Coinbase place_order must surface a structured order_id
+    (not a stringified repr) so callers can reliably cancel."""
+
+    def test_order_id_surfaced_top_level(self):
+        resp = {"success": True, "success_response": {"order_id": "ORD-123", "product_id": "BTC-USD"}}
+        r = _coinbase_live(resp).place_order("BTC-USD", "buy", 0.0001, "limit", limit_price=50000)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["order_id"], "ORD-123")
+        self.assertEqual(r["status"], "submitted")
+
+    def test_failed_order_marked_not_ok(self):
+        resp = {"success": False, "error_response": {"error": "INSUFFICIENT_FUND"}}
+        r = _coinbase_live(resp).place_order("BTC-USD", "buy", 0.0001, "limit", limit_price=50000)
+        self.assertFalse(r["ok"])
+        self.assertIn("error", r)
+
+
 class TestMcpToolSchemas(unittest.TestCase):
     """Guards the @tool_error signature-preservation regression: every tool must
     advertise its REAL parameters, not the wrapper's (*args, **kwargs)."""

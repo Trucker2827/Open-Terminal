@@ -89,8 +89,19 @@ class CoinbaseService:
             side=side.upper(),
             order_configuration=order_configuration,
         )
+        # Coerce the SDK response to a dict and surface order_id/status at the top
+        # level so callers can reliably cancel without parsing a repr string.
+        d = result.to_dict() if hasattr(result, "to_dict") else (result if isinstance(result, dict) else {})
+        success = bool(d.get("success", True))
+        sr = d.get("success_response") or {}
+        order_id = (sr.get("order_id") if isinstance(sr, dict) else None) or d.get("order_id")
+        err = d.get("error_response") or d.get("error")
         audit("coinbase.place_order", {"risk": risk_report, "result": json_safe(result)})
-        return {"ok": True, "venue": "coinbase", "order": json_safe(result), "risk": risk_report}
+        if not success or (err and not order_id):
+            return {"ok": False, "venue": "coinbase", "error": json_safe(err) or "order not accepted",
+                    "order": json_safe(result), "risk": risk_report}
+        return {"ok": True, "venue": "coinbase", "order_id": order_id, "status": "submitted",
+                "order": json_safe(result), "risk": risk_report}
 
     def _estimate_price(self, product_id: str) -> float | None:
         # Best-effort latest product price for sizing a MARKET order. Fail-SAFE:
