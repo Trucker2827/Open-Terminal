@@ -71,8 +71,17 @@ class CoinbaseService:
             estimated_price=estimated_price, confirmation_token=confirmation_token, asset_class="crypto",
             current_position_notional=self._current_position_notional(product_id, estimated_price),
         )
-        if self.settings.dry_run:
-            return {"ok": True, "dry_run": True, "would_submit": risk_report}
+        # Coinbase is real-money with no paper mode, so REAL execution needs its
+        # own arm on top of DRY_RUN. Disarmed (default) → preview only, even when
+        # the global DRY_RUN is false (which is fine for Alpaca paper fills).
+        armed = self.settings.coinbase_allow_trading
+        if self.settings.dry_run or not armed:
+            out = {"ok": True, "dry_run": True, "would_submit": risk_report}
+            if not self.settings.dry_run and not armed:
+                out["disarmed"] = True
+                out["note"] = ("Coinbase real execution is DISARMED (COINBASE_ALLOW_TRADING=false) — "
+                               "this is a preview. Arm it deliberately for a live crypto session.")
+            return out
 
         client_order_id = str(uuid.uuid4())
         order_configuration: dict[str, Any]

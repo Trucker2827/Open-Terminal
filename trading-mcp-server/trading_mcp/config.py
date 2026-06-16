@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     enable_coinbase: bool = True
     coinbase_api_key: str | None = None
     coinbase_api_secret: str | None = None
+    # Separate execution arm for Coinbase (real-money; no paper mode). Reads/market
+    # data/dry-run previews always work; a REAL Coinbase order requires DRY_RUN=false
+    # AND this armed. Default off — observe/simulate by default, execute only when
+    # deliberately armed for a session.
+    coinbase_allow_trading: bool = False
 
     @field_validator("coinbase_api_secret")
     @classmethod

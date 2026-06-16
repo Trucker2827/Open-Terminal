@@ -99,9 +99,10 @@ class _FakeClient:
     def create_order(self, **kw): return self._resp
 
 def _coinbase_live(resp_dict, price=50000.0):
-    # dry_run=False so place_order reaches create_order; stub client + lookups (no network).
+    # dry_run=False + ARMED so place_order reaches create_order; stub client + lookups (no network).
     s = Settings(trading_mode="paper", dry_run=False, max_order_notional_usd=100000.0,
-                 enable_coinbase=True, coinbase_api_key="x", coinbase_api_secret="x")
+                 enable_coinbase=True, coinbase_allow_trading=True,
+                 coinbase_api_key="x", coinbase_api_secret="x")
     svc = CoinbaseService(s, RiskManager(s))
     svc._estimate_price = lambda product_id: price
     svc._current_position_notional = lambda product_id, p: None
@@ -124,6 +125,40 @@ class TestCoinbaseOrderResult(unittest.TestCase):
         r = _coinbase_live(resp).place_order("BTC-USD", "buy", 0.0001, "limit", limit_price=50000)
         self.assertFalse(r["ok"])
         self.assertIn("error", r)
+
+
+class _GuardClient:
+    """create_order raises — used to prove a disarmed Coinbase never submits."""
+    def create_order(self, **kw):
+        raise AssertionError("create_order called while Coinbase is DISARMED")
+
+def _coinbase_arm(armed, client, price=50000.0):
+    s = Settings(trading_mode="paper", dry_run=False, max_order_notional_usd=100000.0,
+                 enable_coinbase=True, coinbase_allow_trading=armed,
+                 coinbase_api_key="x", coinbase_api_secret="x")
+    svc = CoinbaseService(s, RiskManager(s))
+    svc._estimate_price = lambda product_id: price
+    svc._current_position_notional = lambda product_id, p: None
+    svc._client = client
+    return svc
+
+class TestCoinbaseExecutionArm(unittest.TestCase):
+    """Coinbase real execution requires its own arm (COINBASE_ALLOW_TRADING) on top
+    of DRY_RUN=false — so it can't submit while you do unrelated work."""
+
+    def test_disarmed_returns_preview_and_never_submits(self):
+        # DRY_RUN=false but disarmed → must NOT call create_order; returns a preview.
+        r = _coinbase_arm(False, _GuardClient()).place_order("BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["dry_run"])
+        self.assertTrue(r.get("disarmed"))
+        self.assertNotIn("order_id", r)  # nothing was submitted
+
+    def test_armed_submits_and_returns_order_id(self):
+        resp = _FakeResp({"success": True, "success_response": {"order_id": "ARMED-1"}})
+        r = _coinbase_arm(True, _FakeClient(resp)).place_order("BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["order_id"], "ARMED-1")
 
 
 class TestMcpToolSchemas(unittest.TestCase):
