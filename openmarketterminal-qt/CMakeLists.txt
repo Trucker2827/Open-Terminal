@@ -1405,6 +1405,7 @@ set(SCREEN_SOURCES
     src/screens/settings/PythonEnvSection.cpp
     src/screens/settings/DeveloperSection.cpp
     src/screens/settings/VoiceConfigSection.cpp
+    src/screens/settings/AiActivitySection.cpp
     src/screens/about/AboutScreen.cpp
     src/screens/trade_viz/TradeVizScreen.cpp
     # DocsScreen split into pages files; see DocsScreen.cpp header.
@@ -2172,6 +2173,7 @@ set_source_files_properties(
     src/screens/settings/ProfilesSection.cpp
     src/screens/settings/PythonEnvSection.cpp
     src/screens/settings/SecuritySection.cpp
+    src/screens/settings/AiActivitySection.cpp
     src/screens/settings/SettingsScreen.cpp
     src/screens/settings/StorageSection.cpp
     src/screens/setup/SetupScreen.cpp

@@ -24,6 +24,7 @@
 #include "screens/settings/SettingsStyles.h"
 #include "screens/settings/StorageSection.h"
 #include "screens/settings/VoiceConfigSection.h"
+#include "screens/settings/AiActivitySection.h"
 #include "services/stt/SpeechService.h"
 #include "services/tts/TtsService.h"
 #include "services/voice_trigger/ClapDetectorService.h"
@@ -62,7 +63,7 @@ SettingsScreen::SettingsScreen(QWidget* parent) : QWidget(parent) {
     // One factory per stack index. Used at construction AND by the language-
     // change rebuild path so we don't hardcode the type list twice.
     section_factories_.clear();
-    section_factories_.resize(15);  // 0-14; the former Cloud Sync section (15) was removed
+    section_factories_.resize(16);  // 0-15; [15] = AI Activity feed panel
     section_factories_[0]  = [] { return new CredentialsSection; };
     section_factories_[1]  = [] { return new AppearanceSection; };
     section_factories_[2]  = [] { return new NotificationsSection; };
@@ -78,6 +79,7 @@ SettingsScreen::SettingsScreen(QWidget* parent) : QWidget(parent) {
     section_factories_[12] = [] { return new DeveloperSection; };
     section_factories_[13] = [] { return new VoiceConfigSection; };
     section_factories_[14] = [] { return new GeneralSection; };
+    section_factories_[15] = [] { return new screens::settings::AiActivitySection; };
 
     sections_ = new QStackedWidget;
     for (const auto& factory : section_factories_)
@@ -126,6 +128,7 @@ SettingsScreen::SettingsScreen(QWidget* parent) : QWidget(parent) {
     make_btn(QStringLiteral("Profiles"),        9);
     make_btn(QStringLiteral("Credentials"),     0);
     make_btn(QStringLiteral("Security"),        8);
+    make_btn(QStringLiteral("AI Activity"),    15);
     make_btn(QStringLiteral("Data Sources"),    4);
     make_btn(QStringLiteral("LLM Config"),      5);
     make_btn(QStringLiteral("MCP Servers"),     6);

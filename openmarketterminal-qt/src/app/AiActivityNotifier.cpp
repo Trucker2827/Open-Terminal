@@ -19,6 +19,11 @@ static ui::ToastService::Severity to_toast_sev(ActivityView::Severity s) {
     }
 }
 
+AiActivityNotifier& AiActivityNotifier::instance() {
+    static AiActivityNotifier s_instance;
+    return s_instance;
+}
+
 AiActivityNotifier::AiActivityNotifier(QObject* parent) : QObject(parent) {
     qRegisterMetaType<openmarketterminal::trading::ActivityView>(
         "openmarketterminal::trading::ActivityView");

@@ -12,6 +12,11 @@ class AiActivityNotifier : public QObject {
     Q_OBJECT
   public:
     explicit AiActivityNotifier(QObject* parent = nullptr);
+
+    /// Meyers singleton — stable handle for the Settings panel connection.
+    /// Task 5 must ensure this is touched at startup so the EventBus
+    /// subscription is live before any trade.audit events arrive.
+    static AiActivityNotifier& instance();
   signals:
     void activity(const openmarketterminal::trading::ActivityView& view);
   private:
