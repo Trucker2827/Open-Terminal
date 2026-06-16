@@ -159,10 +159,12 @@ class AlpacaService:
         return {"ok": True, "venue": "alpaca", "total_abs_market_value": total_abs, "positions": rows}
 
     @staticmethod
-    def backtest_strategy_from_bars(bars: list[dict[str, Any]], short_window: int = 5, long_window: int = 20) -> dict[str, Any]:
+    def backtest_strategy_from_bars(bars: list[dict[str, Any]], short_window: int = 5, long_window: int = 20,
+                                    fee_bps: float = 0.0) -> dict[str, Any]:
         closes = [float(b["close"]) for b in bars if b.get("close") is not None]
         if len(closes) < long_window + 2:
             return {"ok": False, "error": "not enough bars"}
+        fee = max(0.0, fee_bps) / 10000.0  # per-side transaction cost (e.g. 50 bps = 0.50%)
         cash, position = 1.0, 0.0
         trades = []
         for i in range(long_window, len(closes)):
@@ -170,17 +172,19 @@ class AlpacaService:
             long_ma = sum(closes[i - long_window:i]) / long_window
             price = closes[i]
             if short_ma > long_ma and position == 0:
-                position = cash / price
+                position = (cash * (1.0 - fee)) / price  # pay fee on the buy notional
                 cash = 0
                 trades.append({"i": i, "action": "buy", "price": price})
             elif short_ma < long_ma and position > 0:
-                cash = position * price
+                cash = position * price * (1.0 - fee)     # pay fee on the sell notional
                 position = 0
                 trades.append({"i": i, "action": "sell", "price": price})
         final_value = cash + position * closes[-1]
-        return {"ok": True, "starting_value": 1.0, "ending_value": final_value, "return_pct": (final_value - 1.0) * 100, "trades": trades}
+        return {"ok": True, "starting_value": 1.0, "ending_value": final_value,
+                "return_pct": (final_value - 1.0) * 100, "trades": trades, "fee_bps": fee_bps}
 
-    def backtest_strategy(self, ticker: str, asset_class: str = "stock", days: int = 120, short_window: int = 5, long_window: int = 20) -> dict[str, Any]:
+    def backtest_strategy(self, ticker: str, asset_class: str = "stock", days: int = 120, short_window: int = 5,
+                          long_window: int = 20, fee_bps: float = 0.0) -> dict[str, Any]:
         data = self.get_historical_data(ticker, timeframe="1Day", asset_class=asset_class, days=days)
         raw = data.get("bars", {})
         # alpaca-py objects serialize differently by version; accept list-like or symbol-keyed bars.
@@ -189,7 +193,7 @@ class AlpacaService:
             bars = raw[ticker]
         if not isinstance(bars, list):
             return {"ok": False, "error": "could not parse bars from SDK response", "raw_shape": str(type(raw))}
-        return self.backtest_strategy_from_bars(bars, short_window, long_window)
+        return self.backtest_strategy_from_bars(bars, short_window, long_window, fee_bps)
 
     def _estimate_price(self, symbol: str, asset_class: str) -> float | None:
         # Best-effort latest trade price for sizing a MARKET order. Fail-SAFE:

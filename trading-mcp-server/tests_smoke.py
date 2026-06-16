@@ -55,6 +55,11 @@ def main():
     assert bt["ok"] is True
     assert "return_pct" in bt
 
+    # Fees reduce returns: same bars with a per-side fee must finish lower.
+    bt_fee = AlpacaService.backtest_strategy_from_bars(bars, short_window=3, long_window=8, fee_bps=100)
+    assert bt_fee["ok"] is True
+    assert bt_fee["return_pct"] < bt["return_pct"]
+
     live = Settings(dry_run=False, trading_mode="live", enable_alpaca=False, enable_coinbase=False)
     live_risk = RiskManager(live)
     expect_block(lambda: live_risk.check_trade(

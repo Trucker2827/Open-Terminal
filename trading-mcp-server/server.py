@@ -112,9 +112,9 @@ def analyze_positions(venue: Literal["alpaca"] = "alpaca") -> dict:
 
 @mcp.tool()
 @tool_error
-def backtest_strategy(ticker: str, asset_class: str = "stock", days: int = 120, short_window: int = 5, long_window: int = 20) -> dict:
-    """Simple moving-average crossover backtest using Alpaca historical daily bars."""
-    return alpaca.backtest_strategy(ticker, asset_class, days, short_window, long_window)
+def backtest_strategy(ticker: str, asset_class: str = "stock", days: int = 120, short_window: int = 5, long_window: int = 20, fee_bps: float = 0.0) -> dict:
+    """Simple moving-average crossover backtest using Alpaca historical daily bars. fee_bps = per-side transaction cost (e.g. 50 = 0.50%)."""
+    return alpaca.backtest_strategy(ticker, asset_class, days, short_window, long_window, fee_bps)
 
 
 @mcp.tool()
