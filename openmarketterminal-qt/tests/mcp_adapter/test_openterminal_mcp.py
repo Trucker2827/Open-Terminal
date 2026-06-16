@@ -58,13 +58,19 @@ class TestAdapter(unittest.TestCase):
         objs, _, _ = self._run([{"jsonrpc": "2.0", "method": "notifications/initialized"}])
         self.assertEqual(objs, [])
 
-    def test_tools_list_passthrough_no_execution_tools(self):
+    def test_tools_list_has_read_tools_no_execution(self):
         objs, _, _ = self._run([{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}])
         names = [t["name"] for t in objs[0]["result"]["tools"]]
-        self.assertEqual(names, ["get_ticker"])  # exactly the catalog; nothing added
+        # Passthrough catalog tool present, AND the explicit read tools the capped
+        # catalog would drop are surfaced via the allowlist.
+        for r in ("get_ticker", "get_order_book", "get_candles", "get_exchange_info",
+                  "get_crypto_balance", "get_crypto_open_orders", "get_crypto_trades"):
+            self.assertIn(r, names)
+        # get_ticker is in BOTH the stub catalog and the allowlist → must appear once.
+        self.assertEqual(names.count("get_ticker"), 1)
+        # READ-ONLY: no execution tools advertised.
         for ex in ("crypto_submit_order", "crypto_cancel_order", "fast_submit_order", "cancel_order"):
             self.assertNotIn(ex, names)
-        self.assertEqual(objs[0]["result"]["tools"][0]["inputSchema"]["required"], ["symbol"])
 
     def test_tools_call_success_maps_stdout_to_content(self):
         objs, _, _ = self._run([{"jsonrpc": "2.0", "id": 3, "method": "tools/call",

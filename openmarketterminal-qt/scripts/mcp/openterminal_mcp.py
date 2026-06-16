@@ -15,6 +15,46 @@ import sys
 CLI = os.environ.get("OPENTERMINAL_CLI", "/tmp/ot-build-ht/openterminalcli")
 PROTOCOL_VERSION = "2024-11-05"
 
+# The attached bridge's `mcp list` catalog is alphabetically capped (~50 tools),
+# which truncates the trading/market `get_*` read tools off the end even though
+# they are callable. So we explicitly advertise the READ tools we want native.
+# READ-ONLY by construction: no order-placement / cancel / arming tools here.
+READ_TOOLS = [
+    {"name": "get_ticker",
+     "description": "Latest price/bid/ask/last for a symbol on the configured crypto exchange.",
+     "inputSchema": {"type": "object",
+                     "properties": {"symbol": {"type": "string", "description": "e.g. BTC/USD"}},
+                     "required": ["symbol"]}},
+    {"name": "get_order_book",
+     "description": "Order book (bids and asks) for a symbol.",
+     "inputSchema": {"type": "object",
+                     "properties": {"symbol": {"type": "string"},
+                                    "limit": {"type": "integer", "description": "depth (optional)"}},
+                     "required": ["symbol"]}},
+    {"name": "get_candles",
+     "description": "OHLCV candles for a symbol.",
+     "inputSchema": {"type": "object",
+                     "properties": {"symbol": {"type": "string"},
+                                    "timeframe": {"type": "string", "description": "e.g. 1m, 1h, 1d"},
+                                    "limit": {"type": "integer"}},
+                     "required": ["symbol"]}},
+    {"name": "get_exchange_info",
+     "description": "Configured crypto exchange info / capabilities.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_crypto_balance",
+     "description": "Account balances (per-currency free/used/total) on the configured crypto exchange.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_crypto_open_orders",
+     "description": "Open orders on the configured crypto exchange (optional symbol filter).",
+     "inputSchema": {"type": "object", "properties": {"symbol": {"type": "string"}}}},
+    {"name": "get_crypto_trades",
+     "description": "Recent personal fills for a symbol on the configured crypto exchange.",
+     "inputSchema": {"type": "object",
+                     "properties": {"symbol": {"type": "string"},
+                                    "limit": {"type": "integer", "description": "default 50, cap 200"}},
+                     "required": ["symbol"]}},
+]
+
 
 def log(msg):
     print("[openterminal-mcp] " + str(msg), file=sys.stderr, flush=True)
@@ -45,6 +85,7 @@ def list_tools():
         return []
     raw = data.get("tools", []) if isinstance(data, dict) else []
     tools = []
+    seen = set()
     for t in raw:
         if not isinstance(t, dict) or not t.get("name"):
             continue
@@ -53,6 +94,12 @@ def list_tools():
             "description": t.get("description", ""),
             "inputSchema": t.get("inputSchema") or {"type": "object", "properties": {}},
         })
+        seen.add(t["name"])
+    # Add the explicit READ tools the capped catalog dropped (passthrough wins on dups).
+    for t in READ_TOOLS:
+        if t["name"] not in seen:
+            tools.append(t)
+            seen.add(t["name"])
     return tools
 
 
