@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openterminal.weeklyreview</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/haydarevich/src/Open-Terminal/trading-mcp-server/.venv311/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/trading-mcp-server/weekly_review.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/haydarevich/src/Open-Terminal/trading-mcp-server</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>5</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/haydarevich/src/Open-Terminal/trading-mcp-server/observe.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/haydarevich/src/Open-Terminal/trading-mcp-server/observe.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
