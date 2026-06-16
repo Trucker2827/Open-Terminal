@@ -153,44 +153,18 @@ void EquityTradingScreen::hub_subscribe_streaming() {
                       });
     }
 
-    // ── Quotes (per-symbol subscriptions for ticker + watchlist + paper trading) ──
-    hub_subscribe_quotes();
+    // Quotes for the ticker + watchlist come from the free MarketDataService feed
+    // (broker-independent, reliable) in BOTH paper and live mode — the per-broker
+    // quote stream is not reliably populated. Live mode keeps the broker
+    // positions/orders/balance topics above; only the price feed is unified here.
+    hub_subscribe_market_quotes();
 
     hub_active_ = true;
     LOG_INFO(TAG, QString("Hub subscribed: %1 / %2").arg(bid, aid));
 }
 
-void EquityTradingScreen::hub_subscribe_quotes() {
-    auto& hub = datahub::DataHub::instance();
-    const QString bid = broker_id_for_focused();
-    if (bid.isEmpty() || focused_account_id_.isEmpty())
-        return;
-
-    const QString aid = focused_account_id_;
-
-    // Build deduplicated symbol set: selected symbol + watchlist
-    QSet<QString> symbols;
-    symbols.insert(selected_symbol_);
-    for (const auto& s : watchlist_symbols_)
-        symbols.insert(s);
-    for (const auto& s : position_symbols_) // held symbols get live quotes too
-        symbols.insert(s);
-
-    LOG_INFO("posdbg", QString("subscribing %1 quote topics for acct=%2: [%3]")
-                           .arg(symbols.size()).arg(aid, QStringList(symbols.begin(), symbols.end()).join(',')));
-    for (const auto& sym : symbols) {
-        const QString topic = broker_topic(bid, aid, QStringLiteral("quote"), sym);
-        hub.subscribe(this, topic, [this, sym](const QVariant& v) {
-            if (!v.canConvert<BrokerQuote>())
-                return;
-            apply_equity_quote(sym, v.value<BrokerQuote>());
-        });
-    }
-}
-
-// Per-tick UI + paper-engine update for one symbol. Shared by the live broker
-// quote feed (hub_subscribe_quotes) and the free market-data feed used in paper
-// mode (hub_subscribe_market_quotes).
+// Per-tick UI + paper-engine update for one symbol. Shared by the free
+// market-data feed used in both paper and live mode (hub_subscribe_market_quotes).
 void EquityTradingScreen::apply_equity_quote(const QString& sym, const BrokerQuote& quote) {
     // Open-positions table (bottom sheet): patch LTP / P&L from the SAME quote
     // that feeds the ticker bar, so the header and the position row never show

@@ -185,8 +185,8 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     // DataHub subscription helpers (D4 migration)
     void hub_subscribe_streaming();
     void hub_unsubscribe_all();
-    void hub_subscribe_quotes();
-    // Paper mode: subscribe to the free MarketDataService quote feed (yfinance).
+    // Subscribe to the free MarketDataService quote feed (yfinance) — used for the
+    // ticker + watchlist price feed in both paper and live mode.
     void hub_subscribe_market_quotes();
     // Per-tick UI + paper-engine update shared by the broker and free feeds.
     void apply_equity_quote(const QString& sym, const trading::BrokerQuote& quote);

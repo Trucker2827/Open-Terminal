@@ -57,6 +57,15 @@ EquityTickerBar::EquityTickerBar(QWidget* parent) : QWidget(parent) {
 
 void EquityTickerBar::set_symbol(const QString& symbol) {
     symbol_label_->setText(symbol);
+    // Clear stale numbers — the new symbol's first quote will repopulate them.
+    price_label_->setText("--");
+    change_label_->setText("--");
+    bid_label_->setText("B:--");
+    ask_label_->setText("A:--");
+    spread_label_->setText("S:--");
+    high_label_->setText("H:--");
+    low_label_->setText("L:--");
+    volume_label_->setText("Vol:--");
 }
 
 void EquityTickerBar::update_quote(double ltp, double change, double change_pct, double high, double low, double volume,
