@@ -1,5 +1,6 @@
 #include "storage/repositories/TradeAuditRepository.h"
 #include "core/events/EventBus.h"
+#include "core/logging/Logger.h"
 #include <QVariantMap>
 
 namespace openmarketterminal {
@@ -49,9 +50,13 @@ Result<void> TradeAuditRepository::append(const TradeAuditRow& row) {
                         {row.ts, row.phase, row.tool, row.account, row.mode, row.intent_json,
                          row.decision, row.reason, row.risk_snapshot_json});
     if (r.is_ok()) {
-        // Fire-and-forget real-time signal for the AI-activity feed. The audit row
-        // is already committed; a publish issue must never affect the write.
-        EventBus::instance().publish(QStringLiteral("trade.audit"), audit_row_to_map(row));
+        // Fire-and-forget: the audit row is already committed. A publish failure
+        // or a throwing subscriber must NEVER surface here or change the result.
+        try {
+            EventBus::instance().publish(QStringLiteral("trade.audit"), audit_row_to_map(row));
+        } catch (...) {
+            LOG_WARN("TradeAudit", "trade.audit publish threw — ignored (audit write already committed)");
+        }
     }
     return r;
 }

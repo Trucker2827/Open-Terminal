@@ -33,13 +33,19 @@ void TestAiActivity::appendPublishesTradeAuditEvent() {
     row.ts = "2026-06-15T20:00:00Z"; row.phase = "fast"; row.tool = "fast_submit_order";
     row.account = "acct-1"; row.mode = "live"; row.decision = "filled";
     row.reason = "filled"; row.intent_json = R"({"symbol":"AAPL","side":"buy","quantity":1})";
-    row.risk_snapshot_json = "";
+    row.risk_snapshot_json = R"({"x":1})";
     auto wr = TradeAuditRepository::instance().append(row);
     QVERIFY2(wr.is_ok(), qPrintable(QString("append failed: %1").arg(QString::fromStdString(wr.error()))));
     QCOMPARE(fires, 1);
-    QCOMPARE(got.value("tool").toString(), QString("fast_submit_order"));
-    QCOMPARE(got.value("decision").toString(), QString("filled"));
-    QCOMPARE(got.value("mode").toString(), QString("live"));
+    QCOMPARE(got.value("ts").toString(),              QString("2026-06-15T20:00:00Z"));
+    QCOMPARE(got.value("phase").toString(),           QString("fast"));
+    QCOMPARE(got.value("tool").toString(),            QString("fast_submit_order"));
+    QCOMPARE(got.value("account").toString(),         QString("acct-1"));
+    QCOMPARE(got.value("mode").toString(),            QString("live"));
+    QCOMPARE(got.value("intent_json").toString(),     QString(R"({"symbol":"AAPL","side":"buy","quantity":1})"));
+    QCOMPARE(got.value("decision").toString(),        QString("filled"));
+    QCOMPARE(got.value("reason").toString(),          QString("filled"));
+    QCOMPARE(got.value("risk_snapshot_json").toString(), QString(R"({"x":1})"));
     EventBus::instance().unsubscribe(id);
 }
 
