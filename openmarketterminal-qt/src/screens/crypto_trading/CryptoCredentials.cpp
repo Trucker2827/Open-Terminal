@@ -103,8 +103,23 @@ CryptoCredentials::CryptoCredentials(const QString& exchange_id, QWidget* parent
     secret_edit_->setFixedHeight(28);
     layout->addWidget(secret_edit_);
 
-    // Password / API passphrase — required by OKX, KuCoin, Bitget, Coinbase.
-    password_field_label_ = new QLabel(tr("PASSPHRASE (OKX/KUCOIN/BITGET/COINBASE)"));
+    // Coinbase (CDP) secrets are multi-line EC private-key PEMs — a single-line
+    // field can't hold them. Use a multi-line input for Coinbase; keep the masked
+    // single-line field for every other exchange.
+    const bool is_coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+    if (is_coinbase) {
+        secret_multiline_ = new QPlainTextEdit;
+        secret_multiline_->setObjectName("credSecretMultiline");
+        secret_multiline_->setPlaceholderText(
+            tr("Paste CDP EC private key:\n-----BEGIN EC PRIVATE KEY-----\n…\n-----END EC PRIVATE KEY-----"));
+        secret_multiline_->setFixedHeight(96);
+        layout->addWidget(secret_multiline_);
+        secret_edit_->setVisible(false);   // hide the single-line field for Coinbase
+        secret_field_label_->setText(tr("API SECRET (CDP EC private key)"));
+    }
+
+    // Password / API passphrase — required by OKX, KuCoin, Bitget.
+    password_field_label_ = new QLabel(tr("PASSPHRASE (OKX/KUCOIN/BITGET)"));
     password_field_label_->setObjectName("credFieldLabel");
     layout->addWidget(password_field_label_);
     password_edit_ = new QLineEdit;
@@ -112,6 +127,12 @@ CryptoCredentials::CryptoCredentials(const QString& exchange_id, QWidget* parent
     password_edit_->setEchoMode(QLineEdit::Password);
     password_edit_->setFixedHeight(28);
     layout->addWidget(password_edit_);
+
+    // Coinbase CDP uses no API passphrase — hide the row for Coinbase.
+    if (is_coinbase) {
+        if (password_field_label_) password_field_label_->setVisible(false);
+        if (password_edit_)        password_edit_->setVisible(false);
+    }
 
     // Wallet address + private key — required by Hyperliquid (DEX-style auth)
     // instead of API key/secret. Shown only for that exchange.
@@ -199,9 +220,14 @@ CryptoCredentials::CryptoCredentials(const QString& exchange_id, QWidget* parent
     key_field_label_->setVisible(!wallet_auth);
     key_edit_->setVisible(!wallet_auth);
     secret_field_label_->setVisible(!wallet_auth);
-    secret_edit_->setVisible(!wallet_auth);
-    password_field_label_->setVisible(!wallet_auth);
-    password_edit_->setVisible(!wallet_auth);
+    // For Coinbase the single-line secret stays hidden (multiline replaces it);
+    // keep the two fields parallel for the wallet-auth toggle.
+    secret_edit_->setVisible(!wallet_auth && !is_coinbase);
+    if (secret_multiline_)
+        secret_multiline_->setVisible(!wallet_auth);
+    // Coinbase CDP has no passphrase — keep its row hidden regardless of wallet_auth.
+    password_field_label_->setVisible(!wallet_auth && !is_coinbase);
+    password_edit_->setVisible(!wallet_auth && !is_coinbase);
     totp_field_label_->setVisible(!wallet_auth);
     totp_secret_edit_->setVisible(!wallet_auth);
     totp_code_label_->setVisible(!wallet_auth);
@@ -225,9 +251,14 @@ void CryptoCredentials::retranslateUi() {
                                                        "Keys are stored locally in encrypted secure storage."));
     if (key_field_label_)      key_field_label_->setText(tr("API KEY"));
     if (key_edit_)             key_edit_->setPlaceholderText(tr("Enter API key"));
-    if (secret_field_label_)   secret_field_label_->setText(tr("API SECRET"));
+    if (secret_field_label_)
+        secret_field_label_->setText(secret_multiline_ ? tr("API SECRET (CDP EC private key)")
+                                                       : tr("API SECRET"));
     if (secret_edit_)          secret_edit_->setPlaceholderText(tr("Enter API secret"));
-    if (password_field_label_) password_field_label_->setText(tr("PASSPHRASE (OKX/KUCOIN/BITGET/COINBASE)"));
+    if (secret_multiline_)
+        secret_multiline_->setPlaceholderText(
+            tr("Paste CDP EC private key:\n-----BEGIN EC PRIVATE KEY-----\n…\n-----END EC PRIVATE KEY-----"));
+    if (password_field_label_) password_field_label_->setText(tr("PASSPHRASE (OKX/KUCOIN/BITGET)"));
     if (password_edit_)        password_edit_->setPlaceholderText(tr("Optional"));
     if (wallet_field_label_)   wallet_field_label_->setText(tr("WALLET ADDRESS"));
     if (wallet_edit_)          wallet_edit_->setPlaceholderText(tr("Enter wallet address (0x…)"));
@@ -247,6 +278,8 @@ QString CryptoCredentials::api_key() const {
     return key_edit_->text().trimmed();
 }
 QString CryptoCredentials::api_secret() const {
+    if (secret_multiline_)
+        return secret_multiline_->toPlainText().trimmed();
     return secret_edit_->text().trimmed();
 }
 QString CryptoCredentials::password() const {
@@ -262,7 +295,10 @@ QString CryptoCredentials::private_key() const {
 void CryptoCredentials::set_values(const QString& key, const QString& secret, const QString& pw,
                                    const QString& wallet, const QString& pk) {
     key_edit_->setText(key);
-    secret_edit_->setText(secret);
+    if (secret_multiline_)
+        secret_multiline_->setPlainText(secret);
+    else
+        secret_edit_->setText(secret);
     password_edit_->setText(pw);
     wallet_edit_->setText(wallet);
     private_key_edit_->setText(pk);
@@ -287,6 +323,8 @@ void CryptoCredentials::on_save() {
 void CryptoCredentials::on_clear() {
     key_edit_->clear();
     secret_edit_->clear();
+    if (secret_multiline_)
+        secret_multiline_->clear();
     password_edit_->clear();
     wallet_edit_->clear();
     private_key_edit_->clear();

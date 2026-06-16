@@ -5,6 +5,7 @@
 #include <QEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTimer>
 
@@ -43,6 +44,7 @@ class CryptoCredentials : public QDialog {
 
     QLineEdit* key_edit_ = nullptr;
     QLineEdit* secret_edit_ = nullptr;
+    QPlainTextEdit* secret_multiline_ = nullptr;
     QLineEdit* password_edit_ = nullptr;
     QLineEdit* wallet_edit_ = nullptr;
     QLineEdit* private_key_edit_ = nullptr;
