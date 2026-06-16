@@ -1111,6 +1111,8 @@ set(TRADING_SOURCES
     src/trading/ai_activity/AiActivityFormat.cpp
     # Alpaca options v1 Task 1 — pure OCC symbol detector (×100 multiplier)
     src/trading/options/OptionSymbol.cpp
+    # Crypto account execution Task 1 — pure notional risk verdict
+    src/trading/CryptoRisk.cpp
 )
 
 # Algo Engine (native C++ trading engine — replaces Python algo runner)

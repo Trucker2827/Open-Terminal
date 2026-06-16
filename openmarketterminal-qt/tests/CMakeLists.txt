@@ -172,3 +172,8 @@ add_executable(tst_option_symbol tst_option_symbol.cpp)
 target_include_directories(tst_option_symbol PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_option_symbol PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_option_symbol COMMAND tst_option_symbol)
+
+add_executable(tst_crypto_risk tst_crypto_risk.cpp)
+target_include_directories(tst_crypto_risk PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_risk PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_risk COMMAND tst_crypto_risk)
