@@ -26,8 +26,10 @@ Claude Code ──(MCP stdio, newline-delimited JSON-RPC 2.0)──► adapter (
   - non-zero / stderr `tool error: <msg>` → return `{content: [{type: "text", text: <msg>}], isError: true}` (an MCP tool error, not a protocol error — so the agent sees the failure and can react).
 - Unknown method → JSON-RPC error `-32601`.
 
-## Execution tools: intentionally NOT exposed (v1 read-only)
-`openterminalcli mcp list` returns a **curated catalog that already omits the gated execution tools** (`crypto_submit_order`, `crypto_cancel_order`, `fast_submit_order`, `cancel_order`). For v1 the adapter is a **pure passthrough**, so that omission is the feature: real-money execution is **not** a native Claude Code tool and continues to require the deliberate `openterminalcli mcp call` Bash motion. (The server-side gates apply on either path; the read-only choice is about keeping live order placement an explicit, separate action rather than a frictionless native tool.) Exposing execution natively — via a small static allowlist merged into `tools/list` — is a documented **follow-up**, not v1.
+## Tool surface: read-only, with an explicit read allowlist
+The attached bridge's `mcp list` catalog is **alphabetically capped (~50 tools)** — confirmed live: it both **omits the gated execution tools** (`crypto_submit_order`/`crypto_cancel_order`/`fast_submit_order`/`cancel_order`) *and* truncates the trading/market **read** tools (`get_ticker`, `get_crypto_balance`, …) off the end, even though those reads are callable. So a pure passthrough surfaces neither the execution tools (good — read-only) nor the read tools we actually want (bad).
+
+**v1 therefore = passthrough + a small static READ allowlist** merged into `tools/list` (deduped, passthrough wins): `get_ticker`, `get_order_book`, `get_candles`, `get_exchange_info`, `get_crypto_balance`, `get_crypto_open_orders`, `get_crypto_trades`. **No execution tools** — real-money order placement stays on the deliberate `openterminalcli mcp call` motion. (Server-side gates apply on either path; the read-only choice keeps live trading an explicit, separate action, not a frictionless native tool.) Exposing execution natively is a documented **follow-up**, not v1.
 
 ## Data flow (example)
 ```
