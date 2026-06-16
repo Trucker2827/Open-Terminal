@@ -169,6 +169,50 @@ ApiResponse<QVector<BrokerOrderInfo>> AlpacaBroker::get_orders(const BrokerCrede
     return {true, orders, "", ts};
 }
 
+ApiResponse<QJsonArray> AlpacaBroker::get_option_contracts(const BrokerCredentials& creds,
+                                                           const QJsonObject& params) {
+    int64_t ts = now_ts();
+    const QString underlying = params.value("underlying").toString().trimmed().toUpper();
+    if (underlying.isEmpty())
+        return {false, std::nullopt, "underlying is required", ts};
+
+    QStringList q;
+    q << "underlying_symbols=" + underlying;
+    q << "status=active";
+    if (params.contains("type")) {
+        const QString t = params.value("type").toString().toLower();
+        if (t == "call" || t == "put") q << "type=" + t;
+    }
+    if (params.contains("expiry_gte")) q << "expiration_date_gte=" + params.value("expiry_gte").toString();
+    if (params.contains("expiry_lte")) q << "expiration_date_lte=" + params.value("expiry_lte").toString();
+    if (params.contains("strike_gte")) q << "strike_price_gte=" + QString::number(params.value("strike_gte").toDouble());
+    if (params.contains("strike_lte")) q << "strike_price_lte=" + QString::number(params.value("strike_lte").toDouble());
+    int limit = params.contains("limit") ? params.value("limit").toInt() : 50;
+    limit = qBound(1, limit, 200);
+    q << "limit=" + QString::number(limit);
+
+    auto resp = BrokerHttp::instance().get(trading_url(creds) + "/v2/options/contracts?" + q.join('&'),
+                                           auth_headers(creds));
+    if (!resp.success)
+        return {false, std::nullopt, resp.error, ts};
+
+    QJsonArray out;
+    const auto doc = QJsonDocument::fromJson(resp.raw_body.toUtf8());
+    for (const auto& v : doc.object().value("option_contracts").toArray()) {
+        const auto o = v.toObject();
+        out.append(QJsonObject{
+            {"symbol", o.value("symbol").toString()},
+            {"underlying", o.value("underlying_symbol").toString()},
+            {"expiration", o.value("expiration_date").toString()},
+            {"type", o.value("type").toString()},
+            {"strike", o.value("strike_price").toVariant().toDouble()},
+            {"close_price", o.value("close_price").toVariant().toDouble()},
+            {"tradable", o.value("tradable").toBool()},
+        });
+    }
+    return {true, out, "", ts};
+}
+
 ApiResponse<QJsonObject> AlpacaBroker::get_trade_book(const BrokerCredentials& creds) {
     auto resp = BrokerHttp::instance().get(trading_url(creds) + "/v2/account/activities/FILL", auth_headers(creds));
     int64_t ts = now_ts();

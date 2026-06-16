@@ -49,6 +49,8 @@ class AlpacaBroker : public IBroker {
                                           const QJsonObject& mods) override;
     ApiResponse<QJsonObject> cancel_order(const BrokerCredentials& creds, const QString& order_id) override;
     ApiResponse<QVector<BrokerOrderInfo>> get_orders(const BrokerCredentials& creds) override;
+    ApiResponse<QJsonArray> get_option_contracts(const BrokerCredentials& creds,
+                                                 const QJsonObject& params) override;
     ApiResponse<QJsonObject> get_trade_book(const BrokerCredentials& creds) override;
     ApiResponse<QVector<BrokerPosition>> get_positions(const BrokerCredentials& creds) override;
     ApiResponse<QVector<BrokerHolding>> get_holdings(const BrokerCredentials& creds) override;

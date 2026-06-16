@@ -475,6 +475,13 @@ class IBroker {
         return {false, std::nullopt, "Option chain not supported for this broker"};
     }
 
+    /// Discover option contracts for an underlying. Default: not supported.
+    /// params keys: underlying (required), type, expiry_gte, expiry_lte, strike_gte, strike_lte, limit.
+    virtual ApiResponse<QJsonArray> get_option_contracts(const BrokerCredentials& /*creds*/,
+                                                         const QJsonObject& /*params*/) {
+        return {false, std::nullopt, QStringLiteral("options discovery not supported for this broker"), 0};
+    }
+
     // --- WebSocket streaming ---
     virtual const char* ws_adapter_name() const { return ""; }
 
