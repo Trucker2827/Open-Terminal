@@ -97,10 +97,11 @@ class AlpacaService:
         asset_class: Literal["stock", "etf", "option", "crypto"] = "stock",
         confirmation_token: str | None = None,
     ) -> dict[str, Any]:
-        estimated_price = limit_price or self._estimate_price(symbol, asset_class)
+        estimated_price = limit_price if limit_price is not None else self._estimate_price(symbol, asset_class)
         risk_report = self.risk.check_trade(
             venue="alpaca", symbol=symbol, side=side, quantity=quantity,
             estimated_price=estimated_price, confirmation_token=confirmation_token, asset_class=asset_class,
+            current_position_notional=self._current_position_notional(symbol),
         )
         if self.settings.dry_run:
             return {"ok": True, "dry_run": True, "would_submit": risk_report}
@@ -191,13 +192,33 @@ class AlpacaService:
         return self.backtest_strategy_from_bars(bars, short_window, long_window)
 
     def _estimate_price(self, symbol: str, asset_class: str) -> float | None:
-        # For market orders this is a best-effort risk estimate. If unavailable, the risk manager still applies quantity and mode gates.
+        # Best-effort latest trade price for sizing a MARKET order. Fail-SAFE:
+        # any error returns None, and the risk manager then BLOCKS the order
+        # (fail-closed) rather than letting an unpriceable order through.
         try:
-            data = self.get_historical_data(symbol, timeframe="1Day", asset_class=asset_class, days=3)
-            raw = data.get("bars", {})
-            text = str(raw)
-            # Avoid brittle SDK parsing. Prefer limit_price for exact pre-trade risk.
-            return None if not text else None
+            if asset_class == "crypto":
+                from alpaca.data.requests import CryptoLatestTradeRequest
+                resp = self.crypto_data.get_crypto_latest_trade(CryptoLatestTradeRequest(symbol_or_symbols=symbol))
+            elif asset_class == "option":
+                from alpaca.data.requests import OptionLatestTradeRequest
+                resp = self.option_data.get_option_latest_trade(OptionLatestTradeRequest(symbol_or_symbols=symbol))
+            else:
+                from alpaca.data.requests import StockLatestTradeRequest
+                resp = self.stock_data.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=symbol))
+            trade = resp.get(symbol) if isinstance(resp, dict) else None
+            price = getattr(trade, "price", None)
+            return float(price) if price else None
+        except Exception:
+            return None
+
+    def _current_position_notional(self, symbol: str) -> float | None:
+        # Current market value of an open position in `symbol`, for the position
+        # cap. None when there is no position or the lookup fails (cap then skipped
+        # for this order; the per-order notional cap still applies).
+        try:
+            pos = self.trading.get_open_position(symbol)
+            mv = getattr(pos, "market_value", None)
+            return abs(float(mv)) if mv is not None else None
         except Exception:
             return None
 

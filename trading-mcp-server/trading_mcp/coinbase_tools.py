@@ -65,10 +65,11 @@ class CoinbaseService:
         limit_price: float | None = None,
         confirmation_token: str | None = None,
     ) -> dict[str, Any]:
-        estimated_price = limit_price
+        estimated_price = limit_price if limit_price is not None else self._estimate_price(product_id)
         risk_report = self.risk.check_trade(
             venue="coinbase", symbol=product_id, side=side, quantity=quantity,
             estimated_price=estimated_price, confirmation_token=confirmation_token, asset_class="crypto",
+            current_position_notional=self._current_position_notional(product_id, estimated_price),
         )
         if self.settings.dry_run:
             return {"ok": True, "dry_run": True, "would_submit": risk_report}
@@ -90,6 +91,35 @@ class CoinbaseService:
         )
         audit("coinbase.place_order", {"risk": risk_report, "result": json_safe(result)})
         return {"ok": True, "venue": "coinbase", "order": json_safe(result), "risk": risk_report}
+
+    def _estimate_price(self, product_id: str) -> float | None:
+        # Best-effort latest product price for sizing a MARKET order. Fail-SAFE:
+        # None on error → the risk manager BLOCKS the order (fail-closed).
+        try:
+            product = self.client.get_product(product_id)
+            price = product.get("price") if isinstance(product, dict) else getattr(product, "price", None)
+            return float(price) if price else None
+        except Exception:
+            return None
+
+    def _current_position_notional(self, product_id: str, price: float | None) -> float | None:
+        # base-asset holding * price, for the position cap. None when unavailable
+        # (cap then skipped for this order; the per-order notional cap still applies).
+        if not price:
+            return None
+        try:
+            base = product_id.split("-")[0].split("/")[0].upper()
+            accounts = self.client.get_accounts()
+            items = accounts.get("accounts") if isinstance(accounts, dict) else getattr(accounts, "accounts", None)
+            for a in (items or []):
+                cur = a.get("currency") if isinstance(a, dict) else getattr(a, "currency", None)
+                if cur and str(cur).upper() == base:
+                    bal = a.get("available_balance") if isinstance(a, dict) else getattr(a, "available_balance", None)
+                    val = bal.get("value") if isinstance(bal, dict) else getattr(bal, "value", None)
+                    return abs(float(val) * price) if val is not None else None
+            return None
+        except Exception:
+            return None
 
     def send_crypto(self, asset: str, amount: float, destination: str, network: str | None = None, confirmation_token: str | None = None) -> dict[str, Any]:
         self.risk.check_read()
