@@ -1004,6 +1004,7 @@ set(MCP_SOURCES
     src/mcp/tools/DataHubScreenContext.cpp
     src/mcp/tools/NavigationTools.cpp
     src/mcp/tools/MarketsTools.cpp
+    src/mcp/tools/OptionsTools.cpp
     src/mcp/tools/WatchlistTools.cpp
     src/mcp/tools/NewsTools.cpp
     src/mcp/tools/NotesTools.cpp
@@ -2369,6 +2370,7 @@ set_source_files_properties(
     src/mcp/tools/DataHubScreenContext.cpp
     src/mcp/tools/NavigationTools.cpp
     src/mcp/tools/MarketsTools.cpp
+    src/mcp/tools/OptionsTools.cpp
     src/mcp/tools/WatchlistTools.cpp
     src/mcp/tools/NewsTools.cpp
     src/mcp/tools/NotesTools.cpp

@@ -33,6 +33,7 @@
 #include "mcp/tools/NewsTools.h"
 #include "mcp/tools/AgenticMemoryTools.h"
 #include "mcp/tools/NotesTools.h"
+#include "mcp/tools/OptionsTools.h"
 #include "mcp/tools/OrderFlowTools.h"
 #include "mcp/tools/PaperTradingTools.h"
 #include "mcp/tools/PortfolioTools.h"
@@ -62,6 +63,9 @@ void register_core_tools() {
 
     // markets tab (quotes, symbol search)
     provider.register_tools(tools::get_markets_tools());
+
+    // options discovery — read-only OCC contract lookup via the allowed account
+    provider.register_tools(tools::get_options_tools());
 
     // watchlist tab
     provider.register_tools(tools::get_watchlist_tools());
