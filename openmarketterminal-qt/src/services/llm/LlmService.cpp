@@ -139,8 +139,36 @@ void LlmService::ensure_config() const {
         max_tool_rounds_ = std::clamp(gs.value().max_tool_rounds, 1, 200);
     }
 
+    // Is the active model a weak/local one (Ollama, or any OpenAI-compatible endpoint
+    // pointed at localhost)? Local models are a best-effort fallback — premium Claude is
+    // the real engine. Empirically (scripts/dev/probe_local_model_toolloop.py) the heavy
+    // Claude-tuned prompt below *causes* small models to stop emitting structured tool
+    // calls and dump bare-JSON into the chat. So local models get a lean prompt instead
+    // and skip the large appendices — measured to let llama3.x complete a multi-tool loop.
+    const bool is_local_model =
+        (provider_ == QLatin1String("ollama")) ||
+        base_url_.contains(QLatin1String("localhost"), Qt::CaseInsensitive) ||
+        base_url_.contains(QLatin1String("127.0.0.1"));
+
     // Default system prompt — primes the model to actually use tools instead of declining tool-feasible requests.
-    if (system_prompt_.trimmed().isEmpty()) {
+    if (system_prompt_.trimmed().isEmpty() && is_local_model) {
+        // Lean prompt for local/weak models. Keeps only what the tool loop needs:
+        // call tools, discover more via tool_list, keep going until done. Adding more
+        // than this measurably degrades small models (they fall back to text tool calls).
+        system_prompt_ =
+            "You are OpenMarketTerminal AI, a finance assistant embedded in the "
+            "OpenMarketTerminal desktop app. You have TOOLS for live market data, SEC "
+            "filings, watchlists, portfolios, news, Python analytics and report building.\n"
+            "How to work:\n"
+            "1. To get any data or do any action, CALL A TOOL — never guess numbers and "
+            "never say you cannot do something a tool can do.\n"
+            "2. You only see a few tools each turn. To find more, call "
+            "tool_list(query=\"<what you need>\"), then call the tool it returns.\n"
+            "3. After each tool result, decide: need more data -> call the next tool; have "
+            "everything -> give the final answer in plain text.\n"
+            "4. Always either call a tool or give a final answer — never stop in between.\n"
+            "Be concise, accurate, and finance-focused.";
+    } else if (system_prompt_.trimmed().isEmpty()) {
         system_prompt_ =
             "You are OpenMarketTerminal AI, the intelligent assistant embedded inside the OpenMarketTerminal — "
             "a professional desktop financial intelligence application. You have access to tools that "
@@ -201,7 +229,9 @@ void LlmService::ensure_config() const {
 
     // Tool RAG discovery hint: lists categories dynamically so the model can form good tool_list() queries.
     // The `[Tool discovery]` sentinel makes append idempotent across reloads. Cached static for prompt-cache stability.
-    if (tools_enabled_ && !system_prompt_.contains("[Tool discovery]")) {
+    // Skipped for local models — the lean prompt above already includes a compact discovery
+    // instruction, and the extra length measurably hurts small models.
+    if (tools_enabled_ && !is_local_model && !system_prompt_.contains("[Tool discovery]")) {
         // Tool registry is immutable after McpInit; runtime additions won't appear until restart (acceptable here).
         static const QString kHint = []() -> QString {
             const auto all = mcp::McpProvider::instance().list_all_tools();
@@ -234,7 +264,9 @@ void LlmService::ensure_config() const {
     // from anthropics/financial-services (Apache-2.0). Teaches the model to run proper
     // analysis using the app's own edgar_*/get_quote/report_* tools. Idempotent via the
     // "[Analysis skills]" sentinel; only when tools are enabled (the playbooks call tools).
-    if (tools_enabled_ && !system_prompt_.contains("[Analysis skills]")) {
+    // Skipped for local models: ~1900 words of playbooks overwhelms small models and breaks
+    // their tool loop. The playbooks are written for premium Claude, the real analysis engine.
+    if (tools_enabled_ && !is_local_model && !system_prompt_.contains("[Analysis skills]")) {
         const QString frag = services::AnalysisSkillLoader::instance().system_prompt_fragment();
         if (!frag.isEmpty())
             system_prompt_ += frag;

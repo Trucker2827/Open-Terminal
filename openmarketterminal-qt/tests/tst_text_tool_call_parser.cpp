@@ -49,6 +49,29 @@ private slots:
         QCOMPARE(c[0].second.value("symbol").toString(), QString("TSLA"));
     }
 
+    void array_of_stringified_objects() {
+        // The exact shape llama3.3 emitted under the heavy prompt: a JSON array
+        // whose elements are STRINGIFIED tool-call objects.
+        const auto c = parse_bare_json_tool_calls(
+            "[\"{\\\"name\\\": \\\"get_quote\\\", \\\"parameters\\\": {\\\"symbol\\\": \\\"AAPL\\\"}}\","
+            " \"{\\\"name\\\": \\\"edgar_get_financials\\\", \\\"parameters\\\": {\\\"ticker\\\": \\\"MSFT\\\"}}\"]",
+            known_);
+        QCOMPARE(c.size(), 2);
+        QCOMPARE(c[0].first, QString("get_quote"));
+        QCOMPARE(c[0].second.value("symbol").toString(), QString("AAPL"));
+        QCOMPARE(c[1].first, QString("edgar_get_financials"));
+        QCOMPARE(c[1].second.value("ticker").toString(), QString("MSFT"));
+    }
+
+    void array_of_objects() {
+        // Plain array of tool-call objects (not stringified).
+        const auto c = parse_bare_json_tool_calls(
+            R"([{"name":"get_quote","arguments":{"symbol":"AAPL"}},{"name":"get_quote","arguments":{"symbol":"MSFT"}}])",
+            known_);
+        QCOMPARE(c.size(), 2);
+        QCOMPARE(c[1].second.value("symbol").toString(), QString("MSFT"));
+    }
+
     void unknown_tool_name_is_rejected() {
         // Guard: a name not in `known` must NOT be treated as a tool call.
         const auto c = parse_bare_json_tool_calls(

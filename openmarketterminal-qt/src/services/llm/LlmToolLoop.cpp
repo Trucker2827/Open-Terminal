@@ -26,7 +26,31 @@
 
 namespace openmarketterminal::ai_chat {
 
-namespace { constexpr const char* kLlmToolLoopTag = "LlmService"; }
+namespace {
+constexpr const char* kLlmToolLoopTag = "LlmService";
+
+// A turn's "final" text may actually be a tool call the model emitted as plain
+// content instead of a structured tool_call. This is the gate that decides whether
+// to attempt text-tool extraction. It must catch:
+//   - XML/text markup: <tool_call>…, <invoke name=…, minimax:tool_call
+//   - bare JSON: content that starts with { or [ (the shape weak/local models emit)
+//   - fenced JSON: a ```json / ```tool_call block
+// The extraction itself is guarded (bare-JSON salvage only fires for KNOWN tool
+// names), so widening this gate cannot turn a legitimate JSON answer into a tool call.
+bool content_may_hold_tool_call(const QString& content) {
+    static const QRegularExpression rx_markup(
+        QStringLiteral("<\\s*/?\\s*(?:\\w+\\s*:\\s*)?tool_call\\b|<\\s*invoke\\s+name="),
+        QRegularExpression::CaseInsensitiveOption);
+    if (rx_markup.match(content).hasMatch())
+        return true;
+    const QString t = content.trimmed();
+    if (t.startsWith('{') || t.startsWith('['))
+        return true;
+    static const QRegularExpression rx_fence(QStringLiteral("```(?:json|tool_call)"),
+                                             QRegularExpression::CaseInsensitiveOption);
+    return rx_fence.match(content).hasMatch();
+}
+} // namespace
 
 LlmResponse LlmService::do_tool_loop(QJsonArray loop_messages, const QString& url,
                                      const QMap<QString, QString>& headers,
@@ -113,16 +137,14 @@ LlmResponse LlmService::do_tool_loop(QJsonArray loop_messages, const QString& ur
         LOG_INFO(kLlmToolLoopTag, QString("TOOL LOOP: finished after %1 round(s) — %2 chars of text")
                           .arg(round + 1).arg(resp.content.length()));
 
-        // The "final" text may actually contain text-based tool markup
-        // (<minimax:tool_call>, <invoke name=…>, etc.) that the model emitted
-        // in place of structured tool_calls. If so, route through the
-        // text-extraction path so the markup gets executed instead of leaking
-        // into the chat bubble as raw XML.
-        static const QRegularExpression rx_has_text_markup(
-            QStringLiteral("<\\s*/?\\s*(?:\\w+\\s*:\\s*)?tool_call\\b|<\\s*invoke\\s+name="),
-            QRegularExpression::CaseInsensitiveOption);
-        if (resp.success && rx_has_text_markup.match(resp.content).hasMatch()) {
-            LOG_INFO(kLlmToolLoopTag, "TOOL LOOP: final content has text-tool markup — re-routing through text-extraction");
+        // The "final" text may actually be a tool call the model emitted as plain
+        // content — XML markup (<minimax:tool_call>, <invoke name=…>) OR bare/fenced
+        // JSON (the shape weak/local models like llama3.x produce). If so, route
+        // through the text-extraction path so the call gets executed instead of
+        // leaking into the chat bubble. The extraction is guarded to known tool
+        // names, so a genuine JSON answer falls straight back through unharmed.
+        if (resp.success && content_may_hold_tool_call(resp.content)) {
+            LOG_INFO(kLlmToolLoopTag, "TOOL LOOP: final content may hold a text/JSON tool call — re-routing through text-extraction");
             QString user_msg;
             for (const auto& v : loop_messages) {
                 QJsonObject o = v.toObject();
@@ -174,14 +196,11 @@ LlmResponse LlmService::do_tool_loop(QJsonArray loop_messages, const QString& ur
                     LOG_INFO(kLlmToolLoopTag, QString("TOOL LOOP: summary fallback produced %1 chars")
                                       .arg(resp.content.length()));
 
-                    // If the model emitted text-tool markup instead of structured
-                    // tool_calls, run it through extraction so the markup is
+                    // If the model emitted a tool call as text/JSON instead of a
+                    // structured tool_call, run it through extraction so it is
                     // executed instead of dumped raw into the chat bubble.
-                    static const QRegularExpression rx_has_text_markup(
-                        QStringLiteral("<\\s*/?\\s*(?:\\w+\\s*:\\s*)?tool_call\\b|<\\s*invoke\\s+name="),
-                        QRegularExpression::CaseInsensitiveOption);
-                    if (resp.success && rx_has_text_markup.match(resp.content).hasMatch()) {
-                        LOG_INFO(kLlmToolLoopTag, "TOOL LOOP: summary fallback has text-tool markup — re-routing");
+                    if (resp.success && content_may_hold_tool_call(resp.content)) {
+                        LOG_INFO(kLlmToolLoopTag, "TOOL LOOP: summary fallback may hold a text/JSON tool call — re-routing");
                         QString user_msg;
                         for (const auto& v : loop_messages) {
                             QJsonObject o = v.toObject();

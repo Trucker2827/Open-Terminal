@@ -38,6 +38,16 @@ void collect(const QJsonValue& v, const QSet<QString>& known,
         for (const auto& e : v.toArray()) collect(e, known, out);
         return;
     }
+    // A string element that is itself JSON: weak models sometimes emit a list of
+    // STRINGIFIED tool-call objects, e.g. ["{\"name\":\"get_quote\",...}", "..."].
+    // Recurse into it. fromJson on a non-JSON string yields a null doc → no recursion,
+    // and a parsed value is never a string, so this cannot loop.
+    if (v.isString()) {
+        const auto d = QJsonDocument::fromJson(v.toString().toUtf8());
+        if (d.isObject()) collect(d.object(), known, out);
+        else if (d.isArray()) collect(d.array(), known, out);
+        return;
+    }
     if (!v.isObject()) return;
     const QJsonObject o = v.toObject();
     const QString nm = name_of(o);
