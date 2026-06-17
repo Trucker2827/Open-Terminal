@@ -75,6 +75,7 @@ class LlmConfigSection : public QWidget {
     QPushButton* save_btn_ = nullptr;
     QPushButton* test_btn_ = nullptr;
     QCheckBox* tools_check_ = nullptr;
+    QLabel* local_model_hint_ = nullptr; // shown only for the local (Ollama) provider
     QLabel* status_lbl_ = nullptr;
 
     // Global settings (lives at bottom of provider tab)

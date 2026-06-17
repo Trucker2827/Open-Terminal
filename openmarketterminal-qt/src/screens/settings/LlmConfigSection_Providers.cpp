@@ -300,6 +300,21 @@ QWidget* LlmConfigSection::build_form_panel() {
 
     vl->addLayout(form);
 
+    // Local-model guidance — only shown when the selected provider is local (Ollama).
+    // Measured (scripts/dev/probe_local_model_toolloop.py): capable local models drive the
+    // tool loop, small ones manage only simple direct requests. Premium Claude stays best.
+    local_model_hint_ = new QLabel(
+        tr("💡 Local-model tip: llama 3.3 (70B) is the most reliable local model for this "
+           "app's tools — it can discover and call tools across multiple steps. Smaller "
+           "local models handle simple, direct requests but often can't complete multi-step "
+           "tool tasks. For serious analysis, a premium model (e.g. Claude Sonnet 4.x) is "
+           "recommended."));
+    local_model_hint_->setWordWrap(true);
+    local_model_hint_->setStyleSheet("color:" + QString(ui::colors::TEXT_SECONDARY()) +
+                                     ";font-size:11px;padding:6px 0;");
+    local_model_hint_->setVisible(false);
+    vl->addWidget(local_model_hint_);
+
     // Buttons
     auto* btn_row = new QHBoxLayout;
     save_btn_ = new QPushButton(tr("Save & Set Active"));
@@ -524,6 +539,10 @@ void LlmConfigSection::populate_form(const QString& provider) {
     provider_edit_->setText(provider);
 
     bool is_ollama = (provider.toLower() == "ollama");
+
+    // Local-model guidance is only relevant for the local (Ollama) provider.
+    if (local_model_hint_)
+        local_model_hint_->setVisible(is_ollama);
 
     // Populate model combo with fallback suggestions (empty for ollama — see fallback_models).
     model_combo_->blockSignals(true);
