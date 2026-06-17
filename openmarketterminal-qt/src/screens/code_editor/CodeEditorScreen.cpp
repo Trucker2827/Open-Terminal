@@ -139,7 +139,18 @@ using namespace openmarketterminal::ui;
 // ═════════════════════════════════════════════════════════════════════════════
 // CodeTextEdit — editor with keyboard shortcuts
 
+// Most-recently-constructed notebook screen, for the MCP notebook-authoring tools.
+static CodeEditorScreen* s_current_screen = nullptr;
+
+CodeEditorScreen* CodeEditorScreen::current() { return s_current_screen; }
+
+CodeEditorScreen::~CodeEditorScreen() {
+    if (s_current_screen == this)
+        s_current_screen = nullptr;
+}
+
 CodeEditorScreen::CodeEditorScreen(QWidget* parent) : QWidget(parent) {
+    s_current_screen = this;
     setObjectName("nbScreen");
     setStyleSheet(kStyle());
     connect(&ui::ThemeManager::instance(), &ui::ThemeManager::theme_changed, this,

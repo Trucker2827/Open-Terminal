@@ -20,6 +20,7 @@
 #include "mcp/tools/DataHubScreenContext.h"
 #include "mcp/tools/ExcelTools.h"
 #include "mcp/tools/NavigationTools.h"
+#include "mcp/tools/NotebookTools.h"
 #include "mcp/tools/ReportBuilderTools.h"
 #include "mcp/tools/WorkspaceTools.h"
 
@@ -87,6 +88,9 @@ void register_gui_tools() {
 
     // report builder tab — live LLM-driven report authoring (uses ReportBuilderScreen)
     provider.register_tools(tools::get_report_builder_tools());
+
+    // notebooks tab — live AI-authored analysis notebooks (create + open; user runs)
+    provider.register_tools(tools::get_notebook_tools());
 
     // terminal context — reads the active WindowFrame / focused screen
     provider.register_tools(tools::get_terminal_context_tools());

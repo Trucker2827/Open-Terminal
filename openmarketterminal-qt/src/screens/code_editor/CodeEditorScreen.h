@@ -175,11 +175,16 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     Q_OBJECT
   public:
     explicit CodeEditorScreen(QWidget* parent = nullptr);
+    ~CodeEditorScreen() override;
 
     /// Load a notebook (.ipynb) from disk into the editor and switch to the
     /// editor view. Public entry point used by the File Manager and the
     /// Library "OPEN" action. Returns true if the file was loaded.
     bool open_notebook_path(const QString& path);
+
+    /// Most-recently-constructed instance, for the MCP notebook-authoring tools to
+    /// open a freshly-created notebook on the main thread. Null if none is loaded.
+    static CodeEditorScreen* current();
 
     void restore_state(const QVariantMap& state) override;
     QVariantMap save_state() const override;
