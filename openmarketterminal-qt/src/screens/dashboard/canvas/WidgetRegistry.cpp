@@ -18,6 +18,7 @@
 #include "screens/dashboard/widgets/NewsCategoryWidget.h"
 #include "screens/dashboard/widgets/NewsWidget.h"
 #include "screens/dashboard/widgets/NotesWidget.h"
+#include "screens/dashboard/widgets/OwnershipWidget.h"
 #include "screens/dashboard/widgets/OpenPositionsWidget.h"
 #include "screens/dashboard/widgets/OrderBookMiniWidget.h"
 #include "screens/dashboard/widgets/PerformanceWidget.h"
@@ -190,6 +191,14 @@ WidgetRegistry::WidgetRegistry() {
     register_widget({"notes", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Notes"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Tools"),
                      QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Recent / favorite financial notes — click to open Notes screen"), 4, 5, 2, 3,
                      [](const QJsonObject& cfg) { return new widgets::NotesWidget(cfg); }});
+
+    register_widget({"insiders", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Insiders"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Research"),
+                     QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Recent insider (Form 4) trades for a ticker — read-only SEC data"), 4, 4, 3, 3,
+                     [](const QJsonObject& cfg) { return widgets::create_insider_widget(cfg); }});
+
+    register_widget({"institution_13f", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Institution 13F"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Research"),
+                     QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Top 13F holdings for an institution (e.g. BRK-B) — read-only SEC data"), 4, 4, 3, 3,
+                     [](const QJsonObject& cfg) { return widgets::create_institution_widget(cfg); }});
 }
 
 QString WidgetRegistry::display_name_tr(const WidgetMeta& m) {

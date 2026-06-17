@@ -1458,6 +1458,7 @@ set(SCREEN_SOURCES
     src/screens/dashboard/widgets/LoadingOverlay.cpp
     src/screens/dashboard/widgets/QuoteTableWidget.cpp
     src/screens/dashboard/widgets/TopMoversWidget.cpp
+    src/screens/dashboard/widgets/OwnershipWidget.cpp
     src/screens/dashboard/widgets/NewsWidget.cpp
     src/screens/dashboard/widgets/SectorHeatmapWidget.cpp
     src/screens/dashboard/widgets/StockQuoteWidget.cpp
@@ -1606,6 +1607,7 @@ set(SCREEN_SOURCES
     src/screens/gov_data/GovDataTreasuryPanel.cpp
     src/screens/gov_data/GovDataCongressPanel.cpp
     src/screens/ownership/InsiderTradesScreen.cpp
+    src/screens/ownership/InstitutionHoldingsScreen.cpp
     src/screens/gov_data/GovDataFrancePanel.cpp
     src/screens/gov_data/GovDataHKPanel.cpp
     src/screens/gov_data/GovDataUKPanel.cpp
@@ -2039,6 +2041,7 @@ set_source_files_properties(
     src/screens/dashboard/widgets/SectorHeatmapWidget.cpp
     src/screens/dashboard/widgets/StockQuoteWidget.cpp
     src/screens/dashboard/widgets/TopMoversWidget.cpp
+    src/screens/dashboard/widgets/OwnershipWidget.cpp
     src/screens/dashboard/widgets/RecentFilesWidget.cpp
     src/screens/dashboard/widgets/VideoPlayerWidget.cpp
     src/screens/dashboard/widgets/WatchlistWidget.cpp
@@ -2079,6 +2082,7 @@ set_source_files_properties(
     src/screens/geopolitics/TradeAnalysisPanel.cpp
     src/screens/gov_data/GovDataCongressPanel.cpp
     src/screens/ownership/InsiderTradesScreen.cpp
+    src/screens/ownership/InstitutionHoldingsScreen.cpp
     src/screens/gov_data/GovDataProviderPanel.cpp
     src/screens/gov_data/GovDataScreen.cpp
     src/screens/gov_data/GovDataTreasuryPanel.cpp
