@@ -52,6 +52,8 @@
 
 #include <cmath>
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace openmarketterminal::screens {
 
@@ -263,6 +265,13 @@ void AiChatScreen::build_chat_area() {
     messages_layout_ = new QVBoxLayout(messages_container_);
     messages_layout_->setContentsMargins(32, 24, 32, 16);
     messages_layout_->setSpacing(18);
+    // Empty-state welcome card (heading + clickable example-prompt chips). Lives at
+    // the top of the message list and is toggled by show_welcome(): visible on an
+    // empty session, hidden once messages exist. (Previously build_welcome() was
+    // never wired in, so the card never appeared.)
+    welcome_panel_ = build_welcome();
+    welcome_panel_->setVisible(false);
+    messages_layout_->addWidget(welcome_panel_);
     messages_layout_->addStretch();
     scroll_area_->setWidget(messages_container_);
     vl->addWidget(scroll_area_, 1);
@@ -390,58 +399,111 @@ QWidget* AiChatScreen::build_welcome() {
     sub->setStyleSheet(QString("color:%1;font-size:%2px;").arg(col::TEXT_SECONDARY()).arg(fnt::SMALL));
     vl->addWidget(sub);
 
-    auto* grid = new QGridLayout;
-    grid->setHorizontalSpacing(10);
-    grid->setVerticalSpacing(10);
-
+    // Example prompts — a curated, diverse subset of the 100 in
+    // docs/ai-chat-example-prompts.md. The card shows a random handful as
+    // clickable chips (clicking runs it); "More examples ↻" reshuffles.
     struct Sug {
         QString cat;
         const char* cat_color;
         QString text;
     };
-    const Sug suggestions[] = {
-        {tr("Markets"),   col::CYAN(),     tr("Show me today's top market movers")},
-        {tr("News"),      col::AMBER(),    tr("Summarize the latest financial news")},
-        {tr("Portfolio"), col::POSITIVE(), tr("Analyze my portfolio performance")},
-        {tr("Analytics"), col::AMBER(),    tr("Calculate valuation for AAPL")},
-        {tr("Economics"), col::CYAN(),     tr("Current GDP and inflation data")},
-        {tr("Research"),  col::POSITIVE(), tr("Tech sector market trends")},
+    static const std::vector<Sug> kPool = {
+        {tr("Quotes"),     col::CYAN(),     tr("What's AAPL trading at and how has it done this week?")},
+        {tr("Quotes"),     col::CYAN(),     tr("Compare NVDA, MSFT and GOOGL side by side")},
+        {tr("Financials"), col::POSITIVE(), tr("Pull AAPL's latest revenue, net income and margins")},
+        {tr("Filings"),    col::AMBER(),    tr("Summarize the risk factors in TSLA's latest 10-K")},
+        {tr("Filings"),    col::AMBER(),    tr("What 8-K events has NVDA filed recently?")},
+        {tr("Valuation"),  col::POSITIVE(), tr("Run a comps analysis for NVDA vs its peers")},
+        {tr("Valuation"),  col::POSITIVE(), tr("Build a DCF for MSFT with a sensitivity table")},
+        {tr("Valuation"),  col::POSITIVE(), tr("Model an LBO of HD with sponsor IRR and MOIC")},
+        {tr("Ownership"),  col::CYAN(),     tr("Show recent insider (Form 4) trades for NVDA")},
+        {tr("Ownership"),  col::CYAN(),     tr("Who are the top institutional holders of AAPL?")},
+        {tr("Ownership"),  col::CYAN(),     tr("Which members of Congress traded NVDA?")},
+        {tr("News"),       col::AMBER(),    tr("Summarize today's top financial news")},
+        {tr("News"),       col::AMBER(),    tr("What's the latest news and sentiment on TSLA?")},
+        {tr("Crypto"),     col::CYAN(),     tr("What's BTC trading at and the 24-hour change?")},
+        {tr("Macro"),      col::POSITIVE(), tr("Show US GDP growth and CPI inflation trends")},
+        {tr("Macro"),      col::POSITIVE(), tr("What's the latest US unemployment rate?")},
+        {tr("Government"), col::CYAN(),     tr("Recent US Treasury auction results and yields")},
+        {tr("M&A"),        col::AMBER(),    tr("Find recent M&A deals in the healthcare sector")},
+        {tr("Portfolio"),  col::POSITIVE(), tr("Analyze my portfolio's performance and risk")},
+        {tr("Technicals"), col::CYAN(),     tr("Show NVDA's RSI and moving averages")},
+        {tr("Reports"),    col::AMBER(),    tr("Draft an equity research note on MSFT")},
+        {tr("Notebooks"),  col::POSITIVE(), tr("Make me a DCF notebook for AAPL I can edit")},
+        {tr("Workflow"),   col::AMBER(),    tr("Brief me on AAPL: price, news, financials and valuation")},
+        {tr("Options"),    col::CYAN(),     tr("Explain a covered-call strategy on AAPL")},
     };
 
-    for (int i = 0; i < 6; ++i) {
-        auto* btn = new QPushButton;
-        btn->setCursor(Qt::PointingHandCursor);
-        btn->setStyleSheet(QString("QPushButton{background:%1;border:1px solid %2;border-radius:0px;"
-                                   "padding:12px 14px;text-align:left;}"
-                                   "QPushButton:hover{background:%3;border-color:%4;}")
-                               .arg(col::BG_RAISED(), col::BORDER_DIM(), col::BG_HOVER(), col::BORDER_BRIGHT()));
+    auto* grid = new QGridLayout;
+    grid->setHorizontalSpacing(10);
+    grid->setVerticalSpacing(10);
 
-        auto* bl = new QVBoxLayout(btn);
-        bl->setContentsMargins(0, 0, 0, 0);
-        bl->setSpacing(4);
-
-        auto* cat = new QLabel(suggestions[i].cat);
-        cat->setStyleSheet(QString("color:%1;font-size:%2px;font-weight:700;background:transparent;")
-                               .arg(suggestions[i].cat_color)
-                               .arg(fnt::TINY));
-        cat->setAttribute(Qt::WA_TransparentForMouseEvents);
-        bl->addWidget(cat);
-
-        auto* desc = new QLabel(suggestions[i].text);
-        desc->setStyleSheet(
-            QString("color:%1;font-size:%2px;background:transparent;").arg(col::TEXT_PRIMARY()).arg(fnt::SMALL));
-        desc->setWordWrap(true);
-        desc->setAttribute(Qt::WA_TransparentForMouseEvents);
-        bl->addWidget(desc);
-
-        const QString prompt = suggestions[i].text;
-        connect(btn, &QPushButton::clicked, this, [this, prompt]() {
-            input_box_->setPlainText(prompt);
-            on_send();
-        });
-        grid->addWidget(btn, i / 3, i % 3);
-    }
+    // (Re)fill the grid with `count` distinct random prompts from kPool.
+    auto populate = [this, grid](int count) {
+        while (QLayoutItem* it = grid->takeAt(0)) {
+            if (it->widget())
+                it->widget()->deleteLater();
+            delete it;
+        }
+        const int n = static_cast<int>(kPool.size());
+        std::vector<int> order(n);
+        for (int i = 0; i < n; ++i)
+            order[i] = i;
+        // Partial Fisher–Yates: shuffle just enough for `count` distinct picks.
+        for (int i = 0; i < count && i < n; ++i) {
+            const int j = i + static_cast<int>(QRandomGenerator::global()->bounded(n - i));
+            std::swap(order[i], order[j]);
+        }
+        for (int i = 0; i < count && i < n; ++i) {
+            const Sug& s = kPool[order[i]];
+            auto* btn = new QPushButton;
+            btn->setCursor(Qt::PointingHandCursor);
+            btn->setStyleSheet(QString("QPushButton{background:%1;border:1px solid %2;border-radius:0px;"
+                                       "padding:12px 14px;text-align:left;}"
+                                       "QPushButton:hover{background:%3;border-color:%4;}")
+                                   .arg(col::BG_RAISED(), col::BORDER_DIM(), col::BG_HOVER(),
+                                        col::BORDER_BRIGHT()));
+            auto* bl = new QVBoxLayout(btn);
+            bl->setContentsMargins(0, 0, 0, 0);
+            bl->setSpacing(4);
+            auto* cat = new QLabel(s.cat);
+            cat->setStyleSheet(QString("color:%1;font-size:%2px;font-weight:700;background:transparent;")
+                                   .arg(s.cat_color)
+                                   .arg(fnt::TINY));
+            cat->setAttribute(Qt::WA_TransparentForMouseEvents);
+            bl->addWidget(cat);
+            auto* desc = new QLabel(s.text);
+            desc->setStyleSheet(QString("color:%1;font-size:%2px;background:transparent;")
+                                    .arg(col::TEXT_PRIMARY())
+                                    .arg(fnt::SMALL));
+            desc->setWordWrap(true);
+            desc->setAttribute(Qt::WA_TransparentForMouseEvents);
+            bl->addWidget(desc);
+            const QString prompt = s.text;
+            connect(btn, &QPushButton::clicked, this, [this, prompt]() {
+                input_box_->setPlainText(prompt);
+                on_send();
+            });
+            grid->addWidget(btn, i / 3, i % 3);
+        }
+    };
+    populate(6);
     vl->addLayout(grid);
+
+    // "More examples ↻" reshuffles the chips; the full library of 100 prompts
+    // lives in docs/ai-chat-example-prompts.md.
+    auto* more = new QPushButton(tr("More examples  ↻"));
+    more->setCursor(Qt::PointingHandCursor);
+    more->setFlat(true);
+    more->setStyleSheet(QString("QPushButton{color:%1;background:transparent;border:none;"
+                                "font-size:%2px;padding:4px;}"
+                                "QPushButton:hover{color:%3;}")
+                            .arg(col::TEXT_SECONDARY())
+                            .arg(fnt::SMALL)
+                            .arg(col::TEXT_PRIMARY()));
+    connect(more, &QPushButton::clicked, this, [populate]() { populate(6); });
+    vl->addWidget(more, 0, Qt::AlignCenter);
+
     return panel;
 }
 
