@@ -6,6 +6,7 @@
 // Part of the partial-class split of AiChatScreen.cpp.
 
 #include "screens/ai_chat/AiChatScreen.h"
+#include "screens/ai_chat/AnalysisSlashCommands.h"
 
 #include "screens/ai_chat/ChatBubbleFactory.h"
 #include "services/llm/LlmService.h"
@@ -101,8 +102,18 @@ void AiChatScreen::on_send() {
         return;
     }
 
+    // Analysis slash commands (/comps, /dcf, /earnings) expand into a playbook
+    // instruction for the LLM (the playbooks live in the system prompt). The visible
+    // bubble below still shows the raw command the user typed.
+    QString slash_usage;
+    const QString slash_expanded = ai_chat::expand_analysis_slash_command(raw_text, &slash_usage);
+    if (!slash_usage.isEmpty()) {
+        add_message_bubble("system", slash_usage);
+        return;
+    }
+
     // Build final text: prepend file contents if attached
-    QString text = raw_text;
+    QString text = slash_expanded.isEmpty() ? raw_text : slash_expanded;
     if (!attached_file_path_.isEmpty()) {
         QFile f(attached_file_path_);
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {

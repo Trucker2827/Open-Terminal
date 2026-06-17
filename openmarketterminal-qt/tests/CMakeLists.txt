@@ -218,3 +218,11 @@ add_executable(tst_analysis_skills
 target_include_directories(tst_analysis_skills PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_analysis_skills PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_analysis_skills COMMAND tst_analysis_skills)
+
+# Analysis slash-command expansion (/comps /dcf /earnings) — pure string logic.
+add_executable(tst_analysis_slash
+    tst_analysis_slash.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/ai_chat/AnalysisSlashCommands.cpp)
+target_include_directories(tst_analysis_slash PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_analysis_slash PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_analysis_slash COMMAND tst_analysis_slash)

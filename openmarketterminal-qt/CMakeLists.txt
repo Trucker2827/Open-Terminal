@@ -973,6 +973,7 @@ set(AI_CHAT_SCREEN_SOURCES
     src/screens/ai_chat/AiChatScreen_Layout.cpp
     src/screens/ai_chat/AiChatScreen_Sessions.cpp
     src/screens/ai_chat/AiChatScreen_Messaging.cpp
+    src/screens/ai_chat/AnalysisSlashCommands.cpp
     src/screens/ai_chat/AiChatBubble.cpp
     src/screens/ai_chat/ChatBubbleController.cpp
 )
@@ -1889,6 +1890,7 @@ set_source_files_properties(
     src/screens/ai_chat/AiChatScreen_Layout.cpp
     src/screens/ai_chat/AiChatScreen_Sessions.cpp
     src/screens/ai_chat/AiChatScreen_Messaging.cpp
+    src/screens/ai_chat/AnalysisSlashCommands.cpp
     src/screens/ai_chat/AiChatBubble.cpp
     src/screens/ai_chat/ChatBubbleController.cpp
     src/screens/ai_chat/ChatBubbleFactory.cpp
