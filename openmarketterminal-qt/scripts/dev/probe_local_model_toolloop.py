@@ -148,6 +148,48 @@ def canned_result(name: str, args: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Tool-RAG mode — mirrors the LIVE path (LlmRequestPolicy.h): the model is sent
+# only Tier-0 meta-tools (tool_list / tool_describe) and must DISCOVER the data
+# tools, which are then injected into the active set (note_tool_activations).
+# This is the link the direct mode skips — and the one the lean prompt's rule #2
+# ("call tool_list to find more") actually depends on.
+# --------------------------------------------------------------------------- #
+
+META_TOOLS = [
+    {"type": "function", "function": {
+        "name": "tool_list",
+        "description": "Search for tools by a natural-language description of what you need. "
+                       "Returns the most relevant tool names.",
+        "parameters": {"type": "object",
+                       "properties": {"query": {"type": "string"}},
+                       "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "tool_describe",
+        "description": "Get the full input schema for a tool by name before calling it.",
+        "parameters": {"type": "object",
+                       "properties": {"name": {"type": "string"}},
+                       "required": ["name"]}}},
+]
+
+# The catalog tool_list searches over (keyed by name → its structured definition).
+CATALOG = {t["function"]["name"]: t for t in TOOLS}
+
+
+def tool_list_result(query: str) -> dict:
+    q = (query or "").lower()
+    hits = [name for name, t in CATALOG.items()
+            if any(w in (name + " " + t["function"]["description"]).lower()
+                   for w in q.split() if len(w) > 2)]
+    return {"tools": [{"name": n, "description": CATALOG[n]["function"]["description"]}
+                      for n in (hits or list(CATALOG))[:5]]}
+
+
+def tool_describe_result(name: str) -> dict:
+    t = CATALOG.get(name)
+    return t["function"] if t else {"error": f"unknown tool {name}"}
+
+
+# --------------------------------------------------------------------------- #
 # Bare-JSON tool-call detection — a faithful Python port of the C++
 # TextToolCallParser, so the harness reports the same shapes the app salvages.
 # --------------------------------------------------------------------------- #
@@ -221,10 +263,10 @@ def parse_bare_json_tool_calls(content: str, known: set[str]) -> list[tuple[str,
 # The loop — mirrors LlmService::do_tool_loop.
 # --------------------------------------------------------------------------- #
 
-def post(host: str, model: str, messages: list, with_tools: bool) -> dict:
+def post(host: str, model: str, messages: list, tools: list | None) -> dict:
     body = {"model": model, "stream": False, "messages": messages, "options": {"temperature": 0.2}}
-    if with_tools:
-        body["tools"] = TOOLS
+    if tools:
+        body["tools"] = tools
     req = urllib.request.Request(host.rstrip("/") + "/v1/chat/completions",
                                  data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
@@ -232,16 +274,37 @@ def post(host: str, model: str, messages: list, with_tools: bool) -> dict:
         return json.load(r)
 
 
-def run_variant(host: str, model: str, prompt_name: str, max_rounds: int) -> bool:
-    known = {t["function"]["name"] for t in TOOLS}
+def _dispatch(fn: str, args: dict, active: dict) -> dict:
+    """Execute a tool call. tool_list/tool_describe grow `active` (RAG activation,
+    mirroring note_tool_activations); everything else returns canned data."""
+    if fn == "tool_list":
+        res = tool_list_result(args.get("query", ""))
+        for row in res["tools"]:                       # activate surfaced candidates
+            active[row["name"]] = CATALOG[row["name"]]
+        return res
+    if fn == "tool_describe":
+        name = args.get("name", "")
+        if name in CATALOG:
+            active[name] = CATALOG[name]               # activate the committed tool
+        return tool_describe_result(name)
+    return canned_result(fn, args)
+
+
+def run_variant(host: str, model: str, prompt_name: str, max_rounds: int, rag: bool) -> bool:
+    known = {t["function"]["name"] for t in TOOLS} | {"tool_list", "tool_describe"}
     messages = [{"role": "system", "content": PROMPTS[prompt_name]},
                 {"role": "user", "content": TASK}]
     fired: set[tuple[str, dict]] = set()
-    print(f"\n{'='*70}\n### PROMPT = {prompt_name!r}  MODEL = {model}\n{'='*70}")
+    # In RAG mode the model starts with ONLY the meta-tools and must discover the
+    # rest; active grows as it does. In direct mode all data tools are present.
+    active: dict = {} if rag else dict(CATALOG)
+    mode = "RAG-discovery" if rag else "direct"
+    print(f"\n{'='*70}\n### PROMPT={prompt_name!r}  MODE={mode}  MODEL={model}\n{'='*70}")
 
     for rnd in range(1, max_rounds + 1):
+        tools = (META_TOOLS + list(active.values())) if rag else list(CATALOG.values())
         try:
-            resp = post(host, model, messages, with_tools=True)
+            resp = post(host, model, messages, tools)
         except Exception as e:  # noqa: BLE001 — diagnostic tool, surface anything
             print(f"  [turn {rnd}] HTTP ERROR: {e}")
             return False
@@ -259,9 +322,10 @@ def run_variant(host: str, model: str, prompt_name: str, max_rounds: int) -> boo
                 except json.JSONDecodeError:
                     args = {}
                 names.append(f"{fn}({args})")
-                fired.add((fn, str(args.get("symbol") or args.get("ticker") or "").upper()))
+                if fn in CATALOG:
+                    fired.add((fn, str(args.get("symbol") or args.get("ticker") or "").upper()))
                 messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
-                                 "content": json.dumps(canned_result(fn, args))})
+                                 "content": json.dumps(_dispatch(fn, args, active))})
             print(f"  [turn {rnd}] STRUCTURED tool_calls: {', '.join(names)}")
             continue
 
@@ -278,9 +342,10 @@ def run_variant(host: str, model: str, prompt_name: str, max_rounds: int) -> boo
                   f"{[(n, a) for n, a in salvaged]}")
             messages.append({"role": "assistant", "content": content})
             for fn, args in salvaged:
-                fired.add((fn, str(args.get("symbol") or args.get("ticker") or "").upper()))
+                if fn in CATALOG:
+                    fired.add((fn, str(args.get("symbol") or args.get("ticker") or "").upper()))
                 messages.append({"role": "tool", "tool_call_id": "",
-                                 "content": json.dumps(canned_result(fn, args))})
+                                 "content": json.dumps(_dispatch(fn, args, active))})
             continue
 
         # Genuine final answer (or a stall).
@@ -306,15 +371,24 @@ def main() -> int:
     ap.add_argument("--model", default="llama3.3:latest", help="Ollama model tag")
     ap.add_argument("--host", default="http://localhost:11434", help="Ollama base URL")
     ap.add_argument("--prompt", choices=["full", "lean", "both"], default="both")
-    ap.add_argument("--max-rounds", type=int, default=10)
+    ap.add_argument("--rag", choices=["off", "on", "both"], default="both",
+                    help="off=all tools pre-loaded; on=Tier-0 meta-tools + tool_list "
+                         "discovery (mirrors the live app); both=run each")
+    ap.add_argument("--max-rounds", type=int, default=12)
     args = ap.parse_args()
 
-    variants = ["full", "lean"] if args.prompt == "both" else [args.prompt]
-    results = {v: run_variant(args.host, args.model, v, args.max_rounds) for v in variants}
+    prompts = ["full", "lean"] if args.prompt == "both" else [args.prompt]
+    rags = [False, True] if args.rag == "both" else [args.rag == "on"]
+
+    results: dict[str, bool] = {}
+    for rag in rags:
+        for p in prompts:
+            label = f"{p}/{'RAG' if rag else 'direct'}"
+            results[label] = run_variant(args.host, args.model, p, args.max_rounds, rag)
 
     print(f"\n{'='*70}\nSUMMARY ({args.model})")
-    for v, ok in results.items():
-        print(f"  {v:>5} prompt: {'COMPLETED ✅' if ok else 'INCOMPLETE ❌'}")
+    for label, ok in results.items():
+        print(f"  {label:>14}: {'COMPLETED ✅' if ok else 'INCOMPLETE ❌'}")
     return 0 if any(results.values()) else 1
 
 
