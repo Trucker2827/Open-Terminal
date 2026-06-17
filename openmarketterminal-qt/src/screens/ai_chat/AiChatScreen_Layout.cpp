@@ -150,6 +150,9 @@ void AiChatScreen::build_sidebar() {
                                      .arg(fnt::SMALL)
                                      .arg(col::AMBER(), col::TEXT_PRIMARY(), col::BORDER_MED()));
     connect(session_list_, &QListWidget::currentRowChanged, this, &AiChatScreen::on_session_selected);
+    session_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(session_list_, &QListWidget::customContextMenuRequested, this,
+            &AiChatScreen::on_session_context_menu);
     vl->addWidget(session_list_, 1);
 
     // ── Session actions ──────────────────────────────────────────────────

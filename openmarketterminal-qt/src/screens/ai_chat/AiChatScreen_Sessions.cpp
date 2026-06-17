@@ -9,6 +9,7 @@
 #include "screens/ai_chat/AiChatScreen.h"
 
 #include "screens/ai_chat/ChatBubbleFactory.h"
+#include "screens/ai_chat/SessionTitle.h"
 #include "services/llm/LlmService.h"
 #include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
@@ -19,6 +20,7 @@
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
@@ -59,16 +61,6 @@ namespace col = openmarketterminal::ui::colors;
 // in the same TU produce two distinct anonymous namespaces, so an unqualified
 // `TAG` reference becomes ambiguous when the unity bucket merges both.
 static constexpr const char* TAG_SESSIONS = "AiChatScreen";
-
-static QString generate_session_title() {
-    static const QStringList prefixes = {"Amber", "Apex", "Atlas", "Echo", "Flux", "Nova", "Slate", "Vector"};
-    static const QStringList nouns = {"Brief", "Drift", "Focus", "Ledger", "Macro", "Pulse", "Signal", "Tape"};
-    const int pi = QRandomGenerator::global()->bounded(prefixes.size());
-    const int ni = QRandomGenerator::global()->bounded(nouns.size());
-    const QString sfx =
-        QString::number(QRandomGenerator::global()->bounded(0x10000), 16).rightJustified(4, '0').toUpper();
-    return QString("%1 %2 %3").arg(prefixes[pi], nouns[ni], sfx);
-}
 
 static QString display_session_title(const ChatSession& s) {
     if (!s.title.trimmed().isEmpty() && s.title.trimmed().toLower() != "chat")
@@ -170,7 +162,7 @@ void AiChatScreen::load_sessions() {
 void AiChatScreen::create_new_session() {
     if (streaming_)
         return;
-    const QString title = generate_session_title();
+    const QString title = ai_chat::generate_session_title();
     auto result = ChatRepository::instance().create_session(title, ai_chat::LlmService::instance().active_provider(),
                                                             ai_chat::LlmService::instance().active_model());
     if (result.is_err()) {
@@ -256,6 +248,26 @@ void AiChatScreen::on_delete_session() {
     delete_btn_->setEnabled(false);
     rename_btn_->setEnabled(false);
     load_sessions();
+}
+
+void AiChatScreen::on_session_context_menu(const QPoint& pos) {
+    if (streaming_)
+        return;
+    auto* item = session_list_->itemAt(pos);
+    if (!item)
+        return;
+    // Right-clicking selects the session first, so Rename/Delete (which act on
+    // the active session) operate on the one under the cursor.
+    session_list_->setCurrentItem(item);
+
+    QMenu menu(this);
+    QAction* rename_act = menu.addAction(tr("Rename"));
+    QAction* delete_act = menu.addAction(tr("Delete"));
+    QAction* chosen = menu.exec(session_list_->viewport()->mapToGlobal(pos));
+    if (chosen == rename_act)
+        on_rename_session();
+    else if (chosen == delete_act)
+        on_delete_session();
 }
 
 void AiChatScreen::on_attach_file() {

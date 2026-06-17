@@ -9,6 +9,7 @@ import os
 import sys
 import json
 import time
+import tempfile
 import ccxt
 
 # Markets cache TTL — 30 minutes is a safe balance between freshness and speed.
@@ -16,11 +17,36 @@ import ccxt
 _MARKETS_CACHE_TTL = 1800
 
 
+def _markets_cache_dir() -> str:
+    """Return a WRITABLE cache directory for market lists.
+
+    MUST NOT live inside the app bundle: on macOS the app is code-signed, and
+    writing next to the script (Contents/.../scripts/exchange/.cache) breaks the
+    seal ("a sealed resource is missing or invalid"). Prefer the app's per-user
+    data dir (exported as OpenMarketTerminal_DATA_DIR by the C++ runner), then a
+    user/OS cache dir. Falls back gracefully so standalone/dev runs still work.
+    """
+    candidates = [
+        os.environ.get("OpenMarketTerminal_DATA_DIR"),
+        os.environ.get("XDG_CACHE_HOME"),
+        os.path.join(os.path.expanduser("~"), ".cache"),
+        tempfile.gettempdir(),
+    ]
+    for base in candidates:
+        if not base:
+            continue
+        cache_dir = os.path.join(base, "openterminal", "exchange_markets")
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            return cache_dir
+        except Exception:
+            continue
+    return tempfile.gettempdir()
+
+
 def get_markets_cache_path(exchange_id: str) -> str:
     """Return path to the per-exchange markets cache file."""
-    cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
-    os.makedirs(cache_dir, exist_ok=True)
-    return os.path.join(cache_dir, f"markets_{exchange_id}.json")
+    return os.path.join(_markets_cache_dir(), f"markets_{exchange_id}.json")
 
 
 def load_cached_markets(exchange_id: str) -> dict | None:

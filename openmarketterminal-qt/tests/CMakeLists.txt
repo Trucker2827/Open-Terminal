@@ -227,6 +227,15 @@ target_include_directories(tst_analysis_slash PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_analysis_slash PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_analysis_slash COMMAND tst_analysis_slash)
 
+# Session-title helpers: random placeholder, the predicate that recognizes it,
+# and first-message → human-title derivation. Pure QString logic, core-only.
+add_executable(tst_session_title
+    tst_session_title.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/ai_chat/SessionTitle.cpp)
+target_include_directories(tst_session_title PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_session_title PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_session_title COMMAND tst_session_title)
+
 # Bare-JSON tool-call salvage — lets weak/local models (llama via Ollama) whose
 # tool calls arrive as plain-text JSON still drive the analysis loop. Pure parser,
 # guarded to known tool names.

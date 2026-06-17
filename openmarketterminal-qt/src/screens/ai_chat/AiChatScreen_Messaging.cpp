@@ -7,6 +7,7 @@
 
 #include "screens/ai_chat/AiChatScreen.h"
 #include "screens/ai_chat/AnalysisSlashCommands.h"
+#include "screens/ai_chat/SessionTitle.h"
 
 #include "screens/ai_chat/ChatBubbleFactory.h"
 #include "services/llm/LlmService.h"
@@ -159,6 +160,9 @@ void AiChatScreen::on_send() {
     set_input_enabled(false);
     streaming_ = true;
     show_welcome(false);
+    // First user message of a brand-new session → auto-name the session after it
+    // (history_ is empty only before the first turn). Captured before the push below.
+    const bool is_first_user_message = history_.empty();
     // Display only raw_text in bubble (not full file dump)
     add_message_bubble("user", raw_text.isEmpty() ? tr("[File attached — see context]") : raw_text);
     total_messages_++;
@@ -166,6 +170,18 @@ void AiChatScreen::on_send() {
                                            ai_chat::LlmService::instance().active_provider(),
                                            ai_chat::LlmService::instance().active_model());
     history_.push_back({"user", text});
+
+    // Name the session from its first message, but only while it still carries the
+    // random placeholder — a session the user already renamed is left untouched.
+    if (is_first_user_message && ai_chat::is_auto_generated_title(active_session_title_)) {
+        const QString derived = ai_chat::derive_session_title_from_message(raw_text);
+        if (!derived.isEmpty()) {
+            ChatRepository::instance().update_session_title(active_session_id_, derived);
+            active_session_title_ = derived;
+            hdr_session_lbl_->setText(active_session_title_);
+            load_sessions();
+        }
+    }
 
     // Show typing indicator while waiting for first chunk
     show_typing(true);

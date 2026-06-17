@@ -63,6 +63,7 @@ class AiChatScreen : public QWidget, public IStatefulScreen, public openmarkette
     void on_session_selected(int row);
     void on_delete_session();
     void on_rename_session();
+    void on_session_context_menu(const QPoint& pos);
     void on_stream_chunk(const QString& chunk, bool done);
     void on_streaming_done(ai_chat::LlmResponse response);
     void on_provider_changed();

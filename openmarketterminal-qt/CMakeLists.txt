@@ -33,7 +33,7 @@ if(WIN32 AND CMAKE_HOST_WIN32)
     unset(_openmarketterminal_sdk_dirs)
 endif()
 
-project(OpenTerminal VERSION 0.3.7 LANGUAGES C CXX)
+project(OpenTerminal VERSION 0.3.8 LANGUAGES C CXX)
 
 # Strip C/C++ flags out of RC invocations — rc.exe only understands /D, /I, /fo.
 if(WIN32)
@@ -975,6 +975,7 @@ set(AI_CHAT_SCREEN_SOURCES
     src/screens/ai_chat/AiChatScreen_Sessions.cpp
     src/screens/ai_chat/AiChatScreen_Messaging.cpp
     src/screens/ai_chat/AnalysisSlashCommands.cpp
+    src/screens/ai_chat/SessionTitle.cpp
     src/screens/ai_chat/AiChatBubble.cpp
     src/screens/ai_chat/ChatBubbleController.cpp
 )
@@ -1893,6 +1894,7 @@ set_source_files_properties(
     src/screens/ai_chat/AiChatScreen_Sessions.cpp
     src/screens/ai_chat/AiChatScreen_Messaging.cpp
     src/screens/ai_chat/AnalysisSlashCommands.cpp
+    src/screens/ai_chat/SessionTitle.cpp
     src/screens/ai_chat/AiChatBubble.cpp
     src/screens/ai_chat/ChatBubbleController.cpp
     src/screens/ai_chat/ChatBubbleFactory.cpp
