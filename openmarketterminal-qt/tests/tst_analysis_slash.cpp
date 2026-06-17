@@ -23,6 +23,15 @@ private slots:
         QVERIFY(expand_analysis_slash_command("/earnings TSLA", &u).contains("earnings"));
     }
 
+    void lbo_and_three_statement_expand() {
+        QString u;
+        QVERIFY(expand_analysis_slash_command("/lbo KKR", &u).contains("LBO"));
+        QVERIFY(expand_analysis_slash_command("/lbo KKR", &u).contains("KKR"));
+        const QString ts = expand_analysis_slash_command("/3statement NVDA", &u);
+        QVERIFY(ts.contains("3-statement"));
+        QVERIFY(ts.contains("NVDA"));
+    }
+
     void ticker_is_uppercased() {
         QString u;
         QVERIFY(expand_analysis_slash_command("/comps aapl", &u).contains("AAPL"));

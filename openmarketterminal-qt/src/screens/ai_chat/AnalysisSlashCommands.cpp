@@ -27,6 +27,14 @@ const QList<Cmd>& commands() {
          "Run the earnings/filing-note playbook for %1: anchor the latest financials with YoY "
          "deltas, read the MD&A and risk sections, synthesize what drove the result plus guidance "
          "and the key risks, and write the note in the Report Builder."},
+        {"lbo", "/lbo TICKER",
+         "Run the LBO playbook for %1: set entry EV from an EV/EBITDA multiple, build Sources & "
+         "Uses (debt vs sponsor equity), a 5-yr operating model and debt schedule with cash sweep, "
+         "an exit, and sponsor returns (IRR/MOIC) with a sensitivity grid — in the Report Builder."},
+        {"3statement", "/3statement TICKER",
+         "Run the 3-statement playbook for %1: pull historicals with the edgar tools, then build "
+         "linked Income Statement, Balance Sheet, and Cash Flow projections with the balance check "
+         "(A=L+E) and cash tie-out holding every period, plus credit metrics — in the Report Builder."},
     };
     return kCmds;
 }
