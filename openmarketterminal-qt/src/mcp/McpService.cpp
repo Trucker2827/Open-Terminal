@@ -17,6 +17,8 @@
 #include <QTimer>
 #include <QtConcurrent/QtConcurrent>
 
+#include <limits>
+
 namespace openmarketterminal::mcp {
 
 static constexpr const char* TAG = "McpService";
@@ -106,6 +108,7 @@ QByteArray McpService::filter_signature(const ToolFilter& f) {
     key += "n=" + f.name_patterns.join('|').toUtf8() + ';';
     key += "xn=" + f.exclude_name_patterns.join('|').toUtf8() + ';';
     key += "m=" + QByteArray::number(f.max_tools);
+    key += ";nc=" + QByteArray(f.no_cap ? "1" : "0");
     return key;
 }
 
@@ -131,7 +134,10 @@ static std::vector<UnifiedTool> apply_tool_filter(std::vector<UnifiedTool> tools
     QList<QRegularExpression> exclude_rx;
     for (const auto& p : filter.exclude_name_patterns) exclude_rx.append(QRegularExpression(p));
 
-    const int effective_cap = filter.max_tools > 0 ? filter.max_tools : kHardMaxTools;
+    // no_cap bypasses the safety cap entirely (external clients that do their own
+    // tool selection). Otherwise: explicit max_tools, else the kHardMaxTools backstop.
+    const int effective_cap = filter.no_cap ? std::numeric_limits<int>::max()
+                              : (filter.max_tools > 0 ? filter.max_tools : kHardMaxTools);
 
     // Stage 1 — keep candidates that pass include/exclude predicates.
     // Cap is applied after sort, not during iteration, so a stable order

@@ -116,7 +116,7 @@ class TerminalMcpBridge : public QObject {
     void write_discovery_file();
 
     void handle_post_tool(QTcpSocket* sock, const QJsonObject& body);
-    void handle_get_tools(QTcpSocket* sock);
+    void handle_get_tools(QTcpSocket* sock, bool full = false);
 
     void write_json_response(QTcpSocket* sock, int status, const QJsonObject& body);
     void write_error(QTcpSocket* sock, int status, const QString& message);

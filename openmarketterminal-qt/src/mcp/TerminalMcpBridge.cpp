@@ -308,7 +308,12 @@ void TerminalMcpBridge::try_dispatch(QTcpSocket* sock) {
     }
 
     if (st.method == "GET" && path_only == "/tools") {
-        handle_get_tools(sock);
+        // ?all=1 → full uncapped catalogue (external clients like the Claude Code
+        // MCP adapter that do their own tool selection). Default stays capped/filtered
+        // for the token-limited in-app agent path.
+        const QString query = st.path.section('?', 1);
+        const bool full = query.contains("all=1");
+        handle_get_tools(sock, full);
         return;
     }
 
@@ -399,12 +404,19 @@ void TerminalMcpBridge::handle_post_tool(QTcpSocket* sock, const QJsonObject& bo
 
 // ── GET /tools ──────────────────────────────────────────────────────────────
 
-void TerminalMcpBridge::handle_get_tools(QTcpSocket* sock) {
-    // Default filter — the catalog the agent gets at boot is also what
-    // dynamic refresh returns. AgentService::build_payload owns the per-run
-    // filter; this endpoint is a fallback and uses the same defaults.
+void TerminalMcpBridge::handle_get_tools(QTcpSocket* sock, bool full) {
     ToolFilter filter;
-    filter.exclude_categories = {"navigation", "system", "settings", "ai-chat", "meta"};
+    if (full) {
+        // Full catalogue for an external client (e.g. the Claude Code MCP adapter):
+        // no category exclusions, no cap. These tools are already callable by name
+        // via POST /tool; this just makes the whole set discoverable.
+        filter.no_cap = true;
+    } else {
+        // Default filter — the catalog the agent gets at boot is also what
+        // dynamic refresh returns. AgentService::build_payload owns the per-run
+        // filter; this endpoint is a fallback and uses the same defaults.
+        filter.exclude_categories = {"navigation", "system", "settings", "ai-chat", "meta"};
+    }
     QJsonObject payload;
     payload["tools"] = tool_definitions(filter);
     write_json_response(sock, 200, payload);

@@ -329,10 +329,16 @@ struct ToolFilter {
     /// Regex exclude filter on tool name. Applied after include.
     QStringList exclude_name_patterns;
 
-    /// Hard cap on returned tool count. 0 = no cap.
+    /// Hard cap on returned tool count. 0 = use the kHardMaxTools safety cap.
     /// Truncation happens after all other filters have run, in the order
     /// tools were registered (effectively: most-recently-registered last).
     int max_tools = 0;
+
+    /// Bypass the kHardMaxTools safety cap entirely and return every tool that
+    /// passes the other filters. The cap exists to protect a token-limited LLM's
+    /// prompt; an external client that does its own tool selection (e.g. the
+    /// Claude Code MCP adapter listing the full catalog) sets this to true.
+    bool no_cap = false;
 };
 
 // ============================================================================

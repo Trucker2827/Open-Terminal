@@ -51,7 +51,9 @@ ClientResult BridgeClient::request(const QByteArray& method, const QString& path
 }
 
 ClientResult BridgeClient::get_tools() {
-    return request("GET", "/tools", {});
+    // ?all=1 → full uncapped catalogue. The CLI / Claude Code MCP adapter does its
+    // own tool selection, so it wants every tool, not the token-limited agent subset.
+    return request("GET", "/tools?all=1", {});
 }
 
 ClientResult BridgeClient::call_tool(const QString& name, const QJsonObject& args) {
