@@ -92,6 +92,7 @@ QString DockScreenRouter::title_for_id(const QString& id) {
         {"docs", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Docs")},
         {"about", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "About")},
         {"observer", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Observer")},
+        {"insider_trades", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Insiders")},
         {"profile", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Profile")},
         {"settings", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Settings")},
         {"contact", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Contact")},

@@ -6,6 +6,7 @@
     { "id": "watchlist",         "title": "Watchlist",          "category": "Core",        "description": "Symbol lists with live quotes",                             "tags": ["watchlist","quotes","symbols"] },
     { "id": "news",              "title": "News",               "category": "Core",        "description": "Global news wire with category filters and sentiment",     "tags": ["news","wire","headlines"] },
     { "id": "observer",          "title": "Observer",           "category": "Research",    "description": "Read-only BTC/ETH observation journal: daily lesson, weekly review, alerts", "tags": ["observer","observe","journal","crypto watch","btc","eth","review"] },
+    { "id": "insider_trades",    "title": "Insiders",           "category": "Research",    "description": "Corporate insider trades (SEC Form 4) — who bought/sold, shares, price", "tags": ["insider","insiders","form 4","sec","ownership"] },
 
     { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Order entry + real-time book for Kraken / HyperLiquid",    "tags": ["crypto","trading","order"] },
     { "id": "equity_trading",    "title": "Equity Trading",     "category": "Trading",     "description": "Multi-account equity trading across 16+ brokers",          "tags": ["equity","trading","brokers"] },
