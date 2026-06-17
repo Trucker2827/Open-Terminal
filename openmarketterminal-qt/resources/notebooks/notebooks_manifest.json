@@ -3,13 +3,23 @@
   "brand": "OpenMarketTerminal Notebook",
   "notebooks": [
     {
+      "id": "analysis-company-fundamentals",
+      "title": "Company Fundamentals (SEC)",
+      "category": "Finance",
+      "difficulty": "Beginner",
+      "est_minutes": 8,
+      "requires": "edgartools",
+      "summary": "Pull a company's real SEC financials via edgartools \u2014 revenue, margins, profitability, and a multi-year trend.",
+      "file": "analysis_company_fundamentals.ipynb"
+    },
+    {
       "id": "finance-time-value-of-money",
       "title": "Time Value of Money",
       "category": "Finance",
       "difficulty": "Beginner",
       "est_minutes": 10,
       "requires": "stdlib",
-      "summary": "Present value, future value, NPV and IRR from first principles — the math behind every valuation, using only the Python standard library.",
+      "summary": "Present value, future value, NPV and IRR from first principles \u2014 the math behind every valuation, using only the Python standard library.",
       "file": "finance_time_value_of_money.ipynb"
     },
     {
@@ -29,7 +39,7 @@
       "difficulty": "Beginner",
       "est_minutes": 12,
       "requires": "stdlib",
-      "summary": "Read a CPI series, compute inflation, and learn why nominal returns lie — real vs nominal and the Rule of 72.",
+      "summary": "Read a CPI series, compute inflation, and learn why nominal returns lie \u2014 real vs nominal and the Rule of 72.",
       "file": "economics_inflation_real_returns.ipynb"
     },
     {
@@ -49,7 +59,7 @@
       "difficulty": "Beginner",
       "est_minutes": 12,
       "requires": "stdlib",
-      "summary": "Build a watchlist, compute daily returns and volatility, and rank winners and losers — pure standard library.",
+      "summary": "Build a watchlist, compute daily returns and volatility, and rank winners and losers \u2014 pure standard library.",
       "file": "trading_first_watchlist.ipynb"
     },
     {
