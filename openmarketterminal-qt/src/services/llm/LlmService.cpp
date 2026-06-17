@@ -2,6 +2,7 @@
 
 #include "services/llm/LlmService.h"
 
+#include "services/llm/AnalysisSkillLoader.h"
 #include "services/llm/LlmContentExtractors.h"
 #include "services/llm/LlmRequestPolicy.h"
 #include "services/llm/ModelCatalog.h"
@@ -227,6 +228,16 @@ void LlmService::ensure_config() const {
             return hint;
         }();
         system_prompt_ += kHint;
+    }
+
+    // Financial-analysis playbooks (comps / DCF / earnings note) — methodology adapted
+    // from anthropics/financial-services (Apache-2.0). Teaches the model to run proper
+    // analysis using the app's own edgar_*/get_quote/report_* tools. Idempotent via the
+    // "[Analysis skills]" sentinel; only when tools are enabled (the playbooks call tools).
+    if (tools_enabled_ && !system_prompt_.contains("[Analysis skills]")) {
+        const QString frag = services::AnalysisSkillLoader::instance().system_prompt_fragment();
+        if (!frag.isEmpty())
+            system_prompt_ += frag;
     }
 
     config_loaded_ = true;

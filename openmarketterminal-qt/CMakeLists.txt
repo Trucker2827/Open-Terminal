@@ -955,6 +955,7 @@ set(PYTHON_SOURCES
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
     src/services/llm/LlmService.cpp
+    src/services/llm/AnalysisSkillLoader.cpp
     src/services/llm/LlmContentExtractors.cpp
     src/services/llm/LlmHttpHelpers.cpp
     src/services/llm/LlmRequestBuilders.cpp
@@ -3317,6 +3318,9 @@ add_custom_command(TARGET OpenMarketTerminal POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/component_catalog.json"
         "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/component_catalog.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/ai_skills"
+        "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/ai_skills"
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "$<TARGET_FILE_DIR:OpenMarketTerminal>/resources/charts"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

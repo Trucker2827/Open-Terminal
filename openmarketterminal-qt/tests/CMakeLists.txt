@@ -209,3 +209,12 @@ add_executable(tst_observer_view
 target_include_directories(tst_observer_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_observer_view PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_observer_view COMMAND tst_observer_view)
+
+# Analysis-skill loader — reads resources/ai_skills/*.md into a system-prompt
+# fragment for the in-app LLM. Pure (Qt6::Core only), fixture-driven.
+add_executable(tst_analysis_skills
+    tst_analysis_skills.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/llm/AnalysisSkillLoader.cpp)
+target_include_directories(tst_analysis_skills PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_analysis_skills PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_analysis_skills COMMAND tst_analysis_skills)
