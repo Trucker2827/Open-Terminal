@@ -22,6 +22,17 @@ except ImportError:
 from .base import EdgarError, check_edgar_available
 
 
+def _num(x):
+    """Coerce numpy/None/str to a plain float, or None (drops NaN)."""
+    if x is None:
+        return None
+    try:
+        f = float(x)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+
 def get_13f_holdings(ticker: str, quarters: int = 2) -> Dict[str, Any]:
     """
     Get institutional holdings from 13F-HR filings
@@ -110,42 +121,57 @@ def get_13f_top_holdings(ticker: str, top_n: int = 20) -> Dict[str, Any]:
         filing = company.get_filings(form="13F-HR").latest(1)
 
         if not filing:
-            return {
-                "error": EdgarError("get_13f_top_holdings",
-                                  f"No 13F-HR filing found for {ticker}").to_dict()
-            }
+            return {"error": EdgarError("get_13f_top_holdings",
+                                        f"No 13F-HR filing found for {ticker}").to_dict()}
 
         thirteenf = filing.obj()
+        # The real holdings live in the parsed information table (a DataFrame with
+        # Issuer/Cusip/Value/SharesPrnAmount/Ticker columns). The old code iterated
+        # `holdings` and got the column NAMES ("Issuer"/"Class"/"Cusip") as rows.
+        df = getattr(thirteenf, "infotable", None)
+        if df is None or len(df) == 0:
+            return {"error": EdgarError(
+                "get_13f_top_holdings",
+                f"13F filing for {ticker} has no parsed holdings — the 13F parser may be out of date").to_dict()}
 
-        if not thirteenf or not hasattr(thirteenf, 'holdings'):
-            return {
-                "error": EdgarError("get_13f_top_holdings",
-                                  "No holdings data available").to_dict()
-            }
+        cols = {c.lower(): c for c in df.columns}
+        vcol, icol = cols.get("value"), cols.get("issuer")
+        scol, ccol = cols.get("sharesprnamount"), cols.get("cusip")
+        tcol, clcol = cols.get("ticker"), cols.get("class")
 
-        # Get holdings as dataframe
-        holdings = thirteenf.holdings
-        holdings_list = []
+        ordered = df.sort_values(by=vcol, ascending=False).head(top_n) if vcol else df.head(top_n)
+        holdings = []
+        for _, r in ordered.iterrows():
+            issuer = str(r[icol]).strip() if icol and r[icol] is not None else None
+            holdings.append({
+                "issuer": issuer,
+                "ticker": (str(r[tcol]).strip() or None) if tcol and r[tcol] is not None else None,
+                "cusip": str(r[ccol]).strip() if ccol and r[ccol] is not None else None,
+                "class": str(r[clcol]).strip() if clcol and r[clcol] is not None else None,
+                "value": _num(r[vcol]) if vcol else None,
+                "shares": _num(r[scol]) if scol else None,
+            })
 
-        if hasattr(holdings, 'to_pandas'):
-            df = holdings.to_pandas()
-            # Sort by value and take top N
-            if 'Value' in df.columns or 'value' in df.columns:
-                value_col = 'Value' if 'Value' in df.columns else 'value'
-                df = df.sort_values(by=value_col, ascending=False).head(top_n)
-            holdings_list = df.to_dict('records')
-        elif hasattr(holdings, '__iter__'):
-            holdings_list = list(holdings)[:top_n]
+        # Header-row guard (review condition #3): the exact bug we're fixing was
+        # "holdings" being the literal header tokens. Reject that as a parse failure.
+        HEADERS = {"issuer", "class", "cusip", "value"}
+        if not holdings or all((h["issuer"] or "").strip().lower() in HEADERS for h in holdings):
+            return {"error": EdgarError(
+                "get_13f_top_holdings",
+                f"13F holdings for {ticker} did not parse into issuer rows").to_dict()}
 
+        total_value = _num(df[vcol].sum()) if vcol else None
         return {
             "success": True,
             "data": {
                 "filing_date": str(filing.filing_date),
-                "report_period": str(thirteenf.report_period) if hasattr(thirteenf, 'report_period') else None,
-                "manager_name": thirteenf.manager_name if hasattr(thirteenf, 'manager_name') else None,
-                "total_value": float(thirteenf.total_value) if hasattr(thirteenf, 'total_value') and thirteenf.total_value else None,
-                "top_holdings": holdings_list,
-                "count": len(holdings_list)
+                "report_period": str(getattr(thirteenf, "report_period", "")) or None,
+                "manager_name": (getattr(thirteenf, "management_company_name", None)
+                                 or getattr(thirteenf, "manager_name", None)),
+                "total_value": total_value,
+                "holdings_count": int(len(df)),
+                "top_holdings": holdings,
+                "count": len(holdings),
             }
         }
     except Exception as e:

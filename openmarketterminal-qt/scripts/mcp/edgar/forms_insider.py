@@ -22,57 +22,80 @@ except ImportError:
 from .base import EdgarError, check_edgar_available
 
 
+def _num(x):
+    """Coerce numpy/None/str to a plain float, or None (drops NaN)."""
+    if x is None:
+        return None
+    try:
+        f = float(x)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+
 def get_insider_transactions(ticker: str, limit: int = 25) -> Dict[str, Any]:
     """
-    Get insider transactions (Form 4 filings)
+    Get insider transactions (Form 4) with REAL per-transaction detail.
 
-    Args:
-        ticker: Stock ticker symbol
-        limit: Number of transactions to retrieve
+    One row per transaction (flattened across filings): filing_date, insider,
+    position, transaction_type, code, shares, price, value, security, security_type.
 
-    Returns:
-        List of insider transactions with basic info
+    Contract (review condition #4): if Form 4 filings exist but we extract zero
+    transaction rows, that is a parser failure -> {"error": ...}, never a silent
+    {"success": True, "data": []}. Only a filer with NO Form 4 filings returns
+    an empty success.
     """
     try:
         check_edgar_available()
         company = Company(ticker)
         filings = company.get_filings(form="4")
 
-        if not filings or len(filings) == 0:
-            return {
-                "success": True,
-                "data": [],
-                "count": 0
-            }
+        n_filings = 0 if not filings else len(filings)
+        if n_filings == 0:
+            return {"success": True, "ticker": ticker.upper(), "data": [], "count": 0}
 
-        transactions = []
-        count = 0
-
+        rows = []
+        scanned = 0
+        scan_cap = limit * 3 + 10  # bound network work; a filing can hold several transactions
         for filing in filings:
-            if count >= limit:
+            if len(rows) >= limit or scanned >= scan_cap:
                 break
-
+            scanned += 1
             try:
-                form4 = filing.obj()
-
-                if form4:
-                    transactions.append({
-                        "filing_date": str(filing.filing_date),
-                        "accession_number": filing.accession_number,
-                        "owner": form4.owner.name if hasattr(form4, 'owner') and hasattr(form4.owner, 'name') else None,
-                        "is_director": form4.owner.is_director if hasattr(form4, 'owner') and hasattr(form4.owner, 'is_director') else None,
-                        "is_officer": form4.owner.is_officer if hasattr(form4, 'owner') and hasattr(form4.owner, 'is_officer') else None,
+                f4 = filing.obj()
+                acts = f4.get_transaction_activities() or []
+                insider = getattr(f4, "insider_name", None)
+                if not insider:
+                    owners = getattr(f4, "reporting_owners", None) or []
+                    insider = getattr(owners[0], "name", None) if owners else None
+                position = getattr(f4, "position", None)
+                fdate = str(filing.filing_date)
+                for a in acts:
+                    rows.append({
+                        "filing_date": fdate,
+                        "insider": insider,
+                        "position": str(position) if position else None,
+                        "transaction_type": getattr(a, "transaction_type", None),
+                        "code": getattr(a, "code", None),
+                        "shares": _num(getattr(a, "shares", None)),
+                        "price": _num(getattr(a, "price_per_share", None)),
+                        "value": _num(getattr(a, "value", None)),
+                        "security": getattr(a, "security_title", None),
+                        "security_type": getattr(a, "security_type", None),
                     })
-                    count += 1
-            except:
-                # Skip if can't parse
-                pass
+                    if len(rows) >= limit:
+                        break
+            except Exception:
+                continue  # skip an unparseable filing; the no-rows guard below still applies
 
-        return {
-            "success": True,
-            "data": transactions,
-            "count": len(transactions)
-        }
+        if not rows:
+            return {"error": EdgarError(
+                "get_insider_transactions",
+                f"parsed 0 transactions from {scanned} Form 4 filing(s) for {ticker} — "
+                "the Form 4 parser may be out of date").to_dict()}
+
+        rows = rows[:limit]
+        return {"success": True, "ticker": ticker.upper(), "data": rows, "count": len(rows)}
     except Exception as e:
         return {"error": EdgarError("get_insider_transactions", str(e), traceback.format_exc()).to_dict()}
 
