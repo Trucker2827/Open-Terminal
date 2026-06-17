@@ -10,6 +10,7 @@
 #include "services/llm/LlmService.h"
 
 #include "services/llm/LlmContentExtractors.h"
+#include "services/llm/TextToolCallParser.h"
 #include "services/llm/LlmRequestPolicy.h"
 #include "core/logging/Logger.h"
 #include "mcp/McpProvider.h"
@@ -374,6 +375,22 @@ std::optional<LlmResponse> LlmService::try_extract_and_execute_text_tool_calls(c
                     calls.push_back({name, args});
             }
         }
+    }
+
+    // --- Pattern 6: bare JSON object tool call (no wrapper) ---
+    // Weak/local models (llama3.x via Ollama, etc.) often emit a tool call as a plain
+    // JSON object in the content ({"name":...,"arguments":...} or {"type":"function",
+    // "name":...,"parameters":...}) instead of the structured tool_calls field. Salvage
+    // it — guarded to KNOWN tool names so a legitimate JSON answer isn't hijacked — so
+    // the analysis loop continues instead of silently stalling on weak local models.
+    if (calls.empty()) {
+        QSet<QString> known;
+        for (const auto& tool : mcp::McpService::instance().get_all_tools()) {
+            known.insert(tool.name);
+            known.insert(tool.server_id + "__" + mcp::McpProvider::encode_tool_name_for_wire(tool.name));
+        }
+        for (const auto& nc : parse_bare_json_tool_calls(content, known))
+            calls.push_back({nc.first, nc.second});
     }
 
     if (calls.empty())

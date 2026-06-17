@@ -226,3 +226,14 @@ add_executable(tst_analysis_slash
 target_include_directories(tst_analysis_slash PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_analysis_slash PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_analysis_slash COMMAND tst_analysis_slash)
+
+# Bare-JSON tool-call salvage — lets weak/local models (llama via Ollama) whose
+# tool calls arrive as plain-text JSON still drive the analysis loop. Pure parser,
+# guarded to known tool names.
+add_executable(tst_text_tool_call_parser
+    tst_text_tool_call_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/llm/TextToolCallParser.cpp)
+target_include_directories(tst_text_tool_call_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_text_tool_call_parser PRIVATE Qt6::Core Qt6::Test)
+set_target_properties(tst_text_tool_call_parser PROPERTIES UNITY_BUILD OFF)
+add_test(NAME tst_text_tool_call_parser COMMAND tst_text_tool_call_parser)

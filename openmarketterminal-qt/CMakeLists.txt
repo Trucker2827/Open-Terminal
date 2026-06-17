@@ -962,6 +962,7 @@ set(LLM_SERVICE_SOURCES
     src/services/llm/LlmModelsApi.cpp
     src/services/llm/LlmOpenMarketTerminalAsync.cpp
     src/services/llm/LlmToolLoop.cpp
+    src/services/llm/TextToolCallParser.cpp
     src/services/llm/ModelCatalog.cpp
 )
 
