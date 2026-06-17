@@ -758,19 +758,19 @@ void register_builtins() {
     register_screen("crypto_trading", "Crypto Trading", {"xbt", "crypto trade", "crypto trading"});
     register_screen("derivatives", "Derivatives", {"opt", "options", "derivatives"});
     register_screen("fno", "FNO", {"fno", "nse options", "futures options"});
-    register_screen("backtesting", "Backtesting", {"bt", "backtest", "strategy test"});
-    register_screen("algo_trading", "Algo Trading", {"algo", "strategy", "automation"});
-    register_screen("quantlib", "QuantLib Suite", {"quant", "quantlib", "pricing"});
+    register_screen("backtesting", "Strategy Lab", {"bt", "backtest", "strategy test", "strategy lab"});
+    register_screen("algo_trading", "Strategies", {"algo", "strategy", "strategies", "automation"});
+    register_screen("quantlib", "Pricing Lab", {"quant", "quantlib", "pricing", "pricing lab"});
     register_screen("ai_chat", "AI Chat", {"ai", "chat", "assistant"});
-    register_screen("ai_quant_lab", "AI Quant Lab", {"qml", "ml", "ai quant"});
+    register_screen("ai_quant_lab", "Quant Lab", {"qml", "ml", "ai quant", "quant lab"});
     register_screen("geopolitics", "Geopolitics", {"geo", "geopolitics", "sanctions"});
     register_screen("maritime", "Maritime", {"ship", "maritime", "vessels"});
     register_screen("polymarket", "Prediction Markets", {"pmkt", "polymarket", "kalshi"});
     register_screen("relationship_map", "Relationship Map", {"map", "relationships", "graph"});
     register_screen("report_builder", "Report Builder", {"report", "research report"});
     register_screen("excel", "Excel", {"xl", "excel", "spreadsheet"});
-    register_screen("node_editor", "Node Editor", {"node", "workflow", "builder"});
-    register_screen("code_editor", "Code Editor", {"code", "notebook", "python"});
+    register_screen("node_editor", "Workflows", {"node", "workflow", "workflows", "builder"});
+    register_screen("code_editor", "Notebooks", {"code", "notebook", "notebooks", "python"});
     register_screen("settings", "Settings", {"settings", "prefs", "preferences"});
     register_screen("docs", "Docs", {"help docs", "manual", "docs"});
 
