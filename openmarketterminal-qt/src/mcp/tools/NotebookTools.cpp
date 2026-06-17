@@ -4,6 +4,8 @@
 #include "mcp/tools/NotebookTools.h"
 
 #include "core/events/EventBus.h"
+#include "mcp/tools/ThreadHelper.h"
+#include "python/NotebookKernel.h"
 #include "screens/code_editor/CodeEditorScreen.h"
 
 #include <QCoreApplication>
@@ -114,6 +116,45 @@ std::vector<ToolDef> get_notebook_tools() {
             {"path", path}, {"code_cells", code_n}, {"markdown_cells", md_n}, {"opened", opened}});
     };
     tools.push_back(std::move(t));
+
+    // ── notebook_run — execute code in the live, stateful notebook kernel ───────
+    ToolDef r;
+    r.name = "notebook_run";
+    r.description =
+        "Execute Python in the live Notebooks kernel and return its output. The kernel is "
+        "STATEFUL and SHARED with the open notebook — variables persist across calls and across "
+        "the user's own cell runs — and edgartools, pandas, and numpy are available. Use to run or "
+        "verify analysis code and read the result, then interpret it for the user. Returns ok, "
+        "stdout, result (repr of the last expression), and error/traceback on failure. Arg: code.";
+    r.category = "notebook-builder";
+    r.default_timeout_ms = 120000;  // analysis code may hit SEC EDGAR
+    r.input_schema.properties = QJsonObject{
+        {"code", QJsonObject{{"type", "string"}, {"description", "Python to run in the notebook kernel"}}}};
+    r.input_schema.required = {"code"};
+    r.handler = [](const QJsonObject& args) -> ToolResult {
+        const QString code = args.value("code").toString();
+        if (code.trimmed().isEmpty())
+            return ToolResult::fail("Missing 'code'");
+        auto* kernel = &python::NotebookKernel::instance();
+        python::NotebookKernel::Result res;
+        detail::run_async_wait(kernel, [&](auto signal_done) {
+            kernel->execute(code, [&, signal_done](python::NotebookKernel::Result rr) {
+                res = std::move(rr);
+                signal_done();
+            });
+        });
+        QJsonObject data{{"ok", res.ok}, {"stdout", res.stdout_text}, {"result", res.result_repr}};
+        if (!res.stderr_text.isEmpty()) data["stderr"] = res.stderr_text;
+        if (!res.error.isEmpty()) data["error"] = res.error;
+        if (!res.traceback.isEmpty()) {
+            QJsonArray tb;
+            for (const auto& l : res.traceback) tb.append(l);
+            data["traceback"] = tb;
+        }
+        return ToolResult::ok_data(data);
+    };
+    tools.push_back(std::move(r));
+
     return tools;
 }
 

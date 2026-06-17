@@ -32,5 +32,12 @@ assumptions as editable parameter cells (`GROWTH = 0.08`, `WACC = 0.09`, `TERM_G
 and a `BASE_FCF = ...` the user can set, since cash-flow getters are unreliable) and show a
 sensitivity DataFrame. The user edits the ticker/assumptions and re-runs.
 
+You can also **run** code in that same kernel with `notebook_run(code)` — the kernel is
+stateful and shared with the open notebook, so you can execute the analysis, read the
+result back (stdout / last-expression repr / error), and then interpret it for the user in
+chat. Typical flow: `notebook_create` to author the notebook, optionally `notebook_run` to
+verify a cell or compute a figure, then summarize what it shows. Don't paste large outputs
+into chat — point the user at the notebook and give the takeaway.
+
 Prefer this skill (interactive notebook) when the user says "let me play with it / a model
 I can change"; prefer the Report Builder playbooks (comps/dcf/earnings) for a finished memo.
