@@ -17,6 +17,7 @@
 //     → TtsService::speaking_finished() → resume listening
 
 #include "services/llm/LlmService.h"
+#include "core/events/EventBus.h"
 
 #include <QKeyEvent>
 #include <QLabel>
@@ -36,6 +37,7 @@ class AiChatBubble : public QWidget {
     Q_OBJECT
   public:
     explicit AiChatBubble(QWidget* parent = nullptr);
+    ~AiChatBubble() override;
 
     /// Call from the parent's resizeEvent to reposition the bubble + panel.
     void reposition();
@@ -79,6 +81,10 @@ class AiChatBubble : public QWidget {
     QPushButton*    voice_mode_btn_   = nullptr;
     QPushButton*    new_btn_          = nullptr;
     QPushButton*    close_btn_        = nullptr;
+
+    // Keeps Quick Chat on the SAME active LLM as the AI Chat tab: when the active
+    // provider/model changes (llm.provider_changed), reload the shared LlmService.
+    EventBus::HandlerId provider_changed_sub_ = 0;
 
     // Unified status strip — replaces the old typing_row + voice_status_bar.
     QWidget*        status_strip_     = nullptr;

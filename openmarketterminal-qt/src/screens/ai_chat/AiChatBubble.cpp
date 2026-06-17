@@ -54,6 +54,10 @@ static constexpr int STATUS_H  = 26;
 static constexpr int kBubbleColMaxWidth = static_cast<int>(PANEL_W * 0.84);
 
 // ── Constructor ───────────────────────────────────────────────────────────────
+AiChatBubble::~AiChatBubble() {
+    EventBus::instance().unsubscribe(provider_changed_sub_);
+}
+
 AiChatBubble::AiChatBubble(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_NoSystemBackground, true);
     setAttribute(Qt::WA_TranslucentBackground, true);
@@ -64,6 +68,26 @@ AiChatBubble::AiChatBubble(QWidget* parent) : QWidget(parent) {
 
     connect(&ai_chat::LlmService::instance(), &ai_chat::LlmService::finished_streaming, this,
             &AiChatBubble::on_streaming_done, Qt::UniqueConnection);
+
+    // Keep Quick Chat on the SAME active LLM as the AI Chat tab: reload the shared
+    // LlmService when the active provider/model changes (the AI Chat tab listens to
+    // this same event). Without it the bubble can keep using the previously-loaded
+    // config (e.g. the Ollama default) after the user switches models.
+    {
+        QPointer<AiChatBubble> self = this;
+        provider_changed_sub_ = EventBus::instance().subscribe(
+            "llm.provider_changed", [self](const QVariantMap&) {
+                if (!self)
+                    return;
+                QMetaObject::invokeMethod(
+                    self.data(),
+                    [self]() {
+                        if (self)
+                            ai_chat::LlmService::instance().reload_config();
+                    },
+                    Qt::QueuedConnection);
+            });
+    }
 
     // STT wiring
     auto& stt = services::SpeechService::instance();
