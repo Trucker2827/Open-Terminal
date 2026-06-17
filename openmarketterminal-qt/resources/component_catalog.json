@@ -8,6 +8,7 @@
     { "id": "observer",          "title": "Observer",           "category": "Research",    "description": "Read-only BTC/ETH observation journal: daily lesson, weekly review, alerts", "tags": ["observer","observe","journal","crypto watch","btc","eth","review"] },
     { "id": "insider_trades",    "title": "Insiders",           "category": "Research",    "description": "Corporate insider trades (SEC Form 4) — who bought/sold, shares, price", "tags": ["insider","insiders","form 4","sec","ownership"] },
     { "id": "institution_holdings", "title": "Institutions",     "category": "Research",    "description": "Institutional 13F holdings (SEC Form 13F-HR) — top positions by value", "tags": ["institution","13f","holdings","fund","ownership"] },
+    { "id": "politician_trades", "title": "Politicians",         "category": "Research",    "description": "US Congress (politician) stock trades by ticker (AInvest) — needs AINVEST_API_KEY", "tags": ["politician","congress","senate","house","stock act","ownership"] },
 
     { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Order entry + real-time book for Kraken / HyperLiquid",    "tags": ["crypto","trading","order"] },
     { "id": "equity_trading",    "title": "Equity Trading",     "category": "Trading",     "description": "Multi-account equity trading across 16+ brokers",          "tags": ["equity","trading","brokers"] },

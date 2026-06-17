@@ -43,6 +43,7 @@ const QList<CredDef> CRED_KEYS = {
     {"POLYMARKET_SECRET",     "Polymarket Secret"},
     {"POLYMARKET_PASSPHRASE", "Polymarket Passphrase"},
     {"POLYMARKET_WALLET",     "Polymarket Wallet Address"},
+    {"AINVEST_API_KEY",       "AInvest API Key"},
 };
 
 } // namespace

@@ -199,6 +199,10 @@ WidgetRegistry::WidgetRegistry() {
     register_widget({"institution_13f", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Institution 13F"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Research"),
                      QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Top 13F holdings for an institution (e.g. BRK-B) — read-only SEC data"), 4, 4, 3, 3,
                      [](const QJsonObject& cfg) { return widgets::create_institution_widget(cfg); }});
+
+    register_widget({"politicians", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Politicians"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Research"),
+                     QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "US Congress trades for a ticker (AInvest) — needs AINVEST_API_KEY"), 4, 4, 3, 3,
+                     [](const QJsonObject& cfg) { return widgets::create_politician_widget(cfg); }});
 }
 
 QString WidgetRegistry::display_name_tr(const WidgetMeta& m) {

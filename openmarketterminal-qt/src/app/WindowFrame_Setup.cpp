@@ -24,6 +24,7 @@
 #include "screens/observer/ObserverJournalPanel.h"
 #include "screens/ownership/InsiderTradesScreen.h"
 #include "screens/ownership/InstitutionHoldingsScreen.h"
+#include "screens/ownership/PoliticianTradesScreen.h"
 #include "screens/agent_config/AgentConfigScreen.h"
 #include "screens/ai_chat/AiChatScreen.h"
 #include "screens/ai_quant_lab/AIQuantLabScreen.h"
@@ -233,6 +234,7 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("observer", []() { return new screens::ObserverJournalPanel; });
     dock_router_->register_factory("insider_trades", []() { return new screens::InsiderTradesScreen; });
     dock_router_->register_factory("institution_holdings", []() { return new screens::InstitutionHoldingsScreen; });
+    dock_router_->register_factory("politician_trades", []() { return new screens::PoliticianTradesScreen; });
     dock_router_->register_factory("dinero", []() { return new screens::DineroScreen; });
     dock_router_->register_factory("notes", []() { return new screens::NotesScreen; });
 

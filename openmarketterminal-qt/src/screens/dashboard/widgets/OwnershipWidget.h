@@ -51,5 +51,6 @@ class OwnershipWidget : public BaseWidget {
 
 BaseWidget* create_insider_widget(const QJsonObject& cfg = {});
 BaseWidget* create_institution_widget(const QJsonObject& cfg = {});
+BaseWidget* create_politician_widget(const QJsonObject& cfg = {});
 
 } // namespace openmarketterminal::screens::widgets

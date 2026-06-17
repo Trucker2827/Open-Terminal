@@ -750,6 +750,7 @@ void register_builtins() {
     register_screen("observer", "Observer", {"observe", "observer", "journal", "crypto watch", "btc eth"});
     register_screen("insider_trades", "Insiders", {"insider", "insiders", "form 4", "sec insider", "insider trades"});
     register_screen("institution_holdings", "Institutions", {"institution", "institutions", "13f", "holdings", "fund holdings"});
+    register_screen("politician_trades", "Politicians", {"politician", "politicians", "congress", "senate", "house", "stock act"});
     register_screen("portfolio", "Portfolio", {"port", "portfolio", "holdings"});
     register_screen("equity_research", "Equity Research", {"eq", "des", "fa", "equity research", "company"});
     register_screen("economics", "Economics", {"econ", "ecst", "macro", "economics"});

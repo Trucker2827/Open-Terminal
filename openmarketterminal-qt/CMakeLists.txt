@@ -1608,6 +1608,7 @@ set(SCREEN_SOURCES
     src/screens/gov_data/GovDataCongressPanel.cpp
     src/screens/ownership/InsiderTradesScreen.cpp
     src/screens/ownership/InstitutionHoldingsScreen.cpp
+    src/screens/ownership/PoliticianTradesScreen.cpp
     src/screens/gov_data/GovDataFrancePanel.cpp
     src/screens/gov_data/GovDataHKPanel.cpp
     src/screens/gov_data/GovDataUKPanel.cpp
@@ -2083,6 +2084,7 @@ set_source_files_properties(
     src/screens/gov_data/GovDataCongressPanel.cpp
     src/screens/ownership/InsiderTradesScreen.cpp
     src/screens/ownership/InstitutionHoldingsScreen.cpp
+    src/screens/ownership/PoliticianTradesScreen.cpp
     src/screens/gov_data/GovDataProviderPanel.cpp
     src/screens/gov_data/GovDataScreen.cpp
     src/screens/gov_data/GovDataTreasuryPanel.cpp

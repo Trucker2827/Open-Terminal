@@ -109,4 +109,23 @@ BaseWidget* create_institution_widget(const QJsonObject& cfg) {
         "widget_institution", mapper, QObject::tr("No 13F holdings for %1.").arg(ticker));
 }
 
+BaseWidget* create_politician_widget(const QJsonObject& cfg) {
+    const QString ticker = cfg.value("ticker").toString("AAPL").toUpper();
+    OwnershipRowMapper mapper = [](const QJsonObject& data) {
+        QVector<QStringList> rows;
+        for (const auto& v : data.value("data").toArray()) {
+            const QJsonObject o = v.toObject();
+            rows.append({o.value("trade_date").toString(),
+                         o.value("name").toString(),
+                         o.value("trade_type").toString(),
+                         o.value("size").toString()});
+        }
+        return rows;
+    };
+    return new OwnershipWidget(
+        QObject::tr("Politicians · %1").arg(ticker), "ainvest_data.py", "congress",
+        {ticker, "20"}, {QObject::tr("Date"), QObject::tr("Politician"), QObject::tr("Type"), QObject::tr("Amount")},
+        "widget_politician", mapper, QObject::tr("No congress trades for %1.").arg(ticker));
+}
+
 } // namespace openmarketterminal::screens::widgets
