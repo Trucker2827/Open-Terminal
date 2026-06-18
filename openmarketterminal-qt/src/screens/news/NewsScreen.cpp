@@ -618,15 +618,6 @@ void NewsScreen::on_monitor_deleted(const QString& id) {
 }
 
 void NewsScreen::on_analyze_requested(const QString& url) {
-    static const QString kExtractionJs = QStringLiteral(
-        "(function(){"
-        "var t=document.title;"
-        "document.querySelectorAll('script,style,nav,header,footer,noscript,aside,iframe')"
-        ".forEach(function(e){e.remove();});"
-        "var body=document.body?document.body.innerText:'';"
-        "return JSON.stringify({title:t,text:body});"
-        "})()");
-
     // Snapshot article fields before jumping to a background thread.
     const QString headline = detail_panel_->article().headline;
     const QString source   = detail_panel_->article().source;
@@ -716,20 +707,16 @@ void NewsScreen::on_analyze_requested(const QString& url) {
     if (!cached.isEmpty()) {
         do_analyze(cached);
     } else {
-        // Fetch full text off the UI thread, then run the analysis.
+        // Fetch full text off the UI thread using multi-strategy reader fetch,
+        // then run the analysis.
         (void)QtConcurrent::run([self, url, do_analyze]() {
-            QString raw = web::HeadlessBrowser::instance().fetch(QUrl(url), kExtractionJs, 20000);
-            QString full_text;
-            if (!raw.isEmpty()) {
-                QJsonParseError err;
-                auto doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
-                if (err.error == QJsonParseError::NoError && doc.isObject())
-                    full_text = doc.object().value("text").toString();
-            }
+            // fetch_article_best is blocking — Googlebot reader mode + archive.today fallback.
+            QString full_text = web::HeadlessBrowser::fetch_article_best(url);
+
             // Cache the result on the panel from the UI thread, then start analysis.
             QMetaObject::invokeMethod(self.data(), [self, url, full_text, do_analyze]() {
                 if (!self) return;
-                if (full_text.length() >= 200)
+                if (full_text.length() >= 400)
                     self->detail_panel_->cache_full_text(url, full_text);
                 do_analyze(full_text);
             }, Qt::QueuedConnection);

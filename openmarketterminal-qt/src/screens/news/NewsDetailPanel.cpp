@@ -299,16 +299,8 @@ QWidget* NewsDetailPanel::build_content_view() {
     });
 
     // READ FULL — fetches full article text via headless browser off the UI thread.
-    // Caches result per URL so re-clicking is instant. Updates summary_label_ with the full text.
-    static const QString kExtractionJs = QStringLiteral(
-        "(function(){"
-        "var t=document.title;"
-        "document.querySelectorAll('script,style,nav,header,footer,noscript,aside,iframe')"
-        ".forEach(function(e){e.remove();});"
-        "var body=document.body?document.body.innerText:'';"
-        "return JSON.stringify({title:t,text:body});"
-        "})()");
-
+    // Uses a multi-strategy fetch (Googlebot reader mode + archive.today fallback)
+    // to defeat soft/metered/SEO paywalls. Caches result per URL so re-clicking is instant.
     connect(read_full_btn_, &QPushButton::clicked, this, [this]() {
         if (!has_article_)
             return;
@@ -323,28 +315,23 @@ QWidget* NewsDetailPanel::build_content_view() {
 
         QPointer<NewsDetailPanel> self = this;
         (void)QtConcurrent::run([self, url]() {
-            // HeadlessBrowser::fetch is blocking — must run off GUI thread.
-            QString raw = web::HeadlessBrowser::instance().fetch(QUrl(url), kExtractionJs, 20000);
-            QString full_text;
-            if (!raw.isEmpty()) {
-                QJsonParseError err;
-                auto doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
-                if (err.error == QJsonParseError::NoError && doc.isObject())
-                    full_text = doc.object().value("text").toString();
-            }
+            // fetch_article_best is blocking — must run off GUI thread.
+            // It tries Googlebot reader-mode first, then archive.today if thin.
+            QString full_text = web::HeadlessBrowser::fetch_article_best(url);
+
             // Marshal result back to UI thread
             QMetaObject::invokeMethod(self.data(), [self, url, full_text]() {
                 if (!self || !self->has_article_ || self->current_article_.link != url)
                     return; // stale — article changed while fetching
                 self->read_full_btn_->setText(tr("READ FULL"));
                 self->read_full_btn_->setEnabled(true);
-                if (full_text.length() >= 200) {
+                if (full_text.length() >= 400) {
                     self->full_text_cache_[url] = full_text;
                     self->summary_label_->setText(full_text);
                 } else {
-                    // Hard paywall or empty page
-                    const QString note = tr("Couldn't extract full text — the publisher may gate it "
-                                            "behind a hard paywall. Showing the summary.");
+                    // Hard paywall or publisher blocked automated access
+                    const QString note = tr("Couldn't load the full article (it may be a hard paywall "
+                                            "or the publisher blocked automated access). Showing the summary.");
                     self->summary_label_->setText(note);
                 }
                 emit self->full_text_fetched(url, self->full_text_cache_.value(url));

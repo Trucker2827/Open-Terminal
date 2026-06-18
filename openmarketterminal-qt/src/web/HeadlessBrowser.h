@@ -6,6 +6,7 @@
 #include <QMutex>
 
 class QWebEnginePage;
+class QWebEngineProfile;
 
 namespace openmarketterminal::web {
 
@@ -32,11 +33,29 @@ public:
     // run while this thread is blocked on the semaphore).
     QString fetch(const QUrl& url, const QString& extraction_js, int timeout_ms = 15000);
 
+    // Reader-mode overload: uses a second off-the-record profile with a
+    // Googlebot User-Agent and optional Referer header to defeat soft/metered
+    // paywalls.  All other threading guarantees are identical to fetch().
+    QString fetch(const QUrl& url, const QString& extraction_js, int timeout_ms,
+                  bool reader_mode, const QString& referer = {});
+
+    // Multi-strategy article fetch: Googlebot reader-mode direct, then
+    // archive.today fallback if the direct result is thin. Returns the longest
+    // text obtained. Blocking; must be called off the GUI thread.
+    static QString fetch_article_best(const QString& url);
+
 private:
     explicit HeadlessBrowser(QObject* parent = nullptr);
 
-    QWebEnginePage* page_ = nullptr;  // created lazily on the GUI thread
-    QMutex serialize_;                // one fetch at a time (shared page)
+    // Shared implementation: `page` selects which QWebEnginePage to use.
+    QString fetch_on_page(QWebEnginePage* page, const QUrl& url,
+                          const QString& extraction_js, int timeout_ms,
+                          const QString& referer = {});
+
+    QWebEnginePage*    page_           = nullptr;  // default profile, lazily created on GUI thread
+    QWebEngineProfile* reader_profile_ = nullptr;  // off-the-record profile for reader mode
+    QWebEnginePage*    reader_page_    = nullptr;  // Googlebot UA page, lazily created on GUI thread
+    QMutex             serialize_;                 // one fetch at a time across both pages
 };
 
 }  // namespace openmarketterminal::web

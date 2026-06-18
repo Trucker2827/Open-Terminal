@@ -6,6 +6,7 @@
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
+#include <QWebEngineHttpRequest>
 
 #include <QList>
 #include <QMetaObject>
@@ -15,6 +16,8 @@
 #include <QSemaphore>
 #include <QTimer>
 #include <QVariant>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include <memory>
 #include <utility>
@@ -75,51 +78,72 @@ struct Ctx {
     QPointer<QTimer> hard;                       // hard timeout timer
 };
 
+// Overlay-stripping extraction JS for article fetches.
+// Removes tracking scripts/styles/chrome, paywall overlays, fixed/sticky
+// blocking elements, un-blurs body, restores overflow, then returns
+// {title, text} as JSON.
+const QString kReaderExtractionJs = QStringLiteral(
+    "(function(){"
+    "var t=document.title;"
+    // Remove scripts, styles, structural chrome
+    "document.querySelectorAll('script,style,nav,header,footer,noscript,aside,iframe').forEach(function(e){e.remove();});"
+    // Remove paywall/overlay/modal elements by class or id keywords
+    "var pwRe=/paywall|subscribe|gate|metered|piano|regwall|modal|overlay|backdrop/i;"
+    "document.querySelectorAll('*').forEach(function(e){"
+    "  var id=e.id||'';"
+    "  var cls=e.className&&typeof e.className==='string'?e.className:'';"
+    "  if(pwRe.test(id)||pwRe.test(cls)){e.remove();return;}"
+    "  try{"
+    "    var cs=window.getComputedStyle(e);"
+    "    var pos=cs.getPropertyValue('position');"
+    "    if(pos==='fixed'||pos==='sticky'){e.remove();}"
+    "  }catch(ex){}"
+    "});"
+    // Restore readability: un-blur, un-clip, un-hide body/html
+    "try{"
+    "  document.body.style.overflow='auto';"
+    "  document.body.style.position='static';"
+    "  document.body.style.maxHeight='';"
+    "  document.body.style.filter='';"
+    "  document.body.style.webkitFilter='';"
+    "  document.documentElement.style.overflow='auto';"
+    "  var main=document.querySelector('main,article,[role=\"main\"]');"
+    "  if(main){"
+    "    main.style.filter='';"
+    "    main.style.webkitFilter='';"
+    "    main.style.maxHeight='';"
+    "    main.style.overflow='auto';"
+    "  }"
+    "}catch(ex){}"
+    "var body=document.body?document.body.innerText:'';"
+    "return JSON.stringify({title:t,text:body});"
+    "})()");
+
 }  // namespace
 
-QString HeadlessBrowser::fetch(const QUrl& url, const QString& extraction_js, int timeout_ms) {
-    // Defensive: calling fetch() from the GUI thread would deadlock — the
-    // QueuedConnection load lambda would never run while this thread is
-    // blocked on the semaphore.  All real callers are off-main, so this
-    // should never fire; the guard makes the failure mode a clean error
-    // instead of a 17-second freeze.
-    if (QThread::currentThread() == this->thread()) {
-        qWarning("HeadlessBrowser::fetch() must be called off the GUI thread; returning empty");
-        return QString();
-    }
+// ── Shared implementation ─────────────────────────────────────────────────────
 
-    // Serialize: only one load at a time on the single shared page_. The main
-    // thread never acquires this mutex, so there is no lock-ordering inversion.
-    QMutexLocker lock(&serialize_);
-
+// fetch_on_page: drives the given page on the GUI thread, blocks the caller
+// until done or timeout.  Must be called with serialize_ held.
+QString HeadlessBrowser::fetch_on_page(QWebEnginePage* page_to_use, const QUrl& url,
+                                        const QString& extraction_js, int timeout_ms,
+                                        const QString& referer) {
     auto ctx = std::make_shared<Ctx>();
 
-    // Drive QtWebEngine on the main/GUI thread. The lambda captures `ctx` by
-    // value (shared_ptr), so the main side keeps the control block alive for as
-    // long as any of its callbacks can still fire.
     QMetaObject::invokeMethod(
         this,
-        [this, url, extraction_js, timeout_ms, ctx]() {
-            if (!page_) {
-                page_ = new SilentWebPage(QWebEngineProfile::defaultProfile(), this);
-                // JavascriptEnabled stays at its default (true): dynamic pages
-                // (e.g. DuckDuckGo) need to run JS to populate before we extract.
-                page_->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows,
-                                                 false);
-                page_->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, false);
-            }
+        [this, page_to_use, url, extraction_js, timeout_ms, referer, ctx]() {
+            // page_to_use was selected by the caller (page_ or reader_page_).
+            // All references inside this lambda use this local alias — never
+            // the member `page_` directly — so the reader path stays isolated.
+            QWebEnginePage* page = page_to_use;
 
-            ctx->settle = new QTimer(page_);
+            ctx->settle = new QTimer(page);
             ctx->settle->setSingleShot(true);
-            ctx->hard = new QTimer(page_);
+            ctx->hard = new QTimer(page);
             ctx->hard->setSingleShot(true);
 
-            // finish(): runs ONLY on the main thread (hard timeout, loadFinished,
-            // settle/runJavaScript callback). Idempotent via ctx->mainDone, so no
-            // locking is needed for the main-only state. It tears down all per-call
-            // connections + timers (critical: the shared page_ outlives the call,
-            // so a leftover loadFinished connection would otherwise fire on the
-            // NEXT fetch), publishes the result, then releases the worker.
+            // finish(): runs ONLY on the main thread. Idempotent via ctx->mainDone.
             auto finish = [ctx](const QString& js_result) {
                 if (ctx->mainDone)
                     return;
@@ -137,58 +161,163 @@ QString HeadlessBrowser::fetch(const QUrl& url, const QString& extraction_js, in
                 if (ctx->hard)
                     ctx->hard->deleteLater();
 
-                ctx->result = js_result;  // MUST precede release(): establishes
-                ctx->sem.release();       // happens-before for the worker's read.
+                ctx->result = js_result;  // MUST precede release()
+                ctx->sem.release();
             };
 
-            // Hard timeout on the main side. Fires before the worker-side belt
-            // timeout, so in any healthy run the worker is woken at ~timeout_ms.
-            ctx->conns << QObject::connect(ctx->hard, &QTimer::timeout, page_,
+            ctx->conns << QObject::connect(ctx->hard, &QTimer::timeout, page,
                                            [finish]() { finish(QString()); });
             ctx->hard->start(timeout_ms);
 
             ctx->conns << QObject::connect(
-                page_, &QWebEnginePage::loadFinished, page_,
-                [this, ctx, extraction_js, finish](bool ok) {
+                page, &QWebEnginePage::loadFinished, page,
+                [page, ctx, extraction_js, finish](bool ok) {
                     if (ctx->mainDone)
-                        return;  // already finished (e.g. hard timeout)
+                        return;
                     if (!ok) {
                         finish(QString());
                         return;
                     }
                     if (!ctx->settle)
                         return;
-                    QWebEnginePage* page = page_;
                     ctx->conns << QObject::connect(
                         ctx->settle, &QTimer::timeout, page, [page, extraction_js, finish]() {
                             page->runJavaScript(extraction_js, [finish](const QVariant& v) {
                                 finish(v.toString());
                             });
                         });
-                    ctx->settle->start(400);  // let late JS settle before extracting
+                    ctx->settle->start(400);
                 });
 
-            page_->setUrl(url);
+            if (referer.isEmpty()) {
+                page->setUrl(url);
+            } else {
+                QWebEngineHttpRequest req(url);
+                req.setHeader(QByteArrayLiteral("Referer"), referer.toUtf8());
+                page->load(req);
+            }
         },
         Qt::QueuedConnection);
 
-    // Block the worker on the semaphore — no QEventLoop on the worker thread, so
-    // we never pump unrelated queued events here. tryAcquire bounds the wait as a
-    // belt-and-suspenders backstop (slightly longer than the main-side hard
-    // timeout) in case the main thread is wedged and never wakes us.
-    if (!ctx->sem.tryAcquire(1, timeout_ms + 2000)) {
-        // Timed out worker-side. Do NOT read ctx->result (no happens-before with a
-        // possible concurrent main-thread write). The shared ctx keeps any late
-        // main-thread callback safe; it simply writes into a live object.
+    if (!ctx->sem.tryAcquire(1, timeout_ms + 2000))
+        return QString();
+    return ctx->result;
+}
+
+// ── Public fetch overloads ────────────────────────────────────────────────────
+
+QString HeadlessBrowser::fetch(const QUrl& url, const QString& extraction_js, int timeout_ms) {
+    if (QThread::currentThread() == this->thread()) {
+        qWarning("HeadlessBrowser::fetch() must be called off the GUI thread; returning empty");
         return QString();
     }
-    return ctx->result;  // safe: sem.release() in finish() happened-before this read.
+
+    QMutexLocker lock(&serialize_);
+
+    // Lazy-create the default page on the GUI thread.
+    if (!page_) {
+        QMetaObject::invokeMethod(this, [this]() {
+            if (!page_) {
+                page_ = new SilentWebPage(QWebEngineProfile::defaultProfile(), this);
+                page_->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
+                page_->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, false);
+            }
+        }, Qt::BlockingQueuedConnection);
+    }
+
+    return fetch_on_page(page_, url, extraction_js, timeout_ms, {});
+}
+
+QString HeadlessBrowser::fetch(const QUrl& url, const QString& extraction_js, int timeout_ms,
+                                bool reader_mode, const QString& referer) {
+    if (!reader_mode)
+        return fetch(url, extraction_js, timeout_ms);
+
+    if (QThread::currentThread() == this->thread()) {
+        qWarning("HeadlessBrowser::fetch() must be called off the GUI thread; returning empty");
+        return QString();
+    }
+
+    QMutexLocker lock(&serialize_);
+
+    // Lazy-create the off-the-record reader profile + page on the GUI thread.
+    if (!reader_page_) {
+        QMetaObject::invokeMethod(this, [this]() {
+            if (!reader_page_) {
+                // new QWebEngineProfile(this) — no name → off-the-record (no persistent cookies)
+                reader_profile_ = new QWebEngineProfile(this);
+                reader_profile_->setHttpUserAgent(
+                    QStringLiteral("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"));
+                reader_page_ = new SilentWebPage(reader_profile_, this);
+                reader_page_->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
+                reader_page_->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, false);
+            }
+        }, Qt::BlockingQueuedConnection);
+    }
+
+    const QString ref = referer.isEmpty() ? QStringLiteral("https://www.google.com/") : referer;
+    return fetch_on_page(reader_page_, url, extraction_js, timeout_ms, ref);
+}
+
+// ── Multi-strategy article fetch ──────────────────────────────────────────────
+
+/*static*/
+QString HeadlessBrowser::fetch_article_best(const QString& url) {
+    auto parse_text = [](const QString& raw) -> QString {
+        if (raw.isEmpty())
+            return {};
+        QJsonParseError err;
+        auto doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+        if (err.error == QJsonParseError::NoError && doc.isObject())
+            return doc.object().value(QStringLiteral("text")).toString();
+        return {};
+    };
+
+    HeadlessBrowser& hb = instance();
+
+    // Strategy A: Googlebot reader-mode direct fetch
+    QString raw_a = hb.fetch(QUrl(url), kReaderExtractionJs, 20000,
+                              /*reader_mode=*/true,
+                              QStringLiteral("https://www.google.com/"));
+    QString text_a = parse_text(raw_a);
+
+    // Strategy B: archive.today snapshot (only if A is thin)
+    QString text_b;
+    if (text_a.length() < 600) {
+        // Build the archive.ph URL by appending the raw article URL as a path segment.
+        // Use QUrl with explicit scheme+host+path to avoid QUrl mangling the embedded "://"
+        const QString archive_url =
+            QStringLiteral("https://archive.ph/newest/") + url;
+        QString raw_b = hb.fetch(QUrl(archive_url), kReaderExtractionJs, 25000,
+                                  /*reader_mode=*/true,
+                                  QStringLiteral("https://www.google.com/"));
+        text_b = parse_text(raw_b);
+    }
+
+    // Return the longest result
+    if (text_b.length() > text_a.length())
+        return text_b;
+    return text_a;
 }
 
 #else  // !HAS_QT_WEBENGINE
 
 QString HeadlessBrowser::fetch(const QUrl&, const QString&, int) {
     return QString();  // QtWebEngine unavailable in this build configuration.
+}
+
+QString HeadlessBrowser::fetch(const QUrl&, const QString&, int, bool, const QString&) {
+    return QString();
+}
+
+/*static*/
+QString HeadlessBrowser::fetch_article_best(const QString&) {
+    return QString();
+}
+
+QString HeadlessBrowser::fetch_on_page(QWebEnginePage*, const QUrl&, const QString&, int,
+                                        const QString&) {
+    return QString();
 }
 
 #endif  // HAS_QT_WEBENGINE
