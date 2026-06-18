@@ -73,7 +73,10 @@ void EcbPanel::on_fetch() {
 
     show_loading(tr("Fetching ECB data: %1…").arg(series.label));
 
-    QStringList args = {series.command};
+    // EconomicsService::execute() prepends `command` (full_args = command << args).
+    // Don't include it here too, or the currency arg shifts and the SDMX series
+    // key is corrupted (e.g. EXR/USD.EXCHANGE_RATES.EUR... → HTTP 404).
+    QStringList args;
     if (!series.arg.isEmpty())
         args << series.arg;
 

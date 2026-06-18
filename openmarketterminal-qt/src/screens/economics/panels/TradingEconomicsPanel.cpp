@@ -49,7 +49,7 @@ TradingEconomicsPanel::TradingEconomicsPanel(QWidget* parent)
 }
 
 void TradingEconomicsPanel::activate() {
-    show_empty(tr("Set TRADING_ECONOMICS_API_KEY environment variable, then select a dataset and click FETCH\n"
+    show_empty(tr("Add your Trading Economics key in Settings → Credentials, then select a dataset and click FETCH\n"
                   "Get a key at: tradingeconomics.com/api"));
 }
 
@@ -86,13 +86,14 @@ void TradingEconomicsPanel::on_fetch() {
 
     show_loading(tr("Fetching Trading Economics: %1…").arg(dataset.label));
 
-    QStringList args = {dataset.command};
+    // EconomicsService::execute() prepends `command`; pass only the country.
+    QStringList args;
     if (dataset.country_arg == "required" || dataset.country_arg == "optional")
         args << country;
 
     services::EconomicsService::instance().execute(kTradingEconomicsSourceId, kTradingEconomicsScript, dataset.command,
                                                    args,
-                                                   "te_" + dataset.command + (args.size() > 1 ? "_" + country : ""));
+                                                   "te_" + dataset.command + (args.isEmpty() ? "" : "_" + country));
 }
 
 // Normalise various Trading Economics response shapes into displayable rows.
@@ -143,7 +144,7 @@ void TradingEconomicsPanel::on_result(const QString& request_id, const services:
         const QString msg = result.error;
         if (msg.contains("API key") || msg.contains("TRADING_ECONOMICS_API_KEY")) {
             show_error(tr("Trading Economics API key not configured.\n"
-                          "Set TRADING_ECONOMICS_API_KEY environment variable.\n"
+                          "Add it in Settings → Credentials (\"Trading Economics\").\n"
                           "Get a key at: tradingeconomics.com/api"));
         } else {
             show_error(msg);
@@ -157,7 +158,7 @@ void TradingEconomicsPanel::on_result(const QString& request_id, const services:
         if (!err.isEmpty() && err != "false") {
             if (err.contains("API key") || err.contains("TRADING_ECONOMICS")) {
                 show_error(tr("Trading Economics API key not configured.\n"
-                              "Set TRADING_ECONOMICS_API_KEY environment variable.\n"
+                              "Add it in Settings → Credentials (\"Trading Economics\").\n"
                               "Get a key at: tradingeconomics.com/api"));
             } else {
                 show_error(err);

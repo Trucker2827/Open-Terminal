@@ -56,7 +56,7 @@ BlsPanel::BlsPanel(QWidget* parent) : EconPanelBase(kBlsSourceId, kBlsColor, par
 }
 
 void BlsPanel::activate() {
-    show_empty(tr("Set BLS_API_KEY environment variable, then select a series and click FETCH\n"
+    show_empty(tr("Add your BLS API key in Settings → Credentials (\"BLS\"), then select a series and click FETCH\n"
                   "Get a free key at: data.bls.gov/registrationEngine/"));
 }
 
@@ -166,7 +166,7 @@ void BlsPanel::on_result(const QString& request_id, const services::EconomicsRes
         const QString msg = result.error;
         if (msg.contains("API key") || msg.contains("api_key") || msg.contains("BLS_API_KEY")) {
             show_error(tr("BLS API key not configured.\n"
-                          "Set BLS_API_KEY environment variable.\n"
+                          "Add it in Settings → Credentials (\"BLS\").\n"
                           "Free key at: data.bls.gov/registrationEngine/"));
         } else {
             show_error(msg);
@@ -179,7 +179,7 @@ void BlsPanel::on_result(const QString& request_id, const services::EconomicsRes
         const QString msg = result.data["message"].toString(result.data["error"].toString());
         if (msg.contains("API key") || msg.contains("BLS_API_KEY")) {
             show_error(tr("BLS API key not configured.\n"
-                          "Set BLS_API_KEY environment variable.\n"
+                          "Add it in Settings → Credentials (\"BLS\").\n"
                           "Free key at: data.bls.gov/registrationEngine/"));
         } else {
             show_error(msg);

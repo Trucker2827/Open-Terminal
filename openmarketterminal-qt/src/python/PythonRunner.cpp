@@ -147,11 +147,13 @@ static bool route_yfinance_to_daemon(const QStringList& args,
 // Python script reads them, and it future-proofs new scripts.
 static const QStringList kManagedCredentialKeys = {
     "ALPHA_VANTAGE_API_KEY", "POLYGON_API_KEY",      "DATABENTO_API_KEY",
-    "FRED_API_KEY",          "NEWSAPI_KEY",          "BINANCE_API_KEY",
-    "BINANCE_SECRET_KEY",    "KRAKEN_API_KEY",       "KRAKEN_SECRET_KEY",
-    "IEX_CLOUD_TOKEN",       "FINNHUB_API_KEY",      "TIINGO_API_KEY",
-    "QUANDL_API_KEY",        "POLYMARKET_API_KEY",   "POLYMARKET_SECRET",
-    "POLYMARKET_PASSPHRASE", "POLYMARKET_WALLET",    "AINVEST_API_KEY",
+    "FRED_API_KEY",          "BLS_API_KEY",          "BEA_API_KEY",
+    "EIA_API_KEY",           "WTO_API_KEY",          "TRADING_ECONOMICS_API_KEY",
+    "NEWSAPI_KEY",           "BINANCE_API_KEY",      "BINANCE_SECRET_KEY",
+    "KRAKEN_API_KEY",        "KRAKEN_SECRET_KEY",    "IEX_CLOUD_TOKEN",
+    "FINNHUB_API_KEY",       "TIINGO_API_KEY",       "QUANDL_API_KEY",
+    "POLYMARKET_API_KEY",    "POLYMARKET_SECRET",    "POLYMARKET_PASSPHRASE",
+    "POLYMARKET_WALLET",     "AINVEST_API_KEY",
 };
 
 // ── Sensitive shell-env stripping ────────────────────────────────────────────

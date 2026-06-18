@@ -175,7 +175,7 @@ BeaPanel::BeaPanel(QWidget* parent) : EconPanelBase(kBeaSourceId, kBeaColor, par
 
 void BeaPanel::activate() {
     show_empty(tr("Select a category and indicator, then click FETCH\n"
-                  "Requires BEA_API_KEY — free at: www.bea.gov/data/api/register\n"
+                  "Add your BEA key in Settings → Credentials — free at: www.bea.gov/data/api/register\n"
                   "All data is US national accounts (NIPA)"));
 }
 
@@ -273,7 +273,7 @@ void BeaPanel::on_result(const QString& request_id, const services::EconomicsRes
     if (!result.success) {
         if (result.error.contains("API key") || result.error.contains("UserID") || result.error.contains("register")) {
             show_error(tr("BEA API key not configured.\n"
-                          "Set BEA_API_KEY environment variable.\n"
+                          "Add it in Settings → Credentials (\"BEA\").\n"
                           "Free registration at: www.bea.gov/data/api/register"));
         } else {
             show_error(result.error);

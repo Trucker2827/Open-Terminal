@@ -70,7 +70,7 @@ EiaPanel::EiaPanel(QWidget* parent) : EconPanelBase(kEiaSourceId, kEiaColor, par
 void EiaPanel::activate() {
     show_empty(tr("Select a data source and category, then click FETCH\n"
                   "Weekly Petroleum Status Report requires no API key\n"
-                  "Short-Term Energy Outlook requires EIA_API_KEY env var"));
+                  "Short-Term Energy Outlook needs an EIA key (Settings → Credentials)"));
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ void EiaPanel::on_result(const QString& request_id, const services::EconomicsRes
         // Detect API key error for STEO
         if (result.error.contains("API key") || result.error.contains("api_key")) {
             show_error(tr("EIA API key not configured.\n"
-                          "Set EIA_API_KEY environment variable.\n"
+                          "Add it in Settings → Credentials (\"EIA\").\n"
                           "Free key at: www.eia.gov/opendata/register.php"));
         } else {
             show_error(result.error);

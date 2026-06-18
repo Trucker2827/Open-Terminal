@@ -149,7 +149,9 @@ void EurostatPanel::on_fetch() {
 
     show_loading(tr("Fetching Eurostat: %1 — %2…").arg(dataset.label, country_combo_->currentText()));
 
-    QStringList args = {dataset.command};
+    // EconomicsService::execute() prepends `command`; don't double it here, or
+    // the country shifts into the wrong dimension (geo=INDUSTRIAL → HTTP 413/404).
+    QStringList args;
     if (dataset.has_country)
         args << country;
 

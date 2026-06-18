@@ -60,7 +60,7 @@ WtoPanel::WtoPanel(QWidget* parent) : EconPanelBase(kWtoSourceId, kWtoColor, par
 void WtoPanel::activate() {
     show_empty(tr("Select a section and click FETCH\n"
                   "QR Members & Notifications are free — no API key needed\n"
-                  "Trade Statistics requires WTO_API_KEY (Ocp-Apim-Subscription-Key)"));
+                  "Trade Statistics needs a WTO key in Settings → Credentials (Ocp-Apim-Subscription-Key)"));
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
@@ -186,7 +186,7 @@ void WtoPanel::on_result(const QString& request_id, const services::EconomicsRes
         if (result.error.contains("subscription") || result.error.contains("API key") || result.error.contains("401") ||
             result.error.contains("403")) {
             show_error(tr("WTO API key not configured.\n"
-                          "Set WTO_API_KEY environment variable\n"
+                          "Add it in Settings → Credentials (\"WTO\")\n"
                           "(Ocp-Apim-Subscription-Key from developer.wto.org)"));
         } else {
             show_error(result.error);
@@ -221,7 +221,7 @@ void WtoPanel::on_result(const QString& request_id, const services::EconomicsRes
 
         if (rows.isEmpty()) {
             show_empty(tr("No data returned — check reporter code or years range\n"
-                          "Also verify WTO_API_KEY is set correctly"));
+                          "Also verify your WTO key in Settings → Credentials"));
             return;
         }
         display(rows, "WTO Trade Statistics: " + indicator_combo_->currentText());

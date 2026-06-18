@@ -58,9 +58,11 @@ void OecdPanel::build_controls(QHBoxLayout* thl) {
     country_combo_->setFixedHeight(26);
 
     frequency_combo_ = new QComboBox;
-    frequency_combo_->addItem(tr("Annual"), "A");
-    frequency_combo_->addItem(tr("Quarterly"), "Q");
-    frequency_combo_->addItem(tr("Monthly"), "M");
+    // oecd_data.py expects the spelled-out frequency ("annual"/"quarter"/"monthly"),
+    // not the single-letter SDMX codes — sending "A" gave "Invalid frequency: A".
+    frequency_combo_->addItem(tr("Annual"), "annual");
+    frequency_combo_->addItem(tr("Quarterly"), "quarter");
+    frequency_combo_->addItem(tr("Monthly"), "monthly");
     frequency_combo_->setFixedHeight(26);
 
     thl->addWidget(dataset_lbl_ = lbl(tr("DATASET")));
