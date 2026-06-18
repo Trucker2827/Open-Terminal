@@ -346,6 +346,156 @@ class OECDWrapper:
         country_list = countries.split(",")
         return "+".join([country_mapping.get(country.lower(), country) for country in country_list])
 
+    # ===== Unified SDMX-JSON fetch =====
+    # OECD redesigned their SDMX API (2024+): keys now carry the FULL dimension
+    # set (a short key → HTTP 422 "expecting N got M"), REF_AREA uses 3-letter
+    # ISO codes (USA, not US), and a wildcard query returns many series so the
+    # target must be selected by its dimension values. The legacy get_* methods
+    # below are dead (hardcoded short keys → 422); main() routes the data
+    # commands through fetch_indicator() instead.
+    _FREQ_MAP = {"annual": "A", "quarter": "Q", "monthly": "M",
+                 "a": "A", "q": "Q", "m": "M"}
+
+    _INDICATOR_CONFIG = {
+        "gdp_real": {
+            # OECD's quarterly/annual national-accounts (DF_QNA) real-GDP series
+            # is inconsistently populated across members, frequencies and
+            # transformations (USA quarterly level, JPN annual level/growth → 1
+            # obs). The Economic Outlook real-GDP growth measure (GDPV_ANNPCT) is
+            # the one series uniformly available for every member, so we source
+            # real GDP from it. (gdp_forecast draws the projection horizon of the
+            # same series.)
+            "flow": "OECD.ECO.MAD,DSD_EO@DF_EO,1.0",
+            "dims": ["REF_AREA", "MEASURE", "FREQ"],
+            "key_pins": {"MEASURE": "GDPV_ANNPCT"}, "select": {},
+            "fixed_freq": "A", "default_freq": "A", "scale": 1.0,
+            "label": "Real GDP growth (% YoY, OECD Economic Outlook)",
+        },
+        "cpi": {
+            "flow": "OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0",
+            "dims": ["REF_AREA", "FREQ", "METHODOLOGY", "MEASURE",
+                     "UNIT_MEASURE", "EXPENDITURE", "ADJUSTMENT", "TRANSFORMATION"],
+            # Don't pin METHODOLOGY: some members populate the national index (N),
+            # others the harmonised one (HICP, e.g. USA monthly) — accept whichever
+            # is fuller via the most-observations tie-break below.
+            "key_pins": {"MEASURE": "CPI", "EXPENDITURE": "_T"},
+            "select": {"UNIT_MEASURE": "IX", "TRANSFORMATION": "_Z"},
+            "default_freq": "M", "scale": 1.0,
+            "label": "Consumer Price Index, all items (index)",
+        },
+        "unemployment": {
+            "flow": "OECD.SDD.TPS,DSD_LFS@DF_IALFS_UNE_M,1.0",
+            "dims": ["REF_AREA", "MEASURE", "UNIT_MEASURE", "TRANSFORMATION",
+                     "ADJUSTMENT", "SEX", "AGE", "ACTIVITY", "FREQ"],
+            "key_pins": {"MEASURE": "UNE_LF_M", "UNIT_MEASURE": "PT_LF_SUB",
+                         "SEX": "_T", "AGE": "Y_GE15", "ADJUSTMENT": "Y"},
+            "select": {}, "fixed_freq": "M", "default_freq": "M", "scale": 1.0,
+            "label": "Harmonised unemployment rate (% of labour force, SA)",
+        },
+        "gdp_forecast": {
+            "flow": "OECD.ECO.MAD,DSD_EO@DF_EO,1.0",
+            "dims": ["REF_AREA", "MEASURE", "FREQ"],
+            "key_pins": {"MEASURE": "GDPV_ANNPCT"}, "select": {},
+            "fixed_freq": "A", "default_freq": "A", "scale": 1.0,
+            "label": "Real GDP growth forecast (% YoY, OECD Economic Outlook)",
+        },
+        "interest_rates": {
+            "flow": "OECD.ECO.MAD,DSD_EO@DF_EO,1.0",
+            "dims": ["REF_AREA", "MEASURE", "FREQ"],
+            "key_pins": {"MEASURE": "IRS"}, "select": {},
+            "fixed_freq": "A", "default_freq": "A", "scale": 1.0,
+            "label": "Short-term interest rate (%, OECD Economic Outlook)",
+        },
+        "trade_balance": {
+            "flow": "OECD.ECO.MAD,DSD_EO@DF_EO,1.0",
+            "dims": ["REF_AREA", "MEASURE", "FREQ"],
+            "key_pins": {"MEASURE": "CBD"}, "select": {},
+            "fixed_freq": "A", "default_freq": "A", "scale": 1.0,
+            "label": "Current account balance (USD, OECD Economic Outlook)",
+        },
+    }
+
+    def fetch_indicator(self, command, countries="USA", frequency=None,
+                        start_date=None, end_date=None):
+        cfg = self._INDICATOR_CONFIG.get(command)
+        if not cfg:
+            return OECDError(command, f"Unsupported indicator: {command}").to_dict()
+
+        freq = cfg.get("fixed_freq") or self._FREQ_MAP.get(str(frequency or "").lower(),
+                                                           cfg["default_freq"])
+        area = (countries or "USA").split(",")[0].strip().upper() or "USA"
+
+        pins = dict(cfg["key_pins"]); pins["REF_AREA"] = area; pins["FREQ"] = freq
+        key = ".".join(pins.get(d, "") for d in cfg["dims"])
+        url = f"https://sdmx.oecd.org/public/rest/data/{cfg['flow']}/{key}"
+
+        if not start_date:
+            start_date = "2000"
+        params = {"dimensionAtObservation": "TIME_PERIOD",
+                  "startPeriod": start_date[:7] if freq == "M" else start_date[:4]}
+        if end_date:
+            params["endPeriod"] = end_date[:7] if freq == "M" else end_date[:4]
+        headers = {"Accept": "application/vnd.sdmx.data+json;version=1.0",
+                   "Accept-Encoding": "gzip, deflate", "Accept-Language": "en"}
+        try:
+            r = self.session.get(url, headers=headers, params=params, timeout=45)
+        except Exception as e:
+            return OECDError(command, f"Request failed: {str(e)}").to_dict()
+        if r.status_code != 200:
+            return OECDError(command, f"HTTP {r.status_code}: {r.text[:160]}",
+                             r.status_code).to_dict()
+        try:
+            d = r.json()["data"]
+            sdims = d["structure"]["dimensions"]["series"]
+            ids = [x["id"] for x in sdims]
+            vals = [[v["id"] for v in x["values"]] for x in sdims]
+            tvals = [v["id"] for v in d["structure"]["dimensions"]["observation"][0]["values"]]
+            series = d["dataSets"][0].get("series", {})
+
+            def _nobs(sv):
+                return len(sv.get("observations", {}))
+
+            # Several series can match the selection (e.g. seasonally-adjusted and
+            # raw variants); the real one is the fullest, so pick the match with
+            # the most observations rather than the first (which may be sparse).
+            def _ok(combo):
+                for k, v in cfg["select"].items():
+                    cv = combo.get(k)
+                    if isinstance(v, (tuple, list)):
+                        if cv not in v:
+                            return False
+                    elif cv != v:
+                        return False
+                return True
+
+            matches = []
+            for skey, sval in series.items():
+                idx = [int(i) for i in skey.split(":")]
+                combo = {ids[p]: vals[p][idx[p]] for p in range(len(idx))}
+                if _ok(combo):
+                    matches.append(sval)
+            if matches:
+                chosen = max(matches, key=_nobs)
+            elif series:
+                chosen = max(series.values(), key=_nobs)
+            else:
+                return OECDError(command, "No data found for the given parameters").to_dict()
+            rows = []
+            for ti, ov in chosen.get("observations", {}).items():
+                v = ov[0] if ov else None
+                if v is None:
+                    continue
+                rows.append({"date": tvals[int(ti)], "value": float(v) * cfg["scale"]})
+            rows.sort(key=lambda x: x["date"])
+            return {
+                "success": True, "endpoint": command, "label": cfg["label"],
+                "parameters": {"countries": area, "frequency": freq},
+                "total_records": len(rows), "data": rows,
+                "timestamp": int(datetime.now().timestamp()),
+            }
+        except Exception as e:
+            return OECDError(command, f"Failed to process data: {str(e)}").to_dict()
+
     # ===== GDP REAL ENDPOINT =====
 
     def get_gdp_real(self, countries: str = "united_states",
@@ -1115,19 +1265,17 @@ def main(args=None):
     wrapper = OECDWrapper()
 
     try:
-        if command == "gdp_real":
-            countries = args[1] if len(args) + 1 > 2 else "united_states"
-            frequency = args[2] if len(args) + 1 > 3 else "quarter"
-            start_date = args[3] if len(args) + 1 > 4 else None
-            end_date = args[4] if len(args) + 1 > 5 else None
-
-            result = wrapper.get_gdp_real(
-                countries=countries,
-                frequency=frequency,
-                start_date=start_date,
-                end_date=end_date
-            )
-            print(json.dumps(result, indent=2))
+        # Data indicators all route through the unified SDMX-JSON fetcher. The
+        # panel sends argv = [command, country(3-letter ISO), frequency]. The
+        # legacy per-command elif blocks below are now unreachable for these.
+        if command in ("gdp_real", "cpi", "gdp_forecast", "unemployment",
+                       "interest_rates", "trade_balance"):
+            countries = args[1] if len(args) > 1 else "USA"
+            frequency = args[2] if len(args) > 2 else None
+            start_date = args[3] if len(args) > 3 else None
+            end_date = args[4] if len(args) > 4 else None
+            print(json.dumps(wrapper.fetch_indicator(
+                command, countries, frequency, start_date, end_date), indent=2))
 
         elif command == "cpi":
             countries = args[1] if len(args) + 1 > 2 else "united_states"

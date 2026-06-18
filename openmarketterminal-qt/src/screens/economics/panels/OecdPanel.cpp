@@ -17,15 +17,21 @@ static constexpr const char* kOecdScript = "oecd_data.py";
 static constexpr const char* kOecdSourceId = "oecd";
 static constexpr const char* kOecdColor = "#F59E0B"; // amber
 
+// Labels say exactly what each series is — OECD only reliably publishes these as
+// rates/growth/index, not levels. "GDP Forecast" was dropped: OECD's real-GDP
+// series (Economic Outlook) already spans the projection horizon, so it would be
+// a duplicate of "Real GDP Growth %".
 static const QList<QPair<QString, QString>> kOecdDatasets = {
-    {"GDP (Real)", "gdp_real"},       {"CPI / Inflation", "cpi"},           {"GDP Forecast", "gdp_forecast"},
-    {"Unemployment", "unemployment"}, {"Interest Rates", "interest_rates"}, {"Trade Balance", "trade_balance"},
+    {"Real GDP Growth %", "gdp_real"},        {"CPI (index, all items)", "cpi"},
+    {"Unemployment Rate %", "unemployment"},  {"Short-term Interest %", "interest_rates"},
+    {"Current Account (USD)", "trade_balance"},
 };
 
 static const QList<QPair<QString, QString>> kOecdCountries = {
-    {"United States", "US"},  {"Germany", "DE"}, {"Japan", "JP"},     {"France", "FR"},
-    {"United Kingdom", "GB"}, {"Canada", "CA"},  {"Australia", "AU"}, {"South Korea", "KR"},
-    {"Italy", "IT"},          {"Spain", "ES"},   {"G7", "G-7"},       {"OECD Total", "OECD"},
+    // OECD's SDMX REF_AREA uses 3-letter ISO codes (USA, not US).
+    {"United States", "USA"}, {"Germany", "DEU"}, {"Japan", "JPN"},    {"France", "FRA"},
+    {"United Kingdom", "GBR"}, {"Canada", "CAN"}, {"Australia", "AUS"}, {"South Korea", "KOR"},
+    {"Italy", "ITA"},         {"Spain", "ESP"},   {"G7", "G7"},        {"OECD Total", "OECD"},
 };
 
 } // namespace
