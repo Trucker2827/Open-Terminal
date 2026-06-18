@@ -40,7 +40,38 @@ namespace { constexpr const char* kLlmOpenMarketTerminalTag = "LlmService"; }
 //     deliberate discovery.
 //   • Tool RAG OFF or explicit filter: legacy behaviour — list up to 60
 //     filtered tools inline.
-static QString build_tool_catalog_for_prompt(const mcp::ToolFilter& filter) {
+static QString build_tool_catalog_for_prompt(const mcp::ToolFilter& filter, bool is_local = false) {
+    // Local/Ollama models bypass Tool-RAG and receive the curated essentials set
+    // directly (legacy-mode listing) so they can call live-data tools without the
+    // 2-step tool_list→call discovery that weak models skip.
+    if (is_local) {
+        mcp::ToolFilter essentials_filter;
+        essentials_filter.no_cap = true;
+        for (const QString& name : mcp::local_essentials_tool_names())
+            essentials_filter.name_patterns.append(QStringLiteral("^") + name + QStringLiteral("$"));
+        essentials_filter.exclude_categories = filter.exclude_categories;
+        auto local_tools = mcp::McpService::instance().get_all_tools(essentials_filter);
+        if (local_tools.empty())
+            return {};
+        QString catalog;
+        catalog += "You have access to tools. To use one, emit a <tool_call> block:\n";
+        catalog += "<tool_call>{\"name\": \"TOOL_NAME\", \"arguments\": {\"param\": \"value\"}}</tool_call>\n\n";
+        catalog += "Available tools:\n";
+        for (const auto& tool : local_tools) {
+            QString fn_name = tool.server_id + "__" + mcp::McpProvider::encode_tool_name_for_wire(tool.name);
+            catalog += "- " + fn_name + ": " + tool.description;
+            QJsonObject props = tool.input_schema["properties"].toObject();
+            if (!props.isEmpty()) {
+                QStringList params;
+                for (auto it = props.constBegin(); it != props.constEnd(); ++it)
+                    params.append(it.key());
+                catalog += " (params: " + params.join(", ") + ")";
+            }
+            catalog += "\n";
+        }
+        return catalog;
+    }
+
     auto all_tools = mcp::McpService::instance().get_all_tools(filter);
     if (all_tools.empty())
         return {};
@@ -118,7 +149,7 @@ LlmResponse LlmService::openmarketterminal_async_request(const QString& user_mes
 
     // Inject tool catalog so the model can emit text-based tool calls
     if (detail::effective_tools_enabled(tools_enabled_)) {
-        QString tool_catalog = build_tool_catalog_for_prompt(detail::apply_request_policy(tool_filter_));
+        QString tool_catalog = build_tool_catalog_for_prompt(detail::apply_request_policy(tool_filter_), is_local_model());
         if (!tool_catalog.isEmpty())
             prompt += tool_catalog + "\n";
     }

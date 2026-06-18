@@ -9,6 +9,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 
 namespace openmarketterminal::ai_chat {
@@ -61,7 +62,21 @@ QJsonObject LlmService::build_openai_request(const QString& user_message,
     // to do_request to execute. Otherwise the model answers from training and tool calling silently breaks.
     const bool tools_effectively_on = detail::effective_tools_enabled(tools_enabled_);
     if (with_tools && tools_effectively_on && !is_ds_reasoner && !groq_no_tools) {
-        QJsonArray tools = mcp::McpService::instance().format_tools_for_openai(detail::apply_request_policy(tool_filter_));
+        // Local/Ollama models skip Tool-RAG and receive the curated essentials set
+        // directly. Weak models won't do the 2-step tool_list→call discovery that RAG
+        // requires, so they'd hallucinate instead of calling get_quote etc. We still
+        // include tool_list so they can reach the full catalog when needed.
+        mcp::ToolFilter effective_filter = detail::apply_request_policy(tool_filter_);
+        if (is_local_model()) {
+            mcp::ToolFilter essentials_filter;
+            essentials_filter.no_cap = true; // essentials set is small; skip the kHardMaxTools cap
+            for (const QString& name : mcp::local_essentials_tool_names())
+                essentials_filter.name_patterns.append(QStringLiteral("^") + name + QStringLiteral("$"));
+            // Also honour any active navigation exclusion from the request policy.
+            essentials_filter.exclude_categories = effective_filter.exclude_categories;
+            effective_filter = std::move(essentials_filter);
+        }
+        QJsonArray tools = mcp::McpService::instance().format_tools_for_openai(effective_filter);
         if (!tools.isEmpty())
             req["tools"] = tools;
         LOG_INFO(kLlmBuildersTag, QString("OpenAI request: stream=%1 provider=%2 tools=%3 (count=%4)")

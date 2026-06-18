@@ -46,6 +46,14 @@ static constexpr const char* kLlmSvcTag = "LlmService";
 
 LlmService::LlmService() = default;
 
+bool LlmService::is_local_model() const {
+    // Called with mutex_ held. Mirrors the inline check in ensure_config() but
+    // exposes the result to the request builders in LlmRequestBuilders.cpp.
+    return (provider_ == QLatin1String("ollama")) ||
+           base_url_.contains(QLatin1String("localhost"), Qt::CaseInsensitive) ||
+           base_url_.contains(QLatin1String("127.0.0.1"));
+}
+
 LlmService& LlmService::instance() {
     static LlmService s;
     return s;
@@ -145,13 +153,10 @@ void LlmService::ensure_config() const {
     // Claude-tuned prompt below *causes* small models to stop emitting structured tool
     // calls and dump bare-JSON into the chat. So local models get a lean prompt instead
     // and skip the large appendices — measured to let llama3.x complete a multi-tool loop.
-    const bool is_local_model =
-        (provider_ == QLatin1String("ollama")) ||
-        base_url_.contains(QLatin1String("localhost"), Qt::CaseInsensitive) ||
-        base_url_.contains(QLatin1String("127.0.0.1"));
+    const bool local_model = is_local_model();
 
     // Default system prompt — primes the model to actually use tools instead of declining tool-feasible requests.
-    if (system_prompt_.trimmed().isEmpty() && is_local_model) {
+    if (system_prompt_.trimmed().isEmpty() && local_model) {
         // Lean prompt for local/weak models. Keeps only what the tool loop needs:
         // call tools, discover more via tool_list, keep going until done. Adding more
         // than this measurably degrades small models (they fall back to text tool calls).
@@ -167,6 +172,10 @@ void LlmService::ensure_config() const {
             "3. After each tool result, decide: need more data -> call the next tool; have "
             "everything -> give the final answer in plain text.\n"
             "4. Always either call a tool or give a final answer — never stop in between.\n"
+            "5. NEVER state a price, quote, market level, holding, or recent news/event "
+            "from memory or training data — it is stale. For anything current you MUST "
+            "call a tool (get_quote, get_equity_news, web_search) and answer only from "
+            "the result. If unsure which tool, call tool_list.\n"
             "Be concise, accurate, and finance-focused.";
     } else if (system_prompt_.trimmed().isEmpty()) {
         system_prompt_ =
@@ -231,7 +240,7 @@ void LlmService::ensure_config() const {
     // The `[Tool discovery]` sentinel makes append idempotent across reloads. Cached static for prompt-cache stability.
     // Skipped for local models — the lean prompt above already includes a compact discovery
     // instruction, and the extra length measurably hurts small models.
-    if (tools_enabled_ && !is_local_model && !system_prompt_.contains("[Tool discovery]")) {
+    if (tools_enabled_ && !local_model && !system_prompt_.contains("[Tool discovery]")) {
         // Tool registry is immutable after McpInit; runtime additions won't appear until restart (acceptable here).
         static const QString kHint = []() -> QString {
             const auto all = mcp::McpProvider::instance().list_all_tools();
@@ -266,7 +275,7 @@ void LlmService::ensure_config() const {
     // "[Analysis skills]" sentinel; only when tools are enabled (the playbooks call tools).
     // Skipped for local models: ~1900 words of playbooks overwhelms small models and breaks
     // their tool loop. The playbooks are written for premium Claude, the real analysis engine.
-    if (tools_enabled_ && !is_local_model && !system_prompt_.contains("[Analysis skills]")) {
+    if (tools_enabled_ && !local_model && !system_prompt_.contains("[Analysis skills]")) {
         const QString frag = services::AnalysisSkillLoader::instance().system_prompt_fragment();
         if (!frag.isEmpty())
             system_prompt_ += frag;

@@ -186,4 +186,13 @@ class McpProvider {
     AuthChecker auth_checker_;
 };
 
+// ── Local-model essentials toolset ────────────────────────────────────────
+//
+// A curated ~18-tool set that local/Ollama models receive directly instead of
+// going through the Tool-RAG discovery path (which weak models skip, leading
+// to stale-training hallucinations). The set covers live market data, equity
+// research, news, web browsing, and the discovery meta-tool so the model can
+// still reach the full ~600-tool catalog if needed.
+const QSet<QString>& local_essentials_tool_names();
+
 } // namespace openmarketterminal::mcp

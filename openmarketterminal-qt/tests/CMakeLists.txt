@@ -236,6 +236,15 @@ target_include_directories(tst_session_title PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_session_title PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_session_title COMMAND tst_session_title)
 
+# Task 4 — local-model essentials toolset: curated ~18-tool set that local/Ollama
+# models receive instead of going through Tool-RAG. mcp::local_essentials_tool_names()
+# lives in McpProvider.cpp (part of openterminal_core), so we link the core lib
+# (mirrors tst_mcp_init_split) rather than compiling McpProvider.cpp standalone.
+add_executable(tst_local_essentials tst_local_essentials.cpp)
+target_include_directories(tst_local_essentials PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_local_essentials PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_local_essentials COMMAND tst_local_essentials)
+
 # DuckDuckGo HTML-endpoint result parser — pure C++/Qt, no network in the function.
 # Parses result__a anchors and result__snippet anchors, decodes DDG /l/?uddg= redirects.
 add_executable(tst_web_search_parser

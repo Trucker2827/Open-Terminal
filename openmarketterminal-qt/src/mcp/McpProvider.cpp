@@ -489,4 +489,41 @@ quint64 McpProvider::generation() const {
     return generation_;
 }
 
+// ── Local-model essentials toolset ────────────────────────────────────────
+
+const QSet<QString>& local_essentials_tool_names() {
+    static const QSet<QString> kSet = {
+        // Live market data
+        "get_quote",
+        "get_equity_quote",     // may be registered under this alias in future
+        // Equity research
+        "get_equity_news",
+        "get_equity_financials",
+        "get_equity_info",      // may be registered in future
+        "get_equity_peers",
+        "get_equity_technicals",
+        // Historical / candles
+        "get_candles",
+        // SEC filings
+        "edgar_get_financials",
+        "edgar_search_filings",
+        // News
+        "get_top_news",
+        "get_news",
+        "search_news",
+        // Symbol utilities
+        "lookup_symbol",
+        "search_equity_symbols",
+        // Observer
+        "get_observations",
+        // Web browsing (Task 3: web search/fetch added to the app)
+        "web_search",
+        "web_fetch",
+        // Meta-discovery — always included so the model can still reach
+        // the full ~600-tool catalog when needed.
+        "tool_list",
+    };
+    return kSet;
+}
+
 } // namespace openmarketterminal::mcp

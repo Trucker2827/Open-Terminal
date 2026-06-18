@@ -143,6 +143,12 @@ class LlmService : public QObject {
 
     void ensure_config() const;
 
+    /// True when the active model is a local/Ollama endpoint (provider=="ollama"
+    /// or base_url points at localhost/127.0.0.1). Called under mutex_.
+    /// Used by the prompt builder (LlmService.cpp) AND the tool-list builder
+    /// (LlmRequestBuilders.cpp) to bypass Tool-RAG and attach the essentials set.
+    bool is_local_model() const;
+
     QJsonObject build_openai_request(const QString& user_message, const std::vector<ConversationMessage>& history,
                                      bool stream, bool with_tools = true);
     QJsonObject build_anthropic_request(const QString& user_message, const std::vector<ConversationMessage>& history,
