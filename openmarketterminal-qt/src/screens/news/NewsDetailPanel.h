@@ -41,6 +41,12 @@ class NewsDetailPanel : public QWidget {
     /// Store full text in the cache (called by NewsScreen when it pre-fetches for ANALYZE).
     void cache_full_text(const QString& url, const QString& text) { full_text_cache_[url] = text; }
 
+    /// Called by NewsScreen when the TRANSCRIBE Python result arrives.
+    /// If ok and transcript non-empty, stores it in full_text_cache_ (so ANALYZE
+    /// picks it up automatically) and displays it. On failure, shows the article
+    /// summary with an error note. Staleness-guarded: no-ops if url no longer current.
+    void show_transcript(const QString& url, bool ok, const QString& transcript, const QString& note);
+
     /// Read-only access to the currently displayed article (valid when has_article_).
     const services::NewsArticle& article() const { return current_article_; }
 
@@ -60,6 +66,9 @@ class NewsDetailPanel : public QWidget {
     /// Emitted when READ FULL fetch completes (url, full_text). Routed to NewsScreen
     /// so it can trigger the LLM analysis if ANALYZE was waiting on the fetch.
     void full_text_fetched(const QString& url, const QString& full_text);
+    /// Emitted when the TRANSCRIBE button is clicked. NewsScreen handles it by
+    /// running video_transcript.py and calling back show_transcript().
+    void transcribe_requested(const QString& url);
 
   private:
     QWidget* build_empty_state();
@@ -139,6 +148,7 @@ class NewsDetailPanel : public QWidget {
     QPushButton* save_btn_ = nullptr;
     QPushButton* bookmark_btn_ = nullptr;
     QPushButton* read_full_btn_ = nullptr;
+    QPushButton* transcribe_btn_ = nullptr;
     QPushButton* close_btn_ = nullptr;
 
     QStackedWidget* stack_ = nullptr;

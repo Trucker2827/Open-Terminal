@@ -3,6 +3,7 @@
 #include "core/events/EventBus.h"
 #include "core/keys/KeyConfigManager.h"
 #include "core/logging/Logger.h"
+#include "python/PythonRunner.h"
 #include "core/session/ScreenStateManager.h"
 #include "core/symbol/SymbolDragSource.h"
 #include "screens/news/NewsCommandBar.h"
@@ -170,6 +171,7 @@ void NewsScreen::connect_signals() {
 
     // Detail panel (overlay)
     connect(detail_panel_, &NewsDetailPanel::analyze_requested, this, &NewsScreen::on_analyze_requested);
+    connect(detail_panel_, &NewsDetailPanel::transcribe_requested, this, &NewsScreen::on_transcribe_requested);
     connect(detail_panel_, &NewsDetailPanel::panel_closed, this, &NewsScreen::on_detail_closed);
     connect(detail_panel_, &NewsDetailPanel::bookmark_requested, this, [this](const services::NewsArticle& article) {
         auto r = openmarketterminal::NewsArticleRepository::instance().toggle_saved(article.id);
@@ -722,6 +724,65 @@ void NewsScreen::on_analyze_requested(const QString& url) {
             }, Qt::QueuedConnection);
         });
     }
+}
+
+void NewsScreen::on_transcribe_requested(const QString& url) {
+    QPointer<NewsScreen> self = this;
+
+    python::PythonRunner::instance().run(
+        "video_transcript.py", {url},
+        [self, url](python::PythonResult py) {
+            if (!self)
+                return;
+
+            if (!py.success) {
+                const QString note = tr("Couldn't get a transcript: %1")
+                    .arg(py.error.isEmpty()
+                         ? QStringLiteral("Script exited with code %1").arg(py.exit_code)
+                         : py.error);
+                LOG_ERROR("NewsScreen", "video_transcript.py failed: " + note);
+                self->detail_panel_->show_transcript(url, false, {}, note);
+                return;
+            }
+
+            const QString json_str = python::extract_json(py.output);
+            if (json_str.isEmpty()) {
+                const QString note = tr("Couldn't get a transcript: no JSON output from script");
+                LOG_ERROR("NewsScreen", note);
+                self->detail_panel_->show_transcript(url, false, {}, note);
+                return;
+            }
+
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(json_str.toUtf8(), &err);
+            if (doc.isNull()) {
+                const QString note = tr("Couldn't get a transcript: JSON parse error: %1").arg(err.errorString());
+                LOG_ERROR("NewsScreen", note);
+                self->detail_panel_->show_transcript(url, false, {}, note);
+                return;
+            }
+
+            const QJsonObject obj = doc.object();
+            const bool success = obj["success"].toBool(false);
+            if (!success) {
+                const QString error_msg = obj["error"].toString(tr("Unknown error"));
+                const QString note = tr("Couldn't get a transcript: %1").arg(error_msg);
+                LOG_INFO("NewsScreen", "Transcript unavailable: " + note);
+                self->detail_panel_->show_transcript(url, false, {}, note);
+                return;
+            }
+
+            const QString transcript = obj["transcript"].toString();
+            if (transcript.isEmpty()) {
+                const QString note = tr("Couldn't get a transcript: transcript is empty");
+                self->detail_panel_->show_transcript(url, false, {}, note);
+                return;
+            }
+
+            LOG_INFO("NewsScreen", QString("Transcript fetched for %1 (%2 words)")
+                .arg(url).arg(obj["word_count"].toInt()));
+            self->detail_panel_->show_transcript(url, true, transcript, {});
+        });
 }
 
 void NewsScreen::on_related_clicked(const services::NewsArticle& article) {

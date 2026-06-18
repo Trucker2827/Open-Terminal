@@ -187,3 +187,7 @@ pyttsx3>=2.90
 # QuantLib — powers the local QuantLib pricing server
 # (scripts/quantlib/quantlib_server.py), auto-started by QuantLibLocalServer.
 QuantLib
+
+# Video transcript — fetches caption tracks from YouTube/Vimeo clips for the
+# News panel TRANSCRIBE action. Falls back to the homebrew binary when absent.
+yt-dlp

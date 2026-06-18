@@ -214,18 +214,24 @@ QWidget* NewsDetailPanel::build_content_view() {
     read_full_btn_->setObjectName("newsDetailOpenBtn");
     read_full_btn_->setToolTip(tr("Fetch full article text from publisher"));
 
+    // Fetch transcript from video captions (YouTube / Vimeo / most clips)
+    transcribe_btn_ = new QPushButton(tr("TRANSCRIBE"), content);
+    transcribe_btn_->setObjectName("newsDetailOpenBtn");
+    transcribe_btn_->setToolTip(tr("Fetch transcript from the video's captions"));
+
     // All action buttons share a uniform height and expand to fill their grid
     // cell — no fixed widths, so nothing can overflow the panel.
     for (QPushButton* b :
-         {open_btn_, copy_btn_, copy_title_btn_, analyze_btn_, save_btn_, bookmark_btn_, translate_btn_, read_full_btn_}) {
+         {open_btn_, copy_btn_, copy_title_btn_, analyze_btn_, save_btn_, bookmark_btn_, translate_btn_, read_full_btn_, transcribe_btn_}) {
         b->setFixedHeight(24);
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
     QPushButton* action_btns[] = {open_btn_,    copy_btn_,      copy_title_btn_, analyze_btn_,
-                                  save_btn_,     bookmark_btn_,  translate_btn_,  read_full_btn_};
+                                  save_btn_,     bookmark_btn_,  translate_btn_,  read_full_btn_,
+                                  transcribe_btn_};
     constexpr int kCols = 3;
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < static_cast<int>(std::size(action_btns)); ++i)
         action_layout->addWidget(action_btns[i], i / kCols, i % kCols);
     for (int c = 0; c < kCols; ++c)
         action_layout->setColumnStretch(c, 1);
@@ -306,6 +312,23 @@ QWidget* NewsDetailPanel::build_content_view() {
                     summary_label_->setText(tr("[%1 -> EN] %2").arg(detected_lang, translated));
                 }
             });
+    });
+
+    // TRANSCRIBE — fetches the video's caption track via video_transcript.py
+    // (yt-dlp under the hood). Result is cached in full_text_cache_ so ANALYZE
+    // automatically picks it up without an additional fetch.
+    connect(transcribe_btn_, &QPushButton::clicked, this, [this]() {
+        if (!has_article_)
+            return;
+        const QString url = current_article_.link;
+        // Return instantly if already transcribed
+        if (full_text_cache_.contains(url)) {
+            summary_label_->setText(full_text_cache_.value(url));
+            return;
+        }
+        transcribe_btn_->setText(tr("TRANSCRIBING..."));
+        transcribe_btn_->setEnabled(false);
+        emit transcribe_requested(url);
     });
 
     // READ FULL — fetches full article text via headless browser off the UI thread.
@@ -634,6 +657,10 @@ void NewsDetailPanel::show_article(const services::NewsArticle& article) {
     analyze_timeout_->stop();
     read_full_btn_->setText(tr("READ FULL"));
     read_full_btn_->setEnabled(true);
+    // TRANSCRIBE is only meaningful for video items — hide it for articles.
+    transcribe_btn_->setText(tr("TRANSCRIBE"));
+    transcribe_btn_->setEnabled(true);
+    transcribe_btn_->setVisible(is_video_url(article.link));
 
     // Reflect saved state from DB
     {
@@ -1043,10 +1070,35 @@ void NewsDetailPanel::retranslateUi() {
         read_full_btn_->setText(tr("READ FULL"));
         read_full_btn_->setToolTip(tr("Fetch full article text from publisher"));
     }
+    if (transcribe_btn_) {
+        transcribe_btn_->setText(tr("TRANSCRIBE"));
+        transcribe_btn_->setToolTip(tr("Fetch transcript from the video's captions"));
+    }
     if (bookmark_btn_)    bookmark_btn_->setToolTip(tr("Bookmark article"));
     // analyze_btn_ / bookmark_btn_ / read_full_btn_ labels are state-dependent and refresh when
     // the next article is shown — intentionally not forced here. Per-row dynamic
     // content (badges, metrics, entities) re-renders from live data.
+}
+
+void NewsDetailPanel::show_transcript(const QString& url, bool ok, const QString& transcript,
+                                      const QString& note) {
+    // Staleness guard — discard if the user switched articles while fetching.
+    if (!has_article_ || current_article_.link != url)
+        return;
+
+    transcribe_btn_->setText(tr("TRANSCRIBE"));
+    transcribe_btn_->setEnabled(true);
+
+    if (ok && !transcript.isEmpty()) {
+        // Cache so ANALYZE reads the transcript automatically (same key as READ FULL).
+        full_text_cache_[url] = transcript;
+        summary_label_->setText(transcript);
+    } else {
+        // Show article intro + error note
+        const QString intro =
+            current_article_.summary.isEmpty() ? tr("No summary available.") : current_article_.summary;
+        summary_label_->setText(intro + "\n\n" + note);
+    }
 }
 
 void NewsDetailPanel::clear() {
