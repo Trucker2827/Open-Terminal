@@ -7,9 +7,10 @@ namespace openmarketterminal::web {
 
 static QString strip_tags(QString s) {
     s.remove(QRegularExpression("<[^>]*>"));
-    s = s.toHtmlEscaped();                       // normalize, then unescape entities
-    s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-     .replace("&quot;", "\"").replace("&#x27;", "'").replace("&#39;", "'").replace("&nbsp;", " ");
+    // decode HTML entities; &amp; last so double-encoded sequences (e.g. &amp;lt;) resolve correctly
+    s.replace("&lt;", "<").replace("&gt;", ">")
+     .replace("&quot;", "\"").replace("&#x27;", "'").replace("&#39;", "'").replace("&nbsp;", " ")
+     .replace("&amp;", "&");
     return s.simplified();
 }
 
