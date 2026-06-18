@@ -47,6 +47,11 @@ class NewsDetailPanel : public QWidget {
     /// summary with an error note. Staleness-guarded: no-ops if url no longer current.
     void show_transcript(const QString& url, bool ok, const QString& transcript, const QString& note);
 
+    /// Called by NewsScreen when the READ FULL Python result arrives (or the
+    /// headless fallback completes). If ok and text non-empty, stores it in
+    /// full_text_cache_ and displays it. On failure, shows a note. Staleness-guarded.
+    void show_full_text(const QString& url, bool ok, const QString& text, const QString& note);
+
     /// Read-only access to the currently displayed article (valid when has_article_).
     const services::NewsArticle& article() const { return current_article_; }
 
@@ -69,6 +74,11 @@ class NewsDetailPanel : public QWidget {
     /// Emitted when the TRANSCRIBE button is clicked. NewsScreen handles it by
     /// running video_transcript.py and calling back show_transcript().
     void transcribe_requested(const QString& url);
+
+    /// Emitted when the READ FULL button is clicked. NewsScreen handles it by
+    /// running article_extract.py (with headless fallback) and calling back
+    /// show_full_text().
+    void read_full_requested(const QString& url);
 
   private:
     QWidget* build_empty_state();

@@ -331,9 +331,9 @@ QWidget* NewsDetailPanel::build_content_view() {
         emit transcribe_requested(url);
     });
 
-    // READ FULL — fetches full article text via headless browser off the UI thread.
-    // Uses a multi-strategy fetch (Googlebot reader mode + archive.today fallback)
-    // to defeat soft/metered/SEO paywalls. Caches result per URL so re-clicking is instant.
+    // READ FULL — extracts full article text via article_extract.py (primary)
+    // with headless browser as fallback. NewsScreen owns the async work and calls
+    // back show_full_text() on completion. Caches result per URL so re-clicking is instant.
     connect(read_full_btn_, &QPushButton::clicked, this, [this]() {
         if (!has_article_)
             return;
@@ -353,31 +353,7 @@ QWidget* NewsDetailPanel::build_content_view() {
         }
         read_full_btn_->setText(tr("FETCHING..."));
         read_full_btn_->setEnabled(false);
-
-        QPointer<NewsDetailPanel> self = this;
-        (void)QtConcurrent::run([self, url]() {
-            // fetch_article_best is blocking — must run off GUI thread.
-            // It tries Googlebot reader-mode first, then archive.today if thin.
-            QString full_text = web::HeadlessBrowser::fetch_article_best(url);
-
-            // Marshal result back to UI thread
-            QMetaObject::invokeMethod(self.data(), [self, url, full_text]() {
-                if (!self || !self->has_article_ || self->current_article_.link != url)
-                    return; // stale — article changed while fetching
-                self->read_full_btn_->setText(tr("READ FULL"));
-                self->read_full_btn_->setEnabled(true);
-                if (full_text.length() >= 400) {
-                    self->full_text_cache_[url] = full_text;
-                    self->summary_label_->setText(full_text);
-                } else {
-                    // Hard paywall or publisher blocked automated access
-                    const QString note = tr("Couldn't load the full article (it may be a hard paywall "
-                                            "or the publisher blocked automated access). Showing the summary.");
-                    self->summary_label_->setText(note);
-                }
-                emit self->full_text_fetched(url, self->full_text_cache_.value(url));
-            }, Qt::QueuedConnection);
-        });
+        emit read_full_requested(url);
     });
 
     // Separator
@@ -1099,6 +1075,28 @@ void NewsDetailPanel::show_transcript(const QString& url, bool ok, const QString
             current_article_.summary.isEmpty() ? tr("No summary available.") : current_article_.summary;
         summary_label_->setText(intro + "\n\n" + note);
     }
+}
+
+void NewsDetailPanel::show_full_text(const QString& url, bool ok, const QString& text,
+                                     const QString& note) {
+    // Staleness guard — discard if the user switched articles while fetching.
+    if (!has_article_ || current_article_.link != url)
+        return;
+
+    read_full_btn_->setText(tr("READ FULL"));
+    read_full_btn_->setEnabled(true);
+
+    if (ok && !text.isEmpty()) {
+        // Cache so ANALYZE reads the full text automatically (same key as TRANSCRIBE).
+        full_text_cache_[url] = text;
+        summary_label_->setText(text);
+    } else {
+        // Show article intro + error note
+        const QString intro =
+            current_article_.summary.isEmpty() ? tr("No summary available.") : current_article_.summary;
+        summary_label_->setText(intro + "\n\n" + note);
+    }
+    emit full_text_fetched(url, full_text_cache_.value(url));
 }
 
 void NewsDetailPanel::clear() {

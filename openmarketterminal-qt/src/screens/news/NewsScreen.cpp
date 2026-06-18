@@ -178,6 +178,7 @@ void NewsScreen::connect_signals() {
     // Detail panel (overlay)
     connect(detail_panel_, &NewsDetailPanel::analyze_requested, this, &NewsScreen::on_analyze_requested);
     connect(detail_panel_, &NewsDetailPanel::transcribe_requested, this, &NewsScreen::on_transcribe_requested);
+    connect(detail_panel_, &NewsDetailPanel::read_full_requested, this, &NewsScreen::on_read_full_requested);
     connect(detail_panel_, &NewsDetailPanel::panel_closed, this, &NewsScreen::on_detail_closed);
     connect(detail_panel_, &NewsDetailPanel::bookmark_requested, this, [this](const services::NewsArticle& article) {
         auto r = openmarketterminal::NewsArticleRepository::instance().toggle_saved(article.id);
@@ -822,6 +823,76 @@ void NewsScreen::on_transcribe_requested(const QString& url) {
             LOG_INFO("NewsScreen", QString("Transcript fetched for %1 (%2 words)")
                 .arg(url).arg(obj["word_count"].toInt()));
             self->detail_panel_->show_transcript(url, true, transcript, {});
+        });
+}
+
+void NewsScreen::on_read_full_requested(const QString& url) {
+    QPointer<NewsScreen> self = this;
+
+    // Helper: headless browser fallback (blocking, must run off UI thread).
+    auto run_headless_fallback = [self, url]() {
+        (void)QtConcurrent::run([self, url]() {
+            QString full_text = web::HeadlessBrowser::fetch_article_best(url);
+            QMetaObject::invokeMethod(self.data(), [self, url, full_text]() {
+                if (!self)
+                    return;
+                if (full_text.length() >= 400) {
+                    self->detail_panel_->show_full_text(url, true, full_text, {});
+                } else {
+                    const QString note = tr("Couldn't load the full article — the publisher may "
+                                           "block automated access.");
+                    self->detail_panel_->show_full_text(url, false, {}, note);
+                }
+            }, Qt::QueuedConnection);
+        });
+    };
+
+    python::PythonRunner::instance().run(
+        "article_extract.py", {url},
+        [self, url, run_headless_fallback](python::PythonResult py) {
+            if (!self)
+                return;
+
+            // Any Python-level failure → try headless fallback
+            if (!py.success) {
+                LOG_INFO("NewsScreen", QString("article_extract.py failed (%1), trying headless").arg(py.error));
+                run_headless_fallback();
+                return;
+            }
+
+            const QString json_str = python::extract_json(py.output);
+            if (json_str.isEmpty()) {
+                LOG_INFO("NewsScreen", "article_extract.py: no JSON output, trying headless");
+                run_headless_fallback();
+                return;
+            }
+
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(json_str.toUtf8(), &err);
+            if (doc.isNull()) {
+                LOG_INFO("NewsScreen", QString("article_extract.py: JSON parse error: %1, trying headless").arg(err.errorString()));
+                run_headless_fallback();
+                return;
+            }
+
+            const QJsonObject obj = doc.object();
+            const bool success = obj["success"].toBool(false);
+            if (!success) {
+                LOG_INFO("NewsScreen", QString("article_extract.py: %1, trying headless").arg(obj["error"].toString()));
+                run_headless_fallback();
+                return;
+            }
+
+            const QString text = obj["text"].toString();
+            if (text.length() < 300) {
+                LOG_INFO("NewsScreen", "article_extract.py: text too short, trying headless");
+                run_headless_fallback();
+                return;
+            }
+
+            LOG_INFO("NewsScreen", QString("article_extract.py: extracted %1 words via %2 for %3")
+                .arg(obj["word_count"].toInt()).arg(obj["method"].toString()).arg(url));
+            self->detail_panel_->show_full_text(url, true, text, {});
         });
 }
 

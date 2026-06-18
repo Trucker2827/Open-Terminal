@@ -86,10 +86,14 @@
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
 
+#include "web/HeadlessBrowser.h"
+
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QDir>
 #include <QFile>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 #include <QGuiApplication>
 #include <QLibrary>
 #include <QMessageBox>
@@ -319,6 +323,28 @@ int main(int argc, char* argv[]) {
         }
     }
 #endif
+
+    // Diagnostic: OpenTerminal --fetch-test <url> → runs the READ FULL fetch
+    // (fetch_article_best) through the real headless browser and prints the
+    // extracted char count + a sample, then exits.
+    for (int i = 1; i < argc - 1; ++i) {
+        if (qstrcmp(argv[i], "--fetch-test") == 0) {
+            const QString url = QString::fromLocal8Bit(argv[i + 1]);
+            QEventLoop loop;
+            QFutureWatcher<QString> w;
+            QObject::connect(&w, &QFutureWatcher<QString>::finished, [&]() {
+                const QString text = w.result();
+                fprintf(stdout, "CHARS: %d\nSAMPLE: %s\n", static_cast<int>(text.size()),
+                        text.left(500).toUtf8().constData());
+                fflush(stdout);
+                loop.quit();
+            });
+            w.setFuture(QtConcurrent::run(
+                [url]() { return openmarketterminal::web::HeadlessBrowser::fetch_article_best(url); }));
+            loop.exec();
+            return 0;
+        }
+    }
 
     // ── Single-instance lock + new-window IPC ────────────────────────────────
     const QString profile_key = QString("OpenTerminal-%1").arg(openmarketterminal::ProfileManager::instance().active());

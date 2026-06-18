@@ -191,3 +191,7 @@ QuantLib
 # Video transcript — fetches caption tracks from YouTube/Vimeo clips for the
 # News panel TRANSCRIBE action. Falls back to the homebrew binary when absent.
 yt-dlp
+
+# Article extraction — used by the News panel READ FULL action (article_extract.py).
+# Optional: the script falls back to JSON-LD and readability heuristics if absent.
+trafilatura
