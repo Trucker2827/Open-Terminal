@@ -407,15 +407,4 @@ inline QStringList us_mega_cap_symbols() {
             "WMT",  "XOM",  "UNH",  "MA",    "HD",   "PG",   "COST", "BAC",  "KO",   "PEP"};
 }
 
-inline QStringList nifty50_symbols() {
-    return {"RELIANCE",   "TCS",   "HDFCBANK",  "INFY",       "ICICIBANK", "HINDUNILVR", "SBIN",
-            "BHARTIARTL", "ITC",   "KOTAKBANK", "LT",         "AXISBANK",  "BAJFINANCE", "ASIANPAINT",
-            "MARUTI",     "TITAN", "SUNPHARMA", "ULTRACEMCO", "NESTLEIND", "WIPRO"};
-}
-
-inline QStringList bank_nifty_symbols() {
-    return {"HDFCBANK",   "ICICIBANK",  "KOTAKBANK", "AXISBANK",   "SBIN",       "INDUSINDBK",
-            "BANDHANBNK", "FEDERALBNK", "PNB",       "BANKBARODA", "IDFCFIRSTB", "AUBANK"};
-}
-
 } // namespace openmarketterminal::services::algo

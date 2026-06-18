@@ -1,10 +1,9 @@
 // v045_scan_watch_universe — adds a `universe` selector column to scan_watches so a
-// realtime watch can track a *dynamic* symbol set (all NSE/BSE equities, NIFTY 50)
-// resolved live from the instrument master, instead of a frozen symbols list.
+// realtime watch can track a named symbol set (resolved at runner start) instead of a
+// frozen symbols list.
 //
 //   '' / 'CUSTOM'           → use the existing `symbols` column
-//   'NSE_EQ' / 'BSE_EQ'     → resolve all EQ instruments for that exchange at runner start
-//   'NIFTY50'               → resolve nifty50_symbols()
+//   'US_MEGA' / 'US_TECH'   → resolve the US mega-cap / US tech preset baskets
 // Existing rows default to '' so current poll watches are unaffected.
 
 #include "storage/sqlite/migrations/MigrationRunner.h"

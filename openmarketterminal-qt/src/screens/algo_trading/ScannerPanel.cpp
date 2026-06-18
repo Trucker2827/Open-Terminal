@@ -206,10 +206,10 @@ void ScannerPanel::build_ui() {
     auto* quick_row = new QHBoxLayout;
     quick_row->setSpacing(8);
 
-    auto* nifty_btn = new QPushButton("MEGA CAP", right_col);
-    nifty_btn->setCursor(Qt::PointingHandCursor);
-    nifty_btn->setFixedHeight(26);
-    nifty_btn->setStyleSheet(
+    auto* mega_cap_btn = new QPushButton("MEGA CAP", right_col);
+    mega_cap_btn->setCursor(Qt::PointingHandCursor);
+    mega_cap_btn->setFixedHeight(26);
+    mega_cap_btn->setStyleSheet(
         QString("QPushButton { background: %1; color: %2; border: 1px solid %3;"
                 " font-size: %4px; font-weight: 700; %5 padding: 2px 10px; }"
                 "QPushButton:hover { background: %6; color: %7; }")
@@ -217,17 +217,17 @@ void ScannerPanel::build_ui() {
             .arg(openmarketterminal::ui::fonts::TINY)
             .arg(kMonoFont())
             .arg(openmarketterminal::ui::colors::BG_HOVER(), openmarketterminal::ui::colors::TEXT_PRIMARY()));
-    connect(nifty_btn, &QPushButton::clicked, this,
+    connect(mega_cap_btn, &QPushButton::clicked, this,
             [this]() { symbols_input_->set_symbols(us_largecap_symbols()); });
-    quick_row->addWidget(nifty_btn);
+    quick_row->addWidget(mega_cap_btn);
 
-    auto* banknifty_btn = new QPushButton("TECH", right_col);
-    banknifty_btn->setCursor(Qt::PointingHandCursor);
-    banknifty_btn->setFixedHeight(26);
-    banknifty_btn->setStyleSheet(nifty_btn->styleSheet());
-    connect(banknifty_btn, &QPushButton::clicked, this,
+    auto* tech_btn = new QPushButton("TECH", right_col);
+    tech_btn->setCursor(Qt::PointingHandCursor);
+    tech_btn->setFixedHeight(26);
+    tech_btn->setStyleSheet(mega_cap_btn->styleSheet());
+    connect(tech_btn, &QPushButton::clicked, this,
             [this]() { symbols_input_->set_symbols(us_tech_symbols()); });
-    quick_row->addWidget(banknifty_btn);
+    quick_row->addWidget(tech_btn);
     quick_row->addStretch();
 
     right_vl->addLayout(quick_row);
