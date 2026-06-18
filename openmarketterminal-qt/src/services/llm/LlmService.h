@@ -144,7 +144,9 @@ class LlmService : public QObject {
     void ensure_config() const;
 
     /// True when the active model is a local/Ollama endpoint (provider=="ollama"
-    /// or base_url points at localhost/127.0.0.1). Called under mutex_.
+    /// or base_url points at localhost/127.0.0.1). Reads provider_/base_url_
+    /// lock-free (same pre-existing pattern as the rest of the build_*_request
+    /// helpers; mutex_ is released before the blocking network call).
     /// Used by the prompt builder (LlmService.cpp) AND the tool-list builder
     /// (LlmRequestBuilders.cpp) to bypass Tool-RAG and attach the essentials set.
     bool is_local_model() const;
@@ -156,7 +158,9 @@ class LlmService : public QObject {
     /// tool_list / tool_describe) so the model can actually invoke what it found.
     /// For cloud providers the activated set is ignored and the standard
     /// apply_request_policy(tool_filter_) is returned unchanged.
-    /// Called under mutex_ — all structured-tools attachment sites share this.
+    /// Reads provider_/tool_filter_ lock-free (mutex_ is released before the
+    /// blocking network call; same pre-existing pattern). All structured-tools
+    /// attachment sites share this helper.
     mcp::ToolFilter effective_tool_filter(const QSet<QString>& activated = {}) const;
 
     QJsonObject build_openai_request(const QString& user_message, const std::vector<ConversationMessage>& history,

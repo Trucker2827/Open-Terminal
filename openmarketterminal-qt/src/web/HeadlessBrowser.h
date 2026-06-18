@@ -27,7 +27,9 @@ public:
 
     // Loads `url`, waits for load + a short settle, then runs `extraction_js`
     // and returns its string result. Returns an empty QString on load failure
-    // or timeout. Blocks the calling thread; callable from any thread.
+    // or timeout. Blocks the calling thread; MUST be called off the GUI thread
+    // (calling from the GUI thread would deadlock — the queued load would never
+    // run while this thread is blocked on the semaphore).
     QString fetch(const QUrl& url, const QString& extraction_js, int timeout_ms = 15000);
 
 private:

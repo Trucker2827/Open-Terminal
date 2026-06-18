@@ -10,6 +10,7 @@
 #include <QList>
 #include <QMetaObject>
 #include <QMutexLocker>
+#include <QThread>
 #include <QPointer>
 #include <QSemaphore>
 #include <QTimer>
@@ -77,6 +78,16 @@ struct Ctx {
 }  // namespace
 
 QString HeadlessBrowser::fetch(const QUrl& url, const QString& extraction_js, int timeout_ms) {
+    // Defensive: calling fetch() from the GUI thread would deadlock — the
+    // QueuedConnection load lambda would never run while this thread is
+    // blocked on the semaphore.  All real callers are off-main, so this
+    // should never fire; the guard makes the failure mode a clean error
+    // instead of a 17-second freeze.
+    if (QThread::currentThread() == this->thread()) {
+        qWarning("HeadlessBrowser::fetch() must be called off the GUI thread; returning empty");
+        return QString();
+    }
+
     // Serialize: only one load at a time on the single shared page_. The main
     // thread never acquires this mutex, so there is no lock-ordering inversion.
     QMutexLocker lock(&serialize_);
