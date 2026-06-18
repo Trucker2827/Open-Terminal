@@ -68,7 +68,7 @@ void AlgoDeployDialog::build_ui() {
     form->setLabelAlignment(Qt::AlignRight);
 
     symbol_edit_ = new QLineEdit(this);
-    symbol_edit_->setPlaceholderText(tr("e.g. RELIANCE"));
+    symbol_edit_->setPlaceholderText(tr("e.g. AAPL"));
     symbol_label_ = new QLabel(tr("Symbol:"), this);
     form->addRow(symbol_label_, symbol_edit_);
 
@@ -267,7 +267,7 @@ void AlgoDeployDialog::changeEvent(QEvent* event) {
 void AlgoDeployDialog::retranslateUi() {
     setWindowTitle(tr("Deploy Strategy"));
     if (title_label_)        title_label_->setText(tr("DEPLOY: %1").arg(strategy_name_));
-    if (symbol_edit_)        symbol_edit_->setPlaceholderText(tr("e.g. RELIANCE"));
+    if (symbol_edit_)        symbol_edit_->setPlaceholderText(tr("e.g. AAPL"));
     if (symbol_label_)       symbol_label_->setText(tr("Symbol:"));
     if (mode_label_)         mode_label_->setText(tr("Mode:"));
     if (side_label_)         side_label_->setText(tr("Entry Side:"));

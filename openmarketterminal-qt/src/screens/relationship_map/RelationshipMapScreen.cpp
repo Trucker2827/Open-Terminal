@@ -109,7 +109,7 @@ void RelationshipMapScreen::build_ui() {
 
     // Search with autocomplete
     search_input_ = new QLineEdit;
-    search_input_->setPlaceholderText(tr("Search assets (AAPL, Tesla, RELIANCE...)"));
+    search_input_->setPlaceholderText(tr("Search assets (AAPL, Tesla, NVDA...)"));
     search_input_->setFixedWidth(320);
     search_input_->setStyleSheet(
         QString("QLineEdit { background: %1; color: %2; border: 1px solid %3; "
@@ -803,7 +803,7 @@ void RelationshipMapScreen::changeEvent(QEvent* event) {
 
 void RelationshipMapScreen::retranslateUi() {
     if (header_title_) header_title_->setText(tr("CORPORATE INTELLIGENCE MAP"));
-    if (search_input_) search_input_->setPlaceholderText(tr("Search assets (AAPL, Tesla, RELIANCE...)"));
+    if (search_input_) search_input_->setPlaceholderText(tr("Search assets (AAPL, Tesla, NVDA...)"));
     if (search_btn_)   search_btn_->setText(tr("ANALYZE"));
     if (fit_btn_) {
         fit_btn_->setText(tr("FIT"));

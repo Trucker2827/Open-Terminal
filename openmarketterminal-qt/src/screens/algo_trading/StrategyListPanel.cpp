@@ -392,8 +392,8 @@ void StrategyListPanel::on_backtest_clicked(int row) {
     dlg.setWindowTitle(tr("Backtest: %1").arg(strategy.name));
     auto* form = new QFormLayout(&dlg);
 
-    auto* symbol = new QLineEdit(QStringLiteral("RELIANCE"), &dlg);
-    symbol->setPlaceholderText(tr("e.g. RELIANCE, AAPL"));
+    auto* symbol = new QLineEdit(QStringLiteral("AAPL"), &dlg);
+    symbol->setPlaceholderText(tr("e.g. AAPL, MSFT"));
     const QDate today = QDate::currentDate();
     // Default range sized to the strategy's timeframe (daily needs years for
     // SMA200; intraday must stay under Yahoo's history cap).

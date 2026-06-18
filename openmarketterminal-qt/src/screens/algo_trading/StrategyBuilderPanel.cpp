@@ -552,7 +552,7 @@ void StrategyBuilderPanel::on_backtest() {
     auto strat = build_strategy();
 
     QString symbol = symbol_combo_->currentText().trimmed();
-    if (symbol.isEmpty()) symbol = QStringLiteral("RELIANCE");
+    if (symbol.isEmpty()) symbol = QStringLiteral("AAPL");
 
     services::algo::AlgoTradingService::instance().run_backtest(
         strat, symbol, bt_start_date_->date().toString(QStringLiteral("yyyy-MM-dd")),
