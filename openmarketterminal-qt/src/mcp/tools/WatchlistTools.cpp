@@ -141,8 +141,8 @@ std::vector<ToolDef> get_watchlist_tools() {
         t.name = "add_to_watchlist";
         t.description =
             "Add a ticker symbol to a watchlist. The 'symbol' field MUST be the exact "
-            "exchange-suffixed Yahoo ticker (e.g. 'RITES.NS' for RITES Limited on NSE, "
-            "'AAPL' for Apple on NASDAQ, '7203.T' for Toyota on Tokyo). "
+            "Yahoo ticker — bare for US (e.g. 'AAPL' for Apple, 'MSFT' for Microsoft), "
+            "exchange-suffixed for non-US (e.g. '7203.T' for Toyota on Tokyo, 'VOD.L' for London). "
             "If the user gave a company NAME instead of a ticker — or you are uncertain "
             "about the exchange suffix — call lookup_symbol(query=<company name>) FIRST "
             "to resolve the correct ticker, then pass that ticker here. "

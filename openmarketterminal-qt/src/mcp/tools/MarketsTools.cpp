@@ -104,14 +104,14 @@ std::vector<ToolDef> get_markets_tools() {
             "Resolve a company name or partial ticker to its exchange-suffixed Yahoo ticker. "
             "Returns the top candidates as {symbol, name, exchange, type, currency}. "
             "ALWAYS call this BEFORE add_to_watchlist / get_quote when the user names a company "
-            "(e.g. 'RITES Limited', 'Apple', 'Tata Consultancy') rather than giving a ticker — "
+            "(e.g. 'Apple', 'Microsoft', 'Tesla') rather than giving a ticker — "
             "guessing the ticker from prior knowledge frequently gets the suffix wrong "
             "(.NS for NSE, .BO for BSE, .T for Tokyo, .L for London, etc.) and stores a "
             "broken symbol. Backed by Yahoo Finance's search API.";
         t.category = "markets";
         t.input_schema.properties = QJsonObject{
             {"query", QJsonObject{{"type", "string"},
-                                  {"description", "Company name or partial ticker (e.g. 'RITES Limited', 'Apple', 'TCS')"}}},
+                                  {"description", "Company name or partial ticker (e.g. 'Apple', 'Microsoft', 'Tesla')"}}},
             {"limit", QJsonObject{{"type", "integer"},
                                   {"description", "Max results to return (1-20, default 10)"}}}};
         t.input_schema.required = {"query"};

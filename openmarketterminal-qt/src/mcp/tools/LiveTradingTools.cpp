@@ -162,7 +162,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.is_destructive = true;
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
-            .string("symbol", "Trading symbol (e.g. SBIN, RELIANCE)").required().length(1, 64)
+            .string("symbol", "Trading symbol (e.g. AAPL, MSFT)").required().length(1, 64)
             .string("exchange", "Exchange (e.g. NSE, BSE, NFO, MCX)").required()
             .string("action", "Order side").required().enums({"BUY", "SELL"})
             .number("quantity", "Order quantity (must be > 0)").required().min(0.0)
@@ -750,7 +750,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.category = "live-trading";
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
-            .string("underlying", "Underlying symbol (e.g. NIFTY, BANKNIFTY)").required().length(1, 64)
+            .string("underlying", "Underlying symbol (e.g. SPX, NDX)").required().length(1, 64)
             .string("exchange", "Exchange (e.g. NFO, BFO)").required()
             .string("expiry", "Expiry date (broker format, e.g. 2026-05-29)").required()
             .integer("strike_count", "Number of strikes around ATM (0 = broker default)")
