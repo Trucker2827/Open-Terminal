@@ -33,6 +33,16 @@ namespace {
 // unwrapped width — otherwise revealing the AI-analysis section balloons the
 // panel's size hint and pushes it past the screen edge.
 constexpr int kPanelWidth = 420;
+
+// Video items (e.g. Bloomberg /news/videos/…, YouTube) have no article body —
+// the intro shown IS the full text. READ FULL detects these so it can say so
+// instead of fetching nothing and showing a misleading "hard paywall" note.
+bool is_video_url(const QString& url) {
+    const QString u = url.toLower();
+    return u.contains("/news/videos/") || u.contains("/videos/") || u.contains("/video/") ||
+           u.endsWith("-video") || u.endsWith("/video") || u.contains("youtube.com/watch") ||
+           u.contains("youtu.be/") || u.contains("vimeo.com/");
+}
 } // namespace
 
 NewsDetailPanel::NewsDetailPanel(QWidget* parent) : QWidget(parent) {
@@ -305,6 +315,14 @@ QWidget* NewsDetailPanel::build_content_view() {
         if (!has_article_)
             return;
         const QString url = current_article_.link;
+        // Video items have no article body — the intro shown is the full text.
+        if (is_video_url(url)) {
+            const QString intro =
+                current_article_.summary.isEmpty() ? tr("No text available.") : current_article_.summary;
+            summary_label_->setText(intro + tr("\n\n\xF0\x9F\x93\xB9 Video item — the text above is the full "
+                                               "available text; open in your browser to watch the clip."));
+            return;
+        }
         // Instant return if cached
         if (full_text_cache_.contains(url)) {
             summary_label_->setText(full_text_cache_.value(url));
