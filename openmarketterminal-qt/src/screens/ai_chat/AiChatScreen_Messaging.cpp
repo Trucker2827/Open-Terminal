@@ -265,6 +265,11 @@ void AiChatScreen::on_stream_chunk(const QString& chunk, bool done) {
 }
 
 void AiChatScreen::on_streaming_done(ai_chat::LlmResponse response) {
+    // Guard against LLM completions initiated by other screens (e.g. NewsScreen ANALYZE).
+    // If this screen didn't initiate a streaming request, streaming_ is false and we must
+    // not process the completion — doing so would inject phantom bubbles and corrupt state.
+    if (!streaming_)
+        return;
     streaming_ = false;
     show_typing(false);
 

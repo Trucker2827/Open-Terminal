@@ -5,6 +5,7 @@
 #include "storage/repositories/NewsArticleRepository.h"
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
+#include "web/HeadlessBrowser.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -13,12 +14,16 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QSizePolicy>
 #include <QTextStream>
 #include <QTimer>
 #include <QUrl>
+#include <QtConcurrent>
 
 namespace openmarketterminal::screens {
 
@@ -194,18 +199,23 @@ QWidget* NewsDetailPanel::build_content_view() {
     translate_btn_ = new QPushButton(tr("TRANSLATE"), content);
     translate_btn_->setObjectName("newsDetailOpenBtn");
 
+    // Read full article text via headless browser
+    read_full_btn_ = new QPushButton(tr("READ FULL"), content);
+    read_full_btn_->setObjectName("newsDetailOpenBtn");
+    read_full_btn_->setToolTip(tr("Fetch full article text from publisher"));
+
     // All action buttons share a uniform height and expand to fill their grid
     // cell — no fixed widths, so nothing can overflow the panel.
     for (QPushButton* b :
-         {open_btn_, copy_btn_, copy_title_btn_, analyze_btn_, save_btn_, bookmark_btn_, translate_btn_}) {
+         {open_btn_, copy_btn_, copy_title_btn_, analyze_btn_, save_btn_, bookmark_btn_, translate_btn_, read_full_btn_}) {
         b->setFixedHeight(24);
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
-    QPushButton* action_btns[] = {open_btn_,    copy_btn_, copy_title_btn_, analyze_btn_,
-                                  save_btn_,     bookmark_btn_, translate_btn_};
+    QPushButton* action_btns[] = {open_btn_,    copy_btn_,      copy_title_btn_, analyze_btn_,
+                                  save_btn_,     bookmark_btn_,  translate_btn_,  read_full_btn_};
     constexpr int kCols = 3;
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < 8; ++i)
         action_layout->addWidget(action_btns[i], i / kCols, i % kCols);
     for (int c = 0; c < kCols; ++c)
         action_layout->setColumnStretch(c, 1);
@@ -233,6 +243,8 @@ QWidget* NewsDetailPanel::build_content_view() {
     connect(analyze_btn_, &QPushButton::clicked, this, [this]() {
         if (!has_article_)
             return;
+        // Clear previous streamed text so a second analysis never concatenates onto the first.
+        ai_summary_->clear();
         analyze_btn_->setText(tr("ANALYZING..."));
         analyze_btn_->setEnabled(false);
         analyze_timeout_->start();
@@ -284,6 +296,60 @@ QWidget* NewsDetailPanel::build_content_view() {
                     summary_label_->setText(tr("[%1 -> EN] %2").arg(detected_lang, translated));
                 }
             });
+    });
+
+    // READ FULL — fetches full article text via headless browser off the UI thread.
+    // Caches result per URL so re-clicking is instant. Updates summary_label_ with the full text.
+    static const QString kExtractionJs = QStringLiteral(
+        "(function(){"
+        "var t=document.title;"
+        "document.querySelectorAll('script,style,nav,header,footer,noscript,aside,iframe')"
+        ".forEach(function(e){e.remove();});"
+        "var body=document.body?document.body.innerText:'';"
+        "return JSON.stringify({title:t,text:body});"
+        "})()");
+
+    connect(read_full_btn_, &QPushButton::clicked, this, [this]() {
+        if (!has_article_)
+            return;
+        const QString url = current_article_.link;
+        // Instant return if cached
+        if (full_text_cache_.contains(url)) {
+            summary_label_->setText(full_text_cache_.value(url));
+            return;
+        }
+        read_full_btn_->setText(tr("FETCHING..."));
+        read_full_btn_->setEnabled(false);
+
+        QPointer<NewsDetailPanel> self = this;
+        (void)QtConcurrent::run([self, url]() {
+            // HeadlessBrowser::fetch is blocking — must run off GUI thread.
+            QString raw = web::HeadlessBrowser::instance().fetch(QUrl(url), kExtractionJs, 20000);
+            QString full_text;
+            if (!raw.isEmpty()) {
+                QJsonParseError err;
+                auto doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+                if (err.error == QJsonParseError::NoError && doc.isObject())
+                    full_text = doc.object().value("text").toString();
+            }
+            // Marshal result back to UI thread
+            QMetaObject::invokeMethod(self.data(), [self, url, full_text]() {
+                if (!self || !self->has_article_ || self->current_article_.link != url)
+                    return; // stale — article changed while fetching
+                self->read_full_btn_->setText(tr("READ FULL"));
+                self->read_full_btn_->setEnabled(true);
+                if (full_text.length() >= 200) {
+                    self->full_text_cache_[url] = full_text;
+                    self->summary_label_->setText(full_text);
+                } else {
+                    // Hard paywall or empty page
+                    const QString note = tr("Couldn't extract full text — the publisher may gate it "
+                                            "behind a hard paywall. Showing the summary.");
+                    self->summary_label_->setText(note);
+                }
+                emit self->full_text_fetched(url, self->full_text_cache_.value(url));
+            }, Qt::QueuedConnection);
+        });
     });
 
     // Separator
@@ -561,6 +627,8 @@ void NewsDetailPanel::show_article(const services::NewsArticle& article) {
     analyze_btn_->setText(tr("ANALYZE"));
     analyze_btn_->setEnabled(true);
     analyze_timeout_->stop();
+    read_full_btn_->setText(tr("READ FULL"));
+    read_full_btn_->setEnabled(true);
 
     // Reflect saved state from DB
     {
@@ -774,6 +842,47 @@ void NewsDetailPanel::show_analysis(const services::NewsAnalysis& analysis) {
     analysis_section_->show();
 }
 
+void NewsDetailPanel::stream_analysis_chunk(const QString& chunk, bool is_done) {
+    // Stop the 30s timeout as soon as the first chunk arrives — the fetch + model
+    // startup may be slow, but once streaming has begun we know it's progressing.
+    analyze_timeout_->stop();
+
+    // Show the analysis section on first chunk
+    if (!analysis_section_->isVisible()) {
+        // Hide the structured pills — streaming produces free-form prose, not NewsAnalysis.
+        ai_sentiment_->hide();
+        ai_urgency_->hide();
+        ai_prediction_->hide();
+        ai_confidence_->hide();
+        ai_keywords_->hide();
+        ai_fetch_note_->hide();
+        key_points_title_->hide();
+        key_points_layout_->parentWidget()->hide();
+        risk_title_->hide();
+        risk_layout_->parentWidget()->hide();
+        topics_title_->hide();
+        topics_layout_->parentWidget()->hide();
+        ai_entities_title_->hide();
+        ai_entities_layout_->parentWidget()->hide();
+        ai_credits_->hide();
+        analysis_section_->show();
+    }
+
+    // Accumulate text; strip internal sentinel prefixes.
+    static const QString kThinkPrefix = QStringLiteral("\x02__THINK__");
+    static const QString kToolClear   = QStringLiteral("\x01__TOOL_CALL_CLEAR__");
+    if (!chunk.startsWith(kThinkPrefix) && chunk != kToolClear) {
+        const QString current = ai_summary_->text();
+        ai_summary_->setText(current + chunk);
+    }
+
+    if (is_done) {
+        analyze_btn_->setText(tr("ANALYZE"));
+        analyze_btn_->setEnabled(true);
+        analyze_timeout_->stop();
+    }
+}
+
 void NewsDetailPanel::show_related(const QVector<services::NewsArticle>& related) {
     while (related_layout_->count() > 0) {
         auto* item = related_layout_->takeAt(0);
@@ -925,8 +1034,12 @@ void NewsDetailPanel::retranslateUi() {
         save_btn_->setToolTip(tr("Save article to File Manager"));
     }
     if (translate_btn_)   translate_btn_->setText(tr("TRANSLATE"));
+    if (read_full_btn_) {
+        read_full_btn_->setText(tr("READ FULL"));
+        read_full_btn_->setToolTip(tr("Fetch full article text from publisher"));
+    }
     if (bookmark_btn_)    bookmark_btn_->setToolTip(tr("Bookmark article"));
-    // analyze_btn_ / bookmark_btn_ labels are state-dependent and refresh when
+    // analyze_btn_ / bookmark_btn_ / read_full_btn_ labels are state-dependent and refresh when
     // the next article is shown — intentionally not forced here. Per-row dynamic
     // content (badges, metrics, entities) re-renders from live data.
 }

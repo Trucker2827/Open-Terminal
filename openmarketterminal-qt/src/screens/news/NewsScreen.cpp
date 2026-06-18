@@ -11,20 +11,26 @@
 #include "screens/news/NewsSidePanel.h"
 #include "screens/news/NewsTickerStrip.h"
 #include "screens/news/dialogs/RssFeedManagerDialog.h"
+#include "services/llm/LlmService.h"
 #include "services/news/NewsCorrelationService.h"
 #include "services/news/NewsNlpService.h"
 #include "services/notifications/NotificationService.h"
+#include "storage/repositories/ChatRepository.h"
 #include "storage/repositories/NewsArticleRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/StyleSheets.h"
 #include "ui/theme/Theme.h"
+#include "web/HeadlessBrowser.h"
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPointer>
 #include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QtConcurrent>
@@ -612,13 +618,123 @@ void NewsScreen::on_monitor_deleted(const QString& id) {
 }
 
 void NewsScreen::on_analyze_requested(const QString& url) {
+    static const QString kExtractionJs = QStringLiteral(
+        "(function(){"
+        "var t=document.title;"
+        "document.querySelectorAll('script,style,nav,header,footer,noscript,aside,iframe')"
+        ".forEach(function(e){e.remove();});"
+        "var body=document.body?document.body.innerText:'';"
+        "return JSON.stringify({title:t,text:body});"
+        "})()");
+
+    // Snapshot article fields before jumping to a background thread.
+    const QString headline = detail_panel_->article().headline;
+    const QString source   = detail_panel_->article().source;
+    const QString summary  = detail_panel_->article().summary;
+
     QPointer<NewsScreen> self = this;
-    services::NewsService::instance().analyze_article(url, [self](bool ok, services::NewsAnalysis analysis) {
-        if (!self)
-            return;
-        if (ok)
-            self->detail_panel_->show_analysis(analysis);
-    });
+
+    // If READ FULL already cached the text, skip the fetch.
+    const QString cached = detail_panel_->cached_full_text(url);
+
+    auto do_analyze = [self, url, headline, source, summary](const QString& full_text) {
+        // Build the analysis prompt.
+        const QString body = full_text.length() >= 200 ? full_text : summary;
+        const QString prompt = QStringLiteral(
+            "You are a financial news analyst. Analyze the following article: key facts, "
+            "market impact, affected tickers/sectors, and risks. Be concise.\n\n"
+            "TITLE: %1\nSOURCE: %2\n\n%3").arg(headline, source, body);
+
+        // Accumulate streamed chunks so we can persist the full response when done.
+        auto accumulated = std::make_shared<QString>();
+
+        using namespace openmarketterminal::ai_chat;
+        LlmService::instance().chat_streaming(
+            prompt,
+            /*history=*/{},
+            /*on_chunk=*/[self, url, accumulated](const QString& chunk, bool is_done) {
+                // on_chunk runs on a background thread — marshal to UI.
+                QMetaObject::invokeMethod(self.data(), [self, url, chunk, is_done, accumulated]() {
+                    if (!self) return;
+                    // Staleness guard: bail if the user switched articles mid-stream.
+                    if (self->detail_panel_->article().link != url) return;
+
+                    // Strip sentinel prefixes before appending.
+                    static const QString kThinkPrefix = QStringLiteral("\x02__THINK__");
+                    static const QString kToolClear   = QStringLiteral("\x01__TOOL_CALL_CLEAR__");
+                    if (!chunk.startsWith(kThinkPrefix) && chunk != kToolClear)
+                        *accumulated += chunk;
+
+                    self->detail_panel_->stream_analysis_chunk(chunk, is_done);
+
+                    if (is_done) {
+                        // Persist session + messages in ChatRepository.
+                        const QString sess_title = self->detail_panel_->article().headline.left(60);
+                        auto sess_res = ChatRepository::instance().create_session(
+                            sess_title,
+                            LlmService::instance().active_provider(),
+                            LlmService::instance().active_model());
+                        if (sess_res.is_ok()) {
+                            const QString sid = sess_res.value().id;
+                            // Build user message matching what was sent to the model.
+                            const QString body_text =
+                                self->detail_panel_->cached_full_text(url).length() >= 200
+                                    ? self->detail_panel_->cached_full_text(url)
+                                    : self->detail_panel_->article().summary;
+                            const QString user_msg = QStringLiteral(
+                                "You are a financial news analyst. Analyze the following article: key facts, "
+                                "market impact, affected tickers/sectors, and risks. Be concise.\n\n"
+                                "TITLE: %1\nSOURCE: %2\n\n%3")
+                                    .arg(self->detail_panel_->article().headline,
+                                         self->detail_panel_->article().source,
+                                         body_text);
+                            ChatRepository::instance().add_message(sid, "user",    user_msg);
+                            ChatRepository::instance().add_message(sid, "assistant", *accumulated);
+
+                            // Navigate first — nav.switch_screen is queued (WindowFrame uses
+                            // Qt::QueuedConnection) so the AiChatScreen showEvent fires on the
+                            // next event-loop iteration and re-subscribes to EventBus.
+                            // Then deliver session_created / session_open after a zero-ms timer
+                            // so they arrive after showEvent has run.
+                            EventBus::instance().publish("nav.switch_screen",
+                                QVariantMap{{"screen_id", "ai_chat"}});
+                            const QString sid_copy = sid;
+                            const QString title_copy = sess_title;
+                            QTimer::singleShot(0, [sid_copy, title_copy]() {
+                                EventBus::instance().publish("ai_chat.session_created",
+                                    QVariantMap{{"id", sid_copy}, {"title", title_copy}});
+                                EventBus::instance().publish("ai_chat.session_open",
+                                    QVariantMap{{"id", sid_copy}});
+                            });
+                        }
+                    }
+                }, Qt::QueuedConnection);
+            },
+            /*policy=*/LlmService::ToolPolicy::None);
+    };
+
+    if (!cached.isEmpty()) {
+        do_analyze(cached);
+    } else {
+        // Fetch full text off the UI thread, then run the analysis.
+        (void)QtConcurrent::run([self, url, do_analyze]() {
+            QString raw = web::HeadlessBrowser::instance().fetch(QUrl(url), kExtractionJs, 20000);
+            QString full_text;
+            if (!raw.isEmpty()) {
+                QJsonParseError err;
+                auto doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+                if (err.error == QJsonParseError::NoError && doc.isObject())
+                    full_text = doc.object().value("text").toString();
+            }
+            // Cache the result on the panel from the UI thread, then start analysis.
+            QMetaObject::invokeMethod(self.data(), [self, url, full_text, do_analyze]() {
+                if (!self) return;
+                if (full_text.length() >= 200)
+                    self->detail_panel_->cache_full_text(url, full_text);
+                do_analyze(full_text);
+            }, Qt::QueuedConnection);
+        });
+    }
 }
 
 void NewsScreen::on_related_clicked(const services::NewsArticle& article) {

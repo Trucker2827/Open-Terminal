@@ -188,9 +188,27 @@ void AiChatScreen::subscribe_mcp_events() {
         }, Qt::QueuedConnection);
     };
 
+    // ai_chat.session_open — select and display a specific session.
+    // Published by NewsScreen after seeding an analysis session so the user
+    // lands directly in that conversation when AI Chat comes to the foreground.
+    auto on_session_open = [self](const QVariantMap& payload) {
+        if (!self) return;
+        const QString id = payload.value("id").toString();
+        if (id.isEmpty()) return;
+        QMetaObject::invokeMethod(self.data(), [self, id]() {
+            if (!self) return;
+            self->active_session_id_ = id;
+            self->load_sessions(); // setCurrentRow -> on_session_selected -> load_messages
+            // Explicit call guards against the case where setCurrentRow selects the same
+            // row that was already current (Qt suppresses currentRowChanged in that case).
+            self->load_messages(id);
+        }, Qt::QueuedConnection);
+    };
+
     auto& bus = EventBus::instance();
     mcp_event_subs_.append(bus.subscribe("llm.provider_changed",   on_provider_event));
     mcp_event_subs_.append(bus.subscribe("ai_chat.session_created", on_session_created));
+    mcp_event_subs_.append(bus.subscribe("ai_chat.session_open",    on_session_open));
 }
 
 void AiChatScreen::unsubscribe_mcp_events() {

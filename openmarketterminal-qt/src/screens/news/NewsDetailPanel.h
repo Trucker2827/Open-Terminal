@@ -5,9 +5,11 @@
 #include "services/news/NewsService.h"
 
 #include <QEvent>
+#include <QHash>
 #include <QLabel>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QString>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -29,6 +31,19 @@ class NewsDetailPanel : public QWidget {
     void show_infrastructure(const QVector<services::InfrastructureItem>& items);
     void clear();
 
+    /// Display streaming LLM analysis text in the AI section (called from NewsScreen).
+    /// Passing empty text + is_done=true just shows the section with whatever text is set.
+    void stream_analysis_chunk(const QString& chunk, bool is_done);
+
+    /// Returns the cached full text for a URL (empty if not yet fetched).
+    QString cached_full_text(const QString& url) const { return full_text_cache_.value(url); }
+
+    /// Store full text in the cache (called by NewsScreen when it pre-fetches for ANALYZE).
+    void cache_full_text(const QString& url, const QString& text) { full_text_cache_[url] = text; }
+
+    /// Read-only access to the currently displayed article (valid when has_article_).
+    const services::NewsArticle& article() const { return current_article_; }
+
     /// Show/hide the panel
     void open_panel();
     void close_panel();
@@ -42,6 +57,9 @@ class NewsDetailPanel : public QWidget {
     void related_article_clicked(const services::NewsArticle& article);
     void bookmark_requested(const services::NewsArticle& article);
     void panel_closed();
+    /// Emitted when READ FULL fetch completes (url, full_text). Routed to NewsScreen
+    /// so it can trigger the LLM analysis if ANALYZE was waiting on the fetch.
+    void full_text_fetched(const QString& url, const QString& full_text);
 
   private:
     QWidget* build_empty_state();
@@ -120,11 +138,15 @@ class NewsDetailPanel : public QWidget {
     QPushButton* copy_title_btn_ = nullptr;
     QPushButton* save_btn_ = nullptr;
     QPushButton* bookmark_btn_ = nullptr;
+    QPushButton* read_full_btn_ = nullptr;
     QPushButton* close_btn_ = nullptr;
 
     QStackedWidget* stack_ = nullptr;
     services::NewsArticle current_article_;
     bool has_article_ = false;
+
+    /// Per-URL cache of full article text fetched by READ FULL / pre-fetched for ANALYZE.
+    QHash<QString, QString> full_text_cache_;
 };
 
 } // namespace openmarketterminal::screens
