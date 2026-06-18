@@ -69,12 +69,14 @@ LlmResponse LlmService::do_tool_loop(QJsonArray loop_messages, const QString& ur
         // Temperature intentionally omitted — provider default.
         fu["max_tokens"] = resolved_max_tokens();
 
-        // effective_tool_filter() returns the essentials set for local/Ollama
-        // models and the standard policy filter for cloud providers. Passing
-        // activated_tools lets anything the model discovered via tool_list remain
-        // callable — the two sets are unioned inside format_tools_for_openai.
+        // effective_tool_filter(activated_tools) returns the essentials set for
+        // local/Ollama models UNIONED with any tool names discovered this turn via
+        // tool_list / tool_describe, so they become DECLARED in the structured tools
+        // array and the model can actually call them next round.  For cloud providers
+        // activated_tools is ignored here (the RAG use_rag=true branch inside
+        // format_tools_for_openai already unions extra_tool_names correctly).
         QJsonArray tools = mcp::McpService::instance().format_tools_for_openai(
-            effective_tool_filter(), activated_tools);
+            effective_tool_filter(activated_tools), activated_tools);
         if (!tools.isEmpty())
             fu["tools"] = tools;
 
@@ -181,10 +183,11 @@ LlmResponse LlmService::do_tool_loop(QJsonArray loop_messages, const QString& ur
         // them used to force text-markup mode (raw <minimax:tool_call> blobs)
         // which leaked into the chat bubble. Carry the activated set so a
         // last-ditch tool call can still reference a discovered tool.
-        // effective_tool_filter() applies the same local-vs-cloud logic as
-        // the main loop above, so local models keep their essentials set here too.
+        // effective_tool_filter(activated_tools) applies the same local-vs-cloud
+        // logic as the main loop: local models get essentials + activated unioned,
+        // cloud gets the standard policy filter (RAG branch handles extra_tools).
         QJsonArray tools = mcp::McpService::instance().format_tools_for_openai(
-            effective_tool_filter(), activated_tools);
+            effective_tool_filter(activated_tools), activated_tools);
         if (!tools.isEmpty())
             fu["tools"] = tools;
 

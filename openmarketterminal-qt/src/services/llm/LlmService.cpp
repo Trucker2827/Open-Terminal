@@ -54,19 +54,29 @@ bool LlmService::is_local_model() const {
            base_url_.contains(QLatin1String("127.0.0.1"));
 }
 
-mcp::ToolFilter LlmService::effective_tool_filter() const {
+mcp::ToolFilter LlmService::effective_tool_filter(const QSet<QString>& activated) const {
     // Returns the ToolFilter for ALL structured-tools attachment sites:
     // build_openai_request (turn 0) AND both sites in do_tool_loop (follow-up rounds).
     // For local/Ollama models we bypass Tool-RAG and serve the essentials set
     // directly so weak models don't lose get_quote / web_search on round 1+.
-    // For cloud providers we return the standard policy-filtered filter unchanged.
+    // For cloud providers we return the standard policy-filtered filter unchanged
+    // and ignore `activated` (cloud uses the RAG else-branch which honours it via
+    // extra_tool_names already).
     mcp::ToolFilter base = detail::apply_request_policy(tool_filter_);
     if (!is_local_model())
         return base;
 
     mcp::ToolFilter essentials;
-    essentials.no_cap = true; // ~20 names — well under kHardMaxTools, but explicit
+    essentials.no_cap = true; // ~20 names + activated — well under kHardMaxTools, but explicit
     for (const QString& name : mcp::local_essentials_tool_names())
+        essentials.name_patterns.append(QStringLiteral("^") + name + QStringLiteral("$"));
+    // Union in any tools the model discovered this turn via tool_list / tool_describe
+    // so they become DECLARED in the next round's structured tools array and the
+    // model can actually invoke them.  Without this, tool_list is a dead-end for
+    // local models: they discover a name but can never call it (structured
+    // function-calling models can only emit tool_calls for DECLARED functions).
+    // Cache key varies because filter_signature() folds name_patterns (McpService.cpp:108).
+    for (const QString& name : activated)
         essentials.name_patterns.append(QStringLiteral("^") + name + QStringLiteral("$"));
     // Honour any active navigation exclusion from the request policy.
     essentials.exclude_categories = base.exclude_categories;
