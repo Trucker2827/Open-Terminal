@@ -413,6 +413,18 @@ class OECDWrapper:
             "fixed_freq": "A", "default_freq": "A", "scale": 1.0,
             "label": "Current account balance (USD, OECD Economic Outlook)",
         },
+        "long_term_interest": {
+            # Actual long-term government bond yields from the Financial Market
+            # dataflow (monthly). Distinct from interest_rates (Economic Outlook
+            # short-term). Note: this flow is version 4.0.
+            "flow": "OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0",
+            "dims": ["REF_AREA", "FREQ", "MEASURE", "UNIT_MEASURE", "ACTIVITY",
+                     "ADJUSTMENT", "TRANSFORMATION", "TIME_HORIZ", "METHODOLOGY"],
+            "key_pins": {"MEASURE": "IRLT"},
+            "select": {"UNIT_MEASURE": "PA"},
+            "fixed_freq": "M", "default_freq": "M", "scale": 1.0,
+            "label": "Long-term interest rate (% p.a., ~10y govt bond)",
+        },
     }
 
     def fetch_indicator(self, command, countries="USA", frequency=None,
@@ -1269,7 +1281,7 @@ def main(args=None):
         # panel sends argv = [command, country(3-letter ISO), frequency]. The
         # legacy per-command elif blocks below are now unreachable for these.
         if command in ("gdp_real", "cpi", "gdp_forecast", "unemployment",
-                       "interest_rates", "trade_balance"):
+                       "interest_rates", "trade_balance", "long_term_interest"):
             countries = args[1] if len(args) > 1 else "USA"
             frequency = args[2] if len(args) > 2 else None
             start_date = args[3] if len(args) > 3 else None

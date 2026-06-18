@@ -24,7 +24,7 @@ static constexpr const char* kOecdColor = "#F59E0B"; // amber
 static const QList<QPair<QString, QString>> kOecdDatasets = {
     {"Real GDP Growth %", "gdp_real"},        {"CPI (index, all items)", "cpi"},
     {"Unemployment Rate %", "unemployment"},  {"Short-term Interest %", "interest_rates"},
-    {"Current Account (USD)", "trade_balance"},
+    {"Long-term Interest %", "long_term_interest"}, {"Current Account (USD)", "trade_balance"},
 };
 
 static const QList<QPair<QString, QString>> kOecdCountries = {
