@@ -1038,6 +1038,7 @@ set(MCP_SOURCES
     src/mcp/tools/DataHubTools.cpp
     src/mcp/tools/ReportBuilderTools.cpp
     src/mcp/tools/NotebookTools.cpp
+    src/mcp/tools/WebTools.cpp
     src/mcp/tools/MetaTools.cpp
     src/mcp/tools/McpServersTools.cpp
     src/mcp/tools/QuantLabTools.cpp
@@ -2425,6 +2426,7 @@ set_source_files_properties(
     src/mcp/tools/DataHubTools.cpp
     src/mcp/tools/ReportBuilderTools.cpp
     src/mcp/tools/NotebookTools.cpp
+    src/mcp/tools/WebTools.cpp
     src/mcp/tools/MetaTools.cpp
     src/mcp/tools/McpServersTools.cpp
     src/mcp/tools/QuantLabTools.cpp

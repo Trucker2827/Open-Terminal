@@ -22,6 +22,7 @@
 #include "mcp/tools/NavigationTools.h"
 #include "mcp/tools/NotebookTools.h"
 #include "mcp/tools/ReportBuilderTools.h"
+#include "mcp/tools/WebTools.h"
 #include "mcp/tools/WorkspaceTools.h"
 
 #include <QJsonDocument>
@@ -91,6 +92,9 @@ void register_gui_tools() {
 
     // notebooks tab — live AI-authored analysis notebooks (create + open; user runs)
     provider.register_tools(tools::get_notebook_tools());
+
+    // web — headless Chromium search (DuckDuckGo) and fetch
+    provider.register_tools(tools::get_web_tools());
 
     // terminal context — reads the active WindowFrame / focused screen
     provider.register_tools(tools::get_terminal_context_tools());
