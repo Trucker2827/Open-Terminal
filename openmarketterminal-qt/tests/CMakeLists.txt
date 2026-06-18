@@ -236,6 +236,19 @@ target_include_directories(tst_session_title PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_session_title PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_session_title COMMAND tst_session_title)
 
+# DuckDuckGo HTML-endpoint result parser — pure C++/Qt, no network in the function.
+# Parses result__a anchors and result__snippet anchors, decodes DDG /l/?uddg= redirects.
+add_executable(tst_web_search_parser
+    tst_web_search_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/web/WebSearchParser.cpp)
+target_include_directories(tst_web_search_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_web_search_parser PRIVATE Qt6::Core Qt6::Test)
+# fixtures/ resolved via QFINDTESTDATA — copy next to the binary
+add_custom_command(TARGET tst_web_search_parser POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/fixtures $<TARGET_FILE_DIR:tst_web_search_parser>/fixtures)
+add_test(NAME tst_web_search_parser COMMAND tst_web_search_parser)
+
 # Bare-JSON tool-call salvage — lets weak/local models (llama via Ollama) whose
 # tool calls arrive as plain-text JSON still drive the analysis loop. Pure parser,
 # guarded to known tool names.
