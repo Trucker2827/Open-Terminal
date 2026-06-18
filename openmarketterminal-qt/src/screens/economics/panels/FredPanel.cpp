@@ -26,7 +26,7 @@ FredPanel::FredPanel(QWidget* parent) : EconPanelBase(kFredSourceId, kFredColor,
 }
 
 void FredPanel::activate() {
-    show_empty(tr("Set FRED_API_KEY environment variable, then select a series and click FETCH\n"
+    show_empty(tr("Add your FRED API key in Settings → Credentials (\"FRED\"), then select a series and click FETCH\n"
                   "Get a free key at: fred.stlouisfed.org/docs/api/api_key.html"));
 }
 
@@ -81,11 +81,11 @@ void FredPanel::on_result(const QString& request_id, const services::EconomicsRe
         // returns a structured error_code. Branch on those for friendly UX.
         if (result.error.startsWith("[MISSING_API_KEY]")) {
             show_error(tr("FRED API key not configured.\n"
-                          "Set FRED_API_KEY environment variable.\n"
-                          "Free key at: fred.stlouisfed.org/docs/api/api_key.html"));
+                          "Add it in Settings → Credentials (\"FRED\").\n"
+                          "Free key: fred.stlouisfed.org/docs/api/api_key.html"));
         } else if (result.error.startsWith("[INVALID_API_KEY]")) {
             show_error(tr("FRED rejected your API key.\n"
-                          "Check FRED_API_KEY — re-issue one at:\n"
+                          "Update it in Settings → Credentials — re-issue at:\n"
                           "fred.stlouisfed.org/docs/api/api_key.html"));
         } else if (result.error.startsWith("[RATE_LIMITED]")) {
             show_error(tr("FRED rate-limit hit. Try again in a moment.\n") +
@@ -95,8 +95,8 @@ void FredPanel::on_result(const QString& request_id, const services::EconomicsRe
         } else if (result.error.contains("API key") || result.error.contains("api_key")) {
             // Legacy un-coded message fallback
             show_error(tr("FRED API key not configured.\n"
-                          "Set FRED_API_KEY environment variable.\n"
-                          "Free key at: fred.stlouisfed.org/docs/api/api_key.html"));
+                          "Add it in Settings → Credentials (\"FRED\").\n"
+                          "Free key: fred.stlouisfed.org/docs/api/api_key.html"));
         } else {
             show_error(result.error);
         }
@@ -109,17 +109,28 @@ void FredPanel::on_result(const QString& request_id, const services::EconomicsRe
         if (obs.isEmpty())
             obs = result.data["data"].toArray();
 
-        // Convert string values to numbers where possible
+        // Normalise observation values to numbers. fred_data.py already emits
+        // `value` as a JSON number (float); older/raw FRED payloads use strings
+        // ("." marks a missing point). Handle both, else every numeric row gets
+        // dropped (QJsonValue::toString() is empty for numbers) → "no data".
         QJsonArray clean;
         for (const auto& v : obs) {
             auto obj = v.toObject();
-            const QString val_str = obj["value"].toString();
-            if (val_str == "." || val_str.isEmpty())
-                continue;
+            const QJsonValue raw = obj["value"];
+            double d = 0.0;
             bool ok = false;
-            double d = val_str.toDouble(&ok);
-            if (ok)
-                obj["value"] = d;
+            if (raw.isDouble()) {
+                d = raw.toDouble();
+                ok = true;
+            } else {
+                const QString val_str = raw.toString();
+                if (val_str == "." || val_str.isEmpty())
+                    continue;
+                d = val_str.toDouble(&ok);
+            }
+            if (!ok)
+                continue;
+            obj["value"] = d;
             clean.append(obj);
         }
 

@@ -53,7 +53,7 @@ FredAnalyticsPanel::FredAnalyticsPanel(QWidget* parent)
 }
 
 void FredAnalyticsPanel::activate() {
-    show_empty(tr("Set FRED_API_KEY environment variable, then select a dataset and click FETCH\n"
+    show_empty(tr("Add your FRED API key in Settings → Credentials (\"FRED\"), then select a dataset and click FETCH\n"
                   "Uses the same key as the FRED panel — fred.stlouisfed.org/docs/api/api_key.html"));
 }
 
@@ -112,8 +112,8 @@ void FredAnalyticsPanel::on_result(const QString& request_id, const services::Ec
         const QString msg = result.error;
         if (msg.contains("FRED_API_KEY") || msg.contains("api_key") || msg.contains("API key")) {
             show_error(tr("FRED API key not configured.\n"
-                          "Set FRED_API_KEY environment variable.\n"
-                          "Free key at: fred.stlouisfed.org/docs/api/api_key.html"));
+                          "Add it in Settings → Credentials (\"FRED\").\n"
+                          "Free key: fred.stlouisfed.org/docs/api/api_key.html"));
         } else {
             show_error(msg);
         }
@@ -125,8 +125,8 @@ void FredAnalyticsPanel::on_result(const QString& request_id, const services::Ec
     if (!inline_err.isEmpty()) {
         if (inline_err.contains("FRED_API_KEY") || inline_err.contains("not set")) {
             show_error(tr("FRED API key not configured.\n"
-                          "Set FRED_API_KEY environment variable.\n"
-                          "Free key at: fred.stlouisfed.org/docs/api/api_key.html"));
+                          "Add it in Settings → Credentials (\"FRED\").\n"
+                          "Free key: fred.stlouisfed.org/docs/api/api_key.html"));
         } else {
             show_error(inline_err);
         }
@@ -145,7 +145,7 @@ void FredAnalyticsPanel::on_result(const QString& request_id, const services::Ec
     }
 
     if (rows.isEmpty()) {
-        show_error(tr("No data returned — check FRED_API_KEY is set"));
+        show_error(tr("No data returned — check your FRED key in Settings → Credentials"));
         return;
     }
 
