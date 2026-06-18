@@ -77,8 +77,13 @@ void FredAnalyticsPanel::on_fetch() {
 
     show_loading(tr("Fetching FRED Analytics: %1…").arg(dataset.label));
 
-    QStringList args = {dataset.command};
-    args << dataset.args;
+    // EconomicsService::execute() already prepends `command` to the argv it
+    // builds (full_args = command << args). Passing dataset.command here too
+    // doubled it (argv "money_supply money_supply m1") → the script read the
+    // command as the measure and "m1" as a date → HTTP 400, whose error URL
+    // contains "api_key=" and got mislabeled "key not configured". Pass only
+    // the sub-args.
+    QStringList args = dataset.args;
 
     const QString arg_suffix = dataset.args.isEmpty() ? "" : "_" + dataset.args.join("_");
     services::EconomicsService::instance().execute(kFredAnalyticsSourceId, kFredAnalyticsScript, dataset.command, args,

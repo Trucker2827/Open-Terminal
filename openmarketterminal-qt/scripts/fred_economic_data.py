@@ -6,11 +6,19 @@ financial stress, consumer sentiment, PCE inflation, and more.
 import sys
 import json
 import os
+import re
 import requests
 from typing import Dict, Any, Optional, List
 
 API_KEY = os.environ.get('FRED_API_KEY', '')
 BASE_URL = "https://api.stlouisfed.org/fred"
+
+
+def _scrub(msg) -> str:
+    """Strip the FRED api_key value from an error string — request URLs (which
+    appear in HTTP error text) carry it as ?api_key=<value>, and that text is
+    surfaced to the UI."""
+    return re.sub(r'api_key=[^&\s\'"]+', 'api_key=***', str(msg))
 
 session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=3)
@@ -116,11 +124,11 @@ def _make_request(endpoint: str, params: Dict = None) -> Any:
         response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as e:
-        return {"error": f"HTTP {e.response.status_code}: {str(e)}", "error_code": "HTTP_ERROR"}
+        return {"error": f"HTTP {e.response.status_code}: {_scrub(e)}", "error_code": "HTTP_ERROR"}
     except requests.exceptions.Timeout:
         return {"error": "FRED request timed out.", "error_code": "TIMEOUT"}
     except requests.exceptions.RequestException as e:
-        return {"error": f"Request failed: {str(e)}", "error_code": "REQUEST_FAILED"}
+        return {"error": f"Request failed: {_scrub(e)}", "error_code": "REQUEST_FAILED"}
     except (json.JSONDecodeError, ValueError) as e:
         return {"error": f"JSON decode error: {str(e)}", "error_code": "PARSE_ERROR"}
 
