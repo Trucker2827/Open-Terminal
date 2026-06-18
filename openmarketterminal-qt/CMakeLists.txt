@@ -3082,6 +3082,24 @@ target_link_libraries(OpenMarketTerminal PRIVATE
 # they currently fall back to the machine-derived key, so no extra libs there.
 if(APPLE)
     target_link_libraries(OpenMarketTerminal PRIVATE "-framework Security" "-framework CoreFoundation")
+    # Apple Speech-to-text fallback for caption-less video transcription.
+    target_sources(OpenMarketTerminal PRIVATE src/web/AppleSpeechTranscriber.mm)
+    set_source_files_properties(src/web/AppleSpeechTranscriber.mm
+        PROPERTIES
+            COMPILE_OPTIONS "-fobjc-arc"
+            SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(OpenMarketTerminal PRIVATE "-framework Speech" "-framework Foundation")
+    # Inject NSSpeechRecognitionUsageDescription into the app bundle's Info.plist.
+    # Set first (no-op on first run), then Add if key doesn't exist yet.
+    add_custom_command(TARGET OpenMarketTerminal POST_BUILD
+        COMMAND /usr/libexec/PlistBuddy
+            -c "Set :NSSpeechRecognitionUsageDescription 'Open Terminal transcribes video news clips on your device using Apple Speech Recognition.'"
+            "$<TARGET_BUNDLE_CONTENT_DIR:OpenMarketTerminal>/Info.plist"
+            || /usr/libexec/PlistBuddy
+            -c "Add :NSSpeechRecognitionUsageDescription string 'Open Terminal transcribes video news clips on your device using Apple Speech Recognition.'"
+            "$<TARGET_BUNDLE_CONTENT_DIR:OpenMarketTerminal>/Info.plist"
+        COMMENT "Injecting NSSpeechRecognitionUsageDescription into Info.plist..."
+    )
 endif()
 
 # openterminal_core's own non-GUI native deps: OpenSSL (SecureStorage AES-256-GCM,

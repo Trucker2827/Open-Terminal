@@ -37,6 +37,9 @@
 #include "trading/PaperTradingSelftest.h"
 #include "trading/replication/PortfolioReplicationSelftest.h"
 #include "services/workflow/WorkflowHonestySelftest.h"
+#ifdef Q_OS_MACOS
+#include "web/AppleSpeechTranscriber.h"
+#endif
 #include "network/http/HttpClient.h"
 #include "python/PythonSetupManager.h"
 #include "screens/launchpad/LaunchpadScreen.h"
@@ -84,6 +87,7 @@
 #include "ui/theme/ThemeManager.h"
 
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
@@ -288,6 +292,33 @@ int main(int argc, char* argv[]) {
             QSslSocket::setActiveBackend(QStringLiteral("openssl"));
         }
     }
+
+    // ── On-device speech transcription CLI test ──────────────────────────────
+    // Usage: OpenTerminal --transcribe-test <audio-file>
+    // Transcribes the file with Apple Speech (on-device) and prints the result
+    // to stdout, then exits.  Never affects normal startup.
+#ifdef Q_OS_MACOS
+    for (int i = 1; i < argc - 1; ++i) {
+        if (qstrcmp(argv[i], "--transcribe-test") == 0) {
+            const QString audio_path = QString::fromLocal8Bit(argv[i + 1]);
+            QEventLoop loop;
+            openmarketterminal::web::AppleSpeechTranscriber::transcribe(
+                audio_path,
+                [&loop](bool ok, QString transcript, QString error) {
+                    if (ok)
+                        fprintf(stdout, "TRANSCRIPT: %s\n",
+                                transcript.toUtf8().constData());
+                    else
+                        fprintf(stdout, "ERROR: %s\n",
+                                error.toUtf8().constData());
+                    fflush(stdout);
+                    loop.quit();
+                });
+            loop.exec();
+            return 0;
+        }
+    }
+#endif
 
     // ── Single-instance lock + new-window IPC ────────────────────────────────
     const QString profile_key = QString("OpenTerminal-%1").arg(openmarketterminal::ProfileManager::instance().active());

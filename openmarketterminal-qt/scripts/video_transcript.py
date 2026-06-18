@@ -176,6 +176,42 @@ def _get_info_via_binary(url):
     return "", set()
 
 
+def _download_audio(url):
+    """
+    Download audio for `url` and convert to 16 kHz mono WAV.
+    Returns the absolute path to the WAV file on success, or None on failure.
+    The caller (C++ side) is responsible for deleting the file.
+    The WAV is written to a persistent temp dir (NOT a TemporaryDirectory context)
+    so the file survives this function's return.
+    """
+    binary = _find_ytdlp_binary()
+    if not binary:
+        return None
+
+    # Create a persistent temp dir — NOT TemporaryDirectory(), which auto-deletes.
+    audio_dir = tempfile.mkdtemp(prefix="ot_audio_")
+    wav_path = os.path.join(audio_dir, "audio.wav")
+
+    cmd = [
+        binary,
+        "--no-playlist",
+        "--extract-audio",
+        "--audio-format", "wav",
+        "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
+        "--quiet",
+        "--no-warnings",
+        "-o", wav_path,
+        url,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0 and os.path.isfile(wav_path):
+            return wav_path
+    except Exception:
+        pass
+    return None
+
+
 def fetch_transcript(url):
     """
     Fetch transcript for the given video URL.
@@ -240,6 +276,16 @@ def fetch_transcript(url):
         # Find downloaded VTT files (glob — filename is not predictable)
         vtt_files = glob.glob(os.path.join(tmpdir, "*.vtt"))
         if not vtt_files:
+            # No captions — attempt audio download for on-device speech recognition.
+            audio_path = _download_audio(url)
+            if audio_path:
+                return {
+                    "success": False,
+                    "error": "No captions available for this video",
+                    "error_code": "NO_CAPTIONS",
+                    "audio_path": audio_path,
+                    "title": title,
+                }
             return {
                 "success": False,
                 "error": "No captions available for this video",
@@ -272,6 +318,16 @@ def fetch_transcript(url):
         transcript = _parse_vtt(vtt_text)
 
         if not transcript.strip():
+            # VTT file was empty — fall back to audio download.
+            audio_path = _download_audio(url)
+            if audio_path:
+                return {
+                    "success": False,
+                    "error": "No captions available for this video",
+                    "error_code": "NO_CAPTIONS",
+                    "audio_path": audio_path,
+                    "title": title,
+                }
             return {
                 "success": False,
                 "error": "No captions available for this video",

@@ -22,9 +22,15 @@
 #include "ui/theme/StyleSheets.h"
 #include "ui/theme/Theme.h"
 #include "web/HeadlessBrowser.h"
+#ifdef Q_OS_MACOS
+#include "web/AppleSpeechTranscriber.h"
+#endif
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
@@ -765,6 +771,40 @@ void NewsScreen::on_transcribe_requested(const QString& url) {
             const QJsonObject obj = doc.object();
             const bool success = obj["success"].toBool(false);
             if (!success) {
+                const QString error_code = obj["error_code"].toString();
+                const QString audio_path = obj["audio_path"].toString();
+
+#ifdef Q_OS_MACOS
+                if (error_code == QLatin1String("NO_CAPTIONS") && !audio_path.isEmpty()) {
+                    // No captions — use on-device Apple Speech Recognition.
+                    LOG_INFO("NewsScreen",
+                             "No captions found; falling back to Apple Speech Recognition for: "
+                             + url);
+                    QPointer<NewsScreen> guard = self;
+                    web::AppleSpeechTranscriber::transcribe(
+                        audio_path,
+                        [guard, url, audio_path](bool ok, QString transcript, QString error) {
+                            // Clean up the temp audio file produced by the Python script.
+                            QFile::remove(audio_path);
+                            // Delete the parent temp dir if it is now empty.
+                            const QString audio_dir =
+                                QFileInfo(audio_path).absolutePath();
+                            QDir(audio_dir).rmdir(audio_dir);
+
+                            if (!guard)
+                                return;
+                            if (ok && !transcript.isEmpty()) {
+                                guard->detail_panel_->show_transcript(url, true, transcript, {});
+                            } else {
+                                const QString note =
+                                    tr("Couldn't get a transcript: %1").arg(error);
+                                guard->detail_panel_->show_transcript(url, false, {}, note);
+                            }
+                        });
+                    return;
+                }
+#endif
+
                 const QString error_msg = obj["error"].toString(tr("Unknown error"));
                 const QString note = tr("Couldn't get a transcript: %1").arg(error_msg);
                 LOG_INFO("NewsScreen", "Transcript unavailable: " + note);
