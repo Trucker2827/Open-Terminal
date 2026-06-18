@@ -275,29 +275,34 @@ QString HeadlessBrowser::fetch_article_best(const QString& url) {
 
     HeadlessBrowser& hb = instance();
 
-    // Strategy A: Googlebot reader-mode direct fetch
-    QString raw_a = hb.fetch(QUrl(url), kReaderExtractionJs, 20000,
-                              /*reader_mode=*/true,
-                              QStringLiteral("https://www.google.com/"));
-    QString text_a = parse_text(raw_a);
+    // Strategy A: plain fetch with the normal browser UA. This is the proven
+    // path that works for the vast majority of sites — it MUST be tried first.
+    // (Leading with the Googlebot UA regressed every normal site that gates
+    // crawler user-agents into the "couldn't load" note.)
+    QString best = parse_text(hb.fetch(QUrl(url), kReaderExtractionJs, 20000));
 
-    // Strategy B: archive.today snapshot (only if A is thin)
-    QString text_b;
-    if (text_a.length() < 600) {
-        // Build the archive.ph URL by appending the raw article URL as a path segment.
-        // Use QUrl with explicit scheme+host+path to avoid QUrl mangling the embedded "://"
-        const QString archive_url =
-            QStringLiteral("https://archive.ph/newest/") + url;
-        QString raw_b = hb.fetch(QUrl(archive_url), kReaderExtractionJs, 25000,
-                                  /*reader_mode=*/true,
-                                  QStringLiteral("https://www.google.com/"));
-        text_b = parse_text(raw_b);
+    // Strategy B: Googlebot reader-mode (cookieless + crawler UA + Google
+    // referer) — only when the plain fetch came up thin (metered/soft paywall).
+    if (best.length() < 600) {
+        QString text_b = parse_text(hb.fetch(QUrl(url), kReaderExtractionJs, 20000,
+                                             /*reader_mode=*/true,
+                                             QStringLiteral("https://www.google.com/")));
+        if (text_b.length() > best.length())
+            best = text_b;
     }
 
-    // Return the longest result
-    if (text_b.length() > text_a.length())
-        return text_b;
-    return text_a;
+    // Strategy C: archive.today snapshot — last resort when both direct fetches
+    // are thin (hard paywall with an existing snapshot).
+    if (best.length() < 600) {
+        const QString archive_url = QStringLiteral("https://archive.ph/newest/") + url;
+        QString text_c = parse_text(hb.fetch(QUrl(archive_url), kReaderExtractionJs, 25000,
+                                             /*reader_mode=*/true,
+                                             QStringLiteral("https://www.google.com/")));
+        if (text_c.length() > best.length())
+            best = text_c;
+    }
+
+    return best;
 }
 
 #else  // !HAS_QT_WEBENGINE
