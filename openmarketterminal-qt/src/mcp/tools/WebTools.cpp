@@ -153,7 +153,14 @@ std::vector<ToolDef> get_web_tools() {
                 return;
             }
 
-            const QJsonObject parsed = QJsonDocument::fromJson(raw.toUtf8()).object();
+            QJsonParseError perr;
+            const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &perr);
+            if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
+                promise->addResult(ToolResult::fail("web_fetch: could not parse page content"));
+                promise->finish();
+                return;
+            }
+            const QJsonObject parsed = doc.object();
             QString text = parsed.value("text").toString();
             if (text.size() > cap)
                 text = text.left(cap) + QChar(0x2026); // …
