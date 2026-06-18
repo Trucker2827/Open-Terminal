@@ -149,6 +149,13 @@ class LlmService : public QObject {
     /// (LlmRequestBuilders.cpp) to bypass Tool-RAG and attach the essentials set.
     bool is_local_model() const;
 
+    /// Returns the ToolFilter to use when attaching a structured tools array to
+    /// any request (initial turn + every tool-loop follow-up). For local/Ollama
+    /// models this returns an essentials filter (curated ~20 names, no Tool-RAG);
+    /// for all other providers it returns apply_request_policy(tool_filter_) as-is.
+    /// Called under mutex_ — all three structured-tools attachment sites share this.
+    mcp::ToolFilter effective_tool_filter() const;
+
     QJsonObject build_openai_request(const QString& user_message, const std::vector<ConversationMessage>& history,
                                      bool stream, bool with_tools = true);
     QJsonObject build_anthropic_request(const QString& user_message, const std::vector<ConversationMessage>& history,
