@@ -979,6 +979,7 @@ set(AI_CHAT_SCREEN_SOURCES
     src/screens/ai_chat/AiChatBubble.cpp
     src/screens/ai_chat/ChatBubbleController.cpp
     src/web/WebSearchParser.cpp
+    src/web/HeadlessBrowser.cpp
 )
 
 # MCP — Model Context Protocol system
@@ -1900,6 +1901,7 @@ set_source_files_properties(
     src/screens/ai_chat/ChatBubbleController.cpp
     src/screens/ai_chat/ChatBubbleFactory.cpp
     src/web/WebSearchParser.cpp
+    src/web/HeadlessBrowser.cpp
     src/screens/ai_quant_lab/AIQuantLabScreen.cpp
     src/screens/ai_quant_lab/QuantModulePanel.cpp
     src/screens/ai_quant_lab/QuantModulePanel_Results.cpp
