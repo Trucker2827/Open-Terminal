@@ -12,8 +12,8 @@ namespace openmarketterminal::screens {
 /// Obsidian design: sharp corners, monospace, no shadows, terminal aesthetic.
 ///
 /// Pages:
-///   0 — PIN setup (create new 6-digit PIN, confirm)
-///   1 — PIN unlock (enter PIN to unlock terminal)
+///   0 — PIN setup (create new 4-digit PIN, confirm)
+///   1 — PIN unlock (enter PIN to unlock terminal; Touch ID offered on macOS)
 ///   2 — Lockout (too many failed attempts, must re-authenticate)
 ///
 /// Internationalised via tr() + retranslateUi(); reacts to runtime language
@@ -65,9 +65,16 @@ class LockScreen : public QWidget {
     QLabel* unlock_pin_lbl_ = nullptr;
     QLineEdit* unlock_pin_input_ = nullptr;
     QPushButton* unlock_btn_ = nullptr;
+    QPushButton* touchid_btn_ = nullptr;   ///< Touch ID button (macOS; hidden when unavailable)
     QLabel* unlock_error_ = nullptr;
     QLabel* unlock_attempts_ = nullptr;
     QLabel* unlock_lockout_label_ = nullptr;
+
+    // Touch ID stale-callback guard.
+    // Incremented each time show_unlock() or hideEvent() resets the page so
+    // any in-flight LAContext reply arriving after the page changed is ignored.
+    int unlock_generation_ = 0;
+    bool touchid_in_flight_ = false;
 
     // Lockout page (index 2)
     QLabel* lockout_title_ = nullptr;
@@ -86,6 +93,7 @@ class LockScreen : public QWidget {
 
     void on_setup_submit();
     void on_unlock_submit();
+    void on_touch_id_clicked();
     void update_lockout_display();
     /// Recompute the attempts-remaining label using the live PinManager state.
     /// Called from show_unlock(), unlock failure paths, and retranslateUi() so

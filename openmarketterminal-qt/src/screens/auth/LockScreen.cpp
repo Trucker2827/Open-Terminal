@@ -5,12 +5,17 @@
 #include "ui/theme/Theme.h"
 #include "ui/widgets/LanguageSwitcher.h"
 
+#ifdef Q_OS_MACOS
+#include "auth/TouchIdAuth.h"
+#endif
+
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QIntValidator>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QPointer>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -93,7 +98,7 @@ static void harden_pin_input(QLineEdit* edit) {
                               Qt::ImhNoPredictiveText | Qt::ImhNoAutoUppercase |
                               Qt::ImhHiddenText);
 
-    auto* validator = new QIntValidator(0, 999999, edit);
+    auto* validator = new QIntValidator(0, 9999, edit);
     edit->setValidator(validator);
 
     edit->setDragEnabled(false);
@@ -196,6 +201,10 @@ void LockScreen::hideEvent(QHideEvent* e) {
     if (setup_pin_input_) setup_pin_input_->clear();
     if (setup_confirm_input_) setup_confirm_input_->clear();
     if (unlock_pin_input_) unlock_pin_input_->clear();
+    // Invalidate any in-flight Touch ID callback so it silently discards its
+    // result if the screen was hidden (unlocked by PIN, navigated away, etc.).
+    ++unlock_generation_;
+    touchid_in_flight_ = false;
 }
 
 void LockScreen::changeEvent(QEvent* event) {
@@ -260,8 +269,8 @@ void LockScreen::build_setup_page() {
     vl->addWidget(setup_pin_lbl_);
 
     setup_pin_input_ = new QLineEdit;
-    setup_pin_input_->setPlaceholderText(QStringLiteral("------"));
-    setup_pin_input_->setMaxLength(6);
+    setup_pin_input_->setPlaceholderText(QStringLiteral("----"));
+    setup_pin_input_->setMaxLength(4);
     setup_pin_input_->setAlignment(Qt::AlignCenter);
     setup_pin_input_->setEchoMode(QLineEdit::Password);
     setup_pin_input_->setFixedHeight(44);
@@ -274,8 +283,8 @@ void LockScreen::build_setup_page() {
     vl->addWidget(setup_confirm_lbl_);
 
     setup_confirm_input_ = new QLineEdit;
-    setup_confirm_input_->setPlaceholderText(QStringLiteral("------"));
-    setup_confirm_input_->setMaxLength(6);
+    setup_confirm_input_->setPlaceholderText(QStringLiteral("----"));
+    setup_confirm_input_->setMaxLength(4);
     setup_confirm_input_->setAlignment(Qt::AlignCenter);
     setup_confirm_input_->setEchoMode(QLineEdit::Password);
     setup_confirm_input_->setFixedHeight(44);
@@ -356,8 +365,8 @@ void LockScreen::build_unlock_page() {
     vl->addWidget(unlock_pin_lbl_);
 
     unlock_pin_input_ = new QLineEdit;
-    unlock_pin_input_->setPlaceholderText(QStringLiteral("------"));
-    unlock_pin_input_->setMaxLength(6);
+    unlock_pin_input_->setPlaceholderText(QStringLiteral("----"));
+    unlock_pin_input_->setMaxLength(4);
     unlock_pin_input_->setAlignment(Qt::AlignCenter);
     unlock_pin_input_->setEchoMode(QLineEdit::Password);
     unlock_pin_input_->setFixedHeight(48);
@@ -396,6 +405,23 @@ void LockScreen::build_unlock_page() {
     unlock_btn_->setStyleSheet(btn_primary());
     connect(unlock_btn_, &QPushButton::clicked, this, &LockScreen::on_unlock_submit);
     vl->addWidget(unlock_btn_);
+
+    touchid_btn_ = new QPushButton;
+    touchid_btn_->setFixedHeight(34);
+    touchid_btn_->setStyleSheet(
+        QString("QPushButton {"
+                "  background: rgba(59,130,246,0.08); color: #60a5fa;"
+                "  border: 1px solid #1d4ed8;"
+                "  padding: 0 16px; font-size: 14px; font-weight: 700;"
+                "  font-family: 'Consolas','Courier New',monospace;"
+                "}"
+                "QPushButton:hover { background: #1d4ed8; color: %1; }"
+                "QPushButton:disabled { color: %2; background: %3; border-color: %4; }")
+            .arg(ui::colors::TEXT_PRIMARY(), ui::colors::TEXT_DIM(),
+                 ui::colors::BG_RAISED(),    ui::colors::BORDER_DIM()));
+    connect(touchid_btn_, &QPushButton::clicked, this, &LockScreen::on_touch_id_clicked);
+    touchid_btn_->hide(); // shown by show_unlock() only when available
+    vl->addWidget(touchid_btn_);
 
     vl->addStretch();
 
@@ -461,7 +487,7 @@ void LockScreen::build_lockout_page() {
 void LockScreen::retranslateUi() {
     if (setup_title_)     setup_title_->setText(tr("SECURITY SETUP"));
     if (setup_badge_)     setup_badge_->setText(tr("REQUIRED"));
-    if (setup_subtitle_)  setup_subtitle_->setText(tr("Create a 6-digit PIN to secure your terminal"));
+    if (setup_subtitle_)  setup_subtitle_->setText(tr("Create a 4-digit PIN to secure your terminal"));
     if (setup_info_)      setup_info_->setText(tr("This PIN will be required each time you open\nthe terminal or after a period of inactivity."));
     if (setup_pin_lbl_)   setup_pin_lbl_->setText(tr("ENTER PIN"));
     if (setup_confirm_lbl_) setup_confirm_lbl_->setText(tr("CONFIRM PIN"));
@@ -470,7 +496,8 @@ void LockScreen::retranslateUi() {
 
     if (unlock_title_)    unlock_title_->setText(tr("TERMINAL LOCKED"));
     if (unlock_badge_)    unlock_badge_->setText(tr("SECURE"));
-    if (unlock_subtitle_) unlock_subtitle_->setText(tr("Enter your 6-digit PIN to unlock"));
+    if (unlock_subtitle_) unlock_subtitle_->setText(tr("Enter your 4-digit PIN to unlock"));
+    if (touchid_btn_)    touchid_btn_->setText(tr("  USE TOUCH ID  "));
     if (unlock_pin_lbl_)  unlock_pin_lbl_->setText(tr("PIN"));
     if (unlock_btn_)      unlock_btn_->setText(tr("  UNLOCK  "));
 
@@ -521,6 +548,11 @@ void LockScreen::show_unlock() {
     unlock_lockout_label_->hide();
     pages_->setCurrentIndex(1);
 
+    // Invalidate any previous Touch ID callback (e.g. inactivity re-lock
+    // while a prior Touch ID prompt was pending).
+    ++unlock_generation_;
+    touchid_in_flight_ = false;
+
     auto& pm = auth::PinManager::instance();
     if (pm.failed_attempts() > 0 && pm.failed_attempts() < auth::PinManager::kMaxAttempts) {
         refresh_attempts_label();
@@ -530,6 +562,25 @@ void LockScreen::show_unlock() {
     }
 
     update_lockout_display();
+
+#ifdef Q_OS_MACOS
+    // Offer Touch ID only when: biometrics available, not timed-out locked.
+    // Do NOT offer during PIN setup (index 0) or during the timed lockout.
+    if (auth::TouchIdAuth::is_available() && !pm.is_locked_out()) {
+        touchid_btn_->show();
+        // Auto-trigger a Touch ID prompt shortly after the page appears so
+        // returning users can unlock just by touching the sensor.
+        const int gen = unlock_generation_;
+        QTimer::singleShot(150, this, [this, gen]() {
+            if (unlock_generation_ != gen || !isVisible() || pages_->currentIndex() != 1)
+                return;
+            on_touch_id_clicked();
+        });
+    } else {
+        touchid_btn_->hide();
+    }
+#endif
+
     unlock_pin_input_->setFocus();
 }
 
@@ -611,6 +662,36 @@ void LockScreen::on_unlock_submit() {
     }
 }
 
+void LockScreen::on_touch_id_clicked() {
+#ifdef Q_OS_MACOS
+    // Prevent double-prompts (button click + auto-timer racing).
+    if (touchid_in_flight_) return;
+    auto& pm = auth::PinManager::instance();
+    if (pm.is_locked_out()) return;
+
+    touchid_in_flight_ = true;
+    const int gen = unlock_generation_;
+    QPointer<LockScreen> self(this);
+
+    auth::TouchIdAuth::authenticate(
+        tr("Unlock Open Market Terminal"),
+        [self, gen](bool ok, QString /*err_str*/) {
+            // Guard: screen may have been hidden or re-locked while LA was running.
+            if (!self || self->unlock_generation_ != gen) return;
+            self->touchid_in_flight_ = false;
+            if (!ok) {
+                // Cancelled or failed — fall back to PIN field silently.
+                return;
+            }
+            // Success — unlock exactly as a correct PIN does.
+            self->unlock_error_->hide();
+            self->unlock_lockout_label_->hide();
+            self->unlock_attempts_->hide();
+            emit self->unlocked();
+        });
+#endif
+}
+
 void LockScreen::update_lockout_display() {
     auto& pm = auth::PinManager::instance();
     int secs = pm.lockout_remaining_seconds();
@@ -619,6 +700,7 @@ void LockScreen::update_lockout_display() {
         unlock_lockout_label_->hide();
         unlock_btn_->setEnabled(true);
         unlock_pin_input_->setEnabled(true);
+        if (touchid_btn_) touchid_btn_->setEnabled(true);
         unlock_pin_input_->setFocus();
         lockout_timer_->stop();
         return;
@@ -636,6 +718,7 @@ void LockScreen::update_lockout_display() {
     unlock_lockout_label_->show();
     unlock_btn_->setEnabled(false);
     unlock_pin_input_->setEnabled(false);
+    if (touchid_btn_) touchid_btn_->setEnabled(false); // Touch ID bypasses nothing during lockout
 }
 
 } // namespace openmarketterminal::screens

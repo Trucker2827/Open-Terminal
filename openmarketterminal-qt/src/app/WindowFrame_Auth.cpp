@@ -289,11 +289,10 @@ void WindowFrame::enter_local_shell() {
 }
 
 void WindowFrame::show_lock_screen() {
-    // LOCAL-FIRST FORK: locking is gated on a configured local PIN, not on auth.
-    if (!auth::PinManager::instance().has_pin()) {
-        LOG_DEBUG("WindowFrame", "show_lock_screen: ignored — no local PIN set");
-        return;
-    }
+    // LOCK button. With no PIN configured yet, this is how the user turns the
+    // lock ON: locking shows the 4-digit PIN setup page (LockScreen::activate()
+    // picks setup-vs-unlock from PIN state), and Touch ID becomes available on
+    // unlock once a PIN exists. With a PIN set, it simply locks the terminal.
 
     // Raise the process-wide locked flag. Every WindowFrame listens for
     // terminal_locked_changed and applies the lock UI itself in

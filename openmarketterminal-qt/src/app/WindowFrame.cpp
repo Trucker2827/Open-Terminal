@@ -632,7 +632,9 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
                 LOG_INFO("WindowFrame", QString("Quick Switch: %1 (%2 panels)").arg(action).arg(screens.size()));
             }
         } else if (action == "logout") {
-            auth::AuthManager::instance().logout();
+            // Remap the legacy "logout" action to lock — dropping to the
+            // login/server-auth splash was removed in the local-first fork.
+            show_lock_screen();
         } else if (action == "fullscreen") {
             if (isFullScreen())
                 showNormal();
@@ -746,8 +748,8 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
         }
     });
 
-    // Toolbar logout
-    connect(toolbar, &ui::ToolBar::logout_clicked, this, []() { auth::AuthManager::instance().logout(); });
+    // Toolbar LOCK button — lock the terminal (PIN + Touch ID gate), not logout.
+    connect(toolbar, &ui::ToolBar::logout_clicked, this, &WindowFrame::show_lock_screen);
 
     // Auth state
     connect(&auth::AuthManager::instance(), &auth::AuthManager::auth_state_changed, this,

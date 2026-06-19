@@ -146,7 +146,7 @@ void ToolBar::changeEvent(QEvent* e) {
 void ToolBar::retranslateUi() {
     if (subtitle_label_) subtitle_label_->setText(tr("  |  PROFESSIONAL RESEARCH DESK"));
     if (live_label_)     live_label_->setText(tr(" LIVE"));
-    if (logout_btn_) logout_btn_->setText(tr("LOGOUT"));
+    if (logout_btn_) logout_btn_->setText(tr("LOCK"));
     // Rebuild menus so the new translator applies to every QAction label.
     rebuild_menus();
     // Refresh user display so "FREE" / "---" placeholders pick up new locale.

@@ -26,12 +26,12 @@ bool constant_time_equals(const QByteArray& a, const QByteArray& b) {
     return diff == 0;
 }
 
-// Reject trivially weak 6-digit PINs. Returns an error message or empty string
+// Reject trivially weak 4-digit PINs. Returns an error message or empty string
 // if the PIN is acceptable. Centralized here (not in UI) so every caller —
 // future QR/companion setup, tests, scripted flows — gets the same guardrails.
 QString weak_pin_reason(const QString& pin) {
-    if (pin.length() != 6)
-        return QStringLiteral("PIN must be exactly 6 digits");
+    if (pin.length() != 4)
+        return QStringLiteral("PIN must be exactly 4 digits");
     for (const QChar& c : pin) {
         if (!c.isDigit())
             return QStringLiteral("PIN must contain only digits");
@@ -351,7 +351,7 @@ bool PinManager::verify_pin(const QString& pin) {
     }
 
     // Grace period: the first kFreeAttempts mistakes just show "incorrect"
-    // with no timed lockout — users legitimately fat-finger a 6-digit PIN.
+    // with no timed lockout — users legitimately fat-finger a 4-digit PIN.
     // The timed-lockout ladder starts at attempt (kFreeAttempts + 1), i.e.
     // the 3rd failure triggers the first 30s lockout.
     if (failed_attempts_ <= kFreeAttempts) {

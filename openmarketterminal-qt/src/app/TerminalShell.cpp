@@ -265,9 +265,24 @@ void TerminalShell::bootstrap_auth() {
     //    that window.
     auth::AuthManager::instance().initialize();
 
+    // 1b. One-time PIN policy migration: clear any stored 6-digit PIN hash
+    //     so the user re-enrolls under the new 4-digit policy.
+    //     Sentinel "auth.pin_policy_4digit" = "1" is set exactly once.
+    //     SettingsRepository::get() always returns ok() (never an error
+    //     result), so value() != "1" reliably means "not yet migrated".
+    {
+        auto sentinel = SettingsRepository::instance().get("auth.pin_policy_4digit");
+        if (sentinel.value() != "1") {
+            auth::PinManager::instance().clear_pin();
+            SettingsRepository::instance().set("auth.pin_policy_4digit", "1", "auth");
+            LOG_INFO(kShellTag, "PIN policy migration: cleared 6-digit PIN hash (4-digit policy active)");
+        }
+    }
+
     // 2. PinManager — touch the singleton so it loads PIN state from
     //    SecureStorage. Lazy construction would otherwise defer the load
     //    to the first lock event, racing the InactivityGuard timer below.
+    //    (May already be constructed by the migration block above.)
     (void)auth::PinManager::instance();
 
     // 3. InactivityGuard — auto-lock after idle timeout. Read the user's

@@ -18,7 +18,7 @@ namespace openmarketterminal::auth {
 ///   attempt 3   → 30s timed lockout
 ///   attempt 4   → 60s timed lockout
 ///   attempt 5   → permanent lockout, requires server re-authentication.
-/// Total online keyspace exposure for a 6-digit PIN: 4 cheap guesses then the
+/// Total online keyspace exposure for a 4-digit PIN: 4 cheap guesses then the
 /// re-auth gate. Two extra ladder tiers (5min / 15min) are deliberately *not*
 /// reachable under the current kMaxAttempts — keeping them in code but
 /// unreachable would be a foot-gun for future code that bumps the cap without

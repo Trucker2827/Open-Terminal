@@ -37,7 +37,7 @@ NavigationBar::NavigationBar(QWidget* parent) : QWidget(parent) {
     hl->addWidget(user_label_);
     hl->addWidget(mk("  |  ", "navSep"));
 
-    logout_btn_ = new QPushButton(tr("LOGOUT"));
+    logout_btn_ = new QPushButton(tr("LOCK"));
     logout_btn_->setFixedHeight(24);
     logout_btn_->setCursor(Qt::PointingHandCursor);
     logout_btn_->setObjectName("navLogout");
@@ -68,7 +68,7 @@ void NavigationBar::changeEvent(QEvent* event) {
 
 void NavigationBar::retranslateUi() {
     if (live_label_) live_label_->setText(tr(" LIVE"));
-    if (logout_btn_) logout_btn_->setText(tr("LOGOUT"));
+    if (logout_btn_) logout_btn_->setText(tr("LOCK"));
 }
 
 void NavigationBar::refresh_theme() {

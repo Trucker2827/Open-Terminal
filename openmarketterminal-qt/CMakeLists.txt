@@ -3089,6 +3089,13 @@ if(APPLE)
             COMPILE_OPTIONS "-fobjc-arc"
             SKIP_PRECOMPILE_HEADERS ON)
     target_link_libraries(OpenMarketTerminal PRIVATE "-framework Speech" "-framework Foundation")
+    # Touch ID unlock bridge.
+    target_sources(OpenMarketTerminal PRIVATE src/auth/TouchIdAuth.mm)
+    set_source_files_properties(src/auth/TouchIdAuth.mm
+        PROPERTIES
+            COMPILE_OPTIONS "-fobjc-arc"
+            SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(OpenMarketTerminal PRIVATE "-framework LocalAuthentication")
     # Inject NSSpeechRecognitionUsageDescription into the app bundle's Info.plist.
     # Set first (no-op on first run), then Add if key doesn't exist yet.
     add_custom_command(TARGET OpenMarketTerminal POST_BUILD
