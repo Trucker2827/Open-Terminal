@@ -2656,7 +2656,7 @@ add_library(openterminal_core STATIC
 set_target_properties(openterminal_core PROPERTIES AUTOMOC ON AUTORCC ON UNITY_BUILD OFF)
 target_include_directories(openterminal_core PUBLIC src)
 target_link_libraries(openterminal_core PUBLIC
-    Qt6::Core Qt6::Network Qt6::Sql Qt6::Concurrent miniz openmarketterminal_ed25519)
+    Qt6::Core Qt6::Gui Qt6::Network Qt6::Sql Qt6::Concurrent miniz openmarketterminal_ed25519)
 # Compile defs the core sources need (mirror the GUI target's flags that apply
 # to core groups): VERSION_STRING (SystemTools.cpp) and the WebSockets gate
 # (WebSocketClient.cpp + NewsService*). PUBLIC so exe TUs that include the same
