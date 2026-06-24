@@ -234,7 +234,12 @@ void EquityTradingScreen::hub_subscribe_market_quotes() {
     for (const auto& sym : symbols) {
         if (sym.isEmpty())
             continue;
-        const QString topic = QStringLiteral("market:quote:") + sym;
+        // Crypto pairs are stored Alpaca-style (BASE/USD) but the free yfinance
+        // feed wants BASE-USD — request under the feed symbol, then map the tick
+        // back to the original so it lands on the right watchlist row.
+        const QString feed_sym =
+            sym.contains(QLatin1Char('/')) ? QString(sym).replace(QLatin1Char('/'), QLatin1Char('-')) : sym;
+        const QString topic = QStringLiteral("market:quote:") + feed_sym;
         hub.subscribe(this, topic, [this, sym](const QVariant& v) {
             if (!v.canConvert<services::QuoteData>())
                 return;
