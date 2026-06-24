@@ -179,6 +179,32 @@ target_include_directories(tst_crypto_risk PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_risk PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_risk COMMAND tst_crypto_risk)
 
+# Black-Scholes / BSM / Black option pricers (services/options/OptionPricing) —
+# pure math driving the strategy payoff curve. Known-answer + invariant coverage
+# (put-call parity, Black-at-forward == BS). Pricers live in openterminal_core.
+add_executable(tst_option_pricing tst_option_pricing.cpp)
+target_include_directories(tst_option_pricing PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_option_pricing PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_option_pricing COMMAND tst_option_pricing)
+
+# Alpha-arena RiskEngine (services/alpha_arena/RiskEngine) — the fail-closed
+# trade-safety gate (leverage / risk / liquidation / Monk caps + drift amend)
+# and the per-agent circuit breaker (drawdown / parse-failure / risk-reject).
+# Pure functions, live in openterminal_core.
+add_executable(tst_risk_engine tst_risk_engine.cpp)
+target_include_directories(tst_risk_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_risk_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_risk_engine COMMAND tst_risk_engine)
+
+# Event-driven backtester (algo_engine/BacktestEngine::run) — pure
+# candles+strategy -> metrics JSON. Known-answer single-trade P&L (take-profit
+# win / stop-loss loss) + insufficient-data and no-trade edges. Engine +
+# ConditionEvaluator + IndicatorEngine all live in openterminal_core.
+add_executable(tst_backtest_engine tst_backtest_engine.cpp)
+target_include_directories(tst_backtest_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_backtest_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_backtest_engine COMMAND tst_backtest_engine)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
