@@ -268,3 +268,18 @@ target_include_directories(tst_text_tool_call_parser PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(tst_text_tool_call_parser PRIVATE Qt6::Core Qt6::Test)
 set_target_properties(tst_text_tool_call_parser PROPERTIES UNITY_BUILD OFF)
 add_test(NAME tst_text_tool_call_parser COMMAND tst_text_tool_call_parser)
+
+# Safety interlock — pins the Hyperliquid live order path shut while the signer's
+# ECDSA recovery id is still hardcoded (v=27, correct only ~half the time). Links
+# the core lib for HyperliquidVenue::place_order. See the test file header.
+add_executable(tst_hyperliquid_gate tst_hyperliquid_gate.cpp)
+target_include_directories(tst_hyperliquid_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_hyperliquid_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_hyperliquid_gate COMMAND tst_hyperliquid_gate)
+
+# Backtest/feed candle aggregation (N→1 bar synthesis). Pure math, linked from
+# the core lib via CandleAggregation.h — no network fetcher needed.
+add_executable(tst_candle_aggregation tst_candle_aggregation.cpp)
+target_include_directories(tst_candle_aggregation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_candle_aggregation PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_candle_aggregation COMMAND tst_candle_aggregation)

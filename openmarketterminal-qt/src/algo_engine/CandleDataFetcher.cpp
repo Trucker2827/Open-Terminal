@@ -1,5 +1,6 @@
 // src/algo_engine/CandleDataFetcher.cpp
 #include "algo_engine/CandleDataFetcher.h"
+#include "algo_engine/CandleAggregation.h"
 #include "core/logging/Logger.h"
 #include "trading/AccountManager.h"
 #include "trading/BrokerRegistry.h"
@@ -62,31 +63,6 @@ QString symbol_to_yahoo(const QString& symbol) {
     return symbol.trimmed().toUpper();
 }
 
-// Aggregate `factor` consecutive bars into one. Drops an incomplete trailing
-// group so we never emit a misleading partial bar.
-QVector<OhlcvCandle> aggregate_candles(const QVector<OhlcvCandle>& in, int factor) {
-    if (factor <= 1)
-        return in;
-    QVector<OhlcvCandle> out;
-    out.reserve(in.size() / factor + 1);
-    for (int i = 0; i + factor <= in.size(); i += factor) {
-        OhlcvCandle c = in[i];
-        c.high = in[i].high;
-        c.low = in[i].low;
-        c.volume = 0;
-        for (int j = 0; j < factor; ++j) {
-            c.high = std::max(c.high, in[i + j].high);
-            c.low = std::min(c.low, in[i + j].low);
-            c.volume += in[i + j].volume;
-        }
-        c.close = in[i + factor - 1].close;
-        c.close_time = in[i + factor - 1].close_time;
-        c.is_closed = true;
-        out.append(c);
-    }
-    return out;
-}
-
 // Parse a Yahoo v8 chart response into OHLCV candles (epoch-ms, close_time set).
 QVector<OhlcvCandle> parse_yahoo_chart(const QJsonObject& root, int64_t tf_ms, QString* err) {
     QVector<OhlcvCandle> candles;
@@ -141,6 +117,31 @@ QVector<OhlcvCandle> parse_yahoo_chart(const QJsonObject& root, int64_t tf_ms, Q
 // Broker symbol resolution + token handling moved to trading/HistoricalDataService.
 
 } // namespace
+
+// Exposed (declared in CandleAggregation.h) so the aggregation math can be
+// unit-tested independently of the network fetcher.
+QVector<OhlcvCandle> aggregate_candles(const QVector<OhlcvCandle>& in, int factor) {
+    if (factor <= 1)
+        return in;
+    QVector<OhlcvCandle> out;
+    out.reserve((in.size() / factor) + 1);
+    for (int i = 0; i + factor <= in.size(); i += factor) {
+        OhlcvCandle c = in[i];
+        c.high = in[i].high;
+        c.low = in[i].low;
+        c.volume = 0;
+        for (int j = 0; j < factor; ++j) {
+            c.high = std::max(c.high, in[i + j].high);
+            c.low = std::min(c.low, in[i + j].low);
+            c.volume += in[i + j].volume;
+        }
+        c.close = in[i + factor - 1].close;
+        c.close_time = in[i + factor - 1].close_time;
+        c.is_closed = true;
+        out.append(c);
+    }
+    return out;
+}
 
 CandleDataFetcher& CandleDataFetcher::instance() {
     static CandleDataFetcher s;
