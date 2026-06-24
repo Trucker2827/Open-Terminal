@@ -179,6 +179,14 @@ target_include_directories(tst_crypto_risk PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_risk PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_risk COMMAND tst_crypto_risk)
 
+# Black-Scholes / BSM / Black option pricers (services/options/OptionPricing) —
+# pure math driving the strategy payoff curve. Known-answer + invariant coverage
+# (put-call parity, Black-at-forward == BS). Pricers live in openterminal_core.
+add_executable(tst_option_pricing tst_option_pricing.cpp)
+target_include_directories(tst_option_pricing PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_option_pricing PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_option_pricing COMMAND tst_option_pricing)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
