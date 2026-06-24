@@ -12,20 +12,56 @@
 #include "core/logging/Logger.h"
 #include "screens/equity_trading/EquityTypes.h"
 #include "screens/equity_trading/EquityWatchlist.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "storage/repositories/WatchlistRepository.h"
 #include "trading/BrokerRegistry.h"
 #include "trading/DataStreamManager.h"
 
 #include <QPair>
+#include <QSet>
 #include <QVector>
 
 namespace openmarketterminal::screens {
 
 namespace {
 const QString WL_TAG = "EquityTrading";
+
+// One-time seeding of the curated preset watchlists (Markets / Leaders /
+// Crypto). Gated by a settings sentinel so it runs exactly once: fresh installs
+// get all three; existing users get any they're missing by name, leaving their
+// own lists untouched. SettingsRepository::get() always returns ok(), so
+// value() != "1" reliably means "not yet seeded".
+void ensure_curated_watchlists() {
+    auto& settings = openmarketterminal::SettingsRepository::instance();
+    if (settings.get("watchlists.curated_v1").value() == QLatin1String("1"))
+        return;
+
+    auto& repo = openmarketterminal::WatchlistRepository::instance();
+    QSet<QString> existing_names;
+    if (auto r = repo.list_all(); r.is_ok())
+        for (const auto& w : r.value())
+            existing_names.insert(w.name);
+
+    const QVector<QPair<QString, QStringList>> presets = {
+        {QStringLiteral("Markets"), equity::MARKETS_WATCHLIST},
+        {QStringLiteral("Leaders"), equity::DEFAULT_WATCHLIST},
+        {QStringLiteral("Crypto"), equity::CRYPTO_WATCHLIST},
+    };
+    for (const auto& preset : presets) {
+        if (existing_names.contains(preset.first))
+            continue;
+        auto cr = repo.create(preset.first);
+        if (cr.is_ok())
+            for (const auto& s : preset.second)
+                repo.add_stock(cr.value().id, s, {}, {});
+    }
+    settings.set("watchlists.curated_v1", QStringLiteral("1"), QStringLiteral("watchlist"));
+    LOG_INFO(WL_TAG, "Seeded curated watchlists (Markets / Leaders / Crypto)");
 }
+}  // namespace
 
 void EquityTradingScreen::load_watchlists() {
+    ensure_curated_watchlists();  // one-time seed of Markets / Leaders / Crypto presets
     auto& repo = openmarketterminal::WatchlistRepository::instance();
     auto r = repo.list_all();
     QVector<openmarketterminal::Watchlist> lists = r.is_ok() ? r.value() : QVector<openmarketterminal::Watchlist>{};

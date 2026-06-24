@@ -17,14 +17,41 @@ enum class BottomTab { Positions, Holdings, Orders, Funds, Stats };
 
 enum class TradingMode { Paper, Live };
 
-// ── Default Watchlist — US + global large caps ─────────────────────────────
-// US-listed tickers (incl. European/Asian ADRs) so they resolve cleanly via
-// Yahoo without exchange suffixes. The app targets US & European markets.
+// ── "Leaders" watchlist — liquid US single names ───────────────────────────
+// Highly-liquid US-listed tickers that quote cleanly on Alpaca's free IEX feed.
+// Thin ADRs (BABA/SAP/NVO/SHEL/…) were dropped — they quote poorly on IEX — in
+// favour of the most-traded mega-caps and high-volume movers.
 inline const QStringList DEFAULT_WATCHLIST = {
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "JPM",  "V",    "JNJ",
-    "WMT",  "XOM",  "UNH",  "MA",    "HD",   "PG",   "COST", "BAC",  "KO",   "PEP",
-    // European & Asian large caps (US-listed ADRs)
-    "ASML", "SAP",  "NVO",  "SHEL",  "AZN",  "TM",   "SONY", "TSM",  "BABA", "UL",
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD",  "AVGO", "NFLX",
+    "CRM",  "ORCL", "JPM",  "V",     "MA",   "BAC",  "WMT",  "COST", "HD",   "UNH",
+    "LLY",  "XOM",  "CVX",  "KO",    "PG",   "DIS",  "UBER", "PLTR", "COIN", "MSTR",
+};
+
+// ── "Markets" watchlist — cross-asset ETF overview ─────────────────────────
+// A markets dashboard rather than single names: index / sector / asset-class
+// ETFs Alpaca trades commission-free, plus spot-crypto ETFs (IBIT/ETHA) that
+// give BTC/ETH exposure through the equity feed — these quote TODAY, before the
+// native crypto data path is wired.
+inline const QStringList MARKETS_WATCHLIST = {
+    // Index
+    "SPY", "QQQ", "DIA", "IWM",
+    // Sectors (SPDR)
+    "XLK", "XLF", "XLE", "XLV", "XLY", "XLI",
+    // Asset classes
+    "TLT", "GLD", "SLV", "USO", "UUP",
+    // Volatility (the ^VIX index itself is not quotable via Alpaca's stock data)
+    "VIXY",
+    // Spot-crypto ETFs (trade as US equities)
+    "IBIT", "ETHA",
+};
+
+// ── "Crypto" watchlist — Alpaca native pairs ───────────────────────────────
+// Alpaca US crypto uses BASE/QUOTE symbols (slash-separated). These populate
+// once the /v1beta3/crypto/us data path is wired; until then the rows are
+// seeded and ready. Liquid core of Alpaca's supported pairs.
+inline const QStringList CRYPTO_WATCHLIST = {
+    "BTC/USD",  "ETH/USD",  "SOL/USD", "LTC/USD",  "BCH/USD", "DOGE/USD",
+    "AVAX/USD", "LINK/USD", "UNI/USD", "AAVE/USD", "DOT/USD", "SHIB/USD",
 };
 
 inline const QStringList US_WATCHLIST = {

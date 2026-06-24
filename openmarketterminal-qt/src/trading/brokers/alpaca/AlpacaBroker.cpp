@@ -305,67 +305,125 @@ ApiResponse<BrokerFunds> AlpacaBroker::get_funds(const BrokerCredentials& creds)
     return {true, funds, "", ts};
 }
 
-// Quotes — GET https://data.alpaca.markets/v2/stocks/snapshots?symbols=AAPL,MSFT&feed=iex
-// Snapshots give LTP (latestTrade.p), bid/ask, OHLCV, prev close for change% — all in one call.
+// Crypto symbols use a BASE/QUOTE slash format (e.g. BTC/USD) and must be
+// fetched from Alpaca's crypto data API, not the stocks snapshot endpoint.
+static bool is_crypto_symbol(const QString& s) { return s.contains(QLatin1Char('/')); }
+
+// Parse the snapshot inner object (shared shape between stocks and crypto:
+// latestTrade.p, latestQuote.bp/ap/bs/as, dailyBar OHLCV, prevDailyBar.c).
+static BrokerQuote parse_snapshot(const QString& sym, const QJsonObject& s, int64_t ts) {
+    const auto daily = s.value("dailyBar").toObject();
+    const auto prev = s.value("prevDailyBar").toObject();
+    const auto latest_trade = s.value("latestTrade").toObject();
+    const auto latest_quote = s.value("latestQuote").toObject();
+
+    BrokerQuote q;
+    q.symbol = sym;
+    q.ltp = latest_trade.value("p").toDouble();
+    q.bid = latest_quote.value("bp").toDouble();
+    q.ask = latest_quote.value("ap").toDouble();
+    q.bid_size = latest_quote.value("bs").toDouble();
+    q.ask_size = latest_quote.value("as").toDouble();
+    q.open = daily.value("o").toDouble();
+    q.high = daily.value("h").toDouble();
+    q.low = daily.value("l").toDouble();
+    q.close = daily.value("c").toDouble();
+    q.volume = daily.value("v").toDouble();
+    // If LTP is missing (pre-market / illiquid), use mid of bid/ask.
+    if (q.ltp <= 0 && q.bid > 0 && q.ask > 0)
+        q.ltp = (q.bid + q.ask) / 2.0;
+    const double prev_close = prev.value("c").toDouble();
+    if (prev_close > 0 && q.ltp > 0) {
+        q.change = q.ltp - prev_close;
+        q.change_pct = (q.change / prev_close) * 100.0;
+    }
+    q.timestamp = ts;
+    return q;
+}
+
+// Crypto snapshots — GET /v1beta3/crypto/us/snapshots?symbols=BTC%2FUSD,ETH%2FUSD
+// Same inner shape as stock snapshots but nested under a top-level "snapshots"
+// object, 24/7, with no IEX/SIP feed parameter. The '/' in each pair is
+// percent-encoded in the query.
+static QVector<BrokerQuote> fetch_crypto_snapshots(const QString& base_data_url,
+                                                   const BrokerCredentials& creds,
+                                                   const QVector<QString>& symbols, int64_t ts) {
+    QVector<BrokerQuote> quotes;
+    if (symbols.isEmpty())
+        return quotes;
+    const QMap<QString, QString> headers = {{"APCA-API-KEY-ID", creds.api_key},
+                                            {"APCA-API-SECRET-KEY", creds.api_secret},
+                                            {"Accept", "application/json"}};
+    QStringList enc;
+    for (const auto& s : symbols)
+        enc.append(QString(s).replace(QLatin1Char('/'), QStringLiteral("%2F")));
+    const QString url = base_data_url + "/v1beta3/crypto/us/snapshots?symbols=" + enc.join(QLatin1Char(','));
+    auto resp = BrokerHttp::instance().get(url, headers);
+    if (!resp.success) {
+        LOG_ERROR("AlpacaBroker", QString("get_quotes (crypto) failed: %1 | body: %2").arg(resp.error, resp.raw_body));
+        return quotes;
+    }
+    QJsonParseError err;
+    const auto doc = QJsonDocument::fromJson(resp.raw_body.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError) {
+        LOG_ERROR("AlpacaBroker", "get_quotes (crypto) JSON parse error: " + err.errorString());
+        return quotes;
+    }
+    const auto snaps = doc.object().value("snapshots").toObject();
+    for (const auto& sym : symbols) {
+        const auto s = snaps.value(sym).toObject();
+        if (s.isEmpty())
+            continue;
+        quotes.append(parse_snapshot(sym, s, ts));
+    }
+    return quotes;
+}
+
+// Quotes — equities via /v2/stocks/snapshots (IEX feed), crypto (BASE/USD pairs)
+// via /v1beta3/crypto/us/snapshots. A mixed request is split and merged.
+// Snapshots give LTP (latestTrade.p), bid/ask, OHLCV, prev close for change%.
 ApiResponse<QVector<BrokerQuote>> AlpacaBroker::get_quotes(const BrokerCredentials& creds,
                                                            const QVector<QString>& symbols) {
     if (symbols.isEmpty())
         return {false, std::nullopt, "No symbols", now_ts()};
 
-    QMap<QString, QString> data_headers = {
-        {"APCA-API-KEY-ID", creds.api_key}, {"APCA-API-SECRET-KEY", creds.api_secret}, {"Accept", "application/json"}};
-    QStringList sym_list;
+    const int64_t ts = now_ts();
+
+    // Route crypto (BASE/QUOTE) and equity symbols to their respective APIs.
+    QVector<QString> equity_syms, crypto_syms;
     for (const auto& s : symbols)
-        sym_list.append(s);
+        (is_crypto_symbol(s) ? crypto_syms : equity_syms).append(s);
 
-    const QString url = data_url() + "/v2/stocks/snapshots?symbols=" + sym_list.join(",") + "&feed=iex";
-    auto resp = BrokerHttp::instance().get(url, data_headers);
-    int64_t ts = now_ts();
-    if (!resp.success) {
-        LOG_ERROR("AlpacaBroker", QString("get_quotes failed: %1 | body: %2").arg(resp.error, resp.raw_body));
-        return {false, std::nullopt, resp.error, ts};
-    }
+    QVector<BrokerQuote> quotes = fetch_crypto_snapshots(data_url(), creds, crypto_syms, ts);
 
-    QJsonParseError err;
-    auto doc = QJsonDocument::fromJson(resp.raw_body.toUtf8(), &err);
-    if (err.error != QJsonParseError::NoError)
-        return {false, std::nullopt, "JSON parse error: " + err.errorString(), ts};
-
-    auto snap_obj = doc.object();
-    QVector<BrokerQuote> quotes;
-    for (const auto& sym : symbols) {
-        auto s = snap_obj.value(sym).toObject();
-        if (s.isEmpty())
-            continue;
-        auto daily = s.value("dailyBar").toObject();
-        auto prev = s.value("prevDailyBar").toObject();
-        auto latest_trade = s.value("latestTrade").toObject();
-        auto latest_quote = s.value("latestQuote").toObject();
-
-        BrokerQuote q;
-        q.symbol = sym;
-        q.ltp = latest_trade.value("p").toDouble();
-        q.bid = latest_quote.value("bp").toDouble();
-        q.ask = latest_quote.value("ap").toDouble();
-        q.bid_size = latest_quote.value("bs").toDouble();
-        q.ask_size = latest_quote.value("as").toDouble();
-        q.open = daily.value("o").toDouble();
-        q.high = daily.value("h").toDouble();
-        q.low = daily.value("l").toDouble();
-        q.close = daily.value("c").toDouble();
-        q.volume = daily.value("v").toDouble();
-
-        // If LTP is missing (pre-market), use mid of bid/ask
-        if (q.ltp <= 0 && q.bid > 0 && q.ask > 0)
-            q.ltp = (q.bid + q.ask) / 2.0;
-
-        double prev_close = prev.value("c").toDouble();
-        if (prev_close > 0 && q.ltp > 0) {
-            q.change = q.ltp - prev_close;
-            q.change_pct = (q.change / prev_close) * 100.0;
+    if (!equity_syms.isEmpty()) {
+        const QMap<QString, QString> data_headers = {{"APCA-API-KEY-ID", creds.api_key},
+                                                     {"APCA-API-SECRET-KEY", creds.api_secret},
+                                                     {"Accept", "application/json"}};
+        const QString url = data_url() + "/v2/stocks/snapshots?symbols=" +
+                            QStringList(equity_syms.cbegin(), equity_syms.cend()).join(",") + "&feed=iex";
+        auto resp = BrokerHttp::instance().get(url, data_headers);
+        if (!resp.success) {
+            LOG_ERROR("AlpacaBroker", QString("get_quotes failed: %1 | body: %2").arg(resp.error, resp.raw_body));
+            // Don't discard crypto quotes we already fetched just because the equity leg failed.
+            if (!quotes.isEmpty())
+                return {true, quotes, "", ts};
+            return {false, std::nullopt, resp.error, ts};
         }
-        q.timestamp = ts;
-        quotes.append(q);
+        QJsonParseError err;
+        const auto doc = QJsonDocument::fromJson(resp.raw_body.toUtf8(), &err);
+        if (err.error != QJsonParseError::NoError) {
+            if (!quotes.isEmpty())
+                return {true, quotes, "", ts};
+            return {false, std::nullopt, "JSON parse error: " + err.errorString(), ts};
+        }
+        const auto snap_obj = doc.object();
+        for (const auto& sym : equity_syms) {
+            const auto s = snap_obj.value(sym).toObject();
+            if (s.isEmpty())
+                continue;
+            quotes.append(parse_snapshot(sym, s, ts));
+        }
     }
 
     return {true, quotes, "", ts};
