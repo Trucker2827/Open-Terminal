@@ -165,6 +165,14 @@ void HyperliquidVenue::place_order(const OrderRequest& req,
     // have stored it under `alpha_arena/agent_key/<comp_id>`; the OrderRouter
     // resolves the handle and passes it here. Until the wallet wiring lands
     // on this codepath we surface a clear error.
+    //
+    // SAFETY: do NOT remove this gate until HyperliquidSigner::ecdsa_sign()
+    // derives the real ECDSA recovery id — it is hardcoded to v=27 today
+    // ("TODO(hyperliquid): derive real recovery id"), which is correct only
+    // ~half the time, so HL's ecrecover would resolve the WRONG signer. The
+    // tst_hyperliquid_gate test pins this rejection in place; un-gating without
+    // fixing the signer (and covering it with HL's known-answer vector) will
+    // fail CI.
     Q_UNUSED(req);
     OrderAck a;
     a.status = QStringLiteral("rejected");

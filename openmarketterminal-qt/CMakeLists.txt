@@ -282,6 +282,25 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 endif()
 
+# ── Sanitizers (opt-in) ──────────────────────────────────────────────────────
+# AddressSanitizer + UndefinedBehaviorSanitizer for a dedicated test/CI build.
+# OFF by default (instrumented binaries are ~2x slower and incompatible with LTO),
+# turned on with -DOPENMARKETTERMINAL_ENABLE_SANITIZERS=ON. CI runs the test suite
+# under this in a separate job; halt-on-error is controlled via ASAN_OPTIONS /
+# UBSAN_OPTIONS env at run time so the same binary stays usable for local triage.
+option(OPENMARKETTERMINAL_ENABLE_SANITIZERS
+       "Build with AddressSanitizer + UndefinedBehaviorSanitizer (GCC/Clang)" OFF)
+if(OPENMARKETTERMINAL_ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        set(_omt_sanitizer_flags -fsanitize=address,undefined -fno-omit-frame-pointer)
+        add_compile_options(${_omt_sanitizer_flags})
+        add_link_options(${_omt_sanitizer_flags})
+        message(STATUS "Sanitizers ENABLED: AddressSanitizer + UndefinedBehaviorSanitizer")
+    else()
+        message(WARNING "OPENMARKETTERMINAL_ENABLE_SANITIZERS ignored: only GCC/Clang are supported")
+    endif()
+endif()
+
 # Suppress Windows min/max macros that break std::min/std::max in unity batches
 add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
 

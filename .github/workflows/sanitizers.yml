@@ -1,0 +1,99 @@
+name: Sanitizers (ASan + UBSan)
+
+# Builds the test suite with AddressSanitizer + UndefinedBehaviorSanitizer and
+# runs the deterministic ctest unit suites under them. Catches memory errors
+# (use-after-free, heap overflow) and undefined behaviour that the plain
+# regression build cannot see.
+#
+# NOT run on every PR — instrumented binaries are ~2x slower at runtime.
+# Sanitizers are incompatible with LTO (disabled here by configuring with the CI
+# env unset), but ccache works fine — the sanitizer flags simply become part of
+# the cache key — so it stays enabled to keep rebuilds warm.
+#
+# Triggers are intentionally scoped to schedule + manual for now: this suite has
+# never run green under UBSan, so the first real run (Linux CI) is expected to
+# surface findings. Triage to green first, then add `push: branches [main]` and
+# promote to a required PR check.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  QT_VERSION: "6.8.3"
+  QT_MODULES: "qtcharts qtwebsockets qtmultimedia qtwebengine qtwebchannel qtpositioning qtserialport"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Strict on memory errors + UB; leak detection off (Qt/QtWebEngine hold many
+  # benign one-time allocations that LeakSanitizer would flag as noise).
+  ASAN_OPTIONS: "abort_on_error=1:detect_leaks=0:strict_string_checks=1"
+  UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
+
+jobs:
+  sanitize:
+    name: Tests under ASan + UBSan (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: sanitizers-linux
+          max-size: 500M
+          update-package-index: true
+
+      - name: Install system dependencies
+        run: |
+          sudo add-apt-repository universe -y
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cmake ninja-build gcc-12 g++-12 \
+            libssl-dev libsecret-1-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-xinerama0 libxcb-xkb1 \
+            pkg-config zip
+          echo "CC=gcc-12"  >> "$GITHUB_ENV"
+          echo "CXX=g++-12" >> "$GITHUB_ENV"
+
+      - name: Install Qt 6.8.3
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          cache-key-prefix: qt-sanitizers-linux
+
+      # Configure with CI unset (same rationale as regression.yml: the tree is
+      # not yet -Werror-clean on Linux, and sanitizers must not run with LTO,
+      # which the CI env force-enables). Sanitizers + tests on.
+      - name: Configure (tests + sanitizers)
+        working-directory: openmarketterminal-qt
+        run: |
+          env -u CI cmake -B build-asan -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DOPENMARKETTERMINAL_BUILD_TESTS=ON \
+            -DOPENMARKETTERMINAL_ENABLE_SANITIZERS=ON
+
+      - name: Build (instrumented)
+        working-directory: openmarketterminal-qt
+        run: cmake --build build-asan --parallel "$(nproc)"
+
+      - name: Unit tests under sanitizers (ctest)
+        working-directory: openmarketterminal-qt
+        run: ctest --test-dir build-asan --output-on-failure
