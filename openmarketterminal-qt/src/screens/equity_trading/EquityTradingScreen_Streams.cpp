@@ -332,9 +332,14 @@ void EquityTradingScreen::fetch_paper_candles(const QString& symbol) {
     else if (tf == QLatin1String("1w"))  { period = "5y";  interval = "1wk"; }
     else                                 { period = "1mo"; interval = "15m"; }
 
+    // Crypto pairs are stored Alpaca-style (BASE/USD); yfinance history wants
+    // BASE-USD. Fetch under the feed symbol but key the result off the original.
+    const QString feed_sym =
+        symbol.contains(QLatin1Char('/')) ? QString(symbol).replace(QLatin1Char('/'), QLatin1Char('-')) : symbol;
+
     QPointer<EquityTradingScreen> self = this;
     services::MarketDataService::instance().fetch_history(
-        symbol, period, interval,
+        feed_sym, period, interval,
         [self, symbol](bool ok, QVector<services::HistoryPoint> pts) {
             if (!self || !ok || !self->focused_is_paper_ || symbol != self->selected_symbol_)
                 return;
