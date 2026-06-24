@@ -187,6 +187,15 @@ target_include_directories(tst_option_pricing PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_option_pricing PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_option_pricing COMMAND tst_option_pricing)
 
+# Alpha-arena RiskEngine (services/alpha_arena/RiskEngine) — the fail-closed
+# trade-safety gate (leverage / risk / liquidation / Monk caps + drift amend)
+# and the per-agent circuit breaker (drawdown / parse-failure / risk-reject).
+# Pure functions, live in openterminal_core.
+add_executable(tst_risk_engine tst_risk_engine.cpp)
+target_include_directories(tst_risk_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_risk_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_risk_engine COMMAND tst_risk_engine)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
