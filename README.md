@@ -24,8 +24,8 @@ Current version: `v0.1.0`
 ## Build
 
 ```bash
-git clone https://github.com/your-org/open-terminal.git
-cd open-terminal/openmarketterminal-qt
+git clone https://github.com/Trucker2827/Open-Terminal.git
+cd Open-Terminal/openmarketterminal-qt
 cmake --preset macos-release
 cmake --build --preset macos-release
 ```
