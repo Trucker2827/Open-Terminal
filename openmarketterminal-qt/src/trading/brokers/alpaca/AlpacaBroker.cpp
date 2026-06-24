@@ -460,6 +460,38 @@ ApiResponse<QVector<BrokerCandle>> AlpacaBroker::get_history(const BrokerCredent
     if (end.isEmpty())
         end = QDateTime::currentDateTimeUtc().toString("yyyy-MM-dd");
 
+    // Crypto (BASE/USD) bars come from the crypto data API — nested under
+    // bars[symbol], '/' percent-encoded, no feed/adjustment params.
+    if (is_crypto_symbol(symbol)) {
+        const QString enc = QString(symbol).replace(QLatin1Char('/'), QStringLiteral("%2F"));
+        const QString curl = data_url() + "/v1beta3/crypto/us/bars?symbols=" + enc + "&timeframe=" + alpaca_tf +
+                             "&start=" + start + "&end=" + end + "&limit=500&sort=asc";
+        auto cresp = BrokerHttp::instance().get(curl, data_headers);
+        const int64_t cts = now_ts();
+        if (!cresp.success) {
+            LOG_ERROR("AlpacaBroker", QString("get_history (crypto) failed: %1 | body: %2").arg(cresp.error, cresp.raw_body));
+            return {false, std::nullopt, cresp.error, cts};
+        }
+        QJsonParseError cerr;
+        const auto cdoc = QJsonDocument::fromJson(cresp.raw_body.toUtf8(), &cerr);
+        if (cerr.error != QJsonParseError::NoError)
+            return {false, std::nullopt, "JSON parse error: " + cerr.errorString(), cts};
+        QVector<BrokerCandle> ccandles;
+        const auto cbars = cdoc.object().value("bars").toObject().value(symbol).toArray();
+        for (const auto& v : cbars) {
+            const auto b = v.toObject();
+            BrokerCandle c;
+            c.timestamp = QDateTime::fromString(b.value("t").toString(), Qt::ISODateWithMs).toSecsSinceEpoch();
+            c.open = b.value("o").toDouble();
+            c.high = b.value("h").toDouble();
+            c.low = b.value("l").toDouble();
+            c.close = b.value("c").toDouble();
+            c.volume = b.value("v").toDouble();
+            ccandles.append(c);
+        }
+        return {true, ccandles, "", cts};
+    }
+
     QString url = data_url() + "/v2/stocks/" + symbol.toUpper() + "/bars" + "?timeframe=" + alpaca_tf +
                   "&start=" + start + "&end=" + end + "&limit=500" + "&adjustment=split" + "&feed=iex" + "&sort=asc";
 
