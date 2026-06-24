@@ -8,6 +8,7 @@
 #include "services/portfolio/PortfolioService.h"
 
 #include "core/logging/Logger.h"
+#include "services/portfolio/PortfolioStats.h"
 #include "python/PythonRunner.h"
 #include "services/sectors/SectorResolver.h"
 #include "storage/repositories/PortfolioRepository.h"
@@ -416,41 +417,21 @@ void PortfolioService::compute_metrics(const portfolio::PortfolioSummary& summar
     const double ann_vol = daily_vol * std::sqrt(252.0);
     metrics.volatility = ann_vol; // already in %
 
-    // ── Sharpe ratio (annualised) ─────────────────────────────────────────────
-    // rf_rate_ = live DGS10 annual decimal (e.g. 0.043); convert to daily %
+    // ── Sharpe & Sortino (annualised) ─────────────────────────────────────────
+    // rf_rate_ = live DGS10 annual decimal (e.g. 0.043); convert to daily %.
+    // Sortino penalises only downside deviation below the per-period risk-free
+    // rate. Both via stats:: helpers so the math is unit-tested independently.
     const double rf_daily = rf_rate_ / 252.0 * 100.0;
-    if (daily_vol > 1e-6)
-        metrics.sharpe = ((mean - rf_daily) / daily_vol) * std::sqrt(252.0);
-
-    // ── Sortino ratio (annualised) ────────────────────────────────────────────
-    // Like Sharpe but penalises only downside deviation below the minimum
-    // acceptable return (MAR = daily risk-free rate). Returns at or above MAR
-    // contribute zero to the downside variance.
-    {
-        double downside_sq = 0.0;
-        for (const double r : port_returns) {
-            const double shortfall = r - rf_daily;
-            if (shortfall < 0.0)
-                downside_sq += shortfall * shortfall;
-        }
-        const double downside_dev = std::sqrt(downside_sq / n); // population over all periods
-        if (downside_dev > 1e-6)
-            metrics.sortino = ((mean - rf_daily) / downside_dev) * std::sqrt(252.0);
-    }
+    metrics.sharpe = portfolio::stats::sharpe_annualized(port_returns, rf_daily, 252.0);
+    metrics.sortino = portfolio::stats::sortino_annualized(port_returns, rf_daily, 252.0);
 
     // ── Max drawdown ──────────────────────────────────────────────────────────
-    double peak = snaps.first().total_value;
-    double max_dd = 0.0;
-    for (const auto& s : snaps) {
-        if (s.total_value > peak)
-            peak = s.total_value;
-        if (peak > 1e-6) {
-            const double dd = (s.total_value - peak) / peak * 100.0;
-            if (dd < max_dd)
-                max_dd = dd;
-        }
-    }
-    metrics.max_drawdown = max_dd; // negative %
+    QVector<double> snap_values;
+    snap_values.reserve(snaps.size());
+    for (const auto& s : snaps)
+        snap_values.append(s.total_value);
+    const double max_dd = portfolio::stats::max_drawdown_pct(snap_values); // negative %
+    metrics.max_drawdown = max_dd;
 
     // ── Beta vs SPY (OLS regression on aligned date windows) ─────────────────
     // Build SPY daily return series from cached closes, aligned to snapshot dates.

@@ -205,6 +205,14 @@ target_include_directories(tst_backtest_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_backtest_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_backtest_engine COMMAND tst_backtest_engine)
 
+# Portfolio risk stats (services/portfolio/PortfolioStats) — Sharpe / Sortino /
+# max-drawdown extracted from PortfolioService::compute_metrics. Header-only
+# pure math, so the test needs only Qt6::Core (no core lib link).
+add_executable(tst_portfolio_stats tst_portfolio_stats.cpp)
+target_include_directories(tst_portfolio_stats PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_stats PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_portfolio_stats COMMAND tst_portfolio_stats)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
