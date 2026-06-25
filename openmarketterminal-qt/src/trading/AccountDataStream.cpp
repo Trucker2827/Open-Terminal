@@ -11,6 +11,9 @@
 
 #include <QDate>
 #include <QDateTime>
+#include "trading/brokers/BrokerHttp.h"
+
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -555,6 +558,51 @@ void AccountDataStream::fetch_orderbook(const QString& symbol) {
     const QString acct_id = account_id_;
     const QString bid = broker_id_;
     QPointer<AccountDataStream> self = this;
+
+    // Crypto (BASE/USD): the stock NBBO endpoint has no crypto book (we'd fall
+    // back to a synthetic 1-level book), so pull the real L2 order book from
+    // Alpaca's public crypto API (deep, keyless) and emit the top 10 levels.
+    if (symbol.contains(QLatin1Char('/'))) {
+        const QString enc = QString(symbol).replace(QLatin1Char('/'), QStringLiteral("%2F"));
+        (void)QtConcurrent::run([self, acct_id, symbol, enc]() {
+            const QString url =
+                QStringLiteral("https://data.alpaca.markets/v1beta3/crypto/us/latest/orderbooks?symbols=") + enc;
+            auto resp = BrokerHttp::instance().get(url, {{"Accept", "application/json"}});
+            if (!resp.success)
+                return;
+            QJsonParseError perr;
+            const auto doc = QJsonDocument::fromJson(resp.raw_body.toUtf8(), &perr);
+            if (perr.error != QJsonParseError::NoError)
+                return;
+            const auto ob = doc.object().value("orderbooks").toObject().value(symbol).toObject();
+            QVector<QPair<double, double>> bids, asks;  // already best-first from the API
+            for (const auto& v : ob.value("b").toArray()) {
+                if (bids.size() >= 10)
+                    break;
+                const auto o = v.toObject();
+                bids.append({o.value("p").toDouble(), o.value("s").toDouble()});
+            }
+            for (const auto& v : ob.value("a").toArray()) {
+                if (asks.size() >= 10)
+                    break;
+                const auto o = v.toObject();
+                asks.append({o.value("p").toDouble(), o.value("s").toDouble()});
+            }
+            if (bids.isEmpty() || asks.isEmpty())
+                return;
+            const double spread = asks.first().first - bids.first().first;
+            const double spread_pct = bids.first().first > 0 ? (spread / bids.first().first) * 100.0 : 0.0;
+            QMetaObject::invokeMethod(
+                self,
+                [self, acct_id, bids, asks, spread, spread_pct]() {
+                    if (!self)
+                        return;
+                    emit self->orderbook_fetched(acct_id, bids, asks, spread, spread_pct, {}, {});
+                },
+                Qt::QueuedConnection);
+        });
+        return;
+    }
 
     auto creds = AccountManager::instance().load_credentials(acct_id);
     if (creds.api_key.isEmpty()) {
