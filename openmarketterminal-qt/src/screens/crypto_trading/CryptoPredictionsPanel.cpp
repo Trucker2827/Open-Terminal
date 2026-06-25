@@ -14,6 +14,7 @@
 
 namespace openmarketterminal::screens::crypto {
 
+using openmarketterminal::services::prediction::crypto_event_priority;
 using openmarketterminal::services::prediction::PredictionEvent;
 using openmarketterminal::services::prediction::PredictionExchangeRegistry;
 
@@ -130,8 +131,13 @@ void CryptoPredictionsPanel::on_events_ready(const QVector<PredictionEvent>& eve
         if (!e.closed)
             crypto.append(e);
 
-    std::sort(crypto.begin(), crypto.end(),
-              [](const PredictionEvent& a, const PredictionEvent& b) { return a.volume > b.volume; });
+    // Majors (BTC/ETH/SOL/…) first, then by volume — so it isn't just whatever
+    // token's price ladder Kalshi returns at the top.
+    std::sort(crypto.begin(), crypto.end(), [](const PredictionEvent& a, const PredictionEvent& b) {
+        const int pa = crypto_event_priority(a.title);
+        const int pb = crypto_event_priority(b.title);
+        return pa != pb ? pa < pb : a.volume > b.volume;
+    });
 
     list_->clear();
     if (crypto.isEmpty()) {

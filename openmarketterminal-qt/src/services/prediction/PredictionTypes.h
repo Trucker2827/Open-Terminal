@@ -192,6 +192,27 @@ struct ExchangeCapabilities {
     int max_requests_per_sec = 10;
 };
 
+/// Priority rank for ordering crypto prediction events so the majors surface
+/// first instead of whatever Kalshi happens to return at the top (often a
+/// single token's price ladder). Lower = higher priority; non-majors get a
+/// large sentinel so callers can stable-sort by (priority, then volume desc).
+inline int crypto_event_priority(const QString& title) {
+    const QString t = title.toLower();
+    // Ordered majors; first match wins. Each row's aliases share a rank.
+    static const QVector<QStringList> kMajors = {
+        {QStringLiteral("bitcoin"), QStringLiteral("btc")},
+        {QStringLiteral("ethereum"), QStringLiteral("eth")},
+        {QStringLiteral("solana"), QStringLiteral("sol")},
+        {QStringLiteral("xrp"), QStringLiteral("ripple")},
+        {QStringLiteral("dogecoin"), QStringLiteral("doge")},
+    };
+    for (int i = 0; i < kMajors.size(); ++i)
+        for (const auto& kw : kMajors[i])
+            if (t.contains(kw))
+                return i;
+    return 1000;
+}
+
 } // namespace openmarketterminal::services::prediction
 
 Q_DECLARE_METATYPE(openmarketterminal::services::prediction::MarketKey)
