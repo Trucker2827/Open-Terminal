@@ -25,6 +25,7 @@ TabBar::TabBar(QWidget* parent) : QWidget(parent) {
         {"dashboard", "DASHBOARD"},
         {"markets", "MARKETS", ":/openmarket/icons/chart.png"},
         {"crypto_trading", "CRYPTO"},
+        {"polymarket", "PREDICTIONS"},
         {"equity_trading", "EQUITY"},
         {"portfolio", "PORTFOLIO", ":/openmarket/icons/portfolio.png"},
         {"news", "NEWS", ":/openmarket/icons/news.png"},
