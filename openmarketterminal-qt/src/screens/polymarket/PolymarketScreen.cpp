@@ -22,6 +22,7 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 namespace openmarketterminal::screens {
@@ -741,9 +742,22 @@ void PolymarketScreen::on_markets_ready(const QVector<pred::PredictionMarket>& m
 void PolymarketScreen::on_events_ready(const QVector<pred::PredictionEvent>& events) {
     command_bar_->set_loading(false);
     browse_panel_->set_loading(false);
-    browse_panel_->set_events(events);
-    command_bar_->set_market_count(events.size());
-    status_bar_->set_count(events.size(), tr("events"));
+
+    QVector<pred::PredictionEvent> ordered = events;
+    // For the crypto category, surface majors (BTC/ETH/SOL/…) first rather than
+    // raw Kalshi order, which often leads with one token's price ladder.
+    if (active_category_.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0) {
+        std::stable_sort(ordered.begin(), ordered.end(),
+                         [](const pred::PredictionEvent& a, const pred::PredictionEvent& b) {
+                             const int pa = pred::crypto_event_priority(a.title);
+                             const int pb = pred::crypto_event_priority(b.title);
+                             return pa != pb ? pa < pb : a.volume > b.volume;
+                         });
+    }
+
+    browse_panel_->set_events(ordered);
+    command_bar_->set_market_count(ordered.size());
+    status_bar_->set_count(ordered.size(), tr("events"));
 }
 
 void PolymarketScreen::on_search_results_ready(const QVector<pred::PredictionMarket>& markets,
