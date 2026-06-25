@@ -18,6 +18,7 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoPredictionsPanel.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -285,8 +286,19 @@ void CryptoTradingScreen::setup_ui() {
     order_entry_ = new CryptoOrderEntry;
     right_splitter->addWidget(order_entry_);
 
-    right_splitter->setStretchFactor(0, 3); // OB 55%
-    right_splitter->setStretchFactor(1, 2); // OE 45%
+    // Coinbase prediction markets (Kalshi-powered) — only relevant when the
+    // source is Coinbase, so it's hidden for other exchanges. Visibility is
+    // toggled in on_exchange_changed(); seed it from the initial source here.
+    predictions_panel_ = new crypto::CryptoPredictionsPanel;
+    right_splitter->addWidget(predictions_panel_);
+    const bool coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+    predictions_panel_->setVisible(coinbase);
+    if (coinbase)
+        predictions_panel_->refresh();
+
+    right_splitter->setStretchFactor(0, 3); // OB 45%
+    right_splitter->setStretchFactor(1, 2); // OE 30%
+    right_splitter->setStretchFactor(2, 2); // Predictions 25%
 
     main_splitter->addWidget(right_splitter);
 

@@ -28,6 +28,7 @@ class CryptoChart;
 class CryptoOrderEntry;
 class CryptoOrderBook;
 class CryptoBottomPanel;
+class CryptoPredictionsPanel;
 } // namespace openmarketterminal::screens::crypto
 
 namespace openmarketterminal::screens {
@@ -131,6 +132,7 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     crypto::CryptoOrderEntry* order_entry_ = nullptr;
     crypto::CryptoOrderBook* orderbook_ = nullptr;
     crypto::CryptoBottomPanel* bottom_panel_ = nullptr;
+    crypto::CryptoPredictionsPanel* predictions_panel_ = nullptr;  // shown when source == Coinbase
 
     // ── Timers ──
     QTimer* ticker_timer_ = nullptr;

@@ -1550,6 +1550,7 @@ set(SCREEN_SOURCES
     src/screens/crypto_trading/CryptoCredentials.cpp
     src/screens/crypto_trading/CryptoTimeSales.cpp
     src/screens/crypto_trading/CryptoDepthChart.cpp
+    src/screens/crypto_trading/CryptoPredictionsPanel.cpp
     # EquityTradingScreen split; see header comment.
     src/screens/equity_trading/EquityTradingScreen.cpp
     src/screens/equity_trading/EquityTradingScreen_Streams.cpp

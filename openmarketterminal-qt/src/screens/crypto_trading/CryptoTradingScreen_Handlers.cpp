@@ -15,6 +15,7 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoPredictionsPanel.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -54,6 +55,15 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     LOG_INFO(TAG, QString("Exchange changed: %1 → %2").arg(exchange_id_, exchange));
     exchange_id_ = exchange;
     exchange_btn_->setText(exchange.toUpper());
+
+    // Coinbase prediction markets (Kalshi-powered) are only shown when Coinbase
+    // is the active source; refresh the list when revealing it.
+    if (predictions_panel_) {
+        const bool coinbase = exchange.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+        predictions_panel_->setVisible(coinbase);
+        if (coinbase)
+            predictions_panel_->refresh();
+    }
     if (ws_transport_) {
         ws_transport_->setText(tr("DAEMON"));
         ws_transport_->setToolTip(tr("ws_stream.py via ccxt.pro — Python subprocess"));
