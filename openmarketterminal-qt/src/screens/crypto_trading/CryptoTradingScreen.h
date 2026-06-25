@@ -28,6 +28,7 @@ class CryptoChart;
 class CryptoOrderEntry;
 class CryptoOrderBook;
 class CryptoBottomPanel;
+class CryptoPredictionsPanel;
 } // namespace openmarketterminal::screens::crypto
 
 namespace openmarketterminal::screens {
@@ -50,6 +51,11 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     SymbolGroup group() const override { return link_group_; }
     void on_group_symbol_changed(const SymbolRef& ref) override;
     SymbolRef current_symbol() const override;
+
+  signals:
+    /// User clicked a crypto prediction market — host should open the
+    /// Predictions ("polymarket") screen so they can place the Kalshi bet.
+    void open_predictions_requested();
 
   protected:
     void showEvent(QShowEvent* event) override;
@@ -131,6 +137,7 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     crypto::CryptoOrderEntry* order_entry_ = nullptr;
     crypto::CryptoOrderBook* orderbook_ = nullptr;
     crypto::CryptoBottomPanel* bottom_panel_ = nullptr;
+    crypto::CryptoPredictionsPanel* predictions_panel_ = nullptr;  // shown when source == Coinbase
 
     // ── Timers ──
     QTimer* ticker_timer_ = nullptr;

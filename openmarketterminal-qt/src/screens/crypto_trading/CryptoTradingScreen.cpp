@@ -18,6 +18,7 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoPredictionsPanel.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -274,6 +275,21 @@ void CryptoTradingScreen::setup_ui() {
 
     main_splitter->addWidget(center_splitter);
 
+    // PREDICTIONS: its own full-height column between the chart and the order
+    // panels — symbols | chart | predictions | order book/entry. Coinbase's
+    // prediction markets (Kalshi-powered) only apply when Coinbase is the
+    // source, so the column is shown/hidden in on_exchange_changed().
+    predictions_panel_ = new crypto::CryptoPredictionsPanel;
+    main_splitter->addWidget(predictions_panel_);
+    connect(predictions_panel_, &crypto::CryptoPredictionsPanel::bet_requested, this,
+            &CryptoTradingScreen::open_predictions_requested);
+    {
+        const bool coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+        predictions_panel_->setVisible(coinbase);
+        if (coinbase)
+            predictions_panel_->refresh();
+    }
+
     // RIGHT: Order Book (top) + Order Entry (bottom)
     auto* right_splitter = new QSplitter(Qt::Vertical);
     right_splitter->setObjectName("cryptoRightSplitter");
@@ -290,11 +306,12 @@ void CryptoTradingScreen::setup_ui() {
 
     main_splitter->addWidget(right_splitter);
 
-    // Splitter proportions: watchlist 220, center stretch, right 290
-    main_splitter->setSizes({220, 600, 290});
+    // Splitter proportions: watchlist 220 | chart stretch | predictions 260 | right 290
+    main_splitter->setSizes({220, 520, 260, 290});
     main_splitter->setStretchFactor(0, 0);
-    main_splitter->setStretchFactor(1, 1);
+    main_splitter->setStretchFactor(1, 1);  // chart column absorbs extra width
     main_splitter->setStretchFactor(2, 0);
+    main_splitter->setStretchFactor(3, 0);
 
     main_layout->addWidget(main_splitter, 1);
 
