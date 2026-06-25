@@ -3,8 +3,11 @@
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 
+#include <QButtonGroup>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QPushButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -24,21 +27,68 @@ QString fmt_volume(double v) {
         return QStringLiteral("$%1K").arg(v / 1e3, 0, 'f', 1);
     return QStringLiteral("$%1").arg(v, 0, 'f', 0);
 }
+
+QPushButton* make_pill(const QString& text) {
+    auto* b = new QPushButton(text);
+    b->setCheckable(true);
+    b->setCursor(Qt::PointingHandCursor);
+    b->setFocusPolicy(Qt::NoFocus);
+    b->setProperty("class", "predPill");
+    return b;
+}
 }  // namespace
 
 CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent) {
     setObjectName("cryptoPredictionsPanel");
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 6, 8, 8);
-    layout->setSpacing(2);
+    layout->setSpacing(3);
 
+    // ── Header: title + source toggle (Coinbase / Kalshi) ──
+    auto* head = new QHBoxLayout;
+    head->setSpacing(4);
     title_ = new QLabel(this);
     title_->setObjectName("cryptoPredictionsTitle");
-    layout->addWidget(title_);
+    head->addWidget(title_, 1);
+    src_coinbase_ = make_pill(tr("Coinbase"));
+    src_kalshi_ = make_pill(tr("Kalshi"));
+    head->addWidget(src_coinbase_);
+    head->addWidget(src_kalshi_);
+    layout->addLayout(head);
+
+    auto* src_group = new QButtonGroup(this);
+    src_group->setExclusive(true);
+    src_group->addButton(src_coinbase_);
+    src_group->addButton(src_kalshi_);
+    src_coinbase_->setChecked(true);
+    connect(src_coinbase_, &QPushButton::clicked, this, [this]() { set_source(QStringLiteral("Coinbase")); });
+    connect(src_kalshi_, &QPushButton::clicked, this, [this]() { set_source(QStringLiteral("Kalshi")); });
 
     subtitle_ = new QLabel(this);
     subtitle_->setObjectName("cryptoPredictionsSubtitle");
     layout->addWidget(subtitle_);
+
+    // ── Cadence filter: 15m / 1h / Daily ──
+    auto* cad = new QHBoxLayout;
+    cad->setSpacing(4);
+    cad_15m_ = make_pill(tr("15m"));
+    cad_1h_ = make_pill(tr("1h"));
+    cad_daily_ = make_pill(tr("Daily"));
+    cad->addWidget(cad_15m_);
+    cad->addWidget(cad_1h_);
+    cad->addWidget(cad_daily_);
+    cad->addStretch(1);
+    layout->addLayout(cad);
+
+    auto* cad_group = new QButtonGroup(this);
+    cad_group->setExclusive(true);
+    cad_group->addButton(cad_15m_);
+    cad_group->addButton(cad_1h_);
+    cad_group->addButton(cad_daily_);
+    cad_daily_->setChecked(true);
+    connect(cad_15m_, &QPushButton::clicked, this, [this]() { set_cadence(QStringLiteral("fifteen_min")); });
+    connect(cad_1h_, &QPushButton::clicked, this, [this]() { set_cadence(QStringLiteral("hourly")); });
+    connect(cad_daily_, &QPushButton::clicked, this, [this]() { set_cadence(QString()); });
 
     status_ = new QLabel(this);
     status_->setObjectName("cryptoPredictionsStatus");
@@ -52,7 +102,8 @@ CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent
     list_->setFocusPolicy(Qt::NoFocus);
     layout->addWidget(list_, 1);
 
-    // Coinbase predictions = Kalshi markets; bind to the Kalshi adapter.
+    // Both Coinbase and Kalshi sources resolve to the same Kalshi adapter — the
+    // toggle only changes the label, since Coinbase predictions ARE Kalshi.
     adapter_ = PredictionExchangeRegistry::instance().adapter(QStringLiteral("kalshi"));
     if (adapter_) {
         connect(adapter_, &services::prediction::PredictionExchangeAdapter::events_ready, this,
@@ -61,12 +112,27 @@ CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent
                 &CryptoPredictionsPanel::on_error);
     }
 
-    retranslate();
+    update_header();
 }
 
-void CryptoPredictionsPanel::retranslate() {
-    title_->setText(tr("PREDICTIONS · COINBASE"));
-    subtitle_->setText(tr("Crypto event contracts — powered by Kalshi"));
+void CryptoPredictionsPanel::update_header() {
+    title_->setText(tr("PREDICTIONS · %1").arg(source_.toUpper()));
+    subtitle_->setText(source_ == QStringLiteral("Coinbase") ? tr("Crypto event contracts — powered by Kalshi")
+                                                             : tr("Crypto event contracts — Kalshi"));
+}
+
+void CryptoPredictionsPanel::set_source(const QString& source) {
+    if (source == source_)
+        return;
+    source_ = source;
+    update_header();  // same data, just relabel; no re-fetch needed
+}
+
+void CryptoPredictionsPanel::set_cadence(const QString& freq) {
+    if (freq == cadence_)
+        return;
+    cadence_ = freq;
+    refresh();
 }
 
 void CryptoPredictionsPanel::refresh() {
@@ -75,18 +141,20 @@ void CryptoPredictionsPanel::refresh() {
         return;
     }
     status_->setText(tr("Loading crypto markets…"));
-    // "Crypto" is the recognized Kalshi category; the adapter resolves it to the
-    // crypto series. We list EVENTS (not individual strike-markets) so each crypto
-    // series — Bitcoin / Ethereum / Shiba Inu price, etc. — is one clean row
-    // instead of dozens of near-identical strikes.
-    adapter_->list_events(QStringLiteral("Crypto"), QStringLiteral("volume"), 100, 0);
+    // "Crypto" resolves to the Kalshi crypto series; the optional cadence suffix
+    // (Crypto@fifteen_min / Crypto@hourly) narrows to a short-term frequency.
+    // List EVENTS so each series is one row, not every strike.
+    QString category = QStringLiteral("Crypto");
+    if (!cadence_.isEmpty())
+        category += QLatin1Char('@') + cadence_;
+    adapter_->list_events(category, QStringLiteral("volume"), 100, 0);
 }
 
 void CryptoPredictionsPanel::on_events_ready(const QVector<PredictionEvent>& events) {
     QVector<PredictionEvent> crypto;
     crypto.reserve(events.size());
     for (const auto& e : events)
-        if (!e.closed)  // category-resolved → already crypto; drop settled events
+        if (!e.closed)
             crypto.append(e);
 
     std::sort(crypto.begin(), crypto.end(),
@@ -100,7 +168,7 @@ void CryptoPredictionsPanel::on_events_ready(const QVector<PredictionEvent>& eve
     status_->setText(tr("%1 crypto markets").arg(crypto.size()));
 
     for (const auto& e : crypto) {
-        const int n = e.markets.size();
+        const qsizetype n = e.markets.size();
         auto* item = new QListWidgetItem(
             QStringLiteral("%1\n  %2 contracts   ·   Vol %3").arg(e.title).arg(n).arg(fmt_volume(e.volume)), list_);
         item->setToolTip(e.title);
