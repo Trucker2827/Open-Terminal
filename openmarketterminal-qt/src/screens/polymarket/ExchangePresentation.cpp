@@ -146,9 +146,13 @@ ExchangePresentation ExchangePresentation::for_kalshi() {
     p.currency_symbol = QStringLiteral("USD");
     p.price_style = PriceStyle::Dollars;
     p.price_decimal_places = 2;
-    p.view_names = {QStringLiteral("MARKETS"), QStringLiteral("EVENTS"),
+    p.view_names = {QStringLiteral("EVENTS"), QStringLiteral("MARKETS"),
                     QStringLiteral("SETTLED"), QStringLiteral("HISTORY")};
-    p.default_view = QStringLiteral("MARKETS");
+    // Default to EVENTS, not MARKETS: Kalshi price ladders (HYPE/BTC/… "price on
+    // <date>") expand to dozens of near-identical strike markets that all show
+    // the same event title. EVENTS groups each ladder into one card; the user
+    // drills in to see/trade the individual strikes.
+    p.default_view = QStringLiteral("EVENTS");
     // Kalshi's series catalog can exceed 100 entries — a chip row doesn't
     // scale. Drop into a dropdown so users can scan + filter.
     p.category_mode = CategoryMode::ComboBox;
