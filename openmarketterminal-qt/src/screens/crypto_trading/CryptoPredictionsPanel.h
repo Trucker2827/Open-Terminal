@@ -27,7 +27,7 @@ class CryptoPredictionsPanel : public QWidget {
     void refresh();
 
   private slots:
-    void on_markets_ready(const QVector<openmarketterminal::services::prediction::PredictionMarket>& markets);
+    void on_events_ready(const QVector<openmarketterminal::services::prediction::PredictionEvent>& events);
     void on_error(const QString& context, const QString& message);
 
   private:

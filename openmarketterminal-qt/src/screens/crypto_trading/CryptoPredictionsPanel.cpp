@@ -11,8 +11,8 @@
 
 namespace openmarketterminal::screens::crypto {
 
+using openmarketterminal::services::prediction::PredictionEvent;
 using openmarketterminal::services::prediction::PredictionExchangeRegistry;
-using openmarketterminal::services::prediction::PredictionMarket;
 
 namespace {
 QString fmt_volume(double v) {
@@ -55,8 +55,8 @@ CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent
     // Coinbase predictions = Kalshi markets; bind to the Kalshi adapter.
     adapter_ = PredictionExchangeRegistry::instance().adapter(QStringLiteral("kalshi"));
     if (adapter_) {
-        connect(adapter_, &services::prediction::PredictionExchangeAdapter::markets_ready, this,
-                &CryptoPredictionsPanel::on_markets_ready);
+        connect(adapter_, &services::prediction::PredictionExchangeAdapter::events_ready, this,
+                &CryptoPredictionsPanel::on_events_ready);
         connect(adapter_, &services::prediction::PredictionExchangeAdapter::error_occurred, this,
                 &CryptoPredictionsPanel::on_error);
     }
@@ -76,19 +76,21 @@ void CryptoPredictionsPanel::refresh() {
     }
     status_->setText(tr("Loading crypto markets…"));
     // "Crypto" is the recognized Kalshi category; the adapter resolves it to the
-    // crypto series, so the returned markets are already the crypto subset.
-    adapter_->list_markets(QStringLiteral("Crypto"), QStringLiteral("volume"), 100, 0);
+    // crypto series. We list EVENTS (not individual strike-markets) so each crypto
+    // series — Bitcoin / Ethereum / Shiba Inu price, etc. — is one clean row
+    // instead of dozens of near-identical strikes.
+    adapter_->list_events(QStringLiteral("Crypto"), QStringLiteral("volume"), 100, 0);
 }
 
-void CryptoPredictionsPanel::on_markets_ready(const QVector<PredictionMarket>& markets) {
-    QVector<PredictionMarket> crypto;
-    crypto.reserve(markets.size());
-    for (const auto& m : markets)
-        if (!m.closed)  // category-resolved → already crypto; just drop settled markets
-            crypto.append(m);
+void CryptoPredictionsPanel::on_events_ready(const QVector<PredictionEvent>& events) {
+    QVector<PredictionEvent> crypto;
+    crypto.reserve(events.size());
+    for (const auto& e : events)
+        if (!e.closed)  // category-resolved → already crypto; drop settled events
+            crypto.append(e);
 
     std::sort(crypto.begin(), crypto.end(),
-              [](const PredictionMarket& a, const PredictionMarket& b) { return a.volume > b.volume; });
+              [](const PredictionEvent& a, const PredictionEvent& b) { return a.volume > b.volume; });
 
     list_->clear();
     if (crypto.isEmpty()) {
@@ -97,14 +99,11 @@ void CryptoPredictionsPanel::on_markets_ready(const QVector<PredictionMarket>& m
     }
     status_->setText(tr("%1 crypto markets").arg(crypto.size()));
 
-    for (const auto& m : crypto) {
-        // "Yes" probability (first outcome) shown in cents — the standard
-        // prediction-market price display.
-        double yes = m.outcomes.isEmpty() ? 0.0 : m.outcomes.first().price;
-        const QString yes_c = QStringLiteral("%1¢").arg(yes * 100.0, 0, 'f', 0);
+    for (const auto& e : crypto) {
+        const int n = e.markets.size();
         auto* item = new QListWidgetItem(
-            QStringLiteral("%1\n  Yes %2   ·   Vol %3").arg(m.question, yes_c, fmt_volume(m.volume)), list_);
-        item->setToolTip(m.question);
+            QStringLiteral("%1\n  %2 contracts   ·   Vol %3").arg(e.title).arg(n).arg(fmt_volume(e.volume)), list_);
+        item->setToolTip(e.title);
     }
 }
 
