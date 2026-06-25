@@ -1,9 +1,10 @@
 #pragma once
-// Crypto Predictions panel — shown in the Crypto Trading window. Coinbase's
-// prediction markets are operated through its Kalshi partnership, so this lists
-// the crypto event contracts via the Kalshi prediction adapter. A source toggle
-// (Coinbase / Kalshi) re-labels the same data, and a cadence filter switches
-// between 15-minute / hourly / daily crypto series.
+// Crypto Predictions panel — shown in the Crypto Trading window when Coinbase is
+// the source. Coinbase's prediction markets are operated through Kalshi (no
+// separate Coinbase API), so this lists the crypto event contracts via the
+// Kalshi prediction adapter, with a cadence filter (15m / hourly / daily).
+// Clicking a market opens the full Predictions screen to place a (real-money)
+// Kalshi bet.
 
 #include "services/prediction/PredictionTypes.h"
 
@@ -26,17 +27,19 @@ class CryptoPredictionsPanel : public QWidget {
   public:
     explicit CryptoPredictionsPanel(QWidget* parent = nullptr);
 
-    /// (Re)fetch crypto prediction events for the active source + cadence.
+    /// (Re)fetch crypto prediction events for the active cadence.
     void refresh();
+
+  signals:
+    /// User clicked a market and wants to bet — host opens the Predictions screen.
+    void bet_requested();
 
   private slots:
     void on_events_ready(const QVector<openmarketterminal::services::prediction::PredictionEvent>& events);
     void on_error(const QString& context, const QString& message);
 
   private:
-    void set_source(const QString& source);  // "Coinbase" | "Kalshi" (same data, relabel)
-    void set_cadence(const QString& freq);    // "" = daily | "fifteen_min" | "hourly"
-    void update_header();
+    void set_cadence(const QString& freq);  // "" = daily | "fifteen_min" | "hourly"
 
     openmarketterminal::services::prediction::PredictionExchangeAdapter* adapter_ = nullptr;
 
@@ -44,13 +47,10 @@ class CryptoPredictionsPanel : public QWidget {
     QLabel* subtitle_ = nullptr;
     QLabel* status_ = nullptr;
     QListWidget* list_ = nullptr;
-    QPushButton* src_coinbase_ = nullptr;
-    QPushButton* src_kalshi_ = nullptr;
     QPushButton* cad_15m_ = nullptr;
     QPushButton* cad_1h_ = nullptr;
     QPushButton* cad_daily_ = nullptr;
 
-    QString source_ = QStringLiteral("Coinbase");
     QString cadence_;  // empty = daily / base "Crypto"
 };
 

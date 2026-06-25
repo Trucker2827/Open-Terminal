@@ -222,7 +222,14 @@ void WindowFrame::setup_docking_mode() {
 void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("dashboard", []() { return new screens::DashboardScreen; });
     dock_router_->register_factory("markets", []() { return new screens::MarketsScreen; });
-    dock_router_->register_factory("crypto_trading", []() { return new screens::CryptoTradingScreen; });
+    dock_router_->register_factory("crypto_trading", [this]() {
+        auto* s = new screens::CryptoTradingScreen;
+        // Click-to-bet from the crypto predictions panel opens the Predictions
+        // screen, which carries the Kalshi connect/trade flow.
+        connect(s, &screens::CryptoTradingScreen::open_predictions_requested, this,
+                [this]() { dock_router_->navigate(QStringLiteral("polymarket")); });
+        return s;
+    });
     dock_router_->register_factory("news", []() { return new screens::NewsScreen; });
     dock_router_->register_factory("watchlist", []() { return new screens::WatchlistScreen; });
 

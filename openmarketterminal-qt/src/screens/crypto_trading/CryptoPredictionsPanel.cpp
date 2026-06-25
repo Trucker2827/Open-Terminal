@@ -44,28 +44,14 @@ CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent
     layout->setContentsMargins(8, 6, 8, 8);
     layout->setSpacing(3);
 
-    // ── Header: title + source toggle (Coinbase / Kalshi) ──
-    auto* head = new QHBoxLayout;
-    head->setSpacing(4);
-    title_ = new QLabel(this);
+    // Single honest header: it's Kalshi's order book, also distributed by Coinbase.
+    title_ = new QLabel(tr("PREDICTIONS · CRYPTO"), this);
     title_->setObjectName("cryptoPredictionsTitle");
-    head->addWidget(title_, 1);
-    src_coinbase_ = make_pill(tr("Coinbase"));
-    src_kalshi_ = make_pill(tr("Kalshi"));
-    head->addWidget(src_coinbase_);
-    head->addWidget(src_kalshi_);
-    layout->addLayout(head);
+    layout->addWidget(title_);
 
-    auto* src_group = new QButtonGroup(this);
-    src_group->setExclusive(true);
-    src_group->addButton(src_coinbase_);
-    src_group->addButton(src_kalshi_);
-    src_coinbase_->setChecked(true);
-    connect(src_coinbase_, &QPushButton::clicked, this, [this]() { set_source(QStringLiteral("Coinbase")); });
-    connect(src_kalshi_, &QPushButton::clicked, this, [this]() { set_source(QStringLiteral("Kalshi")); });
-
-    subtitle_ = new QLabel(this);
+    subtitle_ = new QLabel(tr("Kalshi event contracts — also offered via Coinbase"), this);
     subtitle_->setObjectName("cryptoPredictionsSubtitle");
+    subtitle_->setWordWrap(true);
     layout->addWidget(subtitle_);
 
     // ── Cadence filter: 15m / 1h / Daily ──
@@ -98,12 +84,14 @@ CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent
     list_->setObjectName("cryptoPredictionsList");
     list_->setAlternatingRowColors(true);
     list_->setWordWrap(true);
+    list_->setCursor(Qt::PointingHandCursor);
     list_->setSelectionMode(QAbstractItemView::NoSelection);
     list_->setFocusPolicy(Qt::NoFocus);
+    list_->setToolTip(tr("Click a market to bet on the Predictions screen"));
+    // Clicking a market opens the full Predictions screen to place the bet.
+    connect(list_, &QListWidget::itemClicked, this, [this](QListWidgetItem*) { emit bet_requested(); });
     layout->addWidget(list_, 1);
 
-    // Both Coinbase and Kalshi sources resolve to the same Kalshi adapter — the
-    // toggle only changes the label, since Coinbase predictions ARE Kalshi.
     adapter_ = PredictionExchangeRegistry::instance().adapter(QStringLiteral("kalshi"));
     if (adapter_) {
         connect(adapter_, &services::prediction::PredictionExchangeAdapter::events_ready, this,
@@ -111,21 +99,6 @@ CryptoPredictionsPanel::CryptoPredictionsPanel(QWidget* parent) : QWidget(parent
         connect(adapter_, &services::prediction::PredictionExchangeAdapter::error_occurred, this,
                 &CryptoPredictionsPanel::on_error);
     }
-
-    update_header();
-}
-
-void CryptoPredictionsPanel::update_header() {
-    title_->setText(tr("PREDICTIONS · %1").arg(source_.toUpper()));
-    subtitle_->setText(source_ == QStringLiteral("Coinbase") ? tr("Crypto event contracts — powered by Kalshi")
-                                                             : tr("Crypto event contracts — Kalshi"));
-}
-
-void CryptoPredictionsPanel::set_source(const QString& source) {
-    if (source == source_)
-        return;
-    source_ = source;
-    update_header();  // same data, just relabel; no re-fetch needed
 }
 
 void CryptoPredictionsPanel::set_cadence(const QString& freq) {

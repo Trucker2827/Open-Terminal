@@ -281,6 +281,8 @@ void CryptoTradingScreen::setup_ui() {
     // source, so the column is shown/hidden in on_exchange_changed().
     predictions_panel_ = new crypto::CryptoPredictionsPanel;
     main_splitter->addWidget(predictions_panel_);
+    connect(predictions_panel_, &crypto::CryptoPredictionsPanel::bet_requested, this,
+            &CryptoTradingScreen::open_predictions_requested);
     {
         const bool coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
         predictions_panel_->setVisible(coinbase);
