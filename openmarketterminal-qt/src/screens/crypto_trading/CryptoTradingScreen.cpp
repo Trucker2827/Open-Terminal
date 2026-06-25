@@ -275,6 +275,19 @@ void CryptoTradingScreen::setup_ui() {
 
     main_splitter->addWidget(center_splitter);
 
+    // PREDICTIONS: its own full-height column between the chart and the order
+    // panels — symbols | chart | predictions | order book/entry. Coinbase's
+    // prediction markets (Kalshi-powered) only apply when Coinbase is the
+    // source, so the column is shown/hidden in on_exchange_changed().
+    predictions_panel_ = new crypto::CryptoPredictionsPanel;
+    main_splitter->addWidget(predictions_panel_);
+    {
+        const bool coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+        predictions_panel_->setVisible(coinbase);
+        if (coinbase)
+            predictions_panel_->refresh();
+    }
+
     // RIGHT: Order Book (top) + Order Entry (bottom)
     auto* right_splitter = new QSplitter(Qt::Vertical);
     right_splitter->setObjectName("cryptoRightSplitter");
@@ -286,27 +299,17 @@ void CryptoTradingScreen::setup_ui() {
     order_entry_ = new CryptoOrderEntry;
     right_splitter->addWidget(order_entry_);
 
-    // Coinbase prediction markets (Kalshi-powered) — only relevant when the
-    // source is Coinbase, so it's hidden for other exchanges. Visibility is
-    // toggled in on_exchange_changed(); seed it from the initial source here.
-    predictions_panel_ = new crypto::CryptoPredictionsPanel;
-    right_splitter->addWidget(predictions_panel_);
-    const bool coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
-    predictions_panel_->setVisible(coinbase);
-    if (coinbase)
-        predictions_panel_->refresh();
-
-    right_splitter->setStretchFactor(0, 3); // OB 45%
-    right_splitter->setStretchFactor(1, 2); // OE 30%
-    right_splitter->setStretchFactor(2, 2); // Predictions 25%
+    right_splitter->setStretchFactor(0, 3); // OB 55%
+    right_splitter->setStretchFactor(1, 2); // OE 45%
 
     main_splitter->addWidget(right_splitter);
 
-    // Splitter proportions: watchlist 220, center stretch, right 290
-    main_splitter->setSizes({220, 600, 290});
+    // Splitter proportions: watchlist 220 | chart stretch | predictions 260 | right 290
+    main_splitter->setSizes({220, 520, 260, 290});
     main_splitter->setStretchFactor(0, 0);
-    main_splitter->setStretchFactor(1, 1);
+    main_splitter->setStretchFactor(1, 1);  // chart column absorbs extra width
     main_splitter->setStretchFactor(2, 0);
+    main_splitter->setStretchFactor(3, 0);
 
     main_layout->addWidget(main_splitter, 1);
 
