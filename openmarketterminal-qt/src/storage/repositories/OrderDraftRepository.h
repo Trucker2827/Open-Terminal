@@ -24,7 +24,9 @@ class OrderDraftRepository : public BaseRepository<OrderDraft> {
 
     Result<void> insert(const OrderDraft& d);
     Result<OrderDraft> get(const QString& draft_id);
+    Result<QVector<OrderDraft>> recent(int limit, const QString& status = {});
     Result<void> update_status(const QString& draft_id, const QString& status);
+    Result<bool> cancel_prepared(const QString& draft_id);
 
     /// Atomically claim a prepared draft for submission: flips status
     /// prepared → submitting ONLY if it is still "prepared", in a single

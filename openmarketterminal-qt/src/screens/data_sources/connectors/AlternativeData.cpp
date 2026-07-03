@@ -199,4 +199,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_alternative_data_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

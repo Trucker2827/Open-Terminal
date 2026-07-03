@@ -153,4 +153,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_cloud_storage_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

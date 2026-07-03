@@ -219,4 +219,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_nosql_database_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

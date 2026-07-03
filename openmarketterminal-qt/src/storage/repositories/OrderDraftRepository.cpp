@@ -1,5 +1,7 @@
 #include "storage/repositories/OrderDraftRepository.h"
 
+#include <algorithm>
+
 namespace openmarketterminal {
 
 OrderDraftRepository& OrderDraftRepository::instance() {
@@ -37,8 +39,28 @@ Result<OrderDraft> OrderDraftRepository::get(const QString& draft_id) {
                      map_draft);
 }
 
+Result<QVector<OrderDraft>> OrderDraftRepository::recent(int limit, const QString& status) {
+    const int capped = std::max(1, std::min(limit, 1000));
+    if (!status.trimmed().isEmpty()) {
+        return query_list(QString("SELECT %1 FROM order_drafts WHERE status = ? "
+                                  "ORDER BY created_at DESC LIMIT ?").arg(kDraftColumns),
+                          {status.trimmed(), capped}, map_draft);
+    }
+    return query_list(QString("SELECT %1 FROM order_drafts ORDER BY created_at DESC LIMIT ?").arg(kDraftColumns),
+                      {capped}, map_draft);
+}
+
 Result<void> OrderDraftRepository::update_status(const QString& draft_id, const QString& status) {
     return exec_write("UPDATE order_drafts SET status = ? WHERE draft_id = ?", {status, draft_id});
+}
+
+Result<bool> OrderDraftRepository::cancel_prepared(const QString& draft_id) {
+    auto r = db().execute("UPDATE order_drafts SET status = 'cancelled' "
+                          "WHERE draft_id = ? AND status = 'prepared'",
+                          {draft_id});
+    if (r.is_err())
+        return Result<bool>::err(r.error());
+    return Result<bool>::ok(r.value().numRowsAffected() == 1);
 }
 
 Result<bool> OrderDraftRepository::reserve_for_submit(const QString& draft_id) {

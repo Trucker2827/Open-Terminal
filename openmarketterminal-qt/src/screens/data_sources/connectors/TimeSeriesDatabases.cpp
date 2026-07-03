@@ -121,4 +121,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_timeseries_database_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

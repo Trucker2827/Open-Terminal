@@ -118,7 +118,9 @@ inline WindowFrame* frame_by_uuid(const QString& uuid_str) {
 inline WindowFrame* resolve_window(const QJsonObject& args) {
     // Prefer explicit window_id; fall back to uuid; fall back to focused.
     if (args.contains("window_id") && !args["window_id"].isNull()) {
-        return frame_by_id(args["window_id"].toInt());
+        const int window_id = args["window_id"].toInt(-1);
+        if (window_id >= 0)
+            return frame_by_id(window_id);
     }
     if (args.contains("frame_uuid") && !args["frame_uuid"].toString().isEmpty()) {
         return frame_by_uuid(args["frame_uuid"].toString());

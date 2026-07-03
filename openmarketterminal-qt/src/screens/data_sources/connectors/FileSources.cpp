@@ -220,4 +220,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_file_source_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

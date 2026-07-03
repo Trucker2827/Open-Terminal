@@ -115,7 +115,6 @@ void workspace_internal::register_panel_tools(std::vector<ToolDef>& tools) {
         t.name = "navigate_panel";
         t.description = "Open a screen in a window's dock area. Equivalent to typing the screen id into the command bar.";
         t.category = "workspace";
-        t.is_destructive = true;
         t.default_timeout_ms = kDefaultTimeoutMs;
         t.input_schema = ToolSchemaBuilder()
             .string("screen_id", "Screen id (e.g. 'dashboard', 'news', 'watchlist')").required().length(1, 64)

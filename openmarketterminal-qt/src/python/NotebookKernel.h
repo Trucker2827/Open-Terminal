@@ -34,6 +34,9 @@ class NotebookKernel : public QObject {
     /// Clear the kernel namespace (restart state). cb fires on the reset response.
     void reset(Callback cb = {});
 
+    /// Stop the backing Python process. Used by one-shot CLI runs before exit.
+    void shutdown();
+
   private:
     NotebookKernel();
 

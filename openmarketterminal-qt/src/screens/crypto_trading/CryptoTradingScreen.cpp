@@ -48,8 +48,18 @@ using namespace openmarketterminal::screens::crypto;
 
 static const QString TAG = "CryptoTrading";
 
-CryptoTradingScreen::CryptoTradingScreen(QWidget* parent) : QWidget(parent) {
+CryptoTradingScreen::CryptoTradingScreen(QWidget* parent)
+    : CryptoTradingScreen(Focus::MultiAsset, parent) {}
+
+CryptoTradingScreen::CryptoTradingScreen(Focus focus, QWidget* parent)
+    : QWidget(parent), bitcoin_focus_(focus == Focus::Bitcoin) {
     LOG_INFO(TAG, "Constructing CryptoTradingScreen");
+    if (bitcoin_focus_) {
+        selected_symbol_ = QStringLiteral("BTC/USD");
+        watchlist_symbols_ = {
+            QStringLiteral("BTC/USD"),
+        };
+    }
     setup_ui();
     setup_timers();
     LOG_INFO(TAG, "CryptoTradingScreen construction complete");
@@ -149,7 +159,7 @@ void CryptoTradingScreen::setup_ui() {
     cmd_layout->setSpacing(6);
 
     // Exchange button + menu
-    exchange_btn_ = new QPushButton("COINBASE");
+    exchange_btn_ = new QPushButton(exchange_id_.toUpper());
     exchange_btn_->setObjectName("cryptoExchangeBtn");
     exchange_btn_->setFixedHeight(22);
     exchange_btn_->setCursor(Qt::PointingHandCursor);
@@ -170,7 +180,7 @@ void CryptoTradingScreen::setup_ui() {
     cmd_layout->addWidget(sep);
 
     // Symbol input with autocomplete
-    symbol_input_ = new QLineEdit("BTC/USDT");
+    symbol_input_ = new QLineEdit(selected_symbol_);
     symbol_input_->setObjectName("cryptoSymbolInput");
     symbol_input_->setFixedWidth(120);
     symbol_input_->setFixedHeight(22);
@@ -336,6 +346,22 @@ void CryptoTradingScreen::setup_ui() {
                 hub_subscribe_topics();  // re-point the OHLC subscription to the new tf
                 async_fetch_candles(selected_symbol_, tf);
             });
+}
+
+QString CryptoTradingScreen::default_symbol() const {
+    return bitcoin_focus_ ? QStringLiteral("BTC/USD") : QStringLiteral("BTC/USDT");
+}
+
+QString CryptoTradingScreen::normalized_symbol_for_focus(const QString& symbol) const {
+    const QString s = symbol.trimmed().toUpper();
+    if (!bitcoin_focus_)
+        return s.isEmpty() ? default_symbol() : s;
+
+    if (s.startsWith(QStringLiteral("BTC/")) || s.startsWith(QStringLiteral("XBT/")))
+        return s.startsWith(QStringLiteral("XBT/"))
+                   ? QStringLiteral("BTC/") + s.section(QLatin1Char('/'), 1)
+                   : s;
+    return default_symbol();
 }
 
 // ============================================================================
@@ -668,7 +694,8 @@ QVariantMap CryptoTradingScreen::save_state() const {
 
 void CryptoTradingScreen::restore_state(const QVariantMap& state) {
     const QString exch = state.value("exchange_id", "coinbase").toString();
-    const QString sym = state.value("selected_symbol", "BTC/USDT").toString();
+    const QString sym = normalized_symbol_for_focus(
+        state.value("selected_symbol", default_symbol()).toString());
 
     const bool exch_changed = (exch != exchange_id_);
     const bool sym_changed = (sym != selected_symbol_);
