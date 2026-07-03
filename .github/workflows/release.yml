@@ -20,7 +20,7 @@ env:
   QT_MODULES: "qtcharts qtwebsockets qtmultimedia qtwebengine qtwebchannel qtpositioning qtserialport"
   QT_IFW_VERSION: "4.7"
   QT_IFW_TOOL: "tools_ifw"
-  APP_NAME: OpenMarketTerminal
+  APP_NAME: OpenTerminal
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -216,7 +216,7 @@ jobs:
           done
 
           # zlib — the app now links zlib STATICALLY (x64-windows-static-md), so
-          # OpenMarketTerminal.exe has NO runtime zlib DLL dependency. This loop is
+          # OpenTerminal.exe has NO runtime zlib DLL dependency. This loop is
           # kept only as a fallback in case a bundled Qt/OpenSSL DLL pulls in a
           # dynamic zlib; if neither source provides one, that's expected. The
           # "Verify dependency closure" step is the real guarantee nothing is
@@ -309,7 +309,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $buildDir = Join-Path (Get-Location) 'build/Release'
-          $exe = Join-Path $buildDir 'OpenMarketTerminal.exe'
+          $exe = Join-Path $buildDir 'OpenTerminal.exe'
           if (-not (Test-Path $exe)) { Write-Host "::error::Binary not found at $exe"; exit 1 }
 
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -372,13 +372,13 @@ jobs:
 
       # ── Upload ────────────────────────────────────────────────────────────
       # Narrow the glob to the installer output — the broader `*.exe` pattern
-      # would also catch the main OpenMarketTerminal.exe binary, which we don't
+      # would also catch the main OpenTerminal.exe binary, which we don't
       # want to publish as a release asset (users should run the installer).
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenMarketTerminal-Windows-x64-installer
-          path: openmarketterminal-qt/build/OpenMarketTerminal-*-windows-x64-setup.exe
+          name: OpenTerminal-Windows-x64-installer
+          path: openmarketterminal-qt/build/OpenTerminal-*-windows-x64-setup.exe
           retention-days: 30
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -565,8 +565,8 @@ jobs:
 
           cat > "${APPDIR}/usr/share/applications/openmarketterminal.desktop" <<'EOF'
           [Desktop Entry]
-          Name=OpenMarketTerminal
-          Exec=OpenMarketTerminal
+          Name=OpenTerminal
+          Exec=OpenTerminal
           Icon=openmarketterminal
           Type=Application
           Categories=Finance;
@@ -649,11 +649,11 @@ jobs:
           fi
 
           # Filename must match the regex in update-manifest:
-          #   OpenMarketTerminal-<version>-linux-x64-setup.run
+          #   OpenTerminal-<version>-linux-x64-setup.run
           # where <version> is CMAKE_PROJECT_VERSION (e.g. 4.0.3), NOT the
           # tag (v4.0.3). Parse project() VERSION from CMakeLists.txt so we
           # stay in sync even when triggered via workflow_dispatch (no tag).
-          VERSION=$(grep -Po 'project\(OpenMarketTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          VERSION=$(grep -Po 'project\(OpenTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
           if [ -z "${VERSION}" ]; then
             echo "::error::Could not parse project VERSION from CMakeLists.txt"
             exit 1
@@ -665,8 +665,8 @@ jobs:
           # in addition to the core Qt libs. UPDATE_INFORMATION embeds the
           # zsync update URL so AppImageUpdate can fetch deltas later.
           export QMAKE="${QT_ROOT_DIR}/bin/qmake"
-          export OUTPUT="OpenMarketTerminal-${VERSION}-linux-x64-setup.run"
-          export UPDATE_INFORMATION="gh-releases-zsync|your-org|OpenMarketTerminal|latest|OpenMarketTerminal-*-linux-x64-setup.run.zsync"
+          export OUTPUT="OpenTerminal-${VERSION}-linux-x64-setup.run"
+          export UPDATE_INFORMATION="gh-releases-zsync|Trucker2827|Open-Terminal|latest|OpenTerminal-*-linux-x64-setup.run.zsync"
 
           ./linuxdeploy-x86_64.AppImage \
             --appdir "${APPDIR}" \
@@ -716,7 +716,7 @@ jobs:
         working-directory: openmarketterminal-qt
         run: |
           set -euo pipefail
-          VERSION=$(grep -Po 'project\(OpenMarketTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          VERSION=$(grep -Po 'project\(OpenTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
           DEB_NAME="openmarketterminal_${VERSION}_amd64"
           DEB_ROOT="build/${DEB_NAME}"
 
@@ -732,8 +732,8 @@ jobs:
           Priority: optional
           Architecture: amd64
           Depends: libgl1, libxcb-cursor0, libxkbcommon0, libfontconfig1, libfreetype6, libdbus-1-3
-          Maintainer: OpenMarketTerminal contributors <support@example.com>
-          Homepage: https://github.com/your-org/OpenMarketTerminal
+          Maintainer: OpenTerminal contributors <support@example.com>
+          Homepage: https://github.com/Trucker2827/Open-Terminal
           Description: Professional financial intelligence terminal
            Native C++20 desktop terminal with real-time market data, AI analytics,
            multi-broker trading, portfolio management, and 1300+ Python scripts.
@@ -742,8 +742,8 @@ jobs:
           sed -i 's/^          //' "${DEB_ROOT}/DEBIAN/control"
 
           dpkg-deb --build --root-owner-group "${DEB_ROOT}"
-          mv "build/${DEB_NAME}.deb" "build/OpenMarketTerminal-${VERSION}-linux-x64.deb"
-          echo "Built: OpenMarketTerminal-${VERSION}-linux-x64.deb ($(du -sh "build/OpenMarketTerminal-${VERSION}-linux-x64.deb" | cut -f1))"
+          mv "build/${DEB_NAME}.deb" "build/OpenTerminal-${VERSION}-linux-x64.deb"
+          echo "Built: OpenTerminal-${VERSION}-linux-x64.deb ($(du -sh "build/OpenTerminal-${VERSION}-linux-x64.deb" | cut -f1))"
 
       # ── Build .rpm package ────────────────────────────────────────────────
       - name: Build .rpm package
@@ -752,7 +752,7 @@ jobs:
           set -euo pipefail
           sudo apt-get install -y rpm -qq
 
-          VERSION=$(grep -Po 'project\(OpenMarketTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          VERSION=$(grep -Po 'project\(OpenTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
           RPM_ROOT="build/rpm-root"
 
           mkdir -p "${RPM_ROOT}/usr"
@@ -763,8 +763,8 @@ jobs:
           # made cmake install it, but if that ever regresses, fall back to the
           # always-installed flatpak-named copy so rpmbuild never fails here.
           ICON_DIR="${RPM_ROOT}/usr/share/icons/hicolor/256x256/apps"
-          if [ ! -f "${ICON_DIR}/openmarketterminal.png" ] && [ -f "${ICON_DIR}/in.openmarketterminal.OpenMarketTerminal.png" ]; then
-            cp "${ICON_DIR}/in.openmarketterminal.OpenMarketTerminal.png" "${ICON_DIR}/openmarketterminal.png"
+          if [ ! -f "${ICON_DIR}/openmarketterminal.png" ] && [ -f "${ICON_DIR}/org.openterminal.OpenTerminal.png" ]; then
+            cp "${ICON_DIR}/org.openterminal.OpenTerminal.png" "${ICON_DIR}/openmarketterminal.png"
           fi
           if [ ! -f "${ICON_DIR}/openmarketterminal.png" ]; then
             echo "::error::openmarketterminal.png missing from staged RPM tree (${ICON_DIR})"
@@ -780,11 +780,11 @@ jobs:
           Release:        1
           Summary:        Professional financial intelligence terminal
           License:        AGPL-3.0-or-later
-          URL:            https://github.com/your-org/OpenMarketTerminal
+          URL:            https://github.com/Trucker2827/Open-Terminal
           AutoReqProv:    no
 
           # cmake --install also stages flatpak-named copies
-          # (in.openmarketterminal.OpenMarketTerminal.{desktop,metainfo.xml,png}) that this
+          # (org.openterminal.OpenTerminal.{desktop,metainfo.xml,png}) that this
           # curated %files list intentionally omits — warn, don't fail, on them.
           %define _unpackaged_files_terminate_build 0
 
@@ -796,7 +796,7 @@ jobs:
           cp -a ${PWD}/${RPM_ROOT}/* %{buildroot}/
 
           %files
-          /usr/bin/OpenMarketTerminal
+          /usr/bin/OpenTerminal
           /usr/bin/yt-dlp
           /usr/share/openmarketterminal/
           /usr/share/applications/openmarketterminal.desktop
@@ -815,11 +815,11 @@ jobs:
             --define "_rpmdir ${PWD}/build"
 
           mv build/x86_64/openmarketterminal-${VERSION}-1.x86_64.rpm \
-             "build/OpenMarketTerminal-${VERSION}-linux-x64.rpm" 2>/dev/null || \
+             "build/OpenTerminal-${VERSION}-linux-x64.rpm" 2>/dev/null || \
           mv build/*/openmarketterminal-*.rpm \
-             "build/OpenMarketTerminal-${VERSION}-linux-x64.rpm"
+             "build/OpenTerminal-${VERSION}-linux-x64.rpm"
 
-          echo "Built: OpenMarketTerminal-${VERSION}-linux-x64.rpm ($(du -sh "build/OpenMarketTerminal-${VERSION}-linux-x64.rpm" | cut -f1))"
+          echo "Built: OpenTerminal-${VERSION}-linux-x64.rpm ($(du -sh "build/OpenTerminal-${VERSION}-linux-x64.rpm" | cut -f1))"
 
       # ── Optional: QtIFW "wizard" installer with a Target Directory page ─────
       # Additive to the portable AppImage (which stays the auto-update channel).
@@ -833,7 +833,7 @@ jobs:
         working-directory: openmarketterminal-qt
         run: |
           set -euo pipefail
-          VERSION=$(grep -Po 'project\(OpenMarketTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          VERSION=$(grep -Po 'project\(OpenTerminal VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
           if [ ! -d build/AppDir/usr ]; then
             echo "::error::build/AppDir/usr missing — the AppImage step must run first"; exit 1
           fi
@@ -850,7 +850,7 @@ jobs:
           cmake -S . -B build \
             -DOPENMARKETTERMINAL_BUILD_INSTALLER=ON \
             -DOPENMARKETTERMINAL_IFW_PAYLOAD="${PWD}/build/AppDir/usr" >/dev/null
-          BASENAME="OpenMarketTerminal-${VERSION}-linux-x64-wizard"
+          BASENAME="OpenTerminal-${VERSION}-linux-x64-wizard"
           ( cd build && cpack -G IFW -D CPACK_PACKAGE_FILE_NAME="${BASENAME}" --verbose )
 
           # IFW emits <name>.run on Linux; rename to .bin so the updater regex
@@ -872,13 +872,13 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenMarketTerminal-Linux-x64-installer
+          name: OpenTerminal-Linux-x64-installer
           path: |
-            openmarketterminal-qt/build/OpenMarketTerminal-*-linux-x64-setup.run
-            openmarketterminal-qt/build/OpenMarketTerminal-*-linux-x64-setup.run.zsync
-            openmarketterminal-qt/build/OpenMarketTerminal-*-linux-x64.deb
-            openmarketterminal-qt/build/OpenMarketTerminal-*-linux-x64.rpm
-            openmarketterminal-qt/build/OpenMarketTerminal-*-linux-x64-wizard.bin
+            openmarketterminal-qt/build/OpenTerminal-*-linux-x64-setup.run
+            openmarketterminal-qt/build/OpenTerminal-*-linux-x64-setup.run.zsync
+            openmarketterminal-qt/build/OpenTerminal-*-linux-x64.deb
+            openmarketterminal-qt/build/OpenTerminal-*-linux-x64.rpm
+            openmarketterminal-qt/build/OpenTerminal-*-linux-x64-wizard.bin
           retention-days: 30
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1041,9 +1041,9 @@ jobs:
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-            <key>CFBundleExecutable</key><string>OpenMarketTerminal</string>
-            <key>CFBundleIdentifier</key><string>org.openmarketterminal.OpenMarketTerminal</string>
-            <key>CFBundleName</key><string>OpenMarketTerminal</string>
+            <key>CFBundleExecutable</key><string>OpenTerminal</string>
+            <key>CFBundleIdentifier</key><string>org.openterminal.OpenTerminal</string>
+            <key>CFBundleName</key><string>OpenTerminal</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>CFBundleShortVersionString</key><string>4.1.0</string>
             <key>CFBundleVersion</key><string>4.1.0</string>
@@ -1763,7 +1763,7 @@ jobs:
 
       # ── Optional: QtIFW "wizard" installer with a Target Directory page ─────
       # Additive to the DMG (which stays the auto-update channel). The CMake
-      # install rule copies the SIGNED build/OpenMarketTerminal.app via `ditto`, so
+      # install rule copies the SIGNED build/OpenTerminal.app via `ditto`, so
       # code signatures survive (issue #139). Output is named "-wizard.zip" so it
       # never matches the updater regex (\.dmg$|macos.*setup) — it won't compete
       # with the DMG for the auto-update asset.
@@ -1779,13 +1779,13 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
         run: |
           set -euo pipefail
-          VERSION=$(grep -Eo 'project\(OpenMarketTerminal VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | awk '{print $3}')
+          VERSION=$(grep -Eo 'project\(OpenTerminal VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | awk '{print $3}')
           command -v binarycreator >/dev/null || { echo "::error::binarycreator not on PATH"; exit 1; }
 
           # Reconfigure with the installer path ON (reuses the cached build); the
           # install(CODE ditto) rule packages the already-signed bundle.
           cmake -S . -B build -DOPENMARKETTERMINAL_BUILD_INSTALLER=ON >/dev/null
-          BASENAME="OpenMarketTerminal-${VERSION}-macos-arm64-wizard"
+          BASENAME="OpenTerminal-${VERSION}-macos-arm64-wizard"
           ( cd build && cpack -G IFW -C ${{ env.BUILD_TYPE }} \
                 -D CPACK_PACKAGE_FILE_NAME="${BASENAME}" --verbose )
 
@@ -1837,10 +1837,10 @@ jobs:
         run: |
           set -euo pipefail
           # Parse project() VERSION so the DMG filename matches the regex in
-          # update-manifest: OpenMarketTerminal-<version>-macos-arm64-setup.dmg
-          VERSION=$(grep -Eo 'project\(OpenMarketTerminal VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | awk '{print $3}')
+          # update-manifest: OpenTerminal-<version>-macos-arm64-setup.dmg
+          VERSION=$(grep -Eo 'project\(OpenTerminal VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | awk '{print $3}')
           [ -n "${VERSION}" ] || { echo "::error::Could not parse VERSION from CMakeLists.txt"; exit 1; }
-          DMG_NAME="OpenMarketTerminal-${VERSION}-macos-arm64-setup.dmg"
+          DMG_NAME="OpenTerminal-${VERSION}-macos-arm64-setup.dmg"
           echo "DMG target: ${DMG_NAME}"
 
           STAGING="$(mktemp -d)/dmg_staging"
@@ -1871,7 +1871,7 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
         run: |
           set -euo pipefail
-          DMG=$(ls build/OpenMarketTerminal-*-macos-arm64-setup.dmg | head -1)
+          DMG=$(ls build/OpenTerminal-*-macos-arm64-setup.dmg | head -1)
           echo "Signing DMG: ${DMG}"
           codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG"
 
@@ -1967,10 +1967,10 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenMarketTerminal-macOS-arm64-installer
+          name: OpenTerminal-macOS-arm64-installer
           path: |
-            openmarketterminal-qt/build/OpenMarketTerminal-*-macos-arm64-setup.dmg
-            openmarketterminal-qt/build/OpenMarketTerminal-*-macos-arm64-wizard.zip
+            openmarketterminal-qt/build/OpenTerminal-*-macos-arm64-setup.dmg
+            openmarketterminal-qt/build/OpenTerminal-*-macos-arm64-wizard.zip
           retention-days: 30
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1998,19 +1998,19 @@ jobs:
       - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
-          name: OpenMarketTerminal-Windows-x64-installer
+          name: OpenTerminal-Windows-x64-installer
           path: dist/windows
 
       - name: Download Linux installer
         uses: actions/download-artifact@v4
         with:
-          name: OpenMarketTerminal-Linux-x64-installer
+          name: OpenTerminal-Linux-x64-installer
           path: dist/linux
 
       - name: Download macOS installer
         uses: actions/download-artifact@v4
         with:
-          name: OpenMarketTerminal-macOS-arm64-installer
+          name: OpenTerminal-macOS-arm64-installer
           path: dist/macos
 
       - name: List release assets
@@ -2020,9 +2020,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "OpenMarketTerminal ${{ github.ref_name }}"
+          name: "OpenTerminal ${{ github.ref_name }}"
           body: |
-            ## OpenMarketTerminal ${{ github.ref_name }}
+            ## OpenTerminal ${{ github.ref_name }}
 
             Native C++20 financial intelligence terminal — Qt6, embedded Python analytics, 50+ screens.
 
@@ -2030,18 +2030,18 @@ jobs:
 
             | Platform | File | Install |
             |----------|------|---------|
-            | **Windows x64** | `OpenMarketTerminal-*-setup*.exe` | Run installer |
-            | **Linux (Debian/Ubuntu)** | `OpenMarketTerminal-*-linux-x64.deb` | `sudo dpkg -i *.deb` |
-            | **Linux (Fedora/RHEL)** | `OpenMarketTerminal-*-linux-x64.rpm` | `sudo dnf install *.rpm` |
-            | **Linux (portable)** | `OpenMarketTerminal-*-linux-x64-setup.run` | `chmod +x` then run |
-            | **macOS Apple Silicon** | `OpenMarketTerminal-*.dmg` or setup | Open DMG → drag to Applications |
+            | **Windows x64** | `OpenTerminal-*-setup*.exe` | Run installer |
+            | **Linux (Debian/Ubuntu)** | `OpenTerminal-*-linux-x64.deb` | `sudo dpkg -i *.deb` |
+            | **Linux (Fedora/RHEL)** | `OpenTerminal-*-linux-x64.rpm` | `sudo dnf install *.rpm` |
+            | **Linux (portable)** | `OpenTerminal-*-linux-x64-setup.run` | `chmod +x` then run |
+            | **macOS Apple Silicon** | `OpenTerminal-*.dmg` or setup | Open DMG → drag to Applications |
 
             ### Requirements
             - Windows 10/11 x64
             - Ubuntu 20.04+ / Debian 11+ / Fedora 36+ / RHEL 9+
             - macOS 13+ (Apple Silicon)
 
-            See the [README](https://github.com/your-org/OpenMarketTerminal#readme) for full installation instructions.
+            See the [README](https://github.com/Trucker2827/Open-Terminal#readme) for full installation instructions.
           files: |
             dist/windows/**
             dist/linux/**
@@ -2069,7 +2069,7 @@ jobs:
 #    match UpdateService::current_platform_key()
 #    (windows-x64 / windows-arm64 / linux-x64 / macos-arm64 / macos-x64).
 #    Asset filenames must match CPACK_PACKAGE_FILE_NAME in CMakeLists.txt:
-#    OpenMarketTerminal-<version>-<platform>-<arch>-setup.<ext>
+#    OpenTerminal-<version>-<platform>-<arch>-setup.<ext>
 # ═════════════════════════════════════════════════════════════════════════════
   update-repo-metadata:
     name: Update README + updates.json on main
@@ -2150,7 +2150,7 @@ jobs:
             | head -1) || true
 
           # Release page URL as final fallback
-          RELEASE_URL="https://github.com/your-org/OpenMarketTerminal/releases/tag/${TAG}"
+          RELEASE_URL="https://github.com/Trucker2827/Open-Terminal/releases/tag/${TAG}"
           WIN_URL="${WIN_URL:-${RELEASE_URL}}"
           LIN_URL="${LIN_URL:-${RELEASE_URL}}"
           MAC_URL="${MAC_URL:-${RELEASE_URL}}"
@@ -2184,9 +2184,9 @@ jobs:
 
           | Platform | Download | Run |
           |----------|----------|-----|
-          | **Windows x64** | [OpenMarketTerminal-Windows-x64-setup.exe](${WIN_URL}) | Run installer → launch \`OpenMarketTerminal.exe\` |
-          | **Linux x64** | [OpenMarketTerminal-Linux-x64.run](${LIN_URL}) | \`chmod +x\` → run installer |
-          | **macOS Apple Silicon** | [OpenMarketTerminal-macOS-arm64.dmg](${MAC_URL}) | Open DMG → drag to Applications |
+          | **Windows x64** | [OpenTerminal-Windows-x64-setup.exe](${WIN_URL}) | Run installer → launch \`OpenTerminal.exe\` |
+          | **Linux x64** | [OpenTerminal-Linux-x64.run](${LIN_URL}) | \`chmod +x\` → run installer |
+          | **macOS Apple Silicon** | [OpenTerminal-macOS-arm64.dmg](${MAC_URL}) | Open DMG → drag to Applications |
           ${END_MARKER}"
 
           README="README.md"
@@ -2213,7 +2213,7 @@ jobs:
 
           WORK="$(mktemp -d)"
           echo "Downloading release assets to ${WORK}..."
-          gh release download "${TAG}" --dir "${WORK}" --pattern "OpenMarketTerminal-*setup*" || true
+          gh release download "${TAG}" --dir "${WORK}" --pattern "OpenTerminal-*setup*" || true
 
           # Export shell-side vars so the embedded python can read them via os.environ
           export WORK VERSION TAG REPO
