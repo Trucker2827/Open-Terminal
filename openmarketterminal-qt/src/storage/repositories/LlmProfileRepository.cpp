@@ -2,12 +2,31 @@
 
 #include "storage/repositories/LlmProfileRepository.h"
 
+#include "core/config/ProfileManager.h"
 #include "core/logging/Logger.h"
+#include "storage/secure/SecureStorage.h"
 
 #include <QSqlQuery>
 #include <QUuid>
 
 namespace openmarketterminal {
+
+namespace {
+QString secure_provider_api_key_id(const QString& provider) {
+    return ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") + provider.toLower() +
+           QStringLiteral(".api_key");
+}
+
+QString secure_profile_api_key_id(const QString& profile_id) {
+    return ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.profile.") + profile_id +
+           QStringLiteral(".api_key");
+}
+
+QString retrieve_secure_key(const QString& key_id) {
+    auto key = SecureStorage::instance().retrieve(key_id);
+    return key.is_ok() ? key.value() : QString();
+}
+} // namespace
 
 // ── Singleton ────────────────────────────────────────────────────────────────
 
@@ -53,18 +72,37 @@ Result<LlmProfile> LlmProfileRepository::get_profile(const QString& id) const {
 Result<void> LlmProfileRepository::save_profile(const LlmProfile& p) {
     // Generate id if empty (new profile)
     QString id = p.id.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : p.id;
+    LlmProfile persisted = p;
+
+    if (!persisted.api_key.isEmpty()) {
+        auto stored = SecureStorage::instance().store(secure_profile_api_key_id(id), persisted.api_key);
+        if (stored.is_err()) {
+            LOG_ERROR("LlmProfileRepo",
+                      "Failed to store LLM profile API key securely: " + QString::fromStdString(stored.error()));
+            return stored;
+        }
+        persisted.api_key.clear();
+    }
 
     return exec_write("INSERT OR REPLACE INTO llm_profiles "
                       "  (id, name, provider, model_id, api_key, base_url, "
                       "   temperature, max_tokens, system_prompt, is_default, updated_at) "
                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-                      {id, p.name, p.provider, p.model_id, p.api_key, p.base_url, p.temperature, p.max_tokens,
-                       p.system_prompt, p.is_default ? 1 : 0});
+                      {id, persisted.name, persisted.provider, persisted.model_id, persisted.api_key,
+                       persisted.base_url, persisted.temperature, persisted.max_tokens, persisted.system_prompt,
+                       persisted.is_default ? 1 : 0});
 }
 
 Result<void> LlmProfileRepository::delete_profile(const QString& id) {
     // Assignments cascade-delete via FK ON DELETE CASCADE
-    return exec_write("DELETE FROM llm_profiles WHERE id = ?", {id});
+    auto deleted = exec_write("DELETE FROM llm_profiles WHERE id = ?", {id});
+    if (deleted.is_err())
+        return deleted;
+    auto removed_key = SecureStorage::instance().remove(secure_profile_api_key_id(id));
+    if (removed_key.is_err())
+        LOG_WARN("LlmProfileRepo",
+                 "Could not remove secure LLM profile API key: " + QString::fromStdString(removed_key.error()));
+    return deleted;
 }
 
 Result<void> LlmProfileRepository::set_default(const QString& id) {
@@ -136,7 +174,18 @@ ResolvedLlmProfile LlmProfileRepository::profile_to_resolved(const LlmProfile& p
     r.profile_name = p.name;
     r.provider = p.provider;
     r.model_id = p.model_id;
-    r.api_key = p.api_key;
+    r.api_key = retrieve_secure_key(secure_profile_api_key_id(p.id));
+    if (r.api_key.isEmpty() && !p.api_key.isEmpty()) {
+        r.api_key = p.api_key;
+        auto migrated = SecureStorage::instance().store(secure_profile_api_key_id(p.id), p.api_key);
+        if (migrated.is_ok())
+            LOG_INFO("LlmProfileRepo", QString("Migrated LLM profile key '%1' into secure storage").arg(p.name));
+        else
+            LOG_WARN("LlmProfileRepo", "Could not migrate LLM profile key into secure storage: " +
+                                           QString::fromStdString(migrated.error()));
+    }
+    if (r.api_key.isEmpty())
+        r.api_key = retrieve_secure_key(secure_provider_api_key_id(p.provider));
     r.base_url = p.base_url;
     r.temperature = p.temperature;
     r.max_tokens = p.max_tokens;
@@ -157,7 +206,9 @@ ResolvedLlmProfile LlmProfileRepository::legacy_fallback() const {
     rp.profile_id = {};
     rp.profile_name = "Legacy Active";
     rp.provider = q.value(0).toString();
-    rp.api_key = q.value(1).toString();
+    rp.api_key = retrieve_secure_key(secure_provider_api_key_id(rp.provider));
+    if (rp.api_key.isEmpty())
+        rp.api_key = q.value(1).toString();
     rp.base_url = q.value(2).toString();
     rp.model_id = q.value(3).toString();
 

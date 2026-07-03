@@ -3,6 +3,9 @@
 #include "core/logging/Logger.h"
 #include "storage/sqlite/migrations/MigrationRunner.h"
 
+#include <QDir>
+#include <QFileInfo>
+#include <QLockFile>
 #include <QSqlError>
 #include <QThread>
 
@@ -31,6 +34,18 @@ Result<void> Database::open(const QString& path) {
     main_thread_ = QThread::currentThread();
     db_path_ = path;
 
+    QFileInfo db_info(path);
+    QDir().mkpath(db_info.absolutePath());
+    QLockFile startup_lock(db_info.absoluteFilePath() + QStringLiteral(".startup.lock"));
+    startup_lock.setStaleLockTime(30000);
+    if (!startup_lock.tryLock(30000)) {
+        return Result<void>::err(
+            QString("Timed out waiting for database startup lock %1 (error=%2)")
+                .arg(startup_lock.fileName())
+                .arg(static_cast<int>(startup_lock.error()))
+                .toStdString());
+    }
+
     db_ = QSqlDatabase::addDatabase("QSQLITE", kMainConnectionName);
     db_.setDatabaseName(path);
     if (!db_.open()) {
@@ -48,8 +63,14 @@ Result<void> Database::open(const QString& path) {
 }
 
 void Database::close() {
+    const QString connection_name = db_.connectionName();
     if (db_.isOpen())
         db_.close();
+    db_ = QSqlDatabase();
+    if (!connection_name.isEmpty() && QSqlDatabase::contains(connection_name))
+        QSqlDatabase::removeDatabase(connection_name);
+    main_thread_ = nullptr;
+    db_path_.clear();
 }
 
 bool Database::is_open() const {

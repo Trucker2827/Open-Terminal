@@ -27,6 +27,23 @@ const QList<Cmd>& commands() {
          "Run the earnings/filing-note playbook for %1: anchor the latest financials with YoY "
          "deltas, read the MD&A and risk sections, synthesize what drove the result plus guidance "
          "and the key risks, and write the note in the Report Builder."},
+        {"brief", "/brief TARGET",
+         "Run the AI market brief playbook for %1: synthesize the latest price action, relevant "
+         "news, filings or macro context, technical setup, open risks, and next-watch catalysts. "
+         "Use app tools first, cite sources and timestamps, and produce a concise decision-ready "
+         "brief in the Report Builder."},
+        {"risk", "/risk PORTFOLIO_OR_SYMBOL",
+         "Run the AI risk review playbook for %1: inspect exposures, concentration, drawdown, "
+         "volatility, correlation, news/event risks, liquidity, and rule violations. Produce a "
+         "risk dashboard summary with concrete mitigations and cite every data source."},
+        {"thesis", "/thesis TICKER",
+         "Run the thesis monitor playbook for %1: extract or draft the current bull/base/bear "
+         "thesis, identify key assumptions, look for confirming and disconfirming evidence in "
+         "filings, news, price action, and fundamentals, then write a sourced thesis update."},
+        {"radar", "/radar WATCHLIST_OR_TOPIC",
+         "Run the AI news radar playbook for %1: build a personalized monitoring brief across "
+         "news, filings, macro data, portfolio/watchlist exposure, and catalysts. Rank what matters "
+         "by probable market impact, novelty, and relevance to the user's holdings or thesis."},
         {"lbo", "/lbo TICKER",
          "Run the LBO playbook for %1: set entry EV from an EV/EBITDA multiple, build Sources & "
          "Uses (debt vs sponsor equity), a 5-yr operating model and debt schedule with cash sweep, "

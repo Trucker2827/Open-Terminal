@@ -66,10 +66,11 @@ QString AnalysisSkillLoader::system_prompt_fragment() const {
     if (skills.isEmpty())
         return {};
     QString frag =
-        "\n\n[Analysis skills] You have these financial-analysis playbooks. When the user "
-        "asks for the matching analysis (comps, DCF/intrinsic value, earnings/filing note), "
-        "FOLLOW the playbook step by step using the named tools, and build the output in the "
-        "Report Builder. Use only the app's data tools — never web-guess financial figures.\n";
+        "\n\n[Analysis skills] You have these market-analysis and workflow playbooks. When the user "
+        "asks for a matching analysis, brief, risk review, thesis update, radar, model, or filing note, "
+        "FOLLOW the relevant playbook step by step using the named tools, and build durable outputs in "
+        "the Report Builder or Notebook when the playbook calls for it. Use only the app's data tools; "
+        "never web-guess financial figures.\n";
     for (const auto& s : skills)
         frag += "\n=== playbook: " + s.first + " ===\n" + s.second + "\n";
     return frag;

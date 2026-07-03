@@ -17,6 +17,7 @@ class SettingsRepository : public BaseRepository<Setting> {
 
     Result<void> set(const QString& key, const QString& value, const QString& category = "general");
     Result<QString> get(const QString& key, const QString& default_val = {});
+    Result<QVector<Setting>> list_all();
     Result<void> remove(const QString& key);
     Result<QVector<Setting>> get_by_category(const QString& category);
     Result<void> clear_category(const QString& category);

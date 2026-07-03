@@ -10,7 +10,8 @@
     { "id": "institution_holdings", "title": "Institutions",     "category": "Research",    "description": "Institutional 13F holdings (SEC Form 13F-HR) — top positions by value", "tags": ["institution","13f","holdings","fund","ownership"] },
     { "id": "politician_trades", "title": "Politicians",         "category": "Research",    "description": "US Congress (politician) stock trades by ticker (AInvest) — needs AINVEST_API_KEY", "tags": ["politician","congress","senate","house","stock act","ownership"] },
 
-    { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Order entry + real-time book for Kraken / HyperLiquid",    "tags": ["crypto","trading","order"] },
+    { "id": "bitcoin",           "title": "Bitcoin",            "category": "Trading",     "description": "BTC-only live tape, candles, bid/ask book, paper orders",   "tags": ["bitcoin","btc","xbt","satoshi","order book","tape"] },
+    { "id": "crypto_trading",    "title": "Crypto Trading",     "category": "Trading",     "description": "Multi-asset crypto trading and real-time exchange books",   "tags": ["crypto","trading","order","altcoins"] },
     { "id": "equity_trading",    "title": "Equity Trading",     "category": "Trading",     "description": "Multi-account equity trading across 16+ brokers",          "tags": ["equity","trading","brokers"] },
     { "id": "algo_trading",      "title": "Strategies",         "category": "Strategies",  "description": "Build, test, scan, alert, and deploy trading strategies",    "tags": ["algo","strategy","execution"] },
     { "id": "backtesting",       "title": "Strategy Lab",       "category": "Strategies",  "description": "Advanced historical simulation and provider comparison",     "tags": ["backtest","simulation","advanced"] },

@@ -1,8 +1,8 @@
 #pragma once
-// Pure expansion of analysis slash commands (/comps, /dcf, /earnings) typed in the
-// AI chat into a playbook instruction for the in-app LLM. The matching system-prompt
-// playbooks (resources/ai_skills/*.md) carry the actual methodology; this just turns
-// "/comps AAPL" into a clear request. Core-only so it's unit-testable.
+// Pure expansion of analysis slash commands typed in AI chat into playbook
+// instructions for the in-app LLM. The matching system-prompt playbooks
+// (resources/ai_skills/*.md) carry the actual methodology; this just turns
+// "/brief AAPL" into a clear request. Core-only so it's unit-testable.
 #include <QString>
 
 namespace openmarketterminal::ai_chat {

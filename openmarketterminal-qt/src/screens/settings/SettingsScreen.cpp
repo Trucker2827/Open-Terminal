@@ -130,7 +130,7 @@ SettingsScreen::SettingsScreen(QWidget* parent) : QWidget(parent) {
     make_btn(QStringLiteral("Security"),        8);
     make_btn(QStringLiteral("AI Activity"),    15);
     make_btn(QStringLiteral("Data Sources"),    4);
-    make_btn(QStringLiteral("LLM Config"),      5);
+    make_btn(QStringLiteral("AI Providers"),    5);
     make_btn(QStringLiteral("MCP Servers"),     6);
     make_btn(QStringLiteral("Python Env"),     11);
     make_btn(QStringLiteral("Storage & Cache"), 3);

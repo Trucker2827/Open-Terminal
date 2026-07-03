@@ -758,7 +758,8 @@ void register_builtins() {
     register_screen("gov_data", "Government Data", {"gov", "census", "fred data", "government data"});
     register_screen("data_sources", "Data Sources", {"api", "data", "connectors", "data sources"});
     register_screen("equity_trading", "Equity Trading", {"trade", "orders", "equity trading"});
-    register_screen("crypto_trading", "Crypto Trading", {"xbt", "crypto trade", "crypto trading"});
+    register_screen("bitcoin", "Bitcoin", {"btc", "xbt", "bitcoin", "satoshi", "bitcoin tape", "bitcoin trading"});
+    register_screen("crypto_trading", "Crypto Trading", {"crypto trade", "crypto trading", "altcoins"});
     register_screen("derivatives", "Derivatives", {"opt", "options", "derivatives"});
     register_screen("fno", "FNO", {"fno", "nse options", "futures options"});
     register_screen("backtesting", "Strategy Lab", {"bt", "backtest", "strategy test", "strategy lab"});
@@ -774,7 +775,20 @@ void register_builtins() {
     register_screen("excel", "Excel", {"xl", "excel", "spreadsheet"});
     register_screen("node_editor", "Workflows", {"node", "workflow", "workflows", "builder"});
     register_screen("code_editor", "Notebooks", {"code", "notebook", "notebooks", "python"});
+    register_screen("profile", "Profile", {"profile", "account", "user"});
     register_screen("settings", "Settings", {"settings", "prefs", "preferences"});
+    register_screen("agent_config", "Agents", {"agents", "agent config", "teams"});
+    register_screen("mcp_servers", "MCP Servers", {"mcp servers", "tools servers"});
+    register_screen("data_mapping", "Data Mapping", {"mapping", "data mapping"});
+    register_screen("file_manager", "Files", {"files", "file manager"});
+    register_screen("notes", "Notes", {"notes"});
+    register_screen("akshare", "AkShare", {"akshare", "china data"});
+    register_screen("asia_markets", "Asia Markets", {"asia", "asia markets"});
+    register_screen("alpha_arena", "Alpha Arena", {"arena", "alpha arena"});
+    register_screen("ma_analytics", "M&A Analytics", {"ma", "m&a", "deals"});
+    register_screen("alt_investments", "Alt Investments", {"alts", "alternative investments"});
+    register_screen("surface_analytics", "Surface Analytics", {"surface", "surface analytics"});
+    register_screen("trade_viz", "Trade Viz", {"trade viz", "trade visualization"});
     register_screen("docs", "Docs", {"help docs", "manual", "docs"});
 
     register_one(ActionDef{

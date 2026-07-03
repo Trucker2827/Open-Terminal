@@ -570,6 +570,7 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
                 {"panel_news", {"News Feed", "news"}},
                 {"panel_portfolio", {"Portfolio", "portfolio"}},
                 {"panel_markets", {"Markets", "markets"}},
+                {"panel_bitcoin", {"Bitcoin", "bitcoin"}},
                 {"panel_crypto", {"Crypto Trading", "crypto_trading"}},
                 {"panel_equity", {"Equity Trading", "equity_trading"}},
                 {"panel_algo", {"Algo Trading", "algo_trading"}},
@@ -599,6 +600,7 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
             static const QMap<QString, QStringList> view_screens = {
                 // Trading
                 {"perspective_trading", {"crypto_trading", "watchlist", "markets", "news"}},
+                {"perspective_bitcoin", {"bitcoin", "watchlist", "markets", "news"}},
                 {"perspective_equity", {"equity_trading", "watchlist"}},
                 {"perspective_algo", {"algo_trading", "backtesting"}},
                 // Research
