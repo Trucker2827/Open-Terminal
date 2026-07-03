@@ -37,6 +37,11 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+          # Do not leave the repo-scoped GITHUB_TOKEN as a global github.com
+          # credential. CMake FetchContent clones public third-party repos
+          # such as QtExcel/QXlsx; authenticating those with this repo's token
+          # can produce 403s on release runners.
+          persist-credentials: false
 
       # ── OpenSSL (dynamic) + zlib (STATIC) dev libs ────────────────────────
       # zlib is required by find_package(ZLIB) (InstrumentDecompress.cpp).
@@ -389,6 +394,8 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+          # Keep external FetchContent clones unauthenticated/public.
+          persist-credentials: false
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1
@@ -887,6 +894,8 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+          # Keep external FetchContent clones unauthenticated/public.
+          persist-credentials: false
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1
