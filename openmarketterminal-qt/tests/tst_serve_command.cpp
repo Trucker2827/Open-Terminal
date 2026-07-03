@@ -27,8 +27,7 @@ private slots:
     void stop_refuses_gui_owner() {
         const QString root = profile_root_for("default");
         BridgeInfo in{"http://127.0.0.1:1", "tok", QCoreApplication::applicationPid(),
-                      "2026-06-14T00:00:00Z"};
-        in.kind = "gui";                                   // live, but a GUI
+                      "2026-06-14T00:00:00Z", "gui"};      // live, but a GUI
         QVERIFY(write_bridge_file(root, in));
         QCOMPARE(serve_stop("default"), 3);                // refuse: owner is a gui
         remove_bridge_file(root);
@@ -36,8 +35,8 @@ private slots:
 
     void status_not_running_when_pid_dead() {
         const QString root = profile_root_for("default");
-        BridgeInfo in{"http://127.0.0.1:1", "tok", 999999999, "2026-06-14T00:00:00Z"};
-        in.kind = "daemon";                                // daemon, but dead pid
+        BridgeInfo in{"http://127.0.0.1:1", "tok", 999999999,
+                      "2026-06-14T00:00:00Z", "daemon"};   // daemon, but dead pid
         QVERIFY(write_bridge_file(root, in));
         QCOMPARE(serve_status("default", /*json=*/false), 3);
         QCOMPARE(serve_status("default", /*json=*/true), 3);
@@ -47,8 +46,7 @@ private slots:
     void status_running_when_live_daemon() {
         const QString root = profile_root_for("default");
         BridgeInfo in{"http://127.0.0.1:1", "tok", QCoreApplication::applicationPid(),
-                      "2026-06-14T00:00:00Z"};
-        in.kind = "daemon";                                // live daemon
+                      "2026-06-14T00:00:00Z", "daemon"};   // live daemon
         QVERIFY(write_bridge_file(root, in));
         QCOMPARE(serve_status("default", /*json=*/false), 0);
         remove_bridge_file(root);

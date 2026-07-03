@@ -112,8 +112,8 @@ void TerminalMcpBridge::write_discovery_file() {
     // token. The attach-mode CLI never sends X-MCP-Allow-Destructive; CLI
     // destructive/trading is a future phase.
     cli::BridgeInfo info{endpoint(), token_, QCoreApplication::applicationPid(),
-                         QDateTime::currentDateTimeUtc().toString(Qt::ISODate)};
-    info.kind = owner_kind_;
+                         QDateTime::currentDateTimeUtc().toString(Qt::ISODate),
+                         owner_kind_};
     cli::write_bridge_file(discovery_root_, info);
 }
 
