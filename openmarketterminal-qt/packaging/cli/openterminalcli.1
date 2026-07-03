@@ -1,0 +1,198 @@
+.TH OPENTERMINALCLI 1 "July 3, 2026" "OpenTerminal" "User Commands"
+.SH NAME
+openterminalcli \- command line interface for OpenTerminal
+.SH SYNOPSIS
+.B openterminalcli
+[\fB--json\fR] [\fB--headless\fR] [\fB--profile\fR \fINAME\fR]
+\fICOMMAND\fR [\fIARGS\fR...]
+.SH DESCRIPTION
+.B openterminalcli
+controls OpenTerminal from a shell. In attach mode it talks to a running
+OpenTerminal GUI or daemon. With
+.B --headless
+it runs supported local commands in-process without opening the GUI.
+.PP
+The CLI is local-first. Profile data, settings, notes, layouts, and configured
+AI provider secrets are stored on the user's machine. Use
+.B --json
+for machine-readable output.
+.SH GLOBAL OPTIONS
+.TP
+.B --json
+Print compact JSON when the command supports structured output.
+.TP
+.B --headless
+Run the command in an in-process headless runtime.
+.TP
+.BI --profile " NAME"
+Use a named local OpenTerminal profile.
+.TP
+.B --help
+Show help.
+.SH CORE COMMANDS
+.TP
+.B status
+Show whether the CLI is attached to a GUI/daemon or running headless.
+.TP
+.B version
+Print the CLI version.
+.TP
+.B doctor [--live-ai]
+Diagnose local profile paths, databases, AI provider setup, bundled scripts,
+CLI docs/completions, and GUI/daemon attachment status. API keys are never
+printed. With
+.B --live-ai
+it also probes Ollama reachability/model inventory or sends a minimal
+OpenAI/Anthropic request through the locally stored key.
+.TP
+.B security network-audit [--no-sockets]
+Audit local MCP server configuration, AI provider endpoints, bridge metadata,
+legacy cloud placeholders, and live OpenTerminal-owned sockets. Secrets are
+masked; MCP environment values are reported only by key name.
+.TP
+.B setup [status|profile|ai|doctor]
+Local-first onboarding for profile/account and AI provider settings.
+.TP
+.B serve [--status|--stop]
+Run or manage a headless daemon.
+.TP
+.B daemon install|start|stop|restart|status|health|logs|audit|jobs|monitors|notify|ai|paper
+Install and manage the per-user macOS LaunchAgent wrapper around
+\fBopenterminalcli --profile PROFILE serve\fR, plus local scheduled daemon
+jobs for briefs, notebooks, notifications, health checks, and paper strategies.
+.TP
+.B coverage [QUERY] [--gaps]
+Show CLI parity by app area.
+.SH MARKET AND DATA COMMANDS
+.TP
+.B quote SYMBOL...
+Fetch market quotes.
+.TP
+.B news latest|search|monitors
+Read and manage market news.
+.TP
+.B research quote|company|financials|filings|insiders|13f|politicians
+Run equity research and ownership-data queries.
+.TP
+.B macro fred|bls|calendar|cb|ons|statcan|census|dbnomics|gov
+Fetch macroeconomic and government data.
+.TP
+.B data connectors|connections|stats
+Manage local data-source connections.
+.TP
+.B files list|search|read|write|import|download|delete
+Manage File Manager artifacts.
+.TP
+.B notes list|search|show|create|update|export
+Manage local research notes.
+.TP
+.B notebook list|show|path|seed|open|create|run
+Manage the bundled notebook catalog, local working copies, and code-cell runs.
+.TP
+.B report state|add|bulk|save|load
+Build and manage Report Builder documents.
+.TP
+.B excel read|write|append|clear
+Read and mutate local CSV/XLSX files. Google Sheets helpers are available as
+\fBexcel google-read\fR, \fBgoogle-write\fR, \fBgoogle-append\fR, and
+\fBgoogle-clear\fR.
+.TP
+.B workspace layouts|show|export|import|template|panels|open
+Manage saved layouts and visible GUI panels.
+.SH TRADING AND PORTFOLIO COMMANDS
+.TP
+.B watchlist list|show|create|add|remove|lookup
+Manage local watchlists.
+.TP
+.B portfolio list|show|create|add|sell|tx
+Manage local portfolios.
+.TP
+.B strategy list|templates|show|backtest|paper-run|deploy
+Manage saved trading strategies, run native backtests, and open guarded deploy.
+.TP
+.B trade accounts|drafts|prepare|submit|paper|live|fast
+Manage guarded order workflows. Mutating or live commands require explicit
+safety flags and local gates.
+.TP
+.B scanner list|add|events
+Manage persisted scanner alert watches.
+.TP
+.B notify providers|set|send|test
+Configure and send local notifications.
+.SH AI COMMANDS
+.TP
+.B ask PROMPT...
+Run a headless LLM request with OpenTerminal tools.
+.TP
+.B ai providers|use|test
+Inspect and configure local AI provider settings.
+.TP
+.B ai recipes
+List bundled AI analysis playbooks.
+.TP
+.B ai recipe show NAME
+Print a bundled playbook.
+.TP
+.B ai recipe run NAME TARGET...
+Ask the configured model to run a bundled playbook.
+.TP
+.B brief|risk|thesis|radar TARGET
+Shortcut AI workflows for common analysis recipes.
+.SH APP CONTROL COMMANDS
+.TP
+.B screens [QUERY]
+List openable app screens.
+.TP
+.B open SCREEN
+Open a screen in the focused GUI window.
+.TP
+.B actions [QUERY]
+List registered app actions.
+.TP
+.B action ID [KEY=VALUE...]
+Invoke a registered app action.
+.TP
+.B mcp list|search|describe|call
+Inspect and call OpenTerminal tools directly.
+.SH EXAMPLES
+.EX
+openterminalcli --headless quote AAPL BTC-USD
+openterminalcli --headless doctor
+openterminalcli --headless doctor --live-ai
+openterminalcli --headless security network-audit
+openterminalcli --headless security network-audit --no-sockets
+openterminalcli --headless setup
+openterminalcli --headless setup profile name="Ada Lovelace" nickname=ada
+printf '%s' "$OPENAI_API_KEY" | openterminalcli --headless setup ai openai --api-key-stdin
+openterminalcli --headless macro fred UNRATE
+openterminalcli --headless excel read ./model.xlsx --range A1:D20
+openterminalcli --headless workspace layouts --recent
+openterminalcli --headless ai recipes
+openterminalcli ai recipe run comps NVDA
+openterminalcli open profile
+.EE
+.SH FILES
+.TP
+.I src/cli/README.md
+Detailed CLI usage notes.
+.TP
+.I packaging/cli/completions/
+Shell completion scripts.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 2
+Usage or validation error.
+.TP
+.B 3
+No GUI/daemon is attached in attach mode.
+.TP
+.B 5
+Tool or command failure.
+.TP
+.B 6
+Transport timeout or unavailable service.
+.SH SEE ALSO
+.BR OpenTerminal (1)

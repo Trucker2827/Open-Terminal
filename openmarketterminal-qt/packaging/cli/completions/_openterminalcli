@@ -1,0 +1,109 @@
+#compdef openterminalcli
+
+local -a commands
+commands=(
+  'help:show command help'
+  'status:show GUI or daemon attachment status'
+  'version:print version'
+  'doctor:diagnose local CLI and profile setup'
+  'diagnose:alias for doctor'
+  'security:audit local MCP, AI, and network exposure'
+  'sec:alias for security'
+  'setup:local profile and AI onboarding'
+  'onboard:alias for setup'
+  'onboarding:alias for setup'
+  'serve:run or manage a headless daemon'
+  'daemon:install or manage the macOS LaunchAgent daemon'
+  'service:alias for daemon'
+  'launchd:alias for daemon'
+  'screens:list openable app screens'
+  'open:open a GUI screen'
+  'cmd:run command-bar text'
+  'actions:list registered app actions'
+  'action:invoke an app action'
+  'coverage:show CLI parity coverage'
+  'profile:view or edit local profile'
+  'settings:view or edit local settings'
+  'mcp:inspect or call tools'
+  'quote:fetch quotes'
+  'news:market news'
+  'research:equity research'
+  'macro:macro and government data'
+  'trade:trading accounts and orders'
+  'data:data-source connections'
+  'agent:local agent registry'
+  'workflow:saved workflows'
+  'files:File Manager artifacts'
+  'notes:research notes'
+  'notebook:notebook catalog and runner'
+  'notebooks:alias for notebook'
+  'nb:alias for notebook'
+  'report:Report Builder documents'
+  'excel:CSV/XLSX and Google Sheets access'
+  'workspace:layouts and panels'
+  'notify:notifications'
+  'scanner:scanner alert watches'
+  'watchlist:watchlists'
+  'portfolio:portfolios'
+  'strategy:trading strategies'
+  'strategies:alias for strategy'
+  'strat:alias for strategy'
+  'hub:DataHub topics'
+  'observe:observer journal'
+  'ask:LLM prompt'
+  'brief:AI market brief'
+  'risk:AI risk review'
+  'thesis:AI thesis monitor'
+  'radar:AI news radar'
+  'ai:AI provider and recipe commands'
+)
+
+local -a global_opts
+global_opts=(
+  '--json[print compact JSON]'
+  '--headless[run in-process without GUI]'
+  '--profile[use local profile]:profile name:'
+  '--help[show help]'
+)
+
+local curcontext="$curcontext" state line
+_arguments -C \
+  $global_opts \
+  '1:command:->command' \
+  '*::arg:->args'
+
+case $state in
+  command)
+    _describe -t commands 'openterminalcli command' commands
+    ;;
+  args)
+    case $line[1] in
+      help) _describe -t commands 'help topic' commands ;;
+      mcp|tools) _values 'mcp subcommand' list search describe call ;;
+      security|sec) _values 'security subcommand' network-audit audit net --no-sockets ;;
+      ai) _values 'ai subcommand' providers use test ask brief risk thesis radar recipes recipe run strategy ;;
+      news) _values 'news subcommand' latest search status monitors refresh mark-read save unsave ;;
+      research) _values 'research subcommand' search quote company financials filings metrics insiders insider-summary 13f 13f-top politicians gov tool ;;
+      macro|econ|economics|dbnomics|govdata|government) _values 'macro subcommand' fred bls calendar cb ons statcan census dbnomics gov econ-run run-econ tool providers datasets series observations search ;;
+      trade|trading) _values 'trade subcommand' accounts drafts prepare submit cancel-draft paper live fast audit ;;
+      data|datasources|ds) _values 'data subcommand' connectors connections get create update delete stats fields test tool ;;
+      files|file) _values 'files subcommand' list search info read path import write download delete stats storage ;;
+      notes|note) _values 'notes subcommand' list search show create update favorite archive delete export ;;
+      notebook|notebooks|nb) _values 'notebook subcommand' list ls show info path seed open create new run --category --difficulty --query --force --markdown --code --from-file --open --no-open --cell ;;
+      report|reports) _values 'report subcommand' state types templates add bulk update remove move clear metadata theme template save load undo redo tool ;;
+      excel|xl|spreadsheet|spreadsheets) _values 'excel subcommand' read write append clear google-read google-write google-append google-clear ;;
+      workspace|layout|layouts) _values 'workspace subcommand' layouts recent show export import delete rename templates template apply panels screens open tab add replace ;;
+      notify|notification|notifications) _values 'notify subcommand' providers status config set clear enable disable triggers send test ;;
+      scanner|scan|alerts) _values 'scanner subcommand' list show add events delete enable disable ;;
+      watchlist|wl) _values 'watchlist subcommand' list show create delete add remove lookup ;;
+      portfolio|port) _values 'portfolio subcommand' list show create delete assets add sell remove tx dividend split delete-tx snapshots ;;
+      strategy|strategies|strat) _values 'strategy subcommand' list ls templates template show info backtest bt paper-run paper run deploy --query --symbol --start --end --capital --symbols --max-iters --interval-sec --duration-sec ;;
+      profile|account) _values 'profile subcommand' show set clear ;;
+      settings|setting) _values 'settings subcommand' list get set clear ;;
+      setup|onboard|onboarding) _values 'setup subcommand' status checklist profile account ai provider providers doctor diagnose ;;
+      serve) _values 'serve option' --status --stop ;;
+      daemon|service|launchd) _values 'daemon subcommand' status health logs log audit security jobs job monitors monitor notify notification ai paper paper-strategy install start stop restart uninstall remove rm plist path --replace --force --start --dry-run --lines --name --every-sec --interval-sec --disabled --target --workflow --selector --cell --strategy --symbols --max-iters --provider --level --title --message --job ;;
+      *) _files ;;
+    esac
+    ;;
+esac
