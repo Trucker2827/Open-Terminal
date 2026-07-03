@@ -81,7 +81,7 @@ struct NodeTypeDef {
     /// Honesty gate: a node may declare itself not runnable. When false, the
     /// executor short-circuits to an Unavailable result and NEVER calls execute.
     bool available = true;
-    QString unavailable_reason; // shown to the user, e.g. "... not implemented yet."
+    QString unavailable_reason = {}; // shown to the user, e.g. "... not implemented yet."
 };
 
 // ── Node instance (placed on canvas) ───────────────────────────────────
