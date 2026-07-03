@@ -140,4 +140,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_open_banking_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

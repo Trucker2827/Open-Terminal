@@ -32,6 +32,25 @@ private slots:
         QVERIFY(ts.contains("NVDA"));
     }
 
+    void ai_native_workflows_expand() {
+        QString u;
+        const QString brief = expand_analysis_slash_command("/brief AAPL", &u);
+        QVERIFY(brief.contains("market brief"));
+        QVERIFY(brief.contains("AAPL"));
+
+        const QString risk = expand_analysis_slash_command("/risk growth portfolio", &u);
+        QVERIFY(risk.contains("risk review"));
+        QVERIFY(risk.contains("GROWTH PORTFOLIO"));
+
+        const QString thesis = expand_analysis_slash_command("/thesis TSLA", &u);
+        QVERIFY(thesis.contains("thesis monitor"));
+        QVERIFY(thesis.contains("TSLA"));
+
+        const QString radar = expand_analysis_slash_command("/radar semiconductors", &u);
+        QVERIFY(radar.contains("news radar"));
+        QVERIFY(radar.contains("SEMICONDUCTORS"));
+    }
+
     void ticker_is_uppercased() {
         QString u;
         QVERIFY(expand_analysis_slash_command("/comps aapl", &u).contains("AAPL"));
@@ -42,6 +61,10 @@ private slots:
         const QString out = expand_analysis_slash_command("/comps", &usage);
         QVERIFY(out.isEmpty());
         QCOMPARE(usage, QString("Usage: /comps TICKER"));
+
+        usage.clear();
+        QVERIFY(expand_analysis_slash_command("/risk", &usage).isEmpty());
+        QCOMPARE(usage, QString("Usage: /risk PORTFOLIO_OR_SYMBOL"));
     }
 
     void unknown_slash_passes_through() {

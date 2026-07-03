@@ -4,23 +4,78 @@
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
 #include "cli/ServeCommand.h"
+#include "core/config/AppConfig.h"
+#include "core/config/AppPaths.h"
+#include "core/layout/LayoutCatalog.h"
+#include "core/layout/LayoutTemplates.h"
+#include "core/profile/ProfilePaths.h"
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpProvider.h"
 #include "mcp/McpTypes.h"
+#include "python/NotebookKernel.h"
+#include "screens/ai_chat/AnalysisSlashCommands.h"
+#include "services/algo_trading/AlgoTradingService.h"
+#include "services/economics/EconomicsService.h"
+#include "services/file_manager/FileManagerService.h"
+#include "services/gov_data/GovDataService.h"
+#include "services/llm/AnalysisSkillLoader.h"
+#include "services/llm/LlmService.h"
+#include "services/notebooks/NotebookLibraryService.h"
+#include "services/notifications/NotificationService.h"
+#include "services/python_cli/PythonCliService.h"
+#include "services/report_builder/ReportBuilderService.h"
+#include "storage/repositories/AccountRepository.h"
+#include "storage/repositories/DataSourceRepository.h"
+#include "storage/repositories/LlmConfigRepository.h"
+#include "storage/repositories/McpServerRepository.h"
+#include "storage/repositories/NewsArticleRepository.h"
+#include "storage/repositories/NotesRepository.h"
+#include "storage/repositories/OrderDraftRepository.h"
+#include "storage/repositories/PortfolioRepository.h"
+#include "storage/repositories/ScanEventRepository.h"
+#include "storage/repositories/ScanWatchRepository.h"
+#include "storage/repositories/SettingsRepository.h"
+#include "storage/repositories/TradeAuditRepository.h"
+#include "storage/repositories/WatchlistRepository.h"
+#include "storage/repositories/WorkflowRepository.h"
+#include "storage/secure/SecureStorage.h"
+#include "core/config/ProfileManager.h"
 #include <QCoreApplication>
+#include <QDate>
+#include <QDateTime>
+#include <QDir>
+#include <QEventLoop>
+#include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QJsonParseError>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QFile>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QSet>
+#include <QTemporaryDir>
+#include <QTimer>
+#include <QUrl>
+#include <QUuid>
+#include <algorithm>
 #include <cstdio>
 #include <optional>
 
 namespace openmarketterminal::cli {
+
+static openmarketterminal::headless::HeadlessRuntime& headless_runtime();
 
 bool parse_global_opts(QStringList& args, GlobalOpts& out) {
     while (!args.isEmpty() && args.first().startsWith("--")) {
         const QString flag = args.takeFirst();
         if (flag == "--json") { out.json = true; }
         else if (flag == "--headless") { out.headless = true; }
+        else if (flag == "--help" || flag == "-h") { out.help = true; }
         else if (flag == "--profile") {
             if (args.isEmpty()) return false;
             out.profile = args.takeFirst();
@@ -29,17 +84,574 @@ bool parse_global_opts(QStringList& args, GlobalOpts& out) {
     return true;
 }
 
-static int usage() {
-    std::fprintf(stderr,
-        "openterminalcli [--json] [--headless] [--profile <name>] <group> <command> [args]\n"
-        "  status\n  version\n"
-        "  observe latest | week | alerts [N]\n"
-        "  mcp list | describe <tool> | call <tool> '<json>'\n"
+static int usage(FILE* stream = stderr, int code = 2) {
+    std::fprintf(stream,
+        "openterminalcli [--json] [--headless] [--profile <name>] <command> [args]\n\n"
+        "Core:\n"
+        "  help [command]                       Show help\n"
+        "  status                               Show attached GUI/daemon status\n"
+        "  version                              Print CLI version\n"
+        "  doctor                               Diagnose local CLI/profile setup\n"
+        "  security network-audit               Audit local MCP/AI/network exposure\n"
+        "  setup [status|profile|ai|doctor]     Local profile and AI onboarding\n"
+        "  serve [--status|--stop]              Run or manage a read-only headless daemon\n"
+        "  daemon install|start|status|stop      Install/manage the macOS LaunchAgent\n\n"
+        "Markets and data:\n"
+        "  quote <SYM...>                       Fetch quotes (alias: q)\n"
+        "  news latest|search|status|monitors    Read/manage market news from CLI\n"
+        "  research quote|company|insiders       Equity research, SEC filings, ownership\n"
+        "  macro dbnomics|gov                    Macro, DB.NOMICS, and gov data\n"
+        "  trade accounts|paper|live|fast         Trading accounts, paper books, live state\n"
+        "  data connectors|connections|stats      Manage local data-source connections\n"
+        "  files list|search|read|write           Manage local File Manager artifacts\n"
+        "  notes list|create|show|update          Manage local research notes\n"
+        "  notebook list|open|create|run           Manage and run local notebooks\n"
+        "  report state|add|save|load             Build and manage Report Builder docs\n"
+        "  excel read|write|append|clear          Read/write local CSV/XLSX files\n"
+        "  workspace layouts|panels|open          Manage layouts and panels\n"
+        "  notify providers|send|triggers         Configure/test local notifications\n"
+        "  scanner list|add|events                Manage persisted scanner alert watches\n"
+        "  watchlist list|add|remove|lookup      Manage local watchlists (alias: wl)\n"
+        "  portfolio list|show|add|tx            Manage local portfolios (alias: port)\n"
+        "  strategy list|backtest|paper-run       Manage and test trading strategies\n"
         "  hub topics | peek <topic> | request <topic>\n"
-        "  quote <SYM...>\n"
+        "  observe latest | week | alerts [N]\n\n"
+        "App control (running GUI required):\n"
+        "  screens [query]                      List/openable app screens\n"
+        "  open <screen-or-alias>                Open a screen in the focused window\n"
+        "  cmd <command-bar text...>             Run raw command-bar text\n"
+        "  actions [query]                       List/search registered app actions\n"
+        "  action <id> [key=value ...]           Invoke a registered app action\n"
+        "  coverage [query]                      Show CLI parity by app area\n"
+        "  profile [show|set|clear]              View/edit local profile fields\n\n"
+        "  settings [list|get|set|clear]          View/edit local settings\n\n"
+        "MCP tools:\n"
+        "  mcp list                             List tools (alias: tools)\n"
+        "  mcp search <query> [--limit N]        Search tool names/descriptions\n"
+        "  mcp describe <tool>                  Show schema (alias: tool <name>)\n"
+        "  mcp call <tool> '<json>'              Call tool with JSON args\n"
+        "  mcp call <tool> key=value ...         Call tool with shell-friendly args\n"
+        "  mcp call <tool> @args.json            Read args from file; use '-' for stdin\n\n"
+        "AI:\n"
+        "  ask <prompt...>                       Headless LLM ask with tools (alias: ai ask)\n"
+        "  brief <target>                        Run AI market brief workflow\n"
+        "  risk <portfolio-or-symbol>            Run AI risk review workflow\n"
+        "  thesis <ticker>                       Run AI thesis monitor workflow\n"
+        "  radar <watchlist-or-topic>            Run AI news radar workflow\n"
+        "  agent list|discover|run|route          Use local agent registry from CLI\n"
+        "  workflow list|show|save|delete|run     Manage and run saved workflows\n"
+        "  ai providers                          List local AI provider config\n"
+        "  ai use <openai|anthropic|ollama>       Select/save the local AI provider\n"
+        "  ai test [prompt...]                    Test the active AI provider\n"
         "  ai run strategy <meanrev|claude> --mode paper [--interval-sec N]\n"
-        "                  [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
-    return 2;
+        "                  [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n\n"
+        "Examples:\n"
+        "  openterminalcli --headless quote AAPL BTC-USD\n"
+        "  openterminalcli --headless doctor\n"
+        "  openterminalcli --headless news latest --limit 10\n"
+        "  openterminalcli --headless research company NVDA\n"
+        "  openterminalcli --headless trade paper positions <portfolio-id>\n"
+        "  openterminalcli --headless data connectors market-data\n"
+        "  openterminalcli --headless files list\n"
+        "  openterminalcli --headless notes create \"Idea\" --content \"Watch NVDA\" --yes\n"
+        "  openterminalcli --headless report add heading --content \"Investment Thesis\" --yes\n"
+        "  openterminalcli --headless excel read ./model.xlsx --range A1:D20\n"
+        "  openterminalcli --headless workspace layouts\n"
+        "  openterminalcli --headless notify test webhook --yes\n"
+        "  openterminalcli --headless scanner add price AAPL above 250 --notify --yes\n"
+        "  openterminalcli --headless agent discover\n"
+        "  openterminalcli --headless workflow list\n"
+        "  openterminalcli --headless watchlist add AAPL MSFT\n"
+        "  openterminalcli --headless portfolio create \"Core Growth\" --owner Ada\n"
+        "  openterminalcli screens ai\n"
+        "  openterminalcli open profile\n"
+        "  openterminalcli --headless coverage trading --gaps\n"
+        "  openterminalcli action screen.markets\n"
+        "  openterminalcli --headless mcp search quote\n"
+        "  openterminalcli --headless mcp call get_quote symbol=AAPL\n"
+        "  openterminalcli --headless brief NVDA\n");
+    return code;
+}
+
+static int command_help(const QString& topic) {
+    if (topic.isEmpty() || topic == "help")
+        return usage(stdout, 0);
+    if (topic == "mcp" || topic == "tools" || topic == "tool" || topic == "call") {
+        std::printf(
+            "MCP tools:\n"
+            "  mcp list\n"
+            "  mcp search <query> [--limit N]\n"
+            "  mcp describe <tool>\n"
+            "  mcp call <tool> '<json>'\n"
+            "  mcp call <tool> key=value ...\n"
+            "  mcp call <tool> @args.json\n"
+            "  mcp call <tool> -                 # JSON object from stdin\n");
+        return 0;
+    }
+    if (topic == "doctor") {
+        std::printf(
+            "Doctor command:\n"
+            "  doctor [--live-ai]\n"
+            "  --json doctor\n"
+            "Checks local profile paths, databases, AI provider setup, bundled scripts/playbooks,\n"
+            "CLI docs/completions, and GUI/daemon attachment status. No API keys are printed.\n"
+            "--live-ai also probes the active provider: Ollama reachability/model inventory or\n"
+            "a minimal OpenAI/Anthropic request using the locally stored key.\n");
+        return 0;
+    }
+    if (topic == "security" || topic == "sec" || topic == "network-audit") {
+        std::printf(
+            "Security commands:\n"
+            "  security network-audit [--no-sockets]\n"
+            "  sec net [--no-sockets]\n"
+            "Audits the selected local profile for external MCP server configs, active\n"
+            "OpenTerminal bridge metadata, AI provider endpoints, legacy cloud placeholders,\n"
+            "and live sockets owned by the running OpenTerminal process tree. Secrets are\n"
+            "masked; MCP env values are reported only by key name.\n");
+        return 0;
+    }
+    if (topic == "setup" || topic == "onboard" || topic == "onboarding") {
+        std::printf(
+            "Setup command:\n"
+            "  setup [status]\n"
+            "  setup profile [show|set|clear] ...\n"
+            "  setup profile name=<name> nickname=<nick> email=<email>\n"
+            "  setup ai [providers]\n"
+            "  setup ai <openai|anthropic|ollama> [--model M] [--base-url URL]\n"
+            "           [--api-key-env ENV | --api-key-stdin]\n"
+            "  setup doctor [--live-ai]\n"
+            "Local-first onboarding for profile/account and AI provider settings. API keys\n"
+            "are read from stdin/env and stored only in local secure storage.\n");
+        return 0;
+    }
+    if (topic == "serve") {
+        std::printf(
+            "Serve command:\n"
+            "  serve\n"
+            "  serve --status\n"
+            "  serve --stop\n"
+            "Runs the local headless runtime in the foreground for the selected profile.\n"
+            "For a login-started macOS service, use daemon install|start|status|stop.\n");
+        return 0;
+    }
+    if (topic == "daemon" || topic == "service" || topic == "launchd") {
+        std::printf(
+            "Daemon commands:\n"
+            "  daemon status\n"
+            "  daemon health\n"
+            "  daemon logs [stderr|stdout|jobs] [--lines N]\n"
+            "  daemon audit\n"
+            "  daemon jobs list|add|show|run|enable|disable|remove|repair\n"
+            "  daemon monitors status|repair\n"
+            "  daemon notify --title T --message M [--provider P] [--job]\n"
+            "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N]\n"
+            "  daemon paper <meanrev|claude> [--symbols AAPL,MSFT] [--every-sec N]\n"
+            "  daemon install [--replace] [--start] [--dry-run]\n"
+            "  daemon start\n"
+            "  daemon stop\n"
+            "  daemon restart\n"
+            "  daemon uninstall [--dry-run]\n"
+            "  daemon plist\n"
+            "Installs a per-user macOS LaunchAgent that runs `openterminalcli --profile <profile> serve`.\n"
+            "The service stays local to the machine and profile; live trading remains gated.\n");
+        return 0;
+    }
+    if (topic == "ai" || topic == "ask" || topic == "brief" || topic == "risk" ||
+        topic == "thesis" || topic == "radar") {
+        std::printf(
+            "AI commands run in headless mode and use configured LLM settings:\n"
+            "  ai providers\n"
+            "  ai use <openai|anthropic|ollama> [--model M] [--base-url URL]\n"
+            "      [--api-key-env ENV | --api-key-stdin]\n"
+            "  ai test [prompt...]\n"
+            "  ask <prompt...>\n"
+            "  brief <target>\n"
+            "  risk <portfolio-or-symbol>\n"
+            "  thesis <ticker>\n"
+            "  radar <watchlist-or-topic>\n"
+            "  ai recipes\n"
+            "  ai recipe show <name>\n"
+            "  ai recipe run <name> <target...>\n"
+            "  ai ask <prompt...>\n"
+            "  ai run strategy <meanrev|claude> --mode paper [--symbols AAPL,MSFT]\n");
+        return 0;
+    }
+    if (topic == "notebook" || topic == "notebooks" || topic == "nb") {
+        std::printf(
+            "Notebook commands:\n"
+            "  notebook list [--category C] [--difficulty D] [--query Q]\n"
+            "  notebook show <id-or-title>\n"
+            "  notebook path <id-or-title>\n"
+            "  notebook seed [--force]\n"
+            "  notebook open <id-or-title-or-path>\n"
+            "  notebook create <title> [--markdown TEXT] [--code TEXT] [--from-file PATH] [--open|--no-open]\n"
+            "  notebook run <id-or-title-or-path> [--cell N]\n"
+            "Catalog notebooks are copied into the local profile before editing. In GUI mode,\n"
+            "open/create can also focus the Notebooks screen; --headless prints/uses local files only.\n");
+        return 0;
+    }
+    if (topic == "strategy" || topic == "strategies" || topic == "strat") {
+        std::printf(
+            "Strategy commands:\n"
+            "  strategy list [--query Q]\n"
+            "  strategy templates\n"
+            "  strategy show <id-or-name>\n"
+            "  strategy backtest <id-or-name> --symbol AAPL [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--capital N]\n"
+            "  strategy paper-run <meanrev|claude> [--symbols AAPL,MSFT] [--max-iters N]\n"
+            "  strategy deploy <id-or-name>\n"
+            "Saved DSL strategies can be listed and backtested from the CLI. paper-run wraps the\n"
+            "existing paper-only strategy loop. deploy opens the guarded GUI deployment flow.\n");
+        return 0;
+    }
+    if (topic == "agent" || topic == "agents") {
+        std::printf(
+            "Agent commands:\n"
+            "  agent list\n"
+            "  agent discover\n"
+            "  agent tools | models | system | cache\n"
+            "  agent configs [list|show <id>|active]\n"
+            "  agent route <query...>\n"
+            "  agent run <query...> [--config JSON] --yes\n"
+            "  agent stock <symbol> [--config JSON] --yes\n"
+            "  agent team <query...> --team JSON --yes\n"
+            "  agent tool <mcp-tool> key=value ...\n");
+        return 0;
+    }
+    if (topic == "workflow" || topic == "workflows") {
+        std::printf(
+            "Workflow commands:\n"
+            "  workflow list\n"
+            "  workflow show <workflow-id>\n"
+            "  workflow save <workflow-json|@file|-> --yes\n"
+            "  workflow delete <workflow-id> --yes\n"
+            "  workflow run <workflow-type> [--params JSON] --yes\n"
+            "  workflow tool <mcp-tool> key=value ...\n");
+        return 0;
+    }
+    if (topic == "files" || topic == "file") {
+        std::printf(
+            "Files commands:\n"
+            "  files list [--screen S] [--mime M]\n"
+            "  files search <query...> [--screen S] [--mime M]\n"
+            "  files info <file-id>\n"
+            "  files read <file-id> [--max N]\n"
+            "  files path <file-id>\n"
+            "  files import <path> [--screen S] --yes\n"
+            "  files write <name> (--content TEXT | --content-file PATH) [--screen S] --yes\n"
+            "  files download <file-id> <destination-path> --yes\n"
+            "  files delete <file-id> --yes\n"
+            "  files stats | storage\n");
+        return 0;
+    }
+    if (topic == "notes" || topic == "note") {
+        std::printf(
+            "Notes commands:\n"
+            "  notes list [--archived] [--category C]\n"
+            "  notes search <query...>\n"
+            "  notes show <note-id>\n"
+            "  notes create <title...> (--content TEXT | --content-file PATH) [--category C]\n"
+            "               [--priority P] [--tickers CSV] [--sentiment S] [--tags CSV] --yes\n"
+            "  notes update <note-id> [title=...] [content=...] [category=...] [priority=...]\n"
+            "               [tickers=...] [sentiment=...] [tags=...] --yes\n"
+            "  notes favorite <note-id> --yes\n"
+            "  notes archive <note-id> --yes\n"
+            "  notes delete <note-id> --yes\n"
+            "  notes export <note-id> [--path PATH | --managed] --yes\n");
+        return 0;
+    }
+    if (topic == "report" || topic == "reports") {
+        std::printf(
+            "Report commands:\n"
+            "  report state\n"
+            "  report types | templates\n"
+            "  report add <type> [--content TEXT | --content-file PATH] [--config JSON] [--at N] --yes\n"
+            "  report bulk <components-json|@file|-> --yes\n"
+            "  report update <component-id> [--content TEXT | --content-file PATH] [--config JSON] --yes\n"
+            "  report remove <component-id> --yes\n"
+            "  report move <component-id> <to-index> --yes\n"
+            "  report clear --yes\n"
+            "  report metadata [key=value ...] --yes\n"
+            "  report theme <name> --yes\n"
+            "  report template <name...> --yes\n"
+            "  report save <path> [--managed] --yes\n"
+            "  report load <path> --yes\n"
+            "  report undo|redo --yes\n"
+            "  report tool <mcp-tool> key=value ...\n"
+            "Note: PDF export currently requires the GUI Report Builder screen.\n");
+        return 0;
+    }
+    if (topic == "excel" || topic == "xl" || topic == "spreadsheet" || topic == "spreadsheets") {
+        std::printf(
+            "Excel/spreadsheet commands:\n"
+            "  excel read <path> [--sheet NAME] [--range A1:D20] [--limit N]\n"
+            "  excel write <path> <rows-json|@file|-> [--sheet NAME] [--range A1] [--managed] --yes\n"
+            "  excel append <path> <rows-json|@file|-> [--sheet NAME] [--range A1] [--managed] --yes\n"
+            "  excel clear <path> [--sheet NAME] [--range A1:D20] --yes\n"
+            "  excel google-read <spreadsheet-id> [--sheet NAME] [--range A1:D20] [--credentials PATH]\n"
+            "  excel google-write <spreadsheet-id> <rows-json|@file|-> --sheet NAME [--range A1] --credentials PATH --yes\n"
+            "  excel google-append <spreadsheet-id> <rows-json|@file|-> --sheet NAME --credentials PATH --yes\n"
+            "  excel google-clear <spreadsheet-id> --sheet NAME [--range A1:D20] --credentials PATH --yes\n");
+        return 0;
+    }
+    if (topic == "workspace" || topic == "layout" || topic == "layouts") {
+        std::printf(
+            "Workspace/layout commands:\n"
+            "  workspace layouts [--recent] [--limit N] [--include-auto]\n"
+            "  workspace show <layout-id-or-name>\n"
+            "  workspace export <layout-id-or-name> <path> --yes\n"
+            "  workspace import <path> --yes\n"
+            "  workspace delete <layout-id-or-name> --yes\n"
+            "  workspace rename <layout-id-or-name> <new-name...> [--description TEXT] --yes\n"
+            "  workspace templates\n"
+            "  workspace template <persona-id> [--apply] --yes\n"
+            "  workspace panels [type-id]\n"
+            "  workspace screens [query]\n"
+            "  workspace open <screen-or-alias> [--exclusive]\n"
+            "  workspace tab <screen-or-alias>\n"
+            "  workspace add <primary-screen> <secondary-screen>\n"
+            "  workspace replace <old-screen> <new-screen>\n");
+        return 0;
+    }
+    if (topic == "notify" || topic == "notification" || topic == "notifications") {
+        std::printf(
+            "Notification commands:\n"
+            "  notify providers\n"
+            "  notify status\n"
+            "  notify config <provider>\n"
+            "  notify set <provider> key=value ... --yes\n"
+            "  notify clear <provider> [field|all] --yes\n"
+            "  notify enable|disable <provider> --yes\n"
+            "  notify triggers [key=value ...] --yes\n"
+            "  notify send (--provider P | --all) --title T --message M [--level info|warning|alert|critical]\n"
+            "              [--timeout-sec N] --yes\n"
+            "  notify test <provider> [--timeout-sec N] --yes\n"
+            "Keys are stored locally in the selected profile settings; secret fields are masked in output.\n");
+        return 0;
+    }
+    if (topic == "scanner" || topic == "scan" || topic == "alerts") {
+        std::printf(
+            "Scanner alert watch commands:\n"
+            "  scanner list [--active]\n"
+            "  scanner show <watch-id>\n"
+            "  scanner add price <symbol[,symbol...]> <above|below|at|crosses-above|crosses-below> <value>\n"
+            "      [--name N] [--timeframe TF] [--interval-sec N] [--cooldown-min N]\n"
+            "      [--notify] [--inactive] --yes\n"
+            "  scanner add raw --symbols A,B --condition JSON [--logic AND|OR] [--name N] --yes\n"
+            "  scanner pause|resume <watch-id> --yes\n"
+            "  scanner delete <watch-id> --yes\n"
+            "  scanner events [--limit N] [--watch ID]\n");
+        return 0;
+    }
+    if (topic == "quote" || topic == "q") {
+        std::printf("quote <SYM...>\n  Example: openterminalcli --headless quote AAPL BTC-USD ^GSPC\n");
+        return 0;
+    }
+    if (topic == "news") {
+        std::printf(
+            "News commands:\n"
+            "  news latest [--limit N] [--category C] [--range 24H] [--sentiment S] [--force]\n"
+            "  news top [--limit N]\n"
+            "  news search <query...> [--limit N] [--range 24H]\n"
+            "  news summary [--range 24H]\n"
+            "  news status | sources | refresh\n"
+            "  news clusters [--limit N] [--category C] [--range 24H] [--min-sources N] [--breaking]\n"
+            "  news threats [--limit N] [--range 24H] [--min-level HIGH|CRITICAL]\n"
+            "  news saved\n"
+            "  news read <article-id>\n"
+            "  news save <article-id>\n"
+            "  news monitors [list]\n"
+            "  news monitors add <label...> --keywords k1,k2 [--color HEX]\n"
+            "  news monitors toggle <id>\n"
+            "  news monitors delete <id>\n");
+        return 0;
+    }
+    if (topic == "research" || topic == "eq") {
+        std::printf(
+            "Research commands:\n"
+            "  research search <query...>\n"
+            "  research quote <SYM>\n"
+            "  research company <SYM>\n"
+            "  research overview <SYM> [--period 1y]\n"
+            "  research history <SYM> [--period 1y]\n"
+            "  research financials <SYM>\n"
+            "  research technicals <SYM> [--period 1y]\n"
+            "  research peers <SYM> <PEER...>\n"
+            "  research news <SYM> [--limit N]\n"
+            "  research sentiment <SYM> [--days N] [--force]\n"
+            "  research filings <ticker> [--form 8-K] [--months N]\n"
+            "  research metrics <ticker>\n"
+            "  research insiders <ticker> [--limit N]\n"
+            "  research insider-summary <ticker> [--limit N]\n"
+            "  research 13f <ticker> [--quarters N]\n"
+            "  research 13f-top <ticker> [--limit N]\n"
+            "  research politicians <ticker> [--limit N]\n"
+            "  research find-company <query...> [--limit N]\n"
+            "  research resolve <company-name...>\n"
+            "  research tool <mcp-tool> key=value ...\n");
+        return 0;
+    }
+    if (topic == "macro" || topic == "economics" || topic == "econ" || topic == "dbnomics" || topic == "gov") {
+        std::printf(
+            "Macro commands:\n"
+            "  macro fred <series-id>\n"
+            "  macro bls series <series-id>\n"
+            "  macro bls overview labor|inflation|eci|productivity\n"
+            "  macro calendar [YYYY-MM-DD]\n"
+            "  macro cb <boe|rba|boc|riksbank|snb|norges> <series>\n"
+            "  macro ons <gdp|cpi|cpih|rpi|unemployment|employment|trade_balance|house_prices|avg_earnings|public_debt>\n"
+            "  macro statcan <gdp|cpi|unemployment|employment|population|housing>\n"
+            "  macro census <acs|housing>\n"
+            "  macro dbnomics providers\n"
+            "  macro dbnomics datasets <provider> [--offset N]\n"
+            "  macro dbnomics series <provider> <dataset> [--query Q] [--offset N]\n"
+            "  macro dbnomics observations <provider> <dataset> <series>\n"
+            "  macro dbnomics search <query...> [--offset N]\n"
+            "  macro gov providers\n"
+            "  macro gov run <script> <command> [arg...]\n"
+            "  macro gov treasury-prices <date> [--security-type T]\n"
+            "  macro gov treasury-auctions <start> <end> [--security-type T] [--limit N] [--page N]\n"
+            "  macro gov treasury-summary <date>\n"
+            "  macro gov congress-summary <congress>\n"
+            "  macro gov congress-bills <congress> [--type hr] [--limit N] [--offset N]\n"
+            "  macro gov congress-bill <congress> <type> <number>\n"
+            "  macro econ-run <source> <script> <command> [arg...]\n"
+            "  macro tool <mcp-tool> key=value ...\n");
+        return 0;
+    }
+    if (topic == "trade" || topic == "trading") {
+        std::printf(
+            "Trade commands:\n"
+            "  trade accounts\n"
+            "  trade drafts [--status prepared|submitted|cancelled|expired|submit_failed] [--limit N]\n"
+            "  trade draft <draft-id>\n"
+            "  trade prepare <buy|sell> <symbol> <qty> [--type market|limit|stop|stop_limit]\n"
+            "      [--limit-price P] [--exchange EX] [--account ID] [--strategy S] [--reason TEXT]\n"
+            "  trade submit <draft-id> --mode paper|live --yes [--live-armed]\n"
+            "  trade cancel-draft <draft-id> --yes\n"
+            "  trade audit [--limit N] [--account ID] [--phase prepare|submit] [--decision D]\n"
+            "  trade paper portfolios\n"
+            "  trade paper create <name...> --balance N [--currency USD] [--leverage N] [--fee-rate R]\n"
+            "  trade paper show <portfolio-id>\n"
+            "  trade paper positions <portfolio-id>\n"
+            "  trade paper orders <portfolio-id> [--status pending|filled|cancelled]\n"
+            "  trade paper stats <portfolio-id>\n"
+            "  trade paper order <portfolio-id> <buy|sell> <symbol> <qty> [--type market|limit|stop|stop_limit]\n"
+            "                    [--price P] [--stop P] [--reduce-only] --yes\n"
+            "  trade paper cancel <order-id> --yes\n"
+            "  trade live positions|holdings|orders|trades|funds [--account ID]\n"
+            "  trade live quote <symbol> --exchange EX [--account ID]\n"
+            "  trade fast positions|orders|fills\n"
+            "  trade fast cancel <order-id> --yes\n"
+            "  trade fast exit <symbol> [--exchange EX] [--product P] --yes\n"
+            "  trade fast order <buy|sell> <symbol> <qty> [--type market|limit|stop|stop_limit]\n"
+            "                   [--exchange EX] [--limit-price P] [--trigger-price P] --yes\n"
+            "  trade tool <mcp-tool> key=value ...\n");
+        return 0;
+    }
+    if (topic == "data" || topic == "datasources" || topic == "ds") {
+        std::printf(
+            "Data-source commands:\n"
+            "  data connections\n"
+            "  data get <connection-id>\n"
+            "  data connectors [category]\n"
+            "  data connector <connector-id>\n"
+            "  data search <query...>\n"
+            "  data stats\n"
+            "  data test <connection-id>\n"
+            "  data add <provider> <display-name...> --config JSON [--description TEXT] [--tags CSV] [--disabled]\n"
+            "  data update <connection-id> key=value ...\n"
+            "      keys: display_name, description, tags, enabled, config\n"
+            "  data enable <connection-id>\n"
+            "  data disable <connection-id>\n"
+            "  data delete <connection-id> --yes\n"
+            "  data tool <mcp-tool> key=value ...\n");
+        return 0;
+    }
+    if (topic == "watchlist" || topic == "wl") {
+        std::printf(
+            "Watchlist commands:\n"
+            "  watchlist list\n"
+            "  watchlist show [id-or-name]\n"
+            "  watchlist create <name...> [--description TEXT] [--color HEX]\n"
+            "  watchlist delete <id-or-name>\n"
+            "  watchlist add <SYM...> [--watchlist ID]\n"
+            "  watchlist remove <SYM...> [--watchlist ID]\n"
+            "  watchlist lookup <company-or-symbol...> [--limit N]\n"
+            "\nExamples:\n"
+            "  openterminalcli --headless watchlist list\n"
+            "  openterminalcli --headless wl add AAPL MSFT\n"
+            "  openterminalcli --headless wl lookup Toyota\n");
+        return 0;
+    }
+    if (topic == "portfolio" || topic == "port") {
+        std::printf(
+            "Portfolio commands:\n"
+            "  portfolio list\n"
+            "  portfolio show [id-or-name]\n"
+            "  portfolio create <name...> [--owner NAME] [--currency USD] [--description TEXT]\n"
+            "  portfolio delete <id-or-name>\n"
+            "  portfolio assets <id-or-name>\n"
+            "  portfolio add <portfolio> <symbol> <quantity> <price> [--date YYYY-MM-DD] [--sector TEXT]\n"
+            "  portfolio sell <portfolio> <symbol> <quantity> <price> [--date YYYY-MM-DD]\n"
+            "  portfolio remove <portfolio> <symbol>\n"
+            "  portfolio tx <portfolio> [--limit N]\n"
+            "  portfolio dividend <portfolio> <symbol> <quantity> <amount-per-share> [--date YYYY-MM-DD]\n"
+            "  portfolio snapshots <portfolio> [--days N]\n"
+            "\nExamples:\n"
+            "  openterminalcli --headless portfolio create \"Core Growth\" --owner Ada\n"
+            "  openterminalcli --headless portfolio add \"Core Growth\" AAPL 10 190.50\n"
+            "  openterminalcli --headless port tx \"Core Growth\"\n");
+        return 0;
+    }
+    if (topic == "profile" || topic == "account") {
+        std::printf(
+            "Local profile commands:\n"
+            "  profile show\n"
+            "  profile set name=<name> nickname=<nick> email=<email> phone=<phone> country=<country>\n"
+            "  profile clear <name|nickname|email|phone|country|all>\n"
+            "\nExamples:\n"
+            "  openterminalcli profile set name=\"Ada Lovelace\" nickname=Ada\n"
+            "  openterminalcli --json profile show\n");
+        return 0;
+    }
+    if (topic == "settings" || topic == "setting") {
+        std::printf(
+            "Local settings commands:\n"
+            "  settings list [category]\n"
+            "  settings get <key>\n"
+            "  settings set <key>=<value> [category=<category>]\n"
+            "  settings clear <key>\n"
+            "\nExamples:\n"
+            "  openterminalcli settings list profile\n"
+            "  openterminalcli settings get profile.nickname\n"
+            "  openterminalcli settings set ui.theme=obsidian category=ui\n");
+        return 0;
+    }
+    if (topic == "screens" || topic == "open" || topic == "actions" || topic == "action" || topic == "cmd") {
+        std::printf(
+            "App control commands attach to the running GUI:\n"
+            "  screens [query]\n"
+            "  open <screen-or-alias>\n"
+            "  cmd <command-bar text...>\n"
+            "  actions [query]\n"
+            "  action <id> [key=value ...]\n"
+            "\nExamples:\n"
+            "  openterminalcli open profile\n"
+            "  openterminalcli open ai\n"
+            "  openterminalcli actions screen.\n"
+            "  openterminalcli action screen.profile\n");
+        return 0;
+    }
+    if (topic == "coverage" || topic == "parity") {
+        std::printf(
+            "CLI coverage commands:\n"
+            "  coverage [query]\n"
+            "  coverage [query] --category C\n"
+            "  coverage --gaps\n"
+            "Shows CLI read/write/action/AI-tool parity by app screen. Use --json for automation.\n");
+        return 0;
+    }
+    return usage(stdout, 0);
 }
 
 // Resolve the running instance into a client, or print + return an exit code.
@@ -79,6 +691,1915 @@ static int emit_result(const GlobalOpts& opts, const mcp::ToolResult& r) {
     return 0;
 }
 
+static QString lower_blob(const QJsonObject& tool) {
+    QString s;
+    s += tool.value("name").toString() + " ";
+    s += tool.value("description").toString() + " ";
+    s += tool.value("serverId").toString();
+    return s.toLower();
+}
+
+static QJsonArray tools_array_from_catalog(const QJsonObject& catalog) {
+    return catalog.value("tools").toArray();
+}
+
+static int parse_limit(QStringList& args, int fallback = 20) {
+    int limit = fallback;
+    for (int i = 0; i < args.size();) {
+        if (args.at(i) == "--limit" || args.at(i) == "-n") {
+            if (i + 1 >= args.size())
+                return -1;
+            bool ok = false;
+            const int n = args.at(i + 1).toInt(&ok);
+            if (!ok || n <= 0)
+                return -1;
+            limit = n;
+            args.removeAt(i);
+            args.removeAt(i);
+        } else {
+            ++i;
+        }
+    }
+    return limit;
+}
+
+static int emit_tool_search(const GlobalOpts& opts, const QJsonObject& catalog, QStringList args) {
+    const int limit = parse_limit(args);
+    if (limit < 0) {
+        std::fprintf(stderr, "usage: mcp search <query> [--limit N]\n");
+        return 2;
+    }
+    const QString query = args.join(' ').trimmed().toLower();
+    if (query.isEmpty()) {
+        std::fprintf(stderr, "usage: mcp search <query> [--limit N]\n");
+        return 2;
+    }
+
+    QJsonArray matches;
+    for (const auto& v : tools_array_from_catalog(catalog)) {
+        const QJsonObject tool = v.toObject();
+        const QString blob = lower_blob(tool);
+        bool ok = true;
+        for (const QString& term : query.split(' ', Qt::SkipEmptyParts)) {
+            if (!blob.contains(term)) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) {
+            matches.append(tool);
+            if (matches.size() >= limit)
+                break;
+        }
+    }
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"tools", matches}}).toJson(QJsonDocument::Compact).constData());
+    } else {
+        for (const auto& v : matches) {
+            const QJsonObject t = v.toObject();
+            std::printf("%-32s %s\n", qUtf8Printable(t.value("name").toString()),
+                        qUtf8Printable(t.value("description").toString()));
+        }
+    }
+    return 0;
+}
+
+static QJsonValue parse_scalar(const QString& raw) {
+    const QJsonDocument d = QJsonDocument::fromJson(raw.toUtf8());
+    if (!d.isNull()) {
+        if (d.isArray()) return d.array();
+        if (d.isObject()) return d.object();
+    }
+    if (raw == "true") return true;
+    if (raw == "false") return false;
+    if (raw == "null") return QJsonValue();
+    bool ok = false;
+    const double n = raw.toDouble(&ok);
+    if (ok) return n;
+    return raw;
+}
+
+static bool read_json_arg(const QString& spec, QByteArray& out, QString& err) {
+    if (spec == "-") {
+        QFile f;
+        if (!f.open(stdin, QIODevice::ReadOnly)) {
+            err = "failed to read stdin";
+            return false;
+        }
+        out = f.readAll();
+        return true;
+    }
+    if (spec.startsWith('@')) {
+        QFile f(spec.mid(1));
+        if (!f.open(QIODevice::ReadOnly)) {
+            err = "failed to read " + spec.mid(1);
+            return false;
+        }
+        out = f.readAll();
+        return true;
+    }
+    out = spec.toUtf8();
+    return true;
+}
+
+static bool parse_tool_args(QStringList args, QJsonObject& out, QString& err) {
+    if (args.isEmpty())
+        return true;
+
+    if (args.size() == 1 && (args.first().startsWith('{') || args.first().startsWith('@') || args.first() == "-")) {
+        QByteArray body;
+        if (!read_json_arg(args.first(), body, err))
+            return false;
+        QJsonParseError pe;
+        const QJsonDocument d = QJsonDocument::fromJson(body, &pe);
+        if (!d.isObject()) {
+            err = "args must be a JSON object";
+            if (pe.error != QJsonParseError::NoError)
+                err += ": " + pe.errorString();
+            return false;
+        }
+        out = d.object();
+        return true;
+    }
+
+    for (const QString& tok : args) {
+        const int eq = tok.indexOf('=');
+        if (eq <= 0) {
+            err = "expected key=value or a JSON object";
+            return false;
+        }
+        out.insert(tok.left(eq), parse_scalar(tok.mid(eq + 1)));
+    }
+    return true;
+}
+
+struct ScreenEntry {
+    const char* id;
+    const char* title;
+    const char* category;
+    QStringList aliases;
+};
+
+static const QList<ScreenEntry>& screen_catalog() {
+    static const QList<ScreenEntry> screens = {
+        {"dashboard", "Dashboard", "Core", {"home", "dash"}},
+        {"profile", "Profile", "Core", {"account", "user"}},
+        {"settings", "Settings", "Core", {"prefs", "preferences"}},
+        {"markets", "Markets", "Markets", {"mkt", "mkts"}},
+        {"watchlist", "Watchlist", "Markets", {"wl"}},
+        {"news", "News", "Markets", {"top", "headlines"}},
+        {"observer", "Observer", "Markets", {"observe", "journal"}},
+        {"insider_trades", "Insiders", "Research", {"ownership", "insider", "form4"}},
+        {"institution_holdings", "Institutions", "Research", {"ownership", "institutions", "13f"}},
+        {"politician_trades", "Politicians", "Research", {"ownership", "politicians", "congress"}},
+        {"portfolio", "Portfolio", "Portfolio", {"port", "holdings"}},
+        {"equity_research", "Equity Research", "Research", {"eq", "des", "fa", "company"}},
+        {"report_builder", "Report Builder", "Research", {"report", "research_report"}},
+        {"economics", "Economics", "Macro", {"econ", "ecst", "macro"}},
+        {"dbnomics", "DBnomics", "Macro", {"fred", "economic_series"}},
+        {"gov_data", "Government Data", "Macro", {"gov", "census"}},
+        {"data_sources", "Data Sources", "Data", {"api", "connectors", "data"}},
+        {"data_mapping", "Data Mapping", "Data", {"mapping"}},
+        {"mcp_servers", "MCP Servers", "AI", {"mcp", "tools_servers"}},
+        {"ai_chat", "AI Chat", "AI", {"ai", "chat", "assistant"}},
+        {"ai_quant_lab", "Quant Lab", "AI", {"qml", "ml", "ai_quant"}},
+        {"agent_config", "Agents", "AI", {"agents", "teams", "agent_config"}},
+        {"node_editor", "Workflows", "AI", {"node", "workflow", "builder"}},
+        {"code_editor", "Notebooks", "Tools", {"code", "notebook", "python"}},
+        {"excel", "Excel", "Tools", {"xl", "spreadsheet"}},
+        {"file_manager", "Files", "Tools", {"files", "file"}},
+        {"notes", "Notes", "Tools", {"note"}},
+        {"docs", "Docs", "Help", {"help", "manual"}},
+        {"equity_trading", "Equity Trading", "Trading", {"trade", "orders"}},
+        {"bitcoin", "Bitcoin", "Crypto", {"btc", "xbt", "satoshi"}},
+        {"crypto_trading", "Crypto Trading", "Crypto", {"crypto", "altcoins"}},
+        {"derivatives", "Derivatives", "Trading", {"opt", "options"}},
+        {"fno", "FNO", "Trading", {"nse", "futures_options"}},
+        {"backtesting", "Strategy Lab", "Trading", {"bt", "backtest"}},
+        {"algo_trading", "Strategies", "Trading", {"algo", "strategy"}},
+        {"quantlib", "Pricing Lab", "Trading", {"quant", "pricing"}},
+        {"trade_viz", "Trade Viz", "Trading", {"tradeviz", "visualization"}},
+        {"dinero", "Dinero", "Crypto", {"din", "dinero_network"}},
+        {"polymarket", "Prediction Markets", "Alt Data", {"pmkt", "kalshi", "prediction"}},
+        {"alpha_arena", "Alpha Arena", "Alt Data", {"arena"}},
+        {"ma_analytics", "M&A Analytics", "Alt Data", {"ma", "m&a", "deals"}},
+        {"alt_investments", "Alt Investments", "Alt Data", {"alts", "alternatives"}},
+        {"geopolitics", "Geopolitics", "Global", {"geo", "sanctions"}},
+        {"maritime", "Maritime", "Global", {"ship", "vessels"}},
+        {"relationship_map", "Relationship Map", "Global", {"map", "graph", "relationships"}},
+        {"surface_analytics", "Surface Analytics", "Global", {"surface"}},
+        {"akshare", "AkShare", "Asia", {"china", "cn_data"}},
+        {"asia_markets", "Asia Markets", "Asia", {"asia"}},
+        {"about", "About", "Help", {}},
+    };
+    return screens;
+}
+
+static QJsonObject screen_to_json(const ScreenEntry& s) {
+    QJsonArray aliases;
+    for (const auto& a : s.aliases)
+        aliases.append(a);
+    return QJsonObject{{"id", s.id}, {"title", s.title}, {"category", s.category}, {"aliases", aliases},
+                       {"action_id", QStringLiteral("screen.") + s.id}};
+}
+
+static QString screen_blob(const ScreenEntry& s) {
+    QString out = QString::fromLatin1(s.id) + " " + QString::fromLatin1(s.title) + " " +
+                  QString::fromLatin1(s.category) + " " + s.aliases.join(' ');
+    return out.toLower();
+}
+
+static const ScreenEntry* find_screen(const QString& query) {
+    const QString q = query.trimmed().toLower();
+    if (q.isEmpty())
+        return nullptr;
+    for (const auto& s : screen_catalog()) {
+        if (q == QString::fromLatin1(s.id).toLower() || q == QString::fromLatin1(s.title).toLower())
+            return &s;
+        for (const auto& a : s.aliases) {
+            if (q == a.toLower())
+                return &s;
+        }
+    }
+    for (const auto& s : screen_catalog()) {
+        if (screen_blob(s).contains(q))
+            return &s;
+    }
+    return nullptr;
+}
+
+static int emit_screens(const GlobalOpts& opts, const QStringList& args) {
+    const QString query = args.join(' ').trimmed().toLower();
+    QJsonArray arr;
+    for (const auto& s : screen_catalog()) {
+        if (!query.isEmpty() && !screen_blob(s).contains(query))
+            continue;
+        arr.append(screen_to_json(s));
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"screens", arr}}).toJson(QJsonDocument::Compact).constData());
+    } else {
+        for (const auto& v : arr) {
+            const QJsonObject s = v.toObject();
+            std::printf("%-22s %-22s %s\n", qUtf8Printable(s.value("id").toString()),
+                        qUtf8Printable(s.value("category").toString()),
+                        qUtf8Printable(s.value("title").toString()));
+        }
+    }
+    return 0;
+}
+
+static bool take_bool_flag(QStringList& args, const QString& flag);
+static bool take_string_option(QStringList& args, const QString& flag, QString& out);
+static QString elide_text(QString s, int max);
+
+struct CoverageEntry {
+    const char* screen_id;
+    bool read;
+    bool write;
+    bool action;
+    bool ai;
+    const char* command;
+    const char* notes;
+};
+
+static const QList<CoverageEntry>& coverage_catalog() {
+    static const QList<CoverageEntry> rows = {
+        {"dashboard", true, true, true, true, "open; workspace open|panels|layouts; mcp dashboard_*", "dashboard widget control is MCP-first"},
+        {"profile", true, true, true, false, "profile show|set|clear; open profile", ""},
+        {"settings", true, true, true, false, "settings list|get|set|clear", "secrets use provider-specific secure commands"},
+        {"markets", true, false, true, true, "quote; research quote; open markets", "market layout remains GUI-first"},
+        {"watchlist", true, true, true, true, "watchlist list|show|create|add|remove|lookup", ""},
+        {"news", true, true, true, true, "news latest|search|monitors; radar", ""},
+        {"observer", true, false, true, true, "observe latest|week|alerts", "journal writes are not fully CLI-covered"},
+        {"portfolio", true, true, true, true, "portfolio list|show|create|add|sell|tx; risk", ""},
+        {"equity_research", true, false, true, true, "research quote|company|financials|filings|metrics", "authoring flows use report/notes"},
+        {"insider_trades", true, false, true, true, "research insiders|insider-summary <ticker>", "SEC Form 4 data"},
+        {"institution_holdings", true, false, true, true, "research 13f|13f-top <ticker>", "SEC 13F data"},
+        {"politician_trades", true, false, true, true, "research politicians <ticker>", "requires local AINVEST_API_KEY"},
+        {"report_builder", true, true, true, true, "report state|add|bulk|save|load|tool", "PDF export still GUI-only"},
+        {"economics", true, false, true, true, "macro fred|bls|calendar|cb|ons|statcan|census|dbnomics|gov", "source-specific long tail uses macro econ-run/tool"},
+        {"dbnomics", true, false, true, true, "macro dbnomics providers|datasets|series|observations|search", ""},
+        {"gov_data", true, false, true, true, "macro gov providers|run|treasury-*|congress-*", "provider-specific long tail uses macro gov run"},
+        {"data_sources", true, true, true, true, "data connectors|connections|stats", ""},
+        {"data_mapping", true, true, true, true, "mcp data mapping tools", "direct CLI wrapper pending"},
+        {"mcp_servers", true, true, true, true, "mcp list|search|describe|call; workspace panels", "server CRUD is still mostly settings/MCP"},
+        {"ai_chat", true, true, true, true, "ask; ai providers|use|test; brief|risk|thesis|radar", ""},
+        {"ai_quant_lab", true, true, true, true, "ai run strategy; mcp quant tools", "lab UI remains richer than CLI"},
+        {"agent_config", true, true, true, true, "agent list|discover|configs|run|team", ""},
+        {"node_editor", true, true, true, true, "workflow list|show|save|delete|run", ""},
+        {"code_editor", true, true, true, true, "notebook list|open|create|run; mcp notebook/python tools", ""},
+        {"excel", true, true, true, true, "excel read|write|append|clear; google-read|google-write", "local CSV/XLSX and Google Sheets helper"},
+        {"file_manager", true, true, true, true, "files list|search|read|write|import|download|delete", ""},
+        {"notes", true, true, true, true, "notes list|search|show|create|update|export", ""},
+        {"equity_trading", true, true, true, true, "trade accounts|drafts|prepare|submit|paper|live|fast", "live still requires GUI-owned gates"},
+        {"crypto_trading", true, true, true, true, "trade fast; mcp crypto trading tools", "direct crypto-specific CLI aliases pending"},
+        {"derivatives", true, false, true, true, "mcp options/derivatives tools", "order drafting for options needs CLI wrapper"},
+        {"fno", true, false, true, true, "mcp fno/algo tools", "direct CLI wrapper pending"},
+        {"backtesting", true, true, true, true, "strategy backtest; ai run strategy; mcp backtesting tools", ""},
+        {"algo_trading", true, true, true, true, "strategy list|templates|show|backtest|paper-run|deploy; scanner; workflow", "deployment controls remain guarded"},
+        {"quantlib", true, true, true, true, "mcp quantlab/quantlib tools", "direct pricing CLI aliases pending"},
+        {"trade_viz", false, false, true, false, "open trade_viz", "mostly GUI-only"},
+        {"polymarket", true, true, true, true, "mcp prediction tools; mcp prepare_order/submit_order", "direct prediction CLI wrapper pending"},
+        {"alpha_arena", true, true, true, true, "ai run strategy; mcp alpha arena tools", "arena controls are mostly MCP/GUI"},
+        {"ma_analytics", true, false, true, true, "mcp ma analytics tools", "direct CLI wrapper pending"},
+        {"alt_investments", true, false, true, true, "mcp alt investment tools", "direct CLI wrapper pending"},
+        {"geopolitics", true, false, true, true, "mcp geopolitics tools", "direct CLI wrapper pending"},
+        {"maritime", true, false, true, true, "mcp maritime tools", "direct CLI wrapper pending"},
+        {"relationship_map", false, false, true, false, "open relationship_map", "graph editing is GUI-only"},
+        {"surface_analytics", true, false, true, true, "mcp surface analytics tools", "direct CLI wrapper pending"},
+        {"akshare", true, false, true, true, "mcp/connector data tools", "direct AkShare CLI wrapper pending"},
+        {"asia_markets", true, false, true, true, "mcp asia markets tools", "direct CLI wrapper pending"},
+        {"docs", true, false, true, false, "open docs", "readable in GUI; CLI docs are README/help"},
+        {"about", false, false, true, false, "open about", "informational GUI screen"},
+    };
+    return rows;
+}
+
+static std::optional<CoverageEntry> coverage_for_screen(const QString& id) {
+    for (const auto& row : coverage_catalog()) {
+        if (id == QString::fromLatin1(row.screen_id))
+            return row;
+    }
+    return std::nullopt;
+}
+
+static QJsonObject coverage_to_json(const ScreenEntry& s) {
+    const QString id = QString::fromLatin1(s.id);
+    const auto c = coverage_for_screen(id);
+    const bool read = c ? c->read : false;
+    const bool write = c ? c->write : false;
+    const bool action = c ? c->action : true;
+    const bool ai = c ? c->ai : false;
+    const int score = (read ? 1 : 0) + (write ? 1 : 0) + (action ? 1 : 0) + (ai ? 1 : 0);
+    return QJsonObject{{"screen_id", id},
+                       {"title", s.title},
+                       {"category", s.category},
+                       {"open", true},
+                       {"read", read},
+                       {"write", write},
+                       {"action", action},
+                       {"ai", ai},
+                       {"score", score},
+                       {"command", c ? QString::fromLatin1(c->command) : QStringLiteral("open ") + id},
+                       {"notes", c ? QString::fromLatin1(c->notes) : QStringLiteral("no dedicated CLI mapping yet")}};
+}
+
+static QString coverage_mark(bool v) {
+    return v ? QStringLiteral("yes") : QStringLiteral("no");
+}
+
+static int coverage_command(const GlobalOpts& opts, QStringList args) {
+    const bool gaps_only = take_bool_flag(args, QStringLiteral("--gaps"));
+    QString category;
+    if (!take_string_option(args, QStringLiteral("--category"), category)) {
+        std::fprintf(stderr, "usage: coverage [query] [--category C] [--gaps]\n");
+        return 2;
+    }
+    const QString query = args.join(' ').trimmed().toLower();
+    category = category.trimmed().toLower();
+    QJsonArray arr;
+    int full = 0;
+    int partial = 0;
+    int gaps = 0;
+    for (const auto& s : screen_catalog()) {
+        if (!query.isEmpty() && !screen_blob(s).contains(query))
+            continue;
+        if (!category.isEmpty() && QString::fromLatin1(s.category).toLower() != category)
+            continue;
+        QJsonObject row = coverage_to_json(s);
+        const int score = row.value("score").toInt();
+        if (score >= 4)
+            ++full;
+        else if (score == 0)
+            ++gaps;
+        else
+            ++partial;
+        const bool has_gap = score < 4 || !row.value("notes").toString().isEmpty();
+        if (gaps_only && !has_gap)
+            continue;
+        arr.append(row);
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"coverage", arr},
+                                                      {"summary", QJsonObject{{"full", full},
+                                                                              {"partial", partial},
+                                                                              {"gaps", gaps}}}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    if (arr.isEmpty()) {
+        std::printf("no coverage rows\n");
+        return 0;
+    }
+    std::printf("%-22s %-14s %-4s %-5s %-6s %-6s %-3s %s\n",
+                "screen", "category", "read", "write", "action", "ai", "n", "command / gap");
+    for (const auto& v : arr) {
+        const QJsonObject row = v.toObject();
+        QString detail = row.value("command").toString();
+        const QString notes = row.value("notes").toString();
+        if (!notes.isEmpty())
+            detail += QStringLiteral(" | ") + notes;
+        std::printf("%-22s %-14s %-4s %-5s %-6s %-6s %-3d %s\n",
+                    qUtf8Printable(row.value("screen_id").toString()),
+                    qUtf8Printable(row.value("category").toString()),
+                    qUtf8Printable(coverage_mark(row.value("read").toBool())),
+                    qUtf8Printable(coverage_mark(row.value("write").toBool())),
+                    qUtf8Printable(coverage_mark(row.value("action").toBool())),
+                    qUtf8Printable(coverage_mark(row.value("ai").toBool())),
+                    row.value("score").toInt(),
+                    qUtf8Printable(elide_text(detail, 110)));
+    }
+    return 0;
+}
+
+static bool require_gui_command(const GlobalOpts& opts) {
+    if (!opts.headless)
+        return true;
+    std::fprintf(stderr, "this command controls the GUI and cannot run with --headless\n");
+    return false;
+}
+
+static bool init_headless_for_cli(const GlobalOpts& opts, int& exit_code) {
+    auto ir = headless_runtime().init(opts.profile);
+    if (!ir.ok) {
+        std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+        exit_code = 7;
+        return false;
+    }
+    return true;
+}
+
+static QString normalize_ai_provider(QString provider) {
+    provider = provider.trimmed().toLower();
+    if (provider == "claude")
+        return QStringLiteral("anthropic");
+    if (provider == "local")
+        return QStringLiteral("ollama");
+    return provider;
+}
+
+static bool is_supported_ai_provider(const QString& provider) {
+    return provider == "openai" || provider == "anthropic" || provider == "ollama";
+}
+
+static QString default_ai_model(const QString& provider) {
+    if (provider == "openai")
+        return QStringLiteral("gpt-4o");
+    if (provider == "anthropic")
+        return QStringLiteral("claude-sonnet-4-5-20250514");
+    if (provider == "ollama")
+        return QStringLiteral("llama3.3:latest");
+    return {};
+}
+
+static QString default_ai_base_url(const QString& provider) {
+    return provider == "ollama" ? QStringLiteral("http://localhost:11434") : QString();
+}
+
+static QString secure_llm_api_key_id(const QString& provider) {
+    return ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") + provider.toLower() +
+           QStringLiteral(".api_key");
+}
+
+static bool has_secure_llm_api_key(const QString& provider) {
+    return SecureStorage::instance().retrieve(secure_llm_api_key_id(provider)).is_ok();
+}
+
+static std::optional<LlmConfig> find_llm_config(const QVector<LlmConfig>& configs, const QString& provider) {
+    for (const auto& c : configs) {
+        if (c.provider.compare(provider, Qt::CaseInsensitive) == 0)
+            return c;
+    }
+    return std::nullopt;
+}
+
+static QJsonObject ai_provider_to_json(const LlmConfig& cfg, const QString& active_provider) {
+    const QString provider = cfg.provider.toLower();
+    const bool needs_key = ai_chat::provider_requires_api_key(provider);
+    const bool has_key = needs_key ? (!cfg.api_key.isEmpty() || has_secure_llm_api_key(provider)) : false;
+    return QJsonObject{
+        {"provider", provider},
+        {"active", cfg.is_active || provider == active_provider},
+        {"configured", needs_key ? has_key : true},
+        {"has_api_key", has_key},
+        {"api_key_storage", needs_key ? QStringLiteral("local secure storage") : QStringLiteral("not required")},
+        {"model", cfg.model},
+        {"base_url", cfg.base_url},
+        {"tools_enabled", cfg.tools_enabled},
+    };
+}
+
+static int ai_providers_command(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    ai_chat::LlmService::instance().reload_config();
+    const QString active_provider = ai_chat::LlmService::instance().active_provider().toLower();
+
+    auto listed = LlmConfigRepository::instance().list_providers();
+    if (listed.is_err()) {
+        std::fprintf(stderr, "failed to list providers: %s\n", listed.error().c_str());
+        return 5;
+    }
+
+    QVector<LlmConfig> rows = listed.value();
+    for (const QString& provider : {QStringLiteral("openai"), QStringLiteral("anthropic"), QStringLiteral("ollama")}) {
+        if (!find_llm_config(rows, provider).has_value()) {
+            LlmConfig cfg;
+            cfg.provider = provider;
+            cfg.model = provider == active_provider ? ai_chat::LlmService::instance().active_model()
+                                                    : default_ai_model(provider);
+            cfg.base_url = provider == active_provider ? ai_chat::LlmService::instance().active_base_url()
+                                                       : default_ai_base_url(provider);
+            cfg.is_active = provider == active_provider;
+            cfg.tools_enabled = true;
+            rows.append(cfg);
+        }
+    }
+
+    QJsonArray arr;
+    for (const auto& cfg : rows) {
+        const QString provider = cfg.provider.toLower();
+        if (!is_supported_ai_provider(provider))
+            continue;
+        arr.append(ai_provider_to_json(cfg, active_provider));
+    }
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"active_provider", active_provider}, {"providers", arr}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+
+    std::printf("%-11s %-6s %-10s %-24s %-30s %s\n",
+                "provider", "active", "key", "model", "base_url", "tools");
+    for (const auto& v : arr) {
+        const QJsonObject o = v.toObject();
+        std::printf("%-11s %-6s %-10s %-24s %-30s %s\n",
+                    qUtf8Printable(o.value("provider").toString()),
+                    o.value("active").toBool() ? "yes" : "no",
+                    o.value("api_key_storage").toString() == "not required"
+                        ? "n/a"
+                        : (o.value("has_api_key").toBool() ? "saved" : "missing"),
+                    qUtf8Printable(o.value("model").toString()),
+                    qUtf8Printable(o.value("base_url").toString()),
+                    o.value("tools_enabled").toBool() ? "on" : "off");
+    }
+    return 0;
+}
+
+static QString doctor_check_status(bool ok, bool warn = false) {
+    if (!ok)
+        return QStringLiteral("fail");
+    return warn ? QStringLiteral("warn") : QStringLiteral("ok");
+}
+
+static void doctor_add(QJsonArray& checks, const QString& id, const QString& status,
+                       const QString& message, const QJsonObject& data = {}) {
+    QJsonObject row{{"id", id}, {"status", status}, {"message", message}};
+    if (!data.isEmpty())
+        row["data"] = data;
+    checks.append(row);
+}
+
+static bool doctor_has_failure(const QJsonArray& checks) {
+    for (const auto& v : checks) {
+        if (v.toObject().value("status").toString() == QStringLiteral("fail"))
+            return true;
+    }
+    return false;
+}
+
+static bool any_file_exists(const QStringList& paths, QString* found = nullptr) {
+    for (const QString& path : paths) {
+        if (QFileInfo::exists(path)) {
+            if (found)
+                *found = path;
+            return true;
+        }
+    }
+    return false;
+}
+
+struct CliHttpResult {
+    bool success = false;
+    int status = 0;
+    QByteArray body;
+    QString error;
+};
+
+static CliHttpResult cli_blocking_get(const QString& url, int timeout_ms = 3000) {
+    QNetworkAccessManager nam;
+    QNetworkRequest req{QUrl(url)};
+    QNetworkReply* reply = nam.get(req);
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+        if (reply->isRunning())
+            reply->abort();
+        loop.quit();
+    });
+    timer.start(timeout_ms);
+    loop.exec();
+
+    CliHttpResult out;
+    out.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    out.body = reply->readAll();
+    if (reply->error() == QNetworkReply::NoError) {
+        out.success = out.status >= 200 && out.status < 300;
+    } else {
+        out.error = reply->errorString();
+    }
+    reply->deleteLater();
+    return out;
+}
+
+static QStringList parse_ollama_model_names(const QByteArray& body) {
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    QStringList names;
+    const QJsonArray models = doc.object().value("models").toArray();
+    for (const auto& v : models) {
+        const QJsonObject o = v.toObject();
+        const QString name = o.value("name").toString();
+        if (!name.isEmpty())
+            names.append(name);
+        const QString model = o.value("model").toString();
+        if (!model.isEmpty() && model != name)
+            names.append(model);
+    }
+    names.removeDuplicates();
+    return names;
+}
+
+static void doctor_add_ai_live_checks(QJsonArray& checks, bool live_ai) {
+    ai_chat::LlmService& llm = ai_chat::LlmService::instance();
+    const QString provider = llm.active_provider().toLower();
+    const QString model = llm.active_model();
+    const QString base_url = llm.active_base_url().isEmpty() ? default_ai_base_url(provider) : llm.active_base_url();
+    const bool has_key = !provider.isEmpty() && (!llm.active_api_key().isEmpty() || has_secure_llm_api_key(provider));
+
+    doctor_add(checks, QStringLiteral("ai.tools"),
+               llm.tools_enabled() ? QStringLiteral("ok") : QStringLiteral("warn"),
+               llm.tools_enabled() ? QStringLiteral("tool calling enabled")
+                                   : QStringLiteral("tool calling disabled for active provider"));
+
+    if (!live_ai) {
+        doctor_add(checks, QStringLiteral("ai.live"), QStringLiteral("warn"),
+                   QStringLiteral("live provider probe skipped; run doctor --live-ai"));
+        return;
+    }
+
+    if (provider == QStringLiteral("ollama")) {
+        const QString tags_url = base_url.trimmed().isEmpty()
+                                     ? QStringLiteral("http://localhost:11434/api/tags")
+                                     : base_url.trimmed().remove(QRegularExpression(QStringLiteral("/+$"))) +
+                                           QStringLiteral("/api/tags");
+        const CliHttpResult tags = cli_blocking_get(tags_url, 3500);
+        doctor_add(checks, QStringLiteral("ai.ollama.reachable"),
+                   tags.success ? QStringLiteral("ok") : QStringLiteral("fail"),
+                   tags.success ? QStringLiteral("Ollama reachable")
+                                : QStringLiteral("Ollama unreachable: ") + elide_text(tags.error, 120),
+                   QJsonObject{{"url", tags_url}, {"status", tags.status}});
+        if (!tags.success)
+            return;
+
+        const QStringList model_names = parse_ollama_model_names(tags.body);
+        if (model.trimmed().isEmpty()) {
+            doctor_add(checks, QStringLiteral("ai.ollama.model"), QStringLiteral("warn"),
+                       QStringLiteral("no explicit Ollama model selected"),
+                       QJsonObject{{"installed_count", model_names.size()}});
+        } else {
+            const bool installed = model_names.contains(model);
+            doctor_add(checks, QStringLiteral("ai.ollama.model"),
+                       installed ? QStringLiteral("ok") : QStringLiteral("fail"),
+                       installed ? QStringLiteral("model installed: ") + model
+                                 : QStringLiteral("model not installed: ") + model,
+                       QJsonObject{{"model", model}, {"installed_count", model_names.size()}});
+        }
+        return;
+    }
+
+    if (provider == QStringLiteral("openai") || provider == QStringLiteral("anthropic")) {
+        doctor_add(checks, QStringLiteral("ai.cloud.key"),
+                   has_key ? QStringLiteral("ok") : QStringLiteral("fail"),
+                   has_key ? QStringLiteral("local secure API key available")
+                           : QStringLiteral("missing local API key"));
+        if (!has_key)
+            return;
+
+        const ai_chat::LlmResponse r = llm.chat(QStringLiteral("Reply with exactly: OK"), {}, /*use_tools=*/false);
+        doctor_add(checks, QStringLiteral("ai.cloud.live"),
+                   r.success ? QStringLiteral("ok") : QStringLiteral("fail"),
+                   r.success ? QStringLiteral("%1 request succeeded").arg(provider)
+                             : QStringLiteral("%1 request failed: %2").arg(provider, elide_text(r.error, 140)),
+                   QJsonObject{{"provider", provider}, {"model", model}});
+        return;
+    }
+
+    doctor_add(checks, QStringLiteral("ai.live"), QStringLiteral("warn"),
+               provider.isEmpty() ? QStringLiteral("no active provider to probe")
+                                  : QStringLiteral("no live probe implemented for provider: ") + provider);
+}
+
+static int doctor_command(const GlobalOpts& opts, QStringList args = {}) {
+    const bool live_ai = take_bool_flag(args, QStringLiteral("--live-ai")) ||
+                         take_bool_flag(args, QStringLiteral("--ai-live")) ||
+                         take_bool_flag(args, QStringLiteral("--network"));
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: doctor [--live-ai]\n");
+        return 2;
+    }
+
+    QJsonArray checks;
+
+    auto init = headless_runtime().init(opts.profile);
+    doctor_add(checks, QStringLiteral("runtime.init"),
+               init.ok ? QStringLiteral("ok") : QStringLiteral("fail"),
+               init.ok ? QStringLiteral("headless runtime initialized")
+                       : QStringLiteral("headless init failed: ") + init.error);
+    if (!init.ok) {
+        QJsonObject out{{"profile", opts.profile}, {"checks", checks}, {"ok", false}};
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%-18s %-5s %s\n", "runtime.init", "fail", qUtf8Printable(init.error));
+        return 5;
+    }
+
+    const QString profile_root = ProfileManager::instance().profile_root();
+    doctor_add(checks, QStringLiteral("profile.root"),
+               QFileInfo(profile_root).isDir() ? QStringLiteral("ok") : QStringLiteral("fail"),
+               profile_root,
+               QJsonObject{{"profile", ProfileManager::instance().active()}, {"path", profile_root}});
+
+    const QString app_db = AppPaths::data() + QStringLiteral("/openmarketterminal.db");
+    doctor_add(checks, QStringLiteral("database.app"),
+               QFileInfo::exists(app_db) ? QStringLiteral("ok") : QStringLiteral("fail"),
+               app_db);
+
+    const QString cache_db = AppPaths::data() + QStringLiteral("/cache.db");
+    doctor_add(checks, QStringLiteral("database.cache"),
+               QFileInfo::exists(cache_db) ? QStringLiteral("ok") : QStringLiteral("warn"),
+               QFileInfo::exists(cache_db) ? cache_db : QStringLiteral("cache db not present yet"),
+               QJsonObject{{"path", cache_db}});
+
+    const QString layouts_dir = ProfilePaths::layouts_dir();
+    doctor_add(checks, QStringLiteral("workspace.layouts"),
+               QFileInfo(layouts_dir).isDir() ? QStringLiteral("ok") : QStringLiteral("warn"),
+               QFileInfo(layouts_dir).isDir() ? layouts_dir : QStringLiteral("layouts directory not present yet"),
+               QJsonObject{{"path", layouts_dir}});
+
+    const QString app_dir = QCoreApplication::applicationDirPath();
+    QString spreadsheet_script;
+    doctor_add(checks, QStringLiteral("scripts.spreadsheet"),
+               any_file_exists({app_dir + QStringLiteral("/scripts/spreadsheet.py"),
+                                app_dir + QStringLiteral("/../Resources/scripts/spreadsheet.py"),
+                                QStringLiteral("scripts/spreadsheet.py")},
+                               &spreadsheet_script)
+                   ? QStringLiteral("ok")
+                   : QStringLiteral("fail"),
+               spreadsheet_script.isEmpty() ? QStringLiteral("spreadsheet.py not found") : spreadsheet_script);
+
+    const QString skills_dir = services::AnalysisSkillLoader::instance().skills_dir();
+    const QStringList recipes = services::AnalysisSkillLoader::instance().skill_names();
+    doctor_add(checks, QStringLiteral("ai.recipes"),
+               !recipes.isEmpty() ? QStringLiteral("ok") : QStringLiteral("warn"),
+               !recipes.isEmpty() ? QStringLiteral("%1 recipes loaded").arg(recipes.size())
+                                  : QStringLiteral("no bundled recipes found"),
+               QJsonObject{{"directory", skills_dir}, {"count", recipes.size()}});
+
+    ai_chat::LlmService::instance().reload_config();
+    const QString active_provider = ai_chat::LlmService::instance().active_provider().toLower();
+    const QString active_model = ai_chat::LlmService::instance().active_model();
+    const QString active_base_url = ai_chat::LlmService::instance().active_base_url();
+    const bool provider_needs_key = ai_chat::provider_requires_api_key(active_provider);
+    const bool provider_has_key = !active_provider.isEmpty() &&
+                                  (!ai_chat::LlmService::instance().active_api_key().isEmpty() ||
+                                   has_secure_llm_api_key(active_provider));
+    doctor_add(checks, QStringLiteral("ai.provider"),
+               doctor_check_status(!active_provider.isEmpty(), provider_needs_key && !provider_has_key),
+               active_provider.isEmpty()
+                   ? QStringLiteral("no active provider resolved")
+                   : QStringLiteral("%1 %2").arg(active_provider, active_model.isEmpty() ? QStringLiteral("(default model)") : active_model),
+               QJsonObject{{"provider", active_provider},
+                           {"model", active_model},
+                           {"base_url", active_base_url},
+                           {"api_key_required", provider_needs_key},
+                           {"api_key_saved", provider_has_key}});
+    doctor_add_ai_live_checks(checks, live_ai);
+
+    QString manpage;
+    doctor_add(checks, QStringLiteral("cli.manpage"),
+               any_file_exists({QStringLiteral("packaging/cli/openterminalcli.1"),
+                                app_dir + QStringLiteral("/../share/man/man1/openterminalcli.1")},
+                               &manpage)
+                   ? QStringLiteral("ok")
+                   : QStringLiteral("warn"),
+               manpage.isEmpty() ? QStringLiteral("manpage not found in source/install paths") : manpage);
+
+    QString completion;
+    doctor_add(checks, QStringLiteral("cli.completions"),
+               any_file_exists({QStringLiteral("packaging/cli/completions/openterminalcli.bash"),
+                                QStringLiteral("packaging/cli/completions/_openterminalcli"),
+                                QStringLiteral("packaging/cli/completions/openterminalcli.fish"),
+                                app_dir + QStringLiteral("/../share/bash-completion/completions/openterminalcli"),
+                                app_dir + QStringLiteral("/../share/zsh/site-functions/_openterminalcli"),
+                                app_dir + QStringLiteral("/../share/fish/vendor_completions.d/openterminalcli.fish")},
+                               &completion)
+                   ? QStringLiteral("ok")
+                   : QStringLiteral("warn"),
+               completion.isEmpty() ? QStringLiteral("completion files not found in source/install paths") : completion);
+
+    auto attached = resolve(opts.profile);
+    if (auto* d = std::get_if<Discovered>(&attached)) {
+        doctor_add(checks, QStringLiteral("bridge.attach"), QStringLiteral("ok"),
+                   QStringLiteral("%1 pid=%2").arg(d->info.kind, QString::number(d->info.pid)),
+                   QJsonObject{{"endpoint", d->info.endpoint}, {"kind", d->info.kind}, {"pid", d->info.pid}});
+    } else {
+        doctor_add(checks, QStringLiteral("bridge.attach"), QStringLiteral("warn"),
+                   QStringLiteral("no running GUI/daemon for attach mode"));
+    }
+
+    const bool ok = !doctor_has_failure(checks);
+    QJsonObject out{{"ok", ok},
+                    {"profile", ProfileManager::instance().active()},
+                    {"profile_root", profile_root},
+                    {"checks", checks}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return ok ? 0 : 5;
+    }
+
+    std::printf("%-22s %-5s %s\n", "check", "state", "message");
+    for (const auto& v : checks) {
+        const QJsonObject c = v.toObject();
+        std::printf("%-22s %-5s %s\n",
+                    qUtf8Printable(c.value("id").toString()),
+                    qUtf8Printable(c.value("status").toString()),
+                    qUtf8Printable(c.value("message").toString()));
+    }
+    return ok ? 0 : 5;
+}
+
+struct CommandCapture {
+    bool ok = false;
+    QString stdout_text;
+    QString stderr_text;
+    QString error;
+};
+
+static CommandCapture run_capture(const QString& program, const QStringList& args, int timeout_ms = 3000) {
+    QProcess p;
+    p.setProgram(program);
+    p.setArguments(args);
+    p.start();
+    CommandCapture out;
+    if (!p.waitForStarted(1000)) {
+        out.error = p.errorString();
+        return out;
+    }
+    if (!p.waitForFinished(timeout_ms)) {
+        p.kill();
+        p.waitForFinished(1000);
+        out.error = QStringLiteral("timeout");
+        return out;
+    }
+    out.stdout_text = QString::fromUtf8(p.readAllStandardOutput());
+    out.stderr_text = QString::fromUtf8(p.readAllStandardError());
+    out.ok = p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+    if (!out.ok && out.error.isEmpty())
+        out.error = out.stderr_text.trimmed().isEmpty() ? QStringLiteral("exit %1").arg(p.exitCode())
+                                                        : out.stderr_text.trimmed();
+    return out;
+}
+
+static bool is_loopback_host(QString host) {
+    host = host.trimmed();
+    if (host.startsWith('[') && host.endsWith(']'))
+        host = host.mid(1, host.size() - 2);
+    return host == QStringLiteral("127.0.0.1") ||
+           host == QStringLiteral("::1") ||
+           host == QStringLiteral("localhost") ||
+           host.startsWith(QStringLiteral("127."));
+}
+
+static QString host_from_endpoint(const QString& endpoint) {
+    const QUrl url(endpoint);
+    if (!url.host().isEmpty())
+        return url.host();
+    return {};
+}
+
+static QString socket_remote_host(const QString& name) {
+    const int arrow = name.indexOf(QStringLiteral("->"));
+    if (arrow < 0)
+        return {};
+    QString remote = name.mid(arrow + 2).section(' ', 0, 0).trimmed();
+    if (remote.startsWith('[')) {
+        const int close = remote.indexOf(']');
+        return close > 0 ? remote.mid(1, close - 1) : remote;
+    }
+    const int colon = remote.lastIndexOf(':');
+    return colon > 0 ? remote.left(colon) : remote;
+}
+
+static bool text_mentions_india(QString text) {
+    text = text.toLower();
+    static const QStringList needles = {
+        QStringLiteral(".in"),
+        QStringLiteral("india"),
+        QStringLiteral("mumbai"),
+        QStringLiteral("bangalore"),
+        QStringLiteral("bengaluru"),
+        QStringLiteral("hyderabad"),
+        QStringLiteral("delhi"),
+        QStringLiteral("chennai"),
+        QStringLiteral("kolkata"),
+        QStringLiteral("pune"),
+        QStringLiteral("noida"),
+    };
+    for (const QString& needle : needles) {
+        if (text.contains(needle))
+            return true;
+    }
+    return false;
+}
+
+static QJsonArray collect_descendant_processes(qint64 root_pid, QList<qint64>* pids_out = nullptr) {
+    QJsonArray processes;
+    if (root_pid <= 0)
+        return processes;
+
+    struct ProcRow { qint64 pid = 0; qint64 ppid = 0; QString command; };
+    QVector<ProcRow> rows;
+    const CommandCapture ps = run_capture(QStringLiteral("ps"), {"-axo", "pid=,ppid=,command="}, 3000);
+    if (!ps.ok) {
+        if (pids_out)
+            pids_out->append(root_pid);
+        processes.append(QJsonObject{{"pid", root_pid}, {"ppid", 0}, {"command", QStringLiteral("(ps unavailable)")}, {"root", true}});
+        return processes;
+    }
+
+    const QRegularExpression re(QStringLiteral("^\\s*(\\d+)\\s+(\\d+)\\s+(.*)$"));
+    for (const QString& line : ps.stdout_text.split('\n', Qt::SkipEmptyParts)) {
+        const auto m = re.match(line);
+        if (!m.hasMatch())
+            continue;
+        rows.append({m.captured(1).toLongLong(), m.captured(2).toLongLong(), m.captured(3).trimmed()});
+    }
+
+    QSet<qint64> wanted;
+    wanted.insert(root_pid);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& row : rows) {
+            if (!wanted.contains(row.pid) && wanted.contains(row.ppid)) {
+                wanted.insert(row.pid);
+                changed = true;
+            }
+        }
+    }
+
+    QList<qint64> pids;
+    for (const auto& row : rows) {
+        if (!wanted.contains(row.pid))
+            continue;
+        pids.append(row.pid);
+        processes.append(QJsonObject{{"pid", row.pid},
+                                     {"ppid", row.ppid},
+                                     {"command", row.command},
+                                     {"root", row.pid == root_pid}});
+    }
+    if (pids.isEmpty()) {
+        pids.append(root_pid);
+        processes.append(QJsonObject{{"pid", root_pid}, {"ppid", 0}, {"command", QStringLiteral("(not found)")}, {"root", true}});
+    }
+    if (pids_out)
+        *pids_out = pids;
+    return processes;
+}
+
+static QJsonArray collect_sockets_for_pids(const QList<qint64>& pids, QString* error_out = nullptr) {
+    QJsonArray sockets;
+    if (pids.isEmpty())
+        return sockets;
+    if (run_capture(QStringLiteral("which"), {QStringLiteral("lsof")}, 1000).ok == false) {
+        if (error_out)
+            *error_out = QStringLiteral("lsof not available");
+        return sockets;
+    }
+
+    for (qint64 pid : pids) {
+        const CommandCapture lsof = run_capture(QStringLiteral("lsof"),
+                                                {"-nP", "-a", "-p", QString::number(pid), "-iTCP", "-iUDP"},
+                                                3000);
+        if (!lsof.ok && lsof.stdout_text.trimmed().isEmpty())
+            continue;
+        const QStringList lines = lsof.stdout_text.split('\n', Qt::SkipEmptyParts);
+        for (int i = 1; i < lines.size(); ++i) {
+            const QStringList parts = lines.at(i).split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+            if (parts.size() < 9)
+                continue;
+            const QString proto = parts.value(7);
+            QString name;
+            for (int j = 8; j < parts.size(); ++j) {
+                if (!name.isEmpty())
+                    name += ' ';
+                name += parts.at(j);
+            }
+            const QString remote = socket_remote_host(name);
+            const bool listening = name.contains(QStringLiteral("(LISTEN)"));
+            const bool local_only = listening ? name.contains(QStringLiteral("127.0.0.1")) ||
+                                                    name.contains(QStringLiteral("[::1]")) ||
+                                                    name.contains(QStringLiteral("localhost"))
+                                              : (!remote.isEmpty() && is_loopback_host(remote));
+            const bool external = !listening && !remote.isEmpty() && !is_loopback_host(remote);
+            sockets.append(QJsonObject{{"pid", pid},
+                                       {"process", parts.value(0)},
+                                       {"protocol", proto},
+                                       {"name", name},
+                                       {"remote_host", remote},
+                                       {"listening", listening},
+                                       {"local_only", local_only},
+                                       {"external", external},
+                                       {"india_text_match", text_mentions_india(name)}});
+        }
+    }
+    return sockets;
+}
+
+static QJsonArray mcp_servers_json(const QVector<McpServer>& servers, bool* india_match = nullptr) {
+    QJsonArray arr;
+    bool hit = false;
+    for (const auto& s : servers) {
+        QJsonArray env_keys;
+        const QJsonDocument env_doc = QJsonDocument::fromJson(s.env.toUtf8());
+        if (env_doc.isObject()) {
+            const QJsonObject env = env_doc.object();
+            for (auto it = env.constBegin(); it != env.constEnd(); ++it)
+                env_keys.append(it.key());
+        } else if (!s.env.trimmed().isEmpty()) {
+            for (const QString& pair : s.env.split(' ', Qt::SkipEmptyParts)) {
+                const int eq = pair.indexOf('=');
+                env_keys.append(eq > 0 ? pair.left(eq) : pair);
+            }
+        }
+        QJsonArray args;
+        const QJsonDocument args_doc = QJsonDocument::fromJson(s.args.toUtf8());
+        if (args_doc.isArray()) {
+            args = args_doc.array();
+        } else {
+            for (const QString& arg : s.args.split(' ', Qt::SkipEmptyParts))
+                args.append(arg);
+        }
+        const QString blob = s.name + " " + s.description + " " + s.command + " " + s.args + " " + s.env;
+        hit = hit || text_mentions_india(blob);
+        arr.append(QJsonObject{{"id", s.id},
+                               {"name", s.name},
+                               {"description", s.description},
+                               {"command", s.command},
+                               {"args", args},
+                               {"env_keys", env_keys},
+                               {"category", s.category},
+                               {"enabled", s.enabled},
+                               {"auto_start", s.auto_start},
+                               {"status", s.status},
+                               {"india_text_match", text_mentions_india(blob)}});
+    }
+    if (india_match)
+        *india_match = hit;
+    return arr;
+}
+
+static QJsonObject bridge_audit_json(const QString& profile) {
+    QJsonObject bridge{{"running", false},
+                       {"profile_root", profile_root_for(profile)},
+                       {"bridge_file", bridge_file_path(profile_root_for(profile))}};
+    auto attached = resolve(profile);
+    if (auto* d = std::get_if<Discovered>(&attached)) {
+        const QString host = host_from_endpoint(d->info.endpoint);
+        bridge["running"] = true;
+        bridge["endpoint"] = d->info.endpoint;
+        bridge["host"] = host;
+        bridge["local_only"] = is_loopback_host(host);
+        bridge["pid"] = d->info.pid;
+        bridge["kind"] = d->info.kind;
+        bridge["started_at"] = d->info.started_at;
+        bridge["destructive_token_in_file"] = false;
+    } else {
+        bridge["status"] = std::get<DiscoveryError>(attached) == DiscoveryError::Stale ? QStringLiteral("stale")
+                                                                                       : QStringLiteral("not_running");
+    }
+    return bridge;
+}
+
+static int security_command(const GlobalOpts& opts, QStringList args) {
+    QString sub = args.isEmpty() ? QStringLiteral("network-audit") : args.takeFirst().trimmed().toLower();
+    if (sub == "net" || sub == "network")
+        sub = QStringLiteral("network-audit");
+    if (sub != QStringLiteral("network-audit") && sub != QStringLiteral("audit")) {
+        std::fprintf(stderr, "usage: security network-audit [--no-sockets]\n");
+        return 2;
+    }
+    const bool no_sockets = take_bool_flag(args, QStringLiteral("--no-sockets"));
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: security network-audit [--no-sockets]\n");
+        return 2;
+    }
+
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    QJsonArray findings;
+    bool india_match_any = false;
+    auto add_finding = [&](const QString& severity, const QString& id, const QString& message) {
+        findings.append(QJsonObject{{"severity", severity}, {"id", id}, {"message", message}});
+    };
+
+    const QJsonObject bridge = bridge_audit_json(opts.profile);
+    if (bridge.value("running").toBool()) {
+        if (bridge.value("local_only").toBool())
+            add_finding(QStringLiteral("ok"), QStringLiteral("bridge.localhost"),
+                        QStringLiteral("OpenTerminal bridge is bound to localhost only"));
+        else
+            add_finding(QStringLiteral("warn"), QStringLiteral("bridge.non_loopback"),
+                        QStringLiteral("OpenTerminal bridge endpoint is not loopback"));
+    } else {
+        add_finding(QStringLiteral("ok"), QStringLiteral("bridge.not_running"),
+                    QStringLiteral("No running OpenTerminal bridge for this profile"));
+    }
+
+    bool mcp_india_match = false;
+    QJsonArray mcp_servers;
+    const auto servers = McpServerRepository::instance().list_all();
+    if (servers.is_err()) {
+        add_finding(QStringLiteral("warn"), QStringLiteral("mcp.servers.read_failed"),
+                    QStringLiteral("Could not read external MCP server table"));
+    } else {
+        mcp_servers = mcp_servers_json(servers.value(), &mcp_india_match);
+        if (mcp_servers.isEmpty())
+            add_finding(QStringLiteral("ok"), QStringLiteral("mcp.external.empty"),
+                        QStringLiteral("No external MCP servers configured"));
+        else
+            add_finding(QStringLiteral("warn"), QStringLiteral("mcp.external.configured"),
+                        QStringLiteral("%1 external MCP server(s) configured").arg(mcp_servers.size()));
+        if (mcp_india_match)
+            add_finding(QStringLiteral("warn"), QStringLiteral("mcp.india_text_match"),
+                        QStringLiteral("External MCP config contains India-related text/domain pattern"));
+        india_match_any = india_match_any || mcp_india_match;
+    }
+
+    ai_chat::LlmService::instance().reload_config();
+    const QString provider = ai_chat::LlmService::instance().active_provider().toLower();
+    const QString base_url = ai_chat::LlmService::instance().active_base_url();
+    const bool api_key_required = ai_chat::provider_requires_api_key(provider);
+    const bool api_key_saved = !provider.isEmpty() &&
+                               (!ai_chat::LlmService::instance().active_api_key().isEmpty() ||
+                                has_secure_llm_api_key(provider));
+    QJsonObject ai{{"provider", provider},
+                   {"model", ai_chat::LlmService::instance().active_model()},
+                   {"base_url", base_url},
+                   {"tools_enabled", ai_chat::LlmService::instance().tools_enabled()},
+                   {"api_key_required", api_key_required},
+                   {"api_key_saved", api_key_saved},
+                   {"api_key_storage", api_key_required ? QStringLiteral("local secure storage")
+                                                        : QStringLiteral("not required")}};
+    if (provider == QStringLiteral("ollama") || is_loopback_host(host_from_endpoint(base_url))) {
+        add_finding(QStringLiteral("ok"), QStringLiteral("ai.local"),
+                    QStringLiteral("Active AI provider is local or loopback"));
+    } else if (provider == QStringLiteral("openai") || provider == QStringLiteral("anthropic")) {
+        add_finding(QStringLiteral("info"), QStringLiteral("ai.cloud_direct"),
+                    QStringLiteral("Active AI provider is a direct cloud API selected in local settings"));
+    } else if (provider.isEmpty()) {
+        add_finding(QStringLiteral("warn"), QStringLiteral("ai.unconfigured"),
+                    QStringLiteral("No active AI provider resolved"));
+    }
+    if (text_mentions_india(provider + " " + base_url)) {
+        add_finding(QStringLiteral("warn"), QStringLiteral("ai.india_text_match"),
+                    QStringLiteral("AI provider endpoint contains India-related text/domain pattern"));
+        india_match_any = true;
+    }
+
+    const QString api_base = openmarketterminal::AppConfig::instance().api_base_url();
+    const QString cloud_base = openmarketterminal::AppConfig::instance().cloud_base_url();
+    QJsonObject app_cloud{{"api_base_url", api_base}, {"cloud_base_url", cloud_base}};
+    if (api_base.contains(QStringLiteral("api.example.com")) || cloud_base.contains(QStringLiteral("api.example.com"))) {
+        add_finding(QStringLiteral("warn"), QStringLiteral("cloud.placeholder"),
+                    QStringLiteral("Legacy api.example.com placeholder is still present in AppConfig defaults/settings"));
+    } else {
+        add_finding(QStringLiteral("ok"), QStringLiteral("cloud.placeholder"),
+                    QStringLiteral("No api.example.com placeholder active in AppConfig"));
+    }
+
+    QJsonArray processes;
+    QJsonArray sockets;
+    QString socket_error;
+    if (!no_sockets && bridge.value("running").toBool()) {
+        QList<qint64> pids;
+        processes = collect_descendant_processes(static_cast<qint64>(bridge.value("pid").toDouble()), &pids);
+        sockets = collect_sockets_for_pids(pids, &socket_error);
+        int external_count = 0;
+        int india_socket_matches = 0;
+        for (const auto& v : sockets) {
+            const QJsonObject s = v.toObject();
+            if (s.value("external").toBool())
+                ++external_count;
+            if (s.value("india_text_match").toBool())
+                ++india_socket_matches;
+        }
+        if (!socket_error.isEmpty())
+            add_finding(QStringLiteral("warn"), QStringLiteral("sockets.unavailable"), socket_error);
+        else if (external_count == 0)
+            add_finding(QStringLiteral("ok"), QStringLiteral("sockets.no_external"),
+                        QStringLiteral("No external sockets found for OpenTerminal process tree"));
+        else
+            add_finding(QStringLiteral("info"), QStringLiteral("sockets.external"),
+                        QStringLiteral("%1 external socket(s) found for OpenTerminal process tree").arg(external_count));
+        if (india_socket_matches > 0)
+            add_finding(QStringLiteral("warn"), QStringLiteral("sockets.india_text_match"),
+                        QStringLiteral("%1 socket(s) contain India-related text/domain pattern").arg(india_socket_matches));
+        india_match_any = india_match_any || india_socket_matches > 0;
+    }
+
+    if (!india_match_any) {
+        add_finding(QStringLiteral("ok"), QStringLiteral("india.patterns"),
+                    no_sockets ? QStringLiteral("No India-related text/domain pattern in MCP or AI config")
+                               : QStringLiteral("No India-related text/domain pattern in checked MCP, AI, or socket data"));
+    }
+
+    QJsonObject out{{"profile", ProfileManager::instance().active()},
+                    {"profile_root", ProfileManager::instance().profile_root()},
+                    {"bridge", bridge},
+                    {"external_mcp_servers", mcp_servers},
+                    {"ai", ai},
+                    {"app_cloud", app_cloud},
+                    {"processes", processes},
+                    {"sockets", sockets},
+                    {"findings", findings}};
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("Security network audit  profile=%s\n", qUtf8Printable(ProfileManager::instance().active()));
+    std::printf("Bridge: %s",
+                bridge.value("running").toBool() ? qUtf8Printable(bridge.value("endpoint").toString())
+                                                  : "not running");
+    if (bridge.value("running").toBool())
+        std::printf("  pid=%lld  local_only=%s",
+                    static_cast<long long>(bridge.value("pid").toDouble()),
+                    bridge.value("local_only").toBool() ? "yes" : "no");
+    std::printf("\n");
+    std::printf("External MCP servers: %lld\n", static_cast<long long>(mcp_servers.size()));
+    for (const auto& v : mcp_servers) {
+        const QJsonObject s = v.toObject();
+        std::printf("  %-24s enabled=%s auto_start=%s command=%s\n",
+                    qUtf8Printable(s.value("id").toString()),
+                    s.value("enabled").toBool() ? "yes" : "no",
+                    s.value("auto_start").toBool() ? "yes" : "no",
+                    qUtf8Printable(s.value("command").toString()));
+    }
+    std::printf("AI: provider=%s model=%s base_url=%s key=%s tools=%s\n",
+                qUtf8Printable(provider.isEmpty() ? QStringLiteral("(none)") : provider),
+                qUtf8Printable(ai.value("model").toString()),
+                qUtf8Printable(base_url),
+                api_key_required ? (api_key_saved ? "saved-local" : "missing") : "n/a",
+                ai.value("tools_enabled").toBool() ? "on" : "off");
+    std::printf("App cloud defaults: api_base_url=%s cloud_base_url=%s\n",
+                qUtf8Printable(api_base), qUtf8Printable(cloud_base));
+    if (!no_sockets && !sockets.isEmpty()) {
+        std::printf("Sockets:\n");
+        for (const auto& v : sockets) {
+            const QJsonObject s = v.toObject();
+            std::printf("  pid=%lld %-10s %-4s external=%s %s\n",
+                        static_cast<long long>(s.value("pid").toDouble()),
+                        qUtf8Printable(s.value("process").toString()),
+                        qUtf8Printable(s.value("protocol").toString()),
+                        s.value("external").toBool() ? "yes" : "no",
+                        qUtf8Printable(s.value("name").toString()));
+        }
+    }
+    std::printf("Findings:\n");
+    for (const auto& v : findings) {
+        const QJsonObject f = v.toObject();
+        std::printf("  %-5s %-26s %s\n",
+                    qUtf8Printable(f.value("severity").toString()),
+                    qUtf8Printable(f.value("id").toString()),
+                    qUtf8Printable(f.value("message").toString()));
+    }
+    return 0;
+}
+
+static QString take_option_value(QStringList& args, int& i, const QString& flag, bool& ok) {
+    if (i + 1 >= args.size()) {
+        std::fprintf(stderr, "%s requires a value\n", qUtf8Printable(flag));
+        ok = false;
+        return {};
+    }
+    const QString value = args.at(i + 1);
+    args.removeAt(i);
+    args.removeAt(i);
+    --i;
+    return value;
+}
+
+static int ai_use_command(const GlobalOpts& opts, QStringList args) {
+    if (args.isEmpty()) {
+        std::fprintf(stderr, "usage: ai use <openai|anthropic|ollama> [--model M] [--base-url URL] "
+                             "[--api-key-env ENV | --api-key-stdin] [--tools on|off]\n");
+        return 2;
+    }
+
+    const QString provider = normalize_ai_provider(args.takeFirst());
+    if (!is_supported_ai_provider(provider)) {
+        std::fprintf(stderr, "unsupported provider: %s\n", qUtf8Printable(provider));
+        return 2;
+    }
+
+    QString model;
+    QString base_url;
+    QString api_key;
+    QString tools_mode;
+    bool ok = true;
+    for (int i = 0; i < args.size(); ++i) {
+        const QString flag = args.at(i);
+        if (flag == "--model" || flag == "-m")
+            model = take_option_value(args, i, flag, ok);
+        else if (flag == "--base-url" || flag == "--url")
+            base_url = take_option_value(args, i, flag, ok);
+        else if (flag == "--api-key-env") {
+            const QString env = take_option_value(args, i, flag, ok);
+            if (ok) {
+                const QByteArray value = qgetenv(env.toUtf8().constData());
+                if (value.isEmpty()) {
+                    std::fprintf(stderr, "environment variable is empty: %s\n", qUtf8Printable(env));
+                    return 2;
+                }
+                api_key = QString::fromUtf8(value).trimmed();
+            }
+        } else if (flag == "--api-key-stdin") {
+            QFile in;
+            if (!in.open(stdin, QIODevice::ReadOnly)) {
+                std::fprintf(stderr, "failed to read stdin\n");
+                return 2;
+            }
+            api_key = QString::fromUtf8(in.readAll()).trimmed();
+        } else if (flag == "--api-key") {
+            api_key = take_option_value(args, i, flag, ok);
+            std::fprintf(stderr, "warning: --api-key can be stored in shell history; prefer --api-key-env or --api-key-stdin\n");
+        } else if (flag == "--tools") {
+            tools_mode = take_option_value(args, i, flag, ok).trimmed().toLower();
+        } else {
+            std::fprintf(stderr, "unknown ai use option: %s\n", qUtf8Printable(flag));
+            return 2;
+        }
+        if (!ok)
+            return 2;
+    }
+
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    auto listed = LlmConfigRepository::instance().list_providers();
+    if (listed.is_err()) {
+        std::fprintf(stderr, "failed to load providers: %s\n", listed.error().c_str());
+        return 5;
+    }
+    const auto prior = find_llm_config(listed.value(), provider);
+    const bool needs_key = ai_chat::provider_requires_api_key(provider);
+    const bool has_existing_key = needs_key && ((prior && !prior->api_key.isEmpty()) || has_secure_llm_api_key(provider));
+    if (needs_key && api_key.isEmpty() && !has_existing_key) {
+        std::fprintf(stderr, "%s API key required; use --api-key-env ENV or --api-key-stdin\n",
+                     qUtf8Printable(provider));
+        return 2;
+    }
+
+    LlmConfig cfg;
+    cfg.provider = provider;
+    cfg.api_key = api_key;
+    cfg.model = model.isEmpty() ? (prior ? prior->model : default_ai_model(provider)) : model;
+    cfg.base_url = base_url.isEmpty() ? (prior ? prior->base_url : default_ai_base_url(provider)) : base_url;
+    cfg.tools_enabled = prior ? prior->tools_enabled : true;
+    if (tools_mode == "on" || tools_mode == "true" || tools_mode == "1")
+        cfg.tools_enabled = true;
+    else if (tools_mode == "off" || tools_mode == "false" || tools_mode == "0")
+        cfg.tools_enabled = false;
+    else if (!tools_mode.isEmpty()) {
+        std::fprintf(stderr, "--tools must be on or off\n");
+        return 2;
+    }
+    cfg.is_active = true;
+
+    if (cfg.model.isEmpty())
+        cfg.model = default_ai_model(provider);
+    if (provider == "ollama" && cfg.base_url.isEmpty())
+        cfg.base_url = default_ai_base_url(provider);
+
+    auto saved = LlmConfigRepository::instance().save_provider(cfg);
+    if (saved.is_err()) {
+        std::fprintf(stderr, "failed to save provider: %s\n", saved.error().c_str());
+        return 5;
+    }
+    auto active = LlmConfigRepository::instance().set_active(provider);
+    if (active.is_err()) {
+        std::fprintf(stderr, "failed to activate provider: %s\n", active.error().c_str());
+        return 5;
+    }
+    ai_chat::LlmService::instance().reload_config();
+
+    if (opts.json) {
+        QJsonObject out{{"provider", provider},
+                        {"active", true},
+                        {"model", ai_chat::LlmService::instance().active_model()},
+                        {"base_url", ai_chat::LlmService::instance().active_base_url()},
+                        {"tools_enabled", ai_chat::LlmService::instance().tools_enabled()},
+                        {"api_key_storage", needs_key ? QStringLiteral("local secure storage")
+                                                      : QStringLiteral("not required")}};
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("active AI provider: %s  model=%s  base_url=%s  key=%s\n",
+                    qUtf8Printable(provider),
+                    qUtf8Printable(ai_chat::LlmService::instance().active_model()),
+                    qUtf8Printable(ai_chat::LlmService::instance().active_base_url()),
+                    needs_key ? "local-secure" : "not-required");
+    }
+    return 0;
+}
+
+static int ai_test_command(const GlobalOpts& opts, const QStringList& args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    ai_chat::LlmService::instance().reload_config();
+    if (!ai_chat::LlmService::instance().is_configured()) {
+        std::fprintf(stderr, "no LLM provider configured\n");
+        return 5;
+    }
+    const QString prompt = args.isEmpty()
+                               ? QStringLiteral("Reply with exactly: OK")
+                               : args.join(' ');
+    const ai_chat::LlmResponse r = ai_chat::LlmService::instance().chat(prompt, {}, /*use_tools=*/false);
+    if (!r.success) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(r.error.isEmpty() ? QStringLiteral("LLM test failed") : r.error));
+        return 5;
+    }
+    if (opts.json) {
+        QJsonObject out{{"success", true},
+                        {"provider", ai_chat::LlmService::instance().active_provider()},
+                        {"model", ai_chat::LlmService::instance().active_model()},
+                        {"content", r.content},
+                        {"prompt_tokens", r.prompt_tokens},
+                        {"completion_tokens", r.completion_tokens},
+                        {"total_tokens", r.total_tokens}};
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("provider=%s model=%s\n%s\n",
+                    qUtf8Printable(ai_chat::LlmService::instance().active_provider()),
+                    qUtf8Printable(ai_chat::LlmService::instance().active_model()),
+                    qUtf8Printable(r.content));
+    }
+    return 0;
+}
+
+static QStringList profile_cli_fields() {
+    return {QStringLiteral("name"), QStringLiteral("nickname"), QStringLiteral("email"),
+            QStringLiteral("phone"), QStringLiteral("country")};
+}
+
+static QString profile_setting_key(const QString& field) {
+    return QStringLiteral("profile.") + field;
+}
+
+static QString profile_value(const QString& field) {
+    auto r = SettingsRepository::instance().get(profile_setting_key(field), {});
+    return r.is_ok() ? r.value() : QString();
+}
+
+static QJsonObject profile_json_payload() {
+    const QString name = profile_value(QStringLiteral("name"));
+    const QString nickname = profile_value(QStringLiteral("nickname"));
+    const QString email = profile_value(QStringLiteral("email"));
+    const QString phone = profile_value(QStringLiteral("phone"));
+    const QString country = profile_value(QStringLiteral("country"));
+    const QString legacy_username = profile_value(QStringLiteral("username"));
+    const QString display = !nickname.isEmpty() ? nickname : (!name.isEmpty() ? name : legacy_username);
+    return QJsonObject{
+        {"app_profile", ProfileManager::instance().active()},
+        {"display_name", display},
+        {"name", name.isEmpty() ? legacy_username : name},
+        {"nickname", nickname},
+        {"email", email},
+        {"phone", phone},
+        {"country", country},
+        {"storage", QStringLiteral("local settings database")},
+    };
+}
+
+static int emit_profile(const GlobalOpts& opts) {
+    const QJsonObject payload = profile_json_payload();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(payload).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("app_profile  %s\n", qUtf8Printable(payload.value("app_profile").toString()));
+    std::printf("display      %s\n", qUtf8Printable(payload.value("display_name").toString()));
+    for (const QString& field : profile_cli_fields())
+        std::printf("%-12s %s\n", qUtf8Printable(field), qUtf8Printable(payload.value(field).toString()));
+    std::printf("storage      local settings database\n");
+    return 0;
+}
+
+static int sync_profile_username() {
+    const QString nickname = profile_value(QStringLiteral("nickname"));
+    const QString name = profile_value(QStringLiteral("name"));
+    const QString username = nickname.isEmpty() ? name : nickname;
+    auto r = username.isEmpty()
+                 ? SettingsRepository::instance().remove(QStringLiteral("profile.username"))
+                 : SettingsRepository::instance().set(QStringLiteral("profile.username"), username, QStringLiteral("profile"));
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to update profile.username: %s\n", r.error().c_str());
+        return 5;
+    }
+    return 0;
+}
+
+static int profile_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    const QString sub = args.isEmpty() ? QStringLiteral("show") : args.takeFirst().trimmed().toLower();
+    if (sub == "show" || sub == "get" || sub == "info")
+        return emit_profile(opts);
+
+    if (sub == "set") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: profile set name=<name> nickname=<nick> email=<email> phone=<phone> country=<country>\n");
+            return 2;
+        }
+        bool touched_identity = false;
+        for (const QString& token : args) {
+            const int eq = token.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(token));
+                return 2;
+            }
+            QString key = token.left(eq).trimmed().toLower();
+            const QString value = token.mid(eq + 1).trimmed();
+            if (key == "nick" || key == "username")
+                key = QStringLiteral("nickname");
+            if (!profile_cli_fields().contains(key)) {
+                std::fprintf(stderr, "unknown profile field: %s\n", qUtf8Printable(key));
+                return 2;
+            }
+            auto r = SettingsRepository::instance().set(profile_setting_key(key), value, QStringLiteral("profile"));
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to save %s: %s\n", qUtf8Printable(key), r.error().c_str());
+                return 5;
+            }
+            if (key == "name" || key == "nickname")
+                touched_identity = true;
+        }
+        if (touched_identity) {
+            const int rc = sync_profile_username();
+            if (rc != 0)
+                return rc;
+        }
+        return emit_profile(opts);
+    }
+
+    if (sub == "clear" || sub == "unset") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: profile clear <name|nickname|email|phone|country|all>\n");
+            return 2;
+        }
+        bool touched_identity = false;
+        for (QString key : args) {
+            key = key.trimmed().toLower();
+            if (key == "nick" || key == "username")
+                key = QStringLiteral("nickname");
+            QStringList fields = key == "all" ? profile_cli_fields() : QStringList{key};
+            for (const QString& field : fields) {
+                if (!profile_cli_fields().contains(field)) {
+                    std::fprintf(stderr, "unknown profile field: %s\n", qUtf8Printable(field));
+                    return 2;
+                }
+                auto r = SettingsRepository::instance().remove(profile_setting_key(field));
+                if (r.is_err()) {
+                    std::fprintf(stderr, "failed to clear %s: %s\n", qUtf8Printable(field), r.error().c_str());
+                    return 5;
+                }
+                if (field == "name" || field == "nickname")
+                    touched_identity = true;
+            }
+        }
+        if (args.contains(QStringLiteral("all"))) {
+            auto r = SettingsRepository::instance().remove(QStringLiteral("profile.username"));
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to clear profile.username: %s\n", r.error().c_str());
+                return 5;
+            }
+        } else if (touched_identity) {
+            const int rc = sync_profile_username();
+            if (rc != 0)
+                return rc;
+        }
+        return emit_profile(opts);
+    }
+
+    std::fprintf(stderr, "usage: profile show | profile set key=value ... | profile clear <field|all>\n");
+    return 2;
+}
+
+static QJsonObject setup_status_row(const QString& id, const QString& status,
+                                    const QString& message, const QString& command = {}) {
+    QJsonObject row{{"id", id}, {"status", status}, {"message", message}};
+    if (!command.isEmpty())
+        row["command"] = command;
+    return row;
+}
+
+static bool setup_has_problem(const QJsonArray& rows) {
+    for (const auto& v : rows) {
+        const QString status = v.toObject().value("status").toString();
+        if (status == QStringLiteral("fail") || status == QStringLiteral("warn"))
+            return true;
+    }
+    return false;
+}
+
+static int setup_status_command(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    const QJsonObject profile = profile_json_payload();
+    const QString display_name = profile.value("display_name").toString();
+    const QString email = profile.value("email").toString();
+    const QString phone = profile.value("phone").toString();
+    const QString country = profile.value("country").toString();
+    const bool has_identity = !display_name.trimmed().isEmpty();
+    const bool has_contact = !email.trimmed().isEmpty() || !phone.trimmed().isEmpty() || !country.trimmed().isEmpty();
+
+    ai_chat::LlmService::instance().reload_config();
+    const QString provider = ai_chat::LlmService::instance().active_provider().toLower();
+    const QString model = ai_chat::LlmService::instance().active_model();
+    const QString base_url = ai_chat::LlmService::instance().active_base_url();
+    const bool needs_key = ai_chat::provider_requires_api_key(provider);
+    const bool has_key = !provider.isEmpty() &&
+                         (!ai_chat::LlmService::instance().active_api_key().isEmpty() ||
+                          has_secure_llm_api_key(provider));
+    const bool ai_ready = !provider.isEmpty() && (!needs_key || has_key);
+
+    QJsonArray rows;
+    rows.append(setup_status_row(
+        QStringLiteral("profile.identity"),
+        has_identity ? QStringLiteral("ok") : QStringLiteral("warn"),
+        has_identity ? display_name : QStringLiteral("name or nickname not set"),
+        has_identity ? QString() : QStringLiteral("openterminalcli --headless setup profile name=<name> nickname=<nick>")));
+    rows.append(setup_status_row(
+        QStringLiteral("profile.contact"),
+        has_contact ? QStringLiteral("ok") : QStringLiteral("warn"),
+        has_contact ? QStringLiteral("contact fields present") : QStringLiteral("email/phone/country optional but empty"),
+        has_contact ? QString() : QStringLiteral("openterminalcli --headless setup profile email=<email> country=<country>")));
+    rows.append(setup_status_row(
+        QStringLiteral("ai.provider"),
+        ai_ready ? QStringLiteral("ok") : QStringLiteral("warn"),
+        provider.isEmpty()
+            ? QStringLiteral("no active provider")
+            : QStringLiteral("%1 %2%3").arg(provider,
+                                            model.isEmpty() ? QStringLiteral("(default model)") : model,
+                                            needs_key && !has_key ? QStringLiteral(" - missing local API key") : QString()),
+        ai_ready ? QString() : QStringLiteral("openterminalcli --headless setup ai ollama")));
+    rows.append(setup_status_row(
+        QStringLiteral("ai.secret_policy"),
+        QStringLiteral("ok"),
+        needs_key ? QStringLiteral("API key stored/read locally; never printed")
+                  : QStringLiteral("local provider does not require API key"),
+        needs_key && !has_key ? QStringLiteral("printf '<key>' | openterminalcli --headless setup ai ") + provider +
+                                  QStringLiteral(" --api-key-stdin")
+                              : QString()));
+    rows.append(setup_status_row(
+        QStringLiteral("diagnostics"),
+        QStringLiteral("ok"),
+        QStringLiteral("doctor command available"),
+        QStringLiteral("openterminalcli --headless doctor")));
+
+    QJsonObject ai{{"provider", provider},
+                   {"model", model},
+                   {"base_url", base_url},
+                   {"api_key_required", needs_key},
+                   {"api_key_saved", has_key},
+                   {"ready", ai_ready}};
+    QJsonObject out{{"profile", profile},
+                    {"ai", ai},
+                    {"items", rows},
+                    {"needs_attention", setup_has_problem(rows)}};
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("local setup (%s)\n", qUtf8Printable(profile.value("app_profile").toString()));
+    std::printf("%-18s %-5s %s\n", "item", "state", "message");
+    for (const auto& v : rows) {
+        const QJsonObject row = v.toObject();
+        std::printf("%-18s %-5s %s\n",
+                    qUtf8Printable(row.value("id").toString()),
+                    qUtf8Printable(row.value("status").toString()),
+                    qUtf8Printable(row.value("message").toString()));
+    }
+    std::printf("\nnext commands\n");
+    for (const auto& v : rows) {
+        const QString command = v.toObject().value("command").toString();
+        if (!command.isEmpty())
+            std::printf("  %s\n", qUtf8Printable(command));
+    }
+    return 0;
+}
+
+static int setup_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "status" || sub == "show" || sub == "checklist")
+        return setup_status_command(opts);
+
+    if (sub == "profile" || sub == "account") {
+        if (args.isEmpty())
+            args.append(QStringLiteral("show"));
+        else if (args.first().contains('='))
+            args.prepend(QStringLiteral("set"));
+        return profile_command(opts, args);
+    }
+
+    if (sub == "ai" || sub == "provider" || sub == "providers") {
+        if (args.isEmpty())
+            return ai_providers_command(opts);
+        const QString action = args.first().trimmed().toLower();
+        if (action == "providers" || action == "list" || action == "status")
+            return ai_providers_command(opts);
+        if (action == "use") {
+            args.takeFirst();
+            return ai_use_command(opts, args);
+        }
+        if (action == "test") {
+            args.takeFirst();
+            return ai_test_command(opts, args);
+        }
+        return ai_use_command(opts, args);
+    }
+
+    if (sub == "doctor" || sub == "diagnose")
+        return doctor_command(opts, args);
+
+    std::fprintf(stderr, "usage: setup [status] | setup profile ... | setup ai ... | setup doctor\n");
+    return 2;
+}
+
+static QJsonObject setting_to_json(const Setting& s) {
+    return QJsonObject{{"key", s.key}, {"value", s.value}, {"category", s.category}, {"updated_at", s.updated_at}};
+}
+
+static std::optional<Setting> find_setting_by_key(const QString& key) {
+    auto all = SettingsRepository::instance().list_all();
+    if (all.is_err())
+        return std::nullopt;
+    for (const auto& s : all.value()) {
+        if (s.key == key)
+            return s;
+    }
+    return std::nullopt;
+}
+
+static int emit_settings_list(const GlobalOpts& opts, const QVector<Setting>& rows) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& s : rows)
+            arr.append(setting_to_json(s));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"settings", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    for (const auto& s : rows)
+        std::printf("%-32s %-16s %s\n", qUtf8Printable(s.key), qUtf8Printable(s.category), qUtf8Printable(s.value));
+    return 0;
+}
+
+static int settings_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    if (sub == "list" || sub == "ls") {
+        const QString category = args.join(' ').trimmed();
+        auto rows = category.isEmpty() ? SettingsRepository::instance().list_all()
+                                       : SettingsRepository::instance().get_by_category(category);
+        if (rows.is_err()) {
+            std::fprintf(stderr, "failed to list settings: %s\n", rows.error().c_str());
+            return 5;
+        }
+        return emit_settings_list(opts, rows.value());
+    }
+
+    if (sub == "get") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: settings get <key>\n");
+            return 2;
+        }
+        const QString key = args.join(' ').trimmed();
+        auto found = find_setting_by_key(key);
+        if (!found.has_value()) {
+            std::fprintf(stderr, "setting not found: %s\n", qUtf8Printable(key));
+            return 5;
+        }
+        if (opts.json) {
+            std::printf("%s\n", QJsonDocument(setting_to_json(*found)).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("%s\n", qUtf8Printable(found->value));
+        }
+        return 0;
+    }
+
+    if (sub == "set") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: settings set <key>=<value> [category=<category>]\n");
+            return 2;
+        }
+        QString category = QStringLiteral("general");
+        QVector<QPair<QString, QString>> pairs;
+        for (const QString& token : args) {
+            const int eq = token.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(token));
+                return 2;
+            }
+            const QString key = token.left(eq).trimmed();
+            const QString value = token.mid(eq + 1).trimmed();
+            if (key == "category") {
+                category = value.isEmpty() ? QStringLiteral("general") : value;
+            } else {
+                pairs.append({key, value});
+            }
+        }
+        if (pairs.isEmpty()) {
+            std::fprintf(stderr, "usage: settings set <key>=<value> [category=<category>]\n");
+            return 2;
+        }
+        for (const auto& pair : pairs) {
+            auto r = SettingsRepository::instance().set(pair.first, pair.second, category);
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to save %s: %s\n", qUtf8Printable(pair.first), r.error().c_str());
+                return 5;
+            }
+        }
+        QVector<Setting> changed;
+        for (const auto& pair : pairs) {
+            if (auto s = find_setting_by_key(pair.first))
+                changed.append(*s);
+        }
+        return emit_settings_list(opts, changed);
+    }
+
+    if (sub == "clear" || sub == "remove" || sub == "rm" || sub == "unset") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: settings clear <key>\n");
+            return 2;
+        }
+        for (const QString& key : args) {
+            auto r = SettingsRepository::instance().remove(key);
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to clear %s: %s\n", qUtf8Printable(key), r.error().c_str());
+                return 5;
+            }
+        }
+        if (opts.json) {
+            QJsonArray arr;
+            for (const QString& key : args)
+                arr.append(key);
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"cleared", arr}}).toJson(QJsonDocument::Compact).constData());
+        } else {
+            for (const QString& key : args)
+                std::printf("cleared %s\n", qUtf8Printable(key));
+        }
+        return 0;
+    }
+
+    std::fprintf(stderr, "usage: settings list [category] | settings get <key> | settings set key=value [category=cat] | settings clear <key>\n");
+    return 2;
+}
+
 // Process-lifetime in-process runtime (headless mode). init() is idempotent, so
 // it is brought up lazily by the first command that needs the brain.
 static openmarketterminal::headless::HeadlessRuntime& headless_runtime() {
@@ -116,6 +2637,7407 @@ static int exec_tool(const GlobalOpts& opts, std::optional<BridgeClient>& client
     return emit_result(opts, client->call_tool(tool, args));
 }
 
+static int call_tool_json(const GlobalOpts& opts, std::optional<BridgeClient>& client,
+                          const QString& tool, const QJsonObject& args, QJsonObject& out) {
+    if (opts.headless) {
+        const mcp::ToolResult r = headless_runtime().call_tool(tool, args);
+        if (!r.success) {
+            std::fprintf(stderr, "tool error: %s\n",
+                         qUtf8Printable(r.error.isEmpty() ? QStringLiteral("(no message)") : r.error));
+            return 5;
+        }
+        out = r.to_json();
+        return 0;
+    }
+
+    const ClientResult r = client->call_tool(tool, args);
+    if (r.status == ClientStatus::Unauthorized) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(r.error));
+        return 4;
+    }
+    if (r.status != ClientStatus::Ok) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(r.error));
+        return 6;
+    }
+    if (r.body.contains("success") && !r.body.value("success").toBool()) {
+        std::fprintf(stderr, "tool error: %s\n", qUtf8Printable(r.body.value("error").toString("(no message)")));
+        return 5;
+    }
+    out = r.body;
+    return 0;
+}
+
+static int call_headless_tool_json(const GlobalOpts& opts, const QString& tool, const QJsonObject& args,
+                                   QJsonObject& out) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    GlobalOpts headless_opts = opts;
+    headless_opts.headless = true;
+    std::optional<BridgeClient> c;
+    return call_tool_json(headless_opts, c, tool, args, out);
+}
+
+static QString watchlist_symbols_text(const QJsonObject& wl) {
+    QStringList symbols;
+    for (const auto& v : wl.value("symbols").toArray()) {
+        const QString sym = v.toObject().value("symbol").toString();
+        if (!sym.isEmpty())
+            symbols.append(sym);
+    }
+    return symbols.join(',');
+}
+
+static int emit_watchlist_list(const GlobalOpts& opts, const QJsonArray& lists) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"watchlists", lists}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (lists.isEmpty()) {
+        std::printf("no watchlists\n");
+        return 0;
+    }
+    std::printf("%-24s %-24s %-5s %s\n", "id", "name", "count", "symbols");
+    for (const auto& v : lists) {
+        const QJsonObject wl = v.toObject();
+        const QJsonArray symbols = wl.value("symbols").toArray();
+        std::printf("%-24s %-24s %-5d %s\n",
+                    qUtf8Printable(wl.value("id").toString()),
+                    qUtf8Printable(wl.value("name").toString()),
+                    static_cast<int>(symbols.size()),
+                    qUtf8Printable(watchlist_symbols_text(wl)));
+    }
+    return 0;
+}
+
+static std::optional<QJsonObject> find_watchlist(const QJsonArray& lists, const QString& selector) {
+    const QString q = selector.trimmed();
+    if (q.isEmpty())
+        return std::nullopt;
+    for (const auto& v : lists) {
+        const QJsonObject wl = v.toObject();
+        if (wl.value("id").toString().compare(q, Qt::CaseInsensitive) == 0 ||
+            wl.value("name").toString().compare(q, Qt::CaseInsensitive) == 0)
+            return wl;
+    }
+    for (const auto& v : lists) {
+        const QJsonObject wl = v.toObject();
+        if (wl.value("name").toString().contains(q, Qt::CaseInsensitive))
+            return wl;
+    }
+    return std::nullopt;
+}
+
+static int emit_watchlist_detail(const GlobalOpts& opts, const QJsonObject& wl) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(wl).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id           %s\n", qUtf8Printable(wl.value("id").toString()));
+    std::printf("name         %s\n", qUtf8Printable(wl.value("name").toString()));
+    const QString desc = wl.value("description").toString();
+    if (!desc.isEmpty())
+        std::printf("description  %s\n", qUtf8Printable(desc));
+    const QString color = wl.value("color").toString();
+    if (!color.isEmpty())
+        std::printf("color        %s\n", qUtf8Printable(color));
+    const QJsonArray symbols = wl.value("symbols").toArray();
+    std::printf("symbols      %d\n", static_cast<int>(symbols.size()));
+    for (const auto& v : symbols) {
+        const QJsonObject s = v.toObject();
+        const QString name = s.value("name").toString();
+        std::printf("  %-12s %s\n", qUtf8Printable(s.value("symbol").toString()), qUtf8Printable(name));
+    }
+    return 0;
+}
+
+static bool take_watchlist_option(QStringList& args, QString& watchlist_id) {
+    for (int i = 0; i < args.size();) {
+        const QString token = args.at(i);
+        if (token == "--watchlist" || token == "--watchlist-id" || token == "-w") {
+            if (i + 1 >= args.size()) {
+                std::fprintf(stderr, "%s requires a value\n", qUtf8Printable(token));
+                return false;
+            }
+            watchlist_id = args.at(i + 1);
+            args.removeAt(i);
+            args.removeAt(i);
+        } else if (token.startsWith("--watchlist=")) {
+            watchlist_id = token.mid(QStringLiteral("--watchlist=").size());
+            args.removeAt(i);
+        } else if (token.startsWith("--watchlist-id=")) {
+            watchlist_id = token.mid(QStringLiteral("--watchlist-id=").size());
+            args.removeAt(i);
+        } else {
+            ++i;
+        }
+    }
+    return true;
+}
+
+static int emit_mutation_body(const GlobalOpts& opts, const QJsonObject& body) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(body).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QString msg = body.value("message").toString();
+    if (!msg.isEmpty())
+        std::printf("%s\n", qUtf8Printable(msg));
+    else
+        std::printf("%s\n", QJsonDocument(body).toJson(QJsonDocument::Compact).constData());
+    return 0;
+}
+
+static int emit_symbol_lookup(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonObject data = body.value("data").toObject();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data.isEmpty() ? body : data).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonArray results = data.value("results").toArray();
+    if (results.isEmpty()) {
+        const QString msg = body.value("message").toString(QStringLiteral("no matches"));
+        std::printf("%s\n", qUtf8Printable(msg));
+        return 0;
+    }
+    std::printf("%-14s %-12s %-10s %-8s %s\n", "symbol", "exchange", "type", "currency", "name");
+    for (const auto& v : results) {
+        const QJsonObject r = v.toObject();
+        std::printf("%-14s %-12s %-10s %-8s %s\n",
+                    qUtf8Printable(r.value("symbol").toString()),
+                    qUtf8Printable(r.value("exchange").toString()),
+                    qUtf8Printable(r.value("type").toString()),
+                    qUtf8Printable(r.value("currency").toString()),
+                    qUtf8Printable(r.value("name").toString()));
+    }
+    return 0;
+}
+
+static QJsonObject mutation_body(const QString& message, const QJsonObject& data = {});
+
+static QString elide_text(QString s, int max = 88) {
+    s.replace('\n', ' ');
+    s = s.simplified();
+    if (s.size() <= max)
+        return s;
+    return s.left(std::max(0, max - 3)) + QStringLiteral("...");
+}
+
+static QJsonValue tool_data(const QJsonObject& body) {
+    return body.contains("data") ? body.value("data") : QJsonValue(body);
+}
+
+static QJsonArray array_field(const QJsonValue& data, const QString& key) {
+    if (data.isArray())
+        return data.toArray();
+    return data.toObject().value(key).toArray();
+}
+
+static QString article_headline(const QJsonObject& a) {
+    QString h = a.value("headline").toString();
+    if (h.isEmpty())
+        h = a.value("title").toString();
+    return h;
+}
+
+static QString article_source(const QJsonObject& a) {
+    QString s = a.value("source").toString();
+    if (s.isEmpty())
+        s = a.value("publisher").toString();
+    return s;
+}
+
+static QString article_time(const QJsonObject& a) {
+    QString t = a.value("time").toString();
+    if (t.isEmpty())
+        t = a.value("published_date").toString();
+    return t.left(19);
+}
+
+static int emit_article_rows(const GlobalOpts& opts, const QJsonObject& body, const QString& field = QStringLiteral("articles")) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data.isUndefined() ? QJsonValue(body).toObject() : data.toObject())
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    const QJsonArray rows = array_field(data, field);
+    if (rows.isEmpty()) {
+        const QString msg = body.value("message").toString(QStringLiteral("no articles"));
+        std::printf("%s\n", qUtf8Printable(msg));
+        return 0;
+    }
+    std::printf("%-19s %-16s %-12s %-9s %s\n", "time", "source", "category", "priority", "headline");
+    for (const auto& v : rows) {
+        const QJsonObject a = v.toObject();
+        std::printf("%-19s %-16s %-12s %-9s %s\n",
+                    qUtf8Printable(article_time(a)),
+                    qUtf8Printable(elide_text(article_source(a), 16)),
+                    qUtf8Printable(a.value("category").toString()),
+                    qUtf8Printable(a.value("priority").toString()),
+                    qUtf8Printable(elide_text(article_headline(a), 96)));
+    }
+    return 0;
+}
+
+static QJsonObject news_article_to_json(const services::NewsArticle& a) {
+    return QJsonObject{{"id", a.id},
+                       {"headline", a.headline},
+                       {"summary", a.summary},
+                       {"source", a.source},
+                       {"category", a.category},
+                       {"region", a.region},
+                       {"tickers", QJsonArray::fromStringList(a.tickers)},
+                       {"link", a.link},
+                       {"time", a.time}};
+}
+
+static int emit_news_saved(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    NewsArticleRepository::instance().ensure_saved_column();
+    auto r = NewsArticleRepository::instance().load_saved();
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to load saved news: %s\n", r.error().c_str());
+        return 5;
+    }
+    QJsonArray rows;
+    for (const auto& a : r.value())
+        rows.append(news_article_to_json(a));
+    return emit_article_rows(opts, QJsonObject{{"data", QJsonObject{{"articles", rows}}}});
+}
+
+static int emit_news_monitors(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonArray rows = array_field(data, QStringLiteral("monitors"));
+    if (rows.isEmpty()) {
+        std::printf("no monitors\n");
+        return 0;
+    }
+    std::printf("%-36s %-5s %-18s %s\n", "id", "on", "label", "keywords");
+    for (const auto& v : rows) {
+        const QJsonObject m = v.toObject();
+        QStringList keywords;
+        for (const auto& kw : m.value("keywords").toArray())
+            keywords.append(kw.toString());
+        std::printf("%-36s %-5s %-18s %s\n",
+                    qUtf8Printable(m.value("id").toString()),
+                    m.value("enabled").toBool() ? "yes" : "no",
+                    qUtf8Printable(elide_text(m.value("label").toString(), 18)),
+                    qUtf8Printable(keywords.join(',')));
+    }
+    return 0;
+}
+
+static int emit_news_status(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonObject data = tool_data(body).toObject();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("healthy        %s\n", data.value("healthy").toBool() ? "yes" : "no");
+    std::printf("feeds          %d\n", data.value("feeds_configured").toInt());
+    std::printf("sources        %d\n", data.value("active_sources").toInt());
+    std::printf("cached         %d\n", data.value("cached_articles").toInt());
+    std::printf("breaking       %d\n", data.value("breaking_clusters").toInt());
+    std::printf("threats        high=%d critical=%d\n",
+                data.value("high_threat_count").toInt(),
+                data.value("critical_threat_count").toInt());
+    std::printf("live_socket    %s\n", data.value("live_websocket_connected").toBool() ? "yes" : "no");
+    return 0;
+}
+
+static int emit_news_sources(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonObject data = tool_data(body).toObject();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    for (const auto& v : data.value("sources").toArray())
+        std::printf("%s\n", qUtf8Printable(v.toString()));
+    return 0;
+}
+
+static int emit_news_clusters(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonObject data = tool_data(body).toObject();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonArray rows = data.value("clusters").toArray();
+    if (rows.isEmpty()) {
+        std::printf("no clusters\n");
+        return 0;
+    }
+    std::printf("%-7s %-8s %-7s %-12s %s\n", "sources", "articles", "break", "velocity", "lead");
+    for (const auto& v : rows) {
+        const QJsonObject c = v.toObject();
+        std::printf("%-7d %-8d %-7s %-12s %s\n",
+                    c.value("source_count").toInt(),
+                    c.value("article_count").toInt(),
+                    c.value("is_breaking").toBool() ? "yes" : "no",
+                    qUtf8Printable(c.value("velocity").toString()),
+                    qUtf8Printable(elide_text(article_headline(c.value("lead").toObject()), 100)));
+    }
+    return 0;
+}
+
+static bool take_string_option(QStringList& args, const QString& flag, QString& out) {
+    for (int i = 0; i < args.size(); ++i) {
+        if (args.at(i) == flag) {
+            bool ok = true;
+            out = take_option_value(args, i, flag, ok);
+            return ok;
+        }
+    }
+    return true;
+}
+
+static bool take_bool_flag(QStringList& args, const QString& flag) {
+    const int i = args.indexOf(flag);
+    if (i < 0)
+        return false;
+    args.removeAt(i);
+    return true;
+}
+
+static int news_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("latest") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "latest" || sub == "headlines" || sub == "list") {
+        QString category = QStringLiteral("ALL");
+        QString range = QStringLiteral("24H");
+        QString sentiment = QStringLiteral("ALL");
+        const bool force = take_bool_flag(args, QStringLiteral("--force"));
+        if (!take_string_option(args, QStringLiteral("--category"), category) ||
+            !take_string_option(args, QStringLiteral("--range"), range) ||
+            !take_string_option(args, QStringLiteral("--sentiment"), sentiment))
+            return 2;
+        const int limit = parse_limit(args, 20);
+        if (limit < 0 || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: news latest [--limit N] [--category C] [--range 24H] [--sentiment S] [--force]\n");
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_news"),
+                                               QJsonObject{{"category", category.toUpper()},
+                                                           {"time_range", range.toUpper()},
+                                                           {"sentiment", sentiment.toUpper()},
+                                                           {"limit", limit},
+                                                           {"force", force}},
+                                               body);
+        return rc == 0 ? emit_article_rows(opts, body) : rc;
+    }
+
+    if (sub == "top" || sub == "breaking") {
+        const int limit = parse_limit(args, 10);
+        if (limit < 0 || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: news top [--limit N]\n");
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_top_news"),
+                                               QJsonObject{{"limit", limit}}, body);
+        return rc == 0 ? emit_article_rows(opts, body) : rc;
+    }
+
+    if (sub == "search" || sub == "find") {
+        QString range = QStringLiteral("24H");
+        if (!take_string_option(args, QStringLiteral("--range"), range))
+            return 2;
+        const int limit = parse_limit(args, 20);
+        const QString query = args.join(' ').trimmed();
+        if (limit < 0 || query.isEmpty()) {
+            std::fprintf(stderr, "usage: news search <query...> [--limit N] [--range 24H]\n");
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("search_news"),
+                                               QJsonObject{{"query", query},
+                                                           {"time_range", range.toUpper()},
+                                                           {"limit", limit}},
+                                               body);
+        return rc == 0 ? emit_article_rows(opts, body) : rc;
+    }
+
+    if (sub == "summary") {
+        QString range = QStringLiteral("24H");
+        if (!take_string_option(args, QStringLiteral("--range"), range) || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: news summary [--range 24H]\n");
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_news_summary"),
+                                               QJsonObject{{"time_range", range.toUpper()}}, body);
+        return rc == 0 ? emit_result(opts, mcp::ToolResult::ok_data(tool_data(body))) : rc;
+    }
+
+    if (sub == "status") {
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_news_status"), {}, body);
+        return rc == 0 ? emit_news_status(opts, body) : rc;
+    }
+
+    if (sub == "sources") {
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_news_sources"), {}, body);
+        return rc == 0 ? emit_news_sources(opts, body) : rc;
+    }
+
+    if (sub == "refresh") {
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("refresh_news"), {}, body);
+        return rc == 0 ? emit_mutation_body(opts, mutation_body(body.value("message").toString(QStringLiteral("News refresh triggered")))) : rc;
+    }
+
+    if (sub == "clusters") {
+        QString category = QStringLiteral("ALL");
+        QString range = QStringLiteral("24H");
+        QString min_sources_s;
+        const bool breaking = take_bool_flag(args, QStringLiteral("--breaking"));
+        if (!take_string_option(args, QStringLiteral("--category"), category) ||
+            !take_string_option(args, QStringLiteral("--range"), range) ||
+            !take_string_option(args, QStringLiteral("--min-sources"), min_sources_s))
+            return 2;
+        const int limit = parse_limit(args, 25);
+        bool ok = true;
+        const int min_sources = min_sources_s.isEmpty() ? 1 : min_sources_s.toInt(&ok);
+        if (limit < 0 || !ok || min_sources <= 0 || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: news clusters [--limit N] [--category C] [--range 24H] [--min-sources N] [--breaking]\n");
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_news_clusters"),
+                                               QJsonObject{{"category", category.toUpper()},
+                                                           {"time_range", range.toUpper()},
+                                                           {"min_sources", min_sources},
+                                                           {"breaking_only", breaking},
+                                                           {"limit", limit}},
+                                               body);
+        return rc == 0 ? emit_news_clusters(opts, body) : rc;
+    }
+
+    if (sub == "threats" || sub == "alerts") {
+        QString range = QStringLiteral("24H");
+        QString min_level = QStringLiteral("HIGH");
+        QString threat_category;
+        if (!take_string_option(args, QStringLiteral("--range"), range) ||
+            !take_string_option(args, QStringLiteral("--min-level"), min_level) ||
+            !take_string_option(args, QStringLiteral("--category"), threat_category))
+            return 2;
+        const int limit = parse_limit(args, 25);
+        if (limit < 0 || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: news threats [--limit N] [--range 24H] [--min-level HIGH|CRITICAL] [--category C]\n");
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, QStringLiteral("get_threat_alerts"),
+                                               QJsonObject{{"time_range", range.toUpper()},
+                                                           {"min_level", min_level.toUpper()},
+                                                           {"threat_category", threat_category},
+                                                           {"limit", limit}},
+                                               body);
+        return rc == 0 ? emit_article_rows(opts, body, QStringLiteral("alerts")) : rc;
+    }
+
+    if (sub == "saved" || sub == "bookmarks")
+        return emit_news_saved(opts);
+
+    if (sub == "read" || sub == "seen") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: news read <article-id>\n");
+            return 2;
+        }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto r = NewsArticleRepository::instance().mark_seen(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to mark read: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Article marked read"),
+                                                      QJsonObject{{"id", args.first()}}));
+    }
+
+    if (sub == "save" || sub == "bookmark" || sub == "toggle-saved") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: news save <article-id>\n");
+            return 2;
+        }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        NewsArticleRepository::instance().ensure_saved_column();
+        auto r = NewsArticleRepository::instance().toggle_saved(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to toggle saved: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(r.value() ? QStringLiteral("Article saved") : QStringLiteral("Article unsaved"),
+                                                      QJsonObject{{"id", args.first()}, {"saved", r.value()}}));
+    }
+
+    if (sub == "monitors" || sub == "monitor") {
+        const QString op = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+        if (op == "list" || op == "ls") {
+            QJsonObject body;
+            const int rc = call_headless_tool_json(opts, QStringLiteral("get_news_monitors"), {}, body);
+            return rc == 0 ? emit_news_monitors(opts, body) : rc;
+        }
+        if (op == "add" || op == "create") {
+            QString keywords_raw;
+            QString color;
+            if (!take_string_option(args, QStringLiteral("--keywords"), keywords_raw) ||
+                !take_string_option(args, QStringLiteral("--color"), color))
+                return 2;
+            const QString label = args.join(' ').trimmed();
+            QStringList keywords = keywords_raw.split(',', Qt::SkipEmptyParts);
+            for (QString& k : keywords)
+                k = k.trimmed();
+            if (label.isEmpty() || keywords.isEmpty()) {
+                std::fprintf(stderr, "usage: news monitors add <label...> --keywords k1,k2 [--color HEX]\n");
+                return 2;
+            }
+            QJsonObject body;
+            const int rc = call_headless_tool_json(opts, QStringLiteral("add_news_monitor"),
+                                                   QJsonObject{{"label", label},
+                                                               {"keywords", QJsonArray::fromStringList(keywords)},
+                                                               {"color", color}},
+                                                   body);
+            return rc == 0 ? emit_mutation_body(opts, mutation_body(body.value("message").toString(QStringLiteral("Monitor created")))) : rc;
+        }
+        if (op == "toggle") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: news monitors toggle <id>\n");
+                return 2;
+            }
+            QJsonObject body;
+            const int rc = call_headless_tool_json(opts, QStringLiteral("toggle_news_monitor"),
+                                                   QJsonObject{{"id", args.first()}}, body);
+            return rc == 0 ? emit_mutation_body(opts, mutation_body(body.value("message").toString(QStringLiteral("Monitor toggled")))) : rc;
+        }
+        if (op == "delete" || op == "remove" || op == "rm") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: news monitors delete <id>\n");
+                return 2;
+            }
+            QJsonObject body;
+            const int rc = call_headless_tool_json(opts, QStringLiteral("delete_news_monitor"),
+                                                   QJsonObject{{"id", args.first()}}, body);
+            return rc == 0 ? emit_mutation_body(opts, mutation_body(body.value("message").toString(QStringLiteral("Monitor deleted")))) : rc;
+        }
+    }
+
+    std::fprintf(stderr, "usage: news latest|top|search|summary|status|sources|refresh|clusters|threats|saved|monitors\n");
+    return 2;
+}
+
+static int emit_research_data(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        if (data.isArray())
+            std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (data.isArray()) {
+        const QJsonArray rows = data.toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        const QJsonObject first = rows.first().toObject();
+        if (first.contains("symbol") && first.contains("name")) {
+            std::printf("%-12s %-12s %-10s %-8s %s\n", "symbol", "exchange", "type", "currency", "name");
+            for (const auto& v : rows) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-12s %-12s %-10s %-8s %s\n",
+                            qUtf8Printable(r.value("symbol").toString()),
+                            qUtf8Printable(r.value("exchange").toString()),
+                            qUtf8Printable(r.value("type").toString()),
+                            qUtf8Printable(r.value("currency").toString()),
+                            qUtf8Printable(elide_text(r.value("name").toString(), 70)));
+            }
+            return 0;
+        }
+    }
+    const QJsonObject o = data.toObject();
+    if (o.contains("error")) {
+        QJsonValue err = o.value("error");
+        QString msg;
+        if (err.isObject())
+            msg = err.toObject().value("error").toString(err.toObject().value("message").toString());
+        else
+            msg = err.toString();
+        std::fprintf(stderr, "research data unavailable: %s\n",
+                     qUtf8Printable(msg.isEmpty() ? QStringLiteral("unknown error") : msg));
+        return 5;
+    }
+    if (o.value("data").isArray()) {
+        const QJsonArray rows = o.value("data").toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        const QJsonObject first = rows.first().toObject();
+        if (first.contains("insider")) {
+            std::printf("%-12s %-28s %-16s %-12s %-6s %12s %10s %12s\n",
+                        "date", "insider", "position", "type", "code", "shares", "price", "value");
+            for (const auto& v : rows) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-12s %-28s %-16s %-12s %-6s %12.0f %10.2f %12.0f\n",
+                            qUtf8Printable(r.value("filing_date").toString()),
+                            qUtf8Printable(elide_text(r.value("insider").toString(), 28)),
+                            qUtf8Printable(elide_text(r.value("position").toString(), 16)),
+                            qUtf8Printable(elide_text(r.value("transaction_type").toString(), 12)),
+                            qUtf8Printable(r.value("code").toString()),
+                            r.value("shares").toDouble(),
+                            r.value("price").toDouble(),
+                            r.value("value").toDouble());
+            }
+            return 0;
+        }
+        if (first.contains("trade_date") && first.contains("name")) {
+            std::printf("%-12s %-28s %-7s %-6s %-12s %-18s %-12s\n",
+                        "date", "politician", "party", "state", "type", "amount", "filed");
+            for (const auto& v : rows) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-12s %-28s %-7s %-6s %-12s %-18s %-12s\n",
+                            qUtf8Printable(r.value("trade_date").toString()),
+                            qUtf8Printable(elide_text(r.value("name").toString(), 28)),
+                            qUtf8Printable(r.value("party").toString()),
+                            qUtf8Printable(r.value("state").toString()),
+                            qUtf8Printable(elide_text(r.value("trade_type").toString(), 12)),
+                            qUtf8Printable(elide_text(r.value("size").toString(), 18)),
+                            qUtf8Printable(r.value("filing_date").toString()));
+            }
+            return 0;
+        }
+    }
+    if (o.value("data").isObject()) {
+        const QJsonObject d = o.value("data").toObject();
+        const QJsonArray holdings = d.value("top_holdings").toArray();
+        if (!holdings.isEmpty()) {
+            const QString manager = d.value("manager_name").toString();
+            const QString period = d.value("report_period").toString();
+            if (!manager.isEmpty() || !period.isEmpty()) {
+                std::printf("%s%s%s\n",
+                            qUtf8Printable(manager.isEmpty() ? QStringLiteral("(manager)") : manager),
+                            period.isEmpty() ? "" : " reported ",
+                            qUtf8Printable(period));
+            }
+            std::printf("%-36s %-10s %16s %16s\n", "issuer", "ticker", "value", "shares");
+            for (const auto& v : holdings) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-36s %-10s %16.0f %16.0f\n",
+                            qUtf8Printable(elide_text(r.value("issuer").toString(), 36)),
+                            qUtf8Printable(r.value("ticker").toString()),
+                            r.value("value").toDouble(),
+                            r.value("shares").toDouble());
+            }
+            return 0;
+        }
+    }
+    if (o.contains("price") && o.contains("symbol")) {
+        std::printf("%-10s %12.4f %12.4f %10.2f%% %s\n",
+                    qUtf8Printable(o.value("symbol").toString()),
+                    o.value("price").toDouble(),
+                    o.value("change").toDouble(),
+                    o.value("change_pct").toDouble(),
+                    qUtf8Printable(o.value("exchange").toString()));
+        return 0;
+    }
+    if (o.contains("company_name")) {
+        std::printf("symbol        %s\n", qUtf8Printable(o.value("symbol").toString()));
+        std::printf("company       %s\n", qUtf8Printable(o.value("company_name").toString()));
+        std::printf("sector        %s\n", qUtf8Printable(o.value("sector").toString()));
+        std::printf("industry      %s\n", qUtf8Printable(o.value("industry").toString()));
+        std::printf("exchange      %s\n", qUtf8Printable(o.value("exchange").toString()));
+        std::printf("currency      %s\n", qUtf8Printable(o.value("currency").toString()));
+        std::printf("price         %.4f\n", o.value("current_price").toDouble());
+        std::printf("market_cap    %.0f\n", o.value("market_cap").toDouble());
+        std::printf("pe            %.4f\n", o.value("pe_ratio").toDouble());
+        std::printf("target_mean   %.4f\n", o.value("target_mean").toDouble());
+        const QString desc = o.value("description").toString();
+        if (!desc.isEmpty())
+            std::printf("description   %s\n", qUtf8Printable(elide_text(desc, 220)));
+        return 0;
+    }
+    if (o.contains("articles"))
+        return emit_article_rows(opts, body);
+    if (o.contains("overall_signal")) {
+        std::printf("symbol        %s\n", qUtf8Printable(o.value("symbol").toString()));
+        std::printf("signal        %s\n", qUtf8Printable(o.value("overall_signal").toString()));
+        std::printf("strong_buy    %d\n", o.value("strong_buy").toInt());
+        std::printf("buy           %d\n", o.value("buy").toInt());
+        std::printf("neutral       %d\n", o.value("neutral").toInt());
+        std::printf("sell          %d\n", o.value("sell").toInt());
+        std::printf("strong_sell   %d\n", o.value("strong_sell").toInt());
+        return 0;
+    }
+    if (o.contains("average_buzz")) {
+        std::printf("symbol        %s\n", qUtf8Printable(o.value("symbol").toString()));
+        std::printf("status        %s\n", qUtf8Printable(o.value("status").toString()));
+        std::printf("buzz          %.2f\n", o.value("average_buzz").toDouble());
+        std::printf("bullish_pct   %.2f\n", o.value("average_bullish_pct").toDouble());
+        std::printf("coverage      %d\n", o.value("coverage").toInt());
+        std::printf("alignment     %s\n", qUtf8Printable(o.value("source_alignment").toString()));
+        return 0;
+    }
+    std::printf("%s\n", QJsonDocument(data.isArray() ? QJsonDocument(data.toArray()) : QJsonDocument(o))
+                            .toJson(QJsonDocument::Indented)
+                            .constData());
+    return 0;
+}
+
+static int research_call(const GlobalOpts& opts, const QString& tool, const QJsonObject& args) {
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, tool, args, body);
+    return rc == 0 ? emit_research_data(opts, body) : rc;
+}
+
+static int research_gov_data_call(const GlobalOpts& opts, const QString& script, const QString& command,
+                                  const QStringList& command_args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    auto& service = services::GovDataService::instance();
+    const QString request_id = QStringLiteral("cli_%1_%2").arg(command, QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    std::optional<services::GovDataResult> received;
+
+    QObject::connect(&service, &services::GovDataService::result_ready, &loop,
+                     [&](const QString& id, const services::GovDataResult& result) {
+                         if (id != request_id)
+                             return;
+                         received = result;
+                         loop.quit();
+                     });
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+        loop.quit();
+    });
+
+    timer.start(30000);
+    service.execute(script, command, command_args, request_id);
+    if (!received.has_value())
+        loop.exec();
+
+    if (!received.has_value()) {
+        std::fprintf(stderr, "research data request timed out\n");
+        return 6;
+    }
+    if (!received->success) {
+        std::fprintf(stderr, "research data unavailable: %s\n",
+                     qUtf8Printable(received->error.isEmpty() ? QStringLiteral("service error") : received->error));
+        return 5;
+    }
+    return emit_research_data(opts, QJsonObject{{"data", received->data}});
+}
+
+static int research_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("search") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "search" || sub == "symbols") {
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: research search <query...>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("search_equity_symbols"), QJsonObject{{"query", query}});
+    }
+
+    if (sub == "quote" || sub == "q") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: research quote <SYM>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_quote"), QJsonObject{{"symbol", args.first()}});
+    }
+
+    if (sub == "company" || sub == "info" || sub == "profile") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: research company <SYM>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_info"), QJsonObject{{"symbol", args.first()}});
+    }
+
+    if (sub == "overview" || sub == "load") {
+        QString period = QStringLiteral("1y");
+        if (!take_string_option(args, QStringLiteral("--period"), period) || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research overview <SYM> [--period 1y]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("load_equity_symbol"),
+                             QJsonObject{{"symbol", args.first()}, {"period", period}});
+    }
+
+    if (sub == "history" || sub == "historical") {
+        QString period = QStringLiteral("1y");
+        if (!take_string_option(args, QStringLiteral("--period"), period) || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research history <SYM> [--period 1y]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_historical"),
+                             QJsonObject{{"symbol", args.first()}, {"period", period}});
+    }
+
+    if (sub == "financials" || sub == "fa") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: research financials <SYM>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_financials"), QJsonObject{{"symbol", args.first()}});
+    }
+
+    if (sub == "technicals" || sub == "ta") {
+        QString period = QStringLiteral("1y");
+        if (!take_string_option(args, QStringLiteral("--period"), period) || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research technicals <SYM> [--period 1y]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_technicals"),
+                             QJsonObject{{"symbol", args.first()}, {"period", period}});
+    }
+
+    if (sub == "peers") {
+        if (args.size() < 2) {
+            std::fprintf(stderr, "usage: research peers <SYM> <PEER...>\n");
+            return 2;
+        }
+        const QString symbol = args.takeFirst();
+        QJsonArray peers;
+        for (const QString& p : args)
+            peers.append(p.toUpper());
+        return research_call(opts, QStringLiteral("get_equity_peers"),
+                             QJsonObject{{"symbol", symbol}, {"peer_symbols", peers}});
+    }
+
+    if (sub == "news") {
+        const int limit = parse_limit(args, 20);
+        if (limit < 0 || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research news <SYM> [--limit N]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_news"),
+                             QJsonObject{{"symbol", args.first()}, {"count", limit}});
+    }
+
+    if (sub == "sentiment") {
+        QString days_s;
+        const bool force = take_bool_flag(args, QStringLiteral("--force"));
+        if (!take_string_option(args, QStringLiteral("--days"), days_s) || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research sentiment <SYM> [--days N] [--force]\n");
+            return 2;
+        }
+        bool ok = true;
+        const int days = days_s.isEmpty() ? 7 : days_s.toInt(&ok);
+        if (!ok || days <= 0) {
+            std::fprintf(stderr, "--days must be a positive integer\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("get_equity_sentiment"),
+                             QJsonObject{{"symbol", args.first()}, {"days", days}, {"force", force}});
+    }
+
+    if (sub == "filings" || sub == "sec") {
+        QString form = QStringLiteral("8-K");
+        QString months_s;
+        if (!take_string_option(args, QStringLiteral("--form"), form) ||
+            !take_string_option(args, QStringLiteral("--months"), months_s) ||
+            args.isEmpty()) {
+            std::fprintf(stderr, "usage: research filings <ticker> [--form 8-K] [--months N]\n");
+            return 2;
+        }
+        bool ok = true;
+        const int months = months_s.isEmpty() ? 12 : months_s.toInt(&ok);
+        if (!ok || months <= 0) {
+            std::fprintf(stderr, "--months must be a positive integer\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_search_filings"),
+                             QJsonObject{{"ticker", args.first()}, {"form", form}, {"months_back", months}});
+    }
+
+    if (sub == "metrics") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: research metrics <ticker>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_get_financial_metrics"), QJsonObject{{"ticker", args.first()}});
+    }
+
+    if (sub == "insiders" || sub == "insider" || sub == "form4") {
+        const int limit = parse_limit(args, 30);
+        if (limit < 0 || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research insiders <ticker> [--limit N]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_insider_transactions"),
+                             QJsonObject{{"ticker", args.first()}, {"limit", limit}});
+    }
+
+    if (sub == "insider-summary" || sub == "insiders-summary" || sub == "form4-summary") {
+        const int limit = parse_limit(args, 50);
+        if (limit < 0 || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research insider-summary <ticker> [--limit N]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_insider_summary"),
+                             QJsonObject{{"ticker", args.first()}, {"limit", limit}});
+    }
+
+    if (sub == "13f" || sub == "holdings" || sub == "institution-holdings") {
+        QString quarters_s;
+        if (!take_string_option(args, QStringLiteral("--quarters"), quarters_s) || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research 13f <ticker> [--quarters N]\n");
+            return 2;
+        }
+        bool ok = true;
+        const int quarters = quarters_s.isEmpty() ? 2 : quarters_s.toInt(&ok);
+        if (!ok || quarters <= 0) {
+            std::fprintf(stderr, "--quarters must be a positive integer\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_13f_holdings"),
+                             QJsonObject{{"ticker", args.first()}, {"quarters", quarters}});
+    }
+
+    if (sub == "13f-top" || sub == "top-holders" || sub == "holders" ||
+        sub == "institutional" || sub == "institutions") {
+        const int limit = parse_limit(args, 25);
+        if (limit < 0 || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research 13f-top <ticker> [--limit N]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_13f_top_holdings"),
+                             QJsonObject{{"ticker", args.first()}, {"top_n", limit}});
+    }
+
+    if (sub == "politicians" || sub == "politician" || sub == "congress" || sub == "congress-trades") {
+        const int limit = parse_limit(args, 50);
+        if (limit < 0 || args.isEmpty()) {
+            std::fprintf(stderr, "usage: research politicians <ticker> [--limit N]\n");
+            return 2;
+        }
+        return research_gov_data_call(opts, QStringLiteral("ainvest_data.py"), QStringLiteral("congress"),
+                                      {args.first().toUpper(), QString::number(limit)});
+    }
+
+    if (sub == "facts") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: research facts <cik>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_get_company_facts"), QJsonObject{{"cik", args.first()}});
+    }
+
+    if (sub == "find-company" || sub == "find") {
+        const int limit = parse_limit(args, 10);
+        const QString query = args.join(' ').trimmed();
+        if (limit < 0 || query.isEmpty()) {
+            std::fprintf(stderr, "usage: research find-company <query...> [--limit N]\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_find_company"),
+                             QJsonObject{{"query", query}, {"top_n", limit}});
+    }
+
+    if (sub == "resolve") {
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: research resolve <company-name...>\n");
+            return 2;
+        }
+        return research_call(opts, QStringLiteral("edgar_resolve_ticker"), QJsonObject{{"query", query}});
+    }
+
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: research tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return research_call(opts, tool, a);
+    }
+
+    std::fprintf(stderr, "usage: research search|quote|company|overview|history|financials|technicals|peers|news|sentiment|filings|metrics|insiders|13f|politicians|find-company|resolve|tool\n");
+    return 2;
+}
+
+static int parse_nonnegative_option(QStringList& args, const QString& flag, int fallback, int& out) {
+    QString raw;
+    if (!take_string_option(args, flag, raw))
+        return -1;
+    if (raw.isEmpty()) {
+        out = fallback;
+        return 0;
+    }
+    bool ok = true;
+    const int value = raw.toInt(&ok);
+    if (!ok || value < 0)
+        return -1;
+    out = value;
+    return 0;
+}
+
+static int emit_macro_data(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        if (data.isArray())
+            std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    auto print_code_name = [](const QJsonArray& rows) {
+        std::printf("%-18s %s\n", "code", "name");
+        for (const auto& v : rows) {
+            const QJsonObject r = v.toObject();
+            const QString code = r.value("code").toString(r.value("id").toString());
+            const QString name = r.value("name").toString(r.value("full_name").toString());
+            std::printf("%-18s %s\n", qUtf8Printable(code), qUtf8Printable(elide_text(name, 100)));
+        }
+    };
+    auto print_pagination = [](const QJsonObject& page) {
+        if (page.isEmpty())
+            return;
+        std::printf("offset=%d limit=%d total=%d has_more=%s\n",
+                    page.value("offset").toInt(),
+                    page.value("limit").toInt(),
+                    page.value("total").toInt(),
+                    page.value("has_more").toBool() ? "yes" : "no");
+    };
+
+    if (data.isArray()) {
+        const QJsonArray rows = data.toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        const QJsonObject first = rows.first().toObject();
+        if ((first.contains("code") || first.contains("id")) && first.contains("name")) {
+            if (first.contains("country") || first.contains("script")) {
+                std::printf("%-18s %-18s %-16s %s\n", "id", "name", "country", "script");
+                for (const auto& v : rows) {
+                    const QJsonObject r = v.toObject();
+                    std::printf("%-18s %-18s %-16s %s\n",
+                                qUtf8Printable(r.value("id").toString(r.value("code").toString())),
+                                qUtf8Printable(elide_text(r.value("name").toString(), 18)),
+                                qUtf8Printable(r.value("country").toString()),
+                                qUtf8Printable(r.value("script").toString()));
+                }
+                return 0;
+            }
+            print_code_name(rows);
+            return 0;
+        }
+    }
+
+    const QJsonObject o = data.toObject();
+    if (o.contains("error")) {
+        const QJsonValue err = o.value("error");
+        QString msg = err.toString();
+        if (err.isObject())
+            msg = err.toObject().value("error").toString(err.toObject().value("message").toString());
+        std::fprintf(stderr, "macro data unavailable: %s\n",
+                     qUtf8Printable(msg.isEmpty() ? QStringLiteral("unknown error") : msg));
+        return 5;
+    }
+
+    if (o.value("datasets").isArray()) {
+        print_code_name(o.value("datasets").toArray());
+        print_pagination(o.value("pagination").toObject());
+        return 0;
+    }
+    if (o.value("series").isArray()) {
+        print_code_name(o.value("series").toArray());
+        print_pagination(o.value("pagination").toObject());
+        return 0;
+    }
+    if (o.value("results").isArray()) {
+        const QJsonArray rows = o.value("results").toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        std::printf("%-10s %-16s %-8s %s\n", "provider", "dataset", "series", "name");
+        for (const auto& v : rows) {
+            const QJsonObject r = v.toObject();
+            std::printf("%-10s %-16s %-8d %s\n",
+                        qUtf8Printable(r.value("provider_code").toString()),
+                        qUtf8Printable(r.value("dataset_code").toString()),
+                        r.value("nb_series").toInt(),
+                        qUtf8Printable(elide_text(r.value("dataset_name").toString(), 90)));
+        }
+        print_pagination(o.value("pagination").toObject());
+        return 0;
+    }
+    if (o.value("observations").isArray()) {
+        const QJsonArray rows = o.value("observations").toArray();
+        std::printf("series  %s\n", qUtf8Printable(o.value("series_id").toString()));
+        const QString name = o.value("series_name").toString();
+        if (!name.isEmpty())
+            std::printf("name    %s\n", qUtf8Printable(name));
+        std::printf("%-14s %18s %s\n", "period", "value", "valid");
+        for (const auto& v : rows) {
+            const QJsonObject r = v.toObject();
+            QString period = r.value("period").toString();
+            if (period.isEmpty())
+                period = r.value("date").toString();
+            const bool valid = r.contains("valid") ? r.value("valid").toBool() : !period.isEmpty();
+            std::printf("%-14s %18.6f %s\n",
+                        qUtf8Printable(period),
+                        r.value("value").toDouble(),
+                        valid ? "yes" : "no");
+        }
+        return 0;
+    }
+    if (o.value("events").isArray()) {
+        const QJsonArray rows = o.value("events").toArray();
+        if (rows.isEmpty()) {
+            std::printf("no events\n");
+            return 0;
+        }
+        std::printf("%-8s %-5s %-6s %-44s %-12s %-12s %-12s\n",
+                    "time", "ccy", "impact", "event", "actual", "forecast", "previous");
+        for (const auto& v : rows) {
+            const QJsonObject r = v.toObject();
+            std::printf("%-8s %-5s %-6d %-44s %-12s %-12s %-12s\n",
+                        qUtf8Printable(r.value("time").toString()),
+                        qUtf8Printable(r.value("currency").toString()),
+                        r.value("impact").toInt(),
+                        qUtf8Printable(elide_text(r.value("event").toString(), 44)),
+                        qUtf8Printable(r.value("actual").toString()),
+                        qUtf8Printable(r.value("forecast").toString()),
+                        qUtf8Printable(r.value("previous").toString()));
+        }
+        return 0;
+    }
+    if (o.value("data").isArray()) {
+        const QJsonArray rows = o.value("data").toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        const QJsonObject first = rows.first().toObject();
+        if (first.contains("date") && first.contains("value")) {
+            std::printf("%-14s %18s\n", "date", "value");
+            for (const auto& v : rows) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-14s %18.6f\n",
+                            qUtf8Printable(r.value("date").toString()),
+                            r.value("value").toDouble());
+            }
+            return 0;
+        }
+        const QStringList keys = first.keys().mid(0, 6);
+        for (const QString& key : keys)
+            std::printf("%-18s", qUtf8Printable(elide_text(key, 17)));
+        std::printf("\n");
+        for (const auto& v : rows) {
+            const QJsonObject r = v.toObject();
+            for (const QString& key : keys) {
+                const QJsonValue value = r.value(key);
+                QString text = value.isDouble() ? QString::number(value.toDouble(), 'f', 4)
+                                                : value.toVariant().toString();
+                std::printf("%-18s", qUtf8Printable(elide_text(text, 17)));
+            }
+            std::printf("\n");
+        }
+        return 0;
+    }
+
+    std::printf("%s\n", QJsonDocument(data.isArray() ? QJsonDocument(data.toArray()) : QJsonDocument(o))
+                            .toJson(QJsonDocument::Indented)
+                            .constData());
+    return 0;
+}
+
+static int macro_call(const GlobalOpts& opts, const QString& tool, const QJsonObject& args) {
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, tool, args, body);
+    return rc == 0 ? emit_macro_data(opts, body) : rc;
+}
+
+static QString macro_ff_date(const QDate& d) {
+    static const char* months[] = {"",    "jan", "feb", "mar", "apr", "may", "jun",
+                                   "jul", "aug", "sep", "oct", "nov", "dec"};
+    return QString("%1%2.%3").arg(months[d.month()]).arg(d.day()).arg(d.year());
+}
+
+static int macro_econ_call(const GlobalOpts& opts, const QString& source_id, const QString& script,
+                           const QString& command, const QStringList& command_args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    auto& service = services::EconomicsService::instance();
+    const QString request_id = QStringLiteral("cli_%1_%2").arg(source_id, QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    std::optional<services::EconomicsResult> received;
+
+    QObject::connect(&service, &services::EconomicsService::result_ready, &loop,
+                     [&](const QString& id, const services::EconomicsResult& result) {
+                         if (id != request_id)
+                             return;
+                         received = result;
+                         loop.quit();
+                     });
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+        loop.quit();
+    });
+
+    timer.start(60000);
+    service.execute(source_id, script, command, command_args, request_id);
+    if (!received.has_value())
+        loop.exec();
+
+    if (!received.has_value()) {
+        std::fprintf(stderr, "macro data request timed out\n");
+        return 6;
+    }
+    if (!received->success) {
+        std::fprintf(stderr, "macro data unavailable: %s\n",
+                     qUtf8Printable(received->error.isEmpty() ? QStringLiteral("service error") : received->error));
+        return 5;
+    }
+    return emit_macro_data(opts, QJsonObject{{"data", received->data}});
+}
+
+static int macro_command(const GlobalOpts& opts, QStringList args) {
+    const QString area = args.isEmpty() ? QStringLiteral("dbnomics") : args.takeFirst().trimmed().toLower();
+
+    if (area == "fred") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: macro fred <series-id>\n");
+            return 2;
+        }
+        return macro_econ_call(opts, QStringLiteral("fred"), QStringLiteral("fred_data.py"),
+                               QStringLiteral("series"), {args.first().toUpper()});
+    }
+
+    if (area == "calendar" || area == "cal") {
+        QDate date = QDate::currentDate();
+        if (!args.isEmpty()) {
+            date = QDate::fromString(args.first(), Qt::ISODate);
+            if (!date.isValid()) {
+                std::fprintf(stderr, "usage: macro calendar [YYYY-MM-DD]\n");
+                return 2;
+            }
+        }
+        const QString ff_date = macro_ff_date(date);
+        return macro_econ_call(opts, QStringLiteral("econ_calendar"), QStringLiteral("economic_calendar.py"),
+                               ff_date, {});
+    }
+
+    if (area == "bls") {
+        const QString sub = args.isEmpty() ? QStringLiteral("series") : args.takeFirst().trimmed().toLower();
+        if (sub == "series") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro bls series <series-id>\n");
+                return 2;
+            }
+            return macro_econ_call(opts, QStringLiteral("bls"), QStringLiteral("bls_data.py"),
+                                   QStringLiteral("get_series"), {args.first().toUpper()});
+        }
+        if (sub == "overview") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro bls overview labor|inflation|eci|productivity\n");
+                return 2;
+            }
+            const QString kind = args.first().trimmed().toLower();
+            const QHash<QString, QString> commands{
+                {QStringLiteral("labor"), QStringLiteral("get_labor_overview")},
+                {QStringLiteral("labour"), QStringLiteral("get_labor_overview")},
+                {QStringLiteral("inflation"), QStringLiteral("get_inflation_overview")},
+                {QStringLiteral("eci"), QStringLiteral("get_employment_cost_index")},
+                {QStringLiteral("employment-cost"), QStringLiteral("get_employment_cost_index")},
+                {QStringLiteral("productivity"), QStringLiteral("get_productivity_costs")},
+            };
+            const QString command = commands.value(kind);
+            if (command.isEmpty()) {
+                std::fprintf(stderr, "usage: macro bls overview labor|inflation|eci|productivity\n");
+                return 2;
+            }
+            return macro_econ_call(opts, QStringLiteral("bls"), QStringLiteral("bls_data.py"), command, {});
+        }
+        std::fprintf(stderr, "usage: macro bls series <series-id> | macro bls overview labor|inflation|eci|productivity\n");
+        return 2;
+    }
+
+    if (area == "ons") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: macro ons <gdp|cpi|cpih|rpi|unemployment|employment|trade_balance|house_prices|avg_earnings|public_debt>\n");
+            return 2;
+        }
+        return macro_econ_call(opts, QStringLiteral("ons"), QStringLiteral("ons_data.py"), args.first().toLower(), {});
+    }
+
+    if (area == "statcan" || area == "canada") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: macro statcan <gdp|cpi|unemployment|employment|population|housing>\n");
+            return 2;
+        }
+        return macro_econ_call(opts, QStringLiteral("statcan"), QStringLiteral("statcan_data.py"), args.first().toLower(), {});
+    }
+
+    if (area == "census") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: macro census <acs|housing>\n");
+            return 2;
+        }
+        const QString dataset = args.first().toLower();
+        if (dataset != "acs" && dataset != "housing") {
+            std::fprintf(stderr, "usage: macro census <acs|housing>\n");
+            return 2;
+        }
+        return macro_econ_call(opts, QStringLiteral("census"), QStringLiteral("census_data.py"), dataset, {});
+    }
+
+    if (area == "cb" || area == "central-bank" || area == "central-banks") {
+        if (args.size() < 2) {
+            std::fprintf(stderr, "usage: macro cb <boe|rba|boc|riksbank|snb|norges> <series>\n");
+            return 2;
+        }
+        const QString bank = args.at(0).toLower();
+        const QString series = args.at(1).toLower();
+        const QHash<QString, QString> scripts{
+            {QStringLiteral("boe"), QStringLiteral("boe_data.py")},
+            {QStringLiteral("rba"), QStringLiteral("rba_data.py")},
+            {QStringLiteral("boc"), QStringLiteral("boc_data.py")},
+            {QStringLiteral("riksbank"), QStringLiteral("riksbank_data.py")},
+            {QStringLiteral("snb"), QStringLiteral("snb_data.py")},
+            {QStringLiteral("norges"), QStringLiteral("norges_bank_data.py")},
+        };
+        const QString script = scripts.value(bank);
+        if (script.isEmpty()) {
+            std::fprintf(stderr, "usage: macro cb <boe|rba|boc|riksbank|snb|norges> <series>\n");
+            return 2;
+        }
+        return macro_econ_call(opts, QStringLiteral("global_cb"), script, series, {});
+    }
+
+    if (area == "econ-run" || area == "run-econ") {
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: macro econ-run <source> <script> <command> [arg...]\n");
+            return 2;
+        }
+        const QString source = args.takeFirst();
+        const QString script = args.takeFirst();
+        const QString command = args.takeFirst();
+        return macro_econ_call(opts, source, script, command, args);
+    }
+
+    if (area == "dbnomics" || area == "db") {
+        const QString sub = args.isEmpty() ? QStringLiteral("search") : args.takeFirst().trimmed().toLower();
+        int offset = 0;
+        if (sub == "providers" || sub == "provider" || sub == "list")
+            return macro_call(opts, QStringLiteral("list_dbnomics_providers"), {});
+        if (sub == "datasets" || sub == "dataset") {
+            if (parse_nonnegative_option(args, QStringLiteral("--offset"), 0, offset) < 0 || args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro dbnomics datasets <provider> [--offset N]\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("list_dbnomics_datasets"),
+                              QJsonObject{{"provider_code", args.first().toUpper()}, {"offset", offset}});
+        }
+        if (sub == "series") {
+            QString query;
+            if (!take_string_option(args, QStringLiteral("--query"), query) ||
+                parse_nonnegative_option(args, QStringLiteral("--offset"), 0, offset) < 0 ||
+                args.size() < 2) {
+                std::fprintf(stderr, "usage: macro dbnomics series <provider> <dataset> [--query Q] [--offset N]\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("list_dbnomics_series"),
+                              QJsonObject{{"provider_code", args.at(0).toUpper()},
+                                          {"dataset_code", args.at(1)},
+                                          {"query", query},
+                                          {"offset", offset}});
+        }
+        if (sub == "observations" || sub == "obs" || sub == "data") {
+            if (args.size() < 3) {
+                std::fprintf(stderr, "usage: macro dbnomics observations <provider> <dataset> <series>\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("get_dbnomics_observations"),
+                              QJsonObject{{"provider_code", args.at(0).toUpper()},
+                                          {"dataset_code", args.at(1)},
+                                          {"series_code", args.at(2)}});
+        }
+        if (sub == "search" || sub == "find") {
+            if (parse_nonnegative_option(args, QStringLiteral("--offset"), 0, offset) < 0) {
+                std::fprintf(stderr, "usage: macro dbnomics search <query...> [--offset N]\n");
+                return 2;
+            }
+            const QString query = args.join(' ').trimmed();
+            if (query.isEmpty()) {
+                std::fprintf(stderr, "usage: macro dbnomics search <query...> [--offset N]\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("search_dbnomics"),
+                              QJsonObject{{"query", query}, {"offset", offset}});
+        }
+        std::fprintf(stderr, "usage: macro dbnomics providers|datasets|series|observations|search\n");
+        return 2;
+    }
+
+    if (area == "gov" || area == "govdata" || area == "government") {
+        const QString sub = args.isEmpty() ? QStringLiteral("providers") : args.takeFirst().trimmed().toLower();
+        int offset = 0;
+        if (sub == "providers" || sub == "provider" || sub == "list")
+            return macro_call(opts, QStringLiteral("list_gov_data_providers"), {});
+        if (sub == "run") {
+            if (args.size() < 2) {
+                std::fprintf(stderr, "usage: macro gov run <script> <command> [arg...]\n");
+                return 2;
+            }
+            const QString script = args.takeFirst();
+            const QString command = args.takeFirst();
+            QJsonArray run_args;
+            for (const QString& a : args)
+                run_args.append(a);
+            return macro_call(opts, QStringLiteral("run_gov_data_command"),
+                              QJsonObject{{"script", script}, {"command", command}, {"args", run_args}});
+        }
+        if (sub == "treasury-prices" || sub == "prices") {
+            QString security_type;
+            if (!take_string_option(args, QStringLiteral("--security-type"), security_type) || args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro gov treasury-prices <date> [--security-type T]\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("gov_us_treasury_prices"),
+                              QJsonObject{{"date", args.first()}, {"security_type", security_type}});
+        }
+        if (sub == "treasury-auctions" || sub == "auctions") {
+            QString security_type;
+            QString page_s;
+            if (!take_string_option(args, QStringLiteral("--security-type"), security_type) ||
+                !take_string_option(args, QStringLiteral("--page"), page_s) ||
+                args.size() < 2) {
+                std::fprintf(stderr, "usage: macro gov treasury-auctions <start> <end> [--security-type T] [--limit N] [--page N]\n");
+                return 2;
+            }
+            const int limit = parse_limit(args, 50);
+            bool ok = true;
+            const int page = page_s.isEmpty() ? 1 : page_s.toInt(&ok);
+            if (limit < 0 || !ok || page <= 0 || args.size() < 2) {
+                std::fprintf(stderr, "usage: macro gov treasury-auctions <start> <end> [--security-type T] [--limit N] [--page N]\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("gov_us_treasury_auctions"),
+                              QJsonObject{{"start_date", args.at(0)},
+                                          {"end_date", args.at(1)},
+                                          {"security_type", security_type},
+                                          {"limit", limit},
+                                          {"page", page}});
+        }
+        if (sub == "treasury-summary" || sub == "summary") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro gov treasury-summary <date>\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("gov_us_treasury_summary"),
+                              QJsonObject{{"date", args.first()}});
+        }
+        if (sub == "congress-summary") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro gov congress-summary <congress>\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("gov_us_congress_summary"),
+                              QJsonObject{{"congress", args.first().toInt()}});
+        }
+        if (sub == "congress-bills" || sub == "bills") {
+            QString bill_type;
+            if (!take_string_option(args, QStringLiteral("--type"), bill_type) ||
+                parse_nonnegative_option(args, QStringLiteral("--offset"), 0, offset) < 0 ||
+                args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro gov congress-bills <congress> [--type hr] [--limit N] [--offset N]\n");
+                return 2;
+            }
+            const int limit = parse_limit(args, 50);
+            if (limit < 0 || args.isEmpty()) {
+                std::fprintf(stderr, "usage: macro gov congress-bills <congress> [--type hr] [--limit N] [--offset N]\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("gov_us_congress_bills"),
+                              QJsonObject{{"congress", args.first().toInt()},
+                                          {"bill_type", bill_type},
+                                          {"limit", limit},
+                                          {"offset", offset}});
+        }
+        if (sub == "congress-bill" || sub == "bill") {
+            if (args.size() < 3) {
+                std::fprintf(stderr, "usage: macro gov congress-bill <congress> <type> <number>\n");
+                return 2;
+            }
+            return macro_call(opts, QStringLiteral("gov_us_congress_bill_info"),
+                              QJsonObject{{"congress", args.at(0).toInt()},
+                                          {"bill_type", args.at(1)},
+                                          {"bill_number", args.at(2).toInt()}});
+        }
+        std::fprintf(stderr, "usage: macro gov providers|run|treasury-prices|treasury-auctions|treasury-summary|congress-summary|congress-bills|congress-bill\n");
+        return 2;
+    }
+
+    if (area == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: macro tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return macro_call(opts, tool, a);
+    }
+
+    std::fprintf(stderr, "usage: macro dbnomics|gov|tool ...\n");
+    return 2;
+}
+
+static int emit_accounts(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto r = AccountRepository::instance().find_all();
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to load accounts: %s\n", r.error().c_str());
+        return 5;
+    }
+    QJsonArray rows;
+    for (const auto& a : r.value()) {
+        rows.append(QJsonObject{{"account_id", a.account_id},
+                                {"broker_id", a.broker_id},
+                                {"display_name", a.display_name},
+                                {"paper_portfolio_id", a.paper_portfolio_id},
+                                {"trading_mode", a.trading_mode},
+                                {"active", a.is_active},
+                                {"created_at", a.created_at}});
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"accounts", rows}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (rows.isEmpty()) {
+        std::printf("no accounts\n");
+        return 0;
+    }
+    std::printf("%-36s %-10s %-8s %-6s %-24s %s\n", "account_id", "broker", "mode", "active", "paper_portfolio", "name");
+    for (const auto& v : rows) {
+        const QJsonObject a = v.toObject();
+        std::printf("%-36s %-10s %-8s %-6s %-24s %s\n",
+                    qUtf8Printable(a.value("account_id").toString()),
+                    qUtf8Printable(a.value("broker_id").toString()),
+                    qUtf8Printable(a.value("trading_mode").toString()),
+                    a.value("active").toBool() ? "yes" : "no",
+                    qUtf8Printable(a.value("paper_portfolio_id").toString()),
+                    qUtf8Printable(a.value("display_name").toString()));
+    }
+    return 0;
+}
+
+static QJsonArray trade_rows(const QJsonValue& data, const QString& field = {}) {
+    if (data.isArray())
+        return data.toArray();
+    const QJsonObject o = data.toObject();
+    if (!field.isEmpty())
+        return o.value(field).toArray();
+    if (o.contains("positions"))
+        return o.value("positions").toArray();
+    if (o.contains("orders"))
+        return o.value("orders").toArray();
+    if (o.contains("fills"))
+        return o.value("fills").toArray();
+    return {};
+}
+
+static int emit_trade_positions(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        if (data.isArray())
+            std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonArray rows = trade_rows(data, QStringLiteral("positions"));
+    if (rows.isEmpty()) {
+        std::printf("no positions\n");
+        return 0;
+    }
+    std::printf("%-16s %-8s %12s %12s %12s %12s %s\n", "symbol", "side", "qty", "avg/entry", "ltp/current", "pnl", "exchange");
+    for (const auto& v : rows) {
+        const QJsonObject p = v.toObject();
+        const double avg = p.contains("avg_price") ? p.value("avg_price").toDouble() : p.value("entry_price").toDouble();
+        const double ltp = p.contains("ltp") ? p.value("ltp").toDouble() : p.value("current_price").toDouble();
+        const double pnl = p.contains("pnl") ? p.value("pnl").toDouble() : p.value("unrealized_pnl").toDouble();
+        std::printf("%-16s %-8s %12.4f %12.4f %12.4f %12.2f %s\n",
+                    qUtf8Printable(p.value("symbol").toString()),
+                    qUtf8Printable(p.value("side").toString()),
+                    p.value("quantity").toDouble(),
+                    avg,
+                    ltp,
+                    pnl,
+                    qUtf8Printable(p.value("exchange").toString()));
+    }
+    return 0;
+}
+
+static int emit_trade_orders(const GlobalOpts& opts, const QJsonObject& body, const QString& field = QStringLiteral("orders")) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        if (data.isArray())
+            std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonArray rows = trade_rows(data, field);
+    if (rows.isEmpty()) {
+        std::printf("no orders\n");
+        return 0;
+    }
+    std::printf("%-36s %-16s %-6s %-10s %12s %12s %s\n", "id", "symbol", "side", "status", "qty", "price", "created");
+    for (const auto& v : rows) {
+        const QJsonObject o = v.toObject();
+        QString id = o.value("id").toString();
+        if (id.isEmpty())
+            id = o.value("order_id").toString();
+        const double price = o.contains("price") ? o.value("price").toDouble() : o.value("avg_price").toDouble();
+        std::printf("%-36s %-16s %-6s %-10s %12.4f %12.4f %s\n",
+                    qUtf8Printable(id),
+                    qUtf8Printable(o.value("symbol").toString()),
+                    qUtf8Printable(o.value("side").toString()),
+                    qUtf8Printable(o.value("status").toString()),
+                    o.value("quantity").toDouble(),
+                    price,
+                    qUtf8Printable(o.value("created_at").toString()));
+    }
+    return 0;
+}
+
+static int emit_trade_data(const GlobalOpts& opts, const QJsonObject& body, const QString& kind = {}) {
+    const QJsonValue data = tool_data(body);
+    if (kind == "positions")
+        return emit_trade_positions(opts, body);
+    if (kind == "orders" || kind == "fills")
+        return emit_trade_orders(opts, body, kind);
+    if (opts.json) {
+        if (data.isArray())
+            std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (data.isArray()) {
+        const QJsonArray rows = data.toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        const QJsonObject first = rows.first().toObject();
+        if (first.contains("balance") && first.contains("name")) {
+            std::printf("%-36s %-24s %14s %8s %s\n", "id", "name", "balance", "ccy", "created");
+            for (const auto& v : rows) {
+                const QJsonObject p = v.toObject();
+                std::printf("%-36s %-24s %14.2f %8s %s\n",
+                            qUtf8Printable(p.value("id").toString()),
+                            qUtf8Printable(elide_text(p.value("name").toString(), 24)),
+                            p.value("balance").toDouble(),
+                            qUtf8Printable(p.value("currency").toString()),
+                            qUtf8Printable(p.value("created_at").toString()));
+            }
+            return 0;
+        }
+        std::printf("%s\n", QJsonDocument(rows).toJson(QJsonDocument::Indented).constData());
+        return 0;
+    }
+    const QJsonObject o = data.toObject();
+    if (o.contains("available_balance")) {
+        std::printf("available     %.2f\n", o.value("available_balance").toDouble());
+        std::printf("used_margin   %.2f\n", o.value("used_margin").toDouble());
+        std::printf("total         %.2f\n", o.value("total_balance").toDouble());
+        std::printf("collateral    %.2f\n", o.value("collateral").toDouble());
+        return 0;
+    }
+    if (o.contains("total_pnl")) {
+        std::printf("total_pnl      %.2f\n", o.value("total_pnl").toDouble());
+        std::printf("win_rate       %.2f\n", o.value("win_rate").toDouble());
+        std::printf("total_trades   %lld\n", static_cast<long long>(o.value("total_trades").toInteger()));
+        std::printf("winning        %lld\n", static_cast<long long>(o.value("winning_trades").toInteger()));
+        std::printf("losing         %lld\n", static_cast<long long>(o.value("losing_trades").toInteger()));
+        std::printf("largest_win    %.2f\n", o.value("largest_win").toDouble());
+        std::printf("largest_loss   %.2f\n", o.value("largest_loss").toDouble());
+        return 0;
+    }
+    const QString msg = body.value("message").toString();
+    if (!msg.isEmpty() && (o.contains("order_id") || o.contains("status"))) {
+        std::printf("%s\n", qUtf8Printable(msg));
+        std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Indented).constData());
+    return 0;
+}
+
+static int trade_call(const GlobalOpts& opts, const QString& tool, const QJsonObject& args,
+                      const QString& kind = {}) {
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, tool, args, body);
+    return rc == 0 ? emit_trade_data(opts, body, kind) : rc;
+}
+
+static bool require_yes(QStringList& args, const char* usage_line) {
+    if (take_bool_flag(args, QStringLiteral("--yes")))
+        return true;
+    std::fprintf(stderr, "%s\n", usage_line);
+    std::fprintf(stderr, "destructive trading command requires --yes\n");
+    return false;
+}
+
+static QJsonObject trade_parse_stored_json_object(const QString& raw) {
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return {};
+    return doc.object();
+}
+
+static QJsonObject trade_draft_to_json(const OrderDraft& d) {
+    return QJsonObject{{"draft_id", d.draft_id},
+                       {"intent", trade_parse_stored_json_object(d.intent_json)},
+                       {"risk_verdict", trade_parse_stored_json_object(d.risk_verdict_json)},
+                       {"account", d.account},
+                       {"mode_hint", d.mode_hint},
+                       {"status", d.status},
+                       {"created_at", d.created_at},
+                       {"expires_at", d.expires_at}};
+}
+
+static QJsonObject trade_audit_to_json(const TradeAuditRow& r) {
+    return QJsonObject{{"ts", r.ts},
+                       {"phase", r.phase},
+                       {"tool", r.tool},
+                       {"account", r.account},
+                       {"mode", r.mode},
+                       {"intent", trade_parse_stored_json_object(r.intent_json)},
+                       {"decision", r.decision},
+                       {"reason", r.reason},
+                       {"risk_snapshot", trade_parse_stored_json_object(r.risk_snapshot_json)}};
+}
+
+static QString trade_draft_symbol(const OrderDraft& d) {
+    const QJsonObject intent = trade_parse_stored_json_object(d.intent_json);
+    QString symbol = intent.value("symbol").toString();
+    if (symbol.isEmpty())
+        symbol = intent.value("outcome").toString();
+    if (symbol.isEmpty())
+        symbol = intent.value("asset_id").toString();
+    return symbol;
+}
+
+static QString trade_draft_side(const OrderDraft& d) {
+    return trade_parse_stored_json_object(d.intent_json).value("side").toString();
+}
+
+static int emit_trade_drafts(const GlobalOpts& opts, const QVector<OrderDraft>& drafts) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& d : drafts)
+            arr.append(trade_draft_to_json(d));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"drafts", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (drafts.isEmpty()) {
+        std::printf("no order drafts\n");
+        return 0;
+    }
+    std::printf("%-36s %-14s %-6s %-12s %-12s %s\n", "draft_id", "status", "side", "symbol", "account", "expires");
+    for (const auto& d : drafts) {
+        std::printf("%-36s %-14s %-6s %-12s %-12s %s\n",
+                    qUtf8Printable(d.draft_id),
+                    qUtf8Printable(d.status),
+                    qUtf8Printable(trade_draft_side(d)),
+                    qUtf8Printable(elide_text(trade_draft_symbol(d), 12)),
+                    qUtf8Printable(elide_text(d.account, 12)),
+                    qUtf8Printable(d.expires_at));
+    }
+    return 0;
+}
+
+static int emit_trade_draft_detail(const GlobalOpts& opts, const OrderDraft& d) {
+    const QJsonObject obj = trade_draft_to_json(d);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("draft_id      %s\n", qUtf8Printable(d.draft_id));
+    std::printf("status        %s\n", qUtf8Printable(d.status));
+    std::printf("account       %s\n", qUtf8Printable(d.account));
+    std::printf("mode_hint     %s\n", qUtf8Printable(d.mode_hint));
+    std::printf("created_at    %s\n", qUtf8Printable(d.created_at));
+    std::printf("expires_at    %s\n", qUtf8Printable(d.expires_at));
+    std::printf("intent        %s\n", QJsonDocument(obj.value("intent").toObject()).toJson(QJsonDocument::Compact).constData());
+    std::printf("risk          %s\n", QJsonDocument(obj.value("risk_verdict").toObject()).toJson(QJsonDocument::Compact).constData());
+    return 0;
+}
+
+static int emit_trade_audit_rows(const GlobalOpts& opts, const QVector<TradeAuditRow>& rows) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& r : rows)
+            arr.append(trade_audit_to_json(r));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"audit", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (rows.isEmpty()) {
+        std::printf("no trade audit rows\n");
+        return 0;
+    }
+    std::printf("%-24s %-8s %-16s %-8s %-12s %s\n", "time", "phase", "tool", "decision", "account", "reason");
+    for (const auto& r : rows) {
+        std::printf("%-24s %-8s %-16s %-8s %-12s %s\n",
+                    qUtf8Printable(r.ts),
+                    qUtf8Printable(r.phase),
+                    qUtf8Printable(r.tool),
+                    qUtf8Printable(r.decision),
+                    qUtf8Printable(elide_text(r.account, 12)),
+                    qUtf8Printable(elide_text(r.reason, 90)));
+    }
+    return 0;
+}
+
+static bool trade_take_positive_limit(QStringList& args, int default_limit, int& limit) {
+    QString limit_raw;
+    if (!take_string_option(args, QStringLiteral("--limit"), limit_raw))
+        return false;
+    limit = default_limit;
+    if (limit_raw.isEmpty())
+        return true;
+    bool ok = false;
+    limit = limit_raw.toInt(&ok);
+    return ok && limit > 0 && limit <= 1000;
+}
+
+static int trade_drafts_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    QString status;
+    int limit = 50;
+    if (!take_string_option(args, QStringLiteral("--status"), status) ||
+        !trade_take_positive_limit(args, 50, limit) ||
+        !args.isEmpty()) {
+        std::fprintf(stderr, "usage: trade drafts [--status prepared|submitted|cancelled|expired|submit_failed] [--limit N]\n");
+        return 2;
+    }
+    if (!status.isEmpty()) {
+        const QString normalized = status.trimmed().toLower();
+        const QStringList allowed{QStringLiteral("prepared"), QStringLiteral("submitted"),
+                                  QStringLiteral("cancelled"), QStringLiteral("expired"),
+                                  QStringLiteral("submit_failed"), QStringLiteral("submitting")};
+        if (!allowed.contains(normalized)) {
+            std::fprintf(stderr, "unknown draft status: %s\n", qUtf8Printable(status));
+            return 2;
+        }
+        status = normalized;
+    }
+    auto r = OrderDraftRepository::instance().recent(limit, status);
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to load order drafts: %s\n", r.error().c_str());
+        return 5;
+    }
+    return emit_trade_drafts(opts, r.value());
+}
+
+static int trade_draft_show_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    if (args.size() != 1) {
+        std::fprintf(stderr, "usage: trade draft <draft-id>\n");
+        return 2;
+    }
+    auto r = OrderDraftRepository::instance().get(args.first());
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to load order draft: %s\n", r.error().c_str());
+        return 5;
+    }
+    return emit_trade_draft_detail(opts, r.value());
+}
+
+static int trade_cancel_draft_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    if (!require_yes(args, "usage: trade cancel-draft <draft-id> --yes"))
+        return 2;
+    if (args.size() != 1) {
+        std::fprintf(stderr, "usage: trade cancel-draft <draft-id> --yes\n");
+        return 2;
+    }
+    const QString draft_id = args.first();
+    auto loaded = OrderDraftRepository::instance().get(draft_id);
+    if (loaded.is_err()) {
+        std::fprintf(stderr, "failed to load order draft: %s\n", loaded.error().c_str());
+        return 5;
+    }
+    if (loaded.value().status != QLatin1String("prepared")) {
+        std::fprintf(stderr, "only prepared drafts can be cancelled from CLI\n");
+        return 5;
+    }
+    auto r = OrderDraftRepository::instance().cancel_prepared(draft_id);
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to cancel order draft: %s\n", r.error().c_str());
+        return 5;
+    }
+    if (!r.value()) {
+        std::fprintf(stderr, "draft already used or not cancellable\n");
+        return 5;
+    }
+    return emit_mutation_body(opts, mutation_body(QStringLiteral("Order draft cancelled"),
+                                                  QJsonObject{{"draft_id", draft_id}, {"status", "cancelled"}}));
+}
+
+static int trade_audit_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    QString account;
+    QString phase;
+    QString decision;
+    int limit = 100;
+    if (!take_string_option(args, QStringLiteral("--account"), account) ||
+        !take_string_option(args, QStringLiteral("--phase"), phase) ||
+        !take_string_option(args, QStringLiteral("--decision"), decision) ||
+        !trade_take_positive_limit(args, 100, limit) ||
+        !args.isEmpty()) {
+        std::fprintf(stderr, "usage: trade audit [--limit N] [--account ID] [--phase prepare|submit] [--decision D]\n");
+        return 2;
+    }
+    phase = phase.trimmed().toLower();
+    decision = decision.trimmed().toLower();
+    if (!phase.isEmpty() && phase != "prepare" && phase != "submit") {
+        std::fprintf(stderr, "--phase must be prepare or submit\n");
+        return 2;
+    }
+    auto r = TradeAuditRepository::instance().recent(limit);
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to load trade audit: %s\n", r.error().c_str());
+        return 5;
+    }
+    QVector<TradeAuditRow> filtered;
+    for (const auto& row : r.value()) {
+        if (!account.isEmpty() && row.account != account)
+            continue;
+        if (!phase.isEmpty() && row.phase != phase)
+            continue;
+        if (!decision.isEmpty() && row.decision != decision)
+            continue;
+        filtered.append(row);
+    }
+    return emit_trade_audit_rows(opts, filtered);
+}
+
+static int trade_prepare_command(const GlobalOpts& opts, QStringList args) {
+    QString type = QStringLiteral("market");
+    QString limit_raw;
+    QString exchange;
+    QString account;
+    QString strategy;
+    QString reason;
+    if (!take_string_option(args, QStringLiteral("--type"), type) ||
+        !take_string_option(args, QStringLiteral("--limit-price"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--price"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--exchange"), exchange) ||
+        !take_string_option(args, QStringLiteral("--account"), account) ||
+        !take_string_option(args, QStringLiteral("--strategy"), strategy) ||
+        !take_string_option(args, QStringLiteral("--reason"), reason) ||
+        args.size() != 3) {
+        std::fprintf(stderr, "usage: trade prepare <buy|sell> <symbol> <qty> [--type T] [--limit-price P] [--exchange EX] [--account ID]\n");
+        return 2;
+    }
+    const QString side = args.at(0).trimmed().toLower();
+    const QString symbol = args.at(1).trimmed().toUpper();
+    bool qty_ok = false;
+    const double qty = args.at(2).toDouble(&qty_ok);
+    if ((side != "buy" && side != "sell") || symbol.isEmpty() || !qty_ok || qty <= 0) {
+        std::fprintf(stderr, "invalid side, symbol, or quantity\n");
+        return 2;
+    }
+    QJsonObject intent{{"asset_class", "equity"},
+                       {"side", side},
+                       {"symbol", symbol},
+                       {"quantity", qty},
+                       {"order_type", type.trimmed().toLower()}};
+    if (!limit_raw.isEmpty()) {
+        bool price_ok = false;
+        const double limit = limit_raw.toDouble(&price_ok);
+        if (!price_ok || limit <= 0) {
+            std::fprintf(stderr, "--limit-price must be > 0\n");
+            return 2;
+        }
+        intent["limit_price"] = limit;
+    }
+    if (!exchange.isEmpty())
+        intent["exchange"] = exchange.toUpper();
+    if (!account.isEmpty())
+        intent["account"] = account;
+    if (!strategy.isEmpty())
+        intent["strategy"] = strategy;
+    if (!reason.isEmpty())
+        intent["reason"] = reason;
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, QStringLiteral("prepare_order"), intent, body);
+    return rc == 0 ? emit_trade_data(opts, body) : rc;
+}
+
+static int trade_submit_draft_command(const GlobalOpts& opts, QStringList args) {
+    QString mode = QStringLiteral("paper");
+    const bool live_armed = take_bool_flag(args, QStringLiteral("--live-armed"));
+    if (!take_string_option(args, QStringLiteral("--mode"), mode))
+        return 2;
+    mode = mode.trimmed().toLower();
+    if (mode != "paper" && mode != "live") {
+        std::fprintf(stderr, "--mode must be paper or live\n");
+        return 2;
+    }
+    if (!require_yes(args, "usage: trade submit <draft-id> --mode paper|live --yes [--live-armed]"))
+        return 2;
+    if (args.size() != 1) {
+        std::fprintf(stderr, "usage: trade submit <draft-id> --mode paper|live --yes [--live-armed]\n");
+        return 2;
+    }
+    if (mode == "live" && !live_armed) {
+        std::fprintf(stderr, "live draft submission requires --live-armed in addition to --yes\n");
+        return 2;
+    }
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, QStringLiteral("submit_order"),
+                                           QJsonObject{{"draft_id", args.first()}, {"mode", mode}}, body);
+    return rc == 0 ? emit_trade_data(opts, body) : rc;
+}
+
+static int trade_paper_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("portfolios") : args.takeFirst().trimmed().toLower();
+    if (sub == "portfolios" || sub == "list" || sub == "ls")
+        return trade_call(opts, QStringLiteral("pt_list_portfolios"), {});
+    if (sub == "create" || sub == "new") {
+        QString balance_s;
+        QString currency = QStringLiteral("USD");
+        QString leverage_s;
+        QString fee_s;
+        if (!take_string_option(args, QStringLiteral("--balance"), balance_s) ||
+            !take_string_option(args, QStringLiteral("--currency"), currency) ||
+            !take_string_option(args, QStringLiteral("--leverage"), leverage_s) ||
+            !take_string_option(args, QStringLiteral("--fee-rate"), fee_s))
+            return 2;
+        bool ok_balance = false;
+        bool ok_leverage = true;
+        bool ok_fee = true;
+        const double balance = balance_s.toDouble(&ok_balance);
+        const double leverage = leverage_s.isEmpty() ? 1.0 : leverage_s.toDouble(&ok_leverage);
+        const double fee = fee_s.isEmpty() ? 0.001 : fee_s.toDouble(&ok_fee);
+        const QString name = args.join(' ').trimmed();
+        if (name.isEmpty() || !ok_balance || balance <= 0 || !ok_leverage || leverage <= 0 || !ok_fee || fee < 0) {
+            std::fprintf(stderr, "usage: trade paper create <name...> --balance N [--currency USD] [--leverage N] [--fee-rate R]\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("pt_create_portfolio"),
+                          QJsonObject{{"name", name}, {"balance", balance}, {"currency", currency.toUpper()},
+                                      {"leverage", leverage}, {"fee_rate", fee}});
+    }
+    if (sub == "show" || sub == "get") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade paper show <portfolio-id>\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("pt_get_portfolio"), QJsonObject{{"portfolio_id", args.first()}});
+    }
+    if (sub == "positions" || sub == "pos") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade paper positions <portfolio-id>\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("pt_get_positions"), QJsonObject{{"portfolio_id", args.first()}},
+                          QStringLiteral("positions"));
+    }
+    if (sub == "orders" || sub == "blotter") {
+        QString status;
+        if (!take_string_option(args, QStringLiteral("--status"), status) || args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade paper orders <portfolio-id> [--status pending|filled|cancelled]\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("pt_get_orders"),
+                          QJsonObject{{"portfolio_id", args.first()}, {"status", status}}, QStringLiteral("orders"));
+    }
+    if (sub == "stats" || sub == "risk") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade paper stats <portfolio-id>\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("pt_get_stats"), QJsonObject{{"portfolio_id", args.first()}});
+    }
+    if (sub == "order" || sub == "buy" || sub == "sell") {
+        const bool side_in_sub = (sub == "buy" || sub == "sell");
+        if (!require_yes(args, side_in_sub
+                                   ? "usage: trade paper buy|sell <portfolio-id> <symbol> <qty> [--type T] [--price P] [--stop P] [--reduce-only] --yes"
+                                   : "usage: trade paper order <portfolio-id> <buy|sell> <symbol> <qty> [--type T] [--price P] [--stop P] [--reduce-only] --yes"))
+            return 2;
+        QString type = QStringLiteral("market");
+        QString price_s;
+        QString stop_s;
+        const bool reduce_only = take_bool_flag(args, QStringLiteral("--reduce-only"));
+        if (!take_string_option(args, QStringLiteral("--type"), type) ||
+            !take_string_option(args, QStringLiteral("--price"), price_s) ||
+            !take_string_option(args, QStringLiteral("--stop"), stop_s))
+            return 2;
+        if ((!side_in_sub && args.size() < 4) || (side_in_sub && args.size() < 3)) {
+            std::fprintf(stderr, "usage: trade paper order <portfolio-id> <buy|sell> <symbol> <qty> [--type T] [--price P] [--stop P] [--reduce-only] --yes\n");
+            return 2;
+        }
+        const QString portfolio_id = args.takeFirst();
+        const QString side = side_in_sub ? sub : args.takeFirst().toLower();
+        const QString symbol = args.takeFirst().toUpper();
+        bool ok_qty = false;
+        const double qty = args.takeFirst().toDouble(&ok_qty);
+        if (!ok_qty || qty <= 0 || (side != "buy" && side != "sell")) {
+            std::fprintf(stderr, "invalid side or quantity\n");
+            return 2;
+        }
+        QJsonObject a{{"portfolio_id", portfolio_id}, {"symbol", symbol}, {"side", side}, {"order_type", type},
+                      {"quantity", qty}, {"reduce_only", reduce_only}};
+        bool ok = true;
+        if (!price_s.isEmpty()) {
+            const double price = price_s.toDouble(&ok);
+            if (!ok || price <= 0) {
+                std::fprintf(stderr, "--price must be > 0\n");
+                return 2;
+            }
+            a["price"] = price;
+        }
+        if (!stop_s.isEmpty()) {
+            const double stop = stop_s.toDouble(&ok);
+            if (!ok || stop <= 0) {
+                std::fprintf(stderr, "--stop must be > 0\n");
+                return 2;
+            }
+            a["stop_price"] = stop;
+        }
+        return trade_call(opts, QStringLiteral("pt_place_order"), a);
+    }
+    if (sub == "cancel") {
+        if (!require_yes(args, "usage: trade paper cancel <order-id> --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade paper cancel <order-id> --yes\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("pt_cancel_order"), QJsonObject{{"order_id", args.first()}});
+    }
+    std::fprintf(stderr, "usage: trade paper portfolios|create|show|positions|orders|stats|order|cancel\n");
+    return 2;
+}
+
+static int trade_live_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("positions") : args.takeFirst().trimmed().toLower();
+    QString account;
+    if (!take_string_option(args, QStringLiteral("--account"), account))
+        return 2;
+    QJsonObject a;
+    if (!account.isEmpty())
+        a["account_id"] = account;
+    if (sub == "positions" || sub == "pos")
+        return trade_call(opts, QStringLiteral("live_get_positions"), a, QStringLiteral("positions"));
+    if (sub == "holdings")
+        return trade_call(opts, QStringLiteral("live_get_holdings"), a, QStringLiteral("positions"));
+    if (sub == "orders" || sub == "blotter")
+        return trade_call(opts, QStringLiteral("live_get_orders"), a, QStringLiteral("orders"));
+    if (sub == "trades" || sub == "fills")
+        return trade_call(opts, QStringLiteral("live_get_trades"), a);
+    if (sub == "funds" || sub == "balance")
+        return trade_call(opts, QStringLiteral("live_get_funds"), a);
+    if (sub == "quote") {
+        QString exchange;
+        if (!take_string_option(args, QStringLiteral("--exchange"), exchange) || args.isEmpty() || exchange.isEmpty()) {
+            std::fprintf(stderr, "usage: trade live quote <symbol> --exchange EX [--account ID]\n");
+            return 2;
+        }
+        a["symbol"] = args.first().toUpper();
+        a["exchange"] = exchange.toUpper();
+        return trade_call(opts, QStringLiteral("live_get_quote"), a);
+    }
+    std::fprintf(stderr, "usage: trade live positions|holdings|orders|trades|funds|quote\n");
+    return 2;
+}
+
+static int trade_fast_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("positions") : args.takeFirst().trimmed().toLower();
+    if (sub == "positions" || sub == "pos")
+        return trade_call(opts, QStringLiteral("get_positions"), {}, QStringLiteral("positions"));
+    if (sub == "orders" || sub == "open-orders")
+        return trade_call(opts, QStringLiteral("get_open_orders"), {}, QStringLiteral("orders"));
+    if (sub == "fills")
+        return trade_call(opts, QStringLiteral("get_fills"), {}, QStringLiteral("fills"));
+    if (sub == "cancel") {
+        if (!require_yes(args, "usage: trade fast cancel <order-id> --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade fast cancel <order-id> --yes\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("cancel_order"), QJsonObject{{"order_id", args.first()}});
+    }
+    if (sub == "exit" || sub == "close") {
+        if (!require_yes(args, "usage: trade fast exit <symbol> [--exchange EX] [--product P] --yes"))
+            return 2;
+        QString exchange;
+        QString product;
+        if (!take_string_option(args, QStringLiteral("--exchange"), exchange) ||
+            !take_string_option(args, QStringLiteral("--product"), product) ||
+            args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade fast exit <symbol> [--exchange EX] [--product P] --yes\n");
+            return 2;
+        }
+        return trade_call(opts, QStringLiteral("exit_position"),
+                          QJsonObject{{"symbol", args.first().toUpper()}, {"exchange", exchange.toUpper()},
+                                      {"product", product.toUpper()}});
+    }
+    if (sub == "order" || sub == "buy" || sub == "sell") {
+        const bool side_in_sub = (sub == "buy" || sub == "sell");
+        if (!require_yes(args, side_in_sub
+                                   ? "usage: trade fast buy|sell <symbol> <qty> [--type T] [--exchange EX] [--limit-price P] [--trigger-price P] --yes"
+                                   : "usage: trade fast order <buy|sell> <symbol> <qty> [--type T] [--exchange EX] [--limit-price P] [--trigger-price P] --yes"))
+            return 2;
+        QString type = QStringLiteral("market");
+        QString exchange;
+        QString limit_s;
+        QString trigger_s;
+        if (!take_string_option(args, QStringLiteral("--type"), type) ||
+            !take_string_option(args, QStringLiteral("--exchange"), exchange) ||
+            !take_string_option(args, QStringLiteral("--limit-price"), limit_s) ||
+            !take_string_option(args, QStringLiteral("--trigger-price"), trigger_s))
+            return 2;
+        if ((!side_in_sub && args.size() < 3) || (side_in_sub && args.size() < 2)) {
+            std::fprintf(stderr, "usage: trade fast order <buy|sell> <symbol> <qty> [--type T] [--exchange EX] [--limit-price P] [--trigger-price P] --yes\n");
+            return 2;
+        }
+        const QString side = side_in_sub ? sub : args.takeFirst().toLower();
+        const QString symbol = args.takeFirst().toUpper();
+        bool ok_qty = false;
+        const double qty = args.takeFirst().toDouble(&ok_qty);
+        if (!ok_qty || qty <= 0 || (side != "buy" && side != "sell")) {
+            std::fprintf(stderr, "invalid side or quantity\n");
+            return 2;
+        }
+        QJsonObject a{{"symbol", symbol}, {"side", side}, {"quantity", qty}, {"order_type", type},
+                      {"exchange", exchange.toUpper()}};
+        bool ok = true;
+        if (!limit_s.isEmpty()) {
+            const double limit = limit_s.toDouble(&ok);
+            if (!ok || limit <= 0) {
+                std::fprintf(stderr, "--limit-price must be > 0\n");
+                return 2;
+            }
+            a["limit_price"] = limit;
+        }
+        if (!trigger_s.isEmpty()) {
+            const double trigger = trigger_s.toDouble(&ok);
+            if (!ok || trigger <= 0) {
+                std::fprintf(stderr, "--trigger-price must be > 0\n");
+                return 2;
+            }
+            a["trigger_price"] = trigger;
+        }
+        return trade_call(opts, QStringLiteral("fast_submit_order"), a);
+    }
+    std::fprintf(stderr, "usage: trade fast positions|orders|fills|cancel|exit|order\n");
+    return 2;
+}
+
+static int trade_command(const GlobalOpts& opts, QStringList args) {
+    const QString group = args.isEmpty() ? QStringLiteral("accounts") : args.takeFirst().trimmed().toLower();
+    if (group == "accounts" || group == "account")
+        return emit_accounts(opts);
+    if (group == "drafts")
+        return trade_drafts_command(opts, args);
+    if (group == "draft")
+        return trade_draft_show_command(opts, args);
+    if (group == "prepare")
+        return trade_prepare_command(opts, args);
+    if (group == "submit")
+        return trade_submit_draft_command(opts, args);
+    if (group == "cancel-draft" || group == "cancel_draft")
+        return trade_cancel_draft_command(opts, args);
+    if (group == "audit" || group == "history")
+        return trade_audit_command(opts, args);
+    if (group == "paper" || group == "pt")
+        return trade_paper_command(opts, args);
+    if (group == "live")
+        return trade_live_command(opts, args);
+    if (group == "fast")
+        return trade_fast_command(opts, args);
+    if (group == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: trade tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return trade_call(opts, tool, a);
+    }
+    std::fprintf(stderr, "usage: trade accounts|drafts|draft|prepare|submit|cancel-draft|audit|paper|live|fast|tool\n");
+    return 2;
+}
+
+static int emit_data_rows(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        if (data.isArray())
+            std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (data.isArray()) {
+        const QJsonArray rows = data.toArray();
+        if (rows.isEmpty()) {
+            std::printf("no results\n");
+            return 0;
+        }
+        const QJsonObject first = rows.first().toObject();
+        if (first.contains("provider") && first.contains("display_name")) {
+            std::printf("%-36s %-20s %-16s %-8s %s\n", "id", "provider", "category", "enabled", "name");
+            for (const auto& v : rows) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-36s %-20s %-16s %-8s %s\n",
+                            qUtf8Printable(r.value("id").toString()),
+                            qUtf8Printable(r.value("provider").toString()),
+                            qUtf8Printable(r.value("category").toString()),
+                            r.value("enabled").toBool() ? "yes" : "no",
+                            qUtf8Printable(elide_text(r.value("display_name").toString(), 60)));
+            }
+            return 0;
+        }
+        if (first.contains("id") && first.contains("name")) {
+            std::printf("%-24s %-18s %-8s %-8s %s\n", "id", "category", "auth", "test", "name");
+            for (const auto& v : rows) {
+                const QJsonObject r = v.toObject();
+                std::printf("%-24s %-18s %-8s %-8s %s\n",
+                            qUtf8Printable(r.value("id").toString()),
+                            qUtf8Printable(r.value("category").toString()),
+                            r.value("requires_auth").toBool() ? "yes" : "no",
+                            r.value("testable").toBool() ? "yes" : "no",
+                            qUtf8Printable(elide_text(r.value("name").toString(), 70)));
+            }
+            return 0;
+        }
+        std::printf("%s\n", QJsonDocument(rows).toJson(QJsonDocument::Indented).constData());
+        return 0;
+    }
+    const QJsonObject o = data.toObject();
+    if (o.contains("total_connector_types")) {
+        std::printf("connectors     %d\n", o.value("total_connector_types").toInt());
+        std::printf("auth_required  %d\n", o.value("auth_required_connectors").toInt());
+        std::printf("configured     %d\n", o.value("configured_connections").toInt());
+        std::printf("active         %d\n", o.value("active_connections").toInt());
+        std::printf("disabled       %d\n", o.value("disabled_connections").toInt());
+        return 0;
+    }
+    if (o.contains("fields")) {
+        std::printf("id             %s\n", qUtf8Printable(o.value("id").toString()));
+        std::printf("name           %s\n", qUtf8Printable(o.value("name").toString()));
+        std::printf("category       %s\n", qUtf8Printable(o.value("category").toString()));
+        std::printf("auth           %s\n", o.value("requires_auth").toBool() ? "yes" : "no");
+        std::printf("testable       %s\n", o.value("testable").toBool() ? "yes" : "no");
+        const QJsonArray fields = o.value("fields").toArray();
+        if (!fields.isEmpty()) {
+            std::printf("fields:\n");
+            for (const auto& v : fields) {
+                const QJsonObject f = v.toObject();
+                std::printf("  %-22s %-10s %-8s %s\n",
+                            qUtf8Printable(f.value("key").toString()),
+                            qUtf8Printable(f.value("type").toString()),
+                            f.value("required").toBool() ? "required" : "optional",
+                            qUtf8Printable(f.value("label").toString()));
+            }
+        }
+        return 0;
+    }
+    const QString msg = body.value("message").toString();
+    if (!msg.isEmpty()) {
+        std::printf("%s\n", qUtf8Printable(msg));
+        if (!o.isEmpty())
+            std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Indented).constData());
+    return 0;
+}
+
+static int data_call(const GlobalOpts& opts, const QString& tool, const QJsonObject& args) {
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, tool, args, body);
+    return rc == 0 ? emit_data_rows(opts, body) : rc;
+}
+
+static bool parse_json_object_text(const QString& raw, QJsonObject& out, QString& err) {
+    QByteArray body;
+    if (!read_json_arg(raw, body, err))
+        return false;
+    QJsonParseError pe;
+    const QJsonDocument d = QJsonDocument::fromJson(body, &pe);
+    if (!d.isObject()) {
+        err = QStringLiteral("expected JSON object");
+        if (pe.error != QJsonParseError::NoError)
+            err += QStringLiteral(": ") + pe.errorString();
+        return false;
+    }
+    out = d.object();
+    return true;
+}
+
+static int data_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("connections") : args.takeFirst().trimmed().toLower();
+    if (sub == "connections" || sub == "list" || sub == "ls")
+        return data_call(opts, QStringLiteral("ds_list_connections"), {});
+    if (sub == "get" || sub == "show") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: data get <connection-id>\n");
+            return 2;
+        }
+        return data_call(opts, QStringLiteral("ds_get_connection"), QJsonObject{{"id", args.first()}});
+    }
+    if (sub == "connectors") {
+        if (args.isEmpty())
+            return data_call(opts, QStringLiteral("ds_list_connectors"), {});
+        return data_call(opts, QStringLiteral("ds_connectors_by_category"),
+                         QJsonObject{{"category", args.join(' ').trimmed().toLower()}});
+    }
+    if (sub == "connector") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: data connector <connector-id>\n");
+            return 2;
+        }
+        return data_call(opts, QStringLiteral("ds_get_connector"), QJsonObject{{"id", args.first()}});
+    }
+    if (sub == "search" || sub == "find") {
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: data search <query...>\n");
+            return 2;
+        }
+        return data_call(opts, QStringLiteral("ds_search_connectors"), QJsonObject{{"query", query}});
+    }
+    if (sub == "stats" || sub == "status")
+        return data_call(opts, QStringLiteral("ds_stats"), {});
+    if (sub == "test") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: data test <connection-id>\n");
+            return 2;
+        }
+        return data_call(opts, QStringLiteral("ds_test_connection"), QJsonObject{{"id", args.first()}});
+    }
+    if (sub == "add" || sub == "create") {
+        QString config_raw;
+        QString description;
+        QString tags;
+        const bool disabled = take_bool_flag(args, QStringLiteral("--disabled"));
+        if (!take_string_option(args, QStringLiteral("--config"), config_raw) ||
+            !take_string_option(args, QStringLiteral("--description"), description) ||
+            !take_string_option(args, QStringLiteral("--tags"), tags))
+            return 2;
+        if (args.size() < 2 || config_raw.isEmpty()) {
+            std::fprintf(stderr, "usage: data add <provider> <display-name...> --config JSON [--description TEXT] [--tags CSV] [--disabled]\n");
+            return 2;
+        }
+        QJsonObject config;
+        QString err;
+        if (!parse_json_object_text(config_raw, config, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        const QString provider = args.takeFirst();
+        const QString name = args.join(' ').trimmed();
+        return data_call(opts, QStringLiteral("ds_add_connection"),
+                         QJsonObject{{"provider", provider},
+                                     {"display_name", name},
+                                     {"config", config},
+                                     {"description", description},
+                                     {"tags", tags},
+                                     {"enabled", !disabled}});
+    }
+    if (sub == "update") {
+        if (args.size() < 2) {
+            std::fprintf(stderr, "usage: data update <connection-id> key=value ...\n");
+            return 2;
+        }
+        const QString id = args.takeFirst();
+        QJsonObject a{{"id", id}};
+        for (const QString& tok : args) {
+            const int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(tok));
+                return 2;
+            }
+            QString key = tok.left(eq).trimmed();
+            const QString raw = tok.mid(eq + 1);
+            if (key == "name")
+                key = QStringLiteral("display_name");
+            if (key == "config") {
+                QJsonObject config;
+                QString err;
+                if (!parse_json_object_text(raw, config, err)) {
+                    std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                    return 2;
+                }
+                a[key] = config;
+            } else if (key == "enabled") {
+                a[key] = (raw == "true" || raw == "1" || raw.toLower() == "yes" || raw.toLower() == "on");
+            } else if (key == "display_name" || key == "description" || key == "tags") {
+                a[key] = raw;
+            } else {
+                std::fprintf(stderr, "unknown data update field: %s\n", qUtf8Printable(key));
+                return 2;
+            }
+        }
+        return data_call(opts, QStringLiteral("ds_update_connection"), a);
+    }
+    if (sub == "enable" || sub == "disable") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: data %s <connection-id>\n", qUtf8Printable(sub));
+            return 2;
+        }
+        return data_call(opts, QStringLiteral("ds_set_enabled"),
+                         QJsonObject{{"id", args.first()}, {"enabled", sub == "enable"}});
+    }
+    if (sub == "delete" || sub == "remove" || sub == "rm") {
+        if (!require_yes(args, "usage: data delete <connection-id> --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: data delete <connection-id> --yes\n");
+            return 2;
+        }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto r = DataSourceRepository::instance().remove(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete connection: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Connection deleted"),
+                                                      QJsonObject{{"id", args.first()}}));
+    }
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: data tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return data_call(opts, tool, a);
+    }
+    std::fprintf(stderr, "usage: data connections|get|connectors|connector|search|stats|test|add|update|enable|disable|delete|tool\n");
+    return 2;
+}
+
+static const char* workflow_status_text(workflow::WorkflowStatus s) {
+    switch (s) {
+        case workflow::WorkflowStatus::Idle:      return "idle";
+        case workflow::WorkflowStatus::Running:   return "running";
+        case workflow::WorkflowStatus::Completed: return "completed";
+        case workflow::WorkflowStatus::Error:     return "error";
+        case workflow::WorkflowStatus::Draft:
+        default:                                  return "draft";
+    }
+}
+
+static workflow::WorkflowStatus parse_workflow_status_cli(const QString& s) {
+    const QString v = s.trimmed().toLower();
+    if (v == "idle")      return workflow::WorkflowStatus::Idle;
+    if (v == "running")   return workflow::WorkflowStatus::Running;
+    if (v == "completed") return workflow::WorkflowStatus::Completed;
+    if (v == "error")     return workflow::WorkflowStatus::Error;
+    return workflow::WorkflowStatus::Draft;
+}
+
+static QJsonObject workflow_to_json_cli(const workflow::WorkflowDef& wf) {
+    QJsonArray nodes;
+    for (const auto& n : wf.nodes) {
+        nodes.append(QJsonObject{{"id", n.id},
+                                 {"type", n.type},
+                                 {"name", n.name},
+                                 {"type_version", n.type_version},
+                                 {"x", n.x},
+                                 {"y", n.y},
+                                 {"parameters", n.parameters},
+                                 {"credentials", n.credentials},
+                                 {"disabled", n.disabled},
+                                 {"continue_on_fail", n.continue_on_fail},
+                                 {"retry_on_fail", n.retry_on_fail},
+                                 {"max_tries", n.max_tries}});
+    }
+    QJsonArray edges;
+    for (const auto& e : wf.edges) {
+        edges.append(QJsonObject{{"id", e.id},
+                                 {"source_node", e.source_node},
+                                 {"target_node", e.target_node},
+                                 {"source_port", e.source_port},
+                                 {"target_port", e.target_port},
+                                 {"animated", e.animated}});
+    }
+    return QJsonObject{{"id", wf.id},
+                       {"name", wf.name},
+                       {"description", wf.description},
+                       {"nodes", nodes},
+                       {"edges", edges},
+                       {"status", workflow_status_text(wf.status)},
+                       {"static_data", wf.static_data},
+                       {"created_at", wf.created_at},
+                       {"updated_at", wf.updated_at}};
+}
+
+static workflow::WorkflowDef workflow_from_json_cli(const QJsonObject& j) {
+    workflow::WorkflowDef wf;
+    wf.id = j.value("id").toString();
+    wf.name = j.value("name").toString(QStringLiteral("Untitled Workflow"));
+    wf.description = j.value("description").toString();
+    wf.status = parse_workflow_status_cli(j.value("status").toString());
+    wf.static_data = j.value("static_data").toObject();
+    wf.created_at = j.value("created_at").toString();
+    wf.updated_at = j.value("updated_at").toString();
+
+    for (const auto& v : j.value("nodes").toArray()) {
+        const QJsonObject no = v.toObject();
+        workflow::NodeDef n;
+        n.id = no.value("id").toString();
+        n.type = no.value("type").toString();
+        n.name = no.value("name").toString();
+        n.type_version = no.value("type_version").toInt(1);
+        n.x = no.value("x").toDouble();
+        n.y = no.value("y").toDouble();
+        n.parameters = no.value("parameters").toObject();
+        n.credentials = no.value("credentials").toObject();
+        n.disabled = no.value("disabled").toBool(false);
+        n.continue_on_fail = no.value("continue_on_fail").toBool(false);
+        n.retry_on_fail = no.value("retry_on_fail").toBool(false);
+        n.max_tries = no.value("max_tries").toInt(1);
+        wf.nodes.append(n);
+    }
+    for (const auto& v : j.value("edges").toArray()) {
+        const QJsonObject eo = v.toObject();
+        workflow::EdgeDef e;
+        e.id = eo.value("id").toString();
+        e.source_node = eo.value("source_node").toString();
+        e.target_node = eo.value("target_node").toString();
+        e.source_port = eo.value("source_port").toString();
+        e.target_port = eo.value("target_port").toString();
+        e.animated = eo.value("animated").toBool(false);
+        wf.edges.append(e);
+    }
+    return wf;
+}
+
+static int emit_workflow_rows(const GlobalOpts& opts, const QVector<WorkflowRow>& rows) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& w : rows)
+            arr.append(QJsonObject{{"id", w.id}, {"name", w.name}, {"description", w.description},
+                                   {"status", w.status}, {"created_at", w.created_at}, {"updated_at", w.updated_at}});
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"workflows", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (rows.isEmpty()) {
+        std::printf("no workflows\n");
+        return 0;
+    }
+    std::printf("%-36s %-12s %-28s %s\n", "id", "status", "name", "description");
+    for (const auto& w : rows) {
+        std::printf("%-36s %-12s %-28s %s\n",
+                    qUtf8Printable(w.id),
+                    qUtf8Printable(w.status),
+                    qUtf8Printable(elide_text(w.name, 28)),
+                    qUtf8Printable(elide_text(w.description, 80)));
+    }
+    return 0;
+}
+
+static int emit_workflow_detail(const GlobalOpts& opts, const workflow::WorkflowDef& wf) {
+    const QJsonObject o = workflow_to_json_cli(wf);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id           %s\n", qUtf8Printable(wf.id));
+    std::printf("name         %s\n", qUtf8Printable(wf.name));
+    std::printf("status       %s\n", workflow_status_text(wf.status));
+    if (!wf.description.isEmpty())
+        std::printf("description  %s\n", qUtf8Printable(wf.description));
+    std::printf("nodes        %d\n", static_cast<int>(wf.nodes.size()));
+    std::printf("edges        %d\n", static_cast<int>(wf.edges.size()));
+    if (!wf.updated_at.isEmpty())
+        std::printf("updated_at   %s\n", qUtf8Printable(wf.updated_at));
+    return 0;
+}
+
+static int emit_agent_payload(const GlobalOpts& opts, const QJsonObject& body) {
+    const QJsonValue data = tool_data(body);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data.isObject() ? data.toObject() : QJsonObject{{"data", data}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+
+    QJsonArray rows;
+    if (data.isArray())
+        rows = data.toArray();
+    else if (data.isObject()) {
+        const QJsonObject o = data.toObject();
+        if (o.value("agents").isArray())
+            rows = o.value("agents").toArray();
+        else if (o.value("providers").isArray())
+            rows = o.value("providers").toArray();
+        else if (o.value("tools").isArray())
+            rows = o.value("tools").toArray();
+    }
+
+    if (!rows.isEmpty()) {
+        std::printf("%-32s %-18s %-20s %s\n", "id", "category", "provider", "name");
+        for (const auto& v : rows) {
+            const QJsonObject o = v.toObject();
+            std::printf("%-32s %-18s %-20s %s\n",
+                        qUtf8Printable(elide_text(o.value("id").toString(o.value("name").toString()), 32)),
+                        qUtf8Printable(elide_text(o.value("category").toString(o.value("type").toString()), 18)),
+                        qUtf8Printable(elide_text(o.value("provider").toString(o.value("model").toString()), 20)),
+                        qUtf8Printable(elide_text(o.value("name").toString(o.value("description").toString()), 80)));
+        }
+        return 0;
+    }
+    if (data.isArray()) {
+        std::printf("no results\n");
+        return 0;
+    }
+
+    const QString msg = body.value("message").toString();
+    if (!msg.isEmpty())
+        std::printf("%s\n", qUtf8Printable(msg));
+    std::printf("%s\n", QJsonDocument(data.isObject() ? data.toObject() : QJsonObject{{"data", data}})
+                            .toJson(QJsonDocument::Indented)
+                            .constData());
+    return 0;
+}
+
+static int agent_call(const GlobalOpts& opts, const QString& tool, const QJsonObject& args) {
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, tool, args, body);
+    return rc == 0 ? emit_agent_payload(opts, body) : rc;
+}
+
+static int workflow_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    if (sub == "list" || sub == "ls") {
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto rows = WorkflowRepository::instance().list_all();
+        if (rows.is_err()) {
+            std::fprintf(stderr, "failed to list workflows: %s\n", rows.error().c_str());
+            return 5;
+        }
+        return emit_workflow_rows(opts, rows.value());
+    }
+    if (sub == "show" || sub == "get") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workflow show <workflow-id>\n");
+            return 2;
+        }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto wf = WorkflowRepository::instance().load(args.first());
+        if (wf.is_err()) {
+            std::fprintf(stderr, "failed to load workflow: %s\n", wf.error().c_str());
+            return 5;
+        }
+        return emit_workflow_detail(opts, wf.value());
+    }
+    if (sub == "save" || sub == "import") {
+        if (!require_yes(args, "usage: workflow save <workflow-json|@file|-> --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workflow save <workflow-json|@file|-> --yes\n");
+            return 2;
+        }
+        QJsonObject raw;
+        QString err;
+        if (!parse_json_object_text(args.join(' '), raw, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        QJsonObject wf_json = raw.value("workflow").isObject() ? raw.value("workflow").toObject() : raw;
+        workflow::WorkflowDef wf = workflow_from_json_cli(wf_json);
+        if (wf.id.isEmpty())
+            wf.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto r = WorkflowRepository::instance().save(wf);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to save workflow: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Workflow saved"),
+                                                      QJsonObject{{"id", wf.id},
+                                                                  {"nodes", static_cast<int>(wf.nodes.size())},
+                                                                  {"edges", static_cast<int>(wf.edges.size())}}));
+    }
+    if (sub == "delete" || sub == "remove" || sub == "rm") {
+        if (!require_yes(args, "usage: workflow delete <workflow-id> --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workflow delete <workflow-id> --yes\n");
+            return 2;
+        }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto r = WorkflowRepository::instance().remove(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete workflow: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Workflow deleted"),
+                                                      QJsonObject{{"id", args.first()}}));
+    }
+    if (sub == "run" || sub == "execute") {
+        QString params_raw;
+        if (!take_string_option(args, QStringLiteral("--params"), params_raw))
+            return 2;
+        if (!require_yes(args, "usage: workflow run <workflow-type> [--params JSON] --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workflow run <workflow-type> [--params JSON] --yes\n");
+            return 2;
+        }
+        QJsonObject params;
+        if (!params_raw.isEmpty()) {
+            QString err;
+            if (!parse_json_object_text(params_raw, params, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        return agent_call(opts, QStringLiteral("run_agent_workflow"),
+                          QJsonObject{{"workflow_type", args.first()}, {"params", params}});
+    }
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workflow tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return agent_call(opts, tool, a);
+    }
+    std::fprintf(stderr, "usage: workflow list|show|save|delete|run|tool\n");
+    return 2;
+}
+
+static int agent_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    if (sub == "list" || sub == "ls")
+        return agent_call(opts, QStringLiteral("list_agents"), {});
+    if (sub == "discover" || sub == "refresh")
+        return agent_call(opts, QStringLiteral("discover_agents"), {});
+    if (sub == "tools")
+        return agent_call(opts, QStringLiteral("list_agent_tools"), {});
+    if (sub == "models")
+        return agent_call(opts, QStringLiteral("list_agent_models"), {});
+    if (sub == "system" || sub == "info")
+        return agent_call(opts, QStringLiteral("get_agent_system_info"), {});
+    if (sub == "cache")
+        return agent_call(opts, QStringLiteral("get_agent_cache_stats"), {});
+    if (sub == "configs" || sub == "config") {
+        const QString cfg_sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+        if (cfg_sub == "list" || cfg_sub == "ls")
+            return agent_call(opts, QStringLiteral("list_agent_configs"), {});
+        if (cfg_sub == "active")
+            return agent_call(opts, QStringLiteral("get_active_agent_config"), {});
+        if (cfg_sub == "show" || cfg_sub == "get") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "usage: agent configs show <id>\n");
+                return 2;
+            }
+            return agent_call(opts, QStringLiteral("get_agent_config"), QJsonObject{{"id", args.first()}});
+        }
+        std::fprintf(stderr, "usage: agent configs [list|active|show <id>]\n");
+        return 2;
+    }
+    if (sub == "route") {
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: agent route <query...>\n");
+            return 2;
+        }
+        return agent_call(opts, QStringLiteral("route_agent_query"), QJsonObject{{"query", query}});
+    }
+    if (sub == "run" || sub == "ask") {
+        QString config_raw;
+        if (!take_string_option(args, QStringLiteral("--config"), config_raw))
+            return 2;
+        if (!require_yes(args, "usage: agent run <query...> [--config JSON] --yes"))
+            return 2;
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: agent run <query...> [--config JSON] --yes\n");
+            return 2;
+        }
+        QJsonObject config;
+        if (!config_raw.isEmpty()) {
+            QString err;
+            if (!parse_json_object_text(config_raw, config, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        return agent_call(opts, QStringLiteral("run_agent"), QJsonObject{{"query", query}, {"config", config}});
+    }
+    if (sub == "stock") {
+        QString config_raw;
+        if (!take_string_option(args, QStringLiteral("--config"), config_raw))
+            return 2;
+        if (!require_yes(args, "usage: agent stock <symbol> [--config JSON] --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: agent stock <symbol> [--config JSON] --yes\n");
+            return 2;
+        }
+        QJsonObject config;
+        if (!config_raw.isEmpty()) {
+            QString err;
+            if (!parse_json_object_text(config_raw, config, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        return agent_call(opts, QStringLiteral("run_stock_analysis_agent"),
+                          QJsonObject{{"symbol", args.first().toUpper()}, {"config", config}});
+    }
+    if (sub == "team") {
+        QString team_raw;
+        if (!take_string_option(args, QStringLiteral("--team"), team_raw))
+            return 2;
+        if (!require_yes(args, "usage: agent team <query...> --team JSON --yes"))
+            return 2;
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty() || team_raw.isEmpty()) {
+            std::fprintf(stderr, "usage: agent team <query...> --team JSON --yes\n");
+            return 2;
+        }
+        QJsonObject team;
+        QString err;
+        if (!parse_json_object_text(team_raw, team, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return agent_call(opts, QStringLiteral("run_agent_team"),
+                          QJsonObject{{"query", query}, {"team_config", team}});
+    }
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: agent tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return agent_call(opts, tool, a);
+    }
+    std::fprintf(stderr, "usage: agent list|discover|tools|models|system|cache|configs|route|run|stock|team|tool\n");
+    return 2;
+}
+
+static bool read_text_file(const QString& path, QString& out, QString& err) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        err = QStringLiteral("failed to read ") + path;
+        return false;
+    }
+    out = QString::fromUtf8(f.readAll());
+    return true;
+}
+
+static QString recipe_file_path(const QString& name) {
+    QString normalized = name.trimmed().toLower();
+    normalized.replace('-', '_');
+    if (normalized.endsWith(QStringLiteral(".md")))
+        normalized.chop(3);
+    const QStringList names = services::AnalysisSkillLoader::instance().skill_names();
+    for (const QString& n : names) {
+        if (n.compare(normalized, Qt::CaseInsensitive) == 0)
+            return QDir(services::AnalysisSkillLoader::instance().skills_dir()).filePath(n + ".md");
+    }
+    return {};
+}
+
+static QString recipe_title_from_markdown(const QString& markdown, const QString& fallback) {
+    for (const QString& line : markdown.split('\n')) {
+        const QString trimmed = line.trimmed();
+        if (trimmed.startsWith(QStringLiteral("# ")))
+            return trimmed.mid(2).trimmed();
+    }
+    return fallback;
+}
+
+static int ai_recipes_list_command(const GlobalOpts& opts) {
+    QJsonArray arr;
+    const QString dir = services::AnalysisSkillLoader::instance().skills_dir();
+    for (const QString& name : services::AnalysisSkillLoader::instance().skill_names()) {
+        QString md;
+        QString err;
+        const QString path = QDir(dir).filePath(name + ".md");
+        read_text_file(path, md, err);
+        arr.append(QJsonObject{{"name", name},
+                               {"title", recipe_title_from_markdown(md, name)},
+                               {"path", path}});
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"recipes", arr}, {"directory", dir}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("%-20s %s\n", "name", "title");
+    for (const auto& v : arr) {
+        const QJsonObject o = v.toObject();
+        std::printf("%-20s %s\n",
+                    qUtf8Printable(o.value("name").toString()),
+                    qUtf8Printable(o.value("title").toString()));
+    }
+    return 0;
+}
+
+static int ai_recipe_show_command(const GlobalOpts& opts, const QString& name) {
+    const QString path = recipe_file_path(name);
+    if (path.isEmpty()) {
+        std::fprintf(stderr, "recipe not found: %s\n", qUtf8Printable(name));
+        return 2;
+    }
+    QString md;
+    QString err;
+    if (!read_text_file(path, md, err)) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+        return 5;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"name", QFileInfo(path).baseName()},
+                                                       {"path", path},
+                                                       {"markdown", md}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+    } else {
+        std::printf("%s\n", qUtf8Printable(md));
+    }
+    return 0;
+}
+
+static QJsonObject managed_file_to_json(const services::ManagedFile& f) {
+    return QJsonObject{{"id", f.id},
+                       {"name", f.original_name},
+                       {"stored_name", f.name},
+                       {"size", static_cast<qint64>(f.size)},
+                       {"type", f.mime_type},
+                       {"uploaded_at", f.uploaded_at},
+                       {"source_screen", f.source_screen}};
+}
+
+static QJsonObject file_record_to_cli_json(const QJsonObject& obj) {
+    return QJsonObject{{"id", obj.value("id")},
+                       {"name", obj.value("originalName")},
+                       {"stored_name", obj.value("name")},
+                       {"size", obj.value("size")},
+                       {"type", obj.value("type")},
+                       {"uploaded_at", obj.value("uploadedAt")},
+                       {"source_screen", obj.value("sourceScreen")}};
+}
+
+static int emit_files_array(const GlobalOpts& opts, const QJsonArray& rows) {
+    QJsonArray arr;
+    for (const auto& v : rows)
+        arr.append(file_record_to_cli_json(v.toObject()));
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"files", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (arr.isEmpty()) {
+        std::printf("no files\n");
+        return 0;
+    }
+    std::printf("%-28s %-18s %-10s %-16s %s\n", "id", "source", "size", "type", "name");
+    for (const auto& v : arr) {
+        const QJsonObject f = v.toObject();
+        std::printf("%-28s %-18s %-10lld %-16s %s\n",
+                    qUtf8Printable(f.value("id").toString()),
+                    qUtf8Printable(elide_text(f.value("source_screen").toString(), 18)),
+                    static_cast<long long>(f.value("size").toInteger()),
+                    qUtf8Printable(elide_text(f.value("type").toString(), 16)),
+                    qUtf8Printable(elide_text(f.value("name").toString(), 80)));
+    }
+    return 0;
+}
+
+static int emit_file_detail(const GlobalOpts& opts, const services::ManagedFile& f) {
+    QJsonObject o = managed_file_to_json(f);
+    o["full_path"] = services::FileManagerService::instance().full_path(f.name);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id             %s\n", qUtf8Printable(f.id));
+    std::printf("name           %s\n", qUtf8Printable(f.original_name));
+    std::printf("stored_name    %s\n", qUtf8Printable(f.name));
+    std::printf("size           %lld\n", static_cast<long long>(f.size));
+    std::printf("type           %s\n", qUtf8Printable(f.mime_type));
+    std::printf("source_screen  %s\n", qUtf8Printable(f.source_screen));
+    std::printf("uploaded_at    %s\n", qUtf8Printable(f.uploaded_at));
+    std::printf("full_path      %s\n", qUtf8Printable(o.value("full_path").toString()));
+    return 0;
+}
+
+static int files_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto& svc = services::FileManagerService::instance();
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "list" || sub == "ls") {
+        QString screen;
+        QString mime;
+        if (!take_string_option(args, QStringLiteral("--screen"), screen) ||
+            !take_string_option(args, QStringLiteral("--mime"), mime) ||
+            !args.isEmpty()) {
+            std::fprintf(stderr, "usage: files list [--screen S] [--mime M]\n");
+            return 2;
+        }
+        if (!screen.isEmpty())
+            return emit_files_array(opts, svc.files_for_screen(screen));
+        if (!mime.isEmpty())
+            return emit_files_array(opts, svc.files_by_mime(mime));
+        return emit_files_array(opts, svc.all_files());
+    }
+
+    if (sub == "search" || sub == "find") {
+        QString screen;
+        QString mime;
+        if (!take_string_option(args, QStringLiteral("--screen"), screen) ||
+            !take_string_option(args, QStringLiteral("--mime"), mime)) {
+            return 2;
+        }
+        const QString query = args.join(' ').trimmed().toLower();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: files search <query...> [--screen S] [--mime M]\n");
+            return 2;
+        }
+        QJsonArray result;
+        for (const auto& v : svc.all_files()) {
+            const QJsonObject o = v.toObject();
+            if (!o.value("originalName").toString().toLower().contains(query))
+                continue;
+            if (!screen.isEmpty() && o.value("sourceScreen").toString().compare(screen, Qt::CaseInsensitive) != 0)
+                continue;
+            if (!mime.isEmpty() && !o.value("type").toString().contains(mime, Qt::CaseInsensitive))
+                continue;
+            result.append(o);
+        }
+        return emit_files_array(opts, result);
+    }
+
+    auto require_file = [&](const QString& usage_line) -> std::optional<services::ManagedFile> {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(usage_line));
+            return std::nullopt;
+        }
+        auto f = svc.find_by_id(args.first());
+        if (f.id.isEmpty()) {
+            std::fprintf(stderr, "file not found: %s\n", qUtf8Printable(args.first()));
+            return std::nullopt;
+        }
+        args.removeFirst();
+        return f;
+    };
+
+    if (sub == "info" || sub == "show") {
+        auto f = require_file(QStringLiteral("usage: files info <file-id>"));
+        return f ? emit_file_detail(opts, *f) : 5;
+    }
+
+    if (sub == "path") {
+        auto f = require_file(QStringLiteral("usage: files path <file-id>"));
+        if (!f)
+            return 5;
+        const QString path = svc.full_path(f->name);
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"id", f->id}, {"full_path", path}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", qUtf8Printable(path));
+        return 0;
+    }
+
+    if (sub == "read" || sub == "cat") {
+        QString max_s;
+        if (!take_string_option(args, QStringLiteral("--max"), max_s))
+            return 2;
+        auto f = require_file(QStringLiteral("usage: files read <file-id> [--max N]"));
+        if (!f)
+            return 5;
+        bool ok = true;
+        int max_chars = 32000;
+        if (!max_s.isEmpty()) {
+            max_chars = max_s.toInt(&ok);
+            if (!ok || max_chars <= 0) {
+                std::fprintf(stderr, "--max requires a positive integer\n");
+                return 2;
+            }
+        }
+        const QString mime = f->mime_type.toLower();
+        if (mime.contains("image") || mime.contains("video") || mime.contains("audio") ||
+            mime.contains("zip") || mime.contains("archive") || mime.contains("spreadsheet") ||
+            mime.contains("excel") || mime.contains("octet-stream")) {
+            std::fprintf(stderr, "file is binary or not readable as UTF-8 text: %s\n", qUtf8Printable(f->mime_type));
+            return 5;
+        }
+        QFile file(svc.full_path(f->name));
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            std::fprintf(stderr, "failed to read file on disk\n");
+            return 5;
+        }
+        const QString content = QString::fromUtf8(file.read(max_chars));
+        const bool truncated = !file.atEnd();
+        if (opts.json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"id", f->id}, {"name", f->original_name},
+                                                         {"truncated", truncated}, {"content", content}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("%s", qUtf8Printable(content));
+            if (!content.endsWith('\n'))
+                std::printf("\n");
+            if (truncated)
+                std::fprintf(stderr, "truncated at %d chars\n", max_chars);
+        }
+        return 0;
+    }
+
+    if (sub == "import") {
+        QString screen;
+        if (!take_string_option(args, QStringLiteral("--screen"), screen))
+            return 2;
+        if (!require_yes(args, "usage: files import <path> [--screen S] --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: files import <path> [--screen S] --yes\n");
+            return 2;
+        }
+        const QString id = svc.import_file(args.first(), screen);
+        if (id.isEmpty()) {
+            std::fprintf(stderr, "failed to import file\n");
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("File imported"), managed_file_to_json(svc.find_by_id(id))));
+    }
+
+    if (sub == "write" || sub == "create") {
+        QString content;
+        QString content_file;
+        QString screen;
+        if (!take_string_option(args, QStringLiteral("--content"), content) ||
+            !take_string_option(args, QStringLiteral("--content-file"), content_file) ||
+            !take_string_option(args, QStringLiteral("--screen"), screen))
+            return 2;
+        if (!require_yes(args, "usage: files write <name> (--content TEXT | --content-file PATH) [--screen S] --yes"))
+            return 2;
+        if (args.size() != 1 || (content.isEmpty() && content_file.isEmpty()) ||
+            (!content.isEmpty() && !content_file.isEmpty())) {
+            std::fprintf(stderr, "usage: files write <name> (--content TEXT | --content-file PATH) [--screen S] --yes\n");
+            return 2;
+        }
+        const QString name = args.first();
+        if (QFileInfo(name).fileName() != name || name.contains('/') || name.contains('\\')) {
+            std::fprintf(stderr, "file name must be a simple basename\n");
+            return 2;
+        }
+        if (!content_file.isEmpty()) {
+            QString err;
+            if (!read_text_file(content_file, content, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        QTemporaryDir tmp;
+        if (!tmp.isValid()) {
+            std::fprintf(stderr, "failed to create temp directory\n");
+            return 5;
+        }
+        const QString staged = tmp.filePath(name);
+        QFile out(staged);
+        if (!out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            std::fprintf(stderr, "failed to stage file content\n");
+            return 5;
+        }
+        out.write(content.toUtf8());
+        out.close();
+        const QString id = svc.import_file(staged, screen.isEmpty() ? QStringLiteral("cli") : screen);
+        if (id.isEmpty()) {
+            std::fprintf(stderr, "failed to create managed file\n");
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("File created"), managed_file_to_json(svc.find_by_id(id))));
+    }
+
+    if (sub == "download" || sub == "export") {
+        if (!require_yes(args, "usage: files download <file-id> <destination-path> --yes"))
+            return 2;
+        if (args.size() != 2) {
+            std::fprintf(stderr, "usage: files download <file-id> <destination-path> --yes\n");
+            return 2;
+        }
+        auto f = svc.find_by_id(args.at(0));
+        if (f.id.isEmpty()) {
+            std::fprintf(stderr, "file not found: %s\n", qUtf8Printable(args.at(0)));
+            return 5;
+        }
+        QFile::remove(args.at(1));
+        if (!QFile::copy(svc.full_path(f.name), args.at(1))) {
+            std::fprintf(stderr, "failed to copy file to destination\n");
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("File downloaded"),
+                                                      QJsonObject{{"id", f.id}, {"destination_path", args.at(1)}}));
+    }
+
+    if (sub == "delete" || sub == "remove" || sub == "rm") {
+        if (!require_yes(args, "usage: files delete <file-id> --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: files delete <file-id> --yes\n");
+            return 2;
+        }
+        if (!svc.remove_file(args.first())) {
+            std::fprintf(stderr, "file not found or could not be deleted: %s\n", qUtf8Printable(args.first()));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("File deleted"), QJsonObject{{"id", args.first()}}));
+    }
+
+    if (sub == "storage" || sub == "dir") {
+        const QString dir = svc.storage_dir();
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"storage_dir", dir}}).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", qUtf8Printable(dir));
+        return 0;
+    }
+
+    if (sub == "stats" || sub == "status") {
+        const QJsonArray all = svc.all_files();
+        qint64 total = 0;
+        for (const auto& v : all)
+            total += static_cast<qint64>(v.toObject().value("size").toInteger());
+        if (opts.json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"file_count", all.size()}, {"total_bytes", total},
+                                                         {"storage_dir", svc.storage_dir()}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("files        %lld\n", static_cast<long long>(all.size()));
+            std::printf("total_bytes  %lld\n", static_cast<long long>(total));
+            std::printf("storage_dir  %s\n", qUtf8Printable(svc.storage_dir()));
+        }
+        return 0;
+    }
+
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: files tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return data_call(opts, tool, a);
+    }
+
+    std::fprintf(stderr, "usage: files list|search|info|read|path|import|write|download|delete|stats|storage|tool\n");
+    return 2;
+}
+
+static int note_word_count(const QString& content) {
+    return content.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts).size();
+}
+
+static QJsonObject note_to_json(const FinancialNote& n, bool include_content) {
+    QJsonObject o{{"id", n.id},
+                  {"title", n.title},
+                  {"category", n.category},
+                  {"priority", n.priority},
+                  {"tags", n.tags},
+                  {"tickers", n.tickers},
+                  {"sentiment", n.sentiment},
+                  {"is_favorite", n.is_favorite},
+                  {"is_archived", n.is_archived},
+                  {"color_code", n.color_code},
+                  {"created_at", n.created_at},
+                  {"updated_at", n.updated_at},
+                  {"reminder_date", n.reminder_date},
+                  {"word_count", n.word_count}};
+    if (include_content)
+        o["content"] = n.content;
+    return o;
+}
+
+static int emit_notes_list(const GlobalOpts& opts, const QVector<FinancialNote>& notes) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& n : notes)
+            arr.append(note_to_json(n, false));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"notes", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (notes.isEmpty()) {
+        std::printf("no notes\n");
+        return 0;
+    }
+    std::printf("%-6s %-14s %-8s %-9s %-12s %s\n", "id", "category", "priority", "sent", "tickers", "title");
+    for (const auto& n : notes) {
+        std::printf("%-6d %-14s %-8s %-9s %-12s %s\n",
+                    n.id,
+                    qUtf8Printable(elide_text(n.category, 14)),
+                    qUtf8Printable(elide_text(n.priority, 8)),
+                    qUtf8Printable(elide_text(n.sentiment, 9)),
+                    qUtf8Printable(elide_text(n.tickers, 12)),
+                    qUtf8Printable(elide_text(n.title, 80)));
+    }
+    return 0;
+}
+
+static int emit_note_detail(const GlobalOpts& opts, const FinancialNote& n) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(note_to_json(n, true)).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id          %d\n", n.id);
+    std::printf("title       %s\n", qUtf8Printable(n.title));
+    std::printf("category    %s\n", qUtf8Printable(n.category));
+    std::printf("priority    %s\n", qUtf8Printable(n.priority));
+    std::printf("tickers     %s\n", qUtf8Printable(n.tickers));
+    std::printf("sentiment   %s\n", qUtf8Printable(n.sentiment));
+    std::printf("tags        %s\n", qUtf8Printable(n.tags));
+    std::printf("favorite    %s\n", n.is_favorite ? "yes" : "no");
+    std::printf("archived    %s\n", n.is_archived ? "yes" : "no");
+    std::printf("updated_at  %s\n\n", qUtf8Printable(n.updated_at));
+    std::printf("%s\n", qUtf8Printable(n.content));
+    return 0;
+}
+
+static QString note_markdown(const FinancialNote& n) {
+    QString md;
+    md += "# " + n.title + "\n\n";
+    md += "- Category: " + n.category + "\n";
+    md += "- Priority: " + n.priority + "\n";
+    if (!n.tickers.isEmpty()) md += "- Tickers: " + n.tickers + "\n";
+    if (!n.sentiment.isEmpty()) md += "- Sentiment: " + n.sentiment + "\n";
+    if (!n.tags.isEmpty()) md += "- Tags: " + n.tags + "\n";
+    md += "\n" + n.content + "\n";
+    return md;
+}
+
+static int notes_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto& repo = NotesRepository::instance();
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "list" || sub == "ls") {
+        QString category;
+        const bool archived = take_bool_flag(args, QStringLiteral("--archived"));
+        if (!take_string_option(args, QStringLiteral("--category"), category) || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: notes list [--archived] [--category C]\n");
+            return 2;
+        }
+        Result<QVector<FinancialNote>> r = category.isEmpty() ? repo.list_all(archived) : repo.list_by_category(category);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to load notes: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_notes_list(opts, r.value());
+    }
+
+    if (sub == "search" || sub == "find") {
+        const QString query = args.join(' ').trimmed();
+        if (query.isEmpty()) {
+            std::fprintf(stderr, "usage: notes search <query...>\n");
+            return 2;
+        }
+        auto r = repo.search(query);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to search notes: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_notes_list(opts, r.value());
+    }
+
+    auto parse_note_id = [](const QString& raw, int& id) {
+        bool ok = false;
+        id = raw.toInt(&ok);
+        return ok && id > 0;
+    };
+
+    if (sub == "show" || sub == "read" || sub == "get") {
+        int id = 0;
+        if (args.size() != 1 || !parse_note_id(args.first(), id)) {
+            std::fprintf(stderr, "usage: notes show <note-id>\n");
+            return 2;
+        }
+        auto r = repo.get(id);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to load note: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_note_detail(opts, r.value());
+    }
+
+    if (sub == "create" || sub == "new") {
+        QString content;
+        QString content_file;
+        QString category = QStringLiteral("GENERAL");
+        QString priority = QStringLiteral("MEDIUM");
+        QString tickers;
+        QString sentiment = QStringLiteral("NEUTRAL");
+        QString tags;
+        if (!take_string_option(args, QStringLiteral("--content"), content) ||
+            !take_string_option(args, QStringLiteral("--content-file"), content_file) ||
+            !take_string_option(args, QStringLiteral("--category"), category) ||
+            !take_string_option(args, QStringLiteral("--priority"), priority) ||
+            !take_string_option(args, QStringLiteral("--tickers"), tickers) ||
+            !take_string_option(args, QStringLiteral("--sentiment"), sentiment) ||
+            !take_string_option(args, QStringLiteral("--tags"), tags))
+            return 2;
+        if (!require_yes(args, "usage: notes create <title...> (--content TEXT | --content-file PATH) [--category C] --yes"))
+            return 2;
+        const QString title = args.join(' ').trimmed();
+        if (title.isEmpty() || (content.isEmpty() && content_file.isEmpty()) ||
+            (!content.isEmpty() && !content_file.isEmpty())) {
+            std::fprintf(stderr, "usage: notes create <title...> (--content TEXT | --content-file PATH) [--category C] --yes\n");
+            return 2;
+        }
+        if (!content_file.isEmpty()) {
+            QString err;
+            if (!read_text_file(content_file, content, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        FinancialNote n;
+        n.title = title;
+        n.content = content;
+        n.category = category.toUpper();
+        n.priority = priority.toUpper();
+        n.tickers = tickers.toUpper();
+        n.sentiment = sentiment.toUpper();
+        n.tags = tags;
+        n.word_count = note_word_count(content);
+        auto r = repo.create(n);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to create note: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Note created"),
+                                                      QJsonObject{{"id", static_cast<int>(r.value())}, {"title", title}}));
+    }
+
+    if (sub == "update" || sub == "edit") {
+        if (!require_yes(args, "usage: notes update <note-id> key=value ... --yes"))
+            return 2;
+        int id = 0;
+        if (args.size() < 2 || !parse_note_id(args.takeFirst(), id)) {
+            std::fprintf(stderr, "usage: notes update <note-id> key=value ... --yes\n");
+            return 2;
+        }
+        auto loaded = repo.get(id);
+        if (loaded.is_err()) {
+            std::fprintf(stderr, "failed to load note: %s\n", loaded.error().c_str());
+            return 5;
+        }
+        FinancialNote n = loaded.value();
+        for (const QString& tok : args) {
+            const int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(tok));
+                return 2;
+            }
+            const QString key = tok.left(eq).trimmed().toLower();
+            QString value = tok.mid(eq + 1);
+            if (key == "title")
+                n.title = value;
+            else if (key == "content")
+                n.content = value;
+            else if (key == "content_file") {
+                QString err;
+                if (!read_text_file(value, n.content, err)) {
+                    std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                    return 2;
+                }
+            } else if (key == "category")
+                n.category = value.toUpper();
+            else if (key == "priority")
+                n.priority = value.toUpper();
+            else if (key == "tickers")
+                n.tickers = value.toUpper();
+            else if (key == "sentiment")
+                n.sentiment = value.toUpper();
+            else if (key == "tags")
+                n.tags = value;
+            else {
+                std::fprintf(stderr, "unknown note field: %s\n", qUtf8Printable(key));
+                return 2;
+            }
+        }
+        n.word_count = note_word_count(n.content);
+        auto r = repo.update(n);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to update note: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Note updated"), QJsonObject{{"id", id}}));
+    }
+
+    if (sub == "favorite" || sub == "fav" || sub == "archive" || sub == "delete" || sub == "remove" || sub == "rm") {
+        const bool is_delete = (sub == "delete" || sub == "remove" || sub == "rm");
+        const bool is_archive = (sub == "archive");
+        const char* usage_line = is_delete ? "usage: notes delete <note-id> --yes"
+                               : is_archive ? "usage: notes archive <note-id> --yes"
+                                            : "usage: notes favorite <note-id> --yes";
+        if (!require_yes(args, usage_line))
+            return 2;
+        int id = 0;
+        if (args.size() != 1 || !parse_note_id(args.first(), id)) {
+            std::fprintf(stderr, "%s\n", usage_line);
+            return 2;
+        }
+        Result<void> r = is_delete ? repo.remove(id) : (is_archive ? repo.toggle_archive(id) : repo.toggle_favorite(id));
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to update note: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(is_delete ? QStringLiteral("Note deleted")
+                                                      : is_archive ? QStringLiteral("Note archive toggled")
+                                                                   : QStringLiteral("Note favorite toggled"),
+                                                      QJsonObject{{"id", id}}));
+    }
+
+    if (sub == "export") {
+        QString path;
+        const bool managed = take_bool_flag(args, QStringLiteral("--managed"));
+        if (!take_string_option(args, QStringLiteral("--path"), path))
+            return 2;
+        if (!require_yes(args, "usage: notes export <note-id> [--path PATH | --managed] --yes"))
+            return 2;
+        int id = 0;
+        if (args.size() != 1 || !parse_note_id(args.first(), id) || (path.isEmpty() && !managed) ||
+            (!path.isEmpty() && managed)) {
+            std::fprintf(stderr, "usage: notes export <note-id> [--path PATH | --managed] --yes\n");
+            return 2;
+        }
+        auto loaded = repo.get(id);
+        if (loaded.is_err()) {
+            std::fprintf(stderr, "failed to load note: %s\n", loaded.error().c_str());
+            return 5;
+        }
+        const FinancialNote n = loaded.value();
+        const QString md = note_markdown(n);
+        if (!path.isEmpty()) {
+            QFile out(path);
+            if (!out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                std::fprintf(stderr, "failed to write export path\n");
+                return 5;
+            }
+            out.write(md.toUtf8());
+            out.close();
+            return emit_mutation_body(opts, mutation_body(QStringLiteral("Note exported"),
+                                                          QJsonObject{{"id", id}, {"path", path}}));
+        }
+        QTemporaryDir tmp;
+        const QString safe = QString(n.title).replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")), QStringLiteral("_"));
+        const QString staged = tmp.filePath((safe.isEmpty() ? QStringLiteral("note") : safe) + QStringLiteral(".md"));
+        QFile out(staged);
+        if (!tmp.isValid() || !out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            std::fprintf(stderr, "failed to stage managed note export\n");
+            return 5;
+        }
+        out.write(md.toUtf8());
+        out.close();
+        const QString file_id = services::FileManagerService::instance().import_file(staged, QStringLiteral("notes"));
+        if (file_id.isEmpty()) {
+            std::fprintf(stderr, "failed to export note into File Manager\n");
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Note exported to File Manager"),
+                                                      QJsonObject{{"id", id}, {"file_id", file_id}}));
+    }
+
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: notes tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        return data_call(opts, tool, a);
+    }
+
+    std::fprintf(stderr, "usage: notes list|search|show|create|update|favorite|archive|delete|export|tool\n");
+    return 2;
+}
+
+static bool parse_json_value_text(const QString& raw, QJsonValue& out, QString& err) {
+    QByteArray body;
+    if (!read_json_arg(raw, body, err))
+        return false;
+    QJsonParseError pe;
+    const QJsonDocument d = QJsonDocument::fromJson(body, &pe);
+    if (pe.error != QJsonParseError::NoError) {
+        err = pe.errorString();
+        return false;
+    }
+    if (d.isObject())
+        out = d.object();
+    else if (d.isArray())
+        out = d.array();
+    else {
+        err = QStringLiteral("expected JSON object or array");
+        return false;
+    }
+    return true;
+}
+
+static int emit_spreadsheet_result(const GlobalOpts& opts, const QJsonObject& data, int limit) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(data).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    const QString op = data.value("operation").toString();
+    if (op == "read") {
+        const QJsonArray rows = data.value("data").toArray();
+        std::printf("source  %s\n", qUtf8Printable(data.value("source").toString()));
+        if (data.contains("path"))
+            std::printf("path    %s\n", qUtf8Printable(data.value("path").toString()));
+        if (data.contains("sheet_id"))
+            std::printf("sheet   %s\n", qUtf8Printable(data.value("sheet_id").toString()));
+        std::printf("rows    %d\n\n", data.value("rows").toInt(rows.size()));
+
+        const int max_rows = qMin(limit <= 0 ? rows.size() : limit, rows.size());
+        for (int r = 0; r < max_rows; ++r) {
+            const QJsonArray cells = rows.at(r).toArray();
+            QStringList parts;
+            for (const auto& cell : cells)
+                parts << elide_text(cell.toVariant().toString(), 24).leftJustified(24);
+            std::printf("%s\n", qUtf8Printable(parts.join(' ')));
+        }
+        if (rows.size() > max_rows)
+            std::fprintf(stderr, "truncated at %d rows; use --limit N or --json\n", max_rows);
+        return 0;
+    }
+
+    const QString msg = op.isEmpty()
+                            ? QStringLiteral("Spreadsheet command completed")
+                            : QStringLiteral("Spreadsheet %1 completed").arg(op);
+    return emit_mutation_body(opts, mutation_body(msg, data));
+}
+
+static int run_spreadsheet_script(const GlobalOpts& opts, const QJsonObject& payload, QJsonObject& out) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    std::optional<services::python_cli::CliResult> received;
+
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&]() { loop.quit(); });
+    timer.start(60000);
+
+    const QString args_json = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    services::python_cli::PythonCliService::instance().run(
+        QStringLiteral("spreadsheet.py"), {QStringLiteral("--args"), args_json},
+        [&](const services::python_cli::CliResult& result) {
+            received = result;
+            loop.quit();
+        });
+
+    if (!received.has_value())
+        loop.exec();
+
+    if (!received.has_value()) {
+        std::fprintf(stderr, "spreadsheet command timed out\n");
+        return 6;
+    }
+    if (!received->success) {
+        std::fprintf(stderr, "spreadsheet command failed: %s\n",
+                     qUtf8Printable(received->error.isEmpty() ? QStringLiteral("script error") : received->error));
+        return 5;
+    }
+
+    out = received->data;
+    return 0;
+}
+
+static bool parse_spreadsheet_rows_arg(const QString& spec, QJsonArray& rows, QString& err) {
+    QJsonValue value;
+    if (!parse_json_value_text(spec, value, err))
+        return false;
+    if (!value.isArray()) {
+        err = QStringLiteral("rows must be a JSON array");
+        return false;
+    }
+
+    QJsonArray parsed = value.toArray();
+    if (!parsed.isEmpty() && !parsed.first().isArray()) {
+        QJsonArray wrapped;
+        wrapped.append(parsed);
+        parsed = wrapped;
+    }
+    for (const auto& row : parsed) {
+        if (!row.isArray()) {
+            err = QStringLiteral("rows must be an array of rows");
+            return false;
+        }
+    }
+    rows = parsed;
+    return true;
+}
+
+static int spreadsheet_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("read") : args.takeFirst().trimmed().toLower();
+    const bool is_google = sub.startsWith(QStringLiteral("google-")) || sub == "gread" || sub == "gwrite" ||
+                           sub == "gappend" || sub == "gclear";
+    QString operation = sub;
+    if (operation.startsWith(QStringLiteral("google-")))
+        operation = operation.mid(QStringLiteral("google-").size());
+    if (operation == "gread") operation = QStringLiteral("read");
+    if (operation == "gwrite") operation = QStringLiteral("write");
+    if (operation == "gappend") operation = QStringLiteral("append");
+    if (operation == "gclear") operation = QStringLiteral("clear");
+    if (operation == "get" || operation == "show") operation = QStringLiteral("read");
+    if (operation == "set") operation = QStringLiteral("write");
+    if (operation == "add") operation = QStringLiteral("append");
+
+    if (operation != "read" && operation != "write" && operation != "append" && operation != "clear") {
+        std::fprintf(stderr, "usage: excel read|write|append|clear|google-read|google-write|google-append|google-clear\n");
+        return 2;
+    }
+
+    QString sheet = QStringLiteral("Sheet1");
+    QString range = operation == "read" ? QStringLiteral("A1:Z1000") : QStringLiteral("A1");
+    QString credentials;
+    if (!take_string_option(args, QStringLiteral("--sheet"), sheet) ||
+        !take_string_option(args, QStringLiteral("--range"), range) ||
+        !take_string_option(args, QStringLiteral("--credentials"), credentials))
+        return 2;
+    const bool managed = take_bool_flag(args, QStringLiteral("--managed"));
+    const int limit = parse_limit(args, 50);
+    if (limit < 0) {
+        std::fprintf(stderr, "usage: excel read <path> [--limit N]\n");
+        return 2;
+    }
+
+    if (operation != "read" && !take_bool_flag(args, QStringLiteral("--yes"))) {
+        std::fprintf(stderr,
+                     "usage: excel %s <path-or-id> [rows-json|@file|-] [--sheet NAME] [--range A1] [--managed] --yes\n",
+                     qUtf8Printable(sub));
+        std::fprintf(stderr, "spreadsheet mutation requires --yes\n");
+        return 2;
+    }
+
+    if (args.isEmpty()) {
+        std::fprintf(stderr, "usage: excel %s <path-or-spreadsheet-id> [rows-json|@file|-]\n", qUtf8Printable(sub));
+        return 2;
+    }
+
+    const QString target = args.takeFirst();
+    QJsonObject payload{{"source", is_google ? QStringLiteral("google") : QStringLiteral("local")},
+                        {"operation", operation},
+                        {"sheet_name", sheet},
+                        {"range", range}};
+    if (is_google) {
+        payload["spreadsheet_id"] = target;
+        if (!credentials.isEmpty())
+            payload["credentials_path"] = credentials;
+    } else {
+        payload["file_path"] = target;
+    }
+
+    if (operation == "write" || operation == "append") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: excel %s <path-or-spreadsheet-id> <rows-json|@file|-> --yes\n",
+                         qUtf8Printable(sub));
+            return 2;
+        }
+        QJsonArray rows;
+        QString err;
+        if (!parse_spreadsheet_rows_arg(args.takeFirst(), rows, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        payload["data"] = rows;
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unexpected argument: %s\n", qUtf8Printable(args.first()));
+        return 2;
+    }
+    if (is_google && operation != "read" && credentials.isEmpty()) {
+        std::fprintf(stderr, "--credentials is required for Google Sheets mutations\n");
+        return 2;
+    }
+    if (managed && is_google) {
+        std::fprintf(stderr, "--managed only applies to local file paths\n");
+        return 2;
+    }
+
+    QJsonObject result;
+    const int rc = run_spreadsheet_script(opts, payload, result);
+    if (rc != 0)
+        return rc;
+
+    if (managed && (operation == "write" || operation == "append")) {
+        const QString id = services::FileManagerService::instance().import_file(target, QStringLiteral("excel"));
+        if (id.isEmpty()) {
+            std::fprintf(stderr, "spreadsheet saved, but File Manager import failed\n");
+            return 5;
+        }
+        result["managed_file"] = managed_file_to_json(services::FileManagerService::instance().find_by_id(id));
+    }
+
+    return emit_spreadsheet_result(opts, result, limit);
+}
+
+static QJsonObject layout_entry_to_cli_json(const LayoutCatalog::Entry& e) {
+    return QJsonObject{{"id", e.id.to_string()},
+                       {"name", e.name},
+                       {"kind", e.kind},
+                       {"created_at", QDateTime::fromSecsSinceEpoch(e.created_at_unix).toString(Qt::ISODate)},
+                       {"updated_at", QDateTime::fromSecsSinceEpoch(e.updated_at_unix).toString(Qt::ISODate)},
+                       {"description", e.description},
+                       {"thumbnail_path", e.thumbnail_path}};
+}
+
+static int init_layout_catalog_for_cli(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto r = LayoutCatalog::instance().open();
+    if (r.is_err()) {
+        std::fprintf(stderr, "layout catalog unavailable: %s\n", r.error().c_str());
+        return 5;
+    }
+    return 0;
+}
+
+static std::optional<LayoutId> resolve_layout_arg(const QString& raw) {
+    const LayoutId direct = LayoutId::from_string(raw);
+    if (!direct.is_null())
+        return direct;
+    const LayoutId by_name = LayoutCatalog::instance().find_by_name(raw);
+    if (!by_name.is_null())
+        return by_name;
+    return std::nullopt;
+}
+
+static int emit_layout_entries(const GlobalOpts& opts, const QList<LayoutCatalog::Entry>& entries) {
+    QJsonArray arr;
+    for (const auto& e : entries)
+        arr.append(layout_entry_to_cli_json(e));
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"layouts", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("%-36s %-22s %-10s %-20s %s\n", "id", "name", "kind", "updated", "description");
+    for (const auto& v : arr) {
+        const QJsonObject o = v.toObject();
+        std::printf("%-36s %-22s %-10s %-20s %s\n",
+                    qUtf8Printable(o.value("id").toString()),
+                    qUtf8Printable(elide_text(o.value("name").toString(), 21)),
+                    qUtf8Printable(o.value("kind").toString()),
+                    qUtf8Printable(o.value("updated_at").toString()),
+                    qUtf8Printable(elide_text(o.value("description").toString(), 72)));
+    }
+    return 0;
+}
+
+static int emit_workspace_tool(const GlobalOpts& opts, const QString& tool, const QJsonObject& args) {
+    if (!require_gui_command(opts))
+        return 2;
+    std::optional<BridgeClient> c;
+    int code = 0;
+    if (!prepare_transport(opts, c, code))
+        return code;
+    return emit_result(opts, c->call_tool(tool, args));
+}
+
+static int workspace_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("layouts") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "layouts" || sub == "list" || sub == "ls" || sub == "recent") {
+        const bool recent = sub == "recent" || take_bool_flag(args, QStringLiteral("--recent"));
+        const bool include_auto = take_bool_flag(args, QStringLiteral("--include-auto"));
+        const int limit = parse_limit(args, 25);
+        if (limit < 0 || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: workspace layouts [--recent] [--limit N] [--include-auto]\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        const auto r = recent ? LayoutCatalog::instance().recent_layouts(limit, include_auto)
+                              : LayoutCatalog::instance().list_layouts();
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to list layouts: %s\n", r.error().c_str());
+            return 5;
+        }
+        QList<LayoutCatalog::Entry> entries = r.value();
+        if (!recent && entries.size() > limit)
+            entries = entries.mid(0, limit);
+        return emit_layout_entries(opts, entries);
+    }
+
+    if (sub == "show" || sub == "get") {
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: workspace show <layout-id-or-name>\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        const auto id = resolve_layout_arg(args.first());
+        if (!id) {
+            std::fprintf(stderr, "layout not found: %s\n", qUtf8Printable(args.first()));
+            return 2;
+        }
+        auto r = LayoutCatalog::instance().load_workspace(*id);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to load layout: %s\n", r.error().c_str());
+            return 5;
+        }
+        std::printf("%s\n", QJsonDocument(r.value().to_json())
+                                .toJson(opts.json ? QJsonDocument::Compact : QJsonDocument::Indented)
+                                .constData());
+        return 0;
+    }
+
+    if (sub == "export") {
+        if (!take_bool_flag(args, QStringLiteral("--yes")) || args.size() != 2) {
+            std::fprintf(stderr, "usage: workspace export <layout-id-or-name> <path> --yes\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        const auto id = resolve_layout_arg(args.at(0));
+        if (!id) {
+            std::fprintf(stderr, "layout not found: %s\n", qUtf8Printable(args.at(0)));
+            return 2;
+        }
+        auto r = LayoutCatalog::instance().export_to(*id, args.at(1));
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to export layout: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Layout exported"),
+                                                      QJsonObject{{"id", id->to_string()}, {"path", args.at(1)}}));
+    }
+
+    if (sub == "import") {
+        if (!take_bool_flag(args, QStringLiteral("--yes")) || args.size() != 1) {
+            std::fprintf(stderr, "usage: workspace import <path> --yes\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        auto r = LayoutCatalog::instance().import_from(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to import layout: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Layout imported"),
+                                                      QJsonObject{{"id", r.value().to_string()}}));
+    }
+
+    if (sub == "delete" || sub == "rm") {
+        if (!take_bool_flag(args, QStringLiteral("--yes")) || args.size() != 1) {
+            std::fprintf(stderr, "usage: workspace delete <layout-id-or-name> --yes\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        const auto id = resolve_layout_arg(args.first());
+        if (!id) {
+            std::fprintf(stderr, "layout not found: %s\n", qUtf8Printable(args.first()));
+            return 2;
+        }
+        auto r = LayoutCatalog::instance().remove_layout(*id);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete layout: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Layout deleted"),
+                                                      QJsonObject{{"id", id->to_string()}}));
+    }
+
+    if (sub == "rename") {
+        QString description;
+        if (!take_string_option(args, QStringLiteral("--description"), description))
+            return 2;
+        if (!take_bool_flag(args, QStringLiteral("--yes")) || args.size() < 2) {
+            std::fprintf(stderr, "usage: workspace rename <layout-id-or-name> <new-name...> [--description TEXT] --yes\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        const QString id_or_name = args.takeFirst();
+        const QString new_name = args.join(' ').trimmed();
+        const auto id = resolve_layout_arg(id_or_name);
+        if (!id || new_name.isEmpty()) {
+            std::fprintf(stderr, "layout not found or new name is empty\n");
+            return 2;
+        }
+        auto lr = LayoutCatalog::instance().load_workspace(*id);
+        if (lr.is_err()) {
+            std::fprintf(stderr, "failed to load layout: %s\n", lr.error().c_str());
+            return 5;
+        }
+        auto ws = lr.value();
+        ws.name = new_name;
+        if (!description.isEmpty())
+            ws.description = description;
+        auto sr = LayoutCatalog::instance().save_workspace(ws);
+        if (sr.is_err()) {
+            std::fprintf(stderr, "failed to rename layout: %s\n", sr.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Layout renamed"),
+                                                      QJsonObject{{"id", id->to_string()}, {"name", new_name}}));
+    }
+
+    if (sub == "templates" || sub == "personas") {
+        QJsonArray arr;
+        for (const auto& p : layout::LayoutTemplates::personas())
+            arr.append(QJsonObject{{"id", p.id}, {"display_name", p.display_name}, {"description", p.description}});
+        if (opts.json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"templates", arr}}).toJson(QJsonDocument::Compact).constData());
+            return 0;
+        }
+        for (const auto& v : arr) {
+            const QJsonObject o = v.toObject();
+            std::printf("%-24s %-26s %s\n",
+                        qUtf8Printable(o.value("id").toString()),
+                        qUtf8Printable(o.value("display_name").toString()),
+                        qUtf8Printable(o.value("description").toString()));
+        }
+        return 0;
+    }
+
+    if (sub == "template") {
+        const bool apply = take_bool_flag(args, QStringLiteral("--apply"));
+        if (!take_bool_flag(args, QStringLiteral("--yes")) || args.size() != 1) {
+            std::fprintf(stderr, "usage: workspace template <persona-id> [--apply] --yes\n");
+            return 2;
+        }
+        if (apply)
+            return emit_workspace_tool(opts, QStringLiteral("apply_layout_template"),
+                                       QJsonObject{{"persona_id", args.first()}});
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        auto ws = layout::LayoutTemplates::make(args.first());
+        if (ws.name.isEmpty()) {
+            std::fprintf(stderr, "unknown template: %s\n", qUtf8Printable(args.first()));
+            return 2;
+        }
+        auto r = LayoutCatalog::instance().save_workspace(ws);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to save template: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Layout template saved"),
+                                                      QJsonObject{{"id", r.value().to_string()},
+                                                                  {"persona", args.first()}}));
+    }
+
+    if (sub == "apply") {
+        if (!take_bool_flag(args, QStringLiteral("--yes")) || args.size() != 1) {
+            std::fprintf(stderr, "usage: workspace apply <layout-id-or-name> --yes\n");
+            return 2;
+        }
+        const int rc = init_layout_catalog_for_cli(opts);
+        if (rc != 0)
+            return rc;
+        const auto id = resolve_layout_arg(args.first());
+        if (!id) {
+            std::fprintf(stderr, "layout not found: %s\n", qUtf8Printable(args.first()));
+            return 2;
+        }
+        return emit_workspace_tool(opts, QStringLiteral("apply_layout"), QJsonObject{{"id", id->to_string()}});
+    }
+
+    if (sub == "panels") {
+        QString type;
+        if (!args.isEmpty())
+            type = args.takeFirst();
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: workspace panels [type-id]\n");
+            return 2;
+        }
+        QJsonObject a;
+        if (!type.isEmpty())
+            a["type_id"] = type;
+        return emit_workspace_tool(opts, QStringLiteral("list_panels"), a);
+    }
+
+    if (sub == "screens")
+        return emit_screens(opts, args);
+
+    if (sub == "open") {
+        const bool exclusive = take_bool_flag(args, QStringLiteral("--exclusive"));
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workspace open <screen-or-alias> [--exclusive]\n");
+            return 2;
+        }
+        const ScreenEntry* screen = find_screen(args.join(' '));
+        const QString screen_id = screen ? QString::fromLatin1(screen->id) : args.join(' ').trimmed();
+        return emit_workspace_tool(opts, QStringLiteral("navigate_panel"),
+                                   QJsonObject{{"screen_id", screen_id}, {"exclusive", exclusive}});
+    }
+
+    if (sub == "tab") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: workspace tab <screen-or-alias>\n");
+            return 2;
+        }
+        const ScreenEntry* screen = find_screen(args.join(' '));
+        const QString screen_id = screen ? QString::fromLatin1(screen->id) : args.join(' ').trimmed();
+        return emit_workspace_tool(opts, QStringLiteral("tab_panel"), QJsonObject{{"screen_id", screen_id}});
+    }
+
+    if (sub == "add" || sub == "replace") {
+        if (args.size() != 2) {
+            std::fprintf(stderr, "usage: workspace %s <primary-screen> <secondary-screen>\n", qUtf8Printable(sub));
+            return 2;
+        }
+        const ScreenEntry* primary = find_screen(args.at(0));
+        const ScreenEntry* secondary = find_screen(args.at(1));
+        const QString p = primary ? QString::fromLatin1(primary->id) : args.at(0);
+        const QString s = secondary ? QString::fromLatin1(secondary->id) : args.at(1);
+        return emit_workspace_tool(opts, sub == "add" ? QStringLiteral("add_panel_alongside")
+                                                       : QStringLiteral("replace_panel"),
+                                   QJsonObject{{"primary", p}, {"secondary", s}});
+    }
+
+    std::fprintf(stderr,
+                 "usage: workspace layouts|show|export|import|delete|rename|templates|template|apply|panels|screens|open|tab|add|replace\n");
+    return 2;
+}
+
+static QString report_config_value_to_string(const QJsonValue& v) {
+    if (v.isString())
+        return v.toString();
+    if (v.isBool())
+        return v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    if (v.isDouble())
+        return QString::number(v.toDouble(), 'g', 15);
+    if (v.isObject())
+        return QString::fromUtf8(QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact));
+    if (v.isArray())
+        return QString::fromUtf8(QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact));
+    return {};
+}
+
+static QMap<QString, QString> report_config_from_json(const QJsonObject& obj) {
+    QMap<QString, QString> out;
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        out[it.key()] = report_config_value_to_string(it.value());
+    return out;
+}
+
+static QJsonObject report_config_to_json(const QMap<QString, QString>& cfg) {
+    QJsonObject out;
+    for (auto it = cfg.cbegin(); it != cfg.cend(); ++it)
+        out[it.key()] = it.value();
+    return out;
+}
+
+static bool report_valid_component_type(const QString& type) {
+    static const QStringList types = {
+        QStringLiteral("heading"), QStringLiteral("text"), QStringLiteral("table"),
+        QStringLiteral("image"), QStringLiteral("chart"), QStringLiteral("sparkline"),
+        QStringLiteral("stats_block"), QStringLiteral("callout"), QStringLiteral("code"),
+        QStringLiteral("divider"), QStringLiteral("quote"), QStringLiteral("list"),
+        QStringLiteral("market_data"), QStringLiteral("page_break"), QStringLiteral("toc")
+    };
+    return types.contains(type);
+}
+
+static QJsonObject report_component_to_json(const report::ReportComponent& c) {
+    return QJsonObject{{"id", c.id},
+                       {"type", c.type},
+                       {"content", c.content},
+                       {"config", report_config_to_json(c.config)}};
+}
+
+static QJsonObject report_metadata_to_json(const report::ReportMetadata& m) {
+    return QJsonObject{{"title", m.title},
+                       {"author", m.author},
+                       {"company", m.company},
+                       {"date", m.date},
+                       {"header_left", m.header_left},
+                       {"header_center", m.header_center},
+                       {"header_right", m.header_right},
+                       {"footer_left", m.footer_left},
+                       {"footer_center", m.footer_center},
+                       {"footer_right", m.footer_right},
+                       {"show_page_numbers", m.show_page_numbers}};
+}
+
+static QJsonObject report_state_json(services::ReportBuilderService& svc) {
+    QJsonArray comps;
+    for (const auto& c : svc.components())
+        comps.append(report_component_to_json(c));
+    QJsonArray recent;
+    for (const auto& path : svc.recent_files())
+        recent.append(path);
+    return QJsonObject{{"components", comps},
+                       {"component_count", comps.size()},
+                       {"metadata", report_metadata_to_json(svc.metadata())},
+                       {"theme", svc.theme().name},
+                       {"current_file", svc.current_file()},
+                       {"recent_files", recent},
+                       {"next_id", svc.next_id()}};
+}
+
+static void report_restore_cli_state(services::ReportBuilderService& svc) {
+    const QString current = svc.current_file();
+    if (current.isEmpty())
+        return;
+    const QFileInfo current_info(current);
+    if (!current_info.exists())
+        return;
+    const QFileInfo autosave_info(svc.autosave_path());
+    if (autosave_info.exists() && autosave_info.lastModified() > current_info.lastModified())
+        return;
+    auto r = svc.load_from(current);
+    if (r.is_err())
+        std::fprintf(stderr, "warning: failed to restore current report: %s\n", r.error().c_str());
+}
+
+static bool report_persist_cli_state(services::ReportBuilderService& svc, QString& err) {
+    const QString current = svc.current_file();
+    if (!current.isEmpty()) {
+        auto r = svc.save_to(current);
+        if (r.is_err()) {
+            err = QString::fromStdString(r.error());
+            return false;
+        }
+        return true;
+    }
+    svc.trigger_autosave();
+    return true;
+}
+
+static int emit_report_state(const GlobalOpts& opts, services::ReportBuilderService& svc) {
+    const QJsonObject state = report_state_json(svc);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(state).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonObject meta = state.value("metadata").toObject();
+    std::printf("title         %s\n", qUtf8Printable(meta.value("title").toString()));
+    std::printf("author        %s\n", qUtf8Printable(meta.value("author").toString()));
+    std::printf("theme         %s\n", qUtf8Printable(state.value("theme").toString()));
+    std::printf("current_file  %s\n", qUtf8Printable(state.value("current_file").toString()));
+    const QJsonArray comps = state.value("components").toArray();
+    std::printf("components    %lld\n", static_cast<long long>(comps.size()));
+    if (comps.isEmpty())
+        return 0;
+    std::printf("\n%-6s %-14s %s\n", "id", "type", "content");
+    for (const auto& v : comps) {
+        const QJsonObject c = v.toObject();
+        std::printf("%-6d %-14s %s\n",
+                    c.value("id").toInt(),
+                    qUtf8Printable(c.value("type").toString()),
+                    qUtf8Printable(elide_text(c.value("content").toString(), 100)));
+    }
+    return 0;
+}
+
+static QStringList report_template_names() {
+    return {
+        QStringLiteral("Blank Report"),
+        QStringLiteral("Meeting Notes"),
+        QStringLiteral("Investment Memo"),
+        QStringLiteral("Stock Research"),
+        QStringLiteral("Portfolio Review"),
+        QStringLiteral("Watchlist Report"),
+        QStringLiteral("Dividend Income Report"),
+        QStringLiteral("Daily Market Brief"),
+        QStringLiteral("Trade Journal"),
+        QStringLiteral("Technical Analysis"),
+        QStringLiteral("Pre-Market Checklist"),
+        QStringLiteral("Equity Research Report"),
+        QStringLiteral("Earnings Review"),
+        QStringLiteral("M&A Deal Summary"),
+        QStringLiteral("Sector Deep Dive"),
+        QStringLiteral("Macro Economic Summary"),
+        QStringLiteral("Country Risk Report"),
+        QStringLiteral("Central Bank Monitor"),
+        QStringLiteral("Crypto Research Report"),
+        QStringLiteral("DeFi Protocol Analysis"),
+        QStringLiteral("Crypto Portfolio Review"),
+        QStringLiteral("Bond Research Report"),
+        QStringLiteral("Yield Curve Analysis"),
+        QStringLiteral("Quant Strategy Report"),
+        QStringLiteral("Risk Management Report"),
+        QStringLiteral("Business Performance"),
+        QStringLiteral("Project Status Report"),
+        QStringLiteral("Financial Statement")
+    };
+}
+
+static int emit_report_types(const GlobalOpts& opts) {
+    const QJsonArray types{
+        QJsonObject{{"name", "heading"}, {"accepts_content", true}, {"content_format", "plain"}},
+        QJsonObject{{"name", "text"}, {"accepts_content", true}, {"content_format", "markdown"}},
+        QJsonObject{{"name", "list"}, {"accepts_content", true}, {"content_format", "markdown, one item per line"}},
+        QJsonObject{{"name", "quote"}, {"accepts_content", true}, {"content_format", "markdown"}},
+        QJsonObject{{"name", "callout"}, {"accepts_content", true}, {"config_keys", QJsonArray{"style", "heading"}}},
+        QJsonObject{{"name", "code"}, {"accepts_content", true}, {"config_keys", QJsonArray{"language"}}},
+        QJsonObject{{"name", "divider"}, {"accepts_content", false}},
+        QJsonObject{{"name", "page_break"}, {"accepts_content", false}},
+        QJsonObject{{"name", "toc"}, {"accepts_content", false}},
+        QJsonObject{{"name", "table"}, {"accepts_content", false}, {"config_keys", QJsonArray{"csv"}}},
+        QJsonObject{{"name", "chart"}, {"accepts_content", false}, {"config_keys", QJsonArray{"chart_type", "title", "data", "labels", "width"}}},
+        QJsonObject{{"name", "sparkline"}, {"accepts_content", false}, {"config_keys", QJsonArray{"title", "data", "current", "change_pct"}}},
+        QJsonObject{{"name", "stats_block"}, {"accepts_content", false}, {"config_keys", QJsonArray{"title", "data"}}},
+        QJsonObject{{"name", "market_data"}, {"accepts_content", false}, {"config_keys", QJsonArray{"symbol"}}},
+        QJsonObject{{"name", "image"}, {"accepts_content", false}, {"config_keys", QJsonArray{"path", "width", "caption", "align"}}}
+    };
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"types", types}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("%-14s %-8s %s\n", "type", "content", "config");
+    for (const auto& v : types) {
+        const QJsonObject t = v.toObject();
+        QStringList keys;
+        for (const auto& k : t.value("config_keys").toArray())
+            keys << k.toString();
+        std::printf("%-14s %-8s %s\n",
+                    qUtf8Printable(t.value("name").toString()),
+                    t.value("accepts_content").toBool() ? "yes" : "no",
+                    qUtf8Printable(keys.join(',')));
+    }
+    return 0;
+}
+
+static int emit_report_templates(const GlobalOpts& opts) {
+    const QStringList names = report_template_names();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"templates", QJsonArray::fromStringList(names)}})
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    for (const auto& name : names)
+        std::printf("%s\n", qUtf8Printable(name));
+    return 0;
+}
+
+static int report_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto& svc = services::ReportBuilderService::instance();
+    const QString sub = args.isEmpty() ? QStringLiteral("state") : args.takeFirst().trimmed().toLower();
+    if (sub != "load")
+        report_restore_cli_state(svc);
+
+    if (sub == "state" || sub == "show" || sub == "get")
+        return emit_report_state(opts, svc);
+
+    if (sub == "types")
+        return emit_report_types(opts);
+
+    if (sub == "templates")
+        return emit_report_templates(opts);
+
+    if (sub == "add") {
+        QString content;
+        QString content_file;
+        QString config_raw;
+        QString at_raw;
+        if (!take_string_option(args, QStringLiteral("--content"), content) ||
+            !take_string_option(args, QStringLiteral("--content-file"), content_file) ||
+            !take_string_option(args, QStringLiteral("--config"), config_raw) ||
+            !take_string_option(args, QStringLiteral("--at"), at_raw))
+            return 2;
+        if (!require_yes(args, "usage: report add <type> [--content TEXT | --content-file PATH] [--config JSON] [--at N] --yes"))
+            return 2;
+        if (args.size() != 1 || (!content.isEmpty() && !content_file.isEmpty())) {
+            std::fprintf(stderr, "usage: report add <type> [--content TEXT | --content-file PATH] [--config JSON] [--at N] --yes\n");
+            return 2;
+        }
+        const QString type = args.first().trimmed().toLower();
+        if (!report_valid_component_type(type)) {
+            std::fprintf(stderr, "unknown report component type: %s\n", qUtf8Printable(type));
+            return 2;
+        }
+        if (!content_file.isEmpty()) {
+            QString err;
+            if (!read_text_file(content_file, content, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        QJsonObject config_json;
+        if (!config_raw.isEmpty()) {
+            QString err;
+            if (!parse_json_object_text(config_raw, config_json, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        bool ok_at = true;
+        int at = -1;
+        if (!at_raw.isEmpty()) {
+            at = at_raw.toInt(&ok_at);
+            if (!ok_at) {
+                std::fprintf(stderr, "--at requires an integer\n");
+                return 2;
+            }
+        }
+        report::ReportComponent comp;
+        comp.type = type;
+        comp.content = content;
+        comp.config = report_config_from_json(config_json);
+        const int id = svc.add_component(comp, at);
+        QString persist_err;
+        if (!report_persist_cli_state(svc, persist_err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(persist_err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report component added"),
+                                                      QJsonObject{{"id", id}, {"type", type}, {"index", svc.index_of(id)}}));
+    }
+
+    if (sub == "bulk") {
+        if (!require_yes(args, "usage: report bulk <components-json|@file|-> --yes"))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: report bulk <components-json|@file|-> --yes\n");
+            return 2;
+        }
+        QJsonValue raw;
+        QString err;
+        if (!parse_json_value_text(args.join(' '), raw, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        QJsonArray arr = raw.isArray() ? raw.toArray() : raw.toObject().value("components").toArray();
+        if (arr.isEmpty()) {
+            std::fprintf(stderr, "bulk input must be a JSON array or object with non-empty components array\n");
+            return 2;
+        }
+        for (int i = 0; i < arr.size(); ++i) {
+            const QJsonObject c = arr.at(i).toObject();
+            const QString type = c.value("type").toString().trimmed().toLower();
+            if (!report_valid_component_type(type)) {
+                std::fprintf(stderr, "components[%d]: unknown type '%s'\n", i, qUtf8Printable(type));
+                return 2;
+            }
+        }
+        QJsonArray ids;
+        svc.begin_macro(QStringLiteral("CLI bulk add components"));
+        for (const auto& v : arr) {
+            const QJsonObject c = v.toObject();
+            report::ReportComponent comp;
+            comp.type = c.value("type").toString().trimmed().toLower();
+            comp.content = c.value("content").toString();
+            comp.config = report_config_from_json(c.value("config").toObject());
+            ids.append(svc.add_component(comp, -1));
+        }
+        svc.end_macro();
+        QString bulk_persist_err;
+        if (!report_persist_cli_state(svc, bulk_persist_err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(bulk_persist_err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report components added"),
+                                                      QJsonObject{{"ids", ids}, {"count", ids.size()}}));
+    }
+
+    if (sub == "update" || sub == "edit") {
+        QString content;
+        QString content_file;
+        QString config_raw;
+        if (!take_string_option(args, QStringLiteral("--content"), content) ||
+            !take_string_option(args, QStringLiteral("--content-file"), content_file) ||
+            !take_string_option(args, QStringLiteral("--config"), config_raw))
+            return 2;
+        if (!require_yes(args, "usage: report update <component-id> [--content TEXT | --content-file PATH] [--config JSON] --yes"))
+            return 2;
+        bool ok_id = false;
+        const int id = args.isEmpty() ? 0 : args.first().toInt(&ok_id);
+        if (args.size() != 1 || !ok_id || id <= 0 || (!content.isEmpty() && !content_file.isEmpty())) {
+            std::fprintf(stderr, "usage: report update <component-id> [--content TEXT | --content-file PATH] [--config JSON] --yes\n");
+            return 2;
+        }
+        if (!content_file.isEmpty()) {
+            QString err;
+            if (!read_text_file(content_file, content, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        QJsonObject config_json;
+        if (!config_raw.isEmpty()) {
+            QString err;
+            if (!parse_json_object_text(config_raw, config_json, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+        }
+        const QString* content_ptr = (!content.isEmpty() || !content_file.isEmpty()) ? &content : nullptr;
+        if (!svc.patch_component(id, content_ptr, report_config_from_json(config_json))) {
+            std::fprintf(stderr, "report component not found: %d\n", id);
+            return 5;
+        }
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report component updated"),
+                                                      QJsonObject{{"id", id}}));
+    }
+
+    if (sub == "remove" || sub == "delete" || sub == "rm") {
+        if (!require_yes(args, "usage: report remove <component-id> --yes"))
+            return 2;
+        bool ok_id = false;
+        const int id = args.size() == 1 ? args.first().toInt(&ok_id) : 0;
+        if (!ok_id || id <= 0) {
+            std::fprintf(stderr, "usage: report remove <component-id> --yes\n");
+            return 2;
+        }
+        if (!svc.remove_component(id)) {
+            std::fprintf(stderr, "report component not found: %d\n", id);
+            return 5;
+        }
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report component removed"), QJsonObject{{"id", id}}));
+    }
+
+    if (sub == "move") {
+        if (!require_yes(args, "usage: report move <component-id> <to-index> --yes"))
+            return 2;
+        bool ok_id = false;
+        bool ok_idx = false;
+        const int id = args.size() >= 1 ? args.at(0).toInt(&ok_id) : 0;
+        const int index = args.size() >= 2 ? args.at(1).toInt(&ok_idx) : -1;
+        if (args.size() != 2 || !ok_id || !ok_idx || id <= 0) {
+            std::fprintf(stderr, "usage: report move <component-id> <to-index> --yes\n");
+            return 2;
+        }
+        if (!svc.move_component(id, index)) {
+            std::fprintf(stderr, "report component not found: %d\n", id);
+            return 5;
+        }
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report component moved"),
+                                                      QJsonObject{{"id", id}, {"index", svc.index_of(id)}}));
+    }
+
+    if (sub == "clear") {
+        if (!require_yes(args, "usage: report clear --yes"))
+            return 2;
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: report clear --yes\n");
+            return 2;
+        }
+        svc.clear_document();
+        QFile::remove(svc.autosave_path());
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report cleared")));
+    }
+
+    if (sub == "metadata" || sub == "meta") {
+        if (args.isEmpty()) {
+            if (opts.json)
+                std::printf("%s\n", QJsonDocument(report_metadata_to_json(svc.metadata())).toJson(QJsonDocument::Compact).constData());
+            else
+                std::printf("%s\n", QJsonDocument(report_metadata_to_json(svc.metadata())).toJson(QJsonDocument::Indented).constData());
+            return 0;
+        }
+        if (!require_yes(args, "usage: report metadata key=value ... --yes"))
+            return 2;
+        report::ReportMetadata m = svc.metadata();
+        for (const QString& tok : args) {
+            const int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(tok));
+                return 2;
+            }
+            const QString key = tok.left(eq).trimmed().toLower();
+            const QString value = tok.mid(eq + 1);
+            if (key == "title") m.title = value;
+            else if (key == "author") m.author = value;
+            else if (key == "company") m.company = value;
+            else if (key == "date") m.date = value;
+            else if (key == "header_left") m.header_left = value;
+            else if (key == "header_center") m.header_center = value;
+            else if (key == "header_right") m.header_right = value;
+            else if (key == "footer_left") m.footer_left = value;
+            else if (key == "footer_center") m.footer_center = value;
+            else if (key == "footer_right") m.footer_right = value;
+            else if (key == "show_page_numbers") {
+                const QString v = value.toLower();
+                m.show_page_numbers = (v == "true" || v == "1" || v == "yes" || v == "on");
+            } else {
+                std::fprintf(stderr, "unknown metadata field: %s\n", qUtf8Printable(key));
+                return 2;
+            }
+        }
+        svc.set_metadata(m);
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report metadata updated"),
+                                                      report_metadata_to_json(svc.metadata())));
+    }
+
+    if (sub == "theme") {
+        if (!require_yes(args, "usage: report theme <name> --yes"))
+            return 2;
+        const QString name = args.join(' ').trimmed();
+        if (name.isEmpty() || !report::themes::all_names().contains(name)) {
+            std::fprintf(stderr, "usage: report theme <name> --yes\nvalid: %s\n",
+                         qUtf8Printable(report::themes::all_names().join(QStringLiteral(", "))));
+            return 2;
+        }
+        svc.set_theme(report::themes::by_name(name));
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report theme updated"), QJsonObject{{"theme", name}}));
+    }
+
+    if (sub == "template") {
+        if (!require_yes(args, "usage: report template <name...> --yes"))
+            return 2;
+        const QString name = args.join(' ').trimmed();
+        if (name.isEmpty()) {
+            std::fprintf(stderr, "usage: report template <name...> --yes\n");
+            return 2;
+        }
+        svc.apply_template(name);
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report template applied"), QJsonObject{{"template", name}}));
+    }
+
+    if (sub == "save") {
+        const bool managed = take_bool_flag(args, QStringLiteral("--managed"));
+        if (!require_yes(args, "usage: report save <path> [--managed] --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: report save <path> [--managed] --yes\n");
+            return 2;
+        }
+        const QString path = args.first();
+        auto r = svc.save_to(path);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to save report: %s\n", r.error().c_str());
+            return 5;
+        }
+        QJsonObject data{{"path", path}};
+        if (managed) {
+            const QString file_id = services::FileManagerService::instance().import_file(path, QStringLiteral("report_builder"));
+            if (file_id.isEmpty()) {
+                std::fprintf(stderr, "report saved but failed to import into File Manager\n");
+                return 5;
+            }
+            data["file_id"] = file_id;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report saved"), data));
+    }
+
+    if (sub == "load") {
+        if (!require_yes(args, "usage: report load <path> --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: report load <path> --yes\n");
+            return 2;
+        }
+        auto r = svc.load_from(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to load report: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Report loaded"), QJsonObject{{"path", args.first()}}));
+    }
+
+    if (sub == "undo" || sub == "redo") {
+        if (!require_yes(args, sub == "undo" ? "usage: report undo --yes" : "usage: report redo --yes"))
+            return 2;
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: report %s --yes\n", qUtf8Printable(sub));
+            return 2;
+        }
+        QUndoStack* stack = svc.undo_stack();
+        if (sub == "undo") {
+            if (!stack->canUndo()) {
+                std::fprintf(stderr, "nothing to undo\n");
+                return 5;
+            }
+            stack->undo();
+        } else {
+            if (!stack->canRedo()) {
+                std::fprintf(stderr, "nothing to redo\n");
+                return 5;
+            }
+            stack->redo();
+        }
+        QString err;
+        if (!report_persist_cli_state(svc, err)) {
+            std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(err));
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(sub == "undo" ? QStringLiteral("Report undo applied")
+                                                                    : QStringLiteral("Report redo applied")));
+    }
+
+    if (sub == "tool") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: report tool <mcp-tool> key=value ...\n");
+            return 2;
+        }
+        const QString tool = args.takeFirst();
+        QJsonObject a;
+        QString err;
+        if (!parse_tool_args(args, a, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        QJsonObject body;
+        const int rc = call_headless_tool_json(opts, tool, a, body);
+        if (rc != 0)
+            return rc;
+        if (tool.startsWith(QStringLiteral("report_")) && tool != QStringLiteral("report_get_state") &&
+            tool != QStringLiteral("report_list_component_types") && tool != QStringLiteral("report_list_templates") &&
+            tool != QStringLiteral("report_export_pdf")) {
+            QString persist_err;
+            if (!report_persist_cli_state(svc, persist_err)) {
+                std::fprintf(stderr, "failed to persist report: %s\n", qUtf8Printable(persist_err));
+                return 5;
+            }
+        }
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(body).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(body).toJson(QJsonDocument::Indented).constData());
+        return 0;
+    }
+
+    std::fprintf(stderr, "usage: report state|types|templates|add|bulk|update|remove|move|clear|metadata|theme|template|save|load|undo|redo|tool\n");
+    return 2;
+}
+
+struct NotifyFieldDef {
+    QString key;
+    QString label;
+    bool secret{false};
+};
+
+struct NotifyProviderDef {
+    QString id;
+    QString name;
+    QVector<NotifyFieldDef> fields;
+};
+
+static const QVector<NotifyProviderDef>& notify_provider_defs() {
+    static const QVector<NotifyProviderDef> defs = {
+        {"telegram", "Telegram", {{"bot_token", "Bot Token", true}, {"chat_id", "Chat ID", false}}},
+        {"discord", "Discord", {{"webhook_url", "Webhook URL", true}}},
+        {"slack", "Slack", {{"webhook_url", "Webhook URL", true}, {"channel", "Channel", false}}},
+        {"email", "Email", {{"smtp_host", "SMTP Host", false}, {"smtp_port", "Port", false},
+                            {"smtp_user", "Username", false}, {"smtp_pass", "Password", true},
+                            {"to_addr", "To Address", false}, {"from_addr", "From Address", false}}},
+        {"whatsapp", "WhatsApp", {{"account_sid", "Account SID", false}, {"auth_token", "Auth Token", true},
+                                  {"from_number", "From Number", false}, {"to_number", "To Number", false}}},
+        {"pushover", "Pushover", {{"api_token", "API Token", true}, {"user_key", "User Key", true}}},
+        {"ntfy", "ntfy", {{"server_url", "Server URL", false}, {"topic", "Topic", false}, {"token", "Auth Token", true}}},
+        {"pushbullet", "Pushbullet", {{"api_key", "API Key", true}, {"channel_tag", "Channel Tag", false}}},
+        {"gotify", "Gotify", {{"server_url", "Server URL", false}, {"app_token", "App Token", true}}},
+        {"mattermost", "Mattermost", {{"webhook_url", "Webhook URL", true}, {"channel", "Channel", false},
+                                      {"username", "Username", false}}},
+        {"teams", "MS Teams", {{"webhook_url", "Webhook URL", true}}},
+        {"webhook", "Webhook", {{"url", "URL", true}, {"method", "Method", false}}},
+        {"pagerduty", "PagerDuty", {{"routing_key", "Routing Key", true}}},
+        {"opsgenie", "Opsgenie", {{"api_key", "API Key", true}}},
+        {"sms", "SMS (Twilio)", {{"account_sid", "Account SID", false}, {"auth_token", "Auth Token", true},
+                                 {"from_number", "From Number", false}, {"to_number", "To Number", false}}},
+    };
+    return defs;
+}
+
+static std::optional<NotifyProviderDef> notify_provider_def(const QString& id) {
+    const QString wanted = id.trimmed().toLower();
+    for (const auto& def : notify_provider_defs()) {
+        if (def.id == wanted)
+            return def;
+    }
+    return std::nullopt;
+}
+
+static bool notify_field_exists(const NotifyProviderDef& def, const QString& key) {
+    if (key == "enabled")
+        return true;
+    for (const auto& f : def.fields) {
+        if (f.key == key)
+            return true;
+    }
+    return false;
+}
+
+static QString notify_mask_value(const QString& value, bool secret) {
+    if (value.isEmpty())
+        return {};
+    if (!secret)
+        return value;
+    if (value.size() <= 6)
+        return QStringLiteral("******");
+    return value.left(2) + QStringLiteral("...") + value.right(2);
+}
+
+static bool parse_cli_bool(const QString& raw) {
+    const QString v = raw.trimmed().toLower();
+    return v == "1" || v == "true" || v == "yes" || v == "on" || v == "enabled";
+}
+
+static notifications::NotifLevel parse_notify_level(QString raw, bool& ok) {
+    raw = raw.trimmed().toLower();
+    ok = true;
+    if (raw.isEmpty() || raw == "info") return notifications::NotifLevel::Info;
+    if (raw == "warning" || raw == "warn") return notifications::NotifLevel::Warning;
+    if (raw == "alert") return notifications::NotifLevel::Alert;
+    if (raw == "critical" || raw == "crit") return notifications::NotifLevel::Critical;
+    ok = false;
+    return notifications::NotifLevel::Info;
+}
+
+static QString notify_level_text(notifications::NotifLevel level) {
+    switch (level) {
+        case notifications::NotifLevel::Warning: return QStringLiteral("warning");
+        case notifications::NotifLevel::Alert: return QStringLiteral("alert");
+        case notifications::NotifLevel::Critical: return QStringLiteral("critical");
+        case notifications::NotifLevel::Info:
+        default: return QStringLiteral("info");
+    }
+}
+
+static QJsonObject notify_provider_to_json(const NotifyProviderDef& def,
+                                           notifications::INotificationProvider* provider) {
+    auto& repo = SettingsRepository::instance();
+    const QString cat = QStringLiteral("notif_") + def.id;
+    QJsonObject fields;
+    for (const auto& f : def.fields) {
+        const auto value_res = repo.get(cat + QStringLiteral(".") + f.key);
+        const QString value = value_res.is_ok() ? value_res.value() : QString{};
+        fields[f.key] = QJsonObject{{"set", !value.isEmpty()},
+                                    {"secret", f.secret},
+                                    {"value", notify_mask_value(value, f.secret)}};
+    }
+    return QJsonObject{{"id", def.id},
+                       {"name", def.name},
+                       {"enabled", provider ? provider->is_enabled() : false},
+                       {"configured", provider ? provider->is_configured() : false},
+                       {"fields", fields}};
+}
+
+static QJsonObject notify_triggers_json() {
+    auto& repo = SettingsRepository::instance();
+    auto b = [&](const QString& key, bool def) {
+        const QString fallback = def ? QStringLiteral("1") : QStringLiteral("0");
+        const auto value_res = repo.get(key, fallback);
+        const QString v = value_res.is_ok() ? value_res.value() : fallback;
+        return v == "1";
+    };
+    return QJsonObject{{"inapp", b(QStringLiteral("notifications.inapp"), true)},
+                       {"price_alerts", b(QStringLiteral("notifications.price_alerts"), true)},
+                       {"news_alerts", b(QStringLiteral("notifications.news_alerts"), false)},
+                       {"order_fills", b(QStringLiteral("notifications.order_fills"), true)},
+                       {"news_breaking", b(QStringLiteral("notifications.news_breaking"), true)},
+                       {"news_monitors", b(QStringLiteral("notifications.news_monitors"), true)},
+                       {"news_deviations", b(QStringLiteral("notifications.news_deviations"), true)},
+                       {"news_flash", b(QStringLiteral("notifications.news_flash"), true)}};
+}
+
+static int emit_notify_providers(const GlobalOpts& opts, notifications::NotificationService& svc) {
+    QJsonArray arr;
+    for (const auto& def : notify_provider_defs())
+        arr.append(notify_provider_to_json(def, svc.provider(def.id)));
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"providers", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("%-14s %-18s %-8s %-10s %s\n", "id", "name", "enabled", "configured", "fields");
+    for (const auto& v : arr) {
+        const QJsonObject p = v.toObject();
+        QStringList fields;
+        const auto def = notify_provider_def(p.value("id").toString());
+        if (def) {
+            for (const auto& f : def->fields)
+                fields << f.key;
+        }
+        std::printf("%-14s %-18s %-8s %-10s %s\n",
+                    qUtf8Printable(p.value("id").toString()),
+                    qUtf8Printable(p.value("name").toString()),
+                    p.value("enabled").toBool() ? "yes" : "no",
+                    p.value("configured").toBool() ? "yes" : "no",
+                    qUtf8Printable(fields.join(',')));
+    }
+    return 0;
+}
+
+static int emit_notify_config(const GlobalOpts& opts, const NotifyProviderDef& def,
+                              notifications::NotificationService& svc) {
+    const QJsonObject obj = notify_provider_to_json(def, svc.provider(def.id));
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id          %s\n", qUtf8Printable(def.id));
+    std::printf("name        %s\n", qUtf8Printable(def.name));
+    std::printf("enabled     %s\n", obj.value("enabled").toBool() ? "yes" : "no");
+    std::printf("configured  %s\n", obj.value("configured").toBool() ? "yes" : "no");
+    const QJsonObject fields = obj.value("fields").toObject();
+    for (const auto& f : def.fields) {
+        const QJsonObject entry = fields.value(f.key).toObject();
+        QString value = entry.value("value").toString();
+        if (value.isEmpty())
+            value = QStringLiteral("<not set>");
+        std::printf("%-12s %s\n", qUtf8Printable(f.key), qUtf8Printable(value));
+    }
+    return 0;
+}
+
+static int emit_notify_status(const GlobalOpts& opts, notifications::NotificationService& svc) {
+    int enabled = 0;
+    int configured = 0;
+    QJsonArray providers;
+    for (const auto& def : notify_provider_defs()) {
+        auto* p = svc.provider(def.id);
+        if (p && p->is_enabled()) ++enabled;
+        if (p && p->is_configured()) ++configured;
+        providers.append(notify_provider_to_json(def, p));
+    }
+    const QJsonObject out{{"provider_count", notify_provider_defs().size()},
+                          {"enabled_count", enabled},
+                          {"configured_count", configured},
+                          {"unread_count", svc.unread_count()},
+                          {"triggers", notify_triggers_json()},
+                          {"providers", providers}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("providers    %lld\n", static_cast<long long>(notify_provider_defs().size()));
+    std::printf("enabled      %d\n", enabled);
+    std::printf("configured   %d\n", configured);
+    std::printf("unread       %d\n", svc.unread_count());
+    const QJsonObject triggers = out.value("triggers").toObject();
+    std::printf("triggers     inapp=%s price=%s news=%s orders=%s\n",
+                triggers.value("inapp").toBool() ? "on" : "off",
+                triggers.value("price_alerts").toBool() ? "on" : "off",
+                triggers.value("news_alerts").toBool() ? "on" : "off",
+                triggers.value("order_fills").toBool() ? "on" : "off");
+    return 0;
+}
+
+static int emit_notify_triggers(const GlobalOpts& opts) {
+    const QJsonObject triggers = notify_triggers_json();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(triggers).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    for (const QString& key : triggers.keys())
+        std::printf("%-18s %s\n", qUtf8Printable(key), triggers.value(key).toBool() ? "on" : "off");
+    return 0;
+}
+
+static bool notify_wait_send(notifications::INotificationProvider* provider,
+                             const notifications::NotificationRequest& req,
+                             int timeout_ms,
+                             bool& ok,
+                             QString& error) {
+    if (!provider) {
+        ok = false;
+        error = QStringLiteral("provider not found");
+        return true;
+    }
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    bool finished = false;
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&]() {
+        if (!finished) {
+            finished = true;
+            ok = false;
+            error = QStringLiteral("timed out");
+            loop.quit();
+        }
+    });
+    provider->send(req, [&](bool send_ok, QString send_error) {
+        if (finished)
+            return;
+        finished = true;
+        ok = send_ok;
+        error = std::move(send_error);
+        loop.quit();
+    });
+    if (finished)
+        return true;
+    timer.start(timeout_ms);
+    loop.exec();
+    return finished;
+}
+
+static int notify_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto& svc = notifications::NotificationService::instance();
+    auto& repo = SettingsRepository::instance();
+    const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "providers" || sub == "list" || sub == "ls")
+        return emit_notify_providers(opts, svc);
+
+    if (sub == "status")
+        return emit_notify_status(opts, svc);
+
+    if (sub == "config" || sub == "show") {
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: notify config <provider>\n");
+            return 2;
+        }
+        const auto def = notify_provider_def(args.first());
+        if (!def) {
+            std::fprintf(stderr, "unknown notification provider: %s\n", qUtf8Printable(args.first()));
+            return 2;
+        }
+        return emit_notify_config(opts, *def, svc);
+    }
+
+    if (sub == "set") {
+        if (!require_yes(args, "usage: notify set <provider> key=value ... --yes"))
+            return 2;
+        if (args.size() < 2) {
+            std::fprintf(stderr, "usage: notify set <provider> key=value ... --yes\n");
+            return 2;
+        }
+        const auto def = notify_provider_def(args.takeFirst());
+        if (!def) {
+            std::fprintf(stderr, "unknown notification provider\n");
+            return 2;
+        }
+        const QString cat = QStringLiteral("notif_") + def->id;
+        for (const QString& tok : args) {
+            const int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(tok));
+                return 2;
+            }
+            const QString key = tok.left(eq).trimmed();
+            const QString value = tok.mid(eq + 1);
+            if (!notify_field_exists(*def, key)) {
+                std::fprintf(stderr, "unknown field for %s: %s\n", qUtf8Printable(def->id), qUtf8Printable(key));
+                return 2;
+            }
+            const QString setting_key = key == "enabled" ? cat + QStringLiteral(".enabled") : cat + QStringLiteral(".") + key;
+            auto r = repo.set(setting_key, key == "enabled" ? (parse_cli_bool(value) ? QStringLiteral("1") : QStringLiteral("0")) : value, cat);
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to save notification config: %s\n", r.error().c_str());
+                return 5;
+            }
+        }
+        svc.reload_all_configs();
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Notification provider updated"),
+                                                      QJsonObject{{"provider", def->id}}));
+    }
+
+    if (sub == "enable" || sub == "disable") {
+        if (!require_yes(args, sub == "enable" ? "usage: notify enable <provider> --yes"
+                                               : "usage: notify disable <provider> --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: notify %s <provider> --yes\n", qUtf8Printable(sub));
+            return 2;
+        }
+        const auto def = notify_provider_def(args.first());
+        if (!def) {
+            std::fprintf(stderr, "unknown notification provider: %s\n", qUtf8Printable(args.first()));
+            return 2;
+        }
+        const QString cat = QStringLiteral("notif_") + def->id;
+        auto r = repo.set(cat + QStringLiteral(".enabled"), sub == "enable" ? QStringLiteral("1") : QStringLiteral("0"), cat);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to update provider: %s\n", r.error().c_str());
+            return 5;
+        }
+        svc.reload_all_configs();
+        return emit_mutation_body(opts, mutation_body(sub == "enable" ? QStringLiteral("Notification provider enabled")
+                                                                      : QStringLiteral("Notification provider disabled"),
+                                                      QJsonObject{{"provider", def->id}}));
+    }
+
+    if (sub == "clear") {
+        if (!require_yes(args, "usage: notify clear <provider> [field|all] --yes"))
+            return 2;
+        if (args.size() < 1 || args.size() > 2) {
+            std::fprintf(stderr, "usage: notify clear <provider> [field|all] --yes\n");
+            return 2;
+        }
+        const auto def = notify_provider_def(args.takeFirst());
+        if (!def) {
+            std::fprintf(stderr, "unknown notification provider\n");
+            return 2;
+        }
+        const QString cat = QStringLiteral("notif_") + def->id;
+        QString field = args.isEmpty() ? QStringLiteral("all") : args.first().trimmed();
+        if (field == "all") {
+            auto r = repo.clear_category(cat);
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to clear provider: %s\n", r.error().c_str());
+                return 5;
+            }
+        } else {
+            if (!notify_field_exists(*def, field) || field == "enabled") {
+                std::fprintf(stderr, "unknown clearable field for %s: %s\n", qUtf8Printable(def->id), qUtf8Printable(field));
+                return 2;
+            }
+            auto r = repo.remove(cat + QStringLiteral(".") + field);
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to clear provider field: %s\n", r.error().c_str());
+                return 5;
+            }
+        }
+        svc.reload_all_configs();
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Notification provider config cleared"),
+                                                      QJsonObject{{"provider", def->id}, {"field", field}}));
+    }
+
+    if (sub == "triggers") {
+        if (args.isEmpty())
+            return emit_notify_triggers(opts);
+        if (!require_yes(args, "usage: notify triggers key=value ... --yes"))
+            return 2;
+        const QMap<QString, QString> keys{{"inapp", "notifications.inapp"},
+                                          {"price_alerts", "notifications.price_alerts"},
+                                          {"price", "notifications.price_alerts"},
+                                          {"news_alerts", "notifications.news_alerts"},
+                                          {"news", "notifications.news_alerts"},
+                                          {"order_fills", "notifications.order_fills"},
+                                          {"orders", "notifications.order_fills"},
+                                          {"news_breaking", "notifications.news_breaking"},
+                                          {"news_monitors", "notifications.news_monitors"},
+                                          {"news_deviations", "notifications.news_deviations"},
+                                          {"news_flash", "notifications.news_flash"}};
+        for (const QString& tok : args) {
+            const int eq = tok.indexOf('=');
+            if (eq <= 0) {
+                std::fprintf(stderr, "expected key=value: %s\n", qUtf8Printable(tok));
+                return 2;
+            }
+            const QString key = tok.left(eq).trimmed().toLower();
+            if (!keys.contains(key)) {
+                std::fprintf(stderr, "unknown notification trigger: %s\n", qUtf8Printable(key));
+                return 2;
+            }
+            auto r = repo.set(keys.value(key), parse_cli_bool(tok.mid(eq + 1)) ? QStringLiteral("1") : QStringLiteral("0"),
+                              QStringLiteral("notifications"));
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to update trigger: %s\n", r.error().c_str());
+                return 5;
+            }
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Notification triggers updated"), notify_triggers_json()));
+    }
+
+    if (sub == "send" || sub == "test") {
+        QString provider_id;
+        QString title;
+        QString message;
+        QString level_raw = QStringLiteral("info");
+        QString timeout_raw;
+        const bool all = take_bool_flag(args, QStringLiteral("--all"));
+        if (!take_string_option(args, QStringLiteral("--provider"), provider_id) ||
+            !take_string_option(args, QStringLiteral("--title"), title) ||
+            !take_string_option(args, QStringLiteral("--message"), message) ||
+            !take_string_option(args, QStringLiteral("--level"), level_raw) ||
+            !take_string_option(args, QStringLiteral("--timeout-sec"), timeout_raw))
+            return 2;
+        if (!require_yes(args, sub == "test" ? "usage: notify test <provider> [--timeout-sec N] --yes"
+                                             : "usage: notify send (--provider P | --all) --title T --message M --yes"))
+            return 2;
+        if (sub == "test") {
+            if (!provider_id.isEmpty() || all || args.size() != 1) {
+                std::fprintf(stderr, "usage: notify test <provider> [--timeout-sec N] --yes\n");
+                return 2;
+            }
+            provider_id = args.takeFirst();
+            title = QStringLiteral("OpenMarketTerminal Test");
+            message = QStringLiteral("This is a test notification from OpenMarketTerminal.");
+        }
+        if (sub == "send" && (title.isEmpty() || message.isEmpty() || (provider_id.isEmpty() == !all) || !args.isEmpty())) {
+            std::fprintf(stderr, "usage: notify send (--provider P | --all) --title T --message M [--level L] [--timeout-sec N] --yes\n");
+            return 2;
+        }
+        bool level_ok = false;
+        const auto level = parse_notify_level(level_raw, level_ok);
+        if (!level_ok) {
+            std::fprintf(stderr, "--level must be info, warning, alert, or critical\n");
+            return 2;
+        }
+        bool timeout_ok = true;
+        int timeout_ms = 15000;
+        if (!timeout_raw.isEmpty()) {
+            const int sec = timeout_raw.toInt(&timeout_ok);
+            if (!timeout_ok || sec <= 0 || sec > 300) {
+                std::fprintf(stderr, "--timeout-sec must be 1..300\n");
+                return 2;
+            }
+            timeout_ms = sec * 1000;
+        }
+        notifications::NotificationRequest req;
+        req.title = title;
+        req.message = message;
+        req.level = level;
+        req.trigger = notifications::NotifTrigger::Manual;
+
+        QVector<notifications::INotificationProvider*> targets;
+        if (all) {
+            for (auto* p : svc.providers()) {
+                if (p->is_enabled() && p->is_configured())
+                    targets.append(p);
+            }
+        } else {
+            auto* p = svc.provider(provider_id.trimmed().toLower());
+            if (!p) {
+                std::fprintf(stderr, "unknown notification provider: %s\n", qUtf8Printable(provider_id));
+                return 2;
+            }
+            targets.append(p);
+        }
+        if (targets.isEmpty()) {
+            std::fprintf(stderr, "no enabled and configured notification providers\n");
+            return 5;
+        }
+        QJsonArray results;
+        int failures = 0;
+        for (auto* p : targets) {
+            bool send_ok = false;
+            QString error;
+            notify_wait_send(p, req, timeout_ms, send_ok, error);
+            if (!send_ok)
+                ++failures;
+            results.append(QJsonObject{{"provider", p->provider_id()},
+                                       {"ok", send_ok},
+                                       {"error", error},
+                                       {"level", notify_level_text(level)}});
+            if (!opts.json)
+                std::printf("%-14s %s%s%s\n",
+                            qUtf8Printable(p->provider_id()),
+                            send_ok ? "sent" : "failed",
+                            error.isEmpty() ? "" : "  ",
+                            qUtf8Printable(error));
+        }
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"results", results},
+                                                         {"ok", failures == 0}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        return failures == 0 ? 0 : 5;
+    }
+
+    std::fprintf(stderr, "usage: notify providers|status|config|set|clear|enable|disable|triggers|send|test\n");
+    return 2;
+}
+
+static QString scanner_ms(qint64 ms) {
+    if (ms <= 0)
+        return {};
+    return QDateTime::fromMSecsSinceEpoch(ms).toString(Qt::ISODate);
+}
+
+static QJsonObject scanner_watch_to_json(const ScanWatch& w) {
+    return QJsonObject{{"id", w.id},
+                       {"name", w.name},
+                       {"conditions", w.conditions},
+                       {"logic", w.logic},
+                       {"symbols", QJsonArray::fromStringList(w.symbols)},
+                       {"universe", w.universe},
+                       {"timeframe", w.timeframe},
+                       {"lookback_days", w.lookback_days},
+                       {"data_source", w.data_source},
+                       {"broker_id", w.broker_id},
+                       {"account_id", w.account_id},
+                       {"mode", w.mode},
+                       {"interval_sec", w.interval_sec},
+                       {"cooldown_min", w.cooldown_min},
+                       {"actions", w.actions},
+                       {"active", w.active},
+                       {"status", w.status},
+                       {"last_eval_at", w.last_eval_at},
+                       {"last_eval_time", scanner_ms(w.last_eval_at)},
+                       {"last_fired_at", w.last_fired_at},
+                       {"last_fired_time", scanner_ms(w.last_fired_at)}};
+}
+
+static QJsonObject scanner_event_to_json(const ScanWatchEvent& e) {
+    return QJsonObject{{"id", e.id},
+                       {"watch_id", e.watch_id},
+                       {"symbol", e.symbol},
+                       {"detail", e.detail},
+                       {"fired_at", e.fired_at},
+                       {"fired_time", scanner_ms(e.fired_at)}};
+}
+
+static int emit_scanner_watches(const GlobalOpts& opts, const QVector<ScanWatch>& watches) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& w : watches)
+            arr.append(scanner_watch_to_json(w));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"watches", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (watches.isEmpty()) {
+        std::printf("no scanner watches\n");
+        return 0;
+    }
+    std::printf("%-36s %-6s %-10s %-6s %-8s %-12s %s\n", "id", "active", "status", "tf", "interval", "symbols", "name");
+    for (const auto& w : watches) {
+        std::printf("%-36s %-6s %-10s %-6s %-8d %-12s %s\n",
+                    qUtf8Printable(w.id),
+                    w.active ? "yes" : "no",
+                    qUtf8Printable(elide_text(w.status, 10)),
+                    qUtf8Printable(w.timeframe),
+                    w.interval_sec,
+                    qUtf8Printable(elide_text(w.symbols.join(','), 12)),
+                    qUtf8Printable(elide_text(w.name, 80)));
+    }
+    return 0;
+}
+
+static int emit_scanner_watch_detail(const GlobalOpts& opts, const ScanWatch& w) {
+    const QJsonObject obj = scanner_watch_to_json(w);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id             %s\n", qUtf8Printable(w.id));
+    std::printf("name           %s\n", qUtf8Printable(w.name));
+    std::printf("active         %s\n", w.active ? "yes" : "no");
+    std::printf("status         %s\n", qUtf8Printable(w.status));
+    std::printf("symbols        %s\n", qUtf8Printable(w.symbols.join(',')));
+    std::printf("universe       %s\n", qUtf8Printable(w.universe));
+    std::printf("timeframe      %s\n", qUtf8Printable(w.timeframe));
+    std::printf("interval_sec   %d\n", w.interval_sec);
+    std::printf("cooldown_min   %d\n", w.cooldown_min);
+    std::printf("notify         %s\n", w.actions.value("providers").toBool(false) ? "yes" : "no");
+    std::printf("toast          %s\n", w.actions.value("toast").toBool(true) ? "yes" : "no");
+    if (w.last_eval_at > 0)
+        std::printf("last_eval      %s\n", qUtf8Printable(scanner_ms(w.last_eval_at)));
+    if (w.last_fired_at > 0)
+        std::printf("last_fired     %s\n", qUtf8Printable(scanner_ms(w.last_fired_at)));
+    std::printf("logic          %s\n", qUtf8Printable(w.logic));
+    std::printf("conditions     %s\n", QJsonDocument(w.conditions).toJson(QJsonDocument::Compact).constData());
+    return 0;
+}
+
+static int emit_scanner_events(const GlobalOpts& opts, const QVector<ScanWatchEvent>& events) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& e : events)
+            arr.append(scanner_event_to_json(e));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"events", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (events.isEmpty()) {
+        std::printf("no scanner events\n");
+        return 0;
+    }
+    std::printf("%-24s %-36s %-12s %s\n", "time", "watch_id", "symbol", "detail");
+    for (const auto& e : events) {
+        std::printf("%-24s %-36s %-12s %s\n",
+                    qUtf8Printable(scanner_ms(e.fired_at)),
+                    qUtf8Printable(e.watch_id),
+                    qUtf8Printable(e.symbol),
+                    qUtf8Printable(elide_text(e.detail, 90)));
+    }
+    return 0;
+}
+
+static QStringList scanner_parse_symbols(QString raw) {
+    raw.replace(';', ',');
+    raw.replace('\n', ',');
+    QStringList out;
+    for (const QString& part : raw.split(',', Qt::SkipEmptyParts)) {
+        const QString sym = part.trimmed().toUpper();
+        if (!sym.isEmpty() && !out.contains(sym))
+            out << sym;
+    }
+    return out;
+}
+
+static QString scanner_op_from_word(QString word, bool& ok) {
+    word = word.trimmed().toLower();
+    ok = true;
+    if (word == "above" || word == "over" || word == "gt" || word == ">") return QStringLiteral(">");
+    if (word == "below" || word == "under" || word == "lt" || word == "<") return QStringLiteral("<");
+    if (word == "at" || word == "eq" || word == "equals" || word == "touches" || word == "==") return QStringLiteral("==");
+    if (word == "crosses-above" || word == "crosses_above" || word == "cross-above") return QStringLiteral("crosses_above");
+    if (word == "crosses-below" || word == "crosses_below" || word == "cross-below") return QStringLiteral("crosses_below");
+    if (word == ">=" || word == "gte" || word == "at-or-above") return QStringLiteral(">=");
+    if (word == "<=" || word == "lte" || word == "at-or-below") return QStringLiteral("<=");
+    ok = false;
+    return {};
+}
+
+static QJsonObject scanner_price_condition(const QString& op, double value) {
+    return QJsonObject{{"indicator", "CLOSE"},
+                       {"field", "value"},
+                       {"offset", 0},
+                       {"operator", op},
+                       {"compare_mode", "value"},
+                       {"value", value}};
+}
+
+static bool scanner_apply_common_add_options(QStringList& args, ScanWatch& w, QString& err) {
+    QString name;
+    QString timeframe = w.timeframe;
+    QString interval_raw;
+    QString cooldown_raw;
+    QString lookback_raw;
+    QString source = w.data_source;
+    QString mode = w.mode;
+    QString logic = w.logic;
+    QString universe;
+    const bool notify = take_bool_flag(args, QStringLiteral("--notify"));
+    const bool no_toast = take_bool_flag(args, QStringLiteral("--no-toast"));
+    const bool inactive = take_bool_flag(args, QStringLiteral("--inactive"));
+    if (!take_string_option(args, QStringLiteral("--name"), name) ||
+        !take_string_option(args, QStringLiteral("--timeframe"), timeframe) ||
+        !take_string_option(args, QStringLiteral("--interval-sec"), interval_raw) ||
+        !take_string_option(args, QStringLiteral("--cooldown-min"), cooldown_raw) ||
+        !take_string_option(args, QStringLiteral("--lookback-days"), lookback_raw) ||
+        !take_string_option(args, QStringLiteral("--source"), source) ||
+        !take_string_option(args, QStringLiteral("--mode"), mode) ||
+        !take_string_option(args, QStringLiteral("--logic"), logic) ||
+        !take_string_option(args, QStringLiteral("--universe"), universe)) {
+        err = QStringLiteral("invalid option");
+        return false;
+    }
+    if (!name.isEmpty())
+        w.name = name;
+    w.timeframe = timeframe.isEmpty() ? QStringLiteral("1m") : timeframe;
+    w.data_source = source.isEmpty() ? QStringLiteral("Broker") : source;
+    w.mode = mode.isEmpty() ? QStringLiteral("poll") : mode.toLower();
+    w.logic = logic.isEmpty() ? QStringLiteral("AND") : logic.toUpper();
+    w.universe = universe.toUpper();
+    w.active = !inactive;
+    auto parse_positive = [&](const QString& raw, const QString& label, int& out) {
+        if (raw.isEmpty())
+            return true;
+        bool ok = false;
+        const int v = raw.toInt(&ok);
+        if (!ok || v <= 0) {
+            err = label + QStringLiteral(" must be a positive integer");
+            return false;
+        }
+        out = v;
+        return true;
+    };
+    if (!parse_positive(interval_raw, QStringLiteral("--interval-sec"), w.interval_sec) ||
+        !parse_positive(cooldown_raw, QStringLiteral("--cooldown-min"), w.cooldown_min) ||
+        !parse_positive(lookback_raw, QStringLiteral("--lookback-days"), w.lookback_days))
+        return false;
+    QJsonObject actions;
+    actions["toast"] = !no_toast;
+    actions["providers"] = notify;
+    w.actions = actions;
+    return true;
+}
+
+static int scanner_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto& watches = ScanWatchRepository::instance();
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "list" || sub == "ls" || sub == "watches") {
+        const bool active_only = take_bool_flag(args, QStringLiteral("--active"));
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: scanner list [--active]\n");
+            return 2;
+        }
+        auto r = active_only ? watches.list_active() : watches.list_all();
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to list scanner watches: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_scanner_watches(opts, r.value());
+    }
+
+    if (sub == "show" || sub == "get") {
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: scanner show <watch-id>\n");
+            return 2;
+        }
+        auto r = watches.get(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to load scanner watch: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_scanner_watch_detail(opts, r.value());
+    }
+
+    if (sub == "events" || sub == "history") {
+        QString limit_raw;
+        QString watch_id;
+        if (!take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+            !take_string_option(args, QStringLiteral("--watch"), watch_id) ||
+            !args.isEmpty()) {
+            std::fprintf(stderr, "usage: scanner events [--limit N] [--watch ID]\n");
+            return 2;
+        }
+        bool ok = true;
+        int limit = 100;
+        if (!limit_raw.isEmpty()) {
+            limit = limit_raw.toInt(&ok);
+            if (!ok || limit <= 0 || limit > 1000) {
+                std::fprintf(stderr, "--limit must be 1..1000\n");
+                return 2;
+            }
+        }
+        auto r = ScanEventRepository::instance().recent(limit);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to load scanner events: %s\n", r.error().c_str());
+            return 5;
+        }
+        QVector<ScanWatchEvent> filtered;
+        for (const auto& e : r.value()) {
+            if (watch_id.isEmpty() || e.watch_id == watch_id)
+                filtered.append(e);
+        }
+        return emit_scanner_events(opts, filtered);
+    }
+
+    if (sub == "pause" || sub == "disable" || sub == "resume" || sub == "enable") {
+        const bool active = (sub == "resume" || sub == "enable");
+        const QString usage_sub = active ? QStringLiteral("resume") : QStringLiteral("pause");
+        if (!require_yes(args, active ? "usage: scanner resume <watch-id> --yes"
+                                      : "usage: scanner pause <watch-id> --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: scanner %s <watch-id> --yes\n", qUtf8Printable(usage_sub));
+            return 2;
+        }
+        auto r = watches.set_active(args.first(), active);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to update scanner watch: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(active ? QStringLiteral("Scanner watch resumed")
+                                                            : QStringLiteral("Scanner watch paused"),
+                                                      QJsonObject{{"id", args.first()}, {"active", active}}));
+    }
+
+    if (sub == "delete" || sub == "remove" || sub == "rm") {
+        if (!require_yes(args, "usage: scanner delete <watch-id> --yes"))
+            return 2;
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: scanner delete <watch-id> --yes\n");
+            return 2;
+        }
+        auto r = watches.remove(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete scanner watch: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Scanner watch deleted"),
+                                                      QJsonObject{{"id", args.first()}}));
+    }
+
+    if (sub == "add" || sub == "create" || sub == "new") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: scanner add price|raw ... --yes\n");
+            return 2;
+        }
+        const QString kind = args.takeFirst().trimmed().toLower();
+        QString common_err;
+        ScanWatch w;
+        if (kind == "price") {
+            if (!scanner_apply_common_add_options(args, w, common_err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(common_err));
+                return 2;
+            }
+            if (!require_yes(args, "usage: scanner add price <symbol[,symbol...]> <above|below|at|crosses-above|crosses-below> <value> --yes"))
+                return 2;
+            if (args.size() != 3) {
+                std::fprintf(stderr, "usage: scanner add price <symbol[,symbol...]> <above|below|at|crosses-above|crosses-below> <value> --yes\n");
+                return 2;
+            }
+            w.symbols = scanner_parse_symbols(args.at(0));
+            if (w.symbols.isEmpty()) {
+                std::fprintf(stderr, "at least one symbol is required\n");
+                return 2;
+            }
+            bool op_ok = false;
+            const QString op = scanner_op_from_word(args.at(1), op_ok);
+            bool value_ok = false;
+            const double value = args.at(2).toDouble(&value_ok);
+            if (!op_ok || !value_ok) {
+                std::fprintf(stderr, "invalid price condition\n");
+                return 2;
+            }
+            if (w.name.isEmpty())
+                w.name = QStringLiteral("%1 price %2 %3").arg(w.symbols.join(','), args.at(1), args.at(2));
+            w.conditions.append(scanner_price_condition(op, value));
+        } else if (kind == "raw") {
+            QString symbols_raw;
+            QString condition_raw;
+            if (!take_string_option(args, QStringLiteral("--symbols"), symbols_raw) ||
+                !take_string_option(args, QStringLiteral("--condition"), condition_raw)) {
+                return 2;
+            }
+            if (!scanner_apply_common_add_options(args, w, common_err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(common_err));
+                return 2;
+            }
+            if (!require_yes(args, "usage: scanner add raw --symbols A,B --condition JSON [--logic AND|OR] --yes"))
+                return 2;
+            if (!args.isEmpty() || symbols_raw.isEmpty() || condition_raw.isEmpty()) {
+                std::fprintf(stderr, "usage: scanner add raw --symbols A,B --condition JSON [--logic AND|OR] --yes\n");
+                return 2;
+            }
+            w.symbols = scanner_parse_symbols(symbols_raw);
+            if (w.symbols.isEmpty()) {
+                std::fprintf(stderr, "at least one symbol is required\n");
+                return 2;
+            }
+            QJsonValue condition_value;
+            QString err;
+            if (!parse_json_value_text(condition_raw, condition_value, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
+            }
+            if (condition_value.isArray())
+                w.conditions = condition_value.toArray();
+            else if (condition_value.isObject())
+                w.conditions.append(condition_value.toObject());
+            else {
+                std::fprintf(stderr, "condition JSON must be a condition object or non-empty array\n");
+                return 2;
+            }
+            if (w.conditions.isEmpty()) {
+                std::fprintf(stderr, "condition JSON must be a condition object or non-empty array\n");
+                return 2;
+            }
+            if (w.name.isEmpty())
+                w.name = QStringLiteral("Raw scanner watch");
+        } else {
+            std::fprintf(stderr, "usage: scanner add price|raw ... --yes\n");
+            return 2;
+        }
+        if (w.logic != "AND" && w.logic != "OR") {
+            std::fprintf(stderr, "--logic must be AND or OR\n");
+            return 2;
+        }
+        if (w.mode != "poll" && w.mode != "realtime") {
+            std::fprintf(stderr, "--mode must be poll or realtime\n");
+            return 2;
+        }
+        auto r = watches.create(w);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to create scanner watch: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Scanner watch created"),
+                                                      scanner_watch_to_json(r.value())));
+    }
+
+    std::fprintf(stderr, "usage: scanner list|show|add|events|pause|resume|delete\n");
+    return 2;
+}
+
+static QJsonObject watchlist_to_json(const Watchlist& wl, const QVector<WatchlistStock>& stocks) {
+    QJsonArray symbols;
+    for (const auto& s : stocks) {
+        symbols.append(QJsonObject{{"symbol", s.symbol}, {"name", s.name}, {"exchange", s.exchange},
+                                   {"notes", s.notes}, {"added_at", s.added_at}});
+    }
+    return QJsonObject{{"id", wl.id},
+                       {"name", wl.name},
+                       {"description", wl.description},
+                       {"color", wl.color},
+                       {"sort_order", wl.sort_order},
+                       {"is_default", wl.is_default},
+                       {"created_at", wl.created_at},
+                       {"updated_at", wl.updated_at},
+                       {"symbols", symbols}};
+}
+
+static std::optional<QJsonArray> load_watchlists_json(int& code) {
+    auto& repo = WatchlistRepository::instance();
+    auto lists = repo.list_all();
+    if (lists.is_err()) {
+        std::fprintf(stderr, "failed to load watchlists: %s\n", lists.error().c_str());
+        code = 5;
+        return std::nullopt;
+    }
+    QJsonArray out;
+    for (const auto& wl : lists.value()) {
+        auto stocks = repo.get_stocks(wl.id);
+        if (stocks.is_err()) {
+            std::fprintf(stderr, "failed to load watchlist stocks: %s\n", stocks.error().c_str());
+            code = 5;
+            return std::nullopt;
+        }
+        out.append(watchlist_to_json(wl, stocks.value()));
+    }
+    return out;
+}
+
+static std::optional<QString> resolve_watchlist_id(const QJsonArray& lists, const QString& selector) {
+    const auto found = find_watchlist(lists, selector);
+    if (!found.has_value())
+        return std::nullopt;
+    return found->value("id").toString();
+}
+
+static QJsonObject mutation_body(const QString& message, const QJsonObject& data) {
+    QJsonObject body{{"success", true}, {"message", message}};
+    if (!data.isEmpty())
+        body["data"] = data;
+    return body;
+}
+
+static int watchlist_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    auto get_lists = [&]() -> std::optional<QJsonArray> {
+        return load_watchlists_json(code);
+    };
+
+    if (sub == "list" || sub == "ls" || sub == "all") {
+        const auto lists = get_lists();
+        return lists ? emit_watchlist_list(opts, *lists) : code;
+    }
+
+    if (sub == "show" || sub == "get") {
+        const auto lists = get_lists();
+        if (!lists)
+            return code;
+        const QString selector = args.join(' ').trimmed();
+        if (selector.isEmpty())
+            return emit_watchlist_list(opts, *lists);
+        const auto found = find_watchlist(*lists, selector);
+        if (!found.has_value()) {
+            std::fprintf(stderr, "watchlist not found: %s\n", qUtf8Printable(selector));
+            return 5;
+        }
+        return emit_watchlist_detail(opts, *found);
+    }
+
+    if (sub == "create" || sub == "new") {
+        QString description;
+        QString color;
+        bool ok = true;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == "--description" || flag == "-d")
+                description = take_option_value(args, i, flag, ok);
+            else if (flag == "--color")
+                color = take_option_value(args, i, flag, ok);
+            if (!ok)
+                return 2;
+        }
+        const QString name = args.join(' ').trimmed();
+        if (name.isEmpty()) {
+            std::fprintf(stderr, "usage: watchlist create <name...> [--description TEXT] [--color HEX]\n");
+            return 2;
+        }
+        if (color.isEmpty())
+            color = QStringLiteral("#FF6600");
+        auto& repo = WatchlistRepository::instance();
+        auto created = repo.create(name, color);
+        if (created.is_err()) {
+            std::fprintf(stderr, "failed to create watchlist: %s\n", created.error().c_str());
+            return 5;
+        }
+        Watchlist wl = created.value();
+        if (!description.isEmpty()) {
+            wl.description = description;
+            auto updated = repo.update(wl);
+            if (updated.is_err()) {
+                std::fprintf(stderr, "failed to update watchlist: %s\n", updated.error().c_str());
+                return 5;
+            }
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Watchlist created"),
+                                                      QJsonObject{{"id", wl.id},
+                                                                  {"name", wl.name},
+                                                                  {"description", wl.description},
+                                                                  {"color", wl.color}}));
+    }
+
+    if (sub == "delete" || sub == "drop" || sub == "rm-list") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: watchlist delete <id-or-name>\n");
+            return 2;
+        }
+        const auto lists = get_lists();
+        if (!lists)
+            return code;
+        const QString selector = args.join(' ').trimmed();
+        const auto id = resolve_watchlist_id(*lists, selector);
+        if (!id.has_value()) {
+            std::fprintf(stderr, "watchlist not found: %s\n", qUtf8Printable(selector));
+            return 5;
+        }
+        auto r = WatchlistRepository::instance().remove(*id);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete watchlist: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Watchlist deleted"),
+                                                      QJsonObject{{"id", *id}}));
+    }
+
+    if (sub == "add" || sub == "append") {
+        QString watchlist_id;
+        if (!take_watchlist_option(args, watchlist_id))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: watchlist add <SYM...> [--watchlist ID]\n");
+            return 2;
+        }
+        auto& repo = WatchlistRepository::instance();
+        QString target_id;
+        if (watchlist_id.isEmpty()) {
+            auto lists = repo.list_all();
+            if (lists.is_err()) {
+                std::fprintf(stderr, "failed to load watchlists: %s\n", lists.error().c_str());
+                return 5;
+            }
+            if (lists.value().isEmpty()) {
+                auto created = repo.create(QStringLiteral("Default"));
+                if (created.is_err()) {
+                    std::fprintf(stderr, "failed to create default watchlist: %s\n", created.error().c_str());
+                    return 5;
+                }
+                target_id = created.value().id;
+            } else {
+                target_id = lists.value().first().id;
+            }
+        } else {
+            const auto lists = get_lists();
+            if (!lists)
+                return code;
+            const auto id = resolve_watchlist_id(*lists, watchlist_id);
+            if (!id.has_value()) {
+                std::fprintf(stderr, "watchlist not found: %s\n", qUtf8Printable(watchlist_id));
+                return 5;
+            }
+            target_id = *id;
+        }
+        QJsonArray bodies;
+        for (const QString& symbol : args) {
+            const QString sym = symbol.trimmed().toUpper();
+            if (sym.isEmpty())
+                continue;
+            auto r = repo.add_stock(target_id, sym);
+            if (r.is_err()) {
+                std::fprintf(stderr, "failed to add %s: %s\n", qUtf8Printable(sym), r.error().c_str());
+                return 5;
+            }
+            const QJsonObject body = mutation_body(QStringLiteral("Added ") + sym + QStringLiteral(" to watchlist"),
+                                                   QJsonObject{{"symbol", sym}, {"watchlist_id", target_id}});
+            if (opts.json)
+                bodies.append(body);
+            else
+                emit_mutation_body(opts, body);
+        }
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"results", bodies}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    if (sub == "remove" || sub == "rm" || sub == "delete-symbol") {
+        QString watchlist_id;
+        if (!take_watchlist_option(args, watchlist_id))
+            return 2;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: watchlist remove <SYM...> [--watchlist ID]\n");
+            return 2;
+        }
+        const auto lists = get_lists();
+        if (!lists)
+            return code;
+        QStringList target_ids;
+        if (watchlist_id.isEmpty()) {
+            for (const auto& v : *lists)
+                target_ids.append(v.toObject().value("id").toString());
+        } else {
+            const auto id = resolve_watchlist_id(*lists, watchlist_id);
+            if (!id.has_value()) {
+                std::fprintf(stderr, "watchlist not found: %s\n", qUtf8Printable(watchlist_id));
+                return 5;
+            }
+            target_ids.append(*id);
+        }
+        QJsonArray bodies;
+        for (const QString& symbol : args) {
+            const QString sym = symbol.trimmed().toUpper();
+            for (const QString& target_id : target_ids) {
+                auto r = WatchlistRepository::instance().remove_stock(target_id, sym);
+                if (r.is_err()) {
+                    std::fprintf(stderr, "failed to remove %s: %s\n", qUtf8Printable(sym), r.error().c_str());
+                    return 5;
+                }
+            }
+            const QJsonObject body = mutation_body(QStringLiteral("Removed ") + sym + QStringLiteral(" from watchlist"),
+                                                   QJsonObject{{"symbol", sym}, {"watchlist_id", watchlist_id}});
+            if (opts.json)
+                bodies.append(body);
+            else
+                emit_mutation_body(opts, body);
+        }
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"results", bodies}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    if (sub == "lookup" || sub == "search" || sub == "find") {
+        const int limit = parse_limit(args, 10);
+        if (limit < 0 || args.isEmpty()) {
+            std::fprintf(stderr, "usage: watchlist lookup <company-or-symbol...> [--limit N]\n");
+            return 2;
+        }
+        QJsonObject body;
+        GlobalOpts headless_opts = opts;
+        headless_opts.headless = true;
+        std::optional<BridgeClient> c;
+        const int rc = call_tool_json(headless_opts, c, QStringLiteral("lookup_symbol"),
+                                      QJsonObject{{"query", args.join(' ')}, {"limit", limit}}, body);
+        return rc == 0 ? emit_symbol_lookup(opts, body) : rc;
+    }
+
+    std::fprintf(stderr,
+                 "usage: watchlist list | show [id] | create <name> | delete <id> | "
+                 "add <SYM...> [--watchlist ID] | remove <SYM...> [--watchlist ID] | lookup <query>\n");
+    return 2;
+}
+
+static QJsonObject portfolio_to_json(const portfolio::Portfolio& p) {
+    return QJsonObject{{"id", p.id},
+                       {"name", p.name},
+                       {"owner", p.owner},
+                       {"currency", p.currency},
+                       {"description", p.description},
+                       {"broker_account_id", p.broker_account_id},
+                       {"created_at", p.created_at},
+                       {"updated_at", p.updated_at}};
+}
+
+static QJsonObject portfolio_asset_to_json(const portfolio::PortfolioAsset& a) {
+    return QJsonObject{{"id", a.id},
+                       {"portfolio_id", a.portfolio_id},
+                       {"symbol", a.symbol},
+                       {"quantity", a.quantity},
+                       {"avg_buy_price", a.avg_buy_price},
+                       {"cost_basis", a.quantity * a.avg_buy_price},
+                       {"first_purchase_date", a.first_purchase_date},
+                       {"last_updated", a.last_updated},
+                       {"sector", a.sector},
+                       {"broker_symbol", a.broker_symbol},
+                       {"exchange", a.exchange}};
+}
+
+static QJsonObject portfolio_tx_to_json(const portfolio::Transaction& tx) {
+    return QJsonObject{{"id", tx.id},
+                       {"portfolio_id", tx.portfolio_id},
+                       {"symbol", tx.symbol},
+                       {"type", tx.transaction_type},
+                       {"quantity", tx.quantity},
+                       {"price", tx.price},
+                       {"total_value", tx.total_value},
+                       {"date", tx.transaction_date},
+                       {"notes", tx.notes},
+                       {"created_at", tx.created_at}};
+}
+
+static QJsonObject portfolio_snapshot_to_json(const portfolio::PortfolioSnapshot& s) {
+    return QJsonObject{{"id", s.id},
+                       {"portfolio_id", s.portfolio_id},
+                       {"total_value", s.total_value},
+                       {"total_cost_basis", s.total_cost_basis},
+                       {"total_pnl", s.total_pnl},
+                       {"total_pnl_percent", s.total_pnl_percent},
+                       {"date", s.snapshot_date}};
+}
+
+static std::optional<QVector<portfolio::Portfolio>> load_portfolios(int& code) {
+    auto r = PortfolioRepository::instance().list_portfolios();
+    if (r.is_err()) {
+        std::fprintf(stderr, "failed to load portfolios: %s\n", r.error().c_str());
+        code = 5;
+        return std::nullopt;
+    }
+    return r.value();
+}
+
+static std::optional<portfolio::Portfolio> find_portfolio(const QVector<portfolio::Portfolio>& portfolios,
+                                                          const QString& selector) {
+    const QString q = selector.trimmed();
+    if (q.isEmpty())
+        return std::nullopt;
+    for (const auto& p : portfolios) {
+        if (p.id.compare(q, Qt::CaseInsensitive) == 0 || p.name.compare(q, Qt::CaseInsensitive) == 0)
+            return p;
+    }
+    for (const auto& p : portfolios) {
+        if (p.name.contains(q, Qt::CaseInsensitive))
+            return p;
+    }
+    return std::nullopt;
+}
+
+static int emit_portfolio_list(const GlobalOpts& opts, const QVector<portfolio::Portfolio>& portfolios) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& p : portfolios)
+            arr.append(portfolio_to_json(p));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"portfolios", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (portfolios.isEmpty()) {
+        std::printf("no portfolios\n");
+        return 0;
+    }
+    std::printf("%-36s %-24s %-14s %-8s %s\n", "id", "name", "owner", "currency", "description");
+    for (const auto& p : portfolios) {
+        std::printf("%-36s %-24s %-14s %-8s %s\n",
+                    qUtf8Printable(p.id),
+                    qUtf8Printable(p.name),
+                    qUtf8Printable(p.owner),
+                    qUtf8Printable(p.currency),
+                    qUtf8Printable(p.description));
+    }
+    return 0;
+}
+
+static int emit_portfolio_assets(const GlobalOpts& opts, const portfolio::Portfolio& p,
+                                 const QVector<portfolio::PortfolioAsset>& assets) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& a : assets)
+            arr.append(portfolio_asset_to_json(a));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"portfolio", portfolio_to_json(p)}, {"assets", arr}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("%s (%s) assets: %d\n", qUtf8Printable(p.name), qUtf8Printable(p.currency),
+                static_cast<int>(assets.size()));
+    if (assets.isEmpty())
+        return 0;
+    std::printf("%-12s %14s %14s %14s %s\n", "symbol", "quantity", "avg_price", "cost_basis", "sector");
+    for (const auto& a : assets) {
+        std::printf("%-12s %14.4f %14.4f %14.2f %s\n",
+                    qUtf8Printable(a.symbol),
+                    a.quantity,
+                    a.avg_buy_price,
+                    a.quantity * a.avg_buy_price,
+                    qUtf8Printable(a.sector));
+    }
+    return 0;
+}
+
+static int emit_portfolio_detail(const GlobalOpts& opts, const portfolio::Portfolio& p) {
+    auto assets = PortfolioRepository::instance().get_assets(p.id);
+    if (assets.is_err()) {
+        std::fprintf(stderr, "failed to load assets: %s\n", assets.error().c_str());
+        return 5;
+    }
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& a : assets.value())
+            arr.append(portfolio_asset_to_json(a));
+        QJsonObject out = portfolio_to_json(p);
+        out["assets"] = arr;
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    double cost_basis = 0.0;
+    for (const auto& a : assets.value())
+        cost_basis += a.quantity * a.avg_buy_price;
+    std::printf("id           %s\n", qUtf8Printable(p.id));
+    std::printf("name         %s\n", qUtf8Printable(p.name));
+    std::printf("owner        %s\n", qUtf8Printable(p.owner));
+    std::printf("currency     %s\n", qUtf8Printable(p.currency));
+    if (!p.description.isEmpty())
+        std::printf("description  %s\n", qUtf8Printable(p.description));
+    if (!p.broker_account_id.isEmpty())
+        std::printf("broker       %s\n", qUtf8Printable(p.broker_account_id));
+    std::printf("positions    %d\n", static_cast<int>(assets.value().size()));
+    std::printf("cost_basis   %.2f\n", cost_basis);
+    return 0;
+}
+
+static int emit_portfolio_transactions(const GlobalOpts& opts, const portfolio::Portfolio& p,
+                                       const QVector<portfolio::Transaction>& txs) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& tx : txs)
+            arr.append(portfolio_tx_to_json(tx));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"portfolio", portfolio_to_json(p)}, {"transactions", arr}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("%s transactions: %d\n", qUtf8Printable(p.name), static_cast<int>(txs.size()));
+    if (txs.isEmpty())
+        return 0;
+    std::printf("%-36s %-10s %-6s %12s %12s %14s %s\n",
+                "id", "date", "type", "quantity", "price", "total", "symbol");
+    for (const auto& tx : txs) {
+        std::printf("%-36s %-10s %-6s %12.4f %12.4f %14.2f %s\n",
+                    qUtf8Printable(tx.id),
+                    qUtf8Printable(tx.transaction_date.left(10)),
+                    qUtf8Printable(tx.transaction_type),
+                    tx.quantity,
+                    tx.price,
+                    tx.total_value,
+                    qUtf8Printable(tx.symbol));
+    }
+    return 0;
+}
+
+static int emit_portfolio_snapshots(const GlobalOpts& opts, const portfolio::Portfolio& p,
+                                    const QVector<portfolio::PortfolioSnapshot>& snaps) {
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& s : snaps)
+            arr.append(portfolio_snapshot_to_json(s));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"portfolio", portfolio_to_json(p)}, {"snapshots", arr}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("%s snapshots: %d\n", qUtf8Printable(p.name), static_cast<int>(snaps.size()));
+    if (snaps.isEmpty())
+        return 0;
+    std::printf("%-10s %14s %14s %14s %10s\n", "date", "value", "cost_basis", "pnl", "pnl_pct");
+    for (const auto& s : snaps) {
+        std::printf("%-10s %14.2f %14.2f %14.2f %10.2f\n",
+                    qUtf8Printable(s.snapshot_date.left(10)),
+                    s.total_value,
+                    s.total_cost_basis,
+                    s.total_pnl,
+                    s.total_pnl_percent);
+    }
+    return 0;
+}
+
+static std::optional<portfolio::Portfolio> require_portfolio_arg(QStringList& args, int& code) {
+    if (args.isEmpty()) {
+        std::fprintf(stderr, "missing portfolio id or name\n");
+        code = 2;
+        return std::nullopt;
+    }
+    auto portfolios = load_portfolios(code);
+    if (!portfolios)
+        return std::nullopt;
+    const QString selector = args.takeFirst();
+    auto p = find_portfolio(*portfolios, selector);
+    if (!p.has_value()) {
+        std::fprintf(stderr, "portfolio not found: %s\n", qUtf8Printable(selector));
+        code = 5;
+        return std::nullopt;
+    }
+    return p;
+}
+
+static int portfolio_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    if (sub == "list" || sub == "ls" || sub == "all") {
+        auto portfolios = load_portfolios(code);
+        return portfolios ? emit_portfolio_list(opts, *portfolios) : code;
+    }
+
+    if (sub == "show" || sub == "get") {
+        auto portfolios = load_portfolios(code);
+        if (!portfolios)
+            return code;
+        const QString selector = args.join(' ').trimmed();
+        if (selector.isEmpty())
+            return emit_portfolio_list(opts, *portfolios);
+        auto p = find_portfolio(*portfolios, selector);
+        if (!p.has_value()) {
+            std::fprintf(stderr, "portfolio not found: %s\n", qUtf8Printable(selector));
+            return 5;
+        }
+        return emit_portfolio_detail(opts, *p);
+    }
+
+    if (sub == "create" || sub == "new") {
+        QString owner;
+        QString currency = QStringLiteral("USD");
+        QString description;
+        bool ok = true;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == "--owner" || flag == "-o")
+                owner = take_option_value(args, i, flag, ok);
+            else if (flag == "--currency" || flag == "-c")
+                currency = take_option_value(args, i, flag, ok).trimmed().toUpper();
+            else if (flag == "--description" || flag == "-d")
+                description = take_option_value(args, i, flag, ok);
+            if (!ok)
+                return 2;
+        }
+        const QString name = args.join(' ').trimmed();
+        if (name.isEmpty()) {
+            std::fprintf(stderr, "usage: portfolio create <name...> [--owner NAME] [--currency USD] [--description TEXT]\n");
+            return 2;
+        }
+        if (owner.isEmpty()) {
+            owner = profile_json_payload().value("display_name").toString();
+            if (owner.isEmpty())
+                owner = QStringLiteral("Local");
+        }
+        if (currency.isEmpty())
+            currency = QStringLiteral("USD");
+        auto r = PortfolioRepository::instance().create_portfolio(name, owner, currency, description);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to create portfolio: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Portfolio created"),
+                                                      QJsonObject{{"id", r.value()},
+                                                                  {"name", name},
+                                                                  {"owner", owner},
+                                                                  {"currency", currency}}));
+    }
+
+    if (sub == "delete" || sub == "drop" || sub == "rm-portfolio") {
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        auto r = PortfolioRepository::instance().delete_portfolio(p->id);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete portfolio: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Portfolio deleted"),
+                                                      QJsonObject{{"id", p->id}, {"name", p->name}}));
+    }
+
+    if (sub == "assets" || sub == "holdings" || sub == "positions") {
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        auto assets = PortfolioRepository::instance().get_assets(p->id);
+        if (assets.is_err()) {
+            std::fprintf(stderr, "failed to load assets: %s\n", assets.error().c_str());
+            return 5;
+        }
+        return emit_portfolio_assets(opts, *p, assets.value());
+    }
+
+    if (sub == "add" || sub == "buy") {
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        QString date;
+        QString sector;
+        bool ok = true;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == "--date")
+                date = take_option_value(args, i, flag, ok);
+            else if (flag == "--sector")
+                sector = take_option_value(args, i, flag, ok);
+            if (!ok)
+                return 2;
+        }
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: portfolio %s <portfolio> <symbol> <quantity> <price> [--date YYYY-MM-DD] [--sector TEXT]\n",
+                         qUtf8Printable(sub));
+            return 2;
+        }
+        const QString symbol = args.at(0).trimmed().toUpper();
+        bool qty_ok = false;
+        bool price_ok = false;
+        const double qty = args.at(1).toDouble(&qty_ok);
+        const double price = args.at(2).toDouble(&price_ok);
+        if (symbol.isEmpty() || !qty_ok || !price_ok || qty <= 0 || price < 0) {
+            std::fprintf(stderr, "invalid symbol, quantity, or price\n");
+            return 2;
+        }
+        if (date.isEmpty())
+            date = QDate::currentDate().toString(Qt::ISODate);
+        auto asset = PortfolioRepository::instance().add_asset(p->id, symbol, qty, price, date, sector);
+        if (asset.is_err()) {
+            std::fprintf(stderr, "failed to add asset: %s\n", asset.error().c_str());
+            return 5;
+        }
+        auto tx = PortfolioRepository::instance().add_transaction(p->id, symbol, QStringLiteral("BUY"), qty, price, date);
+        if (tx.is_err()) {
+            std::fprintf(stderr, "failed to record transaction: %s\n", tx.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Asset added"),
+                                                      QJsonObject{{"portfolio_id", p->id},
+                                                                  {"asset_id", static_cast<int>(asset.value())},
+                                                                  {"transaction_id", tx.value()},
+                                                                  {"symbol", symbol},
+                                                                  {"quantity", qty},
+                                                                  {"price", price}}));
+    }
+
+    if (sub == "sell") {
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        QString date;
+        bool ok = true;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == "--date")
+                date = take_option_value(args, i, flag, ok);
+            if (!ok)
+                return 2;
+        }
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: portfolio sell <portfolio> <symbol> <quantity> <price> [--date YYYY-MM-DD]\n");
+            return 2;
+        }
+        const QString symbol = args.at(0).trimmed().toUpper();
+        bool qty_ok = false;
+        bool price_ok = false;
+        const double qty = args.at(1).toDouble(&qty_ok);
+        const double price = args.at(2).toDouble(&price_ok);
+        if (symbol.isEmpty() || !qty_ok || !price_ok || qty <= 0 || price < 0) {
+            std::fprintf(stderr, "invalid symbol, quantity, or price\n");
+            return 2;
+        }
+        auto assets = PortfolioRepository::instance().get_assets(p->id);
+        if (assets.is_err()) {
+            std::fprintf(stderr, "failed to load assets: %s\n", assets.error().c_str());
+            return 5;
+        }
+        std::optional<portfolio::PortfolioAsset> found;
+        for (const auto& a : assets.value()) {
+            if (a.symbol == symbol) {
+                found = a;
+                break;
+            }
+        }
+        if (!found.has_value()) {
+            std::fprintf(stderr, "asset not found in portfolio: %s\n", qUtf8Printable(symbol));
+            return 5;
+        }
+        const double remaining = found->quantity - qty;
+        Result<void> update = remaining <= 0.0001
+                                  ? PortfolioRepository::instance().remove_asset(p->id, symbol)
+                                  : PortfolioRepository::instance().update_asset(p->id, symbol, remaining,
+                                                                                 found->avg_buy_price);
+        if (update.is_err()) {
+            std::fprintf(stderr, "failed to update asset: %s\n", update.error().c_str());
+            return 5;
+        }
+        if (date.isEmpty())
+            date = QDate::currentDate().toString(Qt::ISODate);
+        auto tx = PortfolioRepository::instance().add_transaction(p->id, symbol, QStringLiteral("SELL"), qty, price, date);
+        if (tx.is_err()) {
+            std::fprintf(stderr, "failed to record transaction: %s\n", tx.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Asset sold"),
+                                                      QJsonObject{{"portfolio_id", p->id},
+                                                                  {"transaction_id", tx.value()},
+                                                                  {"symbol", symbol},
+                                                                  {"quantity", qty},
+                                                                  {"remaining_quantity", remaining < 0 ? 0 : remaining}}));
+    }
+
+    if (sub == "remove" || sub == "rm" || sub == "delete-asset") {
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: portfolio remove <portfolio> <symbol>\n");
+            return 2;
+        }
+        const QString symbol = args.first().trimmed().toUpper();
+        auto r = PortfolioRepository::instance().remove_asset(p->id, symbol);
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to remove asset: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Asset removed"),
+                                                      QJsonObject{{"portfolio_id", p->id}, {"symbol", symbol}}));
+    }
+
+    if (sub == "tx" || sub == "txn" || sub == "transactions") {
+        const int limit = parse_limit(args, 50);
+        if (limit < 0) {
+            std::fprintf(stderr, "usage: portfolio tx <portfolio> [--limit N]\n");
+            return 2;
+        }
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        auto txs = PortfolioRepository::instance().get_transactions(p->id, limit);
+        if (txs.is_err()) {
+            std::fprintf(stderr, "failed to load transactions: %s\n", txs.error().c_str());
+            return 5;
+        }
+        return emit_portfolio_transactions(opts, *p, txs.value());
+    }
+
+    if (sub == "dividend" || sub == "split") {
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        QString date;
+        QString notes;
+        bool ok = true;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == "--date")
+                date = take_option_value(args, i, flag, ok);
+            else if (flag == "--notes")
+                notes = take_option_value(args, i, flag, ok);
+            if (!ok)
+                return 2;
+        }
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: portfolio %s <portfolio> <symbol> <quantity> <price> [--date YYYY-MM-DD] [--notes TEXT]\n",
+                         qUtf8Printable(sub));
+            return 2;
+        }
+        const QString symbol = args.at(0).trimmed().toUpper();
+        bool qty_ok = false;
+        bool price_ok = false;
+        const double qty = args.at(1).toDouble(&qty_ok);
+        const double price = args.at(2).toDouble(&price_ok);
+        if (symbol.isEmpty() || !qty_ok || !price_ok || qty <= 0 || price < 0) {
+            std::fprintf(stderr, "invalid symbol, quantity, or price\n");
+            return 2;
+        }
+        if (date.isEmpty())
+            date = QDate::currentDate().toString(Qt::ISODate);
+        const QString type = sub.toUpper();
+        auto tx = PortfolioRepository::instance().add_transaction(p->id, symbol, type, qty, price, date, notes);
+        if (tx.is_err()) {
+            std::fprintf(stderr, "failed to record transaction: %s\n", tx.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Transaction recorded"),
+                                                      QJsonObject{{"portfolio_id", p->id},
+                                                                  {"transaction_id", tx.value()},
+                                                                  {"symbol", symbol},
+                                                                  {"type", type}}));
+    }
+
+    if (sub == "delete-tx" || sub == "rm-tx" || sub == "delete-transaction") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: portfolio delete-tx <transaction-id>\n");
+            return 2;
+        }
+        auto r = PortfolioRepository::instance().delete_transaction(args.first());
+        if (r.is_err()) {
+            std::fprintf(stderr, "failed to delete transaction: %s\n", r.error().c_str());
+            return 5;
+        }
+        return emit_mutation_body(opts, mutation_body(QStringLiteral("Transaction deleted"),
+                                                      QJsonObject{{"id", args.first()}}));
+    }
+
+    if (sub == "snapshots" || sub == "history") {
+        int days = 365;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == "--days") {
+                bool ok = true;
+                const QString raw = take_option_value(args, i, flag, ok);
+                bool n_ok = false;
+                const int n = raw.toInt(&n_ok);
+                if (!ok || !n_ok || n <= 0) {
+                    std::fprintf(stderr, "--days requires a positive integer\n");
+                    return 2;
+                }
+                days = n;
+            }
+        }
+        auto p = require_portfolio_arg(args, code);
+        if (!p)
+            return code;
+        auto snaps = PortfolioRepository::instance().get_snapshots(p->id, days);
+        if (snaps.is_err()) {
+            std::fprintf(stderr, "failed to load snapshots: %s\n", snaps.error().c_str());
+            return 5;
+        }
+        return emit_portfolio_snapshots(opts, *p, snaps.value());
+    }
+
+    std::fprintf(stderr,
+                 "usage: portfolio list | show [id-or-name] | create <name> | delete <id-or-name> | "
+                 "assets <portfolio> | add <portfolio> <symbol> <qty> <price> | "
+                 "sell <portfolio> <symbol> <qty> <price> | remove <portfolio> <symbol> | "
+                 "tx <portfolio> | dividend <portfolio> <symbol> <qty> <price> | snapshots <portfolio>\n");
+    return 2;
+}
+
+static QString cli_slugify(const QString& s) {
+    QString out;
+    for (const QChar c : s.toLower()) {
+        if (c.isLetterOrNumber())
+            out += c;
+        else if ((c == ' ' || c == '-' || c == '_') && !out.endsWith('_'))
+            out += '_';
+    }
+    while (out.endsWith('_')) out.chop(1);
+    return out.isEmpty() ? QStringLiteral("notebook") : out;
+}
+
+static QJsonArray cli_source_lines(const QString& src) {
+    QJsonArray arr;
+    const QStringList lines = src.split('\n');
+    for (int i = 0; i < lines.size(); ++i)
+        arr.append(i + 1 < lines.size() ? lines[i] + "\n" : lines[i]);
+    return arr;
+}
+
+static QString cli_source_text(const QJsonValue& source) {
+    if (source.isString())
+        return source.toString();
+    QString out;
+    for (const auto& v : source.toArray())
+        out += v.toString();
+    return out;
+}
+
+static QJsonObject notebook_entry_to_json(const services::NotebookCatalogEntry& e) {
+    return QJsonObject{{"id", e.id},
+                       {"title", e.title},
+                       {"category", e.category},
+                       {"difficulty", e.difficulty},
+                       {"est_minutes", e.est_minutes},
+                       {"requirements", e.requirements},
+                       {"summary", e.summary},
+                       {"file", e.file}};
+}
+
+static std::optional<services::NotebookCatalogEntry> find_notebook_catalog_entry(const QString& selector) {
+    const QString needle = selector.trimmed();
+    if (needle.isEmpty())
+        return std::nullopt;
+    const auto& catalog = services::NotebookLibraryService::instance().catalog();
+    for (const auto& e : catalog) {
+        if (e.id == needle || e.file == needle || e.title.compare(needle, Qt::CaseInsensitive) == 0)
+            return e;
+    }
+    for (const auto& e : catalog) {
+        if (e.id.contains(needle, Qt::CaseInsensitive) ||
+            e.title.contains(needle, Qt::CaseInsensitive) ||
+            e.file.contains(needle, Qt::CaseInsensitive))
+            return e;
+    }
+    return std::nullopt;
+}
+
+static QString resolve_notebook_path(const QString& selector, QString* error = nullptr,
+                                     QJsonObject* matched = nullptr) {
+    const QString trimmed = selector.trimmed();
+    if (trimmed.isEmpty()) {
+        if (error) *error = QStringLiteral("missing notebook id/title/path");
+        return {};
+    }
+    const QFileInfo direct(trimmed);
+    if (direct.exists() && direct.isFile())
+        return direct.absoluteFilePath();
+    const QFileInfo cli_created(AppPaths::data() + "/notebooks/" + cli_slugify(trimmed) + ".ipynb");
+    if (cli_created.exists() && cli_created.isFile())
+        return cli_created.absoluteFilePath();
+    const auto entry = find_notebook_catalog_entry(trimmed);
+    if (!entry) {
+        if (error) *error = QStringLiteral("notebook not found: ") + trimmed;
+        return {};
+    }
+    if (matched)
+        *matched = notebook_entry_to_json(*entry);
+    const QString path = services::NotebookLibraryService::instance().working_copy_for(*entry);
+    if (path.isEmpty()) {
+        if (error) *error = QStringLiteral("could not create working copy for notebook: ") + entry->id;
+        return {};
+    }
+    return path;
+}
+
+static QString unique_notebook_path(const QString& title) {
+    const QString dir = AppPaths::data() + "/notebooks";
+    QDir().mkpath(dir);
+    const QString stem = cli_slugify(title);
+    QString path = dir + "/" + stem + ".ipynb";
+    int n = 2;
+    while (QFileInfo::exists(path))
+        path = dir + "/" + stem + "_" + QString::number(n++) + ".ipynb";
+    return path;
+}
+
+static int write_cli_notebook(const QString& path, const QString& title, const QString& markdown,
+                              const QString& code, QString* error) {
+    QJsonArray cells;
+    cells.append(QJsonObject{{"cell_type", "markdown"},
+                             {"metadata", QJsonObject{}},
+                             {"source", cli_source_lines(markdown.trimmed().isEmpty()
+                                                             ? QStringLiteral("# %1\n").arg(title)
+                                                             : markdown)}});
+    if (!code.trimmed().isEmpty()) {
+        cells.append(QJsonObject{{"cell_type", "code"},
+                                 {"execution_count", QJsonValue::Null},
+                                 {"metadata", QJsonObject{}},
+                                 {"outputs", QJsonArray{}},
+                                 {"source", cli_source_lines(code)}});
+    }
+    const QJsonObject nb{{"cells", cells},
+                         {"metadata", QJsonObject{{"kernelspec", QJsonObject{{"display_name", "Python 3"},
+                                                                              {"language", "python"},
+                                                                              {"name", "python3"}}},
+                                                  {"language_info", QJsonObject{{"name", "python"}}}}},
+                         {"nbformat", 4},
+                         {"nbformat_minor", 5}};
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (error) *error = QStringLiteral("could not write notebook: ") + path;
+        return 5;
+    }
+    f.write(QJsonDocument(nb).toJson(QJsonDocument::Indented));
+    f.close();
+    return 0;
+}
+
+static int emit_notebook_path_result(const GlobalOpts& opts, const QString& path, bool opened = false,
+                                     const QJsonObject& extra = {}) {
+    if (opts.json) {
+        QJsonObject out = extra;
+        out["path"] = path;
+        out["opened"] = opened;
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("%s%s\n", opened ? "opened " : "", qUtf8Printable(path));
+    }
+    return 0;
+}
+
+static int notebook_run_path(const GlobalOpts& opts, const QString& path, int only_cell) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        std::fprintf(stderr, "could not read notebook: %s\n", qUtf8Printable(path));
+        return 5;
+    }
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    f.close();
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        std::fprintf(stderr, "invalid notebook JSON: %s\n", qUtf8Printable(err.errorString()));
+        return 5;
+    }
+    QJsonArray results;
+    int code_index = 0;
+    int rc = 0;
+    for (const auto& v : doc.object().value("cells").toArray()) {
+        const QJsonObject cell = v.toObject();
+        if (cell.value("cell_type").toString() != "code")
+            continue;
+        ++code_index;
+        if (only_cell > 0 && only_cell != code_index)
+            continue;
+        const QString code = cli_source_text(cell.value("source"));
+        if (code.trimmed().isEmpty())
+            continue;
+        python::NotebookKernel::Result res;
+        QEventLoop loop;
+        python::NotebookKernel::instance().execute(code, [&](python::NotebookKernel::Result rr) {
+            res = std::move(rr);
+            loop.quit();
+        });
+        loop.exec();
+        QJsonObject row{{"cell", code_index},
+                        {"ok", res.ok},
+                        {"stdout", res.stdout_text},
+                        {"result", res.result_repr},
+                        {"stderr", res.stderr_text},
+                        {"error", res.error}};
+        if (!res.traceback.isEmpty()) {
+            QJsonArray tb;
+            for (const auto& line : res.traceback) tb.append(line);
+            row["traceback"] = tb;
+        }
+        results.append(row);
+        if (!res.ok)
+            rc = 5;
+        if (!opts.json) {
+            std::printf("cell %d  %s\n", code_index, res.ok ? "ok" : "error");
+            if (!res.stdout_text.isEmpty())
+                std::printf("%s", qUtf8Printable(res.stdout_text));
+            if (!res.result_repr.isEmpty())
+                std::printf("%s\n", qUtf8Printable(res.result_repr));
+            if (!res.error.isEmpty())
+                std::fprintf(stderr, "%s\n", qUtf8Printable(res.error));
+        }
+    }
+    if (opts.json)
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"path", path}, {"results", results}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+    if (results.isEmpty() && !opts.json)
+        std::printf("no code cells\n");
+    python::NotebookKernel::instance().shutdown();
+    return rc;
+}
+
+static int notebook_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    if (sub == "open") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: notebook open <id-or-title-or-path>\n");
+            return 2;
+        }
+        const QString selector = args.join(' ');
+        if (!opts.headless) {
+            std::optional<BridgeClient> c;
+            int code = 0;
+            if (!prepare_transport(opts, c, code)) return code;
+            const QJsonObject call_args = QFileInfo(selector).exists()
+                                              ? QJsonObject{{"path", selector}}
+                                              : QJsonObject{{"query", selector}};
+            return exec_tool(opts, c, QStringLiteral("notebook_open"), call_args);
+        }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code)) return code;
+        QString error;
+        QJsonObject matched;
+        const QString path = resolve_notebook_path(selector, &error, &matched);
+        if (path.isEmpty()) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+            return 2;
+        }
+        return emit_notebook_path_result(opts, path, false, matched);
+    }
+
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    if (sub == "list" || sub == "ls") {
+        QString category, difficulty, query;
+        for (int i = 0; i < args.size(); ++i) {
+            bool ok = true;
+            const QString flag = args.at(i);
+            if (flag == "--category") category = take_option_value(args, i, flag, ok);
+            else if (flag == "--difficulty") difficulty = take_option_value(args, i, flag, ok);
+            else if (flag == "--query" || flag == "-q") query = take_option_value(args, i, flag, ok);
+            else { query = args.mid(i).join(' '); args.erase(args.begin() + i, args.end()); break; }
+            if (!ok) return 2;
+        }
+        QJsonArray arr;
+        for (const auto& e : services::NotebookLibraryService::instance().catalog()) {
+            if (!category.isEmpty() && e.category.compare(category, Qt::CaseInsensitive) != 0)
+                continue;
+            if (!difficulty.isEmpty() && e.difficulty.compare(difficulty, Qt::CaseInsensitive) != 0)
+                continue;
+            if (!query.isEmpty() && !e.id.contains(query, Qt::CaseInsensitive) &&
+                !e.title.contains(query, Qt::CaseInsensitive) && !e.summary.contains(query, Qt::CaseInsensitive))
+                continue;
+            arr.append(notebook_entry_to_json(e));
+        }
+        if (opts.json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"notebooks", arr}}).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("%-36s %-13s %-13s %s\n", "id", "category", "difficulty", "title");
+            for (const auto& v : arr) {
+                const QJsonObject o = v.toObject();
+                std::printf("%-36s %-13s %-13s %s\n",
+                            qUtf8Printable(o.value("id").toString()),
+                            qUtf8Printable(o.value("category").toString()),
+                            qUtf8Printable(o.value("difficulty").toString()),
+                            qUtf8Printable(o.value("title").toString()));
+            }
+        }
+        return 0;
+    }
+    if (sub == "show" || sub == "info") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: notebook show <id-or-title>\n"); return 2; }
+        const auto entry = find_notebook_catalog_entry(args.join(' '));
+        if (!entry) { std::fprintf(stderr, "notebook not found\n"); return 2; }
+        QJsonObject o = notebook_entry_to_json(*entry);
+        o["asset_path"] = services::NotebookLibraryService::instance().asset_path(*entry);
+        o["working_path"] = services::NotebookLibraryService::instance().working_copy_for(*entry);
+        if (opts.json) std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        else {
+            std::printf("%s\n%s\ncategory=%s difficulty=%s minutes=%d\n%s\n",
+                        qUtf8Printable(o.value("id").toString()),
+                        qUtf8Printable(o.value("title").toString()),
+                        qUtf8Printable(o.value("category").toString()),
+                        qUtf8Printable(o.value("difficulty").toString()),
+                        o.value("est_minutes").toInt(),
+                        qUtf8Printable(o.value("working_path").toString()));
+        }
+        return 0;
+    }
+    if (sub == "path") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: notebook path <id-or-title-or-path>\n"); return 2; }
+        QString error;
+        QJsonObject matched;
+        const QString path = resolve_notebook_path(args.join(' '), &error, &matched);
+        if (path.isEmpty()) { std::fprintf(stderr, "%s\n", qUtf8Printable(error)); return 2; }
+        return emit_notebook_path_result(opts, path, false, matched);
+    }
+    if (sub == "seed") {
+        const bool force = args.contains(QStringLiteral("--force"));
+        services::NotebookLibraryService::instance().seed_into_files(force);
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"seeded", true}, {"force", force}})
+                                    .toJson(QJsonDocument::Compact)
+                                    .constData());
+        else
+            std::printf("notebook library seeded%s\n", force ? " (forced)" : "");
+        return 0;
+    }
+    if (sub == "create" || sub == "new") {
+        QString title;
+        while (!args.isEmpty() && !args.first().startsWith("--"))
+            title += (title.isEmpty() ? QString() : QStringLiteral(" ")) + args.takeFirst();
+        if (title.trimmed().isEmpty()) { std::fprintf(stderr, "usage: notebook create <title>\n"); return 2; }
+        QString markdown = QStringLiteral("# %1\n").arg(title);
+        QString code;
+        bool open_after = !opts.headless;
+        for (int i = 0; i < args.size(); ++i) {
+            bool ok = true;
+            const QString flag = args.at(i);
+            if (flag == "--markdown") markdown = take_option_value(args, i, flag, ok);
+            else if (flag == "--code") code = take_option_value(args, i, flag, ok);
+            else if (flag == "--from-file") {
+                const QString source = take_option_value(args, i, flag, ok);
+                QFile f(source);
+                if (ok && f.open(QIODevice::ReadOnly | QIODevice::Text)) code = QString::fromUtf8(f.readAll());
+                else { std::fprintf(stderr, "could not read --from-file: %s\n", qUtf8Printable(source)); return 5; }
+            } else if (flag == "--open") open_after = true;
+            else if (flag == "--no-open") open_after = false;
+            else { std::fprintf(stderr, "unknown notebook create option: %s\n", qUtf8Printable(flag)); return 2; }
+            if (!ok) return 2;
+        }
+        const QString path = unique_notebook_path(title);
+        QString error;
+        const int rc = write_cli_notebook(path, title, markdown, code, &error);
+        if (rc != 0) { std::fprintf(stderr, "%s\n", qUtf8Printable(error)); return rc; }
+        if (open_after && !opts.headless) {
+            std::optional<BridgeClient> c;
+            int transport = 0;
+            if (!prepare_transport(opts, c, transport)) return transport;
+            QJsonObject body;
+            const int open_rc = call_tool_json(opts, c, QStringLiteral("notebook_open"),
+                                               QJsonObject{{"path", path}}, body);
+            if (open_rc != 0) return open_rc;
+            return emit_notebook_path_result(opts, path, body.value("data").toObject().value("opened").toBool(), body.value("data").toObject());
+        }
+        return emit_notebook_path_result(opts, path);
+    }
+    if (sub == "run") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: notebook run <id-or-title-or-path> [--cell N]\n"); return 2; }
+        int only_cell = 0;
+        for (int i = 0; i < args.size(); ++i) {
+            if (args.at(i) != "--cell")
+                continue;
+            bool ok = true;
+            const QString raw = take_option_value(args, i, args.at(i), ok);
+            bool n_ok = false;
+            only_cell = raw.toInt(&n_ok);
+            if (!ok || !n_ok || only_cell <= 0) {
+                std::fprintf(stderr, "--cell requires a positive integer\n");
+                return 2;
+            }
+        }
+        QString error;
+        const QString path = resolve_notebook_path(args.join(' '), &error);
+        if (path.isEmpty()) { std::fprintf(stderr, "%s\n", qUtf8Printable(error)); return 2; }
+        return notebook_run_path(opts, path, only_cell);
+    }
+
+    std::fprintf(stderr, "usage: notebook list|show|path|seed|open|create|run\n");
+    return 2;
+}
+
+static QJsonObject strategy_to_json(const services::algo::AlgoStrategy& s) {
+    return QJsonObject{{"id", s.id},
+                       {"name", s.name},
+                       {"description", s.description},
+                       {"timeframe", s.timeframe},
+                       {"instrument_type", s.instrument_type},
+                       {"entry_logic", s.entry_logic},
+                       {"exit_logic", s.exit_logic},
+                       {"entry_conditions", s.entry_conditions},
+                       {"exit_conditions", s.exit_conditions},
+                       {"stop_loss", s.stop_loss},
+                       {"take_profit", s.take_profit},
+                       {"trailing_stop", s.trailing_stop},
+                       {"position_size_pct", s.position_size_pct},
+                       {"active", s.is_active},
+                       {"created_at", s.created_at},
+                       {"updated_at", s.updated_at}};
+}
+
+static QVector<services::algo::AlgoStrategy> load_strategies_sync(int timeout_ms = 5000) {
+    QVector<services::algo::AlgoStrategy> out;
+    bool done = false;
+    QEventLoop loop;
+    auto& svc = services::algo::AlgoTradingService::instance();
+    QMetaObject::Connection conn = QObject::connect(
+        &svc, &services::algo::AlgoTradingService::strategies_loaded,
+        &loop, [&](QVector<services::algo::AlgoStrategy> rows) {
+            out = std::move(rows);
+            done = true;
+            loop.quit();
+        });
+    svc.list_strategies();
+    if (!done) {
+        QTimer::singleShot(timeout_ms, &loop, &QEventLoop::quit);
+        loop.exec();
+    }
+    QObject::disconnect(conn);
+    return out;
+}
+
+static std::optional<services::algo::AlgoStrategy> find_strategy(const QString& selector,
+                                                                 const QVector<services::algo::AlgoStrategy>& rows) {
+    const QString needle = selector.trimmed();
+    for (const auto& s : rows) {
+        if (s.id == needle || s.name.compare(needle, Qt::CaseInsensitive) == 0)
+            return s;
+    }
+    for (const auto& s : rows) {
+        if (s.id.contains(needle, Qt::CaseInsensitive) || s.name.contains(needle, Qt::CaseInsensitive))
+            return s;
+    }
+    return std::nullopt;
+}
+
+static int emit_strategy_list(const GlobalOpts& opts, const QVector<services::algo::AlgoStrategy>& rows) {
+    QJsonArray arr;
+    for (const auto& s : rows)
+        arr.append(strategy_to_json(s));
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"strategies", arr}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("%-34s %-24s %-8s %s\n", "id", "name", "timeframe", "description");
+    for (const auto& s : rows) {
+        std::printf("%-34s %-24s %-8s %s\n",
+                    qUtf8Printable(s.id),
+                    qUtf8Printable(s.name.left(24)),
+                    qUtf8Printable(s.timeframe),
+                    qUtf8Printable(s.description));
+    }
+    return 0;
+}
+
+static int strategy_backtest_command(const GlobalOpts& opts, const services::algo::AlgoStrategy& strategy,
+                                     QStringList args) {
+    QString symbol = QStringLiteral("AAPL");
+    QString end = QDate::currentDate().toString(Qt::ISODate);
+    QString start = QDate::currentDate().addDays(-services::algo::algo_default_lookback_days(strategy.timeframe)).toString(Qt::ISODate);
+    double capital = 100000.0;
+    for (int i = 0; i < args.size(); ++i) {
+        bool ok = true;
+        const QString flag = args.at(i);
+        if (flag == "--symbol" || flag == "-s") symbol = take_option_value(args, i, flag, ok).trimmed().toUpper();
+        else if (flag == "--start") start = take_option_value(args, i, flag, ok);
+        else if (flag == "--end") end = take_option_value(args, i, flag, ok);
+        else if (flag == "--capital") {
+            const QString raw = take_option_value(args, i, flag, ok);
+            bool n_ok = false;
+            capital = raw.toDouble(&n_ok);
+            if (!n_ok || capital <= 0) { std::fprintf(stderr, "--capital requires a positive number\n"); return 2; }
+        } else {
+            std::fprintf(stderr, "unknown strategy backtest option: %s\n", qUtf8Printable(flag));
+            return 2;
+        }
+        if (!ok) return 2;
+    }
+    QJsonObject result;
+    QString error;
+    bool done = false;
+    QEventLoop loop;
+    auto& svc = services::algo::AlgoTradingService::instance();
+    QMetaObject::Connection ok_conn = QObject::connect(
+        &svc, &services::algo::AlgoTradingService::backtest_result,
+        &loop, [&](const QJsonObject& payload) {
+            result = payload;
+            done = true;
+            loop.quit();
+        });
+    QMetaObject::Connection err_conn = QObject::connect(
+        &svc, &services::algo::AlgoTradingService::error_occurred,
+        &loop, [&](const QString&, const QString& msg) {
+            error = msg;
+            done = true;
+            loop.quit();
+        });
+    svc.run_backtest(strategy, symbol, start, end, capital);
+    QTimer::singleShot(90000, &loop, &QEventLoop::quit);
+    loop.exec();
+    QObject::disconnect(ok_conn);
+    QObject::disconnect(err_conn);
+    if (!done || result.isEmpty()) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(error.isEmpty() ? QStringLiteral("backtest timed out or returned no data") : error));
+        return 5;
+    }
+    result["strategy_id"] = strategy.id;
+    result["strategy_name"] = strategy.name;
+    result["symbol"] = symbol;
+    result["start"] = start;
+    result["end"] = end;
+    if (opts.json)
+        std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Compact).constData());
+    else
+        std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Indented).constData());
+    return 0;
+}
+
+static int strategy_templates_command(const GlobalOpts& opts) {
+    QJsonArray arr;
+    for (const auto& t : services::algo::algo_strategy_templates()) {
+        arr.append(QJsonObject{{"name", t.name},
+                               {"description", t.description},
+                               {"timeframe", t.timeframe},
+                               {"entry_logic", t.entry_logic},
+                               {"exit_logic", t.exit_logic},
+                               {"stop_loss", t.stop_loss},
+                               {"take_profit", t.take_profit},
+                               {"entry_conditions", t.entry},
+                               {"exit_conditions", t.exit}});
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"templates", arr}}).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("%-24s %-8s %s\n", "name", "tf", "description");
+        for (const auto& v : arr) {
+            const QJsonObject o = v.toObject();
+            std::printf("%-24s %-8s %s\n",
+                        qUtf8Printable(o.value("name").toString()),
+                        qUtf8Printable(o.value("timeframe").toString()),
+                        qUtf8Printable(o.value("description").toString()));
+        }
+    }
+    return 0;
+}
+
+static int strategy_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    if (sub == "paper-run" || sub == "paper" || sub == "run") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: strategy paper-run <meanrev|claude> [--symbols AAPL,MSFT]\n"); return 2; }
+        if (!args.contains(QStringLiteral("--mode"))) {
+            args.insert(1, QStringLiteral("--mode"));
+            args.insert(2, QStringLiteral("paper"));
+        }
+        return ai_run_strategy(opts, args);
+    }
+    if (sub == "deploy") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: strategy deploy <id-or-name>\n"); return 2; }
+        if (opts.headless) {
+            std::fprintf(stderr, "strategy deploy opens the guarded GUI deploy flow; run without --headless\n");
+            return 2;
+        }
+        std::optional<BridgeClient> c;
+        int code = 0;
+        if (!prepare_transport(opts, c, code)) return code;
+        const auto r = c->call_tool(QStringLiteral("navigate_panel"),
+                                    QJsonObject{{"screen_id", QStringLiteral("algo_trading")}, {"exclusive", true}});
+        if (r.status != ClientStatus::Ok || (r.body.contains("success") && !r.body.value("success").toBool()))
+            return emit_result(opts, r);
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"opened", true},
+                                                          {"screen", "algo_trading"},
+                                                          {"strategy", args.join(' ')},
+                                                          {"guarded", true}})
+                                    .toJson(QJsonDocument::Compact)
+                                    .constData());
+        else
+            std::printf("opened Strategies; use the guarded Deploy flow for %s\n", qUtf8Printable(args.join(' ')));
+        return 0;
+    }
+
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    if (sub == "templates" || sub == "template")
+        return strategy_templates_command(opts);
+    QVector<services::algo::AlgoStrategy> rows = load_strategies_sync();
+    if (sub == "list" || sub == "ls") {
+        QString query;
+        for (int i = 0; i < args.size(); ++i) {
+            bool ok = true;
+            const QString flag = args.at(i);
+            if (flag == "--query" || flag == "-q") query = take_option_value(args, i, flag, ok);
+            else query = args.mid(i).join(' ');
+            if (!ok) return 2;
+        }
+        if (!query.trimmed().isEmpty()) {
+            QVector<services::algo::AlgoStrategy> filtered;
+            for (const auto& s : rows) {
+                if (s.id.contains(query, Qt::CaseInsensitive) || s.name.contains(query, Qt::CaseInsensitive) ||
+                    s.description.contains(query, Qt::CaseInsensitive))
+                    filtered.append(s);
+            }
+            rows = filtered;
+        }
+        return emit_strategy_list(opts, rows);
+    }
+    if (sub == "show" || sub == "info") {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: strategy show <id-or-name>\n"); return 2; }
+        const auto s = find_strategy(args.join(' '), rows);
+        if (!s) { std::fprintf(stderr, "strategy not found\n"); return 2; }
+        const QJsonObject o = strategy_to_json(*s);
+        if (opts.json) std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        else std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Indented).constData());
+        return 0;
+    }
+    if (sub == "backtest" || sub == "bt") {
+        QStringList selector_parts;
+        while (!args.isEmpty() && !args.first().startsWith("--"))
+            selector_parts.append(args.takeFirst());
+        if (selector_parts.isEmpty()) { std::fprintf(stderr, "usage: strategy backtest <id-or-name> --symbol AAPL\n"); return 2; }
+        const auto s = find_strategy(selector_parts.join(' '), rows);
+        if (!s) { std::fprintf(stderr, "strategy not found\n"); return 2; }
+        return strategy_backtest_command(opts, *s, args);
+    }
+
+    std::fprintf(stderr, "usage: strategy list|templates|show|backtest|paper-run|deploy\n");
+    return 2;
+}
+
 // The headless tool catalog, shaped like the bridge's GET /tools response
 // ({"tools": [{name, description, inputSchema, serverId}, ...]}) so `mcp list`
 // and `mcp describe` render consistently across modes. Reads the registered
@@ -144,9 +10066,12 @@ static QJsonObject headless_tool_catalog() {
 int dispatch(QStringList args) {
     GlobalOpts opts;
     if (!parse_global_opts(args, opts)) { std::fprintf(stderr, "error: --profile requires a value\n"); return 2; }
+    if (opts.help && args.isEmpty()) return usage(stdout, 0);
     if (args.isEmpty()) return usage();
 
     const QString group = args.takeFirst();
+    if (group == "help" || group == "--help" || group == "-h")
+        return command_help(args.isEmpty() ? QString() : args.first());
     if (group == "version") {
         std::printf("openterminalcli %s\n", qUtf8Printable(QCoreApplication::applicationVersion()));
         return 0;
@@ -177,26 +10102,158 @@ int dispatch(QStringList args) {
                      describe(std::get<DiscoveryError>(r)), qUtf8Printable(opts.profile));
         return 3;
     }
+    if (group == "doctor" || group == "diagnose") {
+        if (opts.help) return command_help("doctor");
+        return doctor_command(opts, args);
+    }
+    if (group == "security" || group == "sec") {
+        if (opts.help) return command_help("security");
+        return security_command(opts, args);
+    }
+    if (group == "setup" || group == "onboard" || group == "onboarding") {
+        if (opts.help) return command_help("setup");
+        return setup_command(opts, args);
+    }
     if (group == "observe") {
         // Pure-local read of the headless observer's journal (no transport).
         return observe_command(opts, args);
     }
     if (group == "serve") {
+        if (opts.help) return command_help("serve");
         const QString sub = args.isEmpty() ? QString() : args.first();
         if (sub == "--status") return serve_status(opts.profile, opts.json);
         if (sub == "--stop")   return serve_stop(opts.profile);
         if (!args.isEmpty()) { std::fprintf(stderr, "usage: serve [--status|--stop]\n"); return 2; }
         return serve_run(opts.profile);   // blocks in the event loop
     }
-    if (group == "mcp") {
+
+    if (group == "daemon" || group == "service" || group == "launchd") {
+        if (opts.help) return command_help("daemon");
+        return daemon_command(opts.profile, opts.json, args);
+    }
+
+    if (group == "screens") {
+        if (opts.help) return command_help("screens");
+        return emit_screens(opts, args);
+    }
+
+    if (group == "coverage" || group == "parity") {
+        if (opts.help) return command_help("coverage");
+        return coverage_command(opts, args);
+    }
+
+    if (group == "open" || group == "nav" || group == "goto") {
+        if (opts.help) return command_help("open");
+        if (!require_gui_command(opts)) return 2;
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: open <screen-or-alias>\n"); return 2; }
+        const QString query = args.join(' ');
+        const ScreenEntry* screen = find_screen(query);
+        const QString screen_id = screen ? QString::fromLatin1(screen->id) : query.trimmed();
+        if (screen_id.isEmpty()) { std::fprintf(stderr, "usage: open <screen-or-alias>\n"); return 2; }
+        std::optional<BridgeClient> c;
+        int code = 0;
+        if (!prepare_transport(opts, c, code)) return code;
+        const auto r = c->call_tool(QStringLiteral("navigate_panel"),
+                                    QJsonObject{{"screen_id", screen_id}, {"exclusive", true}});
+        if (opts.json)
+            return emit_result(opts, r);
+        if (r.status == ClientStatus::Ok && r.body.value("success").toBool(true) == false &&
+            r.body.value("error").toString() == QStringLiteral("Window not found")) {
+            std::fprintf(stderr, "no OpenTerminal window is available yet; finish startup/recovery/unlock in the app\n");
+            return 5;
+        }
+        if (r.status != ClientStatus::Ok || (r.body.contains("success") && !r.body.value("success").toBool()))
+            return emit_result(opts, r);
+        std::printf("opened %s\n", qUtf8Printable(screen_id));
+        return 0;
+    }
+
+    if (group == "cmd" || group == "command") {
+        if (opts.help) return command_help("cmd");
+        if (!require_gui_command(opts)) return 2;
+        const QString text = args.join(' ').trimmed();
+        if (text.isEmpty()) { std::fprintf(stderr, "usage: cmd <command-bar text...>\n"); return 2; }
+        std::optional<BridgeClient> c;
+        int code = 0;
+        if (!prepare_transport(opts, c, code)) return code;
+        return emit_result(opts, c->call_tool(QStringLiteral("run_command_bar_text"), QJsonObject{{"text", text}}));
+    }
+
+    if (group == "actions") {
+        if (opts.help) return command_help("actions");
+        if (!require_gui_command(opts)) return 2;
+        std::optional<BridgeClient> c;
+        int code = 0;
+        if (!prepare_transport(opts, c, code)) return code;
+
+        const QString query = args.join(' ').trimmed();
+        ClientResult r = query.isEmpty()
+                             ? c->call_tool(QStringLiteral("list_actions"), {})
+                             : c->call_tool(QStringLiteral("find_actions"),
+                                            QJsonObject{{"prefix", query}, {"max_results", 200}});
+        if (r.status != ClientStatus::Ok || opts.json)
+            return emit_result(opts, r);
+        if (r.body.contains("success") && !r.body.value("success").toBool())
+            return emit_result(opts, r);
+        const QJsonArray arr = r.body.value("data").toArray();
+        for (const auto& v : arr) {
+            const QJsonObject a = v.toObject();
+            std::printf("%-34s %-14s %s\n", qUtf8Printable(a.value("id").toString()),
+                        qUtf8Printable(a.value("category").toString()),
+                        qUtf8Printable(a.value("display").toString()));
+        }
+        return 0;
+    }
+
+    if (group == "action" || group == "invoke") {
+        if (opts.help) return command_help("action");
+        if (!require_gui_command(opts)) return 2;
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: action <id> [key=value ...]\n"); return 2; }
+        QString id = args.takeFirst();
+        const ScreenEntry* screen = find_screen(id);
+        if (screen && !id.startsWith("screen."))
+            id = QStringLiteral("screen.") + QString::fromLatin1(screen->id);
+        QJsonObject action_args;
+        QString err;
+        if (!parse_tool_args(args, action_args, err)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+            return 2;
+        }
+        std::optional<BridgeClient> c;
+        int code = 0;
+        if (!prepare_transport(opts, c, code)) return code;
+        if (id.startsWith(QStringLiteral("screen.")) && action_args.isEmpty()) {
+            return emit_result(opts, c->call_tool(QStringLiteral("navigate_panel"),
+                                                  QJsonObject{{"screen_id", id.mid(7)}, {"exclusive", true}}));
+        }
+        return emit_result(opts, c->call_tool(QStringLiteral("invoke_action"),
+                                             QJsonObject{{"id", id}, {"args", action_args}}));
+    }
+
+    const bool tools_alias = (group == "tools");
+    const bool tool_alias = (group == "tool");
+    const bool call_alias = (group == "call");
+    if (group == "mcp" || tools_alias || tool_alias || call_alias) {
+        if (opts.help) return command_help("mcp");
         const QString sub = args.isEmpty() ? QString() : args.takeFirst();
-        if (sub.isEmpty()) { std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2; }
+        QString effective_sub = sub;
+        if (tools_alias) {
+            effective_sub = sub.isEmpty() ? QStringLiteral("list") : QStringLiteral("search");
+            if (!sub.isEmpty()) args.prepend(sub);
+        } else if (tool_alias) {
+            effective_sub = QStringLiteral("describe");
+            if (!sub.isEmpty()) args.prepend(sub);
+        } else if (call_alias) {
+            effective_sub = QStringLiteral("call");
+            if (!sub.isEmpty()) args.prepend(sub);
+        }
+        if (effective_sub.isEmpty()) { std::fprintf(stderr, "usage: mcp list|search|describe|call\n"); return 2; }
 
         std::optional<BridgeClient> c;
         int code = 0;
         if (!prepare_transport(opts, c, code)) return code;
 
-        if (sub == "list") {
+        if (effective_sub == "list") {
             if (opts.headless) {
                 std::printf("%s\n", QJsonDocument(headless_tool_catalog()).toJson(
                     opts.json ? QJsonDocument::Compact : QJsonDocument::Indented).constData());
@@ -204,7 +10261,14 @@ int dispatch(QStringList args) {
             }
             return emit_result(opts, c->get_tools());
         }
-        if (sub == "describe") {
+        if (effective_sub == "search") {
+            if (opts.headless)
+                return emit_tool_search(opts, headless_tool_catalog(), args);
+            auto r = c->get_tools();
+            if (r.status != ClientStatus::Ok) return emit_result(opts, r);
+            return emit_tool_search(opts, r.body, args);
+        }
+        if (effective_sub == "describe") {
             if (args.isEmpty()) { std::fprintf(stderr, "usage: mcp describe <tool>\n"); return 2; }
             const QString want = args.first();
             const QJsonArray tools = opts.headless
@@ -231,20 +10295,21 @@ int dispatch(QStringList args) {
             }
             std::fprintf(stderr, "no such tool: %s\n", qUtf8Printable(want)); return 2;
         }
-        if (sub == "call") {
+        if (effective_sub == "call") {
             if (args.size() < 1) { std::fprintf(stderr, "usage: mcp call <tool> '<json>'\n"); return 2; }
             const QString tool = args.takeFirst();
             QJsonObject a;
-            if (!args.isEmpty()) {
-                const QJsonDocument d = QJsonDocument::fromJson(args.first().toUtf8());
-                if (!d.isObject()) { std::fprintf(stderr, "args must be a JSON object\n"); return 2; }
-                a = d.object();
+            QString err;
+            if (!parse_tool_args(args, a, err)) {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(err));
+                return 2;
             }
             return exec_tool(opts, c, tool, a);
         }
-        std::fprintf(stderr, "usage: mcp list|describe|call\n"); return 2;
+        std::fprintf(stderr, "usage: mcp list|search|describe|call\n"); return 2;
     }
-    if (group == "quote") {
+    if (group == "quote" || group == "q") {
+        if (opts.help) return command_help("quote");
         if (args.isEmpty()) { std::fprintf(stderr, "usage: quote <SYM...>\n"); return 2; }
         std::optional<BridgeClient> c;
         int code = 0;
@@ -255,6 +10320,118 @@ int dispatch(QStringList args) {
             if (e != 0) rc = e;
         }
         return rc;
+    }
+
+    if (group == "news" || group == "headlines") {
+        if (opts.help) return command_help("news");
+        return news_command(opts, args);
+    }
+
+    if (group == "research" || group == "eq") {
+        if (opts.help) return command_help("research");
+        return research_command(opts, args);
+    }
+
+    if (group == "macro" || group == "econ" || group == "economics") {
+        if (opts.help) return command_help("macro");
+        return macro_command(opts, args);
+    }
+
+    if (group == "dbnomics") {
+        if (opts.help) return command_help("macro");
+        args.prepend(QStringLiteral("dbnomics"));
+        return macro_command(opts, args);
+    }
+
+    if (group == "govdata" || group == "government") {
+        if (opts.help) return command_help("macro");
+        args.prepend(QStringLiteral("gov"));
+        return macro_command(opts, args);
+    }
+
+    if (group == "trade" || group == "trading") {
+        if (opts.help) return command_help("trade");
+        return trade_command(opts, args);
+    }
+
+    if (group == "data" || group == "datasources" || group == "ds") {
+        if (opts.help) return command_help("data");
+        return data_command(opts, args);
+    }
+
+    if (group == "agent" || group == "agents") {
+        if (opts.help) return command_help("agent");
+        return agent_command(opts, args);
+    }
+
+    if (group == "workflow" || group == "workflows" || group == "wf") {
+        if (opts.help) return command_help("workflow");
+        return workflow_command(opts, args);
+    }
+
+    if (group == "files" || group == "file") {
+        if (opts.help) return command_help("files");
+        return files_command(opts, args);
+    }
+
+    if (group == "notes" || group == "note") {
+        if (opts.help) return command_help("notes");
+        return notes_command(opts, args);
+    }
+
+    if (group == "notebook" || group == "notebooks" || group == "nb") {
+        if (opts.help) return command_help("notebook");
+        return notebook_command(opts, args);
+    }
+
+    if (group == "report" || group == "reports") {
+        if (opts.help) return command_help("report");
+        return report_command(opts, args);
+    }
+
+    if (group == "excel" || group == "xl" || group == "spreadsheet" || group == "spreadsheets") {
+        if (opts.help) return command_help("excel");
+        return spreadsheet_command(opts, args);
+    }
+
+    if (group == "workspace" || group == "layout" || group == "layouts") {
+        if (opts.help) return command_help("workspace");
+        return workspace_command(opts, args);
+    }
+
+    if (group == "notify" || group == "notification" || group == "notifications") {
+        if (opts.help) return command_help("notify");
+        return notify_command(opts, args);
+    }
+
+    if (group == "scanner" || group == "scan" || group == "alerts") {
+        if (opts.help) return command_help("scanner");
+        return scanner_command(opts, args);
+    }
+
+    if (group == "watchlist" || group == "wl") {
+        if (opts.help) return command_help("watchlist");
+        return watchlist_command(opts, args);
+    }
+
+    if (group == "portfolio" || group == "port") {
+        if (opts.help) return command_help("portfolio");
+        return portfolio_command(opts, args);
+    }
+
+    if (group == "strategy" || group == "strategies" || group == "strat") {
+        if (opts.help) return command_help("strategy");
+        return strategy_command(opts, args);
+    }
+
+    if (group == "profile" || group == "account") {
+        if (opts.help) return command_help("profile");
+        return profile_command(opts, args);
+    }
+
+    if (group == "settings" || group == "setting") {
+        if (opts.help) return command_help("settings");
+        return settings_command(opts, args);
     }
 
     if (group == "hub") {
@@ -279,20 +10456,120 @@ int dispatch(QStringList args) {
         return exec_tool(opts, c, tool, tool_args);
     }
 
+    auto run_ask = [&](const QString& prompt) -> int {
+        if (prompt.trimmed().isEmpty()) {
+            std::fprintf(stderr, "usage: ask <prompt...>\n");
+            return 2;
+        }
+        auto ir = headless_runtime().init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+        if (!ai_chat::LlmService::instance().is_configured()) {
+            std::fprintf(stderr, "no LLM provider configured\n");
+            return 5;
+        }
+        const ai_chat::LlmResponse r = ai_chat::LlmService::instance().chat(prompt, {}, /*use_tools=*/true);
+        if (!r.success) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(r.error.isEmpty() ? QStringLiteral("LLM request failed") : r.error));
+            return 5;
+        }
+        if (opts.json) {
+            QJsonObject o{{"content", r.content},
+                          {"prompt_tokens", r.prompt_tokens},
+                          {"completion_tokens", r.completion_tokens},
+                          {"total_tokens", r.total_tokens}};
+            std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("%s\n", qUtf8Printable(r.content));
+        }
+        return 0;
+    };
+
+    auto run_workflow = [&](const QString& name, const QStringList& rest) -> int {
+        if (rest.isEmpty()) {
+            std::fprintf(stderr, "usage: %s <target>\n", qUtf8Printable(name));
+            return 2;
+        }
+        QString usage_msg;
+        const QString expanded = ai_chat::expand_analysis_slash_command("/" + name + " " + rest.join(' '), &usage_msg);
+        if (!usage_msg.isEmpty()) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(usage_msg));
+            return 2;
+        }
+        return run_ask(expanded);
+    };
+
+    if (group == "ask")
+        return run_ask(args.join(' '));
+    if (group == "brief" || group == "risk" || group == "thesis" || group == "radar")
+        return run_workflow(group, args);
+
     if (group == "ai") {
-        // Only `ai run strategy <name> …` is wired (paper strategy loop).
+        if (opts.help) return command_help("ai");
         const QString sub = args.isEmpty() ? QString() : args.takeFirst();
+        if (sub == "recipes" || sub == "playbooks")
+            return ai_recipes_list_command(opts);
+        if (sub == "recipe" || sub == "playbook") {
+            const QString action = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+            if (action == "list" || action == "ls")
+                return ai_recipes_list_command(opts);
+            if (action == "show" || action == "cat") {
+                if (args.size() != 1) {
+                    std::fprintf(stderr, "usage: ai recipe show <name>\n");
+                    return 2;
+                }
+                return ai_recipe_show_command(opts, args.first());
+            }
+            if (action == "run") {
+                if (args.size() < 2) {
+                    std::fprintf(stderr, "usage: ai recipe run <name> <target...>\n");
+                    return 2;
+                }
+                const QString name = args.takeFirst();
+                if (recipe_file_path(name).isEmpty()) {
+                    std::fprintf(stderr, "recipe not found: %s\n", qUtf8Printable(name));
+                    return 2;
+                }
+                const QString target = args.join(' ').trimmed();
+                return run_ask(QStringLiteral("Run the %1 analysis playbook for %2. Follow the bundled recipe step by step, use OpenTerminal tools for data, cite sources, and build durable Report Builder or Notebook outputs when the recipe calls for them.")
+                                   .arg(name, target));
+            }
+            args.prepend(action);
+            if (args.size() == 1)
+                return ai_recipe_show_command(opts, args.first());
+            std::fprintf(stderr, "usage: ai recipe [list|show <name>|run <name> <target...>]\n");
+            return 2;
+        }
+        if (sub == "providers" || sub == "provider" || sub == "config")
+            return ai_providers_command(opts);
+        if (sub == "use")
+            return ai_use_command(opts, args);
+        if (sub == "test")
+            return ai_test_command(opts, args);
+        if (sub == "ask")
+            return run_ask(args.join(' '));
+        if (sub == "brief" || sub == "risk" || sub == "thesis" || sub == "radar")
+            return run_workflow(sub, args);
         const QString what = args.isEmpty() ? QString() : args.takeFirst();
         if (sub == "run" && what == "strategy")
             return ai_run_strategy(opts, args);  // args == tokens after "ai run strategy"
         std::fprintf(stderr,
-                     "usage: ai run strategy <meanrev|claude> --mode paper "
+                     "usage: ai providers | ai use <provider> | ai test [prompt...] | ai recipes | "
+                     "ai recipe show|run ... | "
+                     "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
+                     "ai run strategy <meanrev|claude> --mode paper "
                      "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
         return 2;
     }
 
     std::fprintf(stderr, "error: unknown command '%s'\n", qUtf8Printable(group));
     return 2;
+}
+
+void shutdown() {
+    headless_runtime().shutdown();
 }
 
 } // namespace openmarketterminal::cli

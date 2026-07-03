@@ -266,6 +266,7 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QPushButton* btn_clear_out_ = nullptr;
     QPushButton* btn_run_all_ = nullptr;
     QPushButton* btn_restart_ = nullptr;
+    QPushButton* btn_promote_strategy_ = nullptr;
     QPushButton* btn_sidebar_ = nullptr;
     QLabel* py_label_ = nullptr;
     QLabel* shortcuts_label_ = nullptr;

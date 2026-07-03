@@ -11,7 +11,7 @@ QList<LayoutTemplates::Persona> LayoutTemplates::personas() {
         {QStringLiteral("equity_trader"),     QStringLiteral("Equity Trader"),
          QStringLiteral("Stock trading with watchlist, ticker chart, and order book.")},
         {QStringLiteral("crypto_trader"),     QStringLiteral("Crypto Trader"),
-         QStringLiteral("Live order book and chart for spot and perpetual markets.")},
+         QStringLiteral("Multi-asset crypto trading with exchange books, tape, chart, and paper execution.")},
         {QStringLiteral("portfolio_manager"), QStringLiteral("Portfolio Manager"),
          QStringLiteral("Holdings, allocation, risk and performance dashboard.")},
         {QStringLiteral("research_analyst"),  QStringLiteral("Research Analyst"),

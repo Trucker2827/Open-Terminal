@@ -17,14 +17,7 @@ NotebookKernel& NotebookKernel::instance() {
 
 NotebookKernel::NotebookKernel() {
     // Make sure the kernel process is torn down with the app — no orphans.
-    connect(qApp, &QCoreApplication::aboutToQuit, this, [this]() {
-        if (proc_) {
-            proc_->disconnect(this);  // don't respawn / fire callbacks during shutdown
-            proc_->terminate();
-            if (!proc_->waitForFinished(1000))
-                proc_->kill();
-        }
-    });
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this]() { shutdown(); });
 }
 
 bool NotebookKernel::ensure_started() {
@@ -87,6 +80,21 @@ void NotebookKernel::reset(Callback cb) {
     req["id"] = id;
     req["cmd"] = "reset";
     send(req, std::move(cb));
+}
+
+void NotebookKernel::shutdown() {
+    if (!proc_)
+        return;
+    proc_->disconnect(this);  // don't respawn / fire callbacks during shutdown
+    callbacks_.clear();
+    buffer_.clear();
+    proc_->terminate();
+    if (!proc_->waitForFinished(1000)) {
+        proc_->kill();
+        proc_->waitForFinished(1000);
+    }
+    proc_->deleteLater();
+    proc_ = nullptr;
 }
 
 void NotebookKernel::on_ready_read() {

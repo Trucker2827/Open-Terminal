@@ -83,15 +83,31 @@ std::vector<ToolDef> get_watchlist_tools() {
             QString name = args["name"].toString().trimmed();
             if (name.isEmpty())
                 return ToolResult::fail("Missing 'name'");
+            QString description = args["description"].toString().trimmed();
+            QString color = args["color"].toString().trimmed();
+            if (color.isEmpty())
+                color = QStringLiteral("#FF6600");
 
             QString new_id;
             QString error;
             detail::run_async_wait(QCoreApplication::instance(), [&](auto signal_done) {
-                auto r = WatchlistRepository::instance().create(name);
+                auto& repo = WatchlistRepository::instance();
+                auto r = repo.create(name, color);
                 if (r.is_err())
                     error = "Failed to create watchlist: " + QString::fromStdString(r.error());
-                else
+                else {
+                    if (!description.isEmpty()) {
+                        auto updated = r.value();
+                        updated.description = description;
+                        auto ur = repo.update(updated);
+                        if (ur.is_err()) {
+                            error = "Failed to update watchlist: " + QString::fromStdString(ur.error());
+                            signal_done();
+                            return;
+                        }
+                    }
                     new_id = r.value().id;
+                }
                 signal_done();
             });
             if (!error.isEmpty())
@@ -99,7 +115,11 @@ std::vector<ToolDef> get_watchlist_tools() {
 
             EventBus::instance().publish("watchlist.created", QVariantMap{{"id", new_id}, {"name", name}});
             LOG_INFO(TAG, "Created watchlist: " + name);
-            return ToolResult::ok("Watchlist created", QJsonObject{{"id", new_id}, {"name", name}});
+            return ToolResult::ok("Watchlist created",
+                                  QJsonObject{{"id", new_id},
+                                              {"name", name},
+                                              {"description", description},
+                                              {"color", color}});
         };
         tools.push_back(std::move(t));
     }

@@ -10,10 +10,12 @@
 
 #include "core/logging/Logger.h"
 #include "core/config/AppConfig.h"
+#include "core/config/ProfileManager.h"
 #include "mcp/McpProvider.h"
 #include "mcp/McpService.h"
 #include "storage/repositories/LlmConfigRepository.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/secure/SecureStorage.h"
 
 #    include "datahub/DataHub.h"
 #    include "datahub/TopicPolicy.h"
@@ -42,6 +44,12 @@ namespace openmarketterminal::ai_chat {
 
 static constexpr const char* kLlmSvcTag = "LlmService";
 
+namespace {
+QString profile_llm_api_key_id(const QString& provider) {
+    return ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") + provider.toLower() +
+           QStringLiteral(".api_key");
+}
+} // namespace
 
 
 LlmService::LlmService() = default;
@@ -137,6 +145,24 @@ void LlmService::ensure_config() const {
             base_url_ = c.base_url;
             model_ = c.model;
             tools_enabled_ = c.tools_enabled;
+        }
+    }
+
+    if (!provider_.isEmpty() && provider_requires_api_key(provider_)) {
+        const QString legacy_db_key = api_key_;
+        const QString secure_key_id = profile_llm_api_key_id(provider_);
+        auto secure_key = SecureStorage::instance().retrieve(secure_key_id);
+        if (secure_key.is_ok()) {
+            api_key_ = secure_key.value();
+        } else if (!legacy_db_key.isEmpty()) {
+            api_key_ = legacy_db_key;
+            auto migrated = SecureStorage::instance().store(secure_key_id, legacy_db_key);
+            if (migrated.is_ok()) {
+                LOG_INFO(kLlmSvcTag, QString("Migrated %1 API key into profile secure storage").arg(provider_));
+            } else {
+                LOG_WARN(kLlmSvcTag, QString("Could not migrate %1 API key into profile secure storage: %2")
+                                          .arg(provider_, QString::fromStdString(migrated.error())));
+            }
         }
     }
 
@@ -236,8 +262,9 @@ void LlmService::ensure_config() const {
             "  subject-specific title (e.g. 'Tesla: Margin Compression vs FSD Optionality' — not "
             "  'Stock Research'), author, company, date. (3) build the structure by calling "
             "  report_add_component for each section you designed in step 1. (4) gather data with "
-            "  tools like get_equity_info, get_equity_quote, edgar_get_financials, "
-            "  edgar_10k_sections, edgar_calc_multiples, get_equity_news, search_news. "
+            "  tools like search_equity_symbols, load_equity_symbol, get_quote, "
+            "  get_equity_financials, edgar_get_financials, edgar_10k_sections, "
+            "  edgar_calc_multiples, get_equity_news, search_news. "
             "  (5) populate each section by calling report_update_component with the gathered data. "
             "  Use stable component ids returned by report_add_component — never indices. "
             "  COVERAGE: before declaring the report done, verify every section you added has "

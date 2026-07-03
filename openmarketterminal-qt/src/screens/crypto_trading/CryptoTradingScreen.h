@@ -37,12 +37,15 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     Q_OBJECT
     Q_INTERFACES(openmarketterminal::IGroupLinked)
   public:
+    enum class Focus { MultiAsset, Bitcoin };
+
     explicit CryptoTradingScreen(QWidget* parent = nullptr);
+    explicit CryptoTradingScreen(Focus focus, QWidget* parent = nullptr);
     ~CryptoTradingScreen();
 
     void restore_state(const QVariantMap& state) override;
     QVariantMap save_state() const override;
-    QString state_key() const override { return "crypto_trading"; }
+    QString state_key() const override { return bitcoin_focus_ ? "bitcoin" : "crypto_trading"; }
     int state_version() const override { return 1; }
 
     // IGroupLinked — Phase 7: link crypto pairs across groups so a "BTC/USDT"
@@ -92,6 +95,8 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     void init_exchange();
     void load_portfolio();
     void switch_symbol(const QString& symbol);
+    QString default_symbol() const;
+    QString normalized_symbol_for_focus(const QString& symbol) const;
 
     // Perp detection + futures-control visibility. Leverage / margin-mode /
     // reduce-only controls only make sense on derivatives, so they are shown
@@ -149,6 +154,7 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     QTimer* clock_timer_ = nullptr;
 
     // ── State ──
+    bool bitcoin_focus_ = false;
     QString exchange_id_ = "coinbase";
     QString selected_symbol_ = "BTC/USDT";
     crypto::TradingMode trading_mode_ = crypto::TradingMode::Paper;

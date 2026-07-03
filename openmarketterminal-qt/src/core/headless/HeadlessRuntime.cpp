@@ -7,6 +7,7 @@
 #include "mcp/McpProvider.h"
 #include "mcp/ToolConfirmationGate.h"
 #include "mcp/tools/SettingsGate.h"
+#include "screens/data_sources/ConnectorRegistry.h"
 #include "services/DataServices.h"
 #include "services/markets/MarketDataService.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
@@ -20,6 +21,7 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QFutureWatcher>
+#include <QThreadPool>
 #include <QtConcurrent>
 
 namespace openmarketterminal::headless {
@@ -81,6 +83,8 @@ InitResult HeadlessRuntime::init(const QString& profile) {
         if (!reg.adapter("kalshi"))
             reg.register_adapter(std::make_unique<services::prediction::kalshi_ns::KalshiAdapter>());
     }
+
+    screens::datasources::register_all_connectors();
 
     // REAL enforcement of the two CLI capability gates: McpProvider consults the
     // installed AuthChecker for any tool with auth_required != None OR
@@ -168,16 +172,23 @@ mcp::ToolResult HeadlessRuntime::call_tool(const QString& name, const QJsonObjec
     // worker's marshaled calls and signal its completion.
     QFutureWatcher<mcp::ToolResult> w;
     QEventLoop loop;
+    QThreadPool pool;
+    pool.setMaxThreadCount(1);
+    pool.setExpiryTimeout(0);
     QObject::connect(&w, &QFutureWatcher<mcp::ToolResult>::finished, &loop, &QEventLoop::quit);
     w.setFuture(QtConcurrent::run(
-        [name, args]() { return mcp::McpProvider::instance().call_tool(name, args); }));
+        &pool, [name, args]() { return mcp::McpProvider::instance().call_tool(name, args); }));
     loop.exec();
+    pool.waitForDone();
     return w.future().resultCount() > 0 ? w.future().result()
                                         : mcp::ToolResult::fail("no result");
 }
 
 void HeadlessRuntime::shutdown() {
-    // One-shot host: singletons own their own teardown; nothing to do.
+    QThreadPool::globalInstance()->waitForDone();
+    CacheDatabase::instance().close();
+    Database::instance().close();
+    initialized_ = false;
 }
 
 }  // namespace openmarketterminal::headless

@@ -16,7 +16,8 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscovery.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
-    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/screens/ai_chat/AnalysisSlashCommands.cpp)
 target_include_directories(tst_command_dispatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # CommandDispatch.cpp now references openterminal_core (HeadlessRuntime +
 # McpProvider) for --headless support, so the test links the core lib too.
@@ -178,6 +179,11 @@ add_executable(tst_crypto_risk tst_crypto_risk.cpp)
 target_include_directories(tst_crypto_risk PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_risk PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_risk COMMAND tst_crypto_risk)
+
+add_executable(tst_layout_templates tst_layout_templates.cpp)
+target_include_directories(tst_layout_templates PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_layout_templates PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_layout_templates COMMAND tst_layout_templates)
 
 # Black-Scholes / BSM / Black option pricers (services/options/OptionPricing) —
 # pure math driving the strategy payoff curve. Known-answer + invariant coverage

@@ -33,6 +33,11 @@ Result<QString> SettingsRepository::get(const QString& key, const QString& defau
     return Result<QString>::ok(val.isEmpty() ? default_val : val);
 }
 
+Result<QVector<Setting>> SettingsRepository::list_all() {
+    return query_list("SELECT key, value, category, updated_at FROM settings ORDER BY category, key",
+                      {}, map_row);
+}
+
 Result<void> SettingsRepository::remove(const QString& key) {
     auto r = exec_write("DELETE FROM settings WHERE key = ?", {key});
     return r;

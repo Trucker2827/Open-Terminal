@@ -7,6 +7,7 @@
 #include "mcp/tools/ThreadHelper.h"
 #include "python/NotebookKernel.h"
 #include "screens/code_editor/CodeEditorScreen.h"
+#include "services/notebooks/NotebookLibraryService.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -15,6 +16,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+
+#include <optional>
 
 namespace openmarketterminal::mcp::tools {
 
@@ -35,6 +38,25 @@ static QJsonArray source_lines(const QString& src) {
     for (int i = 0; i < lines.size(); ++i)
         arr.append(i + 1 < lines.size() ? lines[i] + "\n" : lines[i]);
     return arr;
+}
+
+static std::optional<openmarketterminal::services::NotebookCatalogEntry>
+find_notebook_entry(const QString& selector) {
+    const QString needle = selector.trimmed();
+    if (needle.isEmpty())
+        return std::nullopt;
+    const auto& catalog = openmarketterminal::services::NotebookLibraryService::instance().catalog();
+    for (const auto& e : catalog) {
+        if (e.id == needle || e.file == needle || e.title.compare(needle, Qt::CaseInsensitive) == 0)
+            return e;
+    }
+    for (const auto& e : catalog) {
+        if (e.id.contains(needle, Qt::CaseInsensitive) ||
+            e.title.contains(needle, Qt::CaseInsensitive) ||
+            e.file.contains(needle, Qt::CaseInsensitive))
+            return e;
+    }
+    return std::nullopt;
 }
 
 std::vector<ToolDef> get_notebook_tools() {
@@ -116,6 +138,60 @@ std::vector<ToolDef> get_notebook_tools() {
             {"path", path}, {"code_cells", code_n}, {"markdown_cells", md_n}, {"opened", opened}});
     };
     tools.push_back(std::move(t));
+
+    ToolDef o;
+    o.name = "notebook_open";
+    o.description =
+        "Open a notebook in the Notebooks screen by bundled catalog id/title/query or by local .ipynb path. "
+        "Args: id, title, query, or path.";
+    o.category = "notebook-builder";
+    o.input_schema.properties = QJsonObject{
+        {"id", QJsonObject{{"type", "string"}, {"description", "Bundled notebook catalog id"}}},
+        {"title", QJsonObject{{"type", "string"}, {"description", "Bundled notebook title"}}},
+        {"query", QJsonObject{{"type", "string"}, {"description", "Catalog id/title/file search text"}}},
+        {"path", QJsonObject{{"type", "string"}, {"description", "Absolute or relative .ipynb path"}}},
+    };
+    o.handler = [](const QJsonObject& args) -> ToolResult {
+        QString path = args.value("path").toString().trimmed();
+        QJsonObject data;
+        if (path.isEmpty()) {
+            const QString selector = !args.value("id").toString().trimmed().isEmpty()
+                                         ? args.value("id").toString().trimmed()
+                                         : (!args.value("title").toString().trimmed().isEmpty()
+                                                ? args.value("title").toString().trimmed()
+                                                : args.value("query").toString().trimmed());
+            const auto entry = find_notebook_entry(selector);
+            if (!entry)
+                return ToolResult::fail("Notebook not found: " + selector);
+            path = openmarketterminal::services::NotebookLibraryService::instance().working_copy_for(*entry);
+            data["id"] = entry->id;
+            data["title"] = entry->title;
+            data["category"] = entry->category;
+        }
+        if (path.isEmpty())
+            return ToolResult::fail("Missing notebook path or catalog selector");
+        QFileInfo fi(path);
+        if (fi.exists())
+            path = fi.absoluteFilePath();
+        if (!QFileInfo::exists(path))
+            return ToolResult::fail("Notebook file not found: " + path);
+
+        openmarketterminal::EventBus::instance().publish(
+            "nav.switch_screen", QVariantMap{{"screen_id", "code_editor"}});
+        bool opened = false;
+        const QString path_copy = path;
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [&opened, path_copy]() {
+                if (auto* scr = screens::CodeEditorScreen::current())
+                    opened = scr->open_notebook_path(path_copy);
+            },
+            Qt::BlockingQueuedConnection);
+        data["path"] = path;
+        data["opened"] = opened;
+        return ToolResult::ok_data(data);
+    };
+    tools.push_back(std::move(o));
 
     // ── notebook_run — execute code in the live, stateful notebook kernel ───────
     ToolDef r;

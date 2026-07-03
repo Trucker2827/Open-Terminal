@@ -1,22 +1,36 @@
 #include "screens/profile/ProfileScreen.h"
 
 #include "auth/AuthManager.h"
+#include "core/config/ProfileManager.h"
 #include "core/currency/Currency.h"
 #include "core/logging/Logger.h"
+#include "services/llm/LlmService.h"
+#include "storage/repositories/LlmConfigRepository.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/secure/SecureStorage.h"
 #include "ui/theme/Theme.h"
 
 #include <QApplication>
+#include <QAbstractItemView>
 #include <QClipboard>
+#include <QComboBox>
 #include <QDesktopServices>
+#include <QDir>
 #include <QEvent>
+#include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
+#include <QPlainTextEdit>
+#include <QProcess>
 #include <QScrollArea>
+#include <QStandardPaths>
+#include <QTableWidgetItem>
 #include <QTimer>
 
 namespace openmarketterminal::screens {
@@ -94,7 +108,7 @@ ProfileScreen::ProfileScreen(QWidget* parent) : QWidget(parent) {
     sections_ = new QStackedWidget;
     sections_->addWidget(build_overview());
     sections_->addWidget(build_security());
-    sections_->addWidget(build_support());
+    sections_->addWidget(build_automation());
     build_tab_nav(root);
     root->addWidget(sections_, 1);
     connect(&auth::AuthManager::instance(), &auth::AuthManager::auth_state_changed, this, &ProfileScreen::refresh_all);
@@ -112,7 +126,7 @@ void ProfileScreen::changeEvent(QEvent* event) {
 }
 
 void ProfileScreen::retranslateUi() {
-    if (header_title_)       header_title_->setText(tr("PROFILE & ACCOUNT"));
+    if (header_title_)       header_title_->setText(tr("LOCAL PROFILE & ACCOUNT"));
     for (int i = 0; i < nav_buttons_.size() && i < nav_source_keys_.size(); ++i) {
         if (nav_buttons_[i])
             nav_buttons_[i]->setText(tr(nav_source_keys_[i].toUtf8().constData()));
@@ -128,7 +142,7 @@ void ProfileScreen::rebuild_sections() {
     QList<QWidget*> fresh;
     fresh << build_overview()
           << build_security()
-          << build_support();
+          << build_automation();
 
     for (int i = 0; i < fresh.size(); ++i) {
         sections_->insertWidget(i, fresh[i]);
@@ -152,14 +166,10 @@ void ProfileScreen::build_header(QVBoxLayout* root) {
     auto* hl = new QHBoxLayout(bar);
     hl->setContentsMargins(14, 0, 14, 0);
     hl->setSpacing(8);
-    header_title_ = new QLabel(tr("PROFILE & ACCOUNT"));
+    header_title_ = new QLabel(tr("LOCAL PROFILE & ACCOUNT"));
     header_title_->setStyleSheet(
         QString("color:%1;font-size:14px;font-weight:700;background:transparent;%2").arg(ui::colors::AMBER(), MF));
     hl->addWidget(header_title_);
-    username_header_ = new QLabel;
-    username_header_->setStyleSheet(
-        QString("color:%1;font-size:13px;background:transparent;%2").arg(ui::colors::TEXT_PRIMARY(), MF));
-    hl->addWidget(username_header_);
     hl->addStretch();
     // LOCAL-FIRST FORK: the REFRESH button drove AuthManager::refresh_user_data()
     // (a remote profile/subscription poll) which was removed — there is no
@@ -178,8 +188,7 @@ void ProfileScreen::build_tab_nav(QVBoxLayout* root) {
     // Keep English source keys aligned with nav_buttons_ so retranslateUi
     // can reapply tr() without rebuilding the nav bar (preserves the
     // currently-active highlight).
-    nav_source_keys_ = {QStringLiteral("OVERVIEW"), QStringLiteral("SECURITY"),
-                        QStringLiteral("SUPPORT")};
+    nav_source_keys_ = {QStringLiteral("OVERVIEW"), QStringLiteral("SECURITY"), QStringLiteral("AUTOMATION")};
     for (int i = 0; i < nav_source_keys_.size(); i++) {
         auto* btn = new QPushButton(tr(nav_source_keys_[i].toUtf8().constData()));
         btn->setFixedHeight(32);
@@ -215,60 +224,284 @@ QWidget* ProfileScreen::build_overview() {
     auto* vl = new QVBoxLayout(page);
     vl->setContentsMargins(14, 14, 14, 14);
     vl->setSpacing(10);
-    auto* grid = new QGridLayout;
-    grid->setSpacing(10);
 
-    auto* acct = make_panel(tr("ACCOUNT INFORMATION"));
+    auto* acct = make_panel(tr("LOCAL USER PROFILE"));
     auto* avl = qobject_cast<QVBoxLayout*>(acct->layout());
-    avl->addWidget(make_data_row(tr("USERNAME"), ov_username_));
-    avl->addWidget(make_data_row(tr("EMAIL"), ov_email_));
-    avl->addWidget(make_data_row(tr("PHONE"), ov_phone_));
-    avl->addWidget(make_data_row(tr("COUNTRY"), ov_country_));
-    // Edit Profile button row
-    auto* ep_row = new QWidget(this);
-    ep_row->setStyleSheet("background:transparent;");
-    auto* ep_rl = new QHBoxLayout(ep_row);
-    ep_rl->setContentsMargins(12, 8, 12, 8);
-    ep_rl->setSpacing(0);
-    auto* ep_btn = new QPushButton(tr("EDIT PROFILE"));
-    ep_btn->setFixedHeight(26);
-    ep_btn->setCursor(Qt::PointingHandCursor);
-    ep_btn->setStyleSheet(
+
+    auto* note = new QLabel(
+        tr("This is your local OpenTerminal identity. It is stored only in this machine profile and is used to personalize the app."));
+    note->setWordWrap(true);
+    note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                            .arg(ui::colors::TEXT_SECONDARY(), MF));
+    avl->addWidget(note);
+
+    auto field_style = []() {
+        return QString("QLineEdit{background:%1;color:%2;border:1px solid %3;padding:6px 8px;font-size:13px;%4}"
+                       "QLineEdit:focus{border:1px solid %5;}")
+            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                 ui::colors::AMBER());
+    };
+    auto label_style = []() {
+        return QString("color:%1;font-size:11px;font-weight:700;background:transparent;%2")
+            .arg(ui::colors::TEXT_SECONDARY(), MF);
+    };
+
+    auto* form = new QWidget(this);
+    form->setStyleSheet("background:transparent;");
+    auto* grid = new QGridLayout(form);
+    grid->setContentsMargins(12, 8, 12, 10);
+    grid->setHorizontalSpacing(10);
+    grid->setVerticalSpacing(8);
+
+    auto add_field = [&](const QString& label, QLineEdit*& field, int row, int col, const QString& placeholder) {
+        auto* lbl = new QLabel(label);
+        lbl->setStyleSheet(label_style());
+        field = new QLineEdit;
+        field->setPlaceholderText(placeholder);
+        field->setStyleSheet(field_style());
+        grid->addWidget(lbl, row * 2, col);
+        grid->addWidget(field, row * 2 + 1, col);
+    };
+
+    add_field(tr("NAME"), profile_name_, 0, 0, tr("Your name"));
+    add_field(tr("NICKNAME"), profile_nickname_, 0, 1, tr("How OpenTerminal should address you"));
+    add_field(tr("EMAIL"), profile_email_, 1, 0, tr("you@example.com"));
+    add_field(tr("PHONE"), profile_phone_, 1, 1, tr("Optional"));
+    add_field(tr("COUNTRY"), profile_country_, 2, 0, tr("Optional"));
+
+    auto* active_lbl = new QLabel(tr("ACTIVE APP PROFILE"));
+    active_lbl->setStyleSheet(label_style());
+    auto* active_val = new QLabel(ProfileManager::instance().active());
+    active_val->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:%2;border:1px solid %3;padding:6px 8px;%4")
+                                  .arg(ui::colors::AMBER(), ui::colors::BG_RAISED(), ui::colors::BORDER_DIM(), MF));
+    grid->addWidget(active_lbl, 4, 1);
+    grid->addWidget(active_val, 5, 1);
+
+    avl->addWidget(form);
+
+    auto* action_row = new QWidget(this);
+    action_row->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* arl = new QHBoxLayout(action_row);
+    arl->setContentsMargins(12, 8, 12, 8);
+    arl->setSpacing(10);
+    profile_status_ = new QLabel;
+    profile_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                       .arg(ui::colors::TEXT_TERTIARY(), MF));
+    arl->addWidget(profile_status_, 1);
+
+    auto* save_btn = new QPushButton(tr("SAVE LOCAL PROFILE"));
+    save_btn->setFixedHeight(28);
+    save_btn->setCursor(Qt::PointingHandCursor);
+    save_btn->setStyleSheet(
         QString("QPushButton{background:rgba(217,119,6,0.12);color:%1;border:1px solid rgba(217,119,6,0.4);padding:0 12px;"
                 "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{background:%1;color:%2;}")
             .arg(ui::colors::AMBER(), ui::colors::BG_BASE()));
-    connect(ep_btn, &QPushButton::clicked, this, &ProfileScreen::show_edit_profile);
-    ep_rl->addWidget(ep_btn);
-    ep_rl->addStretch();
-    avl->addWidget(ep_row);
-    grid->addWidget(acct, 0, 0, 1, 2);
+    connect(save_btn, &QPushButton::clicked, this, &ProfileScreen::save_local_profile);
+    arl->addWidget(save_btn);
+    avl->addWidget(action_row);
 
-    auto* actions = make_panel(tr("QUICK ACTIONS"));
-    auto* act_vl = qobject_cast<QVBoxLayout*>(actions->layout());
-    auto* ar = new QWidget(this);
-    ar->setStyleSheet("background:transparent;");
-    auto* arl = new QHBoxLayout(ar);
-    arl->setContentsMargins(12, 8, 12, 8);
-    arl->setSpacing(10);
-    auto* lb = new QPushButton(tr("LOGOUT"));
-    lb->setFixedHeight(26);
-    lb->setStyleSheet(
-        QString("QPushButton{background:rgba(220,38,38,0.1);color:%1;border:1px solid #7f1d1d;padding:0 12px;"
-                "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{background:%1;"
-                "color:%2;}")
-            .arg(ui::colors::NEGATIVE(), ui::colors::TEXT_PRIMARY()));
-    connect(lb, &QPushButton::clicked, this, &ProfileScreen::show_logout_confirm);
-    arl->addWidget(lb);
-    arl->addStretch();
-    act_vl->addWidget(ar);
-    grid->addWidget(actions, 1, 0, 1, 2);
-    vl->addLayout(grid);
+    vl->addWidget(acct);
     vl->addStretch();
     scroll->setWidget(page);
+    return scroll;
+}
+
+namespace {
+LlmConfig find_llm_provider(const QString& provider) {
+    auto r = LlmConfigRepository::instance().list_providers();
+    if (r.is_ok()) {
+        for (const auto& p : r.value()) {
+            if (p.provider.compare(provider, Qt::CaseInsensitive) == 0)
+                return p;
+        }
+    }
+    LlmConfig c;
+    c.provider = provider.toLower();
+    return c;
+}
+
+QString masked_key_placeholder(const LlmConfig& cfg, const QString& empty_hint) {
+    const QString secure_key = ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") +
+                               cfg.provider.toLower() + QStringLiteral(".api_key");
+    const bool has_secure_key = SecureStorage::instance().retrieve(secure_key).is_ok();
+    return (cfg.api_key.isEmpty() && !has_secure_key) ? empty_hint
+                                                      : QObject::tr("Saved locally - leave blank to keep");
+}
+
+void set_combo_text(QComboBox* combo, const QString& text) {
+    if (!combo)
+        return;
+    const int idx = combo->findText(text);
+    if (idx >= 0)
+        combo->setCurrentIndex(idx);
+    else
+        combo->setCurrentText(text);
+}
+} // namespace
+
+QWidget* ProfileScreen::build_ai_accounts() {
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setStyleSheet("QScrollArea{border:none;background:transparent;}");
+    auto* page = new QWidget(this);
+    auto* vl = new QVBoxLayout(page);
+    vl->setContentsMargins(14, 14, 14, 14);
+    vl->setSpacing(10);
+
+    auto* notice = make_panel(tr("AI PROVIDER SECURITY"));
+    auto* nvl = qobject_cast<QVBoxLayout*>(notice->layout());
+    auto* note = new QLabel(
+        tr("Choose the AI engine for this local profile. OpenAI and Anthropic keys are encrypted on this machine; "
+           "OpenTerminal does not sync, proxy, or upload them. Ollama uses your local endpoint and needs no API key."));
+    note->setWordWrap(true);
+    note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px;%2")
+                            .arg(ui::colors::TEXT_SECONDARY(), MF));
+    nvl->addWidget(note);
+    auto* profile_row = new QWidget(this);
+    profile_row->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* prl = new QHBoxLayout(profile_row);
+    prl->setContentsMargins(12, 7, 12, 7);
+    auto* pl = new QLabel(tr("ACTIVE LOCAL PROFILE"));
+    pl->setStyleSheet(QString("color:%1;font-size:11px;font-weight:700;background:transparent;%2")
+                          .arg(ui::colors::TEXT_TERTIARY(), MF));
+    auto* pv = new QLabel(ProfileManager::instance().active());
+    pv->setStyleSheet(QString("color:%1;font-size:12px;font-weight:700;background:transparent;%2")
+                          .arg(ui::colors::AMBER(), MF));
+    prl->addWidget(pl);
+    prl->addStretch();
+    prl->addWidget(pv);
+    nvl->addWidget(profile_row);
+    vl->addWidget(notice);
+
+    auto field_style = []() {
+        return QString("QLineEdit{background:%1;color:%2;border:1px solid %3;padding:5px 8px;font-size:12px;%4}"
+                       "QLineEdit:focus{border:1px solid %5;}"
+                       "QLineEdit:disabled{color:%6;}")
+            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                 ui::colors::AMBER(), ui::colors::TEXT_TERTIARY());
+    };
+    auto combo_style = []() {
+        return QString("QComboBox{background:%1;color:%2;border:1px solid %3;padding:5px 8px;font-size:12px;%4}"
+                       "QComboBox QAbstractItemView{background:%1;color:%2;selection-background-color:%5;}")
+            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                 ui::colors::BG_HOVER());
+    };
+    auto label = [&](const QString& text) {
+        auto* l = new QLabel(text);
+        l->setStyleSheet(QString("color:%1;font-size:11px;font-weight:700;background:transparent;%2")
+                             .arg(ui::colors::TEXT_SECONDARY(), MF));
+        return l;
+    };
+    auto button_style = []() {
+        return QString("QPushButton{background:rgba(217,119,6,0.12);color:%1;border:1px solid rgba(217,119,6,0.4);"
+                       "padding:0 12px;font-size:11px;font-weight:700;font-family:'Consolas',monospace;}"
+                       "QPushButton:hover{background:%1;color:%2;}")
+            .arg(ui::colors::AMBER(), ui::colors::BG_BASE());
+    };
+
+    auto add_provider_panel = [&](const QString& provider, const QString& title, const QString& description,
+                                  const QStringList& models, bool local) {
+        auto* panel = make_panel(title);
+        auto* pvl = qobject_cast<QVBoxLayout*>(panel->layout());
+
+        auto* desc = new QLabel(description);
+        desc->setWordWrap(true);
+        desc->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:8px 12px 0 12px;%2")
+                                .arg(ui::colors::TEXT_SECONDARY(), MF));
+        pvl->addWidget(desc);
+
+        auto* form = new QWidget(this);
+        form->setStyleSheet("background:transparent;");
+        auto* grid = new QGridLayout(form);
+        grid->setContentsMargins(12, 8, 12, 8);
+        grid->setHorizontalSpacing(10);
+        grid->setVerticalSpacing(8);
+
+        QLineEdit* key = nullptr;
+        QLineEdit* base = nullptr;
+        QComboBox* model = nullptr;
+        QLabel* status = nullptr;
+
+        int row = 0;
+        if (!local) {
+            key = new QLineEdit;
+            key->setEchoMode(QLineEdit::Password);
+            key->setStyleSheet(field_style());
+            grid->addWidget(label(tr("API KEY")), row, 0);
+            grid->addWidget(key, row, 1, 1, 2);
+            ++row;
+        }
+
+        model = new QComboBox;
+        model->setEditable(true);
+        model->addItems(models);
+        model->setStyleSheet(combo_style());
+        grid->addWidget(label(tr("MODEL")), row, 0);
+        grid->addWidget(model, row, 1, 1, 2);
+        ++row;
+
+        base = new QLineEdit;
+        base->setPlaceholderText(local ? tr("http://localhost:11434") : tr("Optional - leave empty for provider default"));
+        base->setStyleSheet(field_style());
+        grid->addWidget(label(local ? tr("LOCAL URL") : tr("BASE URL")), row, 0);
+        grid->addWidget(base, row, 1, 1, 2);
+        ++row;
+
+        auto* save = new QPushButton(tr("SAVE & USE"));
+        save->setFixedHeight(26);
+        save->setCursor(Qt::PointingHandCursor);
+        save->setStyleSheet(button_style());
+        connect(save, &QPushButton::clicked, this, [this, provider]() { save_ai_provider(provider); });
+
+        status = new QLabel;
+        status->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                  .arg(ui::colors::TEXT_TERTIARY(), MF));
+        grid->addWidget(status, row, 0, 1, 2);
+        grid->addWidget(save, row, 2, Qt::AlignRight);
+
+        pvl->addWidget(form);
+        vl->addWidget(panel);
+
+        if (provider == "openai") {
+            ai_openai_key_ = key;
+            ai_openai_model_ = model;
+            ai_openai_base_url_ = base;
+            ai_openai_status_ = status;
+        } else if (provider == "anthropic") {
+            ai_anthropic_key_ = key;
+            ai_anthropic_model_ = model;
+            ai_anthropic_base_url_ = base;
+            ai_anthropic_status_ = status;
+        } else if (provider == "ollama") {
+            ai_ollama_model_ = model;
+            ai_ollama_base_url_ = base;
+            ai_ollama_status_ = status;
+        }
+    };
+
+    add_provider_panel(QStringLiteral("openai"), tr("OPENAI"),
+                       tr("Use your own OpenAI API key for AI Chat, reports, agents, and CLI ask workflows."),
+                       {"gpt-4o", "gpt-4o-mini", "gpt-4.1", "o3-mini"}, false);
+    add_provider_panel(QStringLiteral("anthropic"), tr("ANTHROPIC"),
+                       tr("Use your own Anthropic key. Claude Sonnet is the strongest default for long tool workflows."),
+                       {"claude-sonnet-4-5-20250514", "claude-opus-4-5", "claude-3-5-sonnet-20241022",
+                        "claude-3-haiku-20240307"},
+                       false);
+    add_provider_panel(QStringLiteral("ollama"), tr("LOCAL MODEL (OLLAMA)"),
+                       tr("Use a local Ollama server. No API key is required; model traffic stays on your local endpoint."),
+                       {"llama3.3:70b", "llama3.1:8b", "qwen2.5:14b", "mistral"}, true);
+
+    vl->addStretch();
+    scroll->setWidget(page);
+    refresh_ai_accounts();
     return scroll;
 }
 
 QWidget* ProfileScreen::build_security() {
+    return build_ai_accounts();
+}
+
+QWidget* ProfileScreen::build_automation() {
     auto* scroll = new QScrollArea;
     scroll->setWidgetResizable(true);
     scroll->setStyleSheet("QScrollArea{border:none;background:transparent;}");
@@ -276,242 +509,790 @@ QWidget* ProfileScreen::build_security() {
     auto* vl = new QVBoxLayout(page);
     vl->setContentsMargins(14, 14, 14, 14);
     vl->setSpacing(10);
-    auto* kp = make_panel(tr("API KEY"));
-    auto* kvl = qobject_cast<QVBoxLayout*>(kp->layout());
-    auto* kr = new QWidget(this);
-    kr->setStyleSheet("background:transparent;");
-    auto* krl = new QHBoxLayout(kr);
-    krl->setContentsMargins(12, 10, 12, 10);
-    krl->setSpacing(8);
-    sec_api_key_ = new QLabel(QString(20, QChar(0x2022)));
-    sec_api_key_->setStyleSheet(
-        QString("color:%1;font-size:13px;background:transparent;%2").arg(ui::colors::TEXT_PRIMARY(), MF));
-    krl->addWidget(sec_api_key_, 1);
-    auto* sb = new QPushButton(tr("SHOW"));
-    sb->setFixedHeight(22);
-    sb->setStyleSheet(
-        QString("QPushButton{background:%1;color:%2;border:1px solid %3;padding:0 10px;"
-                "font-size:10px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{color:%4;}")
-            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY(), ui::colors::BORDER_DIM(), ui::colors::TEXT_PRIMARY()));
-    connect(sb, &QPushButton::clicked, this, [this, sb]() {
-        api_key_visible_ = !api_key_visible_;
-        sb->setText(api_key_visible_ ? tr("HIDE") : tr("SHOW"));
-        sec_api_key_->setText(api_key_visible_ ? auth::AuthManager::instance().session().api_key
-                                               : QString(20, QChar(0x2022)));
+
+    auto button_style = []() {
+        return QString("QPushButton{background:rgba(217,119,6,0.12);color:%1;border:1px solid rgba(217,119,6,0.4);"
+                       "padding:0 12px;font-size:11px;font-weight:700;font-family:'Consolas',monospace;}"
+                       "QPushButton:hover{background:%1;color:%2;}"
+                       "QPushButton:disabled{color:%3;border-color:%4;background:%5;}")
+            .arg(ui::colors::AMBER(), ui::colors::BG_BASE(), ui::colors::TEXT_TERTIARY(),
+                 ui::colors::BORDER_DIM(), ui::colors::BG_RAISED());
+    };
+    auto field_style = []() {
+        return QString("QLineEdit{background:%1;color:%2;border:1px solid %3;padding:5px 8px;font-size:12px;%4}"
+                       "QLineEdit:focus{border:1px solid %5;}")
+            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                 ui::colors::AMBER());
+    };
+    auto combo_style = []() {
+        return QString("QComboBox,QSpinBox{background:%1;color:%2;border:1px solid %3;padding:5px 8px;font-size:12px;%4}"
+                       "QComboBox QAbstractItemView{background:%1;color:%2;selection-background-color:%5;}")
+            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                 ui::colors::BG_HOVER());
+    };
+
+    auto* status_panel = make_panel(tr("LOCAL DAEMON"));
+    auto* svl = qobject_cast<QVBoxLayout*>(status_panel->layout());
+    auto* note = new QLabel(
+        tr("The daemon keeps this local profile alive for scheduled research, paper strategy tests, notebooks, and notifications. "
+           "It runs as your user account and uses the same local AI/provider settings."));
+    note->setWordWrap(true);
+    note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                            .arg(ui::colors::TEXT_SECONDARY(), MF));
+    svl->addWidget(note);
+
+    auto* grid = new QWidget(this);
+    grid->setStyleSheet("background:transparent;");
+    auto* gl = new QGridLayout(grid);
+    gl->setContentsMargins(12, 8, 12, 8);
+    gl->setHorizontalSpacing(10);
+    gl->setVerticalSpacing(8);
+    gl->addWidget(make_stat_box(tr("INSTALLED"), daemon_installed_, ui::colors::AMBER()), 0, 0);
+    gl->addWidget(make_stat_box(tr("RUNNING"), daemon_running_, ui::colors::POSITIVE()), 0, 1);
+    gl->addWidget(make_stat_box(tr("JOBS"), daemon_jobs_summary_, ui::colors::TEXT_PRIMARY()), 0, 2);
+    svl->addWidget(grid);
+
+    auto* controls = new QWidget(this);
+    controls->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* cl = new QHBoxLayout(controls);
+    cl->setContentsMargins(12, 8, 12, 8);
+    cl->setSpacing(8);
+    daemon_status_ = new QLabel(tr("Checking daemon..."));
+    daemon_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                      .arg(ui::colors::TEXT_TERTIARY(), MF));
+    cl->addWidget(daemon_status_, 1);
+    auto add_action_button = [&](const QString& text, const QString& action, const QStringList& extra = {}) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [this, action, extra]() { run_daemon_action(action, extra); });
+        cl->addWidget(btn);
+    };
+    add_action_button(tr("INSTALL"), QStringLiteral("install"), {QStringLiteral("--replace")});
+    add_action_button(tr("START"), QStringLiteral("start"));
+    add_action_button(tr("STOP"), QStringLiteral("stop"));
+    add_action_button(tr("RESTART"), QStringLiteral("restart"));
+    auto* refresh_btn = new QPushButton(tr("REFRESH"));
+    refresh_btn->setFixedHeight(26);
+    refresh_btn->setCursor(Qt::PointingHandCursor);
+    refresh_btn->setStyleSheet(button_style());
+    connect(refresh_btn, &QPushButton::clicked, this, &ProfileScreen::refresh_daemon);
+    cl->addWidget(refresh_btn);
+    svl->addWidget(controls);
+    vl->addWidget(status_panel);
+
+    auto* add_panel = make_panel(tr("ADD SCHEDULED JOB"));
+    auto* avl = qobject_cast<QVBoxLayout*>(add_panel->layout());
+    auto* presets = new QWidget(this);
+    presets->setStyleSheet(QString("background:transparent;border-bottom:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* psl = new QHBoxLayout(presets);
+    psl->setContentsMargins(12, 8, 12, 8);
+    psl->setSpacing(8);
+    auto* preset_label = new QLabel(tr("PRESETS"));
+    preset_label->setStyleSheet(QString("color:%1;font-size:11px;font-weight:700;background:transparent;%2")
+                                    .arg(ui::colors::TEXT_TERTIARY(), MF));
+    psl->addWidget(preset_label);
+    auto add_preset = [&](const QString& text, const QString& kind, const QString& target, int interval_sec) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(24);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this,
+                [this, kind, target, interval_sec]() { apply_daemon_job_preset(kind, target, interval_sec); });
+        psl->addWidget(btn);
+    };
+    add_preset(tr("DAILY BRIEF"), QStringLiteral("brief"), QStringLiteral("SPY"), 86400);
+    add_preset(tr("NEWS RADAR"), QStringLiteral("radar"), QStringLiteral("AI semiconductors"), 3600);
+    add_preset(tr("WEEKLY NOTEBOOK"), QStringLiteral("notebook"), QStringLiteral("trading-sma-crossover-backtest"), 604800);
+    add_preset(tr("PAPER WATCH"), QStringLiteral("paper"), QStringLiteral("meanrev"), 300);
+    add_preset(tr("HEALTH CHECK"), QStringLiteral("health"), QStringLiteral("daemon health"), 300);
+    add_preset(tr("NOTIFY TEST"), QStringLiteral("notify"), QStringLiteral("Daemon is alive"), 3600);
+    psl->addStretch();
+    avl->addWidget(presets);
+
+    auto* form = new QWidget(this);
+    form->setStyleSheet("background:transparent;");
+    auto* fl = new QGridLayout(form);
+    fl->setContentsMargins(12, 8, 12, 8);
+    fl->setHorizontalSpacing(10);
+    fl->setVerticalSpacing(8);
+    auto label = [&](const QString& text) {
+        auto* l = new QLabel(text);
+        l->setStyleSheet(QString("color:%1;font-size:11px;font-weight:700;background:transparent;%2")
+                             .arg(ui::colors::TEXT_SECONDARY(), MF));
+        return l;
+    };
+    daemon_job_kind_ = new QComboBox;
+    daemon_job_kind_->addItem(tr("AI Brief"), QStringLiteral("brief"));
+    daemon_job_kind_->addItem(tr("AI Radar"), QStringLiteral("radar"));
+    daemon_job_kind_->addItem(tr("Risk Review"), QStringLiteral("risk"));
+    daemon_job_kind_->addItem(tr("Thesis Monitor"), QStringLiteral("thesis"));
+    daemon_job_kind_->addItem(tr("Notebook Run"), QStringLiteral("notebook"));
+    daemon_job_kind_->addItem(tr("Paper Strategy"), QStringLiteral("paper"));
+    daemon_job_kind_->addItem(tr("Daemon Health Check"), QStringLiteral("health"));
+    daemon_job_kind_->addItem(tr("Notification"), QStringLiteral("notify"));
+    daemon_job_kind_->setStyleSheet(combo_style());
+    daemon_job_target_ = new QLineEdit;
+    daemon_job_target_->setPlaceholderText(tr("Ticker, topic, notebook id, or strategy name"));
+    daemon_job_target_->setStyleSheet(field_style());
+    daemon_job_interval_ = new QSpinBox;
+    daemon_job_interval_->setRange(0, 31536000);
+    daemon_job_interval_->setValue(86400);
+    daemon_job_interval_->setSingleStep(3600);
+    daemon_job_interval_->setSuffix(tr(" sec"));
+    daemon_job_interval_->setStyleSheet(combo_style());
+    auto* add_btn = new QPushButton(tr("ADD JOB"));
+    add_btn->setFixedHeight(28);
+    add_btn->setCursor(Qt::PointingHandCursor);
+    add_btn->setStyleSheet(button_style());
+    connect(add_btn, &QPushButton::clicked, this, &ProfileScreen::add_daemon_job);
+    daemon_action_status_ = new QLabel;
+    daemon_action_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                             .arg(ui::colors::TEXT_TERTIARY(), MF));
+    fl->addWidget(label(tr("TYPE")), 0, 0);
+    fl->addWidget(label(tr("TARGET")), 0, 1);
+    fl->addWidget(label(tr("INTERVAL")), 0, 2);
+    fl->addWidget(daemon_job_kind_, 1, 0);
+    fl->addWidget(daemon_job_target_, 1, 1);
+    fl->addWidget(daemon_job_interval_, 1, 2);
+    fl->addWidget(daemon_action_status_, 2, 0, 1, 2);
+    fl->addWidget(add_btn, 2, 2, Qt::AlignRight);
+    avl->addWidget(form);
+    vl->addWidget(add_panel);
+
+    auto* jobs_panel = make_panel(tr("SCHEDULED JOBS"));
+    auto* jvl = qobject_cast<QVBoxLayout*>(jobs_panel->layout());
+    daemon_jobs_table_ = new QTableWidget;
+    daemon_jobs_table_->setColumnCount(6);
+    daemon_jobs_table_->setHorizontalHeaderLabels({tr("Name"), tr("Kind"), tr("Enabled"), tr("Every"), tr("Last"), tr("Command")});
+    daemon_jobs_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    daemon_jobs_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    daemon_jobs_table_->setAlternatingRowColors(true);
+    daemon_jobs_table_->verticalHeader()->setVisible(false);
+    daemon_jobs_table_->horizontalHeader()->setStretchLastSection(true);
+    daemon_jobs_table_->setMinimumHeight(220);
+    daemon_jobs_table_->setStyleSheet(QString("QTableWidget{background:%1;color:%2;border:none;gridline-color:%3;font-size:11px;%4}"
+                                              "QHeaderView::section{background:%5;color:%6;border:1px solid %3;padding:4px;font-size:10px;font-weight:700;%4}"
+                                              "QTableWidget::item{padding:3px 6px;border-bottom:1px solid %3;}"
+                                              "QTableWidget::item:selected{background:rgba(217,119,6,0.18);color:%2;}")
+                                      .arg(ui::colors::BG_BASE(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                                           ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY()));
+    connect(daemon_jobs_table_, &QTableWidget::itemSelectionChanged, this,
+            &ProfileScreen::refresh_selected_daemon_job_detail);
+    jvl->addWidget(daemon_jobs_table_);
+    auto* job_controls = new QWidget(this);
+    job_controls->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* jcl = new QHBoxLayout(job_controls);
+    jcl->setContentsMargins(12, 8, 12, 8);
+    jcl->setSpacing(8);
+    jcl->addStretch();
+    auto add_job_action = [&](const QString& text, const QString& action) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [this, action]() { run_selected_daemon_job_action(action); });
+        jcl->addWidget(btn);
+    };
+    add_job_action(tr("RUN"), QStringLiteral("run"));
+    add_job_action(tr("ENABLE"), QStringLiteral("enable"));
+    add_job_action(tr("DISABLE"), QStringLiteral("disable"));
+    add_job_action(tr("REMOVE"), QStringLiteral("remove"));
+    jvl->addWidget(job_controls);
+
+    daemon_job_detail_ = new QPlainTextEdit;
+    daemon_job_detail_->setReadOnly(true);
+    daemon_job_detail_->setMinimumHeight(140);
+    daemon_job_detail_->setPlaceholderText(tr("Select a job to inspect its run state, command, and last output."));
+    daemon_job_detail_->setStyleSheet(QString("QPlainTextEdit{background:%1;color:%2;border-top:1px solid %3;padding:8px;font-size:11px;%4}"
+                                             "QPlainTextEdit:focus{border-top:1px solid %3;}")
+                                         .arg(ui::colors::BG_BASE(), ui::colors::TEXT_SECONDARY(),
+                                              ui::colors::BORDER_DIM(), MF));
+    jvl->addWidget(daemon_job_detail_);
+    vl->addWidget(jobs_panel, 1);
+
+    auto* audit_panel = make_panel(tr("SAFETY AUDIT"));
+    auto* auvl = qobject_cast<QVBoxLayout*>(audit_panel->layout());
+    daemon_audit_status_ = new QLabel(tr("Checking daemon safety..."));
+    daemon_audit_status_->setWordWrap(true);
+    daemon_audit_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px;%2")
+                                            .arg(ui::colors::TEXT_SECONDARY(), MF));
+    auvl->addWidget(daemon_audit_status_);
+    vl->addWidget(audit_panel);
+
+    auto* logs_panel = make_panel(tr("RECENT DAEMON LOG"));
+    auto* lvl = qobject_cast<QVBoxLayout*>(logs_panel->layout());
+    daemon_logs_ = new QPlainTextEdit;
+    daemon_logs_->setReadOnly(true);
+    daemon_logs_->setMinimumHeight(160);
+    daemon_logs_->setPlaceholderText(tr("No daemon job log data yet."));
+    daemon_logs_->setStyleSheet(QString("QPlainTextEdit{background:%1;color:%2;border:none;padding:8px;font-size:11px;%3}"
+                                        "QPlainTextEdit:focus{border:none;}")
+                                    .arg(ui::colors::BG_BASE(), ui::colors::TEXT_SECONDARY(), MF));
+    lvl->addWidget(daemon_logs_);
+    auto* log_controls = new QWidget(this);
+    log_controls->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* lcl = new QHBoxLayout(log_controls);
+    lcl->setContentsMargins(12, 8, 12, 8);
+    lcl->addStretch();
+    auto* log_refresh = new QPushButton(tr("REFRESH LOG"));
+    log_refresh->setFixedHeight(26);
+    log_refresh->setCursor(Qt::PointingHandCursor);
+    log_refresh->setStyleSheet(button_style());
+    connect(log_refresh, &QPushButton::clicked, this, [this]() {
+        run_daemon_cli({QStringLiteral("logs"), QStringLiteral("jobs"), QStringLiteral("--lines"), QStringLiteral("80")},
+                       [this](const QJsonObject& o, const QString&) { populate_daemon_logs(o); },
+                       [this](const QString& msg) {
+                           if (daemon_logs_)
+                               daemon_logs_->setPlainText(msg);
+                       });
     });
-    krl->addWidget(sb);
-    auto* cb = new QPushButton(tr("COPY"));
-    cb->setFixedHeight(22);
-    cb->setStyleSheet(
-        QString("QPushButton{background:%1;color:%2;border:1px solid %3;padding:0 10px;"
-                "font-size:10px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{color:%4;}")
-            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY(), ui::colors::BORDER_DIM(), ui::colors::TEXT_PRIMARY()));
-    connect(cb, &QPushButton::clicked, this, [cb]() {
-        auto key = auth::AuthManager::instance().session().api_key;
-        if (!key.isEmpty()) {
-            QApplication::clipboard()->setText(key);
-            cb->setText(tr("COPIED"));
-            QTimer::singleShot(1500, cb, [cb]() { cb->setText(tr("COPY")); });
-        }
-    });
-    krl->addWidget(cb);
-    // LOCAL-FIRST FORK: REGENERATE called UserApi::regenerate_api_key (remote);
-    // removed with the remote-account backend. The key remains viewable/copyable.
-    kvl->addWidget(kr);
-    vl->addWidget(kp);
-    auto* ssp = make_panel(tr("SECURITY STATUS"));
-    auto* ssvl = qobject_cast<QVBoxLayout*>(ssp->layout());
-    ssvl->addWidget(make_data_row(tr("EMAIL VERIFIED"), sec_verified_));
-    ssvl->addWidget(make_data_row(tr("2FA (MFA)"), sec_mfa_));
-    vl->addWidget(ssp);
-    // LOCAL-FIRST FORK: the LOGIN HISTORY panel was fed by UserApi remote
-    // queries (get_login_history); removed with the remote-account backend.
-    vl->addStretch();
+    lcl->addWidget(log_refresh);
+    lvl->addWidget(log_controls);
+    vl->addWidget(logs_panel);
+
     scroll->setWidget(page);
+    refresh_daemon();
     return scroll;
 }
 
-QWidget* ProfileScreen::build_support() {
-    auto* scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setStyleSheet("QScrollArea{border:none;background:transparent;}");
-    auto* page = new QWidget(this);
-    auto* vl = new QVBoxLayout(page);
-    vl->setContentsMargins(14, 14, 14, 14);
-    vl->setSpacing(10);
-    auto* cp = make_panel(tr("CONTACT US"));
-    auto* cvl2 = qobject_cast<QVBoxLayout*>(cp->layout());
-    auto* cg = new QGridLayout;
-    cg->setSpacing(12);
-    cg->setContentsMargins(12, 10, 12, 10);
-    auto add_c = [&](const QString& l, const QString& e, int r, int c2) {
-        auto* w = new QWidget(this);
-        w->setStyleSheet("background:transparent;");
-        auto* wl = new QVBoxLayout(w);
-        wl->setContentsMargins(0, 0, 0, 0);
-        wl->setSpacing(2);
-        auto* lb = new QLabel(l);
-        lb->setStyleSheet(
-            QString("color:%1;font-size:10px;font-weight:700;background:transparent;letter-spacing:0.5px;%2")
-                .arg(ui::colors::TEXT_TERTIARY(), MF));
-        wl->addWidget(lb);
-        auto* em = new QLabel(e);
-        em->setStyleSheet(QString("color:%1;font-size:13px;background:transparent;%2").arg(ui::colors::CYAN(), MF));
-        wl->addWidget(em);
-        cg->addWidget(w, r, c2);
+QString ProfileScreen::daemon_cli_path() const {
+    const QString app_dir = QCoreApplication::applicationDirPath();
+    const QString exe = QStringLiteral("openterminalcli");
+    const QStringList candidates = {
+        app_dir + QDir::separator() + exe,
+        QDir::cleanPath(app_dir + QStringLiteral("/../bin/") + exe),
+        QDir::cleanPath(app_dir + QStringLiteral("/../../../") + exe),
+        QDir::cleanPath(app_dir + QStringLiteral("/../../../bin/") + exe),
+        QStandardPaths::findExecutable(exe),
+        QStandardPaths::findExecutable(QStringLiteral("ot"))
     };
-    add_c(tr("PROJECT"), "github.com/your-org/open-terminal", 0, 0);
-    add_c(tr("ISSUES"), "github.com/your-org/open-terminal/issues", 0, 1);
-    add_c(tr("SECURITY"), "github.com/your-org/open-terminal/issues", 1, 0);
-    add_c(tr("LICENSE"), "github.com/your-org/open-terminal/blob/main/LICENSE", 1, 1);
-    cvl2->addLayout(cg);
-    vl->addWidget(cp);
-    auto* lp = make_panel(tr("RESOURCES"));
-    auto* lvl = qobject_cast<QVBoxLayout*>(lp->layout());
-    auto* lr = new QWidget(this);
-    lr->setStyleSheet("background:transparent;");
-    auto* lrl = new QHBoxLayout(lr);
-    lrl->setContentsMargins(12, 10, 12, 10);
-    lrl->setSpacing(8);
-    auto make_link_btn = [&](const QString& label, const QString& url) {
-        auto* b = new QPushButton(label);
-        b->setFixedHeight(26);
-        b->setCursor(Qt::PointingHandCursor);
-        b->setStyleSheet(
-            QString("QPushButton{background:%1;color:%2;border:1px solid %3;padding:0 12px;"
-                    "font-size:11px;font-family:'Consolas',monospace;}QPushButton:hover{color:%4;background:%5;}")
-                .arg(ui::colors::BG_RAISED(), ui::colors::CYAN(), ui::colors::BORDER_DIM(), ui::colors::TEXT_PRIMARY(),
-                     ui::colors::BG_HOVER()));
-        connect(b, &QPushButton::clicked, this, [url]() { QDesktopServices::openUrl(QUrl(url)); });
-        lrl->addWidget(b);
+    for (const QString& path : candidates) {
+        if (!path.isEmpty() && QFileInfo::exists(path) && QFileInfo(path).isExecutable())
+            return path;
+    }
+    return {};
+}
+
+void ProfileScreen::run_daemon_cli(const QStringList& daemon_args,
+                                   std::function<void(const QJsonObject&, const QString&)> on_success,
+                                   std::function<void(const QString&)> on_error) {
+    const QString cli = daemon_cli_path();
+    if (cli.isEmpty()) {
+        const QString msg = tr("openterminalcli not found next to the app or in PATH");
+        if (on_error) on_error(msg);
+        else if (daemon_status_) daemon_status_->setText(msg);
+        return;
+    }
+
+    auto* proc = new QProcess(this);
+    QStringList args{QStringLiteral("--json"), QStringLiteral("--profile"), ProfileManager::instance().active(),
+                     QStringLiteral("daemon")};
+    args << daemon_args;
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, proc, on_success, on_error](int code, QProcess::ExitStatus status) {
+                const QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+                const QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                proc->deleteLater();
+                QJsonParseError parse;
+                const QJsonDocument doc = QJsonDocument::fromJson(out.toUtf8(), &parse);
+                const bool ok = status == QProcess::NormalExit && code == 0 && parse.error == QJsonParseError::NoError && doc.isObject();
+                if (ok) {
+                    if (on_success) on_success(doc.object(), out);
+                    return;
+                }
+                QString msg = err.isEmpty() ? out : err;
+                if (msg.isEmpty())
+                    msg = tr("daemon command failed");
+                if (on_error) on_error(msg);
+                else if (daemon_status_) daemon_status_->setText(msg);
+            });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc, on_error](QProcess::ProcessError) {
+        const QString msg = tr("could not start openterminalcli");
+        proc->deleteLater();
+        if (on_error) on_error(msg);
+        else if (daemon_status_) daemon_status_->setText(msg);
+    });
+    proc->start(cli, args);
+}
+
+void ProfileScreen::run_daemon_action(const QString& action, const QStringList& extra_args) {
+    if (daemon_status_)
+        daemon_status_->setText(tr("Running daemon %1...").arg(action));
+    QStringList args{action};
+    args << extra_args;
+    run_daemon_cli(args,
+                   [this, action](const QJsonObject&, const QString&) {
+                       if (daemon_status_)
+                           daemon_status_->setText(tr("Daemon %1 complete").arg(action));
+                       refresh_daemon();
+                   },
+                   [this](const QString& msg) {
+                       if (daemon_status_) {
+                           daemon_status_->setText(msg);
+                           daemon_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                                             .arg(ui::colors::NEGATIVE(), MF));
+                       }
+                       refresh_daemon();
+                   });
+}
+
+void ProfileScreen::populate_daemon_health(const QJsonObject& health) {
+    auto set = [](QLabel* l, const QString& text, const QString& color) {
+        if (!l) return;
+        l->setText(text);
+        l->setStyleSheet(QString("color:%1;font-size:28px;font-weight:700;background:transparent;%2").arg(color, MF));
     };
-    // DOCS / FAQ are localisable; GITHUB / DISCORD are brand names — left raw.
-    make_link_btn(tr("DOCS"), "https://github.com/your-org/open-terminal/tree/main/docs");
-    make_link_btn(QStringLiteral("GITHUB"), "https://github.com/your-org/open-terminal");
-    make_link_btn(QStringLiteral("DISCORD"), "https://discord.gg/ae87a8ygbN");
-    make_link_btn(tr("FAQ"), "https://github.com/your-org/open-terminal/wiki");
-    lrl->addStretch();
-    lvl->addWidget(lr);
-    vl->addWidget(lp);
-    vl->addStretch();
-    scroll->setWidget(page);
-    return scroll;
+    const bool installed = health.value("installed").toBool();
+    const bool running = health.value("running").toBool();
+    const QJsonObject jobs = health.value("jobs").toObject();
+    set(daemon_installed_, installed ? tr("YES") : tr("NO"), installed ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY());
+    set(daemon_running_, running ? tr("YES") : tr("NO"), running ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY());
+    set(daemon_jobs_summary_, QString::number(jobs.value("total").toInt()), ui::colors::TEXT_PRIMARY());
+    if (daemon_status_) {
+        const QString endpoint = health.value("endpoint").toString();
+        const QString owner = health.value("owner_kind").toString();
+        const QString profile = health.value("profile").toString();
+        if (running) {
+            daemon_status_->setText(endpoint.isEmpty() ? tr("Profile '%1' daemon is running").arg(profile)
+                                                       : tr("Profile '%1' daemon is running at %2").arg(profile, endpoint));
+        } else if (!endpoint.isEmpty() && !owner.isEmpty()) {
+            daemon_status_->setText(tr("Profile '%1' is owned by %2 at %3; daemon is stopped")
+                                        .arg(profile, owner.toUpper(), endpoint));
+        } else {
+            daemon_status_->setText(tr("Profile '%1' daemon is stopped").arg(profile));
+        }
+        daemon_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                          .arg(running ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY(), MF));
+    }
+}
+
+void ProfileScreen::populate_daemon_jobs(const QJsonArray& jobs) {
+    if (!daemon_jobs_table_)
+        return;
+    daemon_jobs_table_->setRowCount(jobs.size());
+    for (int r = 0; r < jobs.size(); ++r) {
+        const QJsonObject j = jobs.at(r).toObject();
+        const QString id = j.value("id").toString();
+        const QStringList command = [&]() {
+            QStringList out;
+            for (const QJsonValue& v : j.value("command").toArray())
+                out << v.toString();
+            return out;
+        }();
+        const QString every = j.value("interval_sec").toInt() > 0
+                                  ? tr("%1s").arg(j.value("interval_sec").toInt())
+                                  : tr("manual");
+        const QString last = j.value("last_status").toString(QStringLiteral("-"));
+        const QStringList cols = {
+            j.value("name").toString(),
+            j.value("kind").toString(),
+            j.value("enabled").toBool() ? tr("yes") : tr("no"),
+            every,
+            last,
+            command.join(' ')
+        };
+        for (int c = 0; c < cols.size(); ++c) {
+            auto* item = new QTableWidgetItem(cols.at(c));
+            item->setData(Qt::UserRole, id);
+            if (c == 2)
+                item->setForeground(j.value("enabled").toBool() ? QColor(ui::colors::POSITIVE()) : QColor(ui::colors::TEXT_TERTIARY()));
+            daemon_jobs_table_->setItem(r, c, item);
+        }
+    }
+    daemon_jobs_table_->resizeColumnsToContents();
+    daemon_jobs_table_->horizontalHeader()->setStretchLastSection(true);
+    if (jobs.isEmpty()) {
+        if (daemon_job_detail_)
+            daemon_job_detail_->setPlainText({});
+    } else if (daemon_jobs_table_->selectionModel() && daemon_jobs_table_->selectionModel()->selectedRows().isEmpty()) {
+        daemon_jobs_table_->selectRow(0);
+    } else {
+        refresh_selected_daemon_job_detail();
+    }
+}
+
+void ProfileScreen::populate_daemon_audit(const QJsonObject& audit) {
+    if (!daemon_audit_status_)
+        return;
+    const bool local_keys = !audit.value("api_keys_leave_machine").toBool();
+    const bool no_live = !audit.value("unattended_live_trading").toBool();
+    const bool no_destructive = !audit.value("daemon_bridge_destructive_tools").toBool();
+    const bool no_settings = !audit.value("daemon_settings_write_tools").toBool();
+    const bool ok = local_keys && no_live && no_destructive && no_settings;
+    QStringList guardrails;
+    for (const QJsonValue& v : audit.value("guardrails").toArray())
+        guardrails << v.toString();
+    daemon_audit_status_->setText(
+        tr("%1\nAPI keys leave machine: %2    unattended live trading: %3    destructive bridge tools: %4\n%5")
+            .arg(ok ? tr("Safety status: OK") : tr("Safety status: review needed"),
+                 local_keys ? tr("no") : tr("yes"),
+                 no_live ? tr("no") : tr("yes"),
+                 no_destructive ? tr("no") : tr("yes"),
+                 guardrails.join(QStringLiteral("  |  "))));
+    daemon_audit_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px;%2")
+                                            .arg(ok ? ui::colors::POSITIVE() : ui::colors::NEGATIVE(), MF));
+}
+
+void ProfileScreen::populate_daemon_logs(const QJsonObject& logs) {
+    if (!daemon_logs_)
+        return;
+    const QString text = logs.value("text").toString().trimmed();
+    daemon_logs_->setPlainText(text.isEmpty() ? tr("No daemon job log data yet.") : text);
+}
+
+void ProfileScreen::populate_daemon_job_detail(const QJsonObject& job) {
+    if (!daemon_job_detail_)
+        return;
+    QStringList command;
+    for (const QJsonValue& v : job.value("command").toArray())
+        command << v.toString();
+    const QJsonObject spec = job.value("spec").toObject();
+    const QString spec_text = spec.isEmpty()
+                                  ? QStringLiteral("{}")
+                                  : QString::fromUtf8(QJsonDocument(spec).toJson(QJsonDocument::Compact));
+    const QString output = job.value("last_output_tail").toString().trimmed();
+    QStringList lines;
+    lines << tr("id: %1").arg(job.value("id").toString())
+          << tr("name: %1").arg(job.value("name").toString())
+          << tr("kind: %1").arg(job.value("kind").toString())
+          << tr("enabled: %1    schedule: %2    interval: %3s")
+                 .arg(job.value("enabled").toBool() ? tr("yes") : tr("no"),
+                      job.value("schedule").toString(QStringLiteral("-")),
+                      QString::number(job.value("interval_sec").toInt()))
+          << tr("status: %1    runs: %2    failures: %3    exit: %4")
+                 .arg(job.value("last_status").toString(QStringLiteral("-")),
+                      QString::number(job.value("run_count").toInt()),
+                      QString::number(job.value("fail_count").toInt()),
+                      job.contains("last_exit_code") ? QString::number(job.value("last_exit_code").toInt()) : QStringLiteral("-"))
+          << tr("next: %1").arg(job.value("next_run_at").toString(QStringLiteral("-")))
+          << tr("last started: %1").arg(job.value("last_started_at").toString(QStringLiteral("-")))
+          << tr("last run: %1").arg(job.value("last_run_at").toString(QStringLiteral("-")))
+          << tr("command: %1").arg(command.join(' '))
+          << tr("spec: %1").arg(spec_text);
+    if (!output.isEmpty())
+        lines << QString() << tr("last output:") << output;
+    daemon_job_detail_->setPlainText(lines.join('\n'));
+}
+
+void ProfileScreen::refresh_selected_daemon_job_detail() {
+    const QString id = selected_daemon_job_id();
+    if (id.isEmpty()) {
+        if (daemon_job_detail_)
+            daemon_job_detail_->setPlainText({});
+        return;
+    }
+    run_daemon_cli({QStringLiteral("jobs"), QStringLiteral("show"), id},
+                   [this](const QJsonObject& job, const QString&) { populate_daemon_job_detail(job); },
+                   [this](const QString& msg) {
+                       if (daemon_job_detail_)
+                           daemon_job_detail_->setPlainText(msg);
+                   });
+}
+
+QString ProfileScreen::selected_daemon_job_id() const {
+    if (!daemon_jobs_table_)
+        return {};
+    const auto selected = daemon_jobs_table_->selectionModel() ? daemon_jobs_table_->selectionModel()->selectedRows() : QModelIndexList{};
+    if (selected.isEmpty())
+        return {};
+    const int row = selected.first().row();
+    auto* item = daemon_jobs_table_->item(row, 0);
+    return item ? item->data(Qt::UserRole).toString() : QString();
+}
+
+void ProfileScreen::run_selected_daemon_job_action(const QString& action) {
+    const QString id = selected_daemon_job_id();
+    if (id.isEmpty()) {
+        if (daemon_action_status_)
+            daemon_action_status_->setText(tr("Select a job first"));
+        return;
+    }
+    if (daemon_action_status_)
+        daemon_action_status_->setText(tr("Running job %1...").arg(action));
+    run_daemon_cli({QStringLiteral("jobs"), action, id},
+                   [this, action](const QJsonObject&, const QString&) {
+                       if (daemon_action_status_)
+                           daemon_action_status_->setText(tr("Job %1 complete").arg(action));
+                       refresh_daemon();
+                   },
+                   [this](const QString& msg) {
+                       if (daemon_action_status_)
+                           daemon_action_status_->setText(msg);
+                       refresh_daemon();
+                   });
+}
+
+void ProfileScreen::apply_daemon_job_preset(const QString& kind, const QString& target, int interval_sec) {
+    if (!daemon_job_kind_ || !daemon_job_target_ || !daemon_job_interval_)
+        return;
+    const int idx = daemon_job_kind_->findData(kind);
+    if (idx >= 0)
+        daemon_job_kind_->setCurrentIndex(idx);
+    daemon_job_target_->setText(target);
+    daemon_job_interval_->setValue(interval_sec);
+    if (daemon_action_status_)
+        daemon_action_status_->setText(tr("Preset loaded"));
+}
+
+void ProfileScreen::refresh_daemon() {
+    if (!daemon_status_ && !daemon_jobs_table_)
+        return;
+    if (daemon_status_)
+        daemon_status_->setText(tr("Checking daemon..."));
+    run_daemon_cli({QStringLiteral("health")},
+                   [this](const QJsonObject& health, const QString&) {
+                       populate_daemon_health(health);
+                       run_daemon_cli({QStringLiteral("jobs"), QStringLiteral("list")},
+                                      [this](const QJsonObject& o, const QString&) {
+                                          populate_daemon_jobs(o.value("jobs").toArray());
+                                      });
+                       run_daemon_cli({QStringLiteral("audit")},
+                                      [this](const QJsonObject& o, const QString&) { populate_daemon_audit(o); });
+                       run_daemon_cli({QStringLiteral("logs"), QStringLiteral("jobs"), QStringLiteral("--lines"), QStringLiteral("80")},
+                                      [this](const QJsonObject& o, const QString&) { populate_daemon_logs(o); },
+                                      [this](const QString& msg) {
+                                          if (daemon_logs_)
+                                              daemon_logs_->setPlainText(msg);
+                                      });
+                   },
+                   [this](const QString& msg) {
+                       if (daemon_status_) {
+                           daemon_status_->setText(msg);
+                           daemon_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                                             .arg(ui::colors::NEGATIVE(), MF));
+                       }
+                   });
+}
+
+void ProfileScreen::add_daemon_job() {
+    if (!daemon_job_kind_ || !daemon_job_target_ || !daemon_job_interval_)
+        return;
+    const QString kind = daemon_job_kind_->currentData().toString();
+    const QString target = daemon_job_target_->text().trimmed();
+    if (target.isEmpty() && kind != "health") {
+        if (daemon_action_status_)
+            daemon_action_status_->setText(tr("Target required"));
+        return;
+    }
+    const int interval = daemon_job_interval_->value();
+    QStringList args;
+    if (kind == "notebook") {
+        args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("notebook") << target;
+    } else if (kind == "paper") {
+        args << QStringLiteral("paper") << target;
+    } else if (kind == "health") {
+        args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("health-check");
+    } else if (kind == "notify") {
+        args << QStringLiteral("notify") << QStringLiteral("--job")
+             << QStringLiteral("--title") << QStringLiteral("OpenTerminal")
+             << QStringLiteral("--message") << target;
+    } else {
+        args << QStringLiteral("ai") << kind << target;
+    }
+    if (interval > 0)
+        args << QStringLiteral("--every-sec") << QString::number(interval);
+    if (daemon_action_status_)
+        daemon_action_status_->setText(tr("Adding job..."));
+    run_daemon_cli(args,
+                   [this](const QJsonObject&, const QString&) {
+                       if (daemon_action_status_)
+                           daemon_action_status_->setText(tr("Job added"));
+                       if (daemon_job_target_)
+                           daemon_job_target_->clear();
+                       refresh_daemon();
+                   },
+                   [this](const QString& msg) {
+                       if (daemon_action_status_)
+                           daemon_action_status_->setText(msg);
+                   });
 }
 
 void ProfileScreen::refresh_all() {
     // LOCAL-FIRST: populate Overview from local SettingsRepository (no login required).
     auto& repo = openmarketterminal::SettingsRepository::instance();
+    const auto r_name    = repo.get("profile.name",     "");
+    const auto r_nick    = repo.get("profile.nickname", "");
     const auto r_uname   = repo.get("profile.username", "");
     const auto r_email   = repo.get("profile.email",    "");
     const auto r_phone   = repo.get("profile.phone",    "");
     const auto r_country = repo.get("profile.country",  "");
-    const QString uname   = (r_uname.is_ok()   && !r_uname.value().isEmpty())   ? r_uname.value()   : QString();
+    const QString name    = (r_name.is_ok()    && !r_name.value().isEmpty())    ? r_name.value()    : QString();
+    const QString nick    = (r_nick.is_ok()    && !r_nick.value().isEmpty())    ? r_nick.value()    : QString();
+    const QString legacy  = (r_uname.is_ok()   && !r_uname.value().isEmpty())   ? r_uname.value()   : QString();
     const QString email   = (r_email.is_ok()   && !r_email.value().isEmpty())   ? r_email.value()   : QString();
     const QString phone   = (r_phone.is_ok()   && !r_phone.value().isEmpty())   ? r_phone.value()   : QString();
     const QString country = (r_country.is_ok() && !r_country.value().isEmpty()) ? r_country.value() : QString();
 
-    username_header_->setText(uname.isEmpty() ? tr("Local Profile") : uname);
-    ov_username_->setText(uname.isEmpty()   ? tr("Not set") : uname);
-    ov_email_->setText(email.isEmpty()      ? tr("Not set") : email);
-    ov_phone_->setText(phone.isEmpty()      ? tr("Not set") : phone);
-    ov_country_->setText(country.isEmpty()  ? tr("Not set") : country);
+    const QString display = !nick.isEmpty() ? nick : (!name.isEmpty() ? name : legacy);
+    if (username_header_)
+        username_header_->setText(display.isEmpty() ? tr("Local Profile") : display);
 
-    // Security tab — still reads from auth session (those rows remain remote-backed).
-    const auto& s = auth::AuthManager::instance().session();
-    sec_verified_->setText(s.user_info.is_verified ? tr("YES") : tr("NO"));
-    sec_verified_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
-                                     .arg(s.user_info.is_verified ? ui::colors::POSITIVE() : ui::colors::NEGATIVE())
-                                     .arg(MF));
-    sec_mfa_->setText(s.user_info.mfa_enabled ? tr("ENABLED") : tr("DISABLED"));
-    sec_mfa_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
-                                .arg(s.user_info.mfa_enabled ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY())
-                                .arg(MF));
+    if (profile_name_)
+        profile_name_->setText(name.isEmpty() ? legacy : name);
+    if (profile_nickname_)
+        profile_nickname_->setText(nick);
+    if (profile_email_)
+        profile_email_->setText(email);
+    if (profile_phone_)
+        profile_phone_->setText(phone);
+    if (profile_country_)
+        profile_country_->setText(country);
+    if (profile_status_)
+        profile_status_->setText(tr("Stored locally in profile '%1'").arg(ProfileManager::instance().active()));
+
+    refresh_ai_accounts();
+    refresh_daemon();
 }
 
-void ProfileScreen::show_edit_profile() {
-    auto& repo = openmarketterminal::SettingsRepository::instance();
-    const auto r_uname   = repo.get("profile.username", "");
-    const auto r_email   = repo.get("profile.email",    "");
-    const auto r_phone   = repo.get("profile.phone",    "");
-    const auto r_country = repo.get("profile.country",  "");
-    const QString cur_uname   = (r_uname.is_ok()   && !r_uname.value().isEmpty())   ? r_uname.value()   : QString();
-    const QString cur_email   = (r_email.is_ok()   && !r_email.value().isEmpty())   ? r_email.value()   : QString();
-    const QString cur_phone   = (r_phone.is_ok()   && !r_phone.value().isEmpty())   ? r_phone.value()   : QString();
-    const QString cur_country = (r_country.is_ok() && !r_country.value().isEmpty()) ? r_country.value() : QString();
+void ProfileScreen::refresh_ai_accounts() {
+    auto apply_cloud = [&](const QString& provider, QLineEdit* key, QComboBox* model, QLineEdit* base,
+                           QLabel* status, const QString& default_model) {
+        if (!model || !base || !status)
+            return;
+        const LlmConfig cfg = find_llm_provider(provider);
+        const QString secure_key = ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") +
+                                   provider.toLower() + QStringLiteral(".api_key");
+        const bool has_key = !cfg.api_key.isEmpty() || SecureStorage::instance().retrieve(secure_key).is_ok();
+        if (key) {
+            key->clear();
+            key->setPlaceholderText(masked_key_placeholder(cfg, tr("Paste API key - stored in this local profile")));
+        }
+        set_combo_text(model, cfg.model.isEmpty() ? default_model : cfg.model);
+        base->setText(cfg.base_url);
+        const QString state = has_key ? tr("Configured locally") : tr("Not configured");
+        status->setText(cfg.is_active ? tr("Active - %1").arg(state) : state);
+        status->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                  .arg(cfg.is_active ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY(), MF));
+    };
+    apply_cloud(QStringLiteral("openai"), ai_openai_key_, ai_openai_model_, ai_openai_base_url_, ai_openai_status_,
+                QStringLiteral("gpt-4o"));
+    apply_cloud(QStringLiteral("anthropic"), ai_anthropic_key_, ai_anthropic_model_, ai_anthropic_base_url_,
+                ai_anthropic_status_, QStringLiteral("claude-sonnet-4-5-20250514"));
 
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Edit Profile"));
-    dlg.setModal(true);
-    dlg.setMinimumWidth(360);
-    dlg.setStyleSheet(QString("background:%1;color:%2;")
-                          .arg(ui::colors::BG_BASE(), ui::colors::TEXT_PRIMARY()));
-    auto* vl = new QVBoxLayout(&dlg);
-    vl->setContentsMargins(16, 16, 16, 16);
-    vl->setSpacing(10);
+    if (ai_ollama_model_ && ai_ollama_base_url_ && ai_ollama_status_) {
+        const LlmConfig cfg = find_llm_provider(QStringLiteral("ollama"));
+        set_combo_text(ai_ollama_model_, cfg.model.isEmpty() ? QStringLiteral("llama3.3:70b") : cfg.model);
+        ai_ollama_base_url_->setText(cfg.base_url.isEmpty() ? QStringLiteral("http://localhost:11434") : cfg.base_url);
+        ai_ollama_status_->setText(cfg.is_active ? tr("Active - local endpoint") : tr("Local endpoint"));
+        ai_ollama_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                             .arg(cfg.is_active ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY(),
+                                                  MF));
+    }
+}
 
-    auto make_field = [&](const QString& label, const QString& value) -> QLineEdit* {
-        auto* lbl = new QLabel(label);
-        lbl->setStyleSheet(
-            QString("color:%1;font-size:11px;font-weight:700;background:transparent;letter-spacing:0.5px;%2")
-                .arg(ui::colors::TEXT_SECONDARY(), MF));
-        vl->addWidget(lbl);
-        auto* ed = new QLineEdit(value);
-        ed->setStyleSheet(
-            QString("QLineEdit{background:%1;color:%2;border:1px solid %3;padding:4px 8px;font-size:13px;%4}"
-                    "QLineEdit:focus{border:1px solid %5;}")
-                .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
-                     ui::colors::AMBER()));
-        vl->addWidget(ed);
-        return ed;
+void ProfileScreen::save_ai_provider(const QString& provider) {
+    const QString id = provider.toLower();
+    LlmConfig prior = find_llm_provider(id);
+    LlmConfig cfg;
+    cfg.provider = id;
+    cfg.tools_enabled = true;
+    cfg.is_active = true;
+
+    QString new_key;
+    if (id == "openai") {
+        new_key = ai_openai_key_ ? ai_openai_key_->text().trimmed() : QString();
+        cfg.api_key.clear();
+        cfg.model = ai_openai_model_ ? ai_openai_model_->currentText().trimmed() : QString();
+        cfg.base_url = ai_openai_base_url_ ? ai_openai_base_url_->text().trimmed() : QString();
+    } else if (id == "anthropic") {
+        new_key = ai_anthropic_key_ ? ai_anthropic_key_->text().trimmed() : QString();
+        cfg.api_key.clear();
+        cfg.model = ai_anthropic_model_ ? ai_anthropic_model_->currentText().trimmed() : QString();
+        cfg.base_url = ai_anthropic_base_url_ ? ai_anthropic_base_url_->text().trimmed() : QString();
+    } else if (id == "ollama") {
+        cfg.api_key.clear();
+        cfg.model = ai_ollama_model_ ? ai_ollama_model_->currentText().trimmed() : QString();
+        cfg.base_url = ai_ollama_base_url_ ? ai_ollama_base_url_->text().trimmed() : QStringLiteral("http://localhost:11434");
+    } else {
+        return;
+    }
+
+    QLabel* status = id == "openai" ? ai_openai_status_ : (id == "anthropic" ? ai_anthropic_status_ : ai_ollama_status_);
+    auto show = [&](const QString& msg, bool error) {
+        if (!status)
+            return;
+        status->setText(msg);
+        status->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                  .arg(error ? ui::colors::NEGATIVE() : ui::colors::POSITIVE(), MF));
     };
 
-    auto* uname_edit   = make_field(tr("USERNAME"), cur_uname);
-    auto* email_edit   = make_field(tr("EMAIL"),    cur_email);
-    auto* phone_edit   = make_field(tr("PHONE"),    cur_phone);
-    auto* country_edit = make_field(tr("COUNTRY"),  cur_country);
+    const QString secure_key = ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") + id +
+                               QStringLiteral(".api_key");
+    const bool has_saved_key = SecureStorage::instance().retrieve(secure_key).is_ok() || !prior.api_key.isEmpty();
+    if (id != "ollama" && new_key.isEmpty() && !has_saved_key) {
+        show(tr("API key required"), true);
+        return;
+    }
+    if (cfg.model.isEmpty()) {
+        show(tr("Model required"), true);
+        return;
+    }
 
-    auto* btn_row = new QWidget(&dlg);
-    btn_row->setStyleSheet("background:transparent;");
-    auto* brl = new QHBoxLayout(btn_row);
-    brl->setContentsMargins(0, 4, 0, 0);
-    brl->setSpacing(8);
-    brl->addStretch();
+    if (id != "ollama") {
+        const QString key_to_store = new_key.isEmpty() ? prior.api_key : new_key;
+        if (!key_to_store.isEmpty()) {
+            auto stored = SecureStorage::instance().store(secure_key, key_to_store);
+            if (stored.is_err()) {
+                show(tr("Secure key save failed"), true);
+                LOG_ERROR("Profile", "AI provider secure key save failed: " + QString::fromStdString(stored.error()));
+                return;
+            }
+        }
+    }
 
-    auto* cancel_btn = new QPushButton(tr("CANCEL"));
-    cancel_btn->setFixedHeight(26);
-    cancel_btn->setStyleSheet(
-        QString("QPushButton{background:%1;color:%2;border:1px solid %3;padding:0 12px;"
-                "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{color:%4;}")
-            .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY(), ui::colors::BORDER_DIM(),
-                 ui::colors::TEXT_PRIMARY()));
-    connect(cancel_btn, &QPushButton::clicked, &dlg, &QDialog::reject);
-    brl->addWidget(cancel_btn);
+    auto saved = LlmConfigRepository::instance().save_provider(cfg);
+    if (saved.is_err()) {
+        show(tr("Save failed"), true);
+        LOG_ERROR("Profile", "AI provider save failed: " + QString::fromStdString(saved.error()));
+        return;
+    }
+    auto active = LlmConfigRepository::instance().set_active(id);
+    if (active.is_err()) {
+        show(tr("Activation failed"), true);
+        LOG_ERROR("Profile", "AI provider activation failed: " + QString::fromStdString(active.error()));
+        return;
+    }
 
-    auto* save_btn = new QPushButton(tr("SAVE"));
-    save_btn->setFixedHeight(26);
-    save_btn->setStyleSheet(
-        QString("QPushButton{background:rgba(217,119,6,0.12);color:%1;border:1px solid rgba(217,119,6,0.4);padding:0 12px;"
-                "font-size:11px;font-weight:700;font-family:'Consolas',monospace;}QPushButton:hover{background:%1;color:%2;}")
-            .arg(ui::colors::AMBER(), ui::colors::BG_BASE()));
-    connect(save_btn, &QPushButton::clicked, &dlg, [=, this, &dlg]() {
-        auto& r = openmarketterminal::SettingsRepository::instance();
-        r.set("profile.username", uname_edit->text().trimmed(),   "profile");
-        r.set("profile.email",    email_edit->text().trimmed(),    "profile");
-        r.set("profile.phone",    phone_edit->text().trimmed(),    "profile");
-        r.set("profile.country",  country_edit->text().trimmed(),  "profile");
-        refresh_all();
-        dlg.accept();
-    });
-    brl->addWidget(save_btn);
-    vl->addWidget(btn_row);
+    auto verify = LlmConfigRepository::instance().get_active_provider();
+    if (!verify.is_ok() || verify.value().provider.toLower() != id) {
+        const QString detail = verify.is_ok()
+                                   ? tr("active is '%1' not '%2'").arg(verify.value().provider, id)
+                                   : QString::fromStdString(verify.error());
+        show(tr("Save verification failed"), true);
+        LOG_ERROR("Profile", "AI provider save verification failed: " + detail);
+        return;
+    }
 
-    dlg.exec();
+    ai_chat::LlmService::instance().reload_config();
+    refresh_ai_accounts();
+    show(tr("Saved locally and set active"), false);
 }
 
-void ProfileScreen::show_logout_confirm() {
-    if (QMessageBox::question(this, tr("Confirm Logout"), tr("Are you sure you want to logout?"),
-                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
-        auth::AuthManager::instance().logout();
+void ProfileScreen::save_local_profile() {
+    auto& repo = openmarketterminal::SettingsRepository::instance();
+    const QString name = profile_name_ ? profile_name_->text().trimmed() : QString();
+    const QString nickname = profile_nickname_ ? profile_nickname_->text().trimmed() : QString();
+    const QString email = profile_email_ ? profile_email_->text().trimmed() : QString();
+    const QString phone = profile_phone_ ? profile_phone_->text().trimmed() : QString();
+    const QString country = profile_country_ ? profile_country_->text().trimmed() : QString();
+
+    auto r1 = repo.set("profile.name", name, "profile");
+    auto r2 = repo.set("profile.nickname", nickname, "profile");
+    auto r3 = repo.set("profile.username", nickname.isEmpty() ? name : nickname, "profile");
+    auto r4 = repo.set("profile.email", email, "profile");
+    auto r5 = repo.set("profile.phone", phone, "profile");
+    auto r6 = repo.set("profile.country", country, "profile");
+
+    const bool ok = r1.is_ok() && r2.is_ok() && r3.is_ok() && r4.is_ok() && r5.is_ok() && r6.is_ok();
+    if (ok)
+        refresh_all();
+    if (profile_status_) {
+        profile_status_->setText(ok ? tr("Saved locally") : tr("Save failed"));
+        profile_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                           .arg(ok ? ui::colors::POSITIVE() : ui::colors::NEGATIVE(), MF));
+    }
 }
 
 } // namespace openmarketterminal::screens

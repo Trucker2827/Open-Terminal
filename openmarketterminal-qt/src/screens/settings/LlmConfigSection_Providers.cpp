@@ -9,11 +9,13 @@
 #include "screens/settings/LlmConfigSection.h"
 
 #include "auth/AuthManager.h"
+#include "core/config/ProfileManager.h"
 #include "core/logging/Logger.h"
 #include "services/llm/LlmService.h"
 #include "storage/repositories/LlmConfigRepository.h"
 #include "storage/repositories/LlmProfileRepository.h"
 #include "storage/repositories/SettingsRepository.h"
+#include "storage/secure/SecureStorage.h"
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
 
@@ -24,7 +26,40 @@
 // (another anonymous-namespace TAG). Unique identifier prevents ambiguous
 // lookup if all three land in one TU. Same convention applied across
 // AiChatScreen_Sessions.cpp after a real-world collision surfaced.
-namespace { constexpr const char* TAG_PROVIDERS = "LlmConfigSection"; }
+namespace {
+constexpr const char* TAG_PROVIDERS = "LlmConfigSection";
+
+QString secure_llm_api_key_id(const QString& provider) {
+    return openmarketterminal::ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") +
+           provider.toLower() + QStringLiteral(".api_key");
+}
+
+QString saved_llm_api_key(const QString& provider) {
+    auto secure = openmarketterminal::SecureStorage::instance().retrieve(secure_llm_api_key_id(provider));
+    if (secure.is_ok())
+        return secure.value();
+
+    auto providers = openmarketterminal::LlmConfigRepository::instance().list_providers();
+    if (providers.is_ok()) {
+        for (const auto& p : providers.value()) {
+            if (p.provider.compare(provider, Qt::CaseInsensitive) == 0)
+                return p.api_key;
+        }
+    }
+    return {};
+}
+
+bool preserve_existing_llm_api_key(const QString& provider) {
+    auto secure = openmarketterminal::SecureStorage::instance().retrieve(secure_llm_api_key_id(provider));
+    if (secure.is_ok())
+        return true;
+
+    const QString legacy = saved_llm_api_key(provider);
+    if (legacy.isEmpty())
+        return false;
+    return openmarketterminal::SecureStorage::instance().store(secure_llm_api_key_id(provider), legacy).is_ok();
+}
+}
 
 #include <QFormLayout>
 #include <QFrame>
@@ -589,9 +624,11 @@ void LlmConfigSection::populate_form(const QString& provider) {
                 // combo only shows what the user actually has, not hardcoded guesses.
                 QTimer::singleShot(0, this, [this]() { on_fetch_models(); });
             } else {
-                api_key_edit_->setText(p.api_key);
+                api_key_edit_->clear();
                 api_key_edit_->setEnabled(true);
-                api_key_edit_->setPlaceholderText("sk-...");
+                api_key_edit_->setPlaceholderText(saved_llm_api_key(provider).isEmpty()
+                                                      ? tr("sk-...")
+                                                      : tr("Saved locally - leave blank to keep"));
                 model_combo_->setVisible(true);
                 model_combo_->setEnabled(true);
                 fetch_btn_->setVisible(true);
@@ -617,7 +654,9 @@ void LlmConfigSection::populate_form(const QString& provider) {
         base_url_edit_->setText(def_url);
         QTimer::singleShot(0, this, [this]() { on_fetch_models(); });
     } else {
-        api_key_edit_->setPlaceholderText("sk-...");
+        api_key_edit_->setPlaceholderText(saved_llm_api_key(provider).isEmpty()
+                                              ? tr("sk-...")
+                                              : tr("Saved locally - leave blank to keep"));
         model_combo_->setVisible(true);
         model_combo_->setEnabled(true);
         fetch_btn_->setVisible(true);
@@ -659,7 +698,7 @@ void LlmConfigSection::on_save_provider() {
     cfg.tools_enabled = tools_check_->isChecked();
 
     // Basic validation
-    if (provider != "ollama" && cfg.api_key.isEmpty()) {
+    if (provider != "ollama" && cfg.api_key.isEmpty() && !preserve_existing_llm_api_key(provider)) {
         show_status(tr("API key is required for %1").arg(provider), true);
         return;
     }
@@ -753,7 +792,9 @@ void LlmConfigSection::on_test_connection() {
     }
 
     if (provider != "ollama") {
-        if (api_key_edit_->text().trimmed().isEmpty()) {
+        const QString api_key = api_key_edit_->text().trimmed().isEmpty() ? saved_llm_api_key(provider)
+                                                                         : api_key_edit_->text().trimmed();
+        if (api_key.isEmpty()) {
             show_status(tr("API key required for test"), true);
             return;
         }
@@ -778,8 +819,9 @@ void LlmConfigSection::on_test_connection() {
                         disconnect(*conn);
                     });
 
-    ai_chat::LlmService::instance().fetch_models(provider, api_key_edit_->text().trimmed(),
-                                                 base_url_edit_->text().trimmed());
+    const QString api_key = api_key_edit_->text().trimmed().isEmpty() ? saved_llm_api_key(provider)
+                                                                     : api_key_edit_->text().trimmed();
+    ai_chat::LlmService::instance().fetch_models(provider, api_key, base_url_edit_->text().trimmed());
 }
 
 void LlmConfigSection::on_fetch_models() {
@@ -795,7 +837,9 @@ void LlmConfigSection::on_fetch_models() {
     }
 
     if (provider != "ollama") {
-        if (api_key_edit_->text().trimmed().isEmpty()) {
+        const QString api_key = api_key_edit_->text().trimmed().isEmpty() ? saved_llm_api_key(provider)
+                                                                         : api_key_edit_->text().trimmed();
+        if (api_key.isEmpty()) {
             show_status(tr("Enter API key first, then fetch models"), true);
             return;
         }
@@ -804,8 +848,9 @@ void LlmConfigSection::on_fetch_models() {
     show_status(tr("Fetching models..."), false);
     fetch_btn_->setEnabled(false);
 
-    ai_chat::LlmService::instance().fetch_models(provider, api_key_edit_->text().trimmed(),
-                                                 base_url_edit_->text().trimmed());
+    const QString api_key = api_key_edit_->text().trimmed().isEmpty() ? saved_llm_api_key(provider)
+                                                                     : api_key_edit_->text().trimmed();
+    ai_chat::LlmService::instance().fetch_models(provider, api_key, base_url_edit_->text().trimmed());
 }
 
 void LlmConfigSection::on_models_fetched(const QString& provider, const QStringList& models, const QString& error) {

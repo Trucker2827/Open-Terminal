@@ -154,4 +154,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_search_warehouse_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

@@ -6,7 +6,7 @@ distressed names, or conglomerates without clean peers.
 
 Data comes ONLY from the app's tools — never web-guess multiples:
 `edgar_resolve_cik`, `edgar_get_financials`, `edgar_calc_multiples`,
-`edgar_get_metadata`, `get_quote`/`get_equity_quote`.
+`edgar_get_metadata`, `get_quote`, `get_equity_financials`.
 
 ## Method
 1. **Frame it.** Confirm the target and the question (M&A, investment, sector

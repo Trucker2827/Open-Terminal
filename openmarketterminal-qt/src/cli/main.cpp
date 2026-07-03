@@ -7,5 +7,7 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setApplicationVersion(OPENMARKETTERMINAL_VERSION_STRING);
     QStringList args = QCoreApplication::arguments();
     args.removeFirst(); // drop argv[0]
-    return openmarketterminal::cli::dispatch(args);
+    const int rc = openmarketterminal::cli::dispatch(args);
+    openmarketterminal::cli::shutdown();
+    return rc;
 }

@@ -1,18 +1,23 @@
 #pragma once
-#include <QDialog>
+#include <QComboBox>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStackedWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <functional>
+
 namespace openmarketterminal::screens {
 
-/// Profile & Account — 5 sections.
-/// Sections: Overview, Usage, Security, Billing, Support
+/// Profile & Account — local identity and AI provider access.
 class ProfileScreen : public QWidget {
     Q_OBJECT
   public:
@@ -38,33 +43,74 @@ class ProfileScreen : public QWidget {
     // Header labels
     QLabel* username_header_ = nullptr;
 
-    // Overview
-    QLabel* ov_username_ = nullptr;
-    QLabel* ov_email_ = nullptr;
-    QLabel* ov_phone_ = nullptr;
-    QLabel* ov_country_ = nullptr;
+    // Local profile
+    QLineEdit* profile_name_ = nullptr;
+    QLineEdit* profile_nickname_ = nullptr;
+    QLineEdit* profile_email_ = nullptr;
+    QLineEdit* profile_phone_ = nullptr;
+    QLineEdit* profile_country_ = nullptr;
+    QLabel* profile_status_ = nullptr;
 
-    // Security
-    QLabel* sec_api_key_ = nullptr;
-    QLabel* sec_mfa_ = nullptr;
-    QLabel* sec_verified_ = nullptr;
-    bool api_key_visible_ = false;
+    // AI accounts
+    QLineEdit* ai_openai_key_ = nullptr;
+    QComboBox* ai_openai_model_ = nullptr;
+    QLineEdit* ai_openai_base_url_ = nullptr;
+    QLabel* ai_openai_status_ = nullptr;
+    QLineEdit* ai_anthropic_key_ = nullptr;
+    QComboBox* ai_anthropic_model_ = nullptr;
+    QLineEdit* ai_anthropic_base_url_ = nullptr;
+    QLabel* ai_anthropic_status_ = nullptr;
+    QLineEdit* ai_ollama_base_url_ = nullptr;
+    QComboBox* ai_ollama_model_ = nullptr;
+    QLabel* ai_ollama_status_ = nullptr;
+
+    // Local daemon / automation
+    QLabel* daemon_status_ = nullptr;
+    QLabel* daemon_installed_ = nullptr;
+    QLabel* daemon_running_ = nullptr;
+    QLabel* daemon_jobs_summary_ = nullptr;
+    QLabel* daemon_audit_status_ = nullptr;
+    QLabel* daemon_action_status_ = nullptr;
+    QPlainTextEdit* daemon_logs_ = nullptr;
+    QPlainTextEdit* daemon_job_detail_ = nullptr;
+    QTableWidget* daemon_jobs_table_ = nullptr;
+    QComboBox* daemon_job_kind_ = nullptr;
+    QLineEdit* daemon_job_target_ = nullptr;
+    QSpinBox* daemon_job_interval_ = nullptr;
 
     void build_header(QVBoxLayout* root);
     void build_tab_nav(QVBoxLayout* root);
     QWidget* build_overview();
+    QWidget* build_ai_accounts();
     QWidget* build_security();
-    QWidget* build_support();
+    QWidget* build_automation();
 
     void refresh_all();
+    void refresh_ai_accounts();
+    void refresh_daemon();
 
     // Helpers
     QWidget* make_panel(const QString& title);
     QWidget* make_data_row(const QString& label, QLabel*& value_out);
     QWidget* make_stat_box(const QString& label, QLabel*& value_out, const QString& color);
+    QString daemon_cli_path() const;
+    void run_daemon_cli(const QStringList& daemon_args,
+                        std::function<void(const QJsonObject&, const QString&)> on_success,
+                        std::function<void(const QString&)> on_error = {});
+    void run_daemon_action(const QString& action, const QStringList& extra_args = {});
+    void populate_daemon_health(const QJsonObject& health);
+    void populate_daemon_jobs(const QJsonArray& jobs);
+    void populate_daemon_audit(const QJsonObject& audit);
+    void populate_daemon_logs(const QJsonObject& logs);
+    void populate_daemon_job_detail(const QJsonObject& job);
+    void refresh_selected_daemon_job_detail();
+    QString selected_daemon_job_id() const;
+    void run_selected_daemon_job_action(const QString& action);
+    void apply_daemon_job_preset(const QString& kind, const QString& target, int interval_sec);
 
-    void show_logout_confirm();
-    void show_edit_profile();
+    void save_local_profile();
+    void save_ai_provider(const QString& provider);
+    void add_daemon_job();
 
   private slots:
     void on_section_changed(int index);

@@ -118,9 +118,10 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
 }
 
 void CryptoTradingScreen::on_symbol_selected(const QString& symbol) {
-    if (symbol.isEmpty() || symbol == selected_symbol_)
+    const QString normalized = normalized_symbol_for_focus(symbol);
+    if (normalized.isEmpty() || normalized == selected_symbol_)
         return;
-    switch_symbol(symbol);
+    switch_symbol(normalized);
     ScreenStateManager::instance().notify_changed(this);
 
     // Phase 7: publish to the linked group so other panels in the same
@@ -128,7 +129,7 @@ void CryptoTradingScreen::on_symbol_selected(const QString& symbol) {
     // can suppress its own re-publish below.
     if (link_group_ != SymbolGroup::None) {
         SymbolRef ref;
-        ref.symbol = symbol;
+        ref.symbol = normalized;
         ref.asset_class = QStringLiteral("crypto");
         ref.exchange = exchange_id_;
         SymbolContext::instance().set_group_symbol(link_group_, ref, this);
@@ -144,12 +145,13 @@ void CryptoTradingScreen::on_group_symbol_changed(const SymbolRef& ref) {
         return;
     if (ref.asset_class != QStringLiteral("crypto"))
         return;
-    if (ref.symbol == selected_symbol_)
+    const QString normalized = normalized_symbol_for_focus(ref.symbol);
+    if (normalized == selected_symbol_)
         return; // already showing this pair
     // Reuse the existing publish-suppressing path: switch_symbol mutates
     // selected_symbol_ but doesn't re-emit because we don't go through
     // on_symbol_selected.
-    switch_symbol(ref.symbol);
+    switch_symbol(normalized);
 }
 
 SymbolRef CryptoTradingScreen::current_symbol() const {
@@ -163,14 +165,17 @@ SymbolRef CryptoTradingScreen::current_symbol() const {
 }
 
 void CryptoTradingScreen::switch_symbol(const QString& symbol) {
-    LOG_INFO(TAG, QString("Symbol changed: %1 → %2").arg(selected_symbol_, symbol));
+    const QString normalized = normalized_symbol_for_focus(symbol);
+    if (normalized == selected_symbol_)
+        return;
+    LOG_INFO(TAG, QString("Symbol changed: %1 → %2").arg(selected_symbol_, normalized));
     auto& es = ExchangeService::instance();
     es.unwatch_symbol(selected_symbol_, portfolio_id_);
-    selected_symbol_ = symbol;
-    symbol_input_->setText(symbol);
-    ticker_bar_->set_symbol(symbol);
-    order_entry_->set_symbol(symbol);
-    watchlist_->set_active_symbol(symbol);
+    selected_symbol_ = normalized;
+    symbol_input_->setText(normalized);
+    ticker_bar_->set_symbol(normalized);
+    order_entry_->set_symbol(normalized);
+    watchlist_->set_active_symbol(normalized);
 
     // Drop per-symbol buffers tied to the old symbol to prevent cross-symbol leakage.
     has_pending_primary_ = false;
@@ -182,7 +187,7 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     market_info_cache_ = {};
 
     es.watch_symbol(selected_symbol_, portfolio_id_);
-    es.set_ws_primary_symbol(symbol);
+    es.set_ws_primary_symbol(normalized);
 
     // Three of the five subscriptions (ticker/orderbook/trades + ohlc
     // pattern) are primary-symbol-specific and need to be re-bound to the

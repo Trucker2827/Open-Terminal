@@ -1050,6 +1050,17 @@ set(MCP_SOURCES
     src/mcp/tools/MAAnalyticsTools.cpp
     src/mcp/tools/AltInvestmentsTools.cpp
     src/mcp/tools/DataSourcesTools.cpp
+    src/screens/data_sources/ConnectorRegistry.cpp
+    src/screens/data_sources/connectors/RelationalDatabases.cpp
+    src/screens/data_sources/connectors/NoSqlDatabases.cpp
+    src/screens/data_sources/connectors/TimeSeriesDatabases.cpp
+    src/screens/data_sources/connectors/FileSources.cpp
+    src/screens/data_sources/connectors/ApiStreaming.cpp
+    src/screens/data_sources/connectors/CloudStorage.cpp
+    src/screens/data_sources/connectors/MarketData.cpp
+    src/screens/data_sources/connectors/SearchWarehouse.cpp
+    src/screens/data_sources/connectors/AlternativeData.cpp
+    src/screens/data_sources/connectors/OpenBanking.cpp
     src/mcp/tools/ProfileTools.cpp
     src/mcp/tools/SettingsTools.cpp
     src/mcp/tools/PythonTools.cpp
@@ -1198,6 +1209,8 @@ set(SERVICE_SOURCES
     src/services/ai_strategy/StrategyRunner.cpp
     src/services/ai_strategy/MeanReversionStrategy.cpp
     src/services/ai_strategy/LlmStrategy.cpp
+    src/services/report_builder/ReportBuilderService.cpp
+    src/services/report_builder/ReportBuilderTemplates.cpp
     src/core/services/Services.cpp
     src/python/ScriptCatalog.cpp
     # NewsService split; see NewsService.cpp header.
@@ -1463,8 +1476,6 @@ set(SCREEN_SOURCES
     src/screens/relationship_map/RelationshipMapScreen.cpp
     src/screens/relationship_map/RelationshipGraphScene.cpp
     src/services/relationship_map/RelationshipMapService.cpp
-    src/services/report_builder/ReportBuilderService.cpp
-    src/services/report_builder/ReportBuilderTemplates.cpp
     src/screens/markets/MarketsScreen.cpp
     src/screens/markets/MarketPanel.cpp
     src/screens/markets/MarketPanelStore.cpp
@@ -1588,17 +1599,6 @@ set(SCREEN_SOURCES
     src/screens/data_sources/ConnectionConfigDialog.cpp
     src/screens/data_sources/ConnectionTester.cpp
     src/screens/data_sources/ImportExportConnections.cpp
-    src/screens/data_sources/ConnectorRegistry.cpp
-    src/screens/data_sources/connectors/RelationalDatabases.cpp
-    src/screens/data_sources/connectors/NoSqlDatabases.cpp
-    src/screens/data_sources/connectors/TimeSeriesDatabases.cpp
-    src/screens/data_sources/connectors/FileSources.cpp
-    src/screens/data_sources/connectors/ApiStreaming.cpp
-    src/screens/data_sources/connectors/CloudStorage.cpp
-    src/screens/data_sources/connectors/MarketData.cpp
-    src/screens/data_sources/connectors/SearchWarehouse.cpp
-    src/screens/data_sources/connectors/AlternativeData.cpp
-    src/screens/data_sources/connectors/OpenBanking.cpp
     src/screens/notes/NotesScreen.cpp
     src/screens/watchlist/WatchlistScreen.cpp
     src/screens/surface_analytics/SurfaceDemoData.cpp
@@ -2025,17 +2025,6 @@ set_source_files_properties(
     src/screens/data_sources/ConnectionConfigDialog.cpp
     src/screens/data_sources/ConnectionTester.cpp
     src/screens/data_sources/ImportExportConnections.cpp
-    src/screens/data_sources/ConnectorRegistry.cpp
-    src/screens/data_sources/connectors/RelationalDatabases.cpp
-    src/screens/data_sources/connectors/NoSqlDatabases.cpp
-    src/screens/data_sources/connectors/TimeSeriesDatabases.cpp
-    src/screens/data_sources/connectors/FileSources.cpp
-    src/screens/data_sources/connectors/ApiStreaming.cpp
-    src/screens/data_sources/connectors/CloudStorage.cpp
-    src/screens/data_sources/connectors/MarketData.cpp
-    src/screens/data_sources/connectors/SearchWarehouse.cpp
-    src/screens/data_sources/connectors/AlternativeData.cpp
-    src/screens/data_sources/connectors/OpenBanking.cpp
     src/screens/dashboard/DashboardScreen.cpp
     src/screens/dashboard/DashboardStatusBar.cpp
     src/screens/dashboard/DashboardToolBar.cpp
@@ -3225,6 +3214,7 @@ endif()
 # Attach mode talks to a running GUI over the bridge (Qt6::Core + Network).
 # --headless mode runs commands in-process via openterminal_core's
 # HeadlessRuntime (no GUI), reusing the same core MCP tool tree.
+include(GNUInstallDirs)
 add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
@@ -3233,11 +3223,37 @@ add_executable(openterminalcli
     src/cli/ServeCommand.cpp
     src/cli/BridgeDiscovery.cpp
     src/cli/BridgeClient.cpp
-    src/cli/BridgeDiscoveryFile.cpp)
+    src/cli/BridgeDiscoveryFile.cpp
+    src/screens/ai_chat/AnalysisSlashCommands.cpp)
 target_include_directories(openterminalcli PRIVATE src)
 target_compile_definitions(openterminalcli PRIVATE
     OPENMARKETTERMINAL_VERSION_STRING="${PROJECT_VERSION}")
 target_link_libraries(openterminalcli PRIVATE openterminal_core Qt6::Core Qt6::Network)
+
+option(OPENTERMINALCLI_INSTALL_OT_ALIAS "Install 'ot' symlink alias for openterminalcli on Unix" ON)
+
+install(TARGETS openterminalcli
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT cli)
+install(FILES packaging/cli/openterminalcli.1
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+        COMPONENT cli)
+install(FILES packaging/cli/completions/openterminalcli.bash
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions
+        RENAME openterminalcli
+        COMPONENT cli)
+install(FILES packaging/cli/completions/_openterminalcli
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/zsh/site-functions
+        COMPONENT cli)
+install(FILES packaging/cli/completions/openterminalcli.fish
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/fish/vendor_completions.d
+        COMPONENT cli)
+if(UNIX AND NOT WIN32 AND OPENTERMINALCLI_INSTALL_OT_ALIAS)
+    install(CODE "
+        execute_process(COMMAND \"\${CMAKE_COMMAND}\" -E create_symlink
+            openterminalcli \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/ot\")
+    " COMPONENT cli)
+endif()
 
 # ── Copy qgeoview DLL next to the exe so it's found at runtime ────────────────
 if(WIN32)

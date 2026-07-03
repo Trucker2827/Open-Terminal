@@ -8,6 +8,7 @@
 
 #include "screens/code_editor/CodeEditorScreen.h"
 
+#include "core/events/EventBus.h"
 #include "core/keys/KeyConfigManager.h"
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
@@ -364,6 +365,21 @@ QWidget* CodeEditorScreen::build_toolbar() {
     btn_restart_ = make_btn(tr("RESTART KERNEL"));
     connect(btn_restart_, &QPushButton::clicked, this, &CodeEditorScreen::on_restart_kernel);
     hl->addWidget(btn_restart_);
+
+    add_sep();
+
+    btn_promote_strategy_ = make_btn(tr("PROMOTE TO STRATEGY"), "nbAccentBtn");
+    btn_promote_strategy_->setToolTip(tr("Open Strategy Builder with this research as context"));
+    connect(btn_promote_strategy_, &QPushButton::clicked, this, [this]() {
+        if (!notebook_path_.isEmpty())
+            on_save_notebook();
+        openmarketterminal::EventBus::instance().publish(
+            "nav.switch_screen",
+            QVariantMap{{"screen_id", QStringLiteral("algo_trading")},
+                        {"source", QStringLiteral("notebook")},
+                        {"notebook_path", notebook_path_}});
+    });
+    hl->addWidget(btn_promote_strategy_);
 
     hl->addStretch();
 
@@ -1040,6 +1056,7 @@ void CodeEditorScreen::retranslateUi() {
     if (btn_clear_out_) btn_clear_out_->setText(tr("CLEAR OUT"));
     if (btn_run_all_) btn_run_all_->setText(tr("▶  RUN ALL"));
     if (btn_restart_) btn_restart_->setText(tr("RESTART KERNEL"));
+    if (btn_promote_strategy_) btn_promote_strategy_->setText(tr("PROMOTE TO STRATEGY"));
     if (btn_sidebar_) btn_sidebar_->setText(tr("SIDEBAR"));
     if (py_label_) py_label_->setText(tr("Python"));
     refresh_kernel_label();

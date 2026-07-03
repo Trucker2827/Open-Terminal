@@ -40,8 +40,13 @@ Result<void> CacheDatabase::open(const QString& path) {
 }
 
 void CacheDatabase::close() {
+    QMutexLocker lock(&mutex_);
+    const QString connection_name = db_.connectionName();
     if (db_.isOpen())
         db_.close();
+    db_ = QSqlDatabase();
+    if (!connection_name.isEmpty() && QSqlDatabase::contains(connection_name))
+        QSqlDatabase::removeDatabase(connection_name);
 }
 
 bool CacheDatabase::is_open() const {

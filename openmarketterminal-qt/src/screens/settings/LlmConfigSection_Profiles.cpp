@@ -297,7 +297,9 @@ void LlmConfigSection::populate_profile_form(const LlmProfile& p) {
     profile_model_combo_->addItems(fallback_models(p.provider));
     profile_model_combo_->setCurrentText(p.model_id);
 
-    profile_api_key_edit_->setText(p.api_key);
+    profile_api_key_edit_->clear();
+    profile_api_key_edit_->setPlaceholderText(p.api_key.isEmpty() ? tr("Leave blank to inherit from provider")
+                                                                  : tr("Saved locally - leave blank to keep"));
     profile_base_url_edit_->setText(p.base_url);
     profile_temp_spin_->setValue(p.temperature);
     profile_tokens_spin_->setValue(p.max_tokens);
@@ -385,19 +387,6 @@ void LlmConfigSection::on_profile_provider_changed(const QString& provider) {
 
     profile_api_key_edit_->setEnabled(true);
     profile_api_key_edit_->setPlaceholderText(tr("Leave blank to inherit from provider"));
-
-    // Pre-fill api_key from saved provider if present and field is empty
-    if (profile_api_key_edit_->text().isEmpty()) {
-        auto providers = LlmConfigRepository::instance().list_providers();
-        if (providers.is_ok()) {
-            for (const auto& p : providers.value()) {
-                if (p.provider.toLower() == provider.toLower() && !p.api_key.isEmpty()) {
-                    profile_api_key_edit_->setText(p.api_key);
-                    break;
-                }
-            }
-        }
-    }
 }
 
 void LlmConfigSection::on_save_profile() {
@@ -413,18 +402,12 @@ void LlmConfigSection::on_save_profile() {
         return;
     }
 
-    // If api_key is empty, inherit from saved provider
+    // Blank means inherit from the provider, or keep an existing saved profile override.
     QString api_key = profile_api_key_edit_->text().trimmed();
-    if (api_key.isEmpty()) {
-        auto providers = LlmConfigRepository::instance().list_providers();
-        if (providers.is_ok()) {
-            for (const auto& p : providers.value()) {
-                if (p.provider.toLower() == provider.toLower()) {
-                    api_key = p.api_key;
-                    break;
-                }
-            }
-        }
+    if (api_key.isEmpty() && !editing_profile_id_.isEmpty()) {
+        auto existing = LlmProfileRepository::instance().get_profile(editing_profile_id_);
+        if (existing.is_ok())
+            api_key = existing.value().api_key;
     }
 
     LlmProfile profile;

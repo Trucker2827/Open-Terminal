@@ -325,4 +325,6 @@ static bool registered = [] {
     return true;
 }();
 
+void force_link_market_data_connectors() {}
+
 } // namespace openmarketterminal::screens::datasources

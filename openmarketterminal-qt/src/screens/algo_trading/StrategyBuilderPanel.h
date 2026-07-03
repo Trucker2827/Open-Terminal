@@ -78,6 +78,7 @@ private: // NOLINT(readability-redundant-access-specifiers) — needed to end pr
     QComboBox* instrument_type_combo_ = nullptr;
     QPushButton* save_btn_ = nullptr;
     QPushButton* backtest_btn_ = nullptr;
+    QPushButton* research_btn_ = nullptr;
     QPushButton* deploy_btn_ = nullptr;
     // Small pill showing whether this is a fresh draft or an existing strategy.
     QLabel* state_chip_ = nullptr;
@@ -105,6 +106,7 @@ private: // NOLINT(readability-redundant-access-specifiers) — needed to end pr
 
     // Right panel — backtest performance report (KPIs, equity, drawdown, trades)
     ui::algo::BacktestReportPanel* report_panel_ = nullptr;
+    QPushButton* generate_report_btn_ = nullptr;
 
     // Inline validation banner shown above the builder when a guard fails.
     QLabel* validation_banner_ = nullptr;

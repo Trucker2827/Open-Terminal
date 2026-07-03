@@ -1,6 +1,17 @@
 #include "storage/repositories/LlmConfigRepository.h"
 
+#include "core/config/ProfileManager.h"
+#include "core/logging/Logger.h"
+#include "storage/secure/SecureStorage.h"
+
 namespace openmarketterminal {
+
+namespace {
+QString secure_llm_api_key_id(const QString& provider) {
+    return ProfileManager::instance().secure_key_prefix() + QStringLiteral("llm.") + provider.toLower() +
+           QStringLiteral(".api_key");
+}
+} // namespace
 
 LlmConfigRepository& LlmConfigRepository::instance() {
     static LlmConfigRepository s;
@@ -31,10 +42,21 @@ Result<LlmConfig> LlmConfigRepository::get_active_provider() {
 }
 
 Result<void> LlmConfigRepository::save_provider(const LlmConfig& c) {
+    LlmConfig persisted = c;
+    if (!persisted.api_key.isEmpty()) {
+        auto stored = SecureStorage::instance().store(secure_llm_api_key_id(persisted.provider), persisted.api_key);
+        if (stored.is_err()) {
+            LOG_ERROR("LlmConfigRepository",
+                      "Failed to store LLM API key securely: " + QString::fromStdString(stored.error()));
+            return stored;
+        }
+        persisted.api_key.clear();
+    }
     return exec_write(
         "INSERT OR REPLACE INTO llm_configs (provider, api_key, base_url, model, is_active, tools_enabled, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
-        {c.provider, c.api_key, c.base_url, c.model, c.is_active ? 1 : 0, c.tools_enabled ? 1 : 0});
+        {persisted.provider, persisted.api_key, persisted.base_url, persisted.model, persisted.is_active ? 1 : 0,
+         persisted.tools_enabled ? 1 : 0});
 }
 
 Result<void> LlmConfigRepository::set_active(const QString& provider) {
@@ -43,7 +65,14 @@ Result<void> LlmConfigRepository::set_active(const QString& provider) {
 }
 
 Result<void> LlmConfigRepository::delete_provider(const QString& provider) {
-    return exec_write("DELETE FROM llm_configs WHERE provider = ?", {provider});
+    auto deleted = exec_write("DELETE FROM llm_configs WHERE provider = ?", {provider});
+    if (deleted.is_err())
+        return deleted;
+    auto removed_key = SecureStorage::instance().remove(secure_llm_api_key_id(provider));
+    if (removed_key.is_err())
+        LOG_WARN("LlmConfigRepository",
+                 "Could not remove secure LLM API key: " + QString::fromStdString(removed_key.error()));
+    return deleted;
 }
 
 Result<LlmGlobalSettings> LlmConfigRepository::get_global_settings() {

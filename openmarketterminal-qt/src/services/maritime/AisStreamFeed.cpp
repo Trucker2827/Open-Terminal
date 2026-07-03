@@ -75,7 +75,7 @@ bool AisStreamFeed::start() {
     proc_->setProcessChannelMode(QProcess::SeparateChannels);
 
     connect(proc_, &QProcess::readyReadStandardOutput, this, &AisStreamFeed::on_stdout_ready);
-    connect(proc_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+    connect(proc_, &QProcess::errorOccurred, this, [](QProcess::ProcessError e) {
         LOG_WARN(TAG, QString("QProcess error %1").arg(static_cast<int>(e)));
     });
 

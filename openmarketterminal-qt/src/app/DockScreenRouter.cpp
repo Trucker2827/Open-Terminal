@@ -53,6 +53,7 @@ QString DockScreenRouter::title_for_id(const QString& id) {
     static const QHash<QString, const char*> titles = {
         {"dashboard", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Dashboard")},
         {"markets", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Markets")},
+        {"bitcoin", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Bitcoin")},
         {"crypto_trading", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Crypto Trading")},
         {"equity_trading", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Equity Trading")},
         {"algo_trading", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Strategies")},

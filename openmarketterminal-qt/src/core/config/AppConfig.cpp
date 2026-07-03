@@ -22,11 +22,11 @@ void AppConfig::remove(const QString& key) {
 }
 
 QString AppConfig::api_base_url() const {
-    return settings_.value("api/base_url", "https://api.example.com").toString();
+    return settings_.value("api/base_url", "").toString();
 }
 
 QString AppConfig::cloud_base_url() const {
-    return settings_.value("api/cloud_base_url", "https://api.example.com/v1").toString();
+    return settings_.value("api/cloud_base_url", "").toString();
 }
 
 bool AppConfig::dark_mode() const {

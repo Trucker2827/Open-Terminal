@@ -305,6 +305,12 @@ QWidget* StrategyBuilderPanel::build_top_toolbar() {
     save_btn_->setToolTip(tr("Save this strategy to My Strategies"));
     save_btn_->setStyleSheet(save_btn_style());
 
+    research_btn_ = new QPushButton(tr("Research Notebook"), this);
+    research_btn_->setObjectName(QStringLiteral("builderResearchBtn"));
+    research_btn_->setCursor(Qt::PointingHandCursor);
+    research_btn_->setToolTip(tr("Open Notebooks to research or document this strategy idea"));
+    research_btn_->setStyleSheet(save_btn_style());
+
     deploy_btn_ = new QPushButton(tr("Deploy ▸"), this);
     deploy_btn_->setObjectName(QStringLiteral("builderDeployBtn"));
     deploy_btn_->setCursor(Qt::PointingHandCursor);
@@ -327,9 +333,17 @@ QWidget* StrategyBuilderPanel::build_top_toolbar() {
     layout->addWidget(instrument_type_combo_);
     layout->addStretch();
     layout->addWidget(state_chip_);
+    layout->addWidget(research_btn_);
     layout->addWidget(save_btn_);
     layout->addWidget(deploy_btn_);
 
+    connect(research_btn_, &QPushButton::clicked, this, [this]() {
+        openmarketterminal::EventBus::instance().publish(
+            "nav.switch_screen",
+            QVariantMap{{"screen_id", QStringLiteral("code_editor")},
+                        {"source", QStringLiteral("strategy_builder")},
+                        {"strategy_name", name_edit_->text().trimmed()}});
+    });
     connect(save_btn_, &QPushButton::clicked, this, &StrategyBuilderPanel::on_save);
     connect(deploy_btn_, &QPushButton::clicked, this, &StrategyBuilderPanel::on_deploy);
     connect(template_combo_, QOverload<int>::of(&QComboBox::activated), this,
@@ -471,12 +485,28 @@ QWidget* StrategyBuilderPanel::build_right_panel() {
     results_header_->setStyleSheet(card_header_style());
     results->addWidget(results_header_);
 
+    generate_report_btn_ = new QPushButton(tr("Generate Report"), this);
+    generate_report_btn_->setObjectName(QStringLiteral("builderReportBtn"));
+    generate_report_btn_->setCursor(Qt::PointingHandCursor);
+    generate_report_btn_->setToolTip(tr("Open Report Builder to write up this backtest"));
+    generate_report_btn_->setStyleSheet(save_btn_style());
+    generate_report_btn_->setEnabled(false);
+    results->addWidget(generate_report_btn_);
+
     report_panel_ = new ui::algo::BacktestReportPanel(this);
     results->addWidget(report_panel_, 1);
 
     layout->addWidget(results_card, 1);
 
     connect(backtest_btn_, &QPushButton::clicked, this, &StrategyBuilderPanel::on_backtest);
+    connect(generate_report_btn_, &QPushButton::clicked, this, [this]() {
+        openmarketterminal::EventBus::instance().publish(
+            "nav.switch_screen",
+            QVariantMap{{"screen_id", QStringLiteral("report_builder")},
+                        {"source", QStringLiteral("strategy_backtest")},
+                        {"strategy_name", name_edit_->text().trimmed()},
+                        {"symbol", symbol_combo_ ? symbol_combo_->currentText().trimmed() : QString()}});
+    });
 
     return right;
 }
@@ -714,6 +744,8 @@ QString StrategyBuilderPanel::validate() const {
 
 void StrategyBuilderPanel::on_backtest_result(const QJsonObject& payload) {
     status_label_->setText(tr("Backtest complete."));
+    if (generate_report_btn_)
+        generate_report_btn_->setEnabled(true);
     display_backtest_result(payload);
     LOG_INFO("AlgoTrading", "Backtest result displayed");
 }
@@ -728,6 +760,8 @@ void StrategyBuilderPanel::display_backtest_result(const QJsonObject& payload) {
 
 void StrategyBuilderPanel::clear_results() {
     report_panel_->clear();
+    if (generate_report_btn_)
+        generate_report_btn_->setEnabled(false);
 }
 
 QVariantMap StrategyBuilderPanel::save_draft() const {
@@ -787,9 +821,11 @@ void StrategyBuilderPanel::retranslateUi() {
     if (template_combo_ && template_combo_->count() > 0)
         template_combo_->setItemText(0, tr("Templates…"));
 
-    if (save_btn_)     save_btn_->setText(tr("Save"));
-    if (backtest_btn_) backtest_btn_->setText(tr("▶  RUN BACKTEST"));
-    if (deploy_btn_)   deploy_btn_->setText(tr("Deploy ▸"));
+    if (research_btn_)        research_btn_->setText(tr("Research Notebook"));
+    if (save_btn_)            save_btn_->setText(tr("Save"));
+    if (backtest_btn_)        backtest_btn_->setText(tr("▶  RUN BACKTEST"));
+    if (deploy_btn_)          deploy_btn_->setText(tr("Deploy ▸"));
+    if (generate_report_btn_) generate_report_btn_->setText(tr("Generate Report"));
 
     if (bt_header_)        bt_header_->setText(tr("BACKTEST SETUP"));
     if (bt_symbol_label_)  bt_symbol_label_->setText(tr("Symbol"));
