@@ -121,7 +121,7 @@ void append_job_log(const QString& profile, const QString& line) {
     }
 }
 
-QString launch_domain() {
+[[maybe_unused]] QString launch_domain() {
 #if defined(Q_OS_MACOS)
     return QStringLiteral("gui/%1").arg(static_cast<unsigned long>(::getuid()));
 #else
@@ -327,7 +327,7 @@ void write_plist_key_bool(QXmlStreamWriter& w, const QString& key, bool value) {
     w.writeEmptyElement(value ? QStringLiteral("true") : QStringLiteral("false"));
 }
 
-bool write_daemon_plist(const QString& profile, QString* error) {
+[[maybe_unused]] bool write_daemon_plist(const QString& profile, QString* error) {
     const QString path = daemon_plist_path(profile);
     QDir().mkpath(QFileInfo(path).absolutePath());
     QDir().mkpath(daemon_logs_dir(profile));
@@ -568,6 +568,7 @@ int daemon_start_impl(const QString& profile, bool json) {
 int daemon_stop_impl(const QString& profile, bool json, bool quiet = false) {
 #if !defined(Q_OS_MACOS)
     Q_UNUSED(json);
+    Q_UNUSED(quiet);
     return serve_stop(profile);
 #else
     bool stopped = false;
@@ -1226,7 +1227,7 @@ int daemon_notify_command(const QString& profile, bool json, QStringList args) {
 
 int daemon_command(const QString& profile, bool json, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
-    auto has_flag = [&](const QString& flag) { return args.removeAll(flag) > 0; };
+    [[maybe_unused]] auto has_flag = [&](const QString& flag) { return args.removeAll(flag) > 0; };
 
     if (sub == "status" || sub == "check")
         return emit_daemon_status(profile, json);

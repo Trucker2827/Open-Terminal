@@ -132,7 +132,7 @@ QString HeadlessBrowser::fetch_on_page(QWebEnginePage* page_to_use, const QUrl& 
 
     QMetaObject::invokeMethod(
         this,
-        [this, page_to_use, url, extraction_js, timeout_ms, referer, ctx]() {
+        [page_to_use, url, extraction_js, timeout_ms, referer, ctx]() {
             // page_to_use was selected by the caller (page_ or reader_page_).
             // All references inside this lambda use this local alias — never
             // the member `page_` directly — so the reader path stays isolated.

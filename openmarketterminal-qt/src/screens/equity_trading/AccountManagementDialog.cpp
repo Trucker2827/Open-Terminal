@@ -64,6 +64,7 @@ struct ExchangeArgs {
 
 static ExchangeArgs assemble_exchange_args(const QString& broker_id,
                                            const QMap<int, QString>& f) {
+    Q_UNUSED(broker_id);
     using CF = CredentialField;
     ExchangeArgs a;
     a.api_key = f.value(static_cast<int>(CF::ApiKey));
