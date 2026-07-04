@@ -21,6 +21,7 @@ env:
   QT_IFW_VERSION: "4.7"
   QT_IFW_TOOL: "tools_ifw"
   APP_NAME: OpenTerminal
+  MACOS_NOTARY_KEYCHAIN_PROFILE: dinero-notarytool
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1692,6 +1693,52 @@ jobs:
           ZIP_PATH="$RUNNER_TEMP/app-for-notary.zip"
           SUBMIT_JSON="$RUNNER_TEMP/notary-app-submit.json"
 
+          notary_submit() {
+            local item="$1"
+            local out="$2"
+            if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+              if xcrun notarytool submit "$item" \
+                   --keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE" \
+                   --output-format json > "$out" 2>&1; then
+                return 0
+              fi
+              echo "::warning::notarytool keychain profile '${MACOS_NOTARY_KEYCHAIN_PROFILE}' failed; falling back to Apple ID secrets."
+              cat "$out" || true
+            fi
+            xcrun notarytool submit "$item" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --output-format json > "$out" 2>&1
+          }
+
+          notary_info() {
+            local submission_id="$1"
+            local out="$2"
+            if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+              xcrun notarytool info "$submission_id" \
+                --keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE" \
+                --output-format json > "$out" 2>&1 && return 0
+            fi
+            xcrun notarytool info "$submission_id" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --output-format json > "$out" 2>&1
+          }
+
+          notary_log() {
+            local submission_id="$1"
+            if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+              xcrun notarytool log "$submission_id" \
+                --keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE" && return 0
+            fi
+            xcrun notarytool log "$submission_id" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --password "$NOTARY_PASSWORD"
+          }
+
           # ditto preserves symlinks + xattrs correctly; `zip` doesn't.
           /usr/bin/ditto -c -k --keepParent "${APP_BUNDLE}" "${ZIP_PATH}"
 
@@ -1708,11 +1755,7 @@ jobs:
           SUB_ID=""
           while [ "${SUBMIT_ATTEMPTS}" -lt 3 ]; do
             SUBMIT_ATTEMPTS=$((SUBMIT_ATTEMPTS + 1))
-            if xcrun notarytool submit "${ZIP_PATH}" \
-                 --apple-id "$APPLE_ID" \
-                 --team-id "$TEAM_ID" \
-                 --password "$NOTARY_PASSWORD" \
-                 --output-format json > "${SUBMIT_JSON}" 2>&1; then
+            if notary_submit "${ZIP_PATH}" "${SUBMIT_JSON}"; then
               SUB_ID=$(jq -r '.id // empty' < "${SUBMIT_JSON}")
               [ -n "${SUB_ID}" ] && break
             fi
@@ -1743,11 +1786,7 @@ jobs:
               exit 1
             fi
 
-            if xcrun notarytool info "${SUB_ID}" \
-                 --apple-id "$APPLE_ID" \
-                 --team-id "$TEAM_ID" \
-                 --password "$NOTARY_PASSWORD" \
-                 --output-format json > "${INFO_JSON}" 2>&1; then
+            if notary_info "${SUB_ID}" "${INFO_JSON}"; then
               NETWORK_FAILS=0
               STATUS=$(jq -r '.status // "Unknown"' < "${INFO_JSON}")
               echo "  [${ELAPSED}s] status=${STATUS}"
@@ -1776,10 +1815,7 @@ jobs:
             # `notarytool log <id>` returns the pretty-printed JSON log
             # whose .issues[] array names the exact files Apple rejected
             # and why (missing hardened runtime, unsigned Mach-O, etc.).
-            xcrun notarytool log "${SUB_ID}" \
-              --apple-id "$APPLE_ID" \
-              --team-id "$TEAM_ID" \
-              --password "$NOTARY_PASSWORD" \
+            notary_log "${SUB_ID}" \
               || echo "::warning::Could not fetch notarization log for ${SUB_ID}"
             exit 1
           fi
@@ -1853,8 +1889,12 @@ jobs:
           # no retry on the runner's transient notary network errors.)
           ZIP="${RUNNER_TEMP}/${BASENAME}.zip"
           /usr/bin/ditto -c -k --keepParent "${WIZ_APP}" "${ZIP}"
+          NOTARY_ARGS=(--apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD")
+          if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+            NOTARY_ARGS=(--keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE")
+          fi
           if SUB_ID=$(xcrun notarytool submit "${ZIP}" \
-                --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD" \
+                "${NOTARY_ARGS[@]}" \
                 --wait --output-format json | jq -r '.id // empty') && [ -n "${SUB_ID}" ]; then
             xcrun stapler staple "${WIZ_APP}" || echo "::warning::stapling wizard failed"
           else
@@ -1917,6 +1957,52 @@ jobs:
             echo "::warning::Skipping DMG Developer ID signing and notarization because signing credentials are unavailable: ${DMG}"
             exit 0
           fi
+          notary_submit() {
+            local item="$1"
+            local out="$2"
+            if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+              if xcrun notarytool submit "$item" \
+                   --keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE" \
+                   --output-format json > "$out" 2>&1; then
+                return 0
+              fi
+              echo "::warning::notarytool keychain profile '${MACOS_NOTARY_KEYCHAIN_PROFILE}' failed; falling back to Apple ID secrets."
+              cat "$out" || true
+            fi
+            xcrun notarytool submit "$item" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --output-format json > "$out" 2>&1
+          }
+
+          notary_info() {
+            local submission_id="$1"
+            local out="$2"
+            if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+              xcrun notarytool info "$submission_id" \
+                --keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE" \
+                --output-format json > "$out" 2>&1 && return 0
+            fi
+            xcrun notarytool info "$submission_id" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --output-format json > "$out" 2>&1
+          }
+
+          notary_log() {
+            local submission_id="$1"
+            if [ -n "${MACOS_NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+              xcrun notarytool log "$submission_id" \
+                --keychain-profile "$MACOS_NOTARY_KEYCHAIN_PROFILE" && return 0
+            fi
+            xcrun notarytool log "$submission_id" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --password "$NOTARY_PASSWORD"
+          }
+
           echo "Signing DMG: ${DMG}"
           codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG"
 
@@ -1931,11 +2017,7 @@ jobs:
           SUB_ID=""
           while [ "${SUBMIT_ATTEMPTS}" -lt 3 ]; do
             SUBMIT_ATTEMPTS=$((SUBMIT_ATTEMPTS + 1))
-            if xcrun notarytool submit "$DMG" \
-                 --apple-id "$APPLE_ID" \
-                 --team-id "$TEAM_ID" \
-                 --password "$NOTARY_PASSWORD" \
-                 --output-format json > "${SUBMIT_JSON}" 2>&1; then
+            if notary_submit "$DMG" "${SUBMIT_JSON}"; then
               SUB_ID=$(jq -r '.id // empty' < "${SUBMIT_JSON}")
               [ -n "${SUB_ID}" ] && break
             fi
@@ -1960,11 +2042,7 @@ jobs:
               echo "::error::DMG notarization poll timed out after ${POLL_TIMEOUT_SEC}s (last: ${STATUS})"
               exit 1
             fi
-            if xcrun notarytool info "${SUB_ID}" \
-                 --apple-id "$APPLE_ID" \
-                 --team-id "$TEAM_ID" \
-                 --password "$NOTARY_PASSWORD" \
-                 --output-format json > "${INFO_JSON}" 2>&1; then
+            if notary_info "${SUB_ID}" "${INFO_JSON}"; then
               NETWORK_FAILS=0
               STATUS=$(jq -r '.status // "Unknown"' < "${INFO_JSON}")
               echo "  [${ELAPSED}s] status=${STATUS}"
@@ -1988,10 +2066,7 @@ jobs:
           echo "DMG notarization submission ${SUB_ID} → ${STATUS}"
           if [ "${STATUS}" != "Accepted" ]; then
             echo "::error::Notarization failed for DMG (status: ${STATUS}). Fetching Apple's log..."
-            xcrun notarytool log "${SUB_ID}" \
-              --apple-id "$APPLE_ID" \
-              --team-id "$TEAM_ID" \
-              --password "$NOTARY_PASSWORD" \
+            notary_log "${SUB_ID}" \
               || echo "::warning::Could not fetch notarization log for ${SUB_ID}"
             exit 1
           fi
