@@ -1393,14 +1393,30 @@ jobs:
           set -euo pipefail
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
           P12_PATH="$RUNNER_TEMP/cert.p12"
-          echo "$P12_BASE64" | base64 -d > "$P12_PATH"
+          if [ -z "${P12_BASE64:-}" ] || [ -z "${P12_PASSWORD:-}" ]; then
+            echo "::warning::macOS Developer ID certificate secrets are not configured; using ad-hoc signing and skipping notarization."
+            echo "MACOS_SIGNING_MODE=adhoc" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if ! echo "$P12_BASE64" | base64 -d > "$P12_PATH"; then
+            echo "::warning::macOS Developer ID certificate secret is not valid base64; using ad-hoc signing and skipping notarization."
+            echo "MACOS_SIGNING_MODE=adhoc" >> "$GITHUB_ENV"
+            exit 0
+          fi
           security create-keychain -p "$P12_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$P12_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$P12_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          if ! security import "$P12_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"; then
+            echo "::warning::macOS Developer ID certificate could not be imported; using ad-hoc signing and skipping notarization."
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+            rm -f "$P12_PATH"
+            echo "MACOS_SIGNING_MODE=adhoc" >> "$GITHUB_ENV"
+            exit 0
+          fi
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$P12_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          echo "MACOS_SIGNING_MODE=developer-id" >> "$GITHUB_ENV"
           rm -f "$P12_PATH"
 
       # ── Deep re-sign the entire bundle with Developer ID ─────────────────
@@ -1416,6 +1432,7 @@ jobs:
         run: |
           set -euxo pipefail
           APP_BUNDLE="build/${{ env.APP_NAME }}.app"
+          SIGNING_MODE="${MACOS_SIGNING_MODE:-adhoc}"
 
           ENT="$RUNNER_TEMP/entitlements.plist"
           cat > "$ENT" <<'EOF'
@@ -1484,7 +1501,12 @@ jobs:
           # Reference:
           #   https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087721
 
-          SIGN_FLAGS=(--force --options runtime --timestamp --sign "$SIGNING_IDENTITY")
+          if [ "${SIGNING_MODE}" = "developer-id" ]; then
+            SIGN_FLAGS=(--force --options runtime --timestamp --sign "$SIGNING_IDENTITY")
+          else
+            echo "::warning::Using ad-hoc macOS signing; this DMG will not be notarized until valid Developer ID secrets are configured."
+            SIGN_FLAGS=(--force --options runtime --sign -)
+          fi
 
           # ── Enumerate every Mach-O via `file -h`, not by filename ────────
           # Previously we filtered on `*.dylib | *.so | -perm +111`. That
@@ -1550,10 +1572,17 @@ jobs:
           echo "  signed ${BUNDLE_COUNT} nested bundles"
 
           echo "Signing top-level bundle with entitlements..."
-          codesign --force --options runtime --timestamp \
-                   --entitlements "$ENT" \
-                   --sign "$SIGNING_IDENTITY" \
-                   "${APP_BUNDLE}"
+          if [ "${SIGNING_MODE}" = "developer-id" ]; then
+            codesign --force --options runtime --timestamp \
+                     --entitlements "$ENT" \
+                     --sign "$SIGNING_IDENTITY" \
+                     "${APP_BUNDLE}"
+          else
+            codesign --force --options runtime \
+                     --entitlements "$ENT" \
+                     --sign - \
+                     "${APP_BUNDLE}"
+          fi
 
           echo "Verifying signature..."
           codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}" || {
@@ -1588,7 +1617,7 @@ jobs:
             if ! echo "${DISPLAY}" | grep -q "flags=.*runtime"; then
               BAD_RUNTIME+=("$f")
             fi
-            if ! echo "${DISPLAY}" | grep -q "Timestamp="; then
+            if [ "${SIGNING_MODE}" = "developer-id" ] && ! echo "${DISPLAY}" | grep -q "Timestamp="; then
               BAD_TIMESTAMP+=("$f")
             fi
             # `file -h` returns one line per arch slice for a fat binary.
@@ -1627,7 +1656,11 @@ jobs:
             echo "::error::Pre-flight checks failed — fix above issues before notary submission"
             exit 1
           fi
-          echo "  pre-flight passed: all $((MACHO_COUNT + 1)) Mach-Os (incl. main exe) are arm64, hardened-runtime, timestamped"
+          if [ "${SIGNING_MODE}" = "developer-id" ]; then
+            echo "  pre-flight passed: all $((MACHO_COUNT + 1)) Mach-Os (incl. main exe) are arm64, hardened-runtime, timestamped"
+          else
+            echo "  pre-flight passed: all $((MACHO_COUNT + 1)) Mach-Os (incl. main exe) are arm64 and hardened-runtime ad-hoc signed"
+          fi
 
           rm -f "${MACHO_LIST}"
 
@@ -1651,6 +1684,10 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ "${MACOS_SIGNING_MODE:-adhoc}" != "developer-id" ]; then
+            echo "::warning::Skipping .app notarization because Developer ID signing is unavailable."
+            exit 0
+          fi
           APP_BUNDLE="build/${{ env.APP_NAME }}.app"
           ZIP_PATH="$RUNNER_TEMP/app-for-notary.zip"
           SUBMIT_JSON="$RUNNER_TEMP/notary-app-submit.json"
@@ -1779,6 +1816,10 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ "${MACOS_SIGNING_MODE:-adhoc}" != "developer-id" ]; then
+            echo "::warning::Skipping optional macOS wizard installer because Developer ID signing is unavailable."
+            exit 0
+          fi
           VERSION=$(grep -Eo 'project\(OpenTerminal VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | awk '{print $3}')
           command -v binarycreator >/dev/null || { echo "::error::binarycreator not on PATH"; exit 1; }
 
@@ -1872,6 +1913,10 @@ jobs:
         run: |
           set -euo pipefail
           DMG=$(ls build/OpenTerminal-*-macos-arm64-setup.dmg | head -1)
+          if [ "${MACOS_SIGNING_MODE:-adhoc}" != "developer-id" ]; then
+            echo "::warning::Skipping DMG Developer ID signing and notarization because signing credentials are unavailable: ${DMG}"
+            exit 0
+          fi
           echo "Signing DMG: ${DMG}"
           codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG"
 
