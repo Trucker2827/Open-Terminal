@@ -25,7 +25,9 @@
 #include <csignal>
 #include <functional>
 #include <optional>
-#ifndef _WIN32
+#ifdef _WIN32
+#  include <windows.h>
+#else
 #  include <unistd.h>
 #  include <fcntl.h>
 #  include <sys/types.h>
@@ -724,7 +726,24 @@ int serve_stop(const QString& profile) {
                      qUtf8Printable(info->kind));
         return 3;
     }
-#ifndef _WIN32
+#ifdef _WIN32
+    HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(info->pid));
+    if (!process) {
+        std::fprintf(stderr, "failed to open daemon pid %lld for termination\n",
+                     static_cast<long long>(info->pid));
+        return 7;
+    }
+    if (!TerminateProcess(process, 0)) {
+        CloseHandle(process);
+        std::fprintf(stderr, "failed to terminate daemon pid %lld\n", static_cast<long long>(info->pid));
+        return 7;
+    }
+    WaitForSingleObject(process, 5000);
+    CloseHandle(process);
+    remove_bridge_file(profile_root_for(profile));
+    std::printf("daemon pid %lld stopped\n", static_cast<long long>(info->pid));
+    return 0;
+#else
     if (::kill(static_cast<pid_t>(info->pid), SIGTERM) != 0) {
         std::fprintf(stderr, "failed to signal daemon pid %lld\n", static_cast<long long>(info->pid));
         return 7;
