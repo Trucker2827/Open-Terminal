@@ -66,6 +66,8 @@ QString action_for_function_code(const QString& upper) {
         {QStringLiteral("GEO"), QStringLiteral("screen.geopolitics")},
         {QStringLiteral("SHIP"), QStringLiteral("screen.maritime")},
         {QStringLiteral("PMKT"), QStringLiteral("screen.polymarket")},
+        {QStringLiteral("EDGE"), QStringLiteral("screen.edge_radar")},
+        {QStringLiteral("RADAR"), QStringLiteral("screen.edge_radar")},
         {QStringLiteral("MAP"), QStringLiteral("screen.relationship_map")},
         {QStringLiteral("XL"), QStringLiteral("screen.excel")},
         {QStringLiteral("CODE"), QStringLiteral("screen.code_editor")},

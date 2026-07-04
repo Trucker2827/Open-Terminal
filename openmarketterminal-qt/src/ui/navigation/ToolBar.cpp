@@ -331,6 +331,7 @@ QMenu* ToolBar::build_navigate_menu() {
     nav(trd, tr("Equity Trading"), "equity_trading");
     nav(trd, tr("Alpha Arena"), "alpha_arena");
     nav(trd, tr("Prediction Markets"), "polymarket");
+    nav(trd, tr("Edge Radar"), "edge_radar");
     nav(trd, tr("Derivatives"), "derivatives");
     nav(trd, tr("Watchlist"), "watchlist");
 

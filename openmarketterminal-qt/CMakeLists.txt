@@ -896,6 +896,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/TradeAuditRepository.cpp
     src/storage/repositories/PmPaperRepository.cpp
     src/storage/repositories/LivePnlRepository.cpp
+    src/storage/repositories/EdgeRadarRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -957,6 +958,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v049_ai_trading.cpp
     src/storage/sqlite/migrations/v050_pm_paper.cpp
     src/storage/sqlite/migrations/v051_live_pnl.cpp
+    src/storage/sqlite/migrations/v052_edge_radar.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -973,6 +975,12 @@ set(PYTHON_SOURCES
 
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
+    src/services/crypto_latency/CryptoLatencyService.cpp
+    src/services/edge_radar/BtcFiveMinuteEdgeModel.cpp
+    src/services/edge_radar/EdgeRadarService.cpp
+    src/services/edge_radar/CryptoHourlyEdgeModel.cpp
+    src/services/edge_radar/CryptoImpulseModel.cpp
+    src/services/edge_radar/KalshiUniversalEdgeModel.cpp
     src/services/llm/LlmService.cpp
     src/services/llm/AnalysisSkillLoader.cpp
     src/services/llm/LlmContentExtractors.cpp
@@ -1645,6 +1653,9 @@ set(SCREEN_SOURCES
     # Derivatives Pricing
     src/screens/derivatives/DerivativesScreen.cpp
 
+    # Edge Radar
+    src/screens/edge_radar/EdgeRadarScreen.cpp
+
 
     # AkShare Data Explorer
     src/screens/akshare/AkShareScreen.cpp
@@ -2084,6 +2095,7 @@ set_source_files_properties(
     src/screens/docs/DocsScreen_Pages_Trading.cpp
     src/screens/docs/DocsScreen_Pages_Data.cpp
     src/screens/derivatives/DerivativesScreen.cpp
+    src/screens/edge_radar/EdgeRadarScreen.cpp
     src/screens/economics/EconomicsScreen.cpp
     src/screens/equity_research/EquityAnalysisTab.cpp
     src/screens/equity_research/EquityFinancialsTab.cpp
@@ -2262,6 +2274,7 @@ set_source_files_properties(
     src/storage/repositories/TradeAuditRepository.cpp
     src/storage/repositories/PmPaperRepository.cpp
     src/storage/repositories/LivePnlRepository.cpp
+    src/storage/repositories/EdgeRadarRepository.cpp
     # Migration files — each defines sql() helper in anonymous namespace
     src/storage/sqlite/migrations/v001_initial.cpp
     src/storage/sqlite/migrations/v002_llm_chat.cpp
@@ -2313,6 +2326,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v049_ai_trading.cpp
     src/storage/sqlite/migrations/v050_pm_paper.cpp
     src/storage/sqlite/migrations/v051_live_pnl.cpp
+    src/storage/sqlite/migrations/v052_edge_radar.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp

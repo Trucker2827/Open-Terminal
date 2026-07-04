@@ -1,10 +1,13 @@
 #pragma once
 
 #include "screens/polymarket/ExchangePresentation.h"
+#include "services/crypto_latency/CryptoLatencyService.h"
+#include "services/edge_radar/CryptoImpulseModel.h"
 #include "services/polymarket/PolymarketTypes.h"
 #include "services/prediction/PredictionTypes.h"
 
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -12,6 +15,8 @@
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QTextEdit>
+#include <QTimer>
 #include <QWidget>
 
 namespace openmarketterminal::screens::polymarket {
@@ -43,6 +48,8 @@ class PolymarketDetailPanel : public QWidget {
     void set_order_book(const openmarketterminal::services::prediction::PredictionOrderBook& book);
     void set_price_history(const openmarketterminal::services::prediction::PriceHistory& history);
     void set_trades(const QVector<openmarketterminal::services::prediction::PredictionTrade>& trades);
+    void set_edge_market_context(
+        const QVector<openmarketterminal::services::prediction::PredictionMarket>& markets);
 
     // Trading ticket setters — wired from adapter balance_ready / positions_ready.
     void set_balance(const openmarketterminal::services::prediction::AccountBalance& balance);
@@ -86,6 +93,7 @@ class PolymarketDetailPanel : public QWidget {
     void build_ui();
     QWidget* create_overview_page();
     QWidget* create_trade_page();
+    QWidget* create_edge_page();
     QWidget* create_holders_page();
     QWidget* create_comments_page();
     QWidget* create_related_page();
@@ -96,6 +104,17 @@ class PolymarketDetailPanel : public QWidget {
     void render_status_badge(const openmarketterminal::services::prediction::PredictionMarket& market);
     void refresh_ticket_side_style();
     void on_submit_clicked();
+    void update_edge_prefill_from_market();
+    void apply_crypto_hourly_anchor();
+    void evaluate_edge_page();
+    void save_edge_idea();
+    void start_feed_race();
+    void stop_feed_race();
+    void refresh_feed_race();
+    void render_feed_race(
+        const openmarketterminal::services::crypto_latency::CryptoLatencySnapshot& snapshot);
+    void render_impulse(
+        const openmarketterminal::services::edge_radar::CryptoImpulseSignal& signal);
     void retranslateUi();
 
     QList<QPushButton*> tab_btns_;
@@ -141,6 +160,39 @@ class PolymarketDetailPanel : public QWidget {
     QLabel*         ticket_status_lbl_  = nullptr;
     QString         ticket_side_        = "BUY";
 
+    // Embedded Edge Radar page
+    QLabel*         edge_market_lbl_     = nullptr;
+    QLabel*         edge_anchor_lbl_     = nullptr;
+    QLabel*         edge_side_lbl_       = nullptr;
+    QLabel*         edge_raw_lbl_        = nullptr;
+    QLabel*         edge_net_lbl_        = nullptr;
+    QLabel*         edge_gate_lbl_       = nullptr;
+    QLabel*         edge_reco_lbl_       = nullptr;
+    QLabel*         edge_risk_lbl_       = nullptr;
+    QLabel*         edge_status_lbl_     = nullptr;
+    QDoubleSpinBox* edge_market_prob_    = nullptr;
+    QDoubleSpinBox* edge_model_prob_     = nullptr;
+    QDoubleSpinBox* edge_spread_cost_    = nullptr;
+    QDoubleSpinBox* edge_fee_cost_       = nullptr;
+    QDoubleSpinBox* edge_liquidity_      = nullptr;
+    QDoubleSpinBox* edge_confidence_     = nullptr;
+    QTextEdit*      edge_thesis_         = nullptr;
+    QTextEdit*      edge_risk_notes_     = nullptr;
+    QVector<openmarketterminal::services::prediction::PredictionMarket> edge_context_markets_;
+
+    // Feed Race panel inside Edge: public crypto WebSocket freshness comparison.
+    openmarketterminal::services::crypto_latency::CryptoLatencyService* feed_race_service_ = nullptr;
+    QTimer*         feed_race_timer_      = nullptr;
+    QLabel*         feed_race_symbol_lbl_ = nullptr;
+    QLabel*         feed_race_fresh_lbl_  = nullptr;
+    QLabel*         impulse_move_lbl_     = nullptr;
+    QLabel*         impulse_velocity_lbl_ = nullptr;
+    QLabel*         impulse_call_lbl_     = nullptr;
+    QTableWidget*   feed_race_table_      = nullptr;
+    QPushButton*    feed_race_start_btn_  = nullptr;
+    QPushButton*    feed_race_stop_btn_   = nullptr;
+    openmarketterminal::services::edge_radar::CryptoImpulseModel impulse_model_;
+
     // Holders
     QTableWidget* holders_table_ = nullptr;
 
@@ -167,9 +219,10 @@ class PolymarketDetailPanel : public QWidget {
     // Tab indices.
     static constexpr int kTabTrade    = 3;
     static constexpr int kTabTrades   = 4;
-    static constexpr int kTabHolders  = 5;
-    static constexpr int kTabComments = 6;
-    static constexpr int kTabRelated  = 7;
+    static constexpr int kTabEdge     = 5;
+    static constexpr int kTabHolders  = 6;
+    static constexpr int kTabComments = 7;
+    static constexpr int kTabRelated  = 8;
 };
 
 } // namespace openmarketterminal::screens::polymarket

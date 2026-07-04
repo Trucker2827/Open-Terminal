@@ -40,6 +40,7 @@
     { "id": "gov_data",          "title": "Government Data",    "category": "Geopolitics", "description": "US/EU/UK government open-data feeds",                      "tags": ["government","opendata"] },
     { "id": "maritime",          "title": "Maritime",           "category": "Geopolitics", "description": "Vessel tracking, port activity, shipping flows",          "tags": ["maritime","ships","ports"] },
     { "id": "polymarket",        "title": "Prediction Markets", "category": "Geopolitics", "description": "Polymarket and Kalshi event odds + order book",           "tags": ["polymarket","kalshi","prediction"] },
+    { "id": "edge_radar",        "title": "Edge Radar",         "category": "Trading",     "description": "Local stock and prediction-market edge scoring",        "tags": ["edge","kalshi","polymarket","stocks","probability"] },
     { "id": "relationship_map",  "title": "Relationship Map",   "category": "Geopolitics", "description": "Entity relationship graph explorer",                      "tags": ["relationship","graph","entities"] },
 
     { "id": "node_editor",       "title": "Workflows",          "category": "Automation",  "description": "Advanced visual workflow automation",                      "tags": ["workflow","nodes","visual","automation"] },

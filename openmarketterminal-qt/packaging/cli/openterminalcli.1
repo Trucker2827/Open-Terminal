@@ -68,6 +68,13 @@ Show CLI parity by app area.
 .B quote SYMBOL...
 Fetch market quotes.
 .TP
+.B crypto-latency sample [BTC-USD] [--sources coinbase,kraken,binanceus,bitcointicker] [--duration-ms N] [--min-live-sources N]
+Race public crypto WebSocket trade feeds using local receive timestamps. Reports
+freshest source, last-tick ages, and cross-source spread in basis points. No API
+keys are used. The bitcointicker source is parsed from its public TCP ticker
+relay and should be treated as an advisory website reference, not an execution
+venue.
+.TP
 .B news latest|search|monitors
 Read and manage market news.
 .TP
@@ -106,6 +113,51 @@ Manage local watchlists.
 .TP
 .B portfolio list|show|create|add|sell|tx
 Manage local portfolios.
+.TP
+.B edge evaluate|kalshi-scan|research|impulse|btc5m|btc5m-live|crypto-hourly|crypto-hourly-live|add|list|show|update|close|remove
+Score and persist local stock, Kalshi, and Polymarket edge ideas. Compares
+market probability to user/model probability after spread, fees, liquidity,
+and confidence. Mutating commands require
+.B --yes
+and data stays in the active local profile.
+.PP
+.B edge kalshi-scan
+fetches public live Kalshi markets, classifies each market family, and shows
+the research drivers/data sources needed before a trade can clear the gate, e.g.
+\fBedge kalshi-scan --limit 100 --family macro\fR.
+.PP
+.B edge research
+fetches one Kalshi ticker, prints its classification, data-source checklist,
+cost/liquidity gate, and optional edge score if an independent model
+probability is supplied, e.g.
+\fBedge research KX... --model-prob 62 --confidence 70\fR.
+.PP
+.B edge impulse
+samples public crypto feeds, computes rolling 5s/15s/60s BTC movement,
+velocity, confidence, and a no-trade gate, e.g.
+\fBedge impulse BTC-USD --window 15s --sources coinbase,bitcointicker\fR.
+.PP
+.B edge btc5m
+scores a BTC five-minute prediction-market idea as a directional buy-only
+dry run. It combines BTC impulse, entry window, market probability, spread,
+liquidity, and safety buffer; it does not place orders, e.g.
+\fBedge btc5m --market-prob 52 --direction up --seconds-left 120\fR.
+.PP
+.B edge btc5m-live
+fetches the current public Polymarket BTC five-minute Up/Down event, samples
+fresh BTC ticks, and returns a dry-run edge/no-trade decision, e.g.
+\fBedge btc5m-live --duration-ms 65000 --window 60s --min-move-usd 70\fR.
+.PP
+.B edge crypto-hourly
+uses BTC as a short-horizon anchor for hourly crypto prediction contracts and
+rejects signals that fail the net-edge, anchor-move, liquidity, cost, or safety
+buffer gate, e.g.
+\fBedge crypto-hourly --btc-prob 57 --market ETH=50 --market SOL=48 --min-edge 5 --safety-buffer 1\fR.
+.PP
+.B edge crypto-hourly-live
+derives the BTC anchor from fresh public exchange ticks, then applies the same
+gate to supplied hourly crypto market probabilities, e.g.
+\fBedge crypto-hourly-live --market ETH=50 --market SOL=48 --duration-ms 16000\fR.
 .TP
 .B strategy list|templates|show|backtest|paper-run|deploy
 Manage saved trading strategies, run native backtests, and open guarded deploy.

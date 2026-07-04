@@ -3,28 +3,107 @@
 #include "screens/polymarket/PolymarketActivityFeed.h"
 #include "screens/polymarket/PolymarketOrderBook.h"
 #include "screens/polymarket/PolymarketPriceChart.h"
+#include "services/edge_radar/BtcFiveMinuteEdgeModel.h"
+#include "services/edge_radar/CryptoHourlyEdgeModel.h"
+#include "services/edge_radar/EdgeRadarService.h"
+#include "services/edge_radar/KalshiUniversalEdgeModel.h"
+#include "storage/repositories/EdgeRadarRepository.h"
 #include "ui/theme/Theme.h"
 
 #include <QComboBox>
 #include <QDateTime>
+#include <QDoubleSpinBox>
+#include <QGridLayout>
 #include <QTimeZone>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QScrollArea>
+#include <QSignalBlocker>
+#include <QTextEdit>
 #include <QVBoxLayout>
+
+#include <cmath>
 
 namespace openmarketterminal::screens::polymarket {
 
 using namespace openmarketterminal::ui;
 namespace pmx = openmarketterminal::services::polymarket;
+namespace edge = openmarketterminal::services::edge_radar;
+namespace latency = openmarketterminal::services::crypto_latency;
 using namespace openmarketterminal::services::prediction;
 
 static const char* OUTCOME_COLORS[] = {"#00D66F", "#FF3B3B", "#FF8800", "#4F8EF7", "#A855F7"};
 
+namespace {
+
+QString edge_input_style() {
+    return QString("QDoubleSpinBox, QTextEdit {"
+                   "  background: %1; color: %2; border: 1px solid %3;"
+                   "  border-radius: 2px; padding: 5px 8px; font-size: 11px;"
+                   "}"
+                   "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 0px; border: none; }")
+        .arg(colors::BG_SURFACE(), colors::TEXT_PRIMARY(), colors::BORDER_MED());
+}
+
+QString edge_button_style(const QColor& accent, bool primary) {
+    if (primary) {
+        return QString("QPushButton { background: %1; color: #060606; border: none;"
+                       "  border-radius: 2px; font-size: 11px; font-weight: 800; }"
+                       "QPushButton:hover { background: %2; }")
+            .arg(accent.name(), accent.lighter(115).name());
+    }
+    return QString("QPushButton { background: %1; color: %2; border: 1px solid %3;"
+                   "  border-radius: 2px; font-size: 11px; font-weight: 800; }"
+                   "QPushButton:hover { background: %4; color: %5; }")
+        .arg(colors::BG_BASE(), accent.name(), accent.name(), colors::BG_HOVER(), colors::TEXT_PRIMARY());
+}
+
+QLabel* make_edge_caption(const QString& text) {
+    auto* lbl = new QLabel(text);
+    lbl->setStyleSheet(
+        QString("color: %1; font-size: 8px; font-weight: 700; letter-spacing: 0.7px;"
+                " background: transparent;")
+            .arg(colors::TEXT_SECONDARY()));
+    return lbl;
+}
+
+QDoubleSpinBox* make_edge_spin(double value, const QString& suffix = QStringLiteral("%")) {
+    auto* spin = new QDoubleSpinBox;
+    spin->setRange(0.0, 100.0);
+    spin->setDecimals(2);
+    spin->setSingleStep(1.0);
+    spin->setSuffix(suffix.isEmpty() ? QString{} : QStringLiteral(" ") + suffix);
+    spin->setValue(value);
+    spin->setStyleSheet(edge_input_style());
+    return spin;
+}
+
+QString fmt_edge_pct(double v) {
+    return QStringLiteral("%1%").arg(v * 100.0, 0, 'f', 2);
+}
+
+QString fmt_impulse_pct(double v) {
+    const QString sign = v > 0.0 ? QStringLiteral("+") : QString{};
+    return QStringLiteral("%1%2%").arg(sign).arg(v, 0, 'f', 3);
+}
+
+} // namespace
+
 PolymarketDetailPanel::PolymarketDetailPanel(QWidget* parent) : QWidget(parent) {
     setObjectName("polyDetailPanel");
     build_ui();
+    feed_race_service_ = new latency::CryptoLatencyService(this);
+    feed_race_timer_ = new QTimer(this);
+    feed_race_timer_->setInterval(500);
+    connect(feed_race_timer_, &QTimer::timeout, this, &PolymarketDetailPanel::refresh_feed_race);
+    connect(feed_race_service_, &latency::CryptoLatencyService::snapshot_changed,
+            this, &PolymarketDetailPanel::render_feed_race);
+    connect(feed_race_service_, &latency::CryptoLatencyService::tick_received,
+            this, [this](const latency::CryptoLatencyTick& tick) {
+                impulse_model_.add_tick(tick);
+                render_impulse(impulse_model_.signal(15));
+            });
 }
 
 void PolymarketDetailPanel::build_ui() {
@@ -46,7 +125,7 @@ void PolymarketDetailPanel::build_ui() {
 
     const QStringList tab_names = {
         tr("OVERVIEW"), tr("ORDER BOOK"), tr("CHART"), tr("TRADE"),
-        tr("TRADES"), tr("HOLDERS"), tr("COMMENTS"), tr("RELATED")
+        tr("TRADES"), tr("EDGE"), tr("HOLDERS"), tr("COMMENTS"), tr("RELATED")
     };
     for (int i = 0; i < tab_names.size(); ++i) {
         auto* btn = new QPushButton(tab_names[i]);
@@ -79,9 +158,10 @@ void PolymarketDetailPanel::build_ui() {
     activity_feed_ = new PolymarketActivityFeed;
     stack_->addWidget(activity_feed_); // 4
 
-    stack_->addWidget(create_holders_page());  // 5
-    stack_->addWidget(create_comments_page()); // 6
-    stack_->addWidget(create_related_page());  // 7
+    stack_->addWidget(create_edge_page());     // 5
+    stack_->addWidget(create_holders_page());  // 6
+    stack_->addWidget(create_comments_page()); // 7
+    stack_->addWidget(create_related_page());  // 8
 
     vl->addWidget(stack_, 1);
 }
@@ -514,6 +594,752 @@ void PolymarketDetailPanel::set_trading_enabled(bool enabled) {
     ticket_stack_->setCurrentIndex(enabled ? 1 : 0);
 }
 
+void PolymarketDetailPanel::update_edge_prefill_from_market() {
+    if (!edge_market_lbl_ || !edge_market_prob_ || !edge_model_prob_ || !has_last_market_)
+        return;
+
+    const QString previous_market_id = edge_market_lbl_->property("market_id").toString();
+    const bool new_market = previous_market_id != last_market_.key.market_id;
+    double probability = 0.0;
+    if (!last_market_.outcomes.isEmpty())
+        probability = qBound(0.0, last_market_.outcomes.first().price, 1.0);
+
+    edge_market_lbl_->setProperty("market_id", last_market_.key.market_id);
+    edge_market_lbl_->setText(last_market_.question.isEmpty()
+                                  ? last_market_.key.market_id
+                                  : last_market_.question);
+
+    const QSignalBlocker market_block(edge_market_prob_);
+    edge_market_prob_->setValue(probability * 100.0);
+
+    if (new_market) {
+        const QSignalBlocker model_block(edge_model_prob_);
+        edge_model_prob_->setValue(probability * 100.0);
+        edge_model_prob_->setProperty("auto_market_id", QString{});
+        if (edge_status_lbl_) edge_status_lbl_->clear();
+    }
+
+    apply_crypto_hourly_anchor();
+    evaluate_edge_page();
+}
+
+void PolymarketDetailPanel::apply_crypto_hourly_anchor() {
+    if (!has_last_market_ || !edge_anchor_lbl_ || !edge_model_prob_)
+        return;
+
+    edge::CryptoHourlySignal signal =
+        edge::CryptoHourlyEdgeModel::score_market(last_market_, edge_context_markets_);
+    bool used_live_impulse = false;
+    const QString crypto_symbol = edge::CryptoHourlyEdgeModel::extract_symbol(
+        last_market_.question + QStringLiteral(" ") + last_market_.key.market_id);
+    const edge::CryptoImpulseSignal impulse = impulse_model_.signal(15);
+    const double live_btc_anchor = edge::CryptoImpulseModel::anchor_probability(impulse);
+    if (edge::BtcFiveMinuteEdgeModel::is_btc_five_minute_market(last_market_)) {
+        edge::BtcFiveMinuteOptions options;
+        options.spread_cost = edge_spread_cost_ ? edge_spread_cost_->value() / 100.0 : options.spread_cost;
+        options.fee_cost = edge_fee_cost_ ? edge_fee_cost_->value() / 100.0 : options.fee_cost;
+        options.minimum_liquidity_score = edge_liquidity_ ? edge_liquidity_->value() / 100.0
+                                                          : options.minimum_liquidity_score;
+        const edge::BtcFiveMinuteSignal btc5m =
+            edge::BtcFiveMinuteEdgeModel::score_market(last_market_, impulse, options);
+        const QString next_auto_id = QStringLiteral("btc5m:%1:%2:%3")
+                                         .arg(last_market_.key.market_id)
+                                         .arg(qRound(btc5m.model_probability * 10000.0))
+                                         .arg(qRound(btc5m.move_usd * 10.0));
+        if (edge_model_prob_ && edge_model_prob_->property("auto_market_id").toString() != next_auto_id) {
+            const QSignalBlocker model_block(edge_model_prob_);
+            edge_model_prob_->setValue(btc5m.model_probability * 100.0);
+            edge_model_prob_->setProperty("auto_market_id", next_auto_id);
+            edge_model_prob_->setProperty("auto_source", QStringLiteral("btc5m-live"));
+        }
+        if (edge_spread_cost_ && edge_spread_cost_->value() <= 0.0) {
+            const QSignalBlocker spread_block(edge_spread_cost_);
+            edge_spread_cost_->setValue(options.spread_cost * 100.0);
+        }
+        if (edge_liquidity_) {
+            const QSignalBlocker liq_block(edge_liquidity_);
+            edge_liquidity_->setValue(btc5m.liquidity_score * 100.0);
+        }
+        if (edge_confidence_) {
+            const QSignalBlocker conf_block(edge_confidence_);
+            edge_confidence_->setValue(btc5m.confidence * 100.0);
+        }
+        if (edge_thesis_ && edge_thesis_->toPlainText().trimmed().isEmpty())
+            edge_thesis_->setPlainText(btc5m.rationale);
+        if (edge_risk_notes_ && edge_risk_notes_->toPlainText().trimmed().isEmpty())
+            edge_risk_notes_->setPlainText(btc5m.risk_notes);
+
+        const QColor color = btc5m.passes_gate
+                                 ? QColor(colors::POSITIVE())
+                                 : (btc5m.recommendation == QStringLiteral("watch")
+                                        ? QColor(colors::AMBER())
+                                        : QColor(colors::TEXT_SECONDARY()));
+        edge_anchor_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; font-weight: 700; background: transparent;")
+                .arg(color.name()));
+        edge_anchor_lbl_->setText(tr("BTC 5m live: %1").arg(btc5m.rationale));
+        if (edge_gate_lbl_) {
+            edge_gate_lbl_->setStyleSheet(
+                QString("color: %1; font-size: 12px; font-weight: 800; background: transparent;")
+                    .arg(color.name()));
+            edge_gate_lbl_->setText(btc5m.passes_gate
+                                        ? (btc5m.is_strong ? tr("PASS STRONG") : tr("PASS"))
+                                        : tr("REJECT"));
+        }
+        return;
+    }
+    if (!crypto_symbol.isEmpty() && impulse.gate == QStringLiteral("pass") && live_btc_anchor > 0.0) {
+        edge::CryptoHourlyOptions options;
+        options.spread_cost = edge_spread_cost_ ? edge_spread_cost_->value() / 100.0 : options.spread_cost;
+        options.fee_cost = edge_fee_cost_ ? edge_fee_cost_->value() / 100.0 : options.fee_cost;
+        options.minimum_liquidity_score = edge_liquidity_ ? edge_liquidity_->value() / 100.0
+                                                          : options.minimum_liquidity_score;
+        signal = edge::CryptoHourlyEdgeModel::score_symbol(
+            crypto_symbol,
+            edge::CryptoHourlyEdgeModel::yes_probability(last_market_),
+            live_btc_anchor,
+            options,
+            edge::CryptoHourlyEdgeModel::infer_direction(last_market_.question),
+            last_market_.liquidity,
+            last_market_.question,
+            last_market_.key.market_id);
+        used_live_impulse = signal.is_valid;
+    }
+
+    if (!signal.is_valid || signal.btc_anchor_probability <= 0.0) {
+        if (last_market_.key.exchange_id == QStringLiteral("kalshi")) {
+            const edge::KalshiUniversalSignal universal =
+                edge::KalshiUniversalEdgeModel::score_market(last_market_);
+            edge_anchor_lbl_->setStyleSheet(
+                QString("color: %1; font-size: 10px; font-weight: 700; background: transparent;")
+                    .arg(colors::TEXT_SECONDARY()));
+            edge_anchor_lbl_->setText(
+                tr("%1 research: %2")
+                    .arg(universal.family.toUpper())
+                    .arg(universal.research_drivers.join(QStringLiteral(", "))));
+            if (edge_gate_lbl_) {
+                edge_gate_lbl_->setStyleSheet(
+                    QString("color: %1; font-size: 12px; font-weight: 800; background: transparent;")
+                        .arg(colors::TEXT_SECONDARY()));
+                edge_gate_lbl_->setText(universal.gate == QStringLiteral("pass") ? tr("PASS") : tr("RESEARCH"));
+            }
+            if (edge_confidence_ && edge_confidence_->value() <= 0.0) {
+                const QSignalBlocker conf_block(edge_confidence_);
+                edge_confidence_->setValue(universal.confidence * 100.0);
+            }
+            if (edge_liquidity_) {
+                const QSignalBlocker liq_block(edge_liquidity_);
+                edge_liquidity_->setValue(universal.liquidity_score * 100.0);
+            }
+            if (edge_spread_cost_ && edge_spread_cost_->value() <= 0.0) {
+                const QSignalBlocker spread_block(edge_spread_cost_);
+                edge_spread_cost_->setValue(universal.spread_cost * 100.0);
+            }
+            if (edge_fee_cost_ && edge_fee_cost_->value() <= 0.0) {
+                const QSignalBlocker fee_block(edge_fee_cost_);
+                edge_fee_cost_->setValue(universal.fee_cost * 100.0);
+            }
+            if (edge_thesis_ && edge_thesis_->toPlainText().trimmed().isEmpty())
+                edge_thesis_->setPlainText(universal.rationale);
+            if (edge_risk_notes_ && edge_risk_notes_->toPlainText().trimmed().isEmpty())
+                edge_risk_notes_->setPlainText(universal.risk_notes);
+            if (edge_model_prob_)
+                edge_model_prob_->setProperty("auto_source", QStringLiteral("kalshi-universal"));
+            return;
+        }
+        edge_anchor_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+        edge_anchor_lbl_->setText(tr("BTC anchor: load Crypto + 1 Hour markets to auto-score hourly contracts"));
+        if (edge_gate_lbl_)
+            edge_gate_lbl_->setText(tr("NO ANCHOR"));
+        return;
+    }
+
+    const QString auto_id = edge_model_prob_->property("auto_market_id").toString();
+    const QString auto_source = used_live_impulse ? QStringLiteral("live-impulse") : QStringLiteral("market-context");
+    const QString next_auto_id = used_live_impulse
+                                     ? QStringLiteral("%1:%2").arg(last_market_.key.market_id)
+                                           .arg(qRound(live_btc_anchor * 10000.0))
+                                     : last_market_.key.market_id;
+    if (auto_id != next_auto_id) {
+        const QSignalBlocker model_block(edge_model_prob_);
+        edge_model_prob_->setValue(signal.model_probability * 100.0);
+        edge_model_prob_->setProperty("auto_market_id", next_auto_id);
+        edge_model_prob_->setProperty("auto_source", auto_source);
+
+        if (edge_fee_cost_ && edge_fee_cost_->value() <= 0.0) {
+            const QSignalBlocker fee_block(edge_fee_cost_);
+            edge_fee_cost_->setValue(1.75);
+        }
+        if (edge_spread_cost_ && edge_spread_cost_->value() <= 0.0) {
+            const QSignalBlocker spread_block(edge_spread_cost_);
+            edge_spread_cost_->setValue(2.0);
+        }
+        if (edge_liquidity_) {
+            const QSignalBlocker liq_block(edge_liquidity_);
+            edge_liquidity_->setValue(signal.liquidity_score * 100.0);
+        }
+        if (edge_confidence_) {
+            const QSignalBlocker conf_block(edge_confidence_);
+            edge_confidence_->setValue(signal.confidence * 100.0);
+        }
+        if (edge_thesis_ && edge_thesis_->toPlainText().trimmed().isEmpty())
+            edge_thesis_->setPlainText(signal.rationale);
+        if (edge_risk_notes_ && edge_risk_notes_->toPlainText().trimmed().isEmpty())
+            edge_risk_notes_->setPlainText(signal.risk_notes);
+    }
+
+    const QColor color = signal.passes_gate
+                             ? QColor(colors::POSITIVE())
+                             : (signal.recommendation == QStringLiteral("watch")
+                                    ? QColor(colors::AMBER())
+                                    : QColor(colors::TEXT_SECONDARY()));
+    edge_anchor_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; font-weight: 700; background: transparent;")
+            .arg(color.name()));
+    edge_anchor_lbl_->setText(used_live_impulse
+                                  ? tr("LIVE BTC impulse: %1").arg(signal.rationale)
+                                  : signal.rationale);
+    if (edge_gate_lbl_) {
+        edge_gate_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 12px; font-weight: 800; background: transparent;")
+                .arg(color.name()));
+        edge_gate_lbl_->setText(signal.passes_gate
+                                    ? (signal.is_strong ? tr("PASS STRONG") : tr("PASS"))
+                                    : tr("REJECT"));
+    }
+    if (edge_risk_notes_ && signal.gate == QStringLiteral("reject") &&
+        edge_risk_notes_->toPlainText().trimmed().isEmpty()) {
+        edge_risk_notes_->setPlainText(signal.risk_notes);
+    }
+}
+
+void PolymarketDetailPanel::evaluate_edge_page() {
+    if (!edge_side_lbl_ || !edge_market_prob_ || !edge_model_prob_)
+        return;
+
+    edge::EdgeInputs inputs;
+    inputs.market_probability = edge_market_prob_->value() / 100.0;
+    inputs.model_probability = edge_model_prob_->value() / 100.0;
+    inputs.spread_cost = edge_spread_cost_ ? edge_spread_cost_->value() / 100.0 : 0.0;
+    inputs.fee_cost = edge_fee_cost_ ? edge_fee_cost_->value() / 100.0 : 0.0;
+    inputs.liquidity_score = edge_liquidity_ ? edge_liquidity_->value() / 100.0 : 0.0;
+    inputs.confidence = edge_confidence_ ? edge_confidence_->value() / 100.0 : 0.0;
+
+    const edge::EdgeScore score = edge::EdgeRadarService::evaluate(inputs);
+    const QColor reco_color = score.recommendation == QStringLiteral("candidate")
+                                  ? QColor(colors::POSITIVE())
+                                  : (score.recommendation == QStringLiteral("watch")
+                                         ? QColor(colors::AMBER())
+                                         : QColor(colors::NEGATIVE()));
+
+    edge_side_lbl_->setText(score.side.toUpper());
+    edge_raw_lbl_->setText(fmt_edge_pct(score.raw_edge));
+    edge_net_lbl_->setText(fmt_edge_pct(score.edge_after_cost));
+    edge_reco_lbl_->setText(score.recommendation.toUpper());
+    edge_reco_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 12px; font-weight: 800; background: transparent;")
+            .arg(reco_color.name()));
+    edge_risk_lbl_->setText(score.risk_notes);
+}
+
+void PolymarketDetailPanel::set_edge_market_context(const QVector<PredictionMarket>& markets) {
+    edge_context_markets_ = markets;
+    apply_crypto_hourly_anchor();
+    evaluate_edge_page();
+}
+
+void PolymarketDetailPanel::save_edge_idea() {
+    if (!has_last_market_) {
+        if (edge_status_lbl_) {
+            edge_status_lbl_->setStyleSheet(
+                QString("color: %1; font-size: 10px; background: transparent;").arg(colors::NEGATIVE()));
+            edge_status_lbl_->setText(tr("Select a market before saving an edge idea"));
+        }
+        return;
+    }
+
+    evaluate_edge_page();
+
+    edge::EdgeInputs inputs;
+    inputs.market_probability = edge_market_prob_ ? edge_market_prob_->value() / 100.0 : 0.0;
+    inputs.model_probability = edge_model_prob_ ? edge_model_prob_->value() / 100.0 : 0.0;
+    inputs.spread_cost = edge_spread_cost_ ? edge_spread_cost_->value() / 100.0 : 0.0;
+    inputs.fee_cost = edge_fee_cost_ ? edge_fee_cost_->value() / 100.0 : 0.0;
+    inputs.liquidity_score = edge_liquidity_ ? edge_liquidity_->value() / 100.0 : 0.0;
+    inputs.confidence = edge_confidence_ ? edge_confidence_->value() / 100.0 : 0.0;
+    const edge::EdgeScore score = edge::EdgeRadarService::evaluate(inputs);
+    edge::CryptoHourlySignal crypto_signal =
+        edge::CryptoHourlyEdgeModel::score_market(last_market_, edge_context_markets_);
+    const QString auto_source = edge_model_prob_ ? edge_model_prob_->property("auto_source").toString() : QString{};
+    const QString crypto_symbol = edge::CryptoHourlyEdgeModel::extract_symbol(
+        last_market_.question + QStringLiteral(" ") + last_market_.key.market_id);
+    if (auto_source == QStringLiteral("live-impulse") && !crypto_symbol.isEmpty()) {
+        edge::CryptoHourlyOptions options;
+        options.spread_cost = inputs.spread_cost;
+        options.fee_cost = inputs.fee_cost;
+        options.minimum_liquidity_score = inputs.liquidity_score;
+        crypto_signal = edge::CryptoHourlyEdgeModel::score_symbol(
+            crypto_symbol,
+            edge::CryptoHourlyEdgeModel::yes_probability(last_market_),
+            edge::CryptoImpulseModel::anchor_probability(impulse_model_.signal(15)),
+            options,
+            edge::CryptoHourlyEdgeModel::infer_direction(last_market_.question),
+            last_market_.liquidity,
+            last_market_.question,
+            last_market_.key.market_id);
+    }
+    edge::BtcFiveMinuteSignal btc5m_signal;
+    if (auto_source == QStringLiteral("btc5m-live")) {
+        edge::BtcFiveMinuteOptions options;
+        options.spread_cost = inputs.spread_cost;
+        options.fee_cost = inputs.fee_cost;
+        options.minimum_liquidity_score = inputs.liquidity_score;
+        btc5m_signal = edge::BtcFiveMinuteEdgeModel::score_market(
+            last_market_, impulse_model_.signal(15), options);
+    }
+    const bool use_crypto_signal = crypto_signal.is_valid && edge_model_prob_ &&
+                                   !edge_model_prob_->property("auto_market_id").toString().isEmpty();
+    const bool use_btc5m_signal = btc5m_signal.is_valid && auto_source == QStringLiteral("btc5m-live");
+
+    EdgeRadarIdea idea;
+    idea.asset_class = QStringLiteral("prediction");
+    idea.venue = last_market_.key.exchange_id.isEmpty() ? QStringLiteral("prediction") : last_market_.key.exchange_id;
+    idea.symbol = use_btc5m_signal ? QStringLiteral("BTC")
+                                   : (crypto_symbol.isEmpty() ? last_market_.key.market_id : crypto_symbol);
+    idea.market_id = last_market_.key.market_id;
+    idea.question = last_market_.question;
+    idea.side = use_btc5m_signal ? btc5m_signal.side : score.side;
+    idea.market_probability = score.market_probability;
+    idea.model_probability = score.model_probability;
+    idea.spread_cost = inputs.spread_cost;
+    idea.fee_cost = inputs.fee_cost;
+    idea.liquidity_score = inputs.liquidity_score;
+    idea.confidence = inputs.confidence;
+    idea.raw_edge = use_btc5m_signal ? btc5m_signal.raw_edge
+                                     : (use_crypto_signal ? crypto_signal.raw_edge : score.raw_edge);
+    idea.edge_after_cost = use_btc5m_signal ? btc5m_signal.gate_edge
+                                            : (use_crypto_signal ? crypto_signal.gate_edge
+                                                                 : score.edge_after_cost);
+    idea.recommendation = use_btc5m_signal ? btc5m_signal.recommendation
+                                           : (use_crypto_signal ? crypto_signal.recommendation
+                                                                : score.recommendation);
+    idea.thesis = edge_thesis_ ? edge_thesis_->toPlainText().trimmed() : QString{};
+    const QString manual_risk = edge_risk_notes_ ? edge_risk_notes_->toPlainText().trimmed() : QString{};
+    idea.risk_notes = manual_risk.isEmpty()
+                          ? (use_btc5m_signal ? btc5m_signal.risk_notes
+                                              : (use_crypto_signal ? crypto_signal.risk_notes : score.risk_notes))
+                          : manual_risk;
+    idea.status = QStringLiteral("watching");
+    idea.tags = use_btc5m_signal
+                    ? QStringLiteral("embedded,prediction,btc5m,polymarket,live-impulse")
+                    : (crypto_symbol.isEmpty()
+                    ? QStringLiteral("embedded,prediction")
+                    : (auto_source == QStringLiteral("live-impulse")
+                           ? QStringLiteral("embedded,prediction,crypto-hourly,btc-live-impulse")
+                           : QStringLiteral("embedded,prediction,crypto-hourly,btc-anchor")));
+
+    auto created = EdgeRadarRepository::instance().create(idea);
+    if (edge_status_lbl_) {
+        if (created.is_err()) {
+            edge_status_lbl_->setStyleSheet(
+                QString("color: %1; font-size: 10px; background: transparent;").arg(colors::NEGATIVE()));
+            edge_status_lbl_->setText(tr("Save failed: %1").arg(QString::fromStdString(created.error())));
+        } else {
+            edge_status_lbl_->setStyleSheet(
+                QString("color: %1; font-size: 10px; background: transparent;").arg(colors::POSITIVE()));
+            edge_status_lbl_->setText(tr("Saved to Edge Radar: %1").arg(created.value().id.left(8)));
+        }
+    }
+}
+
+void PolymarketDetailPanel::start_feed_race() {
+    if (!feed_race_service_)
+        return;
+
+    impulse_model_.clear();
+    if (impulse_move_lbl_)
+        impulse_move_lbl_->setText(tr("warming up"));
+    if (impulse_velocity_lbl_)
+        impulse_velocity_lbl_->setText(tr("velocity -"));
+    if (impulse_call_lbl_)
+        impulse_call_lbl_->setText(tr("no trade"));
+
+    const QString symbol = latency::CryptoLatencyService::normalize_symbol(QStringLiteral("BTC-USD"));
+    if (feed_race_symbol_lbl_)
+        feed_race_symbol_lbl_->setText(tr("%1 anchor public exchange WebSockets").arg(symbol));
+    if (feed_race_fresh_lbl_) {
+        feed_race_fresh_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+        feed_race_fresh_lbl_->setText(tr("connecting"));
+    }
+    feed_race_service_->start(symbol);
+    if (feed_race_timer_)
+        feed_race_timer_->start();
+    refresh_feed_race();
+}
+
+void PolymarketDetailPanel::stop_feed_race() {
+    if (feed_race_timer_)
+        feed_race_timer_->stop();
+    if (feed_race_service_)
+        feed_race_service_->stop();
+    if (feed_race_fresh_lbl_) {
+        feed_race_fresh_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+        feed_race_fresh_lbl_->setText(tr("stopped"));
+    }
+}
+
+void PolymarketDetailPanel::refresh_feed_race() {
+    if (!feed_race_service_)
+        return;
+    if (!feed_race_service_->is_running()) {
+        start_feed_race();
+        return;
+    }
+    render_feed_race(feed_race_service_->snapshot());
+}
+
+void PolymarketDetailPanel::render_feed_race(const latency::CryptoLatencySnapshot& snapshot) {
+    if (!feed_race_table_)
+        return;
+
+    if (feed_race_fresh_lbl_) {
+        const bool live = snapshot.freshest_age_ms >= 0;
+        const QColor color = live ? QColor(colors::POSITIVE()) : QColor(colors::TEXT_DIM());
+        feed_race_fresh_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; font-weight: 700; background: transparent;")
+                .arg(color.name()));
+        feed_race_fresh_lbl_->setText(
+            live ? tr("%1 freshest, %2ms, %3bps")
+                       .arg(snapshot.freshest_source)
+                       .arg(snapshot.freshest_age_ms)
+                       .arg(snapshot.cross_source_spread_bps, 0, 'f', 2)
+                 : tr("waiting for trades"));
+    }
+
+    QHash<QString, latency::CryptoLatencyTick> latest;
+    for (const auto& t : snapshot.latest_ticks)
+        latest.insert(t.source, t);
+
+    feed_race_table_->setRowCount(snapshot.sources.size());
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (int row = 0; row < snapshot.sources.size(); ++row) {
+        const auto& state = snapshot.sources[row];
+        const auto tick = latest.value(state.source);
+        const qint64 age = state.last_tick_ms > 0 ? now - state.last_tick_ms : -1;
+        const QString price = tick.price > 0.0
+                                  ? QString::number(tick.price, 'f', tick.price < 10.0 ? 4 : 2)
+                                  : QStringLiteral("-");
+        const QString msg = state.error.isEmpty()
+                                ? (state.last_message_type.isEmpty() ? QStringLiteral("-") : state.last_message_type)
+                                : state.error.left(24);
+
+        const QStringList cells = {
+            state.source,
+            state.status,
+            price,
+            age >= 0 ? tr("%1ms").arg(age) : QStringLiteral("-"),
+            QString::number(state.ticks),
+            QStringLiteral("%1 %2").arg(state.raw_messages).arg(msg)
+        };
+        for (int col = 0; col < cells.size(); ++col) {
+            auto* item = new QTableWidgetItem(cells[col]);
+            item->setForeground(QColor(state.last_tick_ms > 0 ? colors::TEXT_PRIMARY() : colors::TEXT_SECONDARY()));
+            if (col == 1 && state.status == QStringLiteral("live"))
+                item->setForeground(QColor(colors::POSITIVE()));
+            feed_race_table_->setItem(row, col, item);
+        }
+    }
+    feed_race_table_->resizeColumnsToContents();
+}
+
+void PolymarketDetailPanel::render_impulse(const edge::CryptoImpulseSignal& signal) {
+    if (!impulse_move_lbl_ || !impulse_velocity_lbl_ || !impulse_call_lbl_)
+        return;
+
+    edge::CryptoImpulseWindow primary;
+    for (const auto& w : signal.windows) {
+        if (w.available && w.seconds == 15) {
+            primary = w;
+            break;
+        }
+    }
+    if (!primary.available) {
+        for (const auto& w : signal.windows) {
+            if (w.available) {
+                primary = w;
+                break;
+            }
+        }
+    }
+
+    const bool pass = signal.gate == QStringLiteral("pass");
+    const QColor call_color = pass ? QColor(colors::POSITIVE()) : QColor(colors::TEXT_SECONDARY());
+    impulse_call_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; font-weight: 800; background: transparent;")
+            .arg(call_color.name()));
+
+    if (!primary.available) {
+        impulse_move_lbl_->setText(tr("warming up"));
+        impulse_velocity_lbl_->setText(tr("velocity -"));
+        impulse_call_lbl_->setText(tr("no trade"));
+        return;
+    }
+
+    const QColor move_color = primary.move_pct > 0.0 ? QColor(colors::POSITIVE())
+                          : primary.move_pct < 0.0 ? QColor(colors::NEGATIVE())
+                                                    : QColor(colors::TEXT_SECONDARY());
+    impulse_move_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 11px; font-weight: 800; background: transparent;")
+            .arg(move_color.name()));
+    impulse_velocity_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+
+    impulse_move_lbl_->setText(tr("%1 %2s %3")
+                                   .arg(signal.symbol)
+                                   .arg(primary.seconds)
+                                   .arg(fmt_impulse_pct(primary.move_pct)));
+    impulse_velocity_lbl_->setText(tr("%1 %2%/s confidence %3%")
+                                       .arg(signal.strength)
+                                       .arg(primary.velocity_pct_per_sec, 0, 'f', 4)
+                                       .arg(signal.confidence * 100.0, 0, 'f', 0));
+    impulse_call_lbl_->setText(pass ? tr("%1").arg(signal.recommendation)
+                                    : tr("no trade"));
+    impulse_call_lbl_->setToolTip(signal.rejection_reasons);
+    apply_crypto_hourly_anchor();
+    evaluate_edge_page();
+}
+
+QWidget* PolymarketDetailPanel::create_edge_page() {
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setStyleSheet(
+        QString("QScrollArea { border: none; background: %1; }"
+                "QScrollBar:vertical { background: %1; width: 4px; border: none; }"
+                "QScrollBar::handle:vertical { background: %2; min-height: 20px; }"
+                "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
+            .arg(colors::BG_BASE(), colors::BORDER_BRIGHT()));
+
+    auto* page = new QWidget;
+    page->setStyleSheet(QString("background: %1;").arg(colors::BG_BASE()));
+    auto* vl = new QVBoxLayout(page);
+    vl->setContentsMargins(16, 14, 16, 16);
+    vl->setSpacing(10);
+
+    edge_market_lbl_ = new QLabel(tr("Select a market to score edge"));
+    edge_market_lbl_->setWordWrap(true);
+    edge_market_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 12px; font-weight: 700; background: transparent;")
+            .arg(colors::TEXT_PRIMARY()));
+    vl->addWidget(edge_market_lbl_);
+
+    edge_anchor_lbl_ = new QLabel(tr("BTC anchor: load Crypto + 1 Hour markets to auto-score hourly contracts"));
+    edge_anchor_lbl_->setWordWrap(true);
+    edge_anchor_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+    vl->addWidget(edge_anchor_lbl_);
+
+    auto* feed_box = new QWidget;
+    feed_box->setStyleSheet(
+        QString("background: %1; border: 1px solid %2;").arg(colors::BG_SURFACE(), colors::BORDER_DIM()));
+    auto* fvl = new QVBoxLayout(feed_box);
+    fvl->setContentsMargins(12, 10, 12, 10);
+    fvl->setSpacing(8);
+
+    auto* feed_top = new QWidget(feed_box);
+    feed_top->setStyleSheet("background: transparent;");
+    auto* ftl = new QHBoxLayout(feed_top);
+    ftl->setContentsMargins(0, 0, 0, 0);
+    ftl->setSpacing(8);
+    auto* feed_title = make_edge_caption(tr("FEED RACE"));
+    feed_race_symbol_lbl_ = new QLabel(tr("BTC-USD public exchange WebSockets"));
+    feed_race_symbol_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; font-weight: 700; background: transparent;")
+            .arg(colors::TEXT_PRIMARY()));
+    feed_race_fresh_lbl_ = new QLabel(tr("not running"));
+    feed_race_fresh_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+    ftl->addWidget(feed_title);
+    ftl->addWidget(feed_race_symbol_lbl_);
+    ftl->addStretch(1);
+    ftl->addWidget(feed_race_fresh_lbl_);
+    fvl->addWidget(feed_top);
+
+    feed_race_table_ = new QTableWidget(feed_box);
+    feed_race_table_->setColumnCount(6);
+    feed_race_table_->setHorizontalHeaderLabels(
+        {tr("SOURCE"), tr("STATUS"), tr("PRICE"), tr("AGE"), tr("TICKS"), tr("MSG")});
+    feed_race_table_->verticalHeader()->setVisible(false);
+    feed_race_table_->horizontalHeader()->setStretchLastSection(true);
+    feed_race_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    feed_race_table_->setSelectionMode(QAbstractItemView::NoSelection);
+    feed_race_table_->setFixedHeight(112);
+    feed_race_table_->setStyleSheet(
+        QString("QTableWidget { background: %1; color: %2; border: 1px solid %3; font-size: 10px; }"
+                "QTableWidget::item { padding: 3px 6px; border-bottom: 1px solid %3; }"
+                "QHeaderView::section { background: %4; color: %5; border: none;"
+                "  border-bottom: 1px solid %3; padding: 4px 6px; font-size: 8px;"
+                "  font-weight: 700; letter-spacing: 0.5px; }")
+            .arg(colors::BG_BASE(), colors::TEXT_PRIMARY(), colors::BORDER_DIM(),
+                 colors::BG_RAISED(), colors::TEXT_SECONDARY()));
+    fvl->addWidget(feed_race_table_);
+
+    auto* impulse_row = new QWidget(feed_box);
+    impulse_row->setStyleSheet(
+        QString("background: %1; border: 1px solid %2;")
+            .arg(colors::BG_BASE(), colors::BORDER_DIM()));
+    auto* irl = new QHBoxLayout(impulse_row);
+    irl->setContentsMargins(8, 6, 8, 6);
+    irl->setSpacing(10);
+    irl->addWidget(make_edge_caption(tr("IMPULSE")));
+    impulse_move_lbl_ = new QLabel(tr("not running"));
+    impulse_move_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 11px; font-weight: 800; background: transparent;")
+            .arg(colors::TEXT_PRIMARY()));
+    impulse_velocity_lbl_ = new QLabel(tr("velocity -"));
+    impulse_velocity_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+    impulse_call_lbl_ = new QLabel(tr("no trade"));
+    impulse_call_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; font-weight: 800; background: transparent;")
+            .arg(colors::TEXT_SECONDARY()));
+    irl->addWidget(impulse_move_lbl_);
+    irl->addWidget(impulse_velocity_lbl_);
+    irl->addStretch(1);
+    irl->addWidget(impulse_call_lbl_);
+    fvl->addWidget(impulse_row);
+
+    auto* feed_buttons = new QWidget(feed_box);
+    feed_buttons->setStyleSheet("background: transparent;");
+    auto* fbl = new QHBoxLayout(feed_buttons);
+    fbl->setContentsMargins(0, 0, 0, 0);
+    fbl->setSpacing(8);
+    feed_race_start_btn_ = new QPushButton(tr("START"));
+    feed_race_stop_btn_ = new QPushButton(tr("STOP"));
+    auto* refresh_btn = new QPushButton(tr("REFRESH"));
+    for (auto* b : {feed_race_start_btn_, feed_race_stop_btn_, refresh_btn}) {
+        b->setFixedHeight(28);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setStyleSheet(edge_button_style(presentation_.accent, false));
+    }
+    connect(feed_race_start_btn_, &QPushButton::clicked, this, &PolymarketDetailPanel::start_feed_race);
+    connect(feed_race_stop_btn_, &QPushButton::clicked, this, &PolymarketDetailPanel::stop_feed_race);
+    connect(refresh_btn, &QPushButton::clicked, this, &PolymarketDetailPanel::refresh_feed_race);
+    fbl->addWidget(feed_race_start_btn_);
+    fbl->addWidget(feed_race_stop_btn_);
+    fbl->addWidget(refresh_btn);
+    fbl->addStretch(1);
+    fvl->addWidget(feed_buttons);
+    vl->addWidget(feed_box);
+
+    auto* grid_box = new QWidget;
+    grid_box->setStyleSheet(
+        QString("background: %1; border: 1px solid %2;").arg(colors::BG_SURFACE(), colors::BORDER_DIM()));
+    auto* grid = new QGridLayout(grid_box);
+    grid->setContentsMargins(12, 10, 12, 10);
+    grid->setHorizontalSpacing(10);
+    grid->setVerticalSpacing(6);
+
+    auto add_spin = [&](int row, int col, const QString& label, QDoubleSpinBox*& target, double value) {
+        auto* holder = new QWidget(grid_box);
+        holder->setStyleSheet("background: transparent;");
+        auto* hl = new QVBoxLayout(holder);
+        hl->setContentsMargins(0, 0, 0, 0);
+        hl->setSpacing(3);
+        hl->addWidget(make_edge_caption(label));
+        target = make_edge_spin(value);
+        hl->addWidget(target);
+        grid->addWidget(holder, row, col);
+        connect(target, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                this, &PolymarketDetailPanel::evaluate_edge_page);
+    };
+
+    add_spin(0, 0, tr("MARKET"), edge_market_prob_, 0.0);
+    add_spin(0, 1, tr("MODEL"), edge_model_prob_, 0.0);
+    add_spin(0, 2, tr("SPREAD"), edge_spread_cost_, 0.0);
+    add_spin(1, 0, tr("FEE"), edge_fee_cost_, 0.0);
+    add_spin(1, 1, tr("LIQUIDITY"), edge_liquidity_, 60.0);
+    add_spin(1, 2, tr("CONFIDENCE"), edge_confidence_, 60.0);
+    vl->addWidget(grid_box);
+
+    auto* result_box = new QWidget;
+    result_box->setStyleSheet(
+        QString("background: %1; border: 1px solid %2;").arg(colors::BG_SURFACE(), colors::BORDER_DIM()));
+    auto* rl = new QGridLayout(result_box);
+    rl->setContentsMargins(12, 10, 12, 10);
+    rl->setHorizontalSpacing(12);
+    rl->setVerticalSpacing(8);
+
+    auto add_result = [&](int row, int col, const QString& caption, QLabel*& value) {
+        auto* box = new QWidget(result_box);
+        box->setStyleSheet("background: transparent;");
+        auto* bl = new QVBoxLayout(box);
+        bl->setContentsMargins(0, 0, 0, 0);
+        bl->setSpacing(3);
+        bl->addWidget(make_edge_caption(caption));
+        value = new QLabel("—");
+        value->setStyleSheet(
+            QString("color: %1; font-size: 12px; font-weight: 800; background: transparent;")
+                .arg(colors::TEXT_PRIMARY()));
+        bl->addWidget(value);
+        rl->addWidget(box, row, col);
+    };
+
+    add_result(0, 0, tr("SIDE"), edge_side_lbl_);
+    add_result(0, 1, tr("RAW EDGE"), edge_raw_lbl_);
+    add_result(0, 2, tr("NET EDGE"), edge_net_lbl_);
+    add_result(1, 0, tr("CALL"), edge_reco_lbl_);
+    add_result(1, 1, tr("RISK"), edge_risk_lbl_);
+    add_result(1, 2, tr("GATE"), edge_gate_lbl_);
+    vl->addWidget(result_box);
+
+    vl->addWidget(make_edge_caption(tr("THESIS")));
+    edge_thesis_ = new QTextEdit;
+    edge_thesis_->setFixedHeight(82);
+    edge_thesis_->setPlaceholderText(tr("Why your probability is different from the market"));
+    edge_thesis_->setStyleSheet(edge_input_style());
+    vl->addWidget(edge_thesis_);
+
+    vl->addWidget(make_edge_caption(tr("RISK NOTES")));
+    edge_risk_notes_ = new QTextEdit;
+    edge_risk_notes_->setFixedHeight(64);
+    edge_risk_notes_->setPlaceholderText(tr("What would invalidate this idea"));
+    edge_risk_notes_->setStyleSheet(edge_input_style());
+    vl->addWidget(edge_risk_notes_);
+
+    auto* button_row = new QWidget;
+    button_row->setStyleSheet("background: transparent;");
+    auto* brl = new QHBoxLayout(button_row);
+    brl->setContentsMargins(0, 0, 0, 0);
+    brl->setSpacing(8);
+    auto* eval_btn = new QPushButton(tr("EVALUATE"));
+    auto* save_btn = new QPushButton(tr("SAVE EDGE"));
+    for (auto* b : {eval_btn, save_btn}) {
+        b->setFixedHeight(32);
+        b->setCursor(Qt::PointingHandCursor);
+    }
+    eval_btn->setStyleSheet(edge_button_style(presentation_.accent, false));
+    save_btn->setStyleSheet(edge_button_style(presentation_.accent, true));
+    connect(eval_btn, &QPushButton::clicked, this, &PolymarketDetailPanel::evaluate_edge_page);
+    connect(save_btn, &QPushButton::clicked, this, &PolymarketDetailPanel::save_edge_idea);
+    brl->addWidget(eval_btn);
+    brl->addWidget(save_btn);
+    brl->addStretch(1);
+    vl->addWidget(button_row);
+
+    edge_status_lbl_ = new QLabel;
+    edge_status_lbl_->setWordWrap(true);
+    edge_status_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+    vl->addWidget(edge_status_lbl_);
+
+    vl->addStretch(1);
+    scroll->setWidget(page);
+    return scroll;
+}
+
 QWidget* PolymarketDetailPanel::create_holders_page() {
     holders_table_ = new QTableWidget;
     holders_table_->setColumnCount(4);
@@ -601,6 +1427,7 @@ void PolymarketDetailPanel::set_active_tab(int tab) {
 // ── Data setters ────────────────────────────────────────────────────────────
 
 void PolymarketDetailPanel::set_market(const PredictionMarket& market) {
+    const int previous_tab = stack_ ? stack_->currentIndex() : 0;
     last_market_ = market;
     has_last_market_ = true;
 
@@ -711,8 +1538,9 @@ void PolymarketDetailPanel::set_market(const PredictionMarket& market) {
     for (const auto& o : market.outcomes)
         labels.append(o.name);
     price_chart_->set_outcome_labels(labels);
+    update_edge_prefill_from_market();
 
-    set_active_tab(0);
+    set_active_tab(previous_tab == kTabEdge ? kTabEdge : 0);
 }
 
 void PolymarketDetailPanel::set_price_summary(const pmx::PriceSummary& summary) {
@@ -723,6 +1551,14 @@ void PolymarketDetailPanel::set_price_summary(const pmx::PriceSummary& summary) 
 
 void PolymarketDetailPanel::set_order_book(const PredictionOrderBook& book) {
     orderbook_->set_data(book);
+    if (edge_spread_cost_ && !book.bids.isEmpty() && !book.asks.isEmpty()) {
+        const double best_bid = book.bids.first().price;
+        const double best_ask = book.asks.first().price;
+        const double spread = qBound(0.0, best_ask - best_bid, 1.0);
+        const QSignalBlocker block(edge_spread_cost_);
+        edge_spread_cost_->setValue(spread * 100.0);
+        evaluate_edge_page();
+    }
 }
 
 void PolymarketDetailPanel::set_price_history(const PriceHistory& history) {
@@ -906,6 +1742,19 @@ void PolymarketDetailPanel::clear() {
     description_label_->clear();
     orderbook_->clear();
     activity_feed_->clear();
+    if (edge_market_lbl_) {
+        edge_market_lbl_->setProperty("market_id", QString{});
+        edge_market_lbl_->setText(tr("Select a market to score edge"));
+    }
+    if (edge_market_prob_) edge_market_prob_->setValue(0.0);
+    if (edge_model_prob_) edge_model_prob_->setValue(0.0);
+    if (edge_spread_cost_) edge_spread_cost_->setValue(0.0);
+    if (edge_side_lbl_) edge_side_lbl_->setText("—");
+    if (edge_raw_lbl_) edge_raw_lbl_->setText("—");
+    if (edge_net_lbl_) edge_net_lbl_->setText("—");
+    if (edge_reco_lbl_) edge_reco_lbl_->setText("—");
+    if (edge_risk_lbl_) edge_risk_lbl_->setText("—");
+    if (edge_status_lbl_) edge_status_lbl_->clear();
 
     // Clear outcomes
     if (auto* vl = qobject_cast<QVBoxLayout*>(outcome_container_->layout())) {
@@ -989,7 +1838,7 @@ void PolymarketDetailPanel::retranslateUi() {
     // Tab bar labels (logical tab is index-based; labels are display-only).
     const QStringList tab_names = {
         tr("OVERVIEW"), tr("ORDER BOOK"), tr("CHART"), tr("TRADE"),
-        tr("TRADES"), tr("HOLDERS"), tr("COMMENTS"), tr("RELATED")
+        tr("TRADES"), tr("EDGE"), tr("HOLDERS"), tr("COMMENTS"), tr("RELATED")
     };
     for (int i = 0; i < tab_btns_.size() && i < tab_names.size(); ++i)
         tab_btns_[i]->setText(tab_names[i]);

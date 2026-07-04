@@ -770,6 +770,7 @@ void register_builtins() {
     register_screen("geopolitics", "Geopolitics", {"geo", "geopolitics", "sanctions"});
     register_screen("maritime", "Maritime", {"ship", "maritime", "vessels"});
     register_screen("polymarket", "Prediction Markets", {"pmkt", "polymarket", "kalshi"});
+    register_screen("edge_radar", "Edge Radar", {"edge", "radar", "edge radar", "kalshi edge", "stock edge"});
     register_screen("relationship_map", "Relationship Map", {"map", "relationships", "graph"});
     register_screen("report_builder", "Report Builder", {"report", "research report"});
     register_screen("excel", "Excel", {"xl", "excel", "spreadsheet"});

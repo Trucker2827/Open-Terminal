@@ -561,6 +561,7 @@ void PolymarketScreen::on_exchange_changed(const QString& exchange_id) {
     // exchange don't sit under the new one.
     browse_panel_->clear();
     detail_panel_->clear();
+    detail_panel_->set_edge_market_context({});
     if (status_bar_) {
         auto* a = reg.adapter(exchange_id);
         status_bar_->set_selected(tr("Showing %1 data")
@@ -726,6 +727,7 @@ void PolymarketScreen::on_markets_ready(const QVector<pred::PredictionMarket>& m
     command_bar_->set_loading(false);
     browse_panel_->set_loading(false);
     browse_panel_->set_markets(markets);
+    if (detail_panel_) detail_panel_->set_edge_market_context(markets);
     command_bar_->set_market_count(markets.size());
     status_bar_->set_count(markets.size(), tr("markets"));
 
@@ -766,6 +768,7 @@ void PolymarketScreen::on_search_results_ready(const QVector<pred::PredictionMar
     browse_panel_->set_loading(false);
     if (!markets.isEmpty()) {
         browse_panel_->set_markets(markets);
+        if (detail_panel_) detail_panel_->set_edge_market_context(markets);
         command_bar_->set_market_count(markets.size());
         status_bar_->set_count(markets.size(), tr("markets"));
     } else if (!events.isEmpty()) {

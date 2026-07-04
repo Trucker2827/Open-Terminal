@@ -26,6 +26,10 @@ commands=(
   'settings:view or edit local settings'
   'mcp:inspect or call tools'
   'quote:fetch quotes'
+  'crypto-latency:race public crypto WebSocket feeds'
+  'latency:alias for crypto-latency'
+  'feed-race:alias for crypto-latency'
+  'feedrace:alias for crypto-latency'
   'news:market news'
   'research:equity research'
   'macro:macro and government data'
@@ -45,6 +49,9 @@ commands=(
   'scanner:scanner alert watches'
   'watchlist:watchlists'
   'portfolio:portfolios'
+  'edge:stock and prediction-market edge radar'
+  'edge-radar:alias for edge'
+  'edge_radar:alias for edge'
   'strategy:trading strategies'
   'strategies:alias for strategy'
   'strat:alias for strategy'
@@ -97,6 +104,8 @@ case $state in
       scanner|scan|alerts) _values 'scanner subcommand' list show add events delete enable disable ;;
       watchlist|wl) _values 'watchlist subcommand' list show create delete add remove lookup ;;
       portfolio|port) _values 'portfolio subcommand' list show create delete assets add sell remove tx dividend split delete-tx snapshots ;;
+      edge|edge-radar|edge_radar) _values 'edge subcommand' evaluate score kalshi-scan kalshi_scan scan-kalshi research explain kalshi-research impulse btc-impulse btc5m btc-5m polymarket-btc5m btc5m-live btc-5m-live polymarket-btc5m-live crypto-hourly crypto-hourly-live hourly-live live-crypto-hourly hourly-crypto btc-anchor add create list ls show get update close remove delete rm --category --family --timeout-ms --duration-ms --sources --window --min-confidence --direction --btc-prob --market --limit --save-candidates --min-edge --strong-edge --min-anchor --max-cost --safety-buffer --min-move-usd --max-entry-price --min-entry-seconds-left --max-entry-seconds-left --exit-before-sec --seconds-left --min-liquidity --asset-class --venue --symbol --market-id --question --market-prob --model-prob --spread --fee --liquidity --confidence --thesis --risk --tags --status --active --yes BTC-USD ETH-USD SOL-USD coinbase kraken binanceus binance bitcointicker ;;
+      crypto-latency|latency|feed-race|feedrace) _values 'crypto-latency subcommand' sample snapshot watch --sources --duration-ms --min-ticks --min-live-sources BTC-USD ETH-USD SOL-USD coinbase kraken binanceus binance bitcointicker ;;
       strategy|strategies|strat) _values 'strategy subcommand' list ls templates template show info backtest bt paper-run paper run deploy --query --symbol --start --end --capital --symbols --max-iters --interval-sec --duration-sec ;;
       profile|account) _values 'profile subcommand' show set clear ;;
       settings|setting) _values 'settings subcommand' list get set clear ;;

@@ -14,7 +14,7 @@ _openterminalcli()
     fi
 
     local globals="--json --headless --profile --help -h"
-    local commands="help status version doctor diagnose security sec setup onboard onboarding serve daemon service launchd screens open cmd actions action coverage profile settings mcp tools tool call quote q news research macro econ economics dbnomics govdata government trade trading data datasources ds agent agents workflow workflows wf files file notes note notebook notebooks nb report reports excel xl spreadsheet spreadsheets workspace layout layouts notify notification notifications scanner scan alerts watchlist wl portfolio port strategy strategies strat hub observe ask brief risk thesis radar ai"
+    local commands="help status version doctor diagnose security sec setup onboard onboarding serve daemon service launchd screens open cmd actions action coverage profile settings mcp tools tool call quote q crypto-latency latency feed-race feedrace news research macro econ economics dbnomics govdata government trade trading data datasources ds agent agents workflow workflows wf files file notes note notebook notebooks nb report reports excel xl spreadsheet spreadsheets workspace layout layouts notify notification notifications scanner scan alerts watchlist wl portfolio port edge edge-radar edge_radar strategy strategies strat hub observe ask brief risk thesis radar ai"
 
     case "$prev" in
         --profile)
@@ -61,6 +61,8 @@ _openterminalcli()
         scanner|scan|alerts) COMPREPLY=( $(compgen -W "list show add events delete enable disable" -- "$cur") ) ;;
         watchlist|wl) COMPREPLY=( $(compgen -W "list show create delete add remove lookup" -- "$cur") ) ;;
         portfolio|port) COMPREPLY=( $(compgen -W "list show create delete assets add sell remove tx dividend split delete-tx snapshots" -- "$cur") ) ;;
+        edge|edge-radar|edge_radar) COMPREPLY=( $(compgen -W "evaluate score kalshi-scan kalshi_scan scan-kalshi research explain kalshi-research impulse btc-impulse btc5m btc-5m polymarket-btc5m btc5m-live btc-5m-live polymarket-btc5m-live crypto-hourly crypto-hourly-live hourly-live live-crypto-hourly hourly-crypto btc-anchor add create list ls show get update close remove delete rm --category --family --timeout-ms --duration-ms --sources --window --min-confidence --direction --btc-prob --market --limit --save-candidates --min-edge --strong-edge --min-anchor --max-cost --safety-buffer --min-move-usd --max-entry-price --min-entry-seconds-left --max-entry-seconds-left --exit-before-sec --seconds-left --min-liquidity --asset-class --venue --symbol --market-id --question --market-prob --model-prob --spread --fee --liquidity --confidence --thesis --risk --tags --status --active --yes BTC-USD ETH-USD SOL-USD coinbase kraken binanceus binance bitcointicker" -- "$cur") ) ;;
+        crypto-latency|latency|feed-race|feedrace) COMPREPLY=( $(compgen -W "sample snapshot watch --sources --duration-ms --min-ticks --min-live-sources BTC-USD ETH-USD SOL-USD coinbase kraken binanceus binance bitcointicker" -- "$cur") ) ;;
         strategy|strategies|strat) COMPREPLY=( $(compgen -W "list ls templates template show info backtest bt paper-run paper run deploy --query --symbol --start --end --capital --symbols --max-iters --interval-sec --duration-sec" -- "$cur") ) ;;
         profile|account) COMPREPLY=( $(compgen -W "show set clear" -- "$cur") ) ;;
         settings|setting) COMPREPLY=( $(compgen -W "list get set clear" -- "$cur") ) ;;

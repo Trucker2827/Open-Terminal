@@ -45,6 +45,7 @@
 #include "screens/derivatives/DerivativesScreen.h"
 #include "screens/dinero/DineroScreen.h"
 #include "screens/docs/DocsScreen.h"
+#include "screens/edge_radar/EdgeRadarScreen.h"
 #include "screens/economics/EconomicsScreen.h"
 #include "screens/equity_research/EquityResearchScreen.h"
 #include "screens/equity_trading/EquityTradingScreen.h"
@@ -268,6 +269,7 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("equity_trading", []() { return new screens::EquityTradingScreen; });
     dock_router_->register_factory("alpha_arena", []() { return new screens::AlphaArenaScreen; });
     dock_router_->register_factory("polymarket", []() { return new screens::PolymarketScreen; });
+    dock_router_->register_factory("edge_radar", []() { return new screens::EdgeRadarScreen; });
     dock_router_->register_factory("derivatives", []() { return new screens::DerivativesScreen; });
     dock_router_->register_factory("equity_research", []() { return new screens::EquityResearchScreen; });
     dock_router_->register_factory("ma_analytics", []() { return new screens::MAAnalyticsScreen; });
