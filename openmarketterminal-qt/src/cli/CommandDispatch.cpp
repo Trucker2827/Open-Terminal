@@ -20,6 +20,7 @@
 #include "services/edge_radar/BtcFiveMinuteEdgeModel.h"
 #include "services/edge_radar/CryptoHourlyEdgeModel.h"
 #include "services/edge_radar/CryptoImpulseModel.h"
+#include "services/edge_radar/EdgePredictionModel.h"
 #include "services/edge_radar/EdgeRadarService.h"
 #include "services/edge_radar/KalshiUniversalEdgeModel.h"
 #include "services/file_manager/FileManagerService.h"
@@ -35,6 +36,7 @@
 #include "services/polymarket/PolymarketTypes.h"
 #include "storage/repositories/AccountRepository.h"
 #include "storage/repositories/DataSourceRepository.h"
+#include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/EdgeRadarRepository.h"
 #include "storage/repositories/LlmConfigRepository.h"
 #include "storage/repositories/McpServerRepository.h"
@@ -49,6 +51,7 @@
 #include "storage/repositories/WatchlistRepository.h"
 #include "storage/repositories/WorkflowRepository.h"
 #include "storage/secure/SecureStorage.h"
+#include "storage/sqlite/Database.h"
 #include "core/config/ProfileManager.h"
 #include <QCoreApplication>
 #include <QDate>
@@ -61,6 +64,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QMap>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -69,11 +73,15 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QTimer>
+#include <QTimeZone>
+#include <QTcpSocket>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QUuid>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <optional>
 
@@ -268,13 +276,14 @@ static int command_help(const QString& topic) {
             "Daemon commands:\n"
             "  daemon status\n"
             "  daemon health\n"
+            "  daemon readiness [--symbol BTC] [--tick-stale-sec N] [--min-samples N]\n"
             "  daemon logs [stderr|stdout|jobs] [--lines N]\n"
             "  daemon audit\n"
-            "  daemon jobs list|add|show|run|enable|disable|remove|repair\n"
+            "  daemon jobs list|history|failures|stats|add|show|run|enable|disable|remove|repair|clear-failures\n"
             "  daemon monitors status|repair\n"
             "  daemon notify --title T --message M [--provider P] [--job]\n"
-            "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N]\n"
-            "  daemon paper <meanrev|claude> [--symbols AAPL,MSFT] [--every-sec N]\n"
+            "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N] [--timeout-sec N]\n"
+            "  daemon paper <meanrev|claude> [--symbols AAPL,MSFT] [--every-sec N] [--timeout-sec N]\n"
             "  daemon install [--replace] [--start] [--dry-run]\n"
             "  daemon start\n"
             "  daemon stop\n"
@@ -338,21 +347,53 @@ static int command_help(const QString& topic) {
             "  edge evaluate --market-prob P --model-prob P [--spread P] [--fee P]\n"
             "  edge kalshi-scan [--category C] [--family F] [--limit N]\n"
             "  edge research <kalshi-ticker> [--model-prob P] [--confidence P]\n"
+            "  edge snapshot-kalshi [--category C] [--family F] [--limit N]\n"
+            "  edge journal-kalshi-scan [--category C] [--family F] [--limit N] [--no-crypto-anchor]\n"
             "  edge impulse [BTC-USD] [--duration-ms N] [--sources S] [--window 5s|15s|60s]\n"
             "  edge btc5m --market-prob P [--direction up|down] [--duration-ms N]\n"
             "  edge btc5m-live [--duration-ms N] [--market-prob P] [--timeout-ms N]\n"
+            "  edge snapshot-btc5m-live [--timeout-ms N]\n"
             "  edge crypto-hourly --btc-prob P --market ETH=P [--market SOL=P]\n"
             "                     [--spread P] [--fee P] [--min-edge P] [--strong-edge P]\n"
             "                     [--min-anchor P] [--max-cost P] [--safety-buffer P] [--min-liquidity P]\n"
             "                     [--save-candidates --yes]\n"
             "  edge crypto-hourly-live [--market ETH=P] [--duration-ms N] [--sources S]\n"
+            "  edge observe --horizon 5m|15m|1h|daily --market-prob P [--outcome win|loss]\n"
+            "  edge train --horizon 5m|15m|1h|daily|all [--symbol BTC] [--min-samples N]\n"
+            "  edge model [--horizon 5m|15m|1h|daily|all] [--symbol BTC]\n"
+            "  edge probability --horizon 5m|15m|1h|daily --market-prob P [features] [--publish]\n"
+            "  edge gate --horizon 5m|15m|1h|daily --market-prob P [features]\n"
+            "  edge publish-horizons [--symbol BTC] [--market-prob P] [--min-samples N]\n"
+            "  edge journal list|show|resolve|stats\n"
+            "  edge journal evaluate-btc5m-live [--duration-ms N] [--timeout-ms N]\n"
+            "  edge journal-evaluate-btc5m-live [--duration-ms N] [--timeout-ms N]\n"
+            "  edge why-no-trade [--symbol BTC] [--tick-stale-sec N] [--min-samples N]\n"
+            "  edge backfill --source coinbase|binance --symbol BTC [--days 30] [--train]\n"
+            "  edge collect [BTC] [--sources coinbase,kraken,bitcointicker] [--watch]\n"
+            "  edge cockpit [--symbol BTC] [--horizon 15m] [--market-prob P] [--watch] [--collect]\n"
+            "  edge selftest-leakage\n"
             "  edge add|list|show|update|close|remove\n"
             "Probabilities accept 0-1 or 0-100. Cost flags are percent points.\n"
             "kalshi-scan classifies live Kalshi markets and shows which research/data source is needed.\n"
-            "btc5m-live fetches the current Polymarket BTC 5-minute market, anchors it to fresh BTC ticks,\n"
-            "and returns a dry-run edge/no-trade decision.\n"
+            "snapshot-kalshi stores live Kalshi market snapshots; journal-kalshi-scan stores\n"
+            "dry-run Kalshi decisions/research-needed rows for daemon audit and later training.\n"
+            "For crypto-family Kalshi markets, journal-kalshi-scan attaches the local BTC\n"
+            "impulse anchor by default; use --no-crypto-anchor for market-implied-only rows.\n"
+            "btc5m-live fetches the current Polymarket BTC 5-minute market, stores a market snapshot,\n"
+            "anchors it to fresh BTC ticks, and returns a dry-run edge/no-trade decision.\n"
             "crypto-hourly-live derives the BTC anchor from fresh public exchange ticks, then\n"
-            "applies the same no-trade gate to hourly crypto prediction contracts.\n");
+            "applies the same no-trade gate to hourly crypto prediction contracts.\n"
+            "observe/train/model/probability build a local independent probability model per horizon;\n"
+            "publish-horizons writes timestamped model outputs for all horizons.\n"
+            "journal records dry-run edge decisions with the exact local features/reasons used,\n"
+            "then lets you resolve outcomes and inspect stats from the terminal.\n"
+            "private observations and model weights stay on this machine. backfill downloads public\n"
+            "crypto candles into the local profile DB. collect writes fresh public ticks from\n"
+            "exchange feeds and advisory Bitcointicker into that same local store. cockpit gives\n"
+            "one organized terminal view of data readiness, horizon models, edge signals, and next actions.\n"
+            "why-no-trade explains daemon/data/model blockers. gate applies the timestamp-safe\n"
+            "meta decision layer, and selftest-leakage verifies future model outputs\n"
+            "are excluded.\n");
         return 0;
     }
     if (topic == "agent" || topic == "agents") {
@@ -9039,6 +9080,8 @@ static bool edge_btc5m_parse_options(QStringList& args,
     return true;
 }
 
+static int edge_parse_outcome(const QString& raw);
+
 static bool edge_http_get_json(const QUrl& url, int timeout_ms, QJsonDocument* out, QString* error) {
     QNetworkAccessManager nam;
     QNetworkRequest req(url);
@@ -9131,6 +9174,90 @@ static bool edge_fetch_current_polymarket_btc5m(int timeout_ms,
         *error = last_error.isEmpty() ? QStringLiteral("current Polymarket BTC 5m event not found")
                                       : last_error;
     return false;
+}
+
+static Result<void> edge_save_prediction_market_snapshot(const services::prediction::PredictionMarket& market,
+                                                         const QString& venue,
+                                                         const QString& symbol,
+                                                         const QString& horizon,
+                                                         const QString& fallback_market_id = {}) {
+    EdgePredictionMarketSnapshot snapshot;
+    snapshot.venue = venue;
+    snapshot.symbol = symbol.trimmed().toUpper();
+    snapshot.horizon = services::edge_radar::EdgePredictionModel::normalize_horizon(horizon);
+    snapshot.market_id = market.key.market_id.isEmpty() ? fallback_market_id : market.key.market_id;
+    snapshot.question = market.question;
+    if (!market.outcomes.isEmpty())
+        snapshot.yes_price = market.outcomes.first().price;
+    if (market.outcomes.size() > 1)
+        snapshot.no_price = market.outcomes.at(1).price;
+    if (snapshot.no_price <= 0.0 && snapshot.yes_price > 0.0)
+        snapshot.no_price = std::clamp(1.0 - snapshot.yes_price, 0.0, 1.0);
+    snapshot.spread_cost = std::max(0.0, snapshot.yes_price + snapshot.no_price - 1.0);
+    snapshot.liquidity_score = std::clamp(market.liquidity / 10000.0, 0.0, 1.0);
+    snapshot.seconds_left = services::edge_radar::BtcFiveMinuteEdgeModel::seconds_left(market);
+    snapshot.observed_at = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    return EdgePredictionModelRepository::instance().add_market_snapshot(snapshot);
+}
+
+static int edge_snapshot_btc5m_live_command(const GlobalOpts& opts, QStringList args) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    QString timeout_raw;
+    if (!take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+    int timeout_ms = 12000;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 60000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..60000\n");
+            return 2;
+        }
+    }
+    services::prediction::PredictionMarket market;
+    QString slug;
+    QString error;
+    if (!edge_fetch_current_polymarket_btc5m(timeout_ms, &market, &slug, &error)) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+        return 5;
+    }
+    auto saved = edge_save_prediction_market_snapshot(
+        market, QStringLiteral("polymarket"), QStringLiteral("BTC"), QStringLiteral("5m"), slug);
+    if (saved.is_err()) {
+        std::fprintf(stderr, "%s\n", saved.error().c_str());
+        return 1;
+    }
+    const double yes = market.outcomes.isEmpty() ? 0.0 : market.outcomes.first().price;
+    const double no = market.outcomes.size() > 1 ? market.outcomes.at(1).price
+                                                 : std::clamp(1.0 - yes, 0.0, 1.0);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"venue", "polymarket"},
+                                                       {"symbol", "BTC"},
+                                                       {"horizon", "5m"},
+                                                       {"market_id", market.key.market_id.isEmpty() ? slug : market.key.market_id},
+                                                       {"question", market.question},
+                                                       {"yes_price", yes},
+                                                       {"no_price", no},
+                                                       {"seconds_left", services::edge_radar::BtcFiveMinuteEdgeModel::seconds_left(market)},
+                                                       {"polymarket_slug", slug}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("snapshot     polymarket BTC 5m yes=%s no=%s seconds_left=%d\n",
+                qUtf8Printable(edge_pct(yes)),
+                qUtf8Printable(edge_pct(no)),
+                services::edge_radar::BtcFiveMinuteEdgeModel::seconds_left(market));
+    std::printf("market       %s\n", qUtf8Printable(market.key.market_id.isEmpty() ? slug : market.key.market_id));
+    std::printf("question     %s\n", qUtf8Printable(market.question));
+    return 0;
 }
 
 static int edge_emit_btc5m(const GlobalOpts& opts,
@@ -9263,6 +9390,13 @@ static int edge_btc5m_command(const GlobalOpts& opts, QStringList args, bool liv
             std::fprintf(stderr, "%s\n", qUtf8Printable(error));
             return 5;
         }
+        int code = 0;
+        if (!init_headless_for_cli(opts, code))
+            return code;
+        auto saved = edge_save_prediction_market_snapshot(
+            market, QStringLiteral("polymarket"), QStringLiteral("BTC"), QStringLiteral("5m"), slug);
+        if (saved.is_err())
+            std::fprintf(stderr, "snapshot warning: %s\n", saved.error().c_str());
     } else if (override_market_prob < 0.0) {
         std::fprintf(stderr, "usage: edge btc5m --market-prob P [--direction up|down]\n");
         return 2;
@@ -9296,6 +9430,2244 @@ static int edge_btc5m_command(const GlobalOpts& opts, QStringList args, bool liv
             override_model_prob);
     }
     return edge_emit_btc5m(opts, impulse, signal, slug);
+}
+
+static QString edge_outcome_text(int outcome) {
+    if (outcome == 1)
+        return QStringLiteral("win");
+    if (outcome == 0)
+        return QStringLiteral("loss");
+    return QStringLiteral("pending");
+}
+
+static QString edge_time_text(qint64 ts_ms) {
+    if (ts_ms <= 0)
+        return QStringLiteral("-");
+    return QDateTime::fromMSecsSinceEpoch(ts_ms, QTimeZone::UTC).toString(Qt::ISODate);
+}
+
+static QJsonObject edge_journal_row_to_json(QSqlQuery& q) {
+    return QJsonObject{
+        {"id", q.value(0).toString()},
+        {"created_at", edge_time_text(q.value(1).toLongLong())},
+        {"updated_at", edge_time_text(q.value(2).toLongLong())},
+        {"venue", q.value(3).toString()},
+        {"symbol", q.value(4).toString()},
+        {"horizon", q.value(5).toString()},
+        {"market_id", q.value(6).toString()},
+        {"question", q.value(7).toString()},
+        {"direction", q.value(8).toString()},
+        {"side", q.value(9).toString()},
+        {"call", q.value(10).toString()},
+        {"gate", q.value(11).toString()},
+        {"market_probability", q.value(12).toDouble()},
+        {"model_probability", q.value(13).toDouble()},
+        {"raw_edge", q.value(14).toDouble()},
+        {"edge_after_cost", q.value(15).toDouble()},
+        {"gate_edge", q.value(16).toDouble()},
+        {"spread_cost", q.value(17).toDouble()},
+        {"fee_cost", q.value(18).toDouble()},
+        {"liquidity_score", q.value(19).toDouble()},
+        {"confidence", q.value(20).toDouble()},
+        {"seconds_left", q.value(21).toInt()},
+        {"data_status", q.value(22).toString()},
+        {"freshness", QJsonDocument::fromJson(q.value(23).toString().toUtf8()).object()},
+        {"features", QJsonDocument::fromJson(q.value(24).toString().toUtf8()).object()},
+        {"reasons", q.value(25).toString()},
+        {"outcome", edge_outcome_text(q.value(26).toInt())},
+        {"resolved_at", edge_time_text(q.value(27).toLongLong())},
+        {"source", q.value(28).toString()}
+    };
+}
+
+static const char* edge_journal_cols() {
+    return "id, created_at, updated_at, venue, symbol, horizon, market_id, question, direction,"
+           " side, call, gate, market_probability, model_probability, raw_edge, edge_after_cost,"
+           " gate_edge, spread_cost, fee_cost, liquidity_score, confidence, seconds_left,"
+           " data_status, freshness_json, features_json, reasons, outcome, resolved_at, source";
+}
+
+static Result<QString> edge_journal_insert_btc5m(
+    const services::edge_radar::CryptoImpulseSignal& impulse,
+    const services::edge_radar::BtcFiveMinuteSignal& signal,
+    const QString& market_slug) {
+    using services::edge_radar::BtcFiveMinuteEdgeModel;
+    using services::edge_radar::CryptoImpulseModel;
+
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QString market_id = !signal.market_id.isEmpty() ? signal.market_id : market_slug;
+    const QString data_status = signal.is_valid
+                                    ? (signal.passes_gate ? QStringLiteral("trade_candidate")
+                                                          : QStringLiteral("no_trade"))
+                                    : QStringLiteral("not_enough_data");
+    const QJsonObject freshness{{"latest_tick_age_ms", signal.latest_tick_age_ms},
+                                {"freshest_source", impulse.freshest_source},
+                                {"seconds_left", signal.seconds_left},
+                                {"decision_ts", edge_time_text(now)}};
+    const QJsonObject features{{"impulse", CryptoImpulseModel::to_json(impulse)},
+                               {"signal", BtcFiveMinuteEdgeModel::to_json(signal)}};
+    auto r = Database::instance().execute(
+        "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+        " market_id, question, direction, side, call, gate, market_probability, model_probability,"
+        " raw_edge, edge_after_cost, gate_edge, spread_cost, fee_cost, liquidity_score, confidence,"
+        " seconds_left, data_status, freshness_json, features_json, reasons, outcome, resolved_at,"
+        " source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        {id, now, now, QStringLiteral("polymarket"), QStringLiteral("BTC"), QStringLiteral("5m"),
+         market_id, signal.question, signal.direction, signal.side, signal.recommendation, signal.gate,
+         signal.market_probability, signal.model_probability, signal.raw_edge, signal.edge_after_cost,
+         signal.gate_edge, signal.spread_cost, signal.fee_cost, signal.liquidity_score,
+         signal.confidence, signal.seconds_left, data_status,
+         QString::fromUtf8(QJsonDocument(freshness).toJson(QJsonDocument::Compact)),
+         QString::fromUtf8(QJsonDocument(features).toJson(QJsonDocument::Compact)),
+         signal.rejection_reasons.isEmpty() ? signal.rationale : signal.rejection_reasons,
+         -1, 0, QStringLiteral("edge journal-evaluate-btc5m-live")});
+    if (r.is_err())
+        return Result<QString>::err(r.error());
+    return Result<QString>::ok(id);
+}
+
+static int edge_journal_evaluate_btc5m_live_command(const GlobalOpts& opts, QStringList args) {
+    QString duration_raw;
+    QString sources_raw;
+    QString window_raw;
+    QString market_raw;
+    QString model_raw;
+    QString timeout_raw;
+    if (!take_string_option(args, QStringLiteral("--duration-ms"), duration_raw) ||
+        !take_string_option(args, QStringLiteral("--sources"), sources_raw) ||
+        !take_string_option(args, QStringLiteral("--window"), window_raw) ||
+        !take_string_option(args, QStringLiteral("--market-prob"), market_raw) ||
+        !take_string_option(args, QStringLiteral("--model-prob"), model_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw))
+        return 2;
+
+    services::edge_radar::BtcFiveMinuteOptions options;
+    if (!edge_btc5m_parse_options(args, options))
+        return 2;
+
+    int duration_ms = 12000;
+    int window_seconds = 15;
+    int timeout_ms = 12000;
+    if (!edge_parse_duration_ms(duration_raw, duration_ms) ||
+        !edge_parse_window_seconds(window_raw, window_seconds))
+        return 2;
+    options.primary_window_seconds = window_seconds;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 60000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..60000\n");
+            return 2;
+        }
+    }
+    double override_market_prob = -1.0;
+    if (!market_raw.isEmpty() && !edge_parse_probability_text(market_raw, override_market_prob)) {
+        std::fprintf(stderr, "--market-prob must be 0-1 or 0-100\n");
+        return 2;
+    }
+    double override_model_prob = -1.0;
+    if (!model_raw.isEmpty() && !edge_parse_probability_text(model_raw, override_model_prob)) {
+        std::fprintf(stderr, "--model-prob must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+
+    services::prediction::PredictionMarket market;
+    QString slug;
+    QString error;
+    if (!edge_fetch_current_polymarket_btc5m(timeout_ms, &market, &slug, &error)) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+        return 5;
+    }
+    auto saved = edge_save_prediction_market_snapshot(
+        market, QStringLiteral("polymarket"), QStringLiteral("BTC"), QStringLiteral("5m"), slug);
+    if (saved.is_err())
+        std::fprintf(stderr, "snapshot warning: %s\n", saved.error().c_str());
+
+    services::edge_radar::CryptoImpulseOptions impulse_options;
+    impulse_options.minimum_confidence = std::min(0.35, options.minimum_confidence);
+    const auto impulse = edge_capture_impulse(QStringLiteral("BTC-USD"),
+                                              edge_parse_latency_sources(sources_raw),
+                                              duration_ms,
+                                              window_seconds,
+                                              impulse_options);
+    const auto signal = services::edge_radar::BtcFiveMinuteEdgeModel::score_market(
+        market, impulse, options, override_market_prob, override_model_prob);
+    auto inserted = edge_journal_insert_btc5m(impulse, signal, slug);
+    if (inserted.is_err()) {
+        std::fprintf(stderr, "%s\n", inserted.error().c_str());
+        return 5;
+    }
+
+    if (opts.json) {
+        QJsonObject obj{{"journal_id", inserted.value()},
+                        {"polymarket_slug", slug},
+                        {"impulse", services::edge_radar::CryptoImpulseModel::to_json(impulse)},
+                        {"signal", services::edge_radar::BtcFiveMinuteEdgeModel::to_json(signal)}};
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("journal      %s\n", qUtf8Printable(inserted.value()));
+    std::printf("market       %s\n", qUtf8Printable(slug));
+    std::printf("call         %s gate=%s status=%s\n",
+                qUtf8Printable(signal.recommendation),
+                qUtf8Printable(signal.gate),
+                signal.passes_gate ? "trade_candidate" : "no_trade");
+    std::printf("probability  market=%s model=%s confidence=%.2f\n",
+                qUtf8Printable(edge_pct(signal.market_probability)),
+                qUtf8Printable(edge_pct(signal.model_probability)),
+                signal.confidence);
+    std::printf("edge         net=%s gate=%s seconds_left=%d\n",
+                qUtf8Printable(edge_pct(signal.edge_after_cost)),
+                qUtf8Printable(edge_pct(signal.gate_edge)),
+                signal.seconds_left);
+    std::printf("reason       %s\n", qUtf8Printable(signal.rejection_reasons.isEmpty()
+                                                       ? signal.rationale
+                                                       : signal.rejection_reasons));
+    return 0;
+}
+
+static int edge_journal_list_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol;
+    QString horizon;
+    QString limit_raw;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon) ||
+        !take_string_option(args, QStringLiteral("--limit"), limit_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: edge journal list [--symbol BTC] [--horizon 5m] [--limit N]\n");
+        return 2;
+    }
+    int limit = 20;
+    if (!limit_raw.isEmpty()) {
+        bool ok = false;
+        limit = limit_raw.toInt(&ok);
+        if (!ok || limit < 1 || limit > 500) {
+            std::fprintf(stderr, "--limit must be 1..500\n");
+            return 2;
+        }
+    }
+    QString sql = QStringLiteral("SELECT %1 FROM edge_decision_journal WHERE 1=1").arg(edge_journal_cols());
+    QVariantList params;
+    if (!symbol.trimmed().isEmpty()) {
+        sql += QStringLiteral(" AND symbol=?");
+        params << symbol.trimmed().toUpper();
+    }
+    if (!horizon.trimmed().isEmpty() && horizon.trimmed().toLower() != QStringLiteral("all")) {
+        sql += QStringLiteral(" AND horizon=?");
+        params << horizon.trimmed().toLower();
+    }
+    sql += QStringLiteral(" ORDER BY created_at DESC LIMIT ?");
+    params << limit;
+    auto r = Database::instance().execute(sql, params);
+    if (r.is_err()) {
+        std::fprintf(stderr, "%s\n", r.error().c_str());
+        return 5;
+    }
+    auto& q = r.value();
+    QJsonArray arr;
+    if (opts.json) {
+        while (q.next())
+            arr.append(edge_journal_row_to_json(q));
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"decisions", arr}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("%-20s %-4s %-7s %-10s %-16s %-8s %-8s %-8s %-7s %s\n",
+                "time", "sym", "horizon", "side", "call", "market", "model", "net", "outcome", "id");
+    while (q.next()) {
+        std::printf("%-20s %-4s %-7s %-10s %-16s %-8s %-8s %-8s %-7s %s\n",
+                    qUtf8Printable(edge_time_text(q.value(1).toLongLong()).mid(0, 19)),
+                    qUtf8Printable(q.value(4).toString()),
+                    qUtf8Printable(q.value(5).toString()),
+                    qUtf8Printable(elide_text(q.value(9).toString(), 10)),
+                    qUtf8Printable(elide_text(q.value(10).toString(), 16)),
+                    qUtf8Printable(edge_pct(q.value(12).toDouble())),
+                    qUtf8Printable(edge_pct(q.value(13).toDouble())),
+                    qUtf8Printable(edge_pct(q.value(15).toDouble())),
+                    qUtf8Printable(edge_outcome_text(q.value(26).toInt())),
+                    qUtf8Printable(q.value(0).toString()));
+    }
+    return 0;
+}
+
+static int edge_journal_show_command(const GlobalOpts& opts, QStringList args) {
+    if (args.size() != 1) {
+        std::fprintf(stderr, "usage: edge journal show <id>\n");
+        return 2;
+    }
+    auto r = Database::instance().execute(
+        QStringLiteral("SELECT %1 FROM edge_decision_journal WHERE id=?").arg(edge_journal_cols()),
+        {args.first()});
+    if (r.is_err()) {
+        std::fprintf(stderr, "%s\n", r.error().c_str());
+        return 5;
+    }
+    auto& q = r.value();
+    if (!q.next()) {
+        std::fprintf(stderr, "decision not found\n");
+        return 4;
+    }
+    const QJsonObject obj = edge_journal_row_to_json(q);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("id           %s\n", qUtf8Printable(obj.value("id").toString()));
+    std::printf("time         %s\n", qUtf8Printable(obj.value("created_at").toString()));
+    std::printf("market       %s %s %s\n",
+                qUtf8Printable(obj.value("venue").toString()),
+                qUtf8Printable(obj.value("symbol").toString()),
+                qUtf8Printable(obj.value("horizon").toString()));
+    std::printf("question     %s\n", qUtf8Printable(obj.value("question").toString()));
+    std::printf("call         %s gate=%s outcome=%s\n",
+                qUtf8Printable(obj.value("call").toString()),
+                qUtf8Printable(obj.value("gate").toString()),
+                qUtf8Printable(obj.value("outcome").toString()));
+    std::printf("probability  market=%s model=%s confidence=%.2f\n",
+                qUtf8Printable(edge_pct(obj.value("market_probability").toDouble())),
+                qUtf8Printable(edge_pct(obj.value("model_probability").toDouble())),
+                obj.value("confidence").toDouble());
+    std::printf("edge         raw=%s net=%s gate=%s\n",
+                qUtf8Printable(edge_pct(obj.value("raw_edge").toDouble())),
+                qUtf8Printable(edge_pct(obj.value("edge_after_cost").toDouble())),
+                qUtf8Printable(edge_pct(obj.value("gate_edge").toDouble())));
+    std::printf("reason       %s\n", qUtf8Printable(obj.value("reasons").toString()));
+    return 0;
+}
+
+static int edge_journal_resolve_command(const GlobalOpts&, QStringList args) {
+    QString outcome_raw;
+    if (!take_string_option(args, QStringLiteral("--outcome"), outcome_raw))
+        return 2;
+    if (outcome_raw.isEmpty() && args.size() >= 2)
+        outcome_raw = args.takeAt(1);
+    if (args.size() != 1 || outcome_raw.isEmpty()) {
+        std::fprintf(stderr, "usage: edge journal resolve <id> --outcome win|loss|pending\n");
+        return 2;
+    }
+    const int outcome = edge_parse_outcome(outcome_raw);
+    if (outcome < -1) {
+        std::fprintf(stderr, "--outcome must be win, loss, or pending\n");
+        return 2;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    auto r = Database::instance().execute(
+        "UPDATE edge_decision_journal SET outcome=?, resolved_at=?, updated_at=? WHERE id=?",
+        {outcome, outcome >= 0 ? now : 0, now, args.first()});
+    if (r.is_err()) {
+        std::fprintf(stderr, "%s\n", r.error().c_str());
+        return 5;
+    }
+    std::printf("resolved     %s outcome=%s\n",
+                qUtf8Printable(args.first()),
+                qUtf8Printable(edge_outcome_text(outcome)));
+    return 0;
+}
+
+static int edge_journal_stats_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol;
+    QString horizon;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: edge journal stats [--symbol BTC] [--horizon 5m]\n");
+        return 2;
+    }
+    QString where = QStringLiteral(" WHERE 1=1");
+    QVariantList params;
+    if (!symbol.trimmed().isEmpty()) {
+        where += QStringLiteral(" AND symbol=?");
+        params << symbol.trimmed().toUpper();
+    }
+    if (!horizon.trimmed().isEmpty() && horizon.trimmed().toLower() != QStringLiteral("all")) {
+        where += QStringLiteral(" AND horizon=?");
+        params << horizon.trimmed().toLower();
+    }
+    auto r = Database::instance().execute(
+        QStringLiteral("SELECT COUNT(*), SUM(CASE WHEN outcome IN (0,1) THEN 1 ELSE 0 END),"
+                       " SUM(CASE WHEN outcome=1 THEN 1 ELSE 0 END), AVG(edge_after_cost),"
+                       " AVG(confidence), SUM(CASE WHEN data_status='trade_candidate' THEN 1 ELSE 0 END)"
+                       " FROM edge_decision_journal%1").arg(where),
+        params);
+    if (r.is_err()) {
+        std::fprintf(stderr, "%s\n", r.error().c_str());
+        return 5;
+    }
+    auto& q = r.value();
+    q.next();
+    const int total = q.value(0).toInt();
+    const int resolved = q.value(1).toInt();
+    const int wins = q.value(2).toInt();
+    const double win_rate = resolved > 0 ? static_cast<double>(wins) / resolved : 0.0;
+    const double avg_edge = q.value(3).toDouble();
+    const double avg_confidence = q.value(4).toDouble();
+    const int candidates = q.value(5).toInt();
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"total", total},
+                                                       {"resolved", resolved},
+                                                       {"wins", wins},
+                                                       {"win_rate", win_rate},
+                                                       {"average_edge_after_cost", avg_edge},
+                                                       {"average_confidence", avg_confidence},
+                                                       {"trade_candidates", candidates}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("decisions    %d\n", total);
+    std::printf("resolved     %d wins=%d win_rate=%s\n", resolved, wins, qUtf8Printable(edge_pct(win_rate)));
+    std::printf("candidates   %d\n", candidates);
+    std::printf("averages     net_edge=%s confidence=%.2f\n", qUtf8Printable(edge_pct(avg_edge)), avg_confidence);
+    return 0;
+}
+
+static int edge_journal_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+    if (sub == "list" || sub == "ls")
+        return edge_journal_list_command(opts, args);
+    if (sub == "show" || sub == "get")
+        return edge_journal_show_command(opts, args);
+    if (sub == "resolve")
+        return edge_journal_resolve_command(opts, args);
+    if (sub == "stats" || sub == "summary")
+        return edge_journal_stats_command(opts, args);
+    if (sub == "evaluate-btc5m-live" || sub == "btc5m-live" || sub == "write-btc5m-live")
+        return edge_journal_evaluate_btc5m_live_command(opts, args);
+    std::fprintf(stderr, "usage: edge journal list|show|resolve|stats|evaluate-btc5m-live\n");
+    return 2;
+}
+
+static int edge_parse_outcome(const QString& raw) {
+    const QString v = raw.trimmed().toLower();
+    if (v.isEmpty() || v == QStringLiteral("pending") || v == QStringLiteral("unknown"))
+        return -1;
+    if (v == QStringLiteral("1") || v == QStringLiteral("win") || v == QStringLiteral("won") ||
+        v == QStringLiteral("yes") || v == QStringLiteral("true") || v == QStringLiteral("up"))
+        return 1;
+    if (v == QStringLiteral("0") || v == QStringLiteral("loss") || v == QStringLiteral("lost") ||
+        v == QStringLiteral("no") || v == QStringLiteral("false") || v == QStringLiteral("down"))
+        return 0;
+    return -2;
+}
+
+static bool edge_take_prediction_features(QStringList& args,
+                                          services::edge_radar::EdgePredictionFeatures& f,
+                                          QString* venue = nullptr,
+                                          QString* market_id = nullptr,
+                                          QString* question = nullptr,
+                                          QString* outcome_raw = nullptr,
+                                          QString* source = nullptr,
+                                          QString* decision_ts_raw = nullptr) {
+    QString symbol_raw;
+    QString horizon_raw;
+    QString direction_raw;
+    QString market_raw;
+    QString btc_raw;
+    QString move5_raw;
+    QString move15_raw;
+    QString move60_raw;
+    QString liquidity_raw;
+    QString spread_raw;
+    QString fee_raw;
+    QString seconds_raw;
+    QString venue_raw;
+    QString market_id_raw;
+    QString question_raw;
+    QString outcome_value;
+    QString source_raw;
+    QString sources_raw;
+    QString decision_raw;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon_raw) ||
+        !take_string_option(args, QStringLiteral("--direction"), direction_raw) ||
+        !take_string_option(args, QStringLiteral("--market-prob"), market_raw) ||
+        !take_string_option(args, QStringLiteral("--btc-prob"), btc_raw) ||
+        !take_string_option(args, QStringLiteral("--move-5s"), move5_raw) ||
+        !take_string_option(args, QStringLiteral("--move-15s"), move15_raw) ||
+        !take_string_option(args, QStringLiteral("--move-60s"), move60_raw) ||
+        !take_string_option(args, QStringLiteral("--liquidity"), liquidity_raw) ||
+        !take_string_option(args, QStringLiteral("--spread"), spread_raw) ||
+        !take_string_option(args, QStringLiteral("--fee"), fee_raw) ||
+        !take_string_option(args, QStringLiteral("--seconds-left"), seconds_raw) ||
+        !take_string_option(args, QStringLiteral("--venue"), venue_raw) ||
+        !take_string_option(args, QStringLiteral("--market-id"), market_id_raw) ||
+        !take_string_option(args, QStringLiteral("--question"), question_raw) ||
+        !take_string_option(args, QStringLiteral("--outcome"), outcome_value) ||
+        !take_string_option(args, QStringLiteral("--source"), source_raw) ||
+        !take_string_option(args, QStringLiteral("--decision-ts"), decision_raw))
+        return false;
+
+    f.symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    f.horizon = services::edge_radar::EdgePredictionModel::normalize_horizon(horizon_raw);
+    if (!services::edge_radar::EdgePredictionModel::supported_horizons().contains(f.horizon)) {
+        std::fprintf(stderr, "--horizon must be 5m, 15m, 1h, or daily\n");
+        return false;
+    }
+    f.direction = direction_raw.trimmed().toLower() == QStringLiteral("down") ? QStringLiteral("down")
+                                                                              : QStringLiteral("up");
+    if (market_raw.isEmpty() || !edge_parse_probability_text(market_raw, f.market_probability)) {
+        std::fprintf(stderr, "--market-prob is required and must be 0-1 or 0-100\n");
+        return false;
+    }
+    if (!btc_raw.isEmpty() && !edge_parse_probability_text(btc_raw, f.btc_anchor_probability)) {
+        std::fprintf(stderr, "--btc-prob must be 0-1 or 0-100\n");
+        return false;
+    }
+    auto parse_double = [](const QString& raw, double& out) {
+        if (raw.isEmpty())
+            return true;
+        bool ok = false;
+        const double v = raw.toDouble(&ok);
+        if (!ok || !std::isfinite(v))
+            return false;
+        out = v;
+        return true;
+    };
+    if (!parse_double(move5_raw, f.move_5s_pct) ||
+        !parse_double(move15_raw, f.move_15s_pct) ||
+        !parse_double(move60_raw, f.move_60s_pct)) {
+        std::fprintf(stderr, "--move-5s/15s/60s must be numeric percent moves, e.g. 0.08\n");
+        return false;
+    }
+    if (!liquidity_raw.isEmpty() && !edge_parse_probability_text(liquidity_raw, f.liquidity_score)) {
+        std::fprintf(stderr, "--liquidity must be 0-1 or 0-100\n");
+        return false;
+    }
+    if (!spread_raw.isEmpty() && !edge_parse_probability_text(spread_raw, f.spread_cost)) {
+        std::fprintf(stderr, "--spread must be 0-1 or 0-100\n");
+        return false;
+    }
+    if (!fee_raw.isEmpty() && !edge_parse_probability_text(fee_raw, f.fee_cost)) {
+        std::fprintf(stderr, "--fee must be 0-1 or 0-100\n");
+        return false;
+    }
+    if (!seconds_raw.isEmpty()) {
+        bool ok = false;
+        const int s = seconds_raw.toInt(&ok);
+        if (!ok || s < -1 || s > 86400) {
+            std::fprintf(stderr, "--seconds-left must be -1..86400\n");
+            return false;
+        }
+        f.seconds_left = s;
+    }
+    if (venue)
+        *venue = venue_raw.trimmed().isEmpty() ? QStringLiteral("polymarket") : venue_raw.trimmed().toLower();
+    if (market_id)
+        *market_id = market_id_raw;
+    if (question)
+        *question = question_raw;
+    if (outcome_raw)
+        *outcome_raw = outcome_value;
+    if (source)
+        *source = source_raw.trimmed().isEmpty() ? QStringLiteral("cli") : source_raw.trimmed();
+    if (decision_ts_raw)
+        *decision_ts_raw = decision_raw;
+    if (!decision_raw.isEmpty()) {
+        bool ok = false;
+        const qint64 ms = decision_raw.toLongLong(&ok);
+        if (ok && ms > 0) {
+            f.decision_ts = ms;
+        } else {
+            const QDateTime dt = QDateTime::fromString(decision_raw, Qt::ISODate);
+            if (!dt.isValid()) {
+                std::fprintf(stderr, "--decision-ts must be epoch milliseconds or ISO timestamp\n");
+                return false;
+            }
+            f.decision_ts = dt.toMSecsSinceEpoch();
+        }
+    }
+    return true;
+}
+
+static int edge_observe_command(const GlobalOpts& opts, QStringList args) {
+    services::edge_radar::EdgePredictionFeatures f;
+    QString venue;
+    QString market_id;
+    QString question;
+    QString outcome_raw;
+    QString source;
+    if (!edge_take_prediction_features(args, f, &venue, &market_id, &question, &outcome_raw, &source))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+    const int outcome = edge_parse_outcome(outcome_raw);
+    if (outcome < -1) {
+        std::fprintf(stderr, "--outcome must be win|loss|pending\n");
+        return 2;
+    }
+
+    EdgePredictionObservation o;
+    o.venue = venue;
+    o.symbol = f.symbol;
+    o.horizon = f.horizon;
+    o.market_id = market_id;
+    o.question = question;
+    o.direction = f.direction;
+    o.market_probability = f.market_probability;
+    o.btc_anchor_probability = f.btc_anchor_probability;
+    o.move_5s_pct = f.move_5s_pct;
+    o.move_15s_pct = f.move_15s_pct;
+    o.move_60s_pct = f.move_60s_pct;
+    o.liquidity_score = f.liquidity_score;
+    o.spread_cost = f.spread_cost;
+    o.fee_cost = f.fee_cost;
+    o.seconds_left = f.seconds_left;
+    o.outcome = outcome;
+    o.source = source;
+    auto saved = EdgePredictionModelRepository::instance().add_observation(o);
+    if (saved.is_err()) {
+        std::fprintf(stderr, "%s\n", saved.error().c_str());
+        return 1;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(edge_prediction_observation_to_json(saved.value()))
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("observed     %s %s %s outcome=%s id=%s\n",
+                qUtf8Printable(saved.value().symbol),
+                qUtf8Printable(saved.value().horizon),
+                qUtf8Printable(edge_pct(saved.value().market_probability)),
+                saved.value().outcome < 0 ? "pending" : (saved.value().outcome == 1 ? "win" : "loss"),
+                qUtf8Printable(saved.value().id));
+    return 0;
+}
+
+static int edge_train_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol_raw;
+    QString horizon_raw;
+    QString min_raw;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon_raw) ||
+        !take_string_option(args, QStringLiteral("--min-samples"), min_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+    int min_samples = 30;
+    if (!min_raw.isEmpty()) {
+        bool ok = false;
+        min_samples = min_raw.toInt(&ok);
+        if (!ok || min_samples < 1 || min_samples > 100000) {
+            std::fprintf(stderr, "--min-samples must be 1..100000\n");
+            return 2;
+        }
+    }
+    const QString symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    const QString horizon = horizon_raw.trimmed().isEmpty()
+                                ? QStringLiteral("all")
+                                : services::edge_radar::EdgePredictionModel::normalize_horizon(horizon_raw);
+    const QStringList horizons = horizon == QStringLiteral("all") || horizon.isEmpty()
+                                     ? services::edge_radar::EdgePredictionModel::supported_horizons()
+                                     : QStringList{horizon};
+    QJsonArray json_rows;
+    for (const auto& h : horizons) {
+        auto r = services::edge_radar::EdgePredictionModel::train(symbol, h, min_samples);
+        if (r.is_err()) {
+            std::fprintf(stderr, "%s\n", r.error().c_str());
+            return 1;
+        }
+        if (opts.json) {
+            json_rows.append(services::edge_radar::EdgePredictionModel::train_result_to_json(r.value()));
+        } else {
+            const auto& m = r.value().model;
+            std::printf("model        %s %s readiness=%s samples=%d wins=%d base=%s brier=%.4f\n",
+                        qUtf8Printable(m.symbol),
+                        qUtf8Printable(m.horizon),
+                        qUtf8Printable(r.value().readiness),
+                        m.sample_count,
+                        m.positive_count,
+                        qUtf8Printable(edge_pct(m.base_rate)),
+                        m.brier_score);
+        }
+    }
+    if (opts.json)
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"models", json_rows}})
+                                .toJson(QJsonDocument::Compact).constData());
+    return 0;
+}
+
+static int edge_model_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol_raw;
+    QString horizon_raw;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+    const QString symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    const QString horizon = horizon_raw.trimmed().isEmpty()
+                                ? QStringLiteral("all")
+                                : services::edge_radar::EdgePredictionModel::normalize_horizon(horizon_raw);
+    auto models = EdgePredictionModelRepository::instance().list_models(symbol);
+    if (models.is_err()) {
+        std::fprintf(stderr, "%s\n", models.error().c_str());
+        return 1;
+    }
+    QJsonArray arr;
+    for (const auto& m : models.value()) {
+        if (!horizon.isEmpty() && horizon != QStringLiteral("all") && m.horizon != horizon)
+            continue;
+        if (opts.json) {
+            arr.append(edge_prediction_model_to_json(m));
+        } else {
+            std::printf("model        %s %s samples=%d wins=%d base=%s brier=%.4f trained=%s\n",
+                        qUtf8Printable(m.symbol),
+                        qUtf8Printable(m.horizon),
+                        m.sample_count,
+                        m.positive_count,
+                        qUtf8Printable(edge_pct(m.base_rate)),
+                        m.brier_score,
+                        qUtf8Printable(QDateTime::fromMSecsSinceEpoch(m.trained_at).toString(Qt::ISODate)));
+        }
+    }
+    if (opts.json)
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"models", arr}})
+                                .toJson(QJsonDocument::Compact).constData());
+    return 0;
+}
+
+static int edge_probability_command(const GlobalOpts& opts, QStringList args) {
+    QString min_raw;
+    const bool publish = take_bool_flag(args, QStringLiteral("--publish"));
+    if (!take_string_option(args, QStringLiteral("--min-samples"), min_raw))
+        return 2;
+    services::edge_radar::EdgePredictionFeatures f;
+    if (!edge_take_prediction_features(args, f))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+    int min_samples = 30;
+    if (!min_raw.isEmpty()) {
+        bool ok = false;
+        min_samples = min_raw.toInt(&ok);
+        if (!ok || min_samples < 1 || min_samples > 100000) {
+            std::fprintf(stderr, "--min-samples must be 1..100000\n");
+            return 2;
+        }
+    }
+    const auto estimate = services::edge_radar::EdgePredictionModel::estimate(f, min_samples);
+    if (publish) {
+        auto r = services::edge_radar::EdgePredictionModel::publish_estimate(estimate, QStringLiteral("cli"));
+        if (r.is_err()) {
+            std::fprintf(stderr, "%s\n", r.error().c_str());
+            return 1;
+        }
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(services::edge_radar::EdgePredictionModel::estimate_to_json(estimate))
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("probability  %s %s p=%s source=%s readiness=%s confidence=%s net_edge=%s samples=%d\n",
+                qUtf8Printable(estimate.symbol),
+                qUtf8Printable(estimate.horizon),
+                qUtf8Printable(edge_pct(estimate.probability)),
+                qUtf8Printable(estimate.probability_source),
+                qUtf8Printable(estimate.readiness),
+                qUtf8Printable(edge_pct(estimate.confidence)),
+                qUtf8Printable(edge_pct(estimate.net_edge)),
+                estimate.sample_count);
+    std::printf("rationale    %s\n", qUtf8Printable(estimate.rationale));
+    if (!estimate.feature_sources.isEmpty())
+        std::printf("features     %s\n", qUtf8Printable(estimate.feature_sources.join(QStringLiteral("; "))));
+    if (!estimate.leakage_rejections.isEmpty())
+        std::printf("rejected     %s\n", qUtf8Printable(estimate.leakage_rejections.join(QStringLiteral("; "))));
+    if (!estimate.warnings.isEmpty())
+        std::printf("warnings     %s\n", qUtf8Printable(estimate.warnings.join(QStringLiteral("; "))));
+    if (publish)
+        std::printf("published    yes\n");
+    return 0;
+}
+
+static int edge_gate_command(const GlobalOpts& opts, QStringList args) {
+    QString min_raw;
+    if (!take_string_option(args, QStringLiteral("--min-samples"), min_raw))
+        return 2;
+    services::edge_radar::EdgePredictionFeatures f;
+    if (!edge_take_prediction_features(args, f))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+    int min_samples = 30;
+    if (!min_raw.isEmpty()) {
+        bool ok = false;
+        min_samples = min_raw.toInt(&ok);
+        if (!ok || min_samples < 1 || min_samples > 100000) {
+            std::fprintf(stderr, "--min-samples must be 1..100000\n");
+            return 2;
+        }
+    }
+    const auto decision = services::edge_radar::EdgePredictionModel::meta_gate(f, min_samples);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(services::edge_radar::EdgePredictionModel::meta_gate_to_json(decision))
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("gate         %s\n", qUtf8Printable(decision.call));
+    std::printf("explain      %s\n", qUtf8Printable(decision.explanation));
+    if (!decision.primary.feature_sources.isEmpty())
+        std::printf("features     %s\n", qUtf8Printable(decision.primary.feature_sources.join(QStringLiteral("; "))));
+    if (!decision.reasons.isEmpty())
+        std::printf("reasons      %s\n", qUtf8Printable(decision.reasons.join(QStringLiteral("; "))));
+    return 0;
+}
+
+static int edge_publish_horizons_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol_raw;
+    QString market_raw;
+    QString btc_raw;
+    QString spread_raw;
+    QString fee_raw;
+    QString min_raw;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--market-prob"), market_raw) ||
+        !take_string_option(args, QStringLiteral("--btc-prob"), btc_raw) ||
+        !take_string_option(args, QStringLiteral("--spread"), spread_raw) ||
+        !take_string_option(args, QStringLiteral("--fee"), fee_raw) ||
+        !take_string_option(args, QStringLiteral("--min-samples"), min_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+
+    const QString symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    double market_probability = 0.50;
+    double btc_probability = 0.50;
+    double spread_cost = 0.03;
+    double fee_cost = 0.0;
+    if (!market_raw.isEmpty() && !edge_parse_probability_text(market_raw, market_probability)) {
+        std::fprintf(stderr, "--market-prob must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!btc_raw.isEmpty() && !edge_parse_probability_text(btc_raw, btc_probability)) {
+        std::fprintf(stderr, "--btc-prob must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!spread_raw.isEmpty() && !edge_parse_probability_text(spread_raw, spread_cost)) {
+        std::fprintf(stderr, "--spread must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!fee_raw.isEmpty() && !edge_parse_probability_text(fee_raw, fee_cost)) {
+        std::fprintf(stderr, "--fee must be 0-1 or 0-100\n");
+        return 2;
+    }
+    int min_samples = 30;
+    if (!min_raw.isEmpty()) {
+        bool ok = false;
+        min_samples = min_raw.toInt(&ok);
+        if (!ok || min_samples < 1 || min_samples > 100000) {
+            std::fprintf(stderr, "--min-samples must be 1..100000\n");
+            return 2;
+        }
+    }
+
+    QJsonArray rows;
+    if (!opts.json)
+        std::printf("%-8s %-10s %-10s %-12s %-10s %s\n",
+                    "symbol", "horizon", "prob", "readiness", "samples", "source");
+    for (const auto& horizon : services::edge_radar::EdgePredictionModel::supported_horizons()) {
+        services::edge_radar::EdgePredictionFeatures f;
+        f.symbol = symbol;
+        f.horizon = horizon;
+        f.direction = QStringLiteral("up");
+        f.market_probability = market_probability;
+        f.btc_anchor_probability = btc_probability;
+        f.spread_cost = spread_cost;
+        f.fee_cost = fee_cost;
+        f.seconds_left = services::edge_radar::EdgePredictionModel::horizon_seconds(horizon);
+        const auto estimate = services::edge_radar::EdgePredictionModel::estimate(f, min_samples);
+        auto saved = services::edge_radar::EdgePredictionModel::publish_estimate(
+            estimate, QStringLiteral("daemon-publisher"));
+        if (saved.is_err()) {
+            std::fprintf(stderr, "%s\n", saved.error().c_str());
+            return 1;
+        }
+        const QJsonObject obj = services::edge_radar::EdgePredictionModel::estimate_to_json(estimate);
+        rows.append(obj);
+        if (!opts.json) {
+            std::printf("%-8s %-10s %-10s %-12s %-10d %s\n",
+                        qUtf8Printable(estimate.symbol),
+                        qUtf8Printable(estimate.horizon),
+                        qUtf8Printable(edge_pct(estimate.probability)),
+                        qUtf8Printable(estimate.readiness.left(12)),
+                        estimate.sample_count,
+                        qUtf8Printable(estimate.probability_source));
+        }
+    }
+    if (opts.json)
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"symbol", symbol},
+                                                       {"published", rows}})
+                                .toJson(QJsonDocument::Compact).constData());
+    return 0;
+}
+
+static int edge_leakage_selftest_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: edge selftest-leakage\n");
+        return 2;
+    }
+    QString details;
+    const bool ok = services::edge_radar::EdgePredictionModel::no_lookahead_selftest(&details);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"ok", ok}, {"details", details}})
+                                .toJson(QJsonDocument::Compact).constData());
+        return ok ? 0 : 1;
+    }
+    std::printf("no-lookahead %s %s\n", ok ? "PASS" : "FAIL", qUtf8Printable(details));
+    return ok ? 0 : 1;
+}
+
+struct EdgeBackfillCandle {
+    qint64 open_ms = 0;
+    double open = 0.0;
+    double high = 0.0;
+    double low = 0.0;
+    double close = 0.0;
+    double volume = 0.0;
+};
+
+struct EdgeBackfillResult {
+    QString source;
+    QString symbol;
+    QString venue_symbol;
+    qint64 from_ms = 0;
+    qint64 to_ms = 0;
+    int candles = 0;
+    int ticks_written = 0;
+    QMap<QString, int> observations_by_horizon;
+    QMap<QString, int> trained_samples_by_horizon;
+    QStringList warnings;
+};
+
+struct EdgeCollectedTick {
+    QString source;
+    QString venue_symbol;
+    EdgePredictionRawTick tick;
+    QString error;
+};
+
+struct EdgeTickerTerminalState {
+    QStringList rows = QStringList(12, QString(96, QLatin1Char(' ')));
+    int row = 0;
+    int col = 0;
+    bool in_escape = false;
+    QString escape;
+};
+
+static void edge_apply_terminal_escape(EdgeTickerTerminalState& term, const QString& seq) {
+    if (!seq.startsWith(QLatin1Char('[')))
+        return;
+    const QChar cmd = seq.back();
+    QString body = seq.mid(1, seq.size() - 2);
+    body.remove(QLatin1Char('?'));
+    const QStringList parts = body.split(';', Qt::SkipEmptyParts);
+
+    if (cmd == QLatin1Char('J') && body == QLatin1String("2")) {
+        term.rows = QStringList(12, QString(96, QLatin1Char(' ')));
+        term.row = 0;
+        term.col = 0;
+        return;
+    }
+    if (cmd == QLatin1Char('H') || cmd == QLatin1Char('f')) {
+        int row = 1;
+        int col = 1;
+        if (!parts.isEmpty())
+            row = parts.value(0).toInt();
+        if (parts.size() > 1)
+            col = parts.value(1).toInt();
+        term.row = qBound(0, row - 1, qMax(0, term.rows.size() - 1));
+        term.col = qMax(0, col - 1);
+        return;
+    }
+    if (cmd == QLatin1Char('C')) {
+        const int amount = parts.isEmpty() ? body.toInt() : parts.first().toInt();
+        term.col += qMax(1, amount);
+    }
+}
+
+static void edge_absorb_terminal_bytes(EdgeTickerTerminalState& term, const QByteArray& bytes) {
+    const QString text = QString::fromLatin1(bytes);
+    for (const QChar ch : text) {
+        const ushort u = ch.unicode();
+        if (term.in_escape) {
+            term.escape.append(ch);
+            if ((term.escape.size() > 1 && u >= 0x40 && u <= 0x7e) || term.escape.size() > 32) {
+                edge_apply_terminal_escape(term, term.escape);
+                term.escape.clear();
+                term.in_escape = false;
+            }
+            continue;
+        }
+        if (u == 0x1b) {
+            term.in_escape = true;
+            term.escape.clear();
+            continue;
+        }
+        if (ch == QLatin1Char('\r')) {
+            term.col = 0;
+            continue;
+        }
+        if (ch == QLatin1Char('\n')) {
+            term.row = qBound(0, term.row + 1, term.rows.size() - 1);
+            term.col = 0;
+            continue;
+        }
+        if (u < 32 || u == 127 || u == 0xff || u == 0xfb)
+            continue;
+        if (term.row < 0 || term.row >= term.rows.size())
+            continue;
+        if (term.col >= term.rows[term.row].size())
+            term.rows[term.row].resize(term.col + 16, QLatin1Char(' '));
+        term.rows[term.row][term.col] = ch;
+        term.col += 1;
+    }
+}
+
+static double edge_parse_bitcointicker_price(const EdgeTickerTerminalState& term) {
+    static const QRegularExpression coinbase_re(
+        QStringLiteral("Coinbase:\\$\\s*([0-9]+(?:\\.[0-9]+)?)"));
+    for (const QString& row : term.rows) {
+        const auto match = coinbase_re.match(row);
+        if (!match.hasMatch())
+            continue;
+        bool ok = false;
+        const double price = match.captured(1).toDouble(&ok);
+        if (ok && price > 0.0)
+            return price;
+    }
+    return 0.0;
+}
+
+static QString edge_utc_iso(qint64 ms) {
+    return QDateTime::fromMSecsSinceEpoch(ms, QTimeZone::UTC).toString(Qt::ISODate);
+}
+
+static QString edge_binance_symbol(const QString& symbol) {
+    QString s = symbol.trimmed().toUpper();
+    s.remove('-');
+    s.remove('/');
+    if (s.endsWith(QStringLiteral("USDT")))
+        return s;
+    if (s.endsWith(QStringLiteral("USD")))
+        return s.left(s.size() - 3) + QStringLiteral("USDT");
+    return s + QStringLiteral("USDT");
+}
+
+static QString edge_coinbase_product(const QString& symbol) {
+    QString s = symbol.trimmed().toUpper();
+    s.replace('/', '-');
+    if (s.contains('-'))
+        return s;
+    if (s.endsWith(QStringLiteral("USD")))
+        return s.left(s.size() - 3) + QStringLiteral("-USD");
+    return s + QStringLiteral("-USD");
+}
+
+static double edge_pct_move(double now, double before) {
+    if (before <= 0.0 || now <= 0.0)
+        return 0.0;
+    return ((now / before) - 1.0) * 100.0;
+}
+
+static double edge_anchor_from_momentum(double move_15m, double move_60m) {
+    return std::clamp(0.5 + move_15m * 0.035 + move_60m * 0.015, 0.05, 0.95);
+}
+
+static QStringList edge_parse_sources(const QString& raw, const QStringList& defaults) {
+    QStringList out;
+    const QStringList parts = raw.trimmed().isEmpty() ? defaults : raw.split(',', Qt::SkipEmptyParts);
+    for (QString part : parts) {
+        part = part.trimmed().toLower();
+        if (!part.isEmpty() && !out.contains(part))
+            out << part;
+    }
+    return out;
+}
+
+static bool edge_parse_date_ms(const QString& raw, qint64* out, bool end_of_day) {
+    if (raw.trimmed().isEmpty())
+        return true;
+    bool ok = false;
+    const qint64 ms = raw.toLongLong(&ok);
+    if (ok && ms > 0) {
+        *out = ms;
+        return true;
+    }
+    const QDate date = QDate::fromString(raw.trimmed(), Qt::ISODate);
+    if (date.isValid()) {
+        QTime time = end_of_day ? QTime(23, 59, 59, 999) : QTime(0, 0, 0, 0);
+        *out = QDateTime(date, time, QTimeZone::UTC).toMSecsSinceEpoch();
+        return true;
+    }
+    const QDateTime dt = QDateTime::fromString(raw.trimmed(), Qt::ISODate);
+    if (dt.isValid()) {
+        *out = dt.toMSecsSinceEpoch();
+        return true;
+    }
+    return false;
+}
+
+static EdgeCollectedTick edge_fetch_live_crypto_tick(const QString& source,
+                                                     const QString& symbol,
+                                                     int timeout_ms) {
+    EdgeCollectedTick out;
+    out.source = source;
+    out.tick.symbol = symbol.trimmed().toUpper();
+    out.tick.source = source;
+    out.tick.received_ts = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+
+    bool ok = false;
+    QUrl url;
+    if (source == QStringLiteral("coinbase")) {
+        out.venue_symbol = edge_coinbase_product(symbol);
+        url = QUrl(QStringLiteral("https://api.exchange.coinbase.com/products/%1/ticker").arg(out.venue_symbol));
+    } else if (source == QStringLiteral("binance")) {
+        out.venue_symbol = edge_binance_symbol(symbol);
+        QUrl u(QStringLiteral("https://api.binance.com/api/v3/ticker/price"));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("symbol"), out.venue_symbol);
+        u.setQuery(query);
+        url = u;
+    } else if (source == QStringLiteral("kraken")) {
+        out.venue_symbol = symbol.trimmed().toUpper() == QStringLiteral("BTC") ? QStringLiteral("XBTUSD")
+                                                                               : symbol.trimmed().toUpper() + QStringLiteral("USD");
+        QUrl u(QStringLiteral("https://api.kraken.com/0/public/Ticker"));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("pair"), out.venue_symbol);
+        u.setQuery(query);
+        url = u;
+    } else if (source == QStringLiteral("bitcointicker")) {
+        out.venue_symbol = QStringLiteral("bitcointicker:coinbase-usd");
+        QTcpSocket socket;
+        socket.connectToHost(QStringLiteral("ticker.bitcointicker.co"), 10080);
+        if (!socket.waitForConnected(timeout_ms)) {
+            out.error = socket.errorString();
+            return out;
+        }
+        EdgeTickerTerminalState term;
+        const qint64 start = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+        while (QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() - start < timeout_ms) {
+            if (!socket.waitForReadyRead(250))
+                continue;
+            edge_absorb_terminal_bytes(term, socket.readAll());
+            out.tick.price = edge_parse_bitcointicker_price(term);
+            ok = out.tick.price > 0.0;
+            if (!ok)
+                continue;
+            out.tick.exchange_ts = 0;
+            out.tick.received_ts = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+            break;
+        }
+        socket.disconnectFromHost();
+        if (!ok || out.tick.price <= 0.0) {
+            out.error = QStringLiteral("missing price");
+            return out;
+        }
+        out.tick.id = QStringLiteral("live:%1:%2:%3")
+                          .arg(source, out.tick.symbol, QString::number(out.tick.received_ts));
+        return out;
+    } else {
+        out.error = QStringLiteral("unsupported source");
+        return out;
+    }
+
+    QJsonDocument doc;
+    QString error;
+    if (!edge_http_get_json(url, timeout_ms, &doc, &error)) {
+        out.error = error;
+        return out;
+    }
+
+    const QJsonObject root = doc.object();
+    if (source == QStringLiteral("coinbase")) {
+        out.tick.price = root.value(QStringLiteral("price")).toString().toDouble(&ok);
+        const QDateTime exchange_time = QDateTime::fromString(root.value(QStringLiteral("time")).toString(), Qt::ISODateWithMs);
+        out.tick.exchange_ts = exchange_time.isValid() ? exchange_time.toMSecsSinceEpoch() : out.tick.received_ts;
+    } else if (source == QStringLiteral("binance")) {
+        out.tick.price = root.value(QStringLiteral("price")).toString().toDouble(&ok);
+        out.tick.exchange_ts = out.tick.received_ts;
+    } else if (source == QStringLiteral("kraken")) {
+        const QJsonObject result = root.value(QStringLiteral("result")).toObject();
+        const QStringList keys = result.keys();
+        if (!keys.isEmpty()) {
+            const QJsonArray close = result.value(keys.first()).toObject().value(QStringLiteral("c")).toArray();
+            out.tick.price = close.at(0).toString().toDouble(&ok);
+            out.tick.exchange_ts = out.tick.received_ts;
+        }
+    }
+    if (!ok || out.tick.price <= 0.0) {
+        out.error = QStringLiteral("missing price");
+        return out;
+    }
+    out.tick.id = QStringLiteral("live:%1:%2:%3")
+                      .arg(source, out.tick.symbol, QString::number(out.tick.received_ts));
+    return out;
+}
+
+static QVector<EdgeCollectedTick> edge_collect_once(const QString& symbol,
+                                                    const QStringList& sources,
+                                                    int timeout_ms) {
+    QVector<EdgeCollectedTick> rows;
+    for (const auto& source : sources) {
+        rows.append(edge_fetch_live_crypto_tick(source, symbol, timeout_ms));
+    }
+
+    QVector<double> exchange_prices;
+    for (const auto& row : rows) {
+        if (!row.error.isEmpty() || row.tick.price <= 0.0)
+            continue;
+        if (row.source == QStringLiteral("bitcointicker"))
+            continue;
+        exchange_prices.append(row.tick.price);
+    }
+    double exchange_reference = 0.0;
+    if (!exchange_prices.isEmpty()) {
+        std::sort(exchange_prices.begin(), exchange_prices.end());
+        exchange_reference = exchange_prices.at(exchange_prices.size() / 2);
+    }
+
+    auto& repo = EdgePredictionModelRepository::instance();
+    for (auto& row : rows) {
+        if (row.error.isEmpty() && row.source == QStringLiteral("bitcointicker") && exchange_reference > 0.0) {
+            const double drift = std::abs(row.tick.price - exchange_reference) / exchange_reference;
+            if (drift > 0.02)
+                row.error = QStringLiteral("outlier vs exchange reference");
+        }
+        if (row.error.isEmpty()) {
+            auto saved = repo.add_raw_tick(row.tick);
+            if (saved.is_err())
+                row.error = QString::fromStdString(saved.error());
+        }
+    }
+    return rows;
+}
+
+static QString edge_latency_symbol(const QString& symbol) {
+    QString s = symbol.trimmed().toUpper();
+    s.replace('/', '-');
+    if (s.contains('-'))
+        return s;
+    if (s.endsWith(QStringLiteral("USD")))
+        return s.left(s.size() - 3) + QStringLiteral("-USD");
+    return s + QStringLiteral("-USD");
+}
+
+static QVector<EdgeCollectedTick> edge_collect_stream(const QString& symbol,
+                                                      const QStringList& sources,
+                                                      int duration_ms,
+                                                      int fallback_timeout_ms) {
+    using services::crypto_latency::CryptoLatencyService;
+    using services::crypto_latency::CryptoLatencyTick;
+
+    QVector<EdgeCollectedTick> rows;
+    QHash<QString, double> latest_exchange_price;
+    QHash<QString, qint64> latest_exchange_ts;
+    auto& repo = EdgePredictionModelRepository::instance();
+
+    CryptoLatencyService service;
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+
+    QObject::connect(&service, &CryptoLatencyService::tick_received, &loop,
+                     [&](const CryptoLatencyTick& tick) {
+                         EdgeCollectedTick row;
+                         row.source = tick.source;
+                         row.venue_symbol = tick.venue_symbol;
+                         row.tick.id = QStringLiteral("live-stream:%1:%2:%3:%4")
+                                           .arg(tick.source,
+                                                symbol,
+                                                QString::number(tick.received_ts_ms),
+                                                QString::number(tick.sequence));
+                         row.tick.symbol = symbol;
+                         row.tick.source = tick.source;
+                         row.tick.price = tick.price;
+                         row.tick.exchange_ts = tick.exchange_ts_ms;
+                         row.tick.received_ts = tick.received_ts_ms;
+
+                         if (tick.source != QStringLiteral("bitcointicker") && tick.price > 0.0) {
+                             latest_exchange_price.insert(tick.source, tick.price);
+                             latest_exchange_ts.insert(tick.source, tick.received_ts_ms);
+                         }
+
+                         if (tick.source == QStringLiteral("bitcointicker")) {
+                             QVector<double> fresh_refs;
+                             for (auto it = latest_exchange_price.cbegin(); it != latest_exchange_price.cend(); ++it) {
+                                 const qint64 ref_ts = latest_exchange_ts.value(it.key());
+                                 if (tick.received_ts_ms - ref_ts <= 5000)
+                                     fresh_refs.append(it.value());
+                             }
+                             if (!fresh_refs.isEmpty()) {
+                                 std::sort(fresh_refs.begin(), fresh_refs.end());
+                                 const double ref = fresh_refs.at(fresh_refs.size() / 2);
+                                 const double drift = std::abs(tick.price - ref) / ref;
+                                 if (drift > 0.02)
+                                     row.error = QStringLiteral("outlier vs exchange reference");
+                             }
+                         }
+
+                         if (row.error.isEmpty()) {
+                             auto saved = repo.add_raw_tick(row.tick);
+                             if (saved.is_err())
+                                 row.error = QString::fromStdString(saved.error());
+                         }
+                         rows.append(row);
+                     });
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+
+    service.start(edge_latency_symbol(symbol), sources);
+    timeout.start(duration_ms);
+    loop.exec();
+    service.stop();
+    if (fallback_timeout_ms > 0) {
+        QStringList seen;
+        for (const auto& row : rows) {
+            if (row.error.isEmpty() && row.tick.price > 0.0 && !seen.contains(row.source))
+                seen << row.source;
+        }
+        QStringList missing;
+        for (const auto& source : sources)
+            if (!seen.contains(source))
+                missing << source;
+        if (!missing.isEmpty())
+            rows += edge_collect_once(symbol, missing, fallback_timeout_ms);
+    }
+    return rows;
+}
+
+static Result<QVector<EdgeBackfillCandle>>
+edge_fetch_binance_1m_klines(const QString& venue_symbol,
+                             qint64 from_ms,
+                             qint64 to_ms,
+                             int timeout_ms) {
+    QVector<EdgeBackfillCandle> candles;
+    qint64 cursor = from_ms;
+    int pages = 0;
+    while (cursor < to_ms && pages < 2000) {
+        QUrl url(QStringLiteral("https://api.binance.com/api/v3/klines"));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("symbol"), venue_symbol);
+        query.addQueryItem(QStringLiteral("interval"), QStringLiteral("1m"));
+        query.addQueryItem(QStringLiteral("startTime"), QString::number(cursor));
+        query.addQueryItem(QStringLiteral("endTime"), QString::number(to_ms));
+        query.addQueryItem(QStringLiteral("limit"), QStringLiteral("1000"));
+        url.setQuery(query);
+
+        QJsonDocument doc;
+        QString error;
+        if (!edge_http_get_json(url, timeout_ms, &doc, &error))
+            return Result<QVector<EdgeBackfillCandle>>::err(error.toStdString());
+        const QJsonArray rows = doc.array();
+        if (rows.isEmpty())
+            break;
+
+        qint64 last_open = cursor;
+        for (const auto& value : rows) {
+            const QJsonArray row = value.toArray();
+            if (row.size() < 6)
+                continue;
+            EdgeBackfillCandle c;
+            c.open_ms = static_cast<qint64>(row.at(0).toDouble());
+            c.open = row.at(1).toString().toDouble();
+            c.high = row.at(2).toString().toDouble();
+            c.low = row.at(3).toString().toDouble();
+            c.close = row.at(4).toString().toDouble();
+            c.volume = row.at(5).toString().toDouble();
+            if (c.open_ms >= from_ms && c.open_ms <= to_ms && c.close > 0.0) {
+                candles.append(c);
+                last_open = c.open_ms;
+            }
+        }
+        if (last_open < cursor)
+            break;
+        cursor = last_open + 60000;
+        ++pages;
+        if (rows.size() < 1000)
+            break;
+    }
+    std::sort(candles.begin(), candles.end(), [](const auto& a, const auto& b) {
+        return a.open_ms < b.open_ms;
+    });
+    return Result<QVector<EdgeBackfillCandle>>::ok(candles);
+}
+
+static Result<QVector<EdgeBackfillCandle>>
+edge_fetch_coinbase_1m_candles(const QString& product,
+                               qint64 from_ms,
+                               qint64 to_ms,
+                               int timeout_ms) {
+    QVector<EdgeBackfillCandle> candles;
+    qint64 cursor = from_ms;
+    int pages = 0;
+    while (cursor < to_ms && pages < 3000) {
+        const qint64 chunk_end = std::min(cursor + 300LL * 60000LL, to_ms);
+        QUrl url(QStringLiteral("https://api.exchange.coinbase.com/products/%1/candles").arg(product));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("granularity"), QStringLiteral("60"));
+        query.addQueryItem(QStringLiteral("start"), edge_utc_iso(cursor));
+        query.addQueryItem(QStringLiteral("end"), edge_utc_iso(chunk_end));
+        url.setQuery(query);
+
+        QJsonDocument doc;
+        QString error;
+        if (!edge_http_get_json(url, timeout_ms, &doc, &error))
+            return Result<QVector<EdgeBackfillCandle>>::err(error.toStdString());
+        const QJsonArray rows = doc.array();
+        for (const auto& value : rows) {
+            const QJsonArray row = value.toArray();
+            if (row.size() < 6)
+                continue;
+            EdgeBackfillCandle c;
+            c.open_ms = static_cast<qint64>(row.at(0).toDouble()) * 1000;
+            c.low = row.at(1).toDouble();
+            c.high = row.at(2).toDouble();
+            c.open = row.at(3).toDouble();
+            c.close = row.at(4).toDouble();
+            c.volume = row.at(5).toDouble();
+            if (c.open_ms >= from_ms && c.open_ms <= to_ms && c.close > 0.0)
+                candles.append(c);
+        }
+        cursor = chunk_end + 60000;
+        ++pages;
+        if (rows.isEmpty() && chunk_end >= to_ms)
+            break;
+    }
+    std::sort(candles.begin(), candles.end(), [](const auto& a, const auto& b) {
+        return a.open_ms < b.open_ms;
+    });
+    auto last = std::unique(candles.begin(), candles.end(), [](const auto& a, const auto& b) {
+        return a.open_ms == b.open_ms;
+    });
+    candles.erase(last, candles.end());
+    return Result<QVector<EdgeBackfillCandle>>::ok(candles);
+}
+
+static EdgeBackfillResult edge_derive_crypto_observations(const QString& source,
+                                                          const QString& symbol,
+                                                          const QString& venue_symbol,
+                                                          qint64 from_ms,
+                                                          qint64 to_ms,
+                                                          const QVector<EdgeBackfillCandle>& candles) {
+    EdgeBackfillResult result;
+    result.source = source;
+    result.symbol = symbol;
+    result.venue_symbol = venue_symbol;
+    result.from_ms = from_ms;
+    result.to_ms = to_ms;
+    result.candles = candles.size();
+
+    auto& repo = EdgePredictionModelRepository::instance();
+    for (const auto& c : candles) {
+        EdgePredictionRawTick tick;
+        tick.id = QStringLiteral("%1:%2:%3").arg(source, symbol, QString::number(c.open_ms));
+        tick.symbol = symbol;
+        tick.source = source + QStringLiteral("-1m-close");
+        tick.price = c.close;
+        tick.exchange_ts = c.open_ms;
+        tick.received_ts = c.open_ms;
+        auto saved = repo.add_raw_tick(tick);
+        if (saved.is_ok())
+            ++result.ticks_written;
+        else
+            result.warnings << QStringLiteral("tick write failed: %1").arg(QString::fromStdString(saved.error()));
+    }
+
+    const QMap<QString, int> horizon_minutes{{QStringLiteral("5m"), 5},
+                                             {QStringLiteral("15m"), 15},
+                                             {QStringLiteral("1h"), 60},
+                                             {QStringLiteral("daily"), 1440}};
+    for (int i = 60; i < candles.size(); ++i) {
+        const auto& current = candles.at(i);
+        const double move_1m = edge_pct_move(current.close, candles.at(i - 1).close);
+        const double move_15m = edge_pct_move(current.close, candles.at(std::max(0, i - 15)).close);
+        const double move_60m = edge_pct_move(current.close, candles.at(i - 60).close);
+        for (auto it = horizon_minutes.cbegin(); it != horizon_minutes.cend(); ++it) {
+            const QString horizon = it.key();
+            const int future_index = i + it.value();
+            if (future_index >= candles.size())
+                continue;
+            const auto& future = candles.at(future_index);
+            EdgePredictionObservation o;
+            o.id = QStringLiteral("%1:%2:%3:%4").arg(source, symbol, horizon, QString::number(current.open_ms));
+            o.venue = source;
+            o.symbol = symbol;
+            o.horizon = horizon;
+            o.market_id = QStringLiteral("%1-%2-%3").arg(source, venue_symbol, QString::number(current.open_ms));
+            o.question = QStringLiteral("%1 up over next %2 from %3")
+                             .arg(symbol, horizon, edge_utc_iso(current.open_ms));
+            o.direction = QStringLiteral("up");
+            o.market_probability = 0.5;
+            o.btc_anchor_probability = edge_anchor_from_momentum(move_15m, move_60m);
+            o.move_5s_pct = move_1m;
+            o.move_15s_pct = move_15m;
+            o.move_60s_pct = move_60m;
+            o.liquidity_score = std::clamp(std::log10(std::max(1.0, current.volume)) / 8.0, 0.05, 0.95);
+            o.spread_cost = 0.0;
+            o.fee_cost = 0.0;
+            o.seconds_left = services::edge_radar::EdgePredictionModel::horizon_seconds(horizon);
+            o.outcome = future.close > current.close ? 1 : 0;
+            o.source = source + QStringLiteral("-backfill-1m");
+            o.observed_at = current.open_ms;
+            o.resolved_at = future.open_ms;
+            auto saved = repo.add_observation(o);
+            if (saved.is_ok())
+                result.observations_by_horizon[horizon] += 1;
+            else
+                result.warnings << QStringLiteral("observation write failed: %1").arg(QString::fromStdString(saved.error()));
+        }
+    }
+    result.warnings.removeDuplicates();
+    return result;
+}
+
+static int edge_backfill_command(const GlobalOpts& opts, QStringList args) {
+    QString source_raw;
+    QString symbol_raw;
+    QString days_raw;
+    QString from_raw;
+    QString to_raw;
+    QString timeout_raw;
+    QString min_raw;
+    const bool train_after = take_bool_flag(args, QStringLiteral("--train"));
+    if (!take_string_option(args, QStringLiteral("--source"), source_raw) ||
+        !take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--days"), days_raw) ||
+        !take_string_option(args, QStringLiteral("--from"), from_raw) ||
+        !take_string_option(args, QStringLiteral("--to"), to_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw) ||
+        !take_string_option(args, QStringLiteral("--min-samples"), min_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+
+    const QString source = source_raw.trimmed().isEmpty() ? QStringLiteral("coinbase")
+                                                          : source_raw.trimmed().toLower();
+    if (source != QStringLiteral("binance") && source != QStringLiteral("coinbase")) {
+        std::fprintf(stderr, "--source currently supports coinbase or binance\n");
+        return 2;
+    }
+    const QString symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    int days = 30;
+    if (!days_raw.isEmpty()) {
+        bool ok = false;
+        days = days_raw.toInt(&ok);
+        if (!ok || days < 1 || days > 365) {
+            std::fprintf(stderr, "--days must be 1..365\n");
+            return 2;
+        }
+    }
+    int timeout_ms = 15000;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 60000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..60000\n");
+            return 2;
+        }
+    }
+    int min_samples = 30;
+    if (!min_raw.isEmpty()) {
+        bool ok = false;
+        min_samples = min_raw.toInt(&ok);
+        if (!ok || min_samples < 1 || min_samples > 100000) {
+            std::fprintf(stderr, "--min-samples must be 1..100000\n");
+            return 2;
+        }
+    }
+
+    qint64 to_ms = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    qint64 from_ms = to_ms - static_cast<qint64>(days) * 86400000LL;
+    if (!edge_parse_date_ms(to_raw, &to_ms, true) ||
+        !edge_parse_date_ms(from_raw, &from_ms, false) ||
+        from_ms >= to_ms) {
+        std::fprintf(stderr, "date range must be valid; use --days N or --from/--to YYYY-MM-DD\n");
+        return 2;
+    }
+    if (!from_raw.isEmpty() || !to_raw.isEmpty()) {
+        const qint64 max_span = 365LL * 86400000LL;
+        if (to_ms - from_ms > max_span) {
+            std::fprintf(stderr, "date range must be 365 days or less\n");
+            return 2;
+        }
+    }
+
+    const QString venue_symbol = source == QStringLiteral("binance") ? edge_binance_symbol(symbol)
+                                                                     : edge_coinbase_product(symbol);
+    auto fetched = source == QStringLiteral("binance")
+                       ? edge_fetch_binance_1m_klines(venue_symbol, from_ms, to_ms, timeout_ms)
+                       : edge_fetch_coinbase_1m_candles(venue_symbol, from_ms, to_ms, timeout_ms);
+    if (fetched.is_err()) {
+        std::fprintf(stderr, "%s\n", fetched.error().c_str());
+        return 5;
+    }
+    auto result = edge_derive_crypto_observations(source, symbol, venue_symbol, from_ms, to_ms, fetched.value());
+    if (train_after) {
+        for (const auto& horizon : services::edge_radar::EdgePredictionModel::supported_horizons()) {
+            auto trained = services::edge_radar::EdgePredictionModel::train(symbol, horizon, min_samples);
+            if (trained.is_err()) {
+                result.warnings << QStringLiteral("train %1 failed: %2")
+                                       .arg(horizon, QString::fromStdString(trained.error()));
+                continue;
+            }
+            result.trained_samples_by_horizon[horizon] = trained.value().model.sample_count;
+        }
+    }
+
+    if (opts.json) {
+        QJsonObject obs;
+        for (auto it = result.observations_by_horizon.cbegin(); it != result.observations_by_horizon.cend(); ++it)
+            obs.insert(it.key(), it.value());
+        QJsonObject trained;
+        for (auto it = result.trained_samples_by_horizon.cbegin(); it != result.trained_samples_by_horizon.cend(); ++it)
+            trained.insert(it.key(), it.value());
+        QJsonObject out{{"source", result.source},
+                        {"symbol", result.symbol},
+                        {"venue_symbol", result.venue_symbol},
+                        {"from", edge_utc_iso(result.from_ms)},
+                        {"to", edge_utc_iso(result.to_ms)},
+                        {"candles", result.candles},
+                        {"ticks_written", result.ticks_written},
+                        {"observations", obs},
+                        {"trained_samples", trained},
+                        {"warnings", QJsonArray::fromStringList(result.warnings)}};
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("backfill     %s %s candles=%d ticks=%d range=%s..%s\n",
+                qUtf8Printable(result.source),
+                qUtf8Printable(result.symbol),
+                result.candles,
+                result.ticks_written,
+                qUtf8Printable(edge_utc_iso(result.from_ms)),
+                qUtf8Printable(edge_utc_iso(result.to_ms)));
+    for (auto it = result.observations_by_horizon.cbegin(); it != result.observations_by_horizon.cend(); ++it)
+        std::printf("observations %s=%d\n", qUtf8Printable(it.key()), it.value());
+    for (auto it = result.trained_samples_by_horizon.cbegin(); it != result.trained_samples_by_horizon.cend(); ++it)
+        std::printf("trained      %s samples=%d\n", qUtf8Printable(it.key()), it.value());
+    if (!result.warnings.isEmpty())
+        std::printf("warnings     %s\n", qUtf8Printable(result.warnings.join(QStringLiteral("; "))));
+    return 0;
+}
+
+static QString edge_age_text(qint64 ms);
+
+static int edge_collect_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol_raw;
+    QString sources_raw;
+    QString timeout_raw;
+    QString interval_raw;
+    QString stream_raw;
+    QString iterations_raw;
+    QString duration_raw;
+    const bool watch = take_bool_flag(args, QStringLiteral("--watch"));
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--sources"), sources_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw) ||
+        !take_string_option(args, QStringLiteral("--interval-ms"), interval_raw) ||
+        !take_string_option(args, QStringLiteral("--stream-ms"), stream_raw) ||
+        !take_string_option(args, QStringLiteral("--iterations"), iterations_raw) ||
+        !take_string_option(args, QStringLiteral("--duration-sec"), duration_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        if (symbol_raw.isEmpty())
+            symbol_raw = args.takeFirst();
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+            return 2;
+        }
+    }
+
+    const QString symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    const QStringList sources = edge_parse_sources(sources_raw, {QStringLiteral("coinbase"),
+                                                                 QStringLiteral("kraken"),
+                                                                 QStringLiteral("bitcointicker")});
+    int timeout_ms = 5000;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 500 || timeout_ms > 60000) {
+            std::fprintf(stderr, "--timeout-ms must be 500..60000\n");
+            return 2;
+        }
+    }
+    int interval_ms = 1000;
+    if (!interval_raw.isEmpty()) {
+        bool ok = false;
+        interval_ms = interval_raw.toInt(&ok);
+        if (!ok || interval_ms < 100 || interval_ms > 3600000) {
+            std::fprintf(stderr, "--interval-ms must be 100..3600000\n");
+            return 2;
+        }
+    }
+    int stream_ms = 0;
+    if (!stream_raw.isEmpty()) {
+        bool ok = false;
+        stream_ms = stream_raw.toInt(&ok);
+        if (!ok || stream_ms < 250 || stream_ms > 60000) {
+            std::fprintf(stderr, "--stream-ms must be 250..60000\n");
+            return 2;
+        }
+    } else if (watch) {
+        stream_ms = std::clamp(interval_ms - 100, 250, 5000);
+    }
+    int iterations = watch ? 0 : 1;
+    if (!iterations_raw.isEmpty()) {
+        bool ok = false;
+        iterations = iterations_raw.toInt(&ok);
+        if (!ok || iterations < 1 || iterations > 1000000) {
+            std::fprintf(stderr, "--iterations must be 1..1000000\n");
+            return 2;
+        }
+    }
+    int duration_sec = 0;
+    if (!duration_raw.isEmpty()) {
+        bool ok = false;
+        duration_sec = duration_raw.toInt(&ok);
+        if (!ok || duration_sec < 1 || duration_sec > 86400) {
+            std::fprintf(stderr, "--duration-sec must be 1..86400\n");
+            return 2;
+        }
+    }
+
+    const qint64 started = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    int loops = 0;
+    QJsonArray json_rows;
+    while (iterations == 0 || loops < iterations) {
+        const auto rows = stream_ms > 0 ? edge_collect_stream(symbol, sources, stream_ms, timeout_ms)
+                                        : edge_collect_once(symbol, sources, timeout_ms);
+        if (opts.json) {
+            for (const auto& row : rows) {
+                QJsonObject obj{{"source", row.source},
+                                {"venue_symbol", row.venue_symbol},
+                                {"error", row.error},
+                                {"tick", edge_prediction_raw_tick_to_json(row.tick)}};
+                json_rows.append(obj);
+            }
+        } else {
+            if (loops == 0)
+                std::printf("%-10s %-12s %-14s %-12s %s\n", "SOURCE", "VENUE", "PRICE", "AGE", "STATUS");
+            for (const auto& row : rows) {
+                const QString status = row.error.isEmpty() ? QStringLiteral("stored") : row.error;
+                std::printf("%-10s %-12s %14.2f %-12s %s\n",
+                            qUtf8Printable(row.source),
+                            qUtf8Printable(row.venue_symbol),
+                            row.tick.price,
+                            qUtf8Printable(edge_age_text(row.tick.received_ts)),
+                            qUtf8Printable(status));
+            }
+            std::fflush(stdout);
+        }
+        ++loops;
+        const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+        if (duration_sec > 0 && now - started >= static_cast<qint64>(duration_sec) * 1000)
+            break;
+        if (iterations > 0 && loops >= iterations)
+            break;
+        QThread::msleep(static_cast<unsigned long>(interval_ms));
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"symbol", symbol},
+                                                       {"sources", QJsonArray::fromStringList(sources)},
+                                                       {"ticks", json_rows}})
+                                .toJson(QJsonDocument::Compact).constData());
+    }
+    return 0;
+}
+
+static QString edge_age_text(qint64 ms) {
+    if (ms <= 0)
+        return QStringLiteral("-");
+    const qint64 delta = std::max<qint64>(0, QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() - ms);
+    const qint64 sec = delta / 1000;
+    if (sec < 90)
+        return QStringLiteral("%1s").arg(sec);
+    const qint64 min = sec / 60;
+    if (min < 90)
+        return QStringLiteral("%1m").arg(min);
+    const qint64 hour = min / 60;
+    if (hour < 48)
+        return QStringLiteral("%1h").arg(hour);
+    return QStringLiteral("%1d").arg(hour / 24);
+}
+
+static QString edge_readiness_label(const EdgePredictionModelRecord& m, int min_samples) {
+    if (m.sample_count <= 0)
+        return QStringLiteral("empty");
+    if (m.sample_count < min_samples)
+        return QStringLiteral("collecting");
+    if (m.brier_score > 0.34)
+        return QStringLiteral("rough");
+    return QStringLiteral("ready");
+}
+
+static int edge_cockpit_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol_raw;
+    QString horizon_raw;
+    QString source_raw;
+    QString sources_raw;
+    QString days_raw;
+    QString market_raw;
+    QString btc_raw;
+    QString spread_raw;
+    QString fee_raw;
+    QString min_raw;
+    QString timeout_raw;
+    QString interval_raw;
+    QString stream_raw;
+    QString iterations_raw;
+    const bool backfill_if_needed = take_bool_flag(args, QStringLiteral("--backfill-if-needed"));
+    const bool collect_live = take_bool_flag(args, QStringLiteral("--collect"));
+    const bool train_now = take_bool_flag(args, QStringLiteral("--train"));
+    const bool publish = take_bool_flag(args, QStringLiteral("--publish"));
+    const bool watch = take_bool_flag(args, QStringLiteral("--watch"));
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol_raw) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon_raw) ||
+        !take_string_option(args, QStringLiteral("--source"), source_raw) ||
+        !take_string_option(args, QStringLiteral("--sources"), sources_raw) ||
+        !take_string_option(args, QStringLiteral("--days"), days_raw) ||
+        !take_string_option(args, QStringLiteral("--market-prob"), market_raw) ||
+        !take_string_option(args, QStringLiteral("--btc-prob"), btc_raw) ||
+        !take_string_option(args, QStringLiteral("--spread"), spread_raw) ||
+        !take_string_option(args, QStringLiteral("--fee"), fee_raw) ||
+        !take_string_option(args, QStringLiteral("--min-samples"), min_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw) ||
+        !take_string_option(args, QStringLiteral("--interval-sec"), interval_raw) ||
+        !take_string_option(args, QStringLiteral("--stream-ms"), stream_raw) ||
+        !take_string_option(args, QStringLiteral("--iterations"), iterations_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+        return 2;
+    }
+
+    const QString symbol = symbol_raw.trimmed().isEmpty() ? QStringLiteral("BTC") : symbol_raw.trimmed().toUpper();
+    const QString horizon = horizon_raw.trimmed().isEmpty()
+                                ? QStringLiteral("15m")
+                                : services::edge_radar::EdgePredictionModel::normalize_horizon(horizon_raw);
+    if (!services::edge_radar::EdgePredictionModel::supported_horizons().contains(horizon)) {
+        std::fprintf(stderr, "--horizon must be 5m, 15m, 1h, or daily\n");
+        return 2;
+    }
+    const QString source = source_raw.trimmed().isEmpty() ? QStringLiteral("coinbase")
+                                                          : source_raw.trimmed().toLower();
+    if (source != QStringLiteral("coinbase") && source != QStringLiteral("binance")) {
+        std::fprintf(stderr, "--source currently supports coinbase or binance\n");
+        return 2;
+    }
+    const QStringList collect_sources = edge_parse_sources(sources_raw, {QStringLiteral("coinbase"),
+                                                                         QStringLiteral("kraken"),
+                                                                         QStringLiteral("bitcointicker")});
+
+    int days = 7;
+    if (!days_raw.isEmpty()) {
+        bool ok = false;
+        days = days_raw.toInt(&ok);
+        if (!ok || days < 1 || days > 365) {
+            std::fprintf(stderr, "--days must be 1..365\n");
+            return 2;
+        }
+    }
+    int min_samples = 30;
+    if (!min_raw.isEmpty()) {
+        bool ok = false;
+        min_samples = min_raw.toInt(&ok);
+        if (!ok || min_samples < 1 || min_samples > 100000) {
+            std::fprintf(stderr, "--min-samples must be 1..100000\n");
+            return 2;
+        }
+    }
+    int timeout_ms = 15000;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 60000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..60000\n");
+            return 2;
+        }
+    }
+
+    double market_probability = 0.50;
+    double btc_probability = 0.50;
+    double spread_cost = 0.03;
+    double fee_cost = 0.0;
+    if (!market_raw.isEmpty() && !edge_parse_probability_text(market_raw, market_probability)) {
+        std::fprintf(stderr, "--market-prob must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!btc_raw.isEmpty() && !edge_parse_probability_text(btc_raw, btc_probability)) {
+        std::fprintf(stderr, "--btc-prob must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!spread_raw.isEmpty() && !edge_parse_probability_text(spread_raw, spread_cost)) {
+        std::fprintf(stderr, "--spread must be 0-1 or 0-100\n");
+        return 2;
+    }
+    if (!fee_raw.isEmpty() && !edge_parse_probability_text(fee_raw, fee_cost)) {
+        std::fprintf(stderr, "--fee must be 0-1 or 0-100\n");
+        return 2;
+    }
+
+    int interval_sec = 5;
+    if (!interval_raw.isEmpty()) {
+        bool ok = false;
+        interval_sec = interval_raw.toInt(&ok);
+        if (!ok || interval_sec < 1 || interval_sec > 3600) {
+            std::fprintf(stderr, "--interval-sec must be 1..3600\n");
+            return 2;
+        }
+    }
+    int stream_ms = 0;
+    if (!stream_raw.isEmpty()) {
+        bool ok = false;
+        stream_ms = stream_raw.toInt(&ok);
+        if (!ok || stream_ms < 250 || stream_ms > 60000) {
+            std::fprintf(stderr, "--stream-ms must be 250..60000\n");
+            return 2;
+        }
+    } else if (collect_live) {
+        stream_ms = std::clamp(interval_sec * 1000 - 250, 500, 5000);
+    }
+    int iterations = 0;
+    if (!iterations_raw.isEmpty()) {
+        bool ok = false;
+        iterations = iterations_raw.toInt(&ok);
+        if (!ok || iterations < 1 || iterations > 100000) {
+            std::fprintf(stderr, "--iterations must be 1..100000\n");
+            return 2;
+        }
+    }
+
+    QVector<EdgePredictionRawTick> previous_refreshed_ticks;
+    auto render_once = [&](bool allow_bootstrap) -> int {
+    auto models_result = EdgePredictionModelRepository::instance().list_models(symbol);
+    if (models_result.is_err()) {
+        std::fprintf(stderr, "%s\n", models_result.error().c_str());
+        return 1;
+    }
+    auto models = models_result.value();
+    auto find_model = [&](const QString& h) -> std::optional<EdgePredictionModelRecord> {
+        for (const auto& m : models) {
+            if (m.horizon == h)
+                return m;
+        }
+        return std::nullopt;
+    };
+
+    QStringList activity;
+    QVector<EdgeCollectedTick> refreshed_rows;
+    if (collect_live) {
+        refreshed_rows = stream_ms > 0 ? edge_collect_stream(symbol, collect_sources, stream_ms, timeout_ms)
+                                       : edge_collect_once(symbol, collect_sources, timeout_ms);
+        QStringList summary;
+        QHash<QString, int> tick_counts;
+        QHash<QString, double> latest_price;
+        for (const auto& row : refreshed_rows)
+            if (row.error.isEmpty()) {
+                tick_counts[row.source] += 1;
+                latest_price[row.source] = row.tick.price;
+            } else {
+                summary << QStringLiteral("%1 error: %2").arg(row.source, row.error);
+            }
+        for (auto it = tick_counts.cbegin(); it != tick_counts.cend(); ++it)
+            summary << QStringLiteral("%1 ticks=%2 last=%3")
+                           .arg(it.key())
+                           .arg(it.value())
+                           .arg(latest_price.value(it.key()), 0, 'f', 2);
+        activity << QStringLiteral("%1 %2")
+                        .arg(stream_ms > 0 ? QStringLiteral("streamed") : QStringLiteral("collected"),
+                             summary.isEmpty() ? QStringLiteral("no fresh ticks") : summary.join(QStringLiteral(", ")));
+    }
+    const auto primary_before = find_model(horizon);
+    const bool needs_backfill = !primary_before.has_value() || primary_before->sample_count < min_samples;
+    if (allow_bootstrap && backfill_if_needed && needs_backfill) {
+        const qint64 to_ms = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+        const qint64 from_ms = to_ms - static_cast<qint64>(days) * 86400000LL;
+        const QString venue_symbol = source == QStringLiteral("binance") ? edge_binance_symbol(symbol)
+                                                                         : edge_coinbase_product(symbol);
+        auto fetched = source == QStringLiteral("binance")
+                           ? edge_fetch_binance_1m_klines(venue_symbol, from_ms, to_ms, timeout_ms)
+                           : edge_fetch_coinbase_1m_candles(venue_symbol, from_ms, to_ms, timeout_ms);
+        if (fetched.is_err()) {
+            std::fprintf(stderr, "%s\n", fetched.error().c_str());
+            return 5;
+        }
+        auto backfilled = edge_derive_crypto_observations(source, symbol, venue_symbol, from_ms, to_ms, fetched.value());
+        activity << QStringLiteral("backfilled %1 %2 candles=%3 ticks=%4")
+                        .arg(source, symbol)
+                        .arg(backfilled.candles)
+                        .arg(backfilled.ticks_written);
+    }
+
+    if (allow_bootstrap && (train_now || (backfill_if_needed && needs_backfill))) {
+        for (const auto& h : services::edge_radar::EdgePredictionModel::supported_horizons()) {
+            auto trained = services::edge_radar::EdgePredictionModel::train(symbol, h, min_samples);
+            if (trained.is_err()) {
+                activity << QStringLiteral("train %1 failed: %2").arg(h, QString::fromStdString(trained.error()));
+                continue;
+            }
+            activity << QStringLiteral("trained %1 samples=%2").arg(h).arg(trained.value().model.sample_count);
+        }
+        models_result = EdgePredictionModelRepository::instance().list_models(symbol);
+        if (models_result.is_err()) {
+            std::fprintf(stderr, "%s\n", models_result.error().c_str());
+            return 1;
+        }
+        models = models_result.value();
+    }
+
+    QJsonArray model_json;
+    QJsonArray signal_json;
+    QVector<services::edge_radar::EdgePredictionEstimate> estimates;
+    for (const auto& h : services::edge_radar::EdgePredictionModel::supported_horizons()) {
+        services::edge_radar::EdgePredictionFeatures f;
+        f.symbol = symbol;
+        f.horizon = h;
+        f.direction = QStringLiteral("up");
+        f.market_probability = market_probability;
+        f.btc_anchor_probability = btc_probability;
+        f.spread_cost = spread_cost;
+        f.fee_cost = fee_cost;
+        f.seconds_left = services::edge_radar::EdgePredictionModel::horizon_seconds(h);
+        const auto estimate = services::edge_radar::EdgePredictionModel::estimate(f, min_samples);
+        if (publish)
+            services::edge_radar::EdgePredictionModel::publish_estimate(estimate, QStringLiteral("cli-cockpit"));
+        estimates.append(estimate);
+        signal_json.append(services::edge_radar::EdgePredictionModel::estimate_to_json(estimate));
+    }
+
+    services::edge_radar::EdgePredictionFeatures primary_features;
+    primary_features.symbol = symbol;
+    primary_features.horizon = horizon;
+    primary_features.direction = QStringLiteral("up");
+    primary_features.market_probability = market_probability;
+    primary_features.btc_anchor_probability = btc_probability;
+    primary_features.spread_cost = spread_cost;
+    primary_features.fee_cost = fee_cost;
+    primary_features.seconds_left = services::edge_radar::EdgePredictionModel::horizon_seconds(horizon);
+    const auto decision = services::edge_radar::EdgePredictionModel::meta_gate(primary_features, min_samples);
+
+    for (const auto& m : models) {
+        model_json.append(edge_prediction_model_to_json(m));
+    }
+    auto latest_ticks_result = EdgePredictionModelRepository::instance().list_raw_ticks(symbol, 1000);
+    auto tick_count_result = EdgePredictionModelRepository::instance().count_raw_ticks(
+        symbol, QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() - 3600000LL);
+    QJsonArray refreshed_tick_json;
+    QStringList refreshed_ids;
+    for (const auto& row : refreshed_rows) {
+        if (!row.error.isEmpty())
+            continue;
+        refreshed_tick_json.append(edge_prediction_raw_tick_to_json(row.tick));
+        refreshed_ids << row.tick.id;
+    }
+    QJsonArray latest_tick_json;
+    if (latest_ticks_result.is_ok()) {
+        for (const auto& t : latest_ticks_result.value())
+            latest_tick_json.append(edge_prediction_raw_tick_to_json(t));
+    }
+    const int recent_tick_count = tick_count_result.is_ok() ? tick_count_result.value() : 0;
+
+    if (opts.json) {
+        QJsonObject out{{"symbol", symbol},
+                        {"horizon", horizon},
+                        {"profile", opts.profile.isEmpty() ? QStringLiteral("default") : opts.profile},
+                        {"market_probability", market_probability},
+                        {"spread_cost", spread_cost},
+                        {"fee_cost", fee_cost},
+                        {"activity", QJsonArray::fromStringList(activity)},
+                        {"recent_tick_count_1h", recent_tick_count},
+                        {"refreshed_ticks", refreshed_tick_json},
+                        {"latest_ticks", latest_tick_json},
+                        {"models", model_json},
+                        {"signals", signal_json},
+                        {"decision", services::edge_radar::EdgePredictionModel::meta_gate_to_json(decision)}};
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    const QString profile = opts.profile.isEmpty() ? QStringLiteral("default") : opts.profile;
+    const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    int ready_count = 0;
+    for (const auto& h : services::edge_radar::EdgePredictionModel::supported_horizons()) {
+        const auto model = find_model(h);
+        if (model.has_value() && model->sample_count >= min_samples)
+            ++ready_count;
+    }
+
+    std::printf("\n");
+    std::printf("OPEN TERMINAL EDGE COCKPIT\n");
+    std::printf("profile      %s\n", qUtf8Printable(profile));
+    std::printf("symbol       %s      primary=%s      time=%s\n",
+                qUtf8Printable(symbol),
+                qUtf8Printable(horizon),
+                qUtf8Printable(edge_utc_iso(now)));
+    std::printf("input        market=%s spread=%s fee=%s btc_anchor=%s min_samples=%d\n",
+                qUtf8Printable(edge_pct(market_probability)),
+                qUtf8Printable(edge_pct(spread_cost)),
+                qUtf8Printable(edge_pct(fee_cost)),
+                qUtf8Printable(edge_pct(btc_probability)),
+                min_samples);
+    if (!activity.isEmpty())
+        std::printf("activity     %s\n", qUtf8Printable(activity.join(QStringLiteral("; "))));
+    std::printf("\nDATA READINESS\n");
+    std::printf("models       %d/4 ready      source=%s local-profile-db\n",
+                ready_count,
+                qUtf8Printable(source));
+    std::printf("ticks        %d in last hour  latest=%s\n",
+                recent_tick_count,
+                latest_ticks_result.is_ok() && !latest_ticks_result.value().isEmpty()
+                    ? qUtf8Printable(edge_age_text(latest_ticks_result.value().first().received_ts))
+                    : "-");
+    if (ready_count < 4)
+        std::printf("next data    edge cockpit --symbol %s --backfill-if-needed --train --days 30\n",
+                    qUtf8Printable(symbol));
+
+    QVector<EdgePredictionRawTick> refreshed_ticks;
+    for (const auto& row : refreshed_rows) {
+        if (row.error.isEmpty())
+            refreshed_ticks.append(row.tick);
+    }
+    std::sort(refreshed_ticks.begin(), refreshed_ticks.end(), [](const auto& a, const auto& b) {
+        return a.received_ts > b.received_ts;
+    });
+
+    if (!refreshed_ticks.isEmpty()) {
+        std::printf("\nREFRESHED TICKS\n");
+        std::printf("%-10s %14s %12s %s\n", "SOURCE", "PRICE", "AGE", "TIME");
+        const int visible = std::min(8, static_cast<int>(refreshed_ticks.size()));
+        for (int i = 0; i < visible; ++i) {
+            const auto& t = refreshed_ticks.at(i);
+            std::printf("%-10s %14.2f %12s %s\n",
+                        qUtf8Printable(t.source),
+                        t.price,
+                        qUtf8Printable(edge_age_text(t.received_ts)),
+                        qUtf8Printable(edge_utc_iso(t.received_ts)));
+        }
+    }
+
+    if (!previous_refreshed_ticks.isEmpty()) {
+        std::printf("\nLAST RECORDED TICKS\n");
+        std::printf("%-10s %14s %s\n", "SOURCE", "PRICE", "RECORDED_AT");
+        const int visible = std::min(8, static_cast<int>(previous_refreshed_ticks.size()));
+        for (int i = 0; i < visible; ++i) {
+            const auto& t = previous_refreshed_ticks.at(i);
+            std::printf("%-10s %14.2f %s\n",
+                        qUtf8Printable(t.source),
+                        t.price,
+                        qUtf8Printable(edge_utc_iso(t.received_ts)));
+        }
+    } else if (latest_ticks_result.is_ok() && !latest_ticks_result.value().isEmpty()) {
+        std::printf("\nRECENT HISTORY\n");
+        std::printf("%-10s %14s %s\n", "SOURCE", "PRICE", "RECORDED_AT");
+        int visible = 0;
+        for (const auto& t : latest_ticks_result.value()) {
+            if (refreshed_ids.contains(t.id))
+                continue;
+            std::printf("%-10s %14.2f %s\n",
+                        qUtf8Printable(t.source),
+                        t.price,
+                        qUtf8Printable(edge_utc_iso(t.received_ts)));
+            if (++visible >= 8)
+                break;
+        }
+    }
+
+    std::printf("\nMODELS\n");
+    std::printf("%-8s %8s %8s %8s %9s %12s %10s\n",
+                "HORIZON", "SAMPLES", "WINS", "BASE", "BRIER", "TRAINED_AGO", "STATUS");
+    for (const auto& h : services::edge_radar::EdgePredictionModel::supported_horizons()) {
+        const auto model = find_model(h);
+        if (!model.has_value()) {
+            std::printf("%-8s %8s %8s %8s %9s %12s %10s\n",
+                        qUtf8Printable(h), "-", "-", "-", "-", "-", "missing");
+            continue;
+        }
+        const auto& m = *model;
+        std::printf("%-8s %8d %8d %8s %9.4f %12s %10s\n",
+                    qUtf8Printable(h),
+                    m.sample_count,
+                    m.positive_count,
+                    qUtf8Printable(edge_pct(m.base_rate)),
+                    m.brier_score,
+                    qUtf8Printable(edge_age_text(m.trained_at)),
+                    qUtf8Printable(edge_readiness_label(m, min_samples)));
+    }
+
+    std::printf("\nSIGNALS\n");
+    std::printf("%-8s %10s %10s %10s %12s %11s\n",
+                "HORIZON", "MODEL", "CONF", "NET_EDGE", "SOURCE", "READINESS");
+    for (const auto& e : estimates) {
+        std::printf("%-8s %10s %10s %10s %12s %11s\n",
+                    qUtf8Printable(e.horizon),
+                    qUtf8Printable(edge_pct(e.probability)),
+                    qUtf8Printable(edge_pct(e.confidence)),
+                    qUtf8Printable(edge_pct(e.net_edge)),
+                    qUtf8Printable(elide_text(e.probability_source, 12)),
+                    qUtf8Printable(e.readiness));
+    }
+
+    std::printf("\nPRIMARY DECISION\n");
+    std::printf("call         %s\n", qUtf8Printable(decision.call));
+    std::printf("explain      %s\n", qUtf8Printable(decision.explanation));
+    if (!decision.reasons.isEmpty())
+        std::printf("reasons      %s\n", qUtf8Printable(decision.reasons.join(QStringLiteral("; "))));
+
+    std::printf("\nNEXT COMMANDS\n");
+    std::printf("refresh      openterminalcli --headless edge cockpit --symbol %s --horizon %s --market-prob %s\n",
+                qUtf8Printable(symbol), qUtf8Printable(horizon), qUtf8Printable(edge_pct(market_probability)));
+    std::printf("train        openterminalcli --headless edge backfill --source %s --symbol %s --days 30 --train\n",
+                qUtf8Printable(source), qUtf8Printable(symbol));
+    std::printf("paper        openterminalcli --headless trade paper portfolios\n");
+    std::printf("audit        openterminalcli --headless edge selftest-leakage\n");
+    if (watch)
+        std::printf("watch        refreshing every %ds; press Ctrl-C to stop\n", interval_sec);
+    std::printf("\n");
+    if (!refreshed_ticks.isEmpty())
+        previous_refreshed_ticks = refreshed_ticks;
+    return 0;
+    };
+
+    if (!watch || opts.json)
+        return render_once(true);
+
+    int rendered = 0;
+    bool allow_bootstrap = true;
+    while (iterations == 0 || rendered < iterations) {
+        std::printf("\033[2J\033[H");
+        const int code = render_once(allow_bootstrap);
+        std::fflush(stdout);
+        if (code != 0)
+            return code;
+        allow_bootstrap = false;
+        ++rendered;
+        if (iterations > 0 && rendered >= iterations)
+            break;
+        QThread::sleep(static_cast<unsigned long>(interval_sec));
+    }
+    return 0;
 }
 
 static QVector<services::prediction::PredictionMarket>
@@ -9345,7 +11717,7 @@ edge_fetch_kalshi_markets(const QString& category, int limit, int timeout_ms, QS
     timeout.start(timeout_ms);
     adapter.list_events(category.isEmpty() ? QStringLiteral("ALL") : category,
                         QStringLiteral("volume"),
-                        qBound(1, limit, 250),
+                        qBound(1, limit, 100),
                         0);
     loop.exec();
     return markets;
@@ -9541,6 +11913,317 @@ static int edge_kalshi_research_command(const GlobalOpts& opts, QStringList args
     return 0;
 }
 
+static bool edge_take_kalshi_scan_options(QStringList& args,
+                                          QString& category,
+                                          QString& family,
+                                          int& limit,
+                                          int& timeout_ms,
+                                          services::edge_radar::KalshiUniversalOptions& options) {
+    QString limit_raw;
+    QString timeout_raw;
+    QString min_liq_raw;
+    if (!take_string_option(args, QStringLiteral("--category"), category) ||
+        !take_string_option(args, QStringLiteral("--family"), family) ||
+        !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw) ||
+        !take_string_option(args, QStringLiteral("--min-liquidity"), min_liq_raw))
+        return false;
+
+    if (!min_liq_raw.isEmpty() && !edge_parse_probability_text(min_liq_raw, options.minimum_liquidity_score)) {
+        std::fprintf(stderr, "--min-liquidity must be 0-1 or 0-100\n");
+        return false;
+    }
+    if (!limit_raw.isEmpty()) {
+        bool ok = false;
+        limit = limit_raw.toInt(&ok);
+        if (!ok || limit < 1 || limit > 500) {
+            std::fprintf(stderr, "--limit must be 1..500\n");
+            return false;
+        }
+    }
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 60000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..60000\n");
+            return false;
+        }
+    }
+    return true;
+}
+
+static QVector<services::edge_radar::KalshiUniversalSignal>
+edge_rank_kalshi_markets_for_scan(const QVector<services::prediction::PredictionMarket>& markets,
+                                  const services::edge_radar::KalshiUniversalOptions& options,
+                                  const QString& family,
+                                  const services::edge_radar::CryptoImpulseSignal* crypto_impulse = nullptr) {
+    QVector<services::edge_radar::KalshiUniversalSignal> rows;
+    rows.reserve(markets.size());
+    for (const auto& market : markets) {
+        auto row = services::edge_radar::KalshiUniversalEdgeModel::score_market(market, options);
+        if (crypto_impulse && row.family == QStringLiteral("crypto")) {
+            const QString text = market.question + QStringLiteral(" ") + market.key.market_id;
+            const QString symbol = services::edge_radar::CryptoHourlyEdgeModel::extract_symbol(text);
+            if (!symbol.isEmpty()) {
+                const QString direction = services::edge_radar::CryptoHourlyEdgeModel::infer_direction(text);
+                const double btc_up = services::edge_radar::CryptoImpulseModel::anchor_probability(*crypto_impulse);
+                const double beta = services::edge_radar::CryptoHourlyEdgeModel::beta_for_symbol(symbol);
+                double fair_up = 0.5 + beta * (btc_up - 0.5);
+                fair_up = std::clamp(fair_up, 0.08, 0.92);
+                const double fair = direction == QStringLiteral("down") ? 1.0 - fair_up : fair_up;
+                const double confidence = std::clamp(0.45 + std::abs(btc_up - 0.5) * 2.2, 0.45, 0.72);
+                const auto rescored = services::edge_radar::KalshiUniversalEdgeModel::score_market(
+                    market, options, fair, confidence,
+                    QStringLiteral("btc-impulse-anchor:%1:%2").arg(symbol, direction));
+                row = rescored;
+
+                QStringList reasons;
+                if (crypto_impulse->gate != QStringLiteral("pass") ||
+                    crypto_impulse->direction == QStringLiteral("flat")) {
+                    reasons << QStringLiteral("BTC impulse anchor not strong enough: %1")
+                                    .arg(crypto_impulse->rejection_reasons.isEmpty()
+                                             ? crypto_impulse->rationale
+                                             : crypto_impulse->rejection_reasons);
+                }
+                if (!row.rejection_reasons.isEmpty())
+                    reasons << row.rejection_reasons;
+                if (!reasons.isEmpty()) {
+                    row.passes_gate = false;
+                    row.is_strong = false;
+                    row.gate = QStringLiteral("reject");
+                    row.recommendation = row.gate_edge >= 0.02 ? QStringLiteral("watch")
+                                                               : QStringLiteral("avoid");
+                    row.rejection_reasons = reasons.join(QStringLiteral("; "));
+                    row.risk_notes = row.rejection_reasons;
+                }
+            }
+        }
+        if (row.is_valid)
+            rows.push_back(row);
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
+        if (a.passes_gate != b.passes_gate)
+            return a.passes_gate;
+        if (a.recommendation != b.recommendation)
+            return a.recommendation < b.recommendation;
+        if (a.liquidity_score != b.liquidity_score)
+            return a.liquidity_score > b.liquidity_score;
+        return std::abs(a.gate_edge) > std::abs(b.gate_edge);
+    });
+    if (!family.trimmed().isEmpty()) {
+        const QString wanted = family.trimmed().toLower();
+        rows.erase(std::remove_if(rows.begin(), rows.end(), [&](const auto& row) {
+                       return row.family != wanted;
+                   }),
+                   rows.end());
+    }
+    return rows;
+}
+
+static Result<QString> edge_journal_insert_kalshi(
+    const services::edge_radar::KalshiUniversalSignal& signal) {
+    using services::edge_radar::KalshiUniversalEdgeModel;
+
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QString data_status = QStringLiteral("no_trade");
+    if (!signal.is_valid)
+        data_status = QStringLiteral("not_enough_data");
+    else if (signal.passes_gate)
+        data_status = QStringLiteral("trade_candidate");
+    else if (signal.recommendation == QStringLiteral("research"))
+        data_status = QStringLiteral("research_needed");
+
+    const QJsonObject freshness{{"decision_ts", edge_time_text(now)},
+                                {"family", signal.family},
+                                {"time_horizon", signal.time_horizon},
+                                {"probability_source", signal.probability_source}};
+    const QJsonObject features{{"signal", KalshiUniversalEdgeModel::to_json(signal)}};
+    auto r = Database::instance().execute(
+        "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+        " market_id, question, direction, side, call, gate, market_probability, model_probability,"
+        " raw_edge, edge_after_cost, gate_edge, spread_cost, fee_cost, liquidity_score, confidence,"
+        " seconds_left, data_status, freshness_json, features_json, reasons, outcome, resolved_at,"
+        " source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        {id, now, now, QStringLiteral("kalshi"), QStringLiteral("KALSHI"),
+         signal.time_horizon.isEmpty() ? QStringLiteral("event") : signal.time_horizon,
+         signal.market_id, signal.question, signal.family, signal.side, signal.recommendation, signal.gate,
+         signal.market_probability, signal.model_probability, signal.raw_edge, signal.edge_after_cost,
+         signal.gate_edge, signal.spread_cost, signal.fee_cost, signal.liquidity_score,
+         signal.confidence, -1, data_status,
+         QString::fromUtf8(QJsonDocument(freshness).toJson(QJsonDocument::Compact)),
+         QString::fromUtf8(QJsonDocument(features).toJson(QJsonDocument::Compact)),
+         signal.rejection_reasons.isEmpty() ? signal.rationale : signal.rejection_reasons,
+         -1, 0, QStringLiteral("edge journal-kalshi-scan")});
+    if (r.is_err())
+        return Result<QString>::err(r.error());
+    return Result<QString>::ok(id);
+}
+
+static int edge_snapshot_kalshi_command(const GlobalOpts& opts, QStringList args) {
+    QString category;
+    QString family;
+    int limit = 100;
+    int timeout_ms = 12000;
+    services::edge_radar::KalshiUniversalOptions options;
+    if (!edge_take_kalshi_scan_options(args, category, family, limit, timeout_ms, options))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: edge snapshot-kalshi [--category C] [--family F] [--limit N] [--timeout-ms N]\n");
+        return 2;
+    }
+
+    QString error;
+    const auto markets = edge_fetch_kalshi_markets(category, limit, timeout_ms, &error);
+    if (markets.isEmpty() && !error.isEmpty()) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+        return 5;
+    }
+
+    int saved_count = 0;
+    QJsonArray saved;
+    for (const auto& market : markets) {
+        const auto signal = services::edge_radar::KalshiUniversalEdgeModel::score_market(market, options);
+        if (!family.trimmed().isEmpty() && signal.family != family.trimmed().toLower())
+            continue;
+        auto r = edge_save_prediction_market_snapshot(
+            market,
+            QStringLiteral("kalshi"),
+            QStringLiteral("KALSHI"),
+            signal.time_horizon.isEmpty() ? QStringLiteral("event") : signal.time_horizon,
+            market.key.market_id);
+        if (r.is_err()) {
+            std::fprintf(stderr, "snapshot warning: %s\n", r.error().c_str());
+            continue;
+        }
+        ++saved_count;
+        saved.append(QJsonObject{{"market_id", market.key.market_id},
+                                 {"family", signal.family},
+                                 {"horizon", signal.time_horizon},
+                                 {"question", market.question}});
+    }
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"saved", saved_count}, {"markets", saved}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("snapshot     kalshi saved=%d scanned=%lld category=%s family=%s\n",
+                saved_count,
+                static_cast<long long>(markets.size()),
+                qUtf8Printable(category.isEmpty() ? QStringLiteral("ALL") : category),
+                qUtf8Printable(family.isEmpty() ? QStringLiteral("all") : family));
+    return 0;
+}
+
+static int edge_journal_kalshi_scan_command(const GlobalOpts& opts, QStringList args) {
+    QString category;
+    QString family;
+    QString duration_raw;
+    QString sources_raw;
+    QString window_raw;
+    int limit = 50;
+    int timeout_ms = 12000;
+    services::edge_radar::KalshiUniversalOptions options;
+    if (!edge_take_kalshi_scan_options(args, category, family, limit, timeout_ms, options))
+        return 2;
+    const bool no_crypto_anchor = take_bool_flag(args, QStringLiteral("--no-crypto-anchor"));
+    take_bool_flag(args, QStringLiteral("--crypto-anchor"));
+    if (!take_string_option(args, QStringLiteral("--duration-ms"), duration_raw) ||
+        !take_string_option(args, QStringLiteral("--sources"), sources_raw) ||
+        !take_string_option(args, QStringLiteral("--window"), window_raw))
+        return 2;
+    int duration_ms = 8000;
+    int window_seconds = 15;
+    if (!edge_parse_duration_ms(duration_raw, duration_ms) ||
+        !edge_parse_window_seconds(window_raw, window_seconds))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: edge journal-kalshi-scan [--category C] [--family F] [--limit N] [--timeout-ms N] [--no-crypto-anchor]\n");
+        return 2;
+    }
+
+    QString error;
+    const auto markets = edge_fetch_kalshi_markets(category, limit, timeout_ms, &error);
+    if (markets.isEmpty() && !error.isEmpty()) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+        return 5;
+    }
+    std::optional<services::edge_radar::CryptoImpulseSignal> crypto_impulse;
+    if (!no_crypto_anchor) {
+        bool has_crypto = family.trimmed().toLower() == QStringLiteral("crypto");
+        if (!has_crypto) {
+            for (const auto& market : markets) {
+                if (services::edge_radar::KalshiUniversalEdgeModel::classify_family(market) ==
+                    QStringLiteral("crypto")) {
+                    has_crypto = true;
+                    break;
+                }
+            }
+        }
+        if (has_crypto) {
+            services::edge_radar::CryptoImpulseOptions impulse_options;
+            impulse_options.minimum_confidence = 0.35;
+            crypto_impulse = edge_capture_impulse(QStringLiteral("BTC-USD"),
+                                                  edge_parse_latency_sources(sources_raw),
+                                                  duration_ms,
+                                                  window_seconds,
+                                                  impulse_options);
+        }
+    }
+    const auto rows = edge_rank_kalshi_markets_for_scan(
+        markets, options, family, crypto_impulse ? &(*crypto_impulse) : nullptr);
+
+    int saved_count = 0;
+    QJsonArray journaled;
+    for (const auto& signal : rows) {
+        auto inserted = edge_journal_insert_kalshi(signal);
+        if (inserted.is_err()) {
+            std::fprintf(stderr, "journal warning: %s\n", inserted.error().c_str());
+            continue;
+        }
+        ++saved_count;
+        journaled.append(QJsonObject{{"id", inserted.value()},
+                                     {"market_id", signal.market_id},
+                                     {"family", signal.family},
+                                     {"horizon", signal.time_horizon},
+                                     {"call", signal.recommendation},
+                                     {"gate", signal.gate},
+                                     {"edge_after_cost", signal.edge_after_cost}});
+    }
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"saved", saved_count}, {"decisions", journaled}})
+                                .toJson(QJsonDocument::Compact)
+                                .constData());
+        return 0;
+    }
+    std::printf("journal      kalshi saved=%d scanned=%lld category=%s family=%s crypto_anchor=%s\n",
+                saved_count,
+                static_cast<long long>(markets.size()),
+                qUtf8Printable(category.isEmpty() ? QStringLiteral("ALL") : category),
+                qUtf8Printable(family.isEmpty() ? QStringLiteral("all") : family),
+                crypto_impulse ? "yes" : "no");
+    if (!rows.isEmpty()) {
+        std::printf("%-12s %-11s %-8s %-8s %-10s %s\n",
+                    "ticker", "family", "market", "net", "call", "reason");
+        for (int i = 0; i < std::min<int>(static_cast<int>(rows.size()), 8); ++i) {
+            const auto& r = rows.at(i);
+            std::printf("%-12s %-11s %-8s %-8s %-10s %s\n",
+                        qUtf8Printable(elide_text(r.market_id, 12)),
+                        qUtf8Printable(elide_text(r.family, 11)),
+                        qUtf8Printable(edge_pct(r.market_probability)),
+                        qUtf8Printable(edge_pct(r.edge_after_cost)),
+                        qUtf8Printable(r.recommendation),
+                        qUtf8Printable(elide_text(r.rejection_reasons.isEmpty() ? r.rationale
+                                                                                 : r.rejection_reasons,
+                                                  90)));
+        }
+    }
+    return 0;
+}
+
 static int edge_emit_rows(const GlobalOpts& opts, const QVector<EdgeRadarIdea>& rows) {
     if (opts.json) {
         QJsonArray arr;
@@ -9690,6 +12373,11 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
         return edge_btc5m_command(opts, args, true);
     }
 
+    if (sub == "snapshot-btc5m-live" || sub == "btc5m-snapshot" ||
+        sub == "polymarket-btc5m-snapshot") {
+        return edge_snapshot_btc5m_live_command(opts, args);
+    }
+
     if (sub == "crypto-hourly-live" || sub == "hourly-live" || sub == "live-crypto-hourly") {
         return edge_crypto_hourly_live_command(opts, args);
     }
@@ -9707,9 +12395,73 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
         return edge_emit_one(opts, edge_apply_score(idea));
     }
 
+    if (sub == "why-no-trade" || sub == "why_no_trade" || sub == "no-trade" || sub == "readiness") {
+        args.prepend(QStringLiteral("readiness"));
+        return daemon_command(opts.profile, opts.json, args);
+    }
+
     int code = 0;
     if (!init_headless_for_cli(opts, code))
         return code;
+
+    if (sub == "observe" || sub == "observation" || sub == "record") {
+        return edge_observe_command(opts, args);
+    }
+
+    if (sub == "train" || sub == "fit") {
+        return edge_train_command(opts, args);
+    }
+
+    if (sub == "model" || sub == "models" || sub == "model-status") {
+        return edge_model_command(opts, args);
+    }
+
+    if (sub == "probability" || sub == "prob" || sub == "predict") {
+        return edge_probability_command(opts, args);
+    }
+
+    if (sub == "gate" || sub == "meta-gate" || sub == "decision") {
+        return edge_gate_command(opts, args);
+    }
+
+    if (sub == "publish-horizons" || sub == "publish-outputs" || sub == "publish-all" ||
+        sub == "horizon-publish") {
+        return edge_publish_horizons_command(opts, args);
+    }
+
+    if (sub == "snapshot-kalshi" || sub == "kalshi-snapshot" || sub == "kalshi-snapshots") {
+        return edge_snapshot_kalshi_command(opts, args);
+    }
+
+    if (sub == "journal-kalshi-scan" || sub == "kalshi-journal-scan" ||
+        sub == "kalshi-decisions") {
+        return edge_journal_kalshi_scan_command(opts, args);
+    }
+
+    if (sub == "journal" || sub == "decisions" || sub == "decision-journal") {
+        return edge_journal_command(opts, args);
+    }
+
+    if (sub == "journal-evaluate-btc5m-live" || sub == "journal-btc5m-live" ||
+        sub == "write-btc5m-decision") {
+        return edge_journal_evaluate_btc5m_live_command(opts, args);
+    }
+
+    if (sub == "backfill" || sub == "backfill-crypto" || sub == "import-history") {
+        return edge_backfill_command(opts, args);
+    }
+
+    if (sub == "collect" || sub == "harvest" || sub == "ticks") {
+        return edge_collect_command(opts, args);
+    }
+
+    if (sub == "cockpit" || sub == "dashboard" || sub == "terminal") {
+        return edge_cockpit_command(opts, args);
+    }
+
+    if (sub == "selftest-leakage" || sub == "leakage-test" || sub == "no-lookahead-test") {
+        return edge_leakage_selftest_command(opts, args);
+    }
 
     if (sub == "list" || sub == "ls") {
         const bool active = take_bool_flag(args, QStringLiteral("--active"));

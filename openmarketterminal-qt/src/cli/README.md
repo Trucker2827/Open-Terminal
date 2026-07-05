@@ -13,7 +13,7 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     setup [status|profile|ai|doctor]# local profile/account + AI onboarding
     serve [--status|--stop]
     daemon install|start|status|stop # macOS login LaunchAgent wrapper for serve
-    daemon health | logs | audit      # daemon visibility and safety checks
+    daemon health | readiness | logs  # daemon visibility and trade-gate safety
     daemon jobs list|add|run|remove   # local scheduled automation jobs
     daemon monitors status|repair     # monitor/job supervisor view
     screens [query]                  # list openable app screens
@@ -116,6 +116,7 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     daemon install --start
     daemon status
     daemon health
+    daemon readiness --symbol BTC
     daemon jobs add brief NVDA --every-sec 86400
     daemon jobs add notebook trading-sma-crossover-backtest --every-sec 604800
     daemon paper meanrev --symbols AAPL,MSFT --every-sec 300 --max-iters 1

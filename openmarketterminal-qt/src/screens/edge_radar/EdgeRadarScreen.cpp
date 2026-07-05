@@ -1,12 +1,17 @@
 #include "screens/edge_radar/EdgeRadarScreen.h"
 
+#include "services/edge_radar/EdgePredictionModel.h"
 #include "services/edge_radar/EdgeRadarService.h"
+#include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/EdgeRadarRepository.h"
 #include "ui/theme/Theme.h"
 
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QDoubleSpinBox>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QHeaderView>
@@ -14,6 +19,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QProcess>
 #include <QPushButton>
 #include <QAbstractItemView>
 #include <QTableWidget>
@@ -120,6 +126,28 @@ void EdgeRadarScreen::build_ui() {
 
     auto* title = section_label(tr("EDGE RADAR"));
     root->addWidget(title);
+
+    auto* model_panel = new QWidget;
+    model_panel->setStyleSheet(QString("background:%1; border:1px solid %2;").arg(BG_SURFACE(), BORDER_DIM()));
+    auto* model_layout = new QHBoxLayout(model_panel);
+    model_layout->setContentsMargins(10, 8, 10, 8);
+    model_layout->setSpacing(8);
+    auto* model_title = section_label(tr("INDEPENDENT MODELS"));
+    model_status_label_ = new QLabel(tr("loading"));
+    model_status_label_->setStyleSheet(QString("color:%1; font-size:12px; font-family:'Consolas','Courier New',monospace;")
+                                           .arg(TEXT_SECONDARY()));
+    auto* refresh_models = new QPushButton(tr("REFRESH MODELS"));
+    auto* train_models = new QPushButton(tr("TRAIN MODELS"));
+    auto* backfill_btc = new QPushButton(tr("BACKFILL BTC 7D"));
+    refresh_models->setStyleSheet(button_style(false));
+    train_models->setStyleSheet(button_style(true));
+    backfill_btc->setStyleSheet(button_style(false));
+    model_layout->addWidget(model_title);
+    model_layout->addWidget(model_status_label_, 1);
+    model_layout->addWidget(backfill_btc);
+    model_layout->addWidget(refresh_models);
+    model_layout->addWidget(train_models);
+    root->addWidget(model_panel);
 
     auto* form_panel = new QWidget;
     form_panel->setStyleSheet(QString("background:%1; border:1px solid %2;").arg(BG_SURFACE(), BORDER_DIM()));
@@ -247,7 +275,11 @@ void EdgeRadarScreen::build_ui() {
     connect(update, &QPushButton::clicked, this, &EdgeRadarScreen::update_selected);
     connect(close, &QPushButton::clicked, this, &EdgeRadarScreen::close_selected);
     connect(refresh, &QPushButton::clicked, this, &EdgeRadarScreen::refresh_table);
+    connect(backfill_btc, &QPushButton::clicked, this, &EdgeRadarScreen::backfill_btc_history);
+    connect(refresh_models, &QPushButton::clicked, this, &EdgeRadarScreen::refresh_model_status);
+    connect(train_models, &QPushButton::clicked, this, &EdgeRadarScreen::train_models);
     connect(table_, &QTableWidget::cellClicked, this, &EdgeRadarScreen::on_row_selected);
+    refresh_model_status();
 }
 
 EdgeRadarIdea EdgeRadarScreen::collect_idea() const {
@@ -362,6 +394,90 @@ void EdgeRadarScreen::refresh_table() {
         ++row;
     }
     set_status(tr("%1 edge ideas loaded").arg(row));
+}
+
+void EdgeRadarScreen::refresh_model_status() {
+    if (!model_status_label_)
+        return;
+    const QString symbol = symbol_ && !symbol_->text().trimmed().isEmpty()
+                               ? symbol_->text().trimmed().toUpper()
+                               : QStringLiteral("BTC");
+    auto r = EdgePredictionModelRepository::instance().list_models(symbol);
+    if (r.is_err()) {
+        model_status_label_->setText(QString::fromStdString(r.error()));
+        return;
+    }
+    QStringList parts;
+    for (const auto& h : edge::EdgePredictionModel::supported_horizons()) {
+        QString status = QStringLiteral("collecting");
+        int samples = 0;
+        for (const auto& m : r.value()) {
+            if (m.horizon == h) {
+                samples = m.sample_count;
+                status = samples >= 30 ? QStringLiteral("trained") : QStringLiteral("collecting");
+                break;
+            }
+        }
+        parts << QStringLiteral("%1 %2 (%3)").arg(h, status).arg(samples);
+    }
+    model_status_label_->setText(parts.join(QStringLiteral("  |  ")));
+}
+
+void EdgeRadarScreen::train_models() {
+    const QString symbol = symbol_ && !symbol_->text().trimmed().isEmpty()
+                               ? symbol_->text().trimmed().toUpper()
+                               : QStringLiteral("BTC");
+    QStringList parts;
+    for (const auto& h : edge::EdgePredictionModel::supported_horizons()) {
+        auto r = edge::EdgePredictionModel::train(symbol, h, 30);
+        if (r.is_err()) {
+            set_status(QString::fromStdString(r.error()), true);
+            return;
+        }
+        parts << QStringLiteral("%1:%2").arg(h, r.value().readiness);
+    }
+    refresh_model_status();
+    set_status(tr("Model train pass complete: %1").arg(parts.join(QStringLiteral(", "))));
+}
+
+void EdgeRadarScreen::backfill_btc_history() {
+    QString cli = QCoreApplication::applicationDirPath() + QStringLiteral("/openterminalcli");
+    if (!QFileInfo::exists(cli)) {
+        const QString dev_cli = QDir(QCoreApplication::applicationDirPath())
+                                    .absoluteFilePath(QStringLiteral("../../../openterminalcli"));
+        cli = QFileInfo::exists(dev_cli) ? dev_cli : QStringLiteral("openterminalcli");
+    }
+
+    auto* process = new QProcess(this);
+    const QStringList args{QStringLiteral("edge"),
+                           QStringLiteral("backfill"),
+                           QStringLiteral("--source"),
+                           QStringLiteral("coinbase"),
+                           QStringLiteral("--symbol"),
+                           QStringLiteral("BTC"),
+                           QStringLiteral("--days"),
+                           QStringLiteral("7"),
+                           QStringLiteral("--train")};
+    process->setProgram(cli);
+    process->setArguments(args);
+    process->setProcessChannelMode(QProcess::MergedChannels);
+    connect(process, &QProcess::finished, this, [this, process](int exit_code, QProcess::ExitStatus status) {
+        const QString output = QString::fromUtf8(process->readAll()).trimmed();
+        process->deleteLater();
+        refresh_model_status();
+        if (status != QProcess::NormalExit || exit_code != 0) {
+            set_status(output.isEmpty() ? tr("Backfill failed") : output.left(240), true);
+            return;
+        }
+        set_status(output.isEmpty() ? tr("BTC backfill complete") : output.left(240));
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError) {
+        const QString error = process->errorString();
+        process->deleteLater();
+        set_status(tr("Backfill could not start: %1").arg(error), true);
+    });
+    process->start();
+    set_status(tr("Backfilling BTC history from Coinbase..."));
 }
 
 void EdgeRadarScreen::on_row_selected(int row, int) {

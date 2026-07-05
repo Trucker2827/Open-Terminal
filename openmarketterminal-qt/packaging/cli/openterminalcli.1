@@ -56,10 +56,34 @@ Local-first onboarding for profile/account and AI provider settings.
 .B serve [--status|--stop]
 Run or manage a headless daemon.
 .TP
-.B daemon install|start|stop|restart|status|health|logs|audit|jobs|monitors|notify|ai|paper
+.B daemon install|start|stop|restart|status|health|readiness|logs|audit|jobs|monitors|notify|ai|paper
 Install and manage the per-user macOS LaunchAgent wrapper around
 \fBopenterminalcli --profile PROFILE serve\fR, plus local scheduled daemon
 jobs for briefs, notebooks, notifications, health checks, and paper strategies.
+Daemon jobs support per-job watchdogs with \fB--timeout-sec N\fR, and
+\fBdaemon jobs clear-failures [--all|ID_OR_NAME] [--force]\fR acknowledges
+reviewed failure history without hiding current failures.
+\fBdaemon readiness [--symbol BTC]\fR reports whether live ticks, prediction
+market snapshots, horizon models, model-output freshness, and daemon jobs are
+safe enough for the local trade gate.
+\fBedge publish-horizons [--symbol BTC]\fR publishes timestamped local model
+outputs for 5m, 15m, 1h, and daily horizons so daemon readiness can verify
+fresh probability snapshots.
+\fBedge snapshot-btc5m-live\fR records the current Polymarket BTC 5-minute
+market into the local feature store for readiness and audit checks.
+\fBedge snapshot-kalshi [--category C] [--family F]\fR records live Kalshi
+market snapshots into the same local feature store.
+\fBedge journal-evaluate-btc5m-live\fR records a dry-run BTC 5-minute decision
+with local features, freshness, probabilities, gate result, and no-trade reason.
+\fBedge journal-kalshi-scan\fR records Kalshi dry-run decisions/research-needed
+rows from the live scanner. Crypto-family Kalshi rows use the local BTC impulse
+anchor by default; pass \fB--no-crypto-anchor\fR to record market-implied-only
+research rows.
+Inspect it with \fBedge journal list|show|stats|resolve\fR.
+Structured local run history is available with
+\fBdaemon jobs history [ID_OR_NAME] [--limit N]\fR,
+\fBdaemon jobs failures [ID_OR_NAME]\fR, and
+\fBdaemon jobs stats [ID_OR_NAME]\fR.
 .TP
 .B coverage [QUERY] [--gaps]
 Show CLI parity by app area.
@@ -114,7 +138,7 @@ Manage local watchlists.
 .B portfolio list|show|create|add|sell|tx
 Manage local portfolios.
 .TP
-.B edge evaluate|kalshi-scan|research|impulse|btc5m|btc5m-live|crypto-hourly|crypto-hourly-live|add|list|show|update|close|remove
+.B edge evaluate|kalshi-scan|research|snapshot-kalshi|journal-kalshi-scan|impulse|btc5m|btc5m-live|crypto-hourly|crypto-hourly-live|observe|train|model|probability|gate|journal|journal-evaluate-btc5m-live|backfill|collect|cockpit|selftest-leakage|add|list|show|update|close|remove
 Score and persist local stock, Kalshi, and Polymarket edge ideas. Compares
 market probability to user/model probability after spread, fees, liquidity,
 and confidence. Mutating commands require
@@ -158,6 +182,61 @@ buffer gate, e.g.
 derives the BTC anchor from fresh public exchange ticks, then applies the same
 gate to supplied hourly crypto market probabilities, e.g.
 \fBedge crypto-hourly-live --market ETH=50 --market SOL=48 --duration-ms 16000\fR.
+.PP
+.B edge observe
+records a local training observation for an independent probability model.
+Horizons are \fB5m\fR, \fB15m\fR, \fB1h\fR, and \fBdaily\fR. Outcomes may be
+added immediately or later, e.g.
+\fBedge observe --horizon 15m --market-prob 49 --btc-prob 56 --move-15s 0.08 --outcome win\fR.
+.PP
+.B edge train
+fits local transparent model weights per symbol and horizon from settled
+observations, e.g. \fBedge train --horizon all --symbol BTC --min-samples 30\fR.
+.PP
+.B edge model
+prints model readiness, sample count, base rate, and calibration score for
+each horizon, e.g. \fBedge model --symbol BTC\fR.
+.PP
+.B edge probability
+estimates an independent local probability for \fB5m\fR, \fB15m\fR, \fB1h\fR,
+or \fBdaily\fR using the trained model when ready and a conservative heuristic
+fallback while collecting, e.g.
+\fBedge probability --horizon 1h --market-prob 53 --btc-prob 58 --move-60s 0.12\fR.
+Use \fB--publish\fR to write a timestamped model-output snapshot that other
+horizons may consume later without lookahead.
+.PP
+.B edge gate
+runs the meta decision layer from timestamp-safe model outputs and prints
+TRADE CANDIDATE, WATCH, NO TRADE, BAD PRICE, TOO LATE, or NOT ENOUGH DATA, e.g.
+\fBedge gate --horizon 5m --market-prob 49 --btc-prob 56 --move-15s 0.10\fR.
+.PP
+.B edge backfill
+downloads public one-minute crypto candles into the local profile database,
+persists close ticks, derives settled observations for 5m, 15m, 1h, and daily
+horizons, and can train models after import. Coinbase is the default public
+source; Binance is also supported where available, e.g.
+\fBedge backfill --source coinbase --symbol BTC --days 30 --train\fR.
+.PP
+.B edge collect
+samples public live crypto prices and stores raw ticks in the active local
+profile database, e.g.
+\fBedge collect BTC --sources coinbase,kraken,bitcointicker --watch --interval-ms 1000\fR.
+Coinbase and Kraken are exchange references; Bitcointicker is treated as an
+advisory/lag comparison feed.
+.PP
+.B edge cockpit
+prints an organized terminal cockpit for the selected symbol and horizon:
+local profile, data/model readiness, horizon model table, probability signals,
+primary meta-gate decision, and useful next commands. It can also bootstrap
+missing data and train before rendering, e.g.
+\fBedge cockpit --symbol BTC --horizon 15m --market-prob 50 --backfill-if-needed --train --days 30\fR.
+Use \fB--watch --interval-sec 5\fR to keep the terminal open and redraw the
+cockpit until interrupted. Add \fB--collect\fR to sample fresh public ticks on
+each redraw.
+.PP
+.B edge selftest-leakage
+inserts a past and future test model output, then proves the feature builder
+uses only outputs at or before the decision timestamp.
 .TP
 .B strategy list|templates|show|backtest|paper-run|deploy
 Manage saved trading strategies, run native backtests, and open guarded deploy.

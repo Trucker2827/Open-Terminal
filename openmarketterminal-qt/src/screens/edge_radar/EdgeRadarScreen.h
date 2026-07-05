@@ -34,6 +34,9 @@ class EdgeRadarScreen : public QWidget, public IStatefulScreen {
     void update_selected();
     void close_selected();
     void refresh_table();
+    void refresh_model_status();
+    void train_models();
+    void backfill_btc_history();
     void on_row_selected(int row, int column);
 
   private:
@@ -60,6 +63,7 @@ class EdgeRadarScreen : public QWidget, public IStatefulScreen {
     QLabel* raw_edge_label_ = nullptr;
     QLabel* after_cost_label_ = nullptr;
     QLabel* recommendation_label_ = nullptr;
+    QLabel* model_status_label_ = nullptr;
     QLabel* status_label_ = nullptr;
     QTableWidget* table_ = nullptr;
     QString selected_id_;

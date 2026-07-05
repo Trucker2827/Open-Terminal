@@ -896,6 +896,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/TradeAuditRepository.cpp
     src/storage/repositories/PmPaperRepository.cpp
     src/storage/repositories/LivePnlRepository.cpp
+    src/storage/repositories/EdgePredictionModelRepository.cpp
     src/storage/repositories/EdgeRadarRepository.cpp
 
     # Workflow migration
@@ -959,6 +960,9 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v050_pm_paper.cpp
     src/storage/sqlite/migrations/v051_live_pnl.cpp
     src/storage/sqlite/migrations/v052_edge_radar.cpp
+    src/storage/sqlite/migrations/v053_edge_prediction_models.cpp
+    src/storage/sqlite/migrations/v054_edge_prediction_feature_store.cpp
+    src/storage/sqlite/migrations/v055_edge_decision_journal.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -977,6 +981,7 @@ set(PYTHON_SOURCES
 set(LLM_SERVICE_SOURCES
     src/services/crypto_latency/CryptoLatencyService.cpp
     src/services/edge_radar/BtcFiveMinuteEdgeModel.cpp
+    src/services/edge_radar/EdgePredictionModel.cpp
     src/services/edge_radar/EdgeRadarService.cpp
     src/services/edge_radar/CryptoHourlyEdgeModel.cpp
     src/services/edge_radar/CryptoImpulseModel.cpp
@@ -2274,6 +2279,7 @@ set_source_files_properties(
     src/storage/repositories/TradeAuditRepository.cpp
     src/storage/repositories/PmPaperRepository.cpp
     src/storage/repositories/LivePnlRepository.cpp
+    src/storage/repositories/EdgePredictionModelRepository.cpp
     src/storage/repositories/EdgeRadarRepository.cpp
     # Migration files — each defines sql() helper in anonymous namespace
     src/storage/sqlite/migrations/v001_initial.cpp
@@ -2327,6 +2333,9 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v050_pm_paper.cpp
     src/storage/sqlite/migrations/v051_live_pnl.cpp
     src/storage/sqlite/migrations/v052_edge_radar.cpp
+    src/storage/sqlite/migrations/v053_edge_prediction_models.cpp
+    src/storage/sqlite/migrations/v054_edge_prediction_feature_store.cpp
+    src/storage/sqlite/migrations/v055_edge_decision_journal.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
