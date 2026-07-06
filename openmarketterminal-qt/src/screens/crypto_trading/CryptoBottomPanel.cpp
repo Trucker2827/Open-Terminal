@@ -33,6 +33,7 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 namespace openmarketterminal::screens::crypto {
@@ -201,10 +202,12 @@ CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     // Time & Sales
     time_sales_ = new CryptoTimeSales;
     time_sales_tab_idx_ = tabs_->addTab(time_sales_, tr("T&S"));
+    tabs_->setTabToolTip(time_sales_tab_idx_, tr("Time and Sales"));
 
     // Depth Chart
     depth_chart_ = new CryptoDepthChart;
     depth_tab_idx_ = tabs_->addTab(depth_chart_, tr("DEPTH"));
+    tabs_->setTabToolTip(depth_tab_idx_, tr("Depth Chart"));
 
     setup_market_info_tab();
     setup_stats_tab();
@@ -221,15 +224,25 @@ void CryptoBottomPanel::changeEvent(QEvent* event) {
 void CryptoBottomPanel::retranslateUi() {
     // Tab labels
     if (tabs_) {
-        if (positions_tab_idx_ >= 0) tabs_->setTabText(positions_tab_idx_, tr("POSITIONS"));
+        if (positions_tab_idx_ >= 0) tabs_->setTabText(positions_tab_idx_, tr("POS"));
         if (orders_tab_idx_ >= 0)    tabs_->setTabText(orders_tab_idx_, tr("ORDERS"));
-        if (trades_tab_idx_ >= 0)    tabs_->setTabText(trades_tab_idx_, tr("HISTORY"));
-        if (my_trades_tab_idx_ >= 0) tabs_->setTabText(my_trades_tab_idx_, tr("MY TRADES"));
+        if (trades_tab_idx_ >= 0)    tabs_->setTabText(trades_tab_idx_, tr("HIST"));
+        if (my_trades_tab_idx_ >= 0) tabs_->setTabText(my_trades_tab_idx_, tr("FILLS"));
         if (fees_tab_idx_ >= 0)      tabs_->setTabText(fees_tab_idx_, tr("FEES"));
         if (time_sales_tab_idx_ >= 0) tabs_->setTabText(time_sales_tab_idx_, tr("T&S"));
         if (depth_tab_idx_ >= 0)     tabs_->setTabText(depth_tab_idx_, tr("DEPTH"));
-        if (market_tab_idx_ >= 0)    tabs_->setTabText(market_tab_idx_, tr("MARKET"));
+        if (market_tab_idx_ >= 0)    tabs_->setTabText(market_tab_idx_, tr("MKT"));
         if (stats_tab_idx_ >= 0)     tabs_->setTabText(stats_tab_idx_, tr("STATS"));
+
+        if (positions_tab_idx_ >= 0) tabs_->setTabToolTip(positions_tab_idx_, tr("Positions"));
+        if (orders_tab_idx_ >= 0)    tabs_->setTabToolTip(orders_tab_idx_, tr("Open Orders"));
+        if (trades_tab_idx_ >= 0)    tabs_->setTabToolTip(trades_tab_idx_, tr("Paper Trade History"));
+        if (my_trades_tab_idx_ >= 0) tabs_->setTabToolTip(my_trades_tab_idx_, tr("Live Exchange Fills"));
+        if (fees_tab_idx_ >= 0)      tabs_->setTabToolTip(fees_tab_idx_, tr("Exchange Fee Schedule"));
+        if (time_sales_tab_idx_ >= 0) tabs_->setTabToolTip(time_sales_tab_idx_, tr("Time and Sales"));
+        if (depth_tab_idx_ >= 0)     tabs_->setTabToolTip(depth_tab_idx_, tr("Depth Chart"));
+        if (market_tab_idx_ >= 0)    tabs_->setTabToolTip(market_tab_idx_, tr("Market Info"));
+        if (stats_tab_idx_ >= 0)     tabs_->setTabToolTip(stats_tab_idx_, tr("Execution Stats"));
     }
 
     // Table headers
@@ -267,12 +280,17 @@ void CryptoBottomPanel::retranslateUi() {
     if (fees_title_)         fees_title_->setText(tr("MAKER / TAKER"));
     if (next_funding_title_) next_funding_title_->setText(tr("NEXT FUNDING"));
 
-    // Stats card titles
-    if (stat_titles_[0]) stat_titles_[0]->setText(tr("TOTAL P&L"));
-    if (stat_titles_[1]) stat_titles_[1]->setText(tr("WIN RATE"));
-    if (stat_titles_[2]) stat_titles_[2]->setText(tr("TOTAL TRADES"));
-    if (stat_titles_[3]) stat_titles_[3]->setText(tr("BEST TRADE"));
-    if (stat_titles_[4]) stat_titles_[4]->setText(tr("WORST TRADE"));
+    if (is_paper_) {
+        const QString labels[] = {tr("TOTAL P&L"), tr("WIN RATE"), tr("TOTAL TRADES"), tr("BEST TRADE"),
+                                  tr("WORST TRADE"), tr("FEES PAID"), tr("TURNOVER"), tr("TODAY P&L"),
+                                  tr("PROFIT FACTOR")};
+        for (int i = 0; i < 9; ++i) {
+            if (stat_titles_[i])
+                stat_titles_[i]->setText(labels[i]);
+        }
+    } else {
+        update_live_stats();
+    }
 }
 
 void CryptoBottomPanel::setup_positions_tab() {
@@ -326,7 +344,8 @@ void CryptoBottomPanel::setup_positions_tab() {
         positions_empty_label_ = positions_stack_->widget(1)->findChild<QLabel*>();
     vlay->addWidget(stack_host, 1);
 
-    positions_tab_idx_ = tabs_->addTab(container, tr("POSITIONS"));
+    positions_tab_idx_ = tabs_->addTab(container, tr("POS"));
+    tabs_->setTabToolTip(positions_tab_idx_, tr("Positions"));
 }
 
 void CryptoBottomPanel::setup_orders_tab() {
@@ -381,6 +400,7 @@ void CryptoBottomPanel::setup_orders_tab() {
     vlay->addWidget(stack_host, 1);
 
     orders_tab_idx_ = tabs_->addTab(container, tr("ORDERS"));
+    tabs_->setTabToolTip(orders_tab_idx_, tr("Open Orders"));
 }
 
 void CryptoBottomPanel::setup_trades_tab() {
@@ -396,7 +416,8 @@ void CryptoBottomPanel::setup_trades_tab() {
     auto* host = wrap_with_empty_state(trades_table_, trades_stack_, tr("No trade history yet."));
     if (trades_stack_ && trades_stack_->widget(1))
         trades_empty_label_ = trades_stack_->widget(1)->findChild<QLabel*>();
-    trades_tab_idx_ = tabs_->addTab(host, tr("HISTORY"));
+    trades_tab_idx_ = tabs_->addTab(host, tr("HIST"));
+    tabs_->setTabToolTip(trades_tab_idx_, tr("Paper Trade History"));
 }
 
 void CryptoBottomPanel::setup_my_trades_tab() {
@@ -414,7 +435,8 @@ void CryptoBottomPanel::setup_my_trades_tab() {
                                         tr("No exchange-side fills.\nConnect an API key in LIVE mode to populate."));
     if (my_trades_stack_ && my_trades_stack_->widget(1))
         my_trades_empty_label_ = my_trades_stack_->widget(1)->findChild<QLabel*>();
-    my_trades_tab_idx_ = tabs_->addTab(host, tr("MY TRADES"));
+    my_trades_tab_idx_ = tabs_->addTab(host, tr("FILLS"));
+    tabs_->setTabToolTip(my_trades_tab_idx_, tr("Live Exchange Fills"));
 }
 
 void CryptoBottomPanel::setup_fees_tab() {
@@ -427,6 +449,7 @@ void CryptoBottomPanel::setup_fees_tab() {
     if (fees_stack_ && fees_stack_->widget(1))
         fees_empty_label_ = fees_stack_->widget(1)->findChild<QLabel*>();
     fees_tab_idx_ = tabs_->addTab(host, tr("FEES"));
+    tabs_->setTabToolTip(fees_tab_idx_, tr("Exchange Fee Schedule"));
 }
 
 namespace {
@@ -496,7 +519,8 @@ void CryptoBottomPanel::setup_market_info_tab() {
     outer->addLayout(grid);
     outer->addStretch();
 
-    market_tab_idx_ = tabs_->addTab(widget, tr("MARKET"));
+    market_tab_idx_ = tabs_->addTab(widget, tr("MKT"));
+    tabs_->setTabToolTip(market_tab_idx_, tr("Market Info"));
 }
 
 void CryptoBottomPanel::setup_stats_tab() {
@@ -512,26 +536,24 @@ void CryptoBottomPanel::setup_stats_tab() {
     for (int c = 0; c < 3; ++c) grid->setColumnStretch(c, 1);
 
     const QString labels[] = {tr("TOTAL P&L"), tr("WIN RATE"), tr("TOTAL TRADES"), tr("BEST TRADE"),
-                              tr("WORST TRADE")};
-    // Row 0: P&L card spans 1 col (most prominent metric), then Win Rate, Trades.
-    // Row 1: Best / Worst.
-    stat_values_[0] = build_card(grid, 0, 0, labels[0]);
-    stat_values_[1] = build_card(grid, 0, 1, labels[1]);
-    stat_values_[2] = build_card(grid, 0, 2, labels[2]);
-    stat_values_[3] = build_card(grid, 1, 0, labels[3]);
-    stat_values_[4] = build_card(grid, 1, 1, labels[4]);
-    for (int i = 0; i < 5; ++i)
+                              tr("WORST TRADE"), tr("FEES PAID"), tr("TURNOVER"), tr("TODAY P&L"),
+                              tr("PROFIT FACTOR")};
+    for (int i = 0; i < 9; ++i) {
+        stat_values_[i] = build_card(grid, i / 3, i % 3, labels[i]);
         stat_titles_[i] = card_title_of(stat_values_[i]);
+    }
 
     // Mark P&L cards as such so the QSS can colour them via the [pnl] property.
     stat_values_[0]->setProperty("pnl", "neutral");
     stat_values_[3]->setProperty("pnl", "positive");
     stat_values_[4]->setProperty("pnl", "negative");
+    stat_values_[7]->setProperty("pnl", "neutral");
 
     outer->addLayout(grid);
     outer->addStretch();
 
     stats_tab_idx_ = tabs_->addTab(widget, tr("STATS"));
+    tabs_->setTabToolTip(stats_tab_idx_, tr("Execution Stats"));
 }
 
 // ── Forwarding methods for new widgets ──────────────────────────────────────
@@ -713,6 +735,9 @@ void CryptoBottomPanel::set_trades(const QVector<trading::PtTrade>& trades) {
 }
 
 void CryptoBottomPanel::set_stats(const trading::PtStats& stats) {
+    if (!is_paper_)
+        return;
+
     auto repolish = [](QLabel* lbl) {
         if (!lbl || !lbl->style()) return;
         lbl->style()->unpolish(lbl);
@@ -733,6 +758,117 @@ void CryptoBottomPanel::set_stats(const trading::PtStats& stats) {
     stat_values_[4]->setText(QString("$%1").arg(stats.largest_loss, 0, 'f', 2));
     stat_values_[4]->setProperty("pnl", "negative");
     repolish(stat_values_[4]);
+
+    stat_values_[5]->setText(QString("$%1").arg(stats.total_fees, 0, 'f', 2));
+    stat_values_[6]->setText(QString("$%1").arg(stats.turnover, 0, 'f', 2));
+
+    stat_values_[7]->setText(QString("$%1").arg(stats.today_pnl, 0, 'f', 2));
+    stat_values_[7]->setProperty("pnl", stats.today_pnl > 0 ? "positive" : stats.today_pnl < 0 ? "negative" : "neutral");
+    repolish(stat_values_[7]);
+
+    stat_values_[8]->setText(stats.total_trades > 0 ? QString::number(stats.profit_factor, 'f', 2) : QStringLiteral("--"));
+}
+
+void CryptoBottomPanel::update_live_stats() {
+    if (stats_tab_idx_ < 0 || is_paper_)
+        return;
+
+    const QString labels[] = {tr("OPEN P&L"), tr("FEES PAID"), tr("FILLS"), tr("MAKER / TAKER"),
+                              tr("TURNOVER"), tr("AVG FILL"), tr("BUY / SELL"), tr("LARGEST FILL"),
+                              tr("LAST FILL")};
+    for (int i = 0; i < 9; ++i) {
+        if (stat_titles_[i])
+            stat_titles_[i]->setText(labels[i]);
+    }
+
+    auto repolish = [](QLabel* lbl) {
+        if (!lbl || !lbl->style()) return;
+        lbl->style()->unpolish(lbl);
+        lbl->style()->polish(lbl);
+    };
+    auto set_pnl = [&](int idx, const char* value) {
+        if (!stat_values_[idx]) return;
+        stat_values_[idx]->setProperty("pnl", value);
+        repolish(stat_values_[idx]);
+    };
+    auto money = [](double v) { return QString("$%1").arg(v, 0, 'f', 2); };
+
+    double open_pnl = 0.0;
+    for (const auto& value : live_positions_json_) {
+        const auto p = value.toObject();
+        open_pnl += p.value("unrealizedPnl").toDouble();
+    }
+
+    const QJsonArray trades = live_trades_json_.value("trades").toArray();
+    double fees = 0.0;
+    double turnover = 0.0;
+    double amount_sum = 0.0;
+    double largest_fill = 0.0;
+    int buys = 0;
+    int sells = 0;
+    int makers = 0;
+    int takers = 0;
+    int unknown_liquidity = 0;
+    qint64 last_ts = 0;
+    QString last_time = QStringLiteral("--");
+
+    for (const auto& value : trades) {
+        const auto t = value.toObject();
+        const double price = t.value("price").toDouble();
+        const double amount = std::abs(t.value("amount").toDouble());
+        double cost = std::abs(t.value("cost").toDouble());
+        if (cost <= 0.0 && price > 0.0 && amount > 0.0)
+            cost = price * amount;
+
+        fees += std::abs(t.value("fee").toDouble());
+        turnover += cost;
+        amount_sum += amount;
+        largest_fill = std::max(largest_fill, cost);
+
+        const QString side = t.value("side").toString().toLower();
+        if (side == QLatin1String("buy"))
+            ++buys;
+        else if (side == QLatin1String("sell"))
+            ++sells;
+
+        const QString liquidity = t.value("taker_or_maker").toString().toLower();
+        if (liquidity.contains(QLatin1String("maker")))
+            ++makers;
+        else if (liquidity.contains(QLatin1String("taker")))
+            ++takers;
+        else
+            ++unknown_liquidity;
+
+        const qint64 ts = t.value("timestamp").toVariant().toLongLong();
+        if (ts > last_ts) {
+            last_ts = ts;
+            last_time = QDateTime::fromMSecsSinceEpoch(ts).toString("MM-dd HH:mm:ss");
+        } else if (last_ts <= 0 && !t.value("datetime").toString().isEmpty()) {
+            last_time = t.value("datetime").toString();
+        }
+    }
+
+    const int fills = trades.size();
+    const double avg_fill = amount_sum > 0.0 ? turnover / amount_sum : 0.0;
+
+    if (stat_values_[0]) stat_values_[0]->setText(money(open_pnl));
+    set_pnl(0, open_pnl > 0 ? "positive" : open_pnl < 0 ? "negative" : "neutral");
+
+    if (stat_values_[1]) stat_values_[1]->setText(fills > 0 ? money(fees) : QStringLiteral("--"));
+    if (stat_values_[2]) stat_values_[2]->setText(fills > 0 ? QString::number(fills) : QStringLiteral("--"));
+    if (stat_values_[3]) {
+        stat_values_[3]->setText(
+            fills > 0 ? QString("M:%1 / T:%2%3")
+                            .arg(makers)
+                            .arg(takers)
+                            .arg(unknown_liquidity > 0 ? QString(" / ?:%1").arg(unknown_liquidity) : QString())
+                      : QStringLiteral("--"));
+    }
+    if (stat_values_[4]) stat_values_[4]->setText(fills > 0 ? money(turnover) : QStringLiteral("--"));
+    if (stat_values_[5]) stat_values_[5]->setText(fills > 0 ? money(avg_fill) : QStringLiteral("--"));
+    if (stat_values_[6]) stat_values_[6]->setText(fills > 0 ? QString("B:%1 / S:%2").arg(buys).arg(sells) : QStringLiteral("--"));
+    if (stat_values_[7]) stat_values_[7]->setText(fills > 0 ? money(largest_fill) : QStringLiteral("--"));
+    if (stat_values_[8]) stat_values_[8]->setText(last_time);
 }
 
 void CryptoBottomPanel::set_market_info(const MarketInfoData& info) {
@@ -762,6 +898,8 @@ void CryptoBottomPanel::update_my_trades_empty_text() {
 void CryptoBottomPanel::set_mode(bool is_paper) {
     is_paper_ = is_paper;
     update_my_trades_empty_text();
+    if (!is_paper_)
+        update_live_stats();
 }
 
 void CryptoBottomPanel::set_account_id(const QString& account_id) {
@@ -769,6 +907,8 @@ void CryptoBottomPanel::set_account_id(const QString& account_id) {
 }
 
 void CryptoBottomPanel::set_live_positions(const QJsonArray& positions) {
+    live_positions_json_ = positions;
+
     const int n = positions.size();
     positions_table_->setUpdatesEnabled(false);
     if (positions_table_->rowCount() != n)
@@ -801,6 +941,7 @@ void CryptoBottomPanel::set_live_positions(const QJsonArray& positions) {
     }
     positions_table_->setUpdatesEnabled(true);
     update_empty_state(positions_table_, positions_stack_, n);
+    update_live_stats();
 }
 
 void CryptoBottomPanel::set_live_orders(const QJsonArray& orders) {
@@ -851,6 +992,8 @@ void CryptoBottomPanel::set_live_orders(const QJsonArray& orders) {
 }
 
 void CryptoBottomPanel::update_my_trades(const QJsonObject& json) {
+    live_trades_json_ = json;
+
     const QJsonArray trades = json.value("trades").toArray();
     const int n = trades.size();
     my_trades_table_->setUpdatesEnabled(false);
@@ -886,6 +1029,7 @@ void CryptoBottomPanel::update_my_trades(const QJsonObject& json) {
     }
     my_trades_table_->setUpdatesEnabled(true);
     update_empty_state(my_trades_table_, my_trades_stack_, n);
+    update_live_stats();
 }
 
 void CryptoBottomPanel::update_fees(const QJsonObject& json) {
@@ -931,11 +1075,16 @@ void CryptoBottomPanel::update_fees(const QJsonObject& json) {
 }
 
 void CryptoBottomPanel::set_live_balance(double balance, double equity, double used_margin) {
+    live_balance_ = balance;
+    live_equity_ = equity;
+    live_used_margin_ = used_margin;
+
     if (!live_balance_label_)
-        return;
-    live_balance_label_->setText(QString("$%1").arg(balance, 0, 'f', 2));
-    live_equity_label_->setText(QString("$%1").arg(equity, 0, 'f', 2));
-    live_margin_label_->setText(QString("$%1").arg(used_margin, 0, 'f', 2));
+        return update_live_stats();
+    live_balance_label_->setText(QString("$%1").arg(live_balance_, 0, 'f', 2));
+    live_equity_label_->setText(QString("$%1").arg(live_equity_, 0, 'f', 2));
+    live_margin_label_->setText(QString("$%1").arg(live_used_margin_, 0, 'f', 2));
+    update_live_stats();
 }
 
 } // namespace openmarketterminal::screens::crypto

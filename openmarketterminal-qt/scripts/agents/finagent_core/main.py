@@ -1177,6 +1177,8 @@ def dispatch_action_streaming(
         try:
             members = team_config.get("members", [])
             stream_print("thinking", f"Team has {len(members)} members")
+            if len(members) == 1:
+                stream_print("thinking", "Single-member team detected; using direct agent fast path")
 
             for i, member in enumerate(members):
                 name = member.get("name", f"Agent {i+1}")

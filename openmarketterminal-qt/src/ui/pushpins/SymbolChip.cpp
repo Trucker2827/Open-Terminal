@@ -50,8 +50,10 @@ void SymbolChip::mouseMoveEvent(QMouseEvent* e) {
 void SymbolChip::mouseReleaseEvent(QMouseEvent* e) {
     const bool was_click = pressed_ && e->button() == Qt::LeftButton;
     pressed_ = false;
-    if (was_click)
+    if (was_click) {
         broadcast_to_group(SymbolGroup::A);
+        emit activated(ref_);
+    }
     QWidget::mouseReleaseEvent(e);
 }
 

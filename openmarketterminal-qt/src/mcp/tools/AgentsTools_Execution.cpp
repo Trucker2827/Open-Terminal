@@ -287,11 +287,14 @@ void agents_internal::register_execution_tools(std::vector<ToolDef>& tools) {
         t.input_schema = ToolSchemaBuilder()
             .string("query", "Query for the team").required().length(1, 8192)
             .object("team_config", "Team config: name, mode, members[], coordinator_model").required()
+            .integer("timeout_ms", "Optional execution guard for the team process").default_int(120000).between(30000, 600000)
             .build();
         t.async_handler = [](const QJsonObject& args, ToolContext ctx,
                               std::shared_ptr<QPromise<ToolResult>> promise) {
             const QString query = args["query"].toString();
-            const QJsonObject team_config = args["team_config"].toObject();
+            QJsonObject team_config = args["team_config"].toObject();
+            if (args.contains("timeout_ms"))
+                team_config["timeout_ms"] = args["timeout_ms"].toInt(120000);
             dispatch_agent_run(
                 [query, team_config]() {
                     return services::AgentService::instance().run_team(query, team_config);

@@ -10,6 +10,7 @@
 #include "auth/PinManager.h"
 #include "auth/lock/LockOverlayController.h"
 #include "core/symbol/IGroupLinked.h"
+#include "core/symbol/SymbolContext.h"
 #include "core/symbol/SymbolGroup.h"
 #include "screens/common/IStatefulScreen.h"
 #include "core/config/ProfileManager.h"
@@ -379,6 +380,15 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
 
     connect(toolbar, &ui::ToolBar::navigate_to, this, [this](const QString& id) {
         if (!locked_) dock_router_->navigate(id, true);
+    });
+    connect(toolbar, &ui::ToolBar::symbol_pin_activated, this, [this](const SymbolRef& ref) {
+        if (locked_ || !ref.is_valid())
+            return;
+        const QString target = (ref.asset_class == QStringLiteral("crypto"))
+                                   ? QStringLiteral("crypto_trading")
+                                   : QStringLiteral("equity_trading");
+        dock_router_->navigate(target, true);
+        SymbolContext::instance().set_group_symbol(SymbolGroup::A, ref, dock_router_);
     });
 
     // Debounced dock-layout save: ADS emits a burst of signals during

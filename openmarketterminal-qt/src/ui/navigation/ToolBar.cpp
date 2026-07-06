@@ -19,7 +19,7 @@ namespace openmarketterminal::ui {
 
 static QString menu_ss() {
     return QString("QMenuBar{background:transparent;color:%1;border:none;spacing:0;}"
-                   "QMenuBar::item{background:transparent;padding:4px 10px;}"
+                   "QMenuBar::item{background:transparent;padding:4px 7px;}"
                    "QMenuBar::item:selected{background:%2;color:%3;}")
         .arg(colors::TEXT_SECONDARY())
         .arg(colors::BG_RAISED())
@@ -48,7 +48,7 @@ ToolBar::ToolBar(QWidget* parent) : QWidget(parent) {
     menu_bar_ = new QMenuBar(this);
     // Keep the menu inline in the toolbar on macOS. Without this, Qt migrates
     // the QMenuBar into the native screen-top application menu, leaving
-    // File/Navigate/View/Help missing from the toolbar row on Mac builds.
+    // the root menus missing from the toolbar row on Mac builds.
     menu_bar_->setNativeMenuBar(false);
     menu_bar_->setStyleSheet(menu_ss());
     rebuild_menus();
@@ -76,15 +76,6 @@ ToolBar::ToolBar(QWidget* parent) : QWidget(parent) {
         return l;
     };
 
-    sep();
-    // OPENMARKET / TERMINAL are brand marks — set raw, never translated.
-    openmarketterminal_label_ = mk(QStringLiteral("OPENMARKET "));
-    hl->addWidget(openmarketterminal_label_);
-    branding_label_ = mk(QStringLiteral("TERMINAL"));
-    hl->addWidget(branding_label_);
-    subtitle_label_ = mk({});
-    hl->addWidget(subtitle_label_);
-    hl->addWidget(mk("  "));
     live_dot_ = mk(QString::fromUtf8("\xe2\x97\x8f")); // U+25CF — pure icon, no translation
     hl->addWidget(live_dot_);
     live_label_ = mk({});
@@ -96,6 +87,7 @@ ToolBar::ToolBar(QWidget* parent) : QWidget(parent) {
     // embedded directly so symbol pins share the row with menus and clock.
     pushpin_bar_ = new PushpinBar(this);
     pushpin_bar_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    connect(pushpin_bar_, &PushpinBar::symbol_activated, this, &ToolBar::symbol_pin_activated);
     hl->addWidget(pushpin_bar_, 1);
 
     sep();
@@ -144,7 +136,6 @@ void ToolBar::changeEvent(QEvent* e) {
 }
 
 void ToolBar::retranslateUi() {
-    if (subtitle_label_) subtitle_label_->setText(tr("  |  PROFESSIONAL RESEARCH DESK"));
     if (live_label_)     live_label_->setText(tr(" LIVE"));
     if (logout_btn_) logout_btn_->setText(tr("LOCK"));
     // Rebuild menus so the new translator applies to every QAction label.
@@ -157,7 +148,10 @@ void ToolBar::rebuild_menus() {
     if (!menu_bar_) return;
     menu_bar_->clear();
     menu_bar_->addMenu(build_file_menu());
-    menu_bar_->addMenu(build_navigate_menu());
+    menu_bar_->addMenu(build_markets_menu());
+    menu_bar_->addMenu(build_trading_menu());
+    menu_bar_->addMenu(build_research_menu());
+    menu_bar_->addMenu(build_tools_menu());
     menu_bar_->addMenu(build_view_menu());
     menu_bar_->addMenu(build_help_menu());
     // Reapply popup stylesheet after rebuild — refresh_theme normally does
@@ -219,11 +213,9 @@ void ToolBar::apply_responsive_layout(int w) {
     if (live_label_)
         live_label_->setVisible(show_live);
 
-    // Two extra separators were added to bracket the inline pushpin bar at
-    // the start of the layout, so the credits/chat separator indices shift by 2.
-    if (separators_.size() >= 7) {
-        separators_[4]->setVisible(show_credits);
-        separators_[5]->setVisible(show_chat);
+    if (separators_.size() >= 3) {
+        separators_[1]->setVisible(show_credits);
+        separators_[2]->setVisible(show_chat);
     }
 }
 
@@ -292,73 +284,82 @@ QMenu* ToolBar::build_file_menu() {
     return m;
 }
 
-QMenu* ToolBar::build_navigate_menu() {
-    auto* m = new QMenu(tr("Navigate"), this);
-    m->setStyleSheet(QString("QMenu{background:%1;color:%2;border:1px solid %3;padding:2px 0;}"
-                             "QMenu::item{padding:3px 20px 3px 10px;}"
-                             "QMenu::item:selected{background:%4;}"
-                             "QMenu::item:disabled{color:%5;font-weight:700;padding:6px 10px 2px 10px;}"
-                             "QMenu::separator{background:%3;height:1px;margin:2px 6px;}"
-                             "QMenu::scroller{background:%1;height:14px;}"
-                             "QMenu::scroller:hover{background:%4;}")
-                         .arg(colors::BG_SURFACE())
-                         .arg(colors::TEXT_PRIMARY())
-                         .arg(colors::BORDER_DIM())
-                         .arg(colors::BG_RAISED())
-                         .arg(colors::AMBER()));
-
-    auto add_sub = [&](const QString& title) -> QMenu* {
-        auto* sub = m->addMenu(title);
-        sub->setStyleSheet(m->styleSheet());
-        return sub;
-    };
-
+QMenu* ToolBar::build_markets_menu() {
+    auto* m = new QMenu(tr("Markets"), this);
+    m->setStyleSheet(popup_ss());
     auto nav = [this](QMenu* menu, const QString& label, const QString& id) {
         menu->addAction(label, this, [this, id]() { emit navigate_to(id); });
     };
-
-    auto* mkt = add_sub(tr("Markets & Data"));
-    nav(mkt, tr("Economics"), "economics");
-    nav(mkt, tr("GOVT Data"), "gov_data");
-    nav(mkt, tr("DBnomics"), "dbnomics");
-    nav(mkt, tr("AKShare Data"), "akshare");
-    nav(mkt, tr("Asia Markets"), "asia_markets");
-    nav(mkt, tr("Relationship Map"), "relationship_map");
-
-    auto* trd = add_sub(tr("Trading & Portfolio"));
-    nav(trd, tr("Crypto Trading"), "crypto_trading");
-    nav(trd, tr("Bitcoin"), "bitcoin");
-    nav(trd, tr("Equity Trading"), "equity_trading");
-    nav(trd, tr("Alpha Arena"), "alpha_arena");
-    nav(trd, tr("Prediction Markets"), "polymarket");
-    nav(trd, tr("Edge Radar"), "edge_radar");
-    nav(trd, tr("Derivatives"), "derivatives");
-    nav(trd, tr("Watchlist"), "watchlist");
-
-    auto* res = add_sub(tr("Research & Intelligence"));
-    nav(res, tr("Equity Research"), "equity_research");
-    nav(res, tr("M&A Analytics"), "ma_analytics");
-    nav(res, tr("Alt. Investments"), "alt_investments");
-    nav(res, tr("Geopolitics"), "geopolitics");
-    nav(res, tr("Maritime"), "maritime");
-    nav(res, tr("Surface Analytics"), "surface_analytics");
-
-    auto* tools = add_sub(tr("Tools"));
-    nav(tools, tr("Agent Config"), "agent_config");
-    nav(tools, tr("MCP Servers"), "mcp_servers");
-    nav(tools, tr("Data Mapping"), "data_mapping");
-    nav(tools, tr("Data Sources"), "data_sources");
-    nav(tools, tr("Report Builder"), "report_builder");
-    nav(tools, tr("Excel"), "excel");
-    nav(tools, tr("Trade Viz"), "trade_viz");
-    nav(tools, tr("File Manager"), "file_manager");
-    nav(tools, tr("Notes"), "notes");
-
+    nav(m, tr("Markets"), "markets");
+    nav(m, tr("Dashboard"), "dashboard");
+    nav(m, tr("Watchlist"), "watchlist");
+    nav(m, tr("News"), "news");
     m->addSeparator();
+    nav(m, tr("Economics"), "economics");
+    nav(m, tr("GOVT Data"), "gov_data");
+    nav(m, tr("DBnomics"), "dbnomics");
+    nav(m, tr("AKShare Data"), "akshare");
+    nav(m, tr("Asia Markets"), "asia_markets");
+    nav(m, tr("Relationship Map"), "relationship_map");
+    return m;
+}
 
-    nav(m, tr("Docs"), "docs");
-    nav(m, tr("About"), "about");
+QMenu* ToolBar::build_trading_menu() {
+    auto* m = new QMenu(tr("Trading"), this);
+    m->setStyleSheet(popup_ss());
+    auto nav = [this](QMenu* menu, const QString& label, const QString& id) {
+        menu->addAction(label, this, [this, id]() { emit navigate_to(id); });
+    };
+    nav(m, tr("Crypto"), "crypto_trading");
+    nav(m, tr("Bitcoin"), "bitcoin");
+    nav(m, tr("Equity"), "equity_trading");
+    nav(m, tr("Portfolio"), "portfolio");
+    nav(m, tr("Prediction Markets"), "polymarket");
+    nav(m, tr("Edge Radar"), "edge_radar");
+    m->addSeparator();
+    nav(m, tr("Derivatives"), "derivatives");
+    nav(m, tr("Algo Trading"), "algo_trading");
+    nav(m, tr("Backtesting"), "backtesting");
+    nav(m, tr("Alpha Arena"), "alpha_arena");
+    return m;
+}
 
+QMenu* ToolBar::build_research_menu() {
+    auto* m = new QMenu(tr("Research"), this);
+    m->setStyleSheet(popup_ss());
+    auto nav = [this](QMenu* menu, const QString& label, const QString& id) {
+        menu->addAction(label, this, [this, id]() { emit navigate_to(id); });
+    };
+    nav(m, tr("Equity Research"), "equity_research");
+    nav(m, tr("Research Sources"), "research_sources");
+    nav(m, tr("M&A Analytics"), "ma_analytics");
+    nav(m, tr("Alt. Investments"), "alt_investments");
+    nav(m, tr("Geopolitics"), "geopolitics");
+    nav(m, tr("Maritime"), "maritime");
+    nav(m, tr("Surface Analytics"), "surface_analytics");
+    m->addSeparator();
+    nav(m, tr("AI Quant Lab"), "ai_quant_lab");
+    nav(m, tr("QuantLib"), "quantlib");
+    return m;
+}
+
+QMenu* ToolBar::build_tools_menu() {
+    auto* m = new QMenu(tr("Tools"), this);
+    m->setStyleSheet(popup_ss());
+    auto nav = [this](QMenu* menu, const QString& label, const QString& id) {
+        menu->addAction(label, this, [this, id]() { emit navigate_to(id); });
+    };
+    nav(m, tr("Tools Health"), "tools_health");
+    m->addSeparator();
+    nav(m, tr("Agent Studio"), "agent_config");
+    nav(m, tr("MCP Servers"), "mcp_servers");
+    nav(m, tr("Data Mapping"), "data_mapping");
+    nav(m, tr("Data Sources"), "data_sources");
+    nav(m, tr("Report Builder"), "report_builder");
+    nav(m, tr("Excel"), "excel");
+    nav(m, tr("Trade Intelligence"), "trade_viz");
+    nav(m, tr("File Manager"), "file_manager");
+    nav(m, tr("Notes"), "notes");
     return m;
 }
 
@@ -440,7 +441,9 @@ QMenu* ToolBar::build_view_menu() {
 QMenu* ToolBar::build_help_menu() {
     auto* m = new QMenu(tr("Help"), this);
     m->setStyleSheet(popup_ss());
-    m->addAction(tr("About OpenMarketTerminal"), this, [this]() { emit navigate_to("help"); });
+    m->addAction(tr("Documentation"), this, [this]() { emit navigate_to("docs"); });
+    m->addAction(tr("Help Center"), this, [this]() { emit navigate_to("help"); });
+    m->addAction(tr("About"), this, [this]() { emit navigate_to("about"); });
     return m;
 }
 

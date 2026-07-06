@@ -369,6 +369,12 @@ def _handle_place_order(req_id, exchange_id, args):
 
     if args.get("reduce_only"):
         params["reduceOnly"] = True
+    if args.get("post_only"):
+        params["postOnly"] = True
+        # Coinbase Advanced/CDP maps post-only through time_in_force=POST_ONLY
+        # at the API layer; ccxt also understands the unified postOnly flag.
+        if str(exchange_id).lower() == "coinbase":
+            params["timeInForce"] = "PO"
     if args.get("sl"):
         params["stopLoss"] = {"triggerPrice": args["sl"]}
     if args.get("tp"):
@@ -456,7 +462,10 @@ def _handle_fetch_my_trades(req_id, exchange_id, args):
                 "cost": t.get("cost"),
                 "fee": t.get("fee", {}).get("cost", 0),
                 "fee_currency": t.get("fee", {}).get("currency", ""),
+                "taker_or_maker": t.get("takerOrMaker") or t.get("liquidity"),
+                "type": t.get("type"),
                 "timestamp": t.get("timestamp"),
+                "datetime": t.get("datetime"),
             }
             for t in trades
         ],

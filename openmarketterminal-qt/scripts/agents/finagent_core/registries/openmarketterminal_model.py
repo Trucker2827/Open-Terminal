@@ -79,7 +79,7 @@ def _rate_limit_openmarketterminal() -> None:
             except Exception:
                 pass
 
-OpenMarketTerminal_DEFAULT_URL = "https://api.example.com/research/llm"
+OpenMarketTerminal_DEFAULT_URL = os.environ.get("OPENMARKETTERMINAL_LLM_URL", "")
 
 
 # ── Anthropic tool schema builder ─────────────────────────────────────────────
@@ -192,6 +192,9 @@ class OpenMarketTerminalChat(Model):
         Attempt a single POST to `url`. Retries up to 3 times on 429/502/504/timeout.
         Raises RuntimeError on persistent failure so the caller can try a fallback URL.
         """
+        if not url or "api.example.com" in url:
+            raise RuntimeError("OpenMarketTerminal hosted LLM endpoint is not configured")
+
         last_error: Optional[RuntimeError] = None
         for attempt in range(3):
             try:

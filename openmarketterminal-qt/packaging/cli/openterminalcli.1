@@ -53,13 +53,33 @@ masked; MCP environment values are reported only by key name.
 .B setup [status|profile|ai|doctor]
 Local-first onboarding for profile/account and AI provider settings.
 .TP
+.B sync status
+Show the single-owner state for the selected profile. The GUI owns the live
+endpoint during interactive work; the daemon owns it for unattended jobs; the
+CLI attaches to the active owner or runs one-shot headless commands.
+.TP
 .B serve [--status|--stop]
 Run or manage a headless daemon.
 .TP
-.B daemon install|start|stop|restart|status|health|readiness|logs|audit|jobs|monitors|notify|ai|paper
+.B demo trading-system [--symbol BTC] [--crypto-symbol BTC/USD] [--horizon 1h] [--market-prob 50]
+Print one read-only proof screen for the local trading stack: daemon/scheduler
+state, enabled strategy playlists, live crypto broker reads, local data/model
+readiness, horizon signals, and the final TRADE/WATCH/NO TRADE gate. This
+command never submits orders.
+.TP
+.B daemon install|start|stop|restart|status|owner|takeover|release|health|readiness|logs|audit|jobs|monitors|scalp|collectors|notify|ai|paper
 Install and manage the per-user macOS LaunchAgent wrapper around
 \fBopenterminalcli --profile PROFILE serve\fR, plus local scheduled daemon
 jobs for briefs, notebooks, notifications, health checks, and paper strategies.
+Only one process owns the interactive profile bridge at a time, but the daemon
+can run warm beside a GUI owner. \fBdaemon owner\fR shows the current bridge
+owner and scheduler process. \fBdaemon start\fR starts the scheduler as bridge
+owner when idle, or as a warm background daemon when the GUI owns the bridge. If
+the GUI exits, the warm daemon promotes itself to bridge owner.
+\fBdaemon takeover --force --yes\fR deliberately terminates the current GUI owner
+and starts/promotes the CLI daemon owner; add \fB--install\fR to write the
+LaunchAgent first. \fBdaemon release\fR stops the CLI daemon while leaving the GUI
+owner alone.
 Daemon jobs support per-job watchdogs with \fB--timeout-sec N\fR, and
 \fBdaemon jobs clear-failures [--all|ID_OR_NAME] [--force]\fR acknowledges
 reviewed failure history without hiding current failures.
@@ -79,11 +99,17 @@ with local features, freshness, probabilities, gate result, and no-trade reason.
 rows from the live scanner. Crypto-family Kalshi rows use the local BTC impulse
 anchor by default; pass \fB--no-crypto-anchor\fR to record market-implied-only
 research rows.
-Inspect it with \fBedge journal list|show|stats|resolve\fR.
+Inspect it with \fBedge journal list|show|stats|crypto-stats|resolve\fR.
 Structured local run history is available with
 \fBdaemon jobs history [ID_OR_NAME] [--limit N]\fR,
 \fBdaemon jobs failures [ID_OR_NAME]\fR, and
 \fBdaemon jobs stats [ID_OR_NAME]\fR.
+\fBdaemon collectors repair\fR installs or repairs the managed local feed jobs:
+BTC public tick collection, BTC/ETH/SOL scalp gates, crypto scorekeeping,
+Kalshi market snapshots, and BTC 5-minute prediction-market snapshots.
+\fBdaemon collectors status\fR reports whether
+those jobs are present, enabled, failed, or stale; \fBdaemon collectors run\fR
+runs them once immediately.
 .TP
 .B coverage [QUERY] [--gaps]
 Show CLI parity by app area.
@@ -99,17 +125,48 @@ keys are used. The bitcointicker source is parsed from its public TCP ticker
 relay and should be treated as an advisory website reference, not an execution
 venue.
 .TP
+.B crypto balance|orders|fills|ticker|book|candles|fees|readiness
+Read configured crypto venue data from the CLI.
+.TP
+.B crypto fees [show|set|reset|tiers] [--venue VENUE]
+Show or update the local fee profile used by crypto order previews. Use
+\fBcrypto fees tiers\fR to print the Coinbase Advanced maker/taker tier table.
+Settings include maker/taker basis points, rebate percent, optional free-fee
+allowance handling, and slippage basis points. Mutating commands require \fB--yes\fR.
+.TP
+.B crypto readiness [SYMBOL]
+Check exchange daemon readiness, quote/order-book reads, balance reads, live
+trading gates, allowed venue, and fee profile.
+.TP
+.B crypto buy|sell SYMBOL QUANTITY [--type market|limit] [--limit-price PRICE] [--post-only] [--yes]
+Preview a crypto order by default, including estimated fee, spread, slippage
+buffer, and round-trip breakeven. Add \fB--yes\fR to submit through the existing
+guarded crypto order path. \fBcrypto cancel ORDER_ID SYMBOL --yes\fR cancels an
+open order.
+.TP
 .B news latest|search|monitors
 Read and manage market news.
 .TP
-.B research quote|company|financials|filings|insiders|13f|politicians
-Run equity research and ownership-data queries.
+.B research quote|company|financials|filings|insiders|13f|politicians|health|sources
+Run equity research, ownership-data, and research-source health queries.
 .TP
 .B macro fred|bls|calendar|cb|ons|statcan|census|dbnomics|gov
 Fetch macroeconomic and government data.
 .TP
 .B data connectors|connections|stats
 Manage local data-source connections.
+.TP
+.B data lake status|ensure|manifest|path|mirror-edge|mirror-decisions|mirror-broker-events|kalshi|decisions|broker-events|query
+Manage the profile-local research lake. The lake writes JSONL datasets under
+\fBdata/lake\fR and uses the local \fBduckdb\fR executable for fast SQL over
+raw ticks, market snapshots, model outputs, decisions, broker events, and
+research records. \fBdata lake mirror-edge --symbol BTC\fR mirrors recent edge
+ticks/model outputs; \fBdata lake mirror-decisions\fR and
+\fBdata lake mirror-broker-events\fR backfill edge decisions and broker/order
+audit events; \fBdata lake kalshi --family crypto\fR lists captured Kalshi
+market snapshots; \fBdata lake decisions\fR and \fBdata lake broker-events\fR
+show the signal -> decision -> order trail; \fBdata lake query --sql "select count(*) from raw_ticks"\fR
+runs local DuckDB SQL.
 .TP
 .B files list|search|read|write|import|download|delete
 Manage File Manager artifacts.
@@ -138,7 +195,7 @@ Manage local watchlists.
 .B portfolio list|show|create|add|sell|tx
 Manage local portfolios.
 .TP
-.B edge evaluate|kalshi-scan|research|snapshot-kalshi|journal-kalshi-scan|impulse|btc5m|btc5m-live|crypto-hourly|crypto-hourly-live|observe|train|model|probability|gate|journal|journal-evaluate-btc5m-live|backfill|collect|cockpit|selftest-leakage|add|list|show|update|close|remove
+.B edge evaluate|microstructure|scalp-gate|spot-swing-gate|crypto-recommend|crypto-universe|decision-cockpit|context|kalshi-scan|research|snapshot-kalshi|journal-kalshi-scan|impulse|btc5m|btc5m-live|crypto-hourly|crypto-hourly-live|observe|train|model|probability|gate|journal|journal-evaluate-btc5m-live|backfill|collect|cockpit|selftest-leakage|add|list|show|update|close|remove
 Score and persist local stock, Kalshi, and Polymarket edge ideas. Compares
 market probability to user/model probability after spread, fees, liquidity,
 and confidence. Mutating commands require
@@ -160,6 +217,70 @@ probability is supplied, e.g.
 samples public crypto feeds, computes rolling 5s/15s/60s BTC movement,
 velocity, confidence, and a no-trade gate, e.g.
 \fBedge impulse BTC-USD --window 15s --sources coinbase,bitcointicker\fR.
+.PP
+.B edge crypto-recommend
+samples live crypto microstructure for one symbol, applies local fee/spread/
+slippage gates, and journals a buy/watch/no-buy recommendation without placing
+an order, e.g.
+\fBedge crypto-recommend BTC/USD --venue coinbase --horizon-sec 60\fR.
+.PP
+.B edge spot-swing-gate
+is the longer-horizon companion to scalp-gate. It scans major spot crypto for
+1h/4h/1d move candidates, uses round-trip fees plus slippage, safety, and a
+minimum profit hurdle, then journals buy/watch/no-buy decisions into the same
+spot lane, e.g. \fBedge spot-swing-gate --horizon 1h --venue coinbase_tier2\fR.
+.PP
+.B edge scalp-gate
+is a stricter scalping/day-trading pre-trade gate. It samples live crypto tape,
+estimates round-trip breakeven from fee, spread, slippage, and a safety buffer,
+requires local proof/trust history unless warmup is explicitly allowed, and never
+places an order. Add \fB--watch --iterations N --interval-sec N\fR to run a
+paper observation session, e.g.
+\fBedge scalp-gate BTC-USD --watch --iterations 20 --allow-warmup\fR.
+\fBdaemon collectors repair\fR also installs short-horizon scalp-gate jobs and
+15-second proof/trust scorecards so the daemon can keep evidence warm locally.
+.PP
+\fBdaemon scalp venues --maker\fR compares maker-mode fee floors by venue before
+you choose what to paper-test.
+\fBdaemon scalp start BTC-USD --cadence-ms 250 --amounts 25,50 --venue coinbase_tier2 --liquidity maker --min-profit-bps 10 --paper\fR enables the persistent
+paper-only millisecond microstructure engine inside the daemon. It keeps local
+crypto feeds open, writes a millisecond tick tape, scores 250ms/500ms/1s/5s
+features, and stores paper decisions for inspection with \fBdaemon scalp status\fR
+and \fBdaemon scalp tape --decisions\fR. Supported cost profiles include
+\fBcoinbase_advanced\fR base tier, \fBcoinbase_tier2\fR...\fBcoinbase_tier9\fR,
+\fBkraken_pro\fR, \fBbinanceus\fR, and \fBalpaca_crypto\fR. \fBbitcointicker\fR is used only for BTC.
+.PP
+.B edge crypto-universe
+runs the same local recommendation path across a crypto universe, keeps each
+symbol separate, and adds a BTC-anchor/breadth summary for context, e.g.
+\fBedge crypto-universe --symbols BTC,ETH,SOL --venue coinbase --horizon-sec 60\fR.
+.PP
+.B edge decision-cockpit
+shows crypto spot and prediction-market lanes side by side so a spot NO BUY is
+not confused with a Kalshi or BTC 5-minute prediction-market decision, e.g.
+\fBedge decision-cockpit --symbols BTC,ETH,SOL\fR.
+.PP
+.B edge context
+inventories local public/legal evidence for a symbol: cached news, decision
+journal rows, model output snapshots, broker audit rows, and the follow-up
+research commands for SEC insiders, 13F holders, politician disclosures, filings,
+or crypto microstructure, e.g. \fBedge context AAPL --asset-class equity\fR.
+.PP
+.B edge journal crypto-stats
+prints the post-cost crypto recommendation scorecard by symbol and horizon:
+BUY wins only when the later move beats fee, spread, and slippage; NO BUY wins
+when the move was not good enough after cost.
+.PP
+.B edge journal evidence|paper-sim|proof-loop|trust|regimes|no-trade|rare-alerts|replay
+turns the crypto recommendation journal into an audit and learning loop:
+\fBevidence\fR explains a decision from stored features only,
+\fBpaper-sim\fR simulates fixed-size BUY candidates after cost,
+\fBproof-loop\fR joins signal decisions, matching broker audit events, and matured post-cost results,
+\fBtrust\fR ranks symbols by resolved post-cost performance,
+\fBregimes\fR buckets accuracy by trend/chop/conflict/spread/thin-data states,
+\fBno-trade\fR shows why the system is standing down,
+\fBrare-alerts\fR finds fresh high-edge BUY candidates, and
+\fBreplay\fR walks historical recommendations in timestamp order.
 .PP
 .B edge btc5m
 scores a BTC five-minute prediction-market idea as a directional buy-only
@@ -238,8 +359,18 @@ each redraw.
 inserts a past and future test model output, then proves the feature builder
 uses only outputs at or before the decision timestamp.
 .TP
+.B playlist templates|list|show|follow|unfollow|status|run
+Strategy playlists combine a goal, risk profile, watched assets, CLI run
+command, daemon monitor, AI explanation role, and broker-execution boundary.
+For example, \fBplaylist follow btc-hourly-edge --every-sec 60 --yes\fR stores
+the playlist under the selected local profile and creates its daemon monitor
+job. Live trading remains gated; playlists monitor, explain, paper-run, or
+prepare candidates until a separate guarded broker or prediction order flow
+submits.
+.TP
 .B strategy list|templates|show|backtest|paper-run|deploy
-Manage saved trading strategies, run native backtests, and open guarded deploy.
+Manage saved trading strategies, run native backtests, route into strategy
+playlists, and open guarded deploy.
 .TP
 .B trade accounts|drafts|prepare|submit|paper|live|fast
 Manage guarded order workflows. Mutating or live commands require explicit
@@ -295,6 +426,11 @@ openterminalcli --headless security network-audit --no-sockets
 openterminalcli --headless setup
 openterminalcli --headless setup profile name="Ada Lovelace" nickname=ada
 printf '%s' "$OPENAI_API_KEY" | openterminalcli --headless setup ai openai --api-key-stdin
+openterminalcli --headless crypto balance
+openterminalcli --headless crypto fees
+openterminalcli --headless crypto readiness BTC/USD
+openterminalcli --headless crypto book BTC/USD --limit 5
+openterminalcli --headless crypto buy BTC/USD 0.0001 --limit-price 62000 --post-only
 openterminalcli --headless macro fred UNRATE
 openterminalcli --headless excel read ./model.xlsx --range A1:D20
 openterminalcli --headless workspace layouts --recent

@@ -85,6 +85,8 @@ void CryptoTradingScreen::flush_ws_updates() {
                                  ExchangeService::instance().is_ws_connected());
         if (t.bid > 0 && t.ask > 0)
             ticker_bar_->update_bid_ask(t.bid, t.ask, std::abs(t.ask - t.bid));
+        if (t.bid > 0 && t.ask > 0)
+            order_entry_->set_orderbook_quote(t.bid, t.ask);
         order_entry_->set_current_price(t.last);
         has_pending_primary_ = false;
     }
@@ -94,6 +96,8 @@ void CryptoTradingScreen::flush_ws_updates() {
         const auto& ob = pending_orderbook_;
         orderbook_->set_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
         bottom_panel_->set_depth_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
+        if (!ob.bids.isEmpty() && !ob.asks.isEmpty())
+            order_entry_->set_orderbook_quote(ob.bids.first().first, ob.asks.first().first);
         has_pending_orderbook_ = false;
     }
 
@@ -244,6 +248,8 @@ void CryptoTradingScreen::refresh_ticker() {
                                                ticker.base_volume, es.is_ws_connected());
                 if (ticker.bid > 0 && ticker.ask > 0)
                     self->ticker_bar_->update_bid_ask(ticker.bid, ticker.ask, std::abs(ticker.ask - ticker.bid));
+                if (ticker.bid > 0 && ticker.ask > 0)
+                    self->order_entry_->set_orderbook_quote(ticker.bid, ticker.ask);
                 self->order_entry_->set_current_price(ticker.last);
             },
             Qt::QueuedConnection);
@@ -265,6 +271,8 @@ void CryptoTradingScreen::refresh_orderbook() {
                     return;
                 self->orderbook_->set_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
                 self->bottom_panel_->set_depth_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
+                if (!ob.bids.isEmpty() && !ob.asks.isEmpty())
+                    self->order_entry_->set_orderbook_quote(ob.bids.first().first, ob.asks.first().first);
             },
             Qt::QueuedConnection);
     });

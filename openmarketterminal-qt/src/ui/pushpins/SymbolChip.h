@@ -27,6 +27,7 @@ class SymbolChip : public QWidget {
 
   signals:
     void remove_requested(openmarketterminal::SymbolRef ref);
+    void activated(openmarketterminal::SymbolRef ref);
 
   protected:
     void mousePressEvent(QMouseEvent* e) override;

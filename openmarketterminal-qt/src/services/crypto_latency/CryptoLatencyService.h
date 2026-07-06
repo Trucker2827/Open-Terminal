@@ -17,6 +17,10 @@ struct CryptoLatencyTick {
     QString symbol;
     QString venue_symbol;
     double price = 0.0;
+    double best_bid = 0.0;
+    double best_ask = 0.0;
+    double bid_size = 0.0;
+    double ask_size = 0.0;
     qint64 exchange_ts_ms = 0;
     qint64 received_ts_ms = 0;
     qint64 sequence = 0;
@@ -97,6 +101,7 @@ class CryptoLatencyService : public QObject {
     void handle_tcp_bytes(const QString& source, const QString& venue_symbol, const QByteArray& bytes);
     void apply_terminal_escape(TerminalState& term, const QString& seq);
     double parse_bitcointicker_price(const TerminalState& term) const;
+    bool parse_bitcointicker_book(const TerminalState& term, double* bid, double* ask) const;
     void note_message(const QString& source, const QString& message_type);
     void emit_tick(CryptoLatencyTick tick);
     void set_state(const QString& source, const QString& status, const QString& error = {});

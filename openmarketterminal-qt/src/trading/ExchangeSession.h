@@ -106,7 +106,7 @@ class ExchangeSession : public QObject {
     QJsonObject fetch_balance();
     QJsonObject place_exchange_order(const QString& symbol, const QString& side, const QString& type, double amount,
                                      double price = 0.0, double stop_price = 0.0, double sl = 0.0, double tp = 0.0,
-                                     bool reduce_only = false);
+                                     bool reduce_only = false, bool post_only = false);
     QJsonObject cancel_exchange_order(const QString& order_id, const QString& symbol);
     QJsonObject fetch_positions_live(const QString& symbol = "");
     QJsonObject fetch_open_orders_live(const QString& symbol = "");

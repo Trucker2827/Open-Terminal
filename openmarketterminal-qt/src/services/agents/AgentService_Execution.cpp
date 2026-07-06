@@ -83,6 +83,7 @@ QString AgentService::run_agent_streaming(const QString& query, const QJsonObjec
         r.request_id = req_id;
         r.success = false;
         r.error = "Python not available";
+        emit agent_result(r);
         emit agent_stream_done(r);
         publish_agent_result(r, /*final=*/true);
         return req_id;
@@ -283,6 +284,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
         r.request_id = req_id;
         r.success = false;
         r.error = "Python not available";
+        emit agent_result(r);
         emit agent_stream_done(r);
         publish_agent_result(r, /*final=*/true);
         return req_id;
@@ -319,6 +321,12 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
     auto accumulated = std::make_shared<QString>();
     auto final_json = std::make_shared<QString>();
     auto done_emitted = std::make_shared<bool>(false);
+    constexpr int kDefaultTeamTimeoutMs = 120000;
+    int timeout_ms = team_config["timeout_ms"].toInt(kDefaultTeamTimeoutMs);
+    if (timeout_ms < 30000)
+        timeout_ms = 30000;
+    if (timeout_ms > 600000)
+        timeout_ms = 600000;
     timer->start();
 
     connect(proc, &QProcess::readyReadStandardOutput, this,
@@ -364,6 +372,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
                             r.request_id = req_id;
                             r.success = false;
                             r.error = extract(line, "ERROR:");
+                            emit self->agent_result(r);
                             emit self->agent_stream_done(r);
                             self->publish_agent_result(r, /*final=*/true);
                         }
@@ -406,6 +415,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
                 }
 
                 LOG_INFO("AgentService", QString("Team completed in %1ms").arg(elapsed));
+                emit self->agent_result(r);
                 emit self->agent_stream_done(r);
                 self->publish_agent_result(r, /*final=*/true);
             });
@@ -420,9 +430,35 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
         r.request_id = req_id;
         r.success = false;
         r.error = "Process error: " + err;
+        r.execution_time_ms = timer ? timer->elapsed() : 0;
+        emit self->agent_result(r);
         emit self->agent_stream_done(r);
         self->publish_agent_result(r, /*final=*/true);
     });
+
+    QTimer::singleShot(timeout_ms, proc,
+                       [self, proc, done_emitted, timer, req_id, timeout_ms]() {
+                           if (!self || *done_emitted)
+                               return;
+                           *done_emitted = true;
+                           AgentExecutionResult r;
+                           r.request_id = req_id;
+                           r.success = false;
+                           r.execution_time_ms = timer ? timer->elapsed() : timeout_ms;
+                           r.error = QString("Team run timed out after %1 seconds. Try fewer members, a faster local model, "
+                                             "or a more focused query.")
+                                         .arg(timeout_ms / 1000);
+                           emit self->agent_stream_thinking(req_id, "Team timeout reached; stopping run");
+                           self->publish_agent_status(req_id, "Team timeout reached; stopping run");
+                           emit self->agent_result(r);
+                           emit self->agent_stream_done(r);
+                           self->publish_agent_result(r, /*final=*/true);
+                           proc->terminate();
+                           QTimer::singleShot(1500, proc, [proc]() {
+                               if (proc->state() != QProcess::NotRunning)
+                                   proc->kill();
+                           });
+                       });
 
     LOG_INFO("AgentService", QString("Starting team stream (%1 bytes payload, %2 members)")
                                  .arg(payload_bytes.size())

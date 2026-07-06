@@ -23,6 +23,8 @@ class CryptoOrderEntry : public QWidget {
     void set_current_price(double price);
     void set_mode(bool is_paper);
     void set_symbol(const QString& symbol);
+    void set_exchange_id(const QString& exchange_id);
+    void set_orderbook_quote(double bid, double ask);
     void set_futures_mode(bool is_futures); // show/hide leverage + margin controls
     bool reduce_only() const;               // reduce-only flag (perp/futures only)
 
@@ -36,7 +38,7 @@ class CryptoOrderEntry : public QWidget {
 
   signals:
     void order_submitted(const QString& side, const QString& order_type, double quantity, double price,
-                         double stop_price, double sl_price, double tp_price);
+                         double stop_price, double sl_price, double tp_price, bool post_only);
     void leverage_changed(int leverage);
     void margin_mode_changed(const QString& mode); // "cross" or "isolated"
 
@@ -71,6 +73,7 @@ class CryptoOrderEntry : public QWidget {
     QLineEdit* stop_price_edit_ = nullptr;
     QLineEdit* sl_edit_ = nullptr;
     QLineEdit* tp_edit_ = nullptr;
+    QCheckBox* post_only_check_ = nullptr;
     QPushButton* submit_btn_ = nullptr;
     QWidget* advanced_section_ = nullptr;
     QPushButton* advanced_toggle_ = nullptr;
@@ -126,11 +129,14 @@ class CryptoOrderEntry : public QWidget {
     double balance_ = 0;
     QString balance_currency_; // actual account balance currency (e.g. "USD"); empty → use pair quote
     double current_price_ = 0;
+    double best_bid_ = 0;
+    double best_ask_ = 0;
     bool is_paper_ = true;
     bool is_buy_side_ = true;
     bool is_futures_ = false;
     bool submit_busy_ = false; // true while a live order POST is in flight
     QString current_symbol_ = "BTC/USDT";
+    QString exchange_id_ = "coinbase";
 };
 
 } // namespace openmarketterminal::screens::crypto

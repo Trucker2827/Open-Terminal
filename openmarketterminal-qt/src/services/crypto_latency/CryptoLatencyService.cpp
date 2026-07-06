@@ -121,6 +121,10 @@ QJsonObject CryptoLatencyService::tick_to_json(const CryptoLatencyTick& t) {
                        {QStringLiteral("symbol"), t.symbol},
                        {QStringLiteral("venue_symbol"), t.venue_symbol},
                        {QStringLiteral("price"), t.price},
+                       {QStringLiteral("best_bid"), t.best_bid},
+                       {QStringLiteral("best_ask"), t.best_ask},
+                       {QStringLiteral("bid_size"), t.bid_size},
+                       {QStringLiteral("ask_size"), t.ask_size},
                        {QStringLiteral("exchange_ts_ms"), QString::number(t.exchange_ts_ms)},
                        {QStringLiteral("received_ts_ms"), QString::number(t.received_ts_ms)},
                        {QStringLiteral("age_ms"), t.received_ts_ms > 0 ? now_ms() - t.received_ts_ms : -1},
@@ -206,20 +210,22 @@ CryptoLatencyService::Feed CryptoLatencyService::make_feed(const QString& source
     Feed f;
     f.source = source;
     if (source == QStringLiteral("coinbase")) {
-        f.url = QStringLiteral("wss://advanced-trade-ws.coinbase.com");
+        f.url = QStringLiteral("wss://ws-feed.exchange.coinbase.com");
         f.venue_symbol = normalize_symbol(symbol);
     } else if (source == QStringLiteral("kraken")) {
         f.url = QStringLiteral("wss://ws.kraken.com/v2");
         f.venue_symbol = kraken_pair(symbol);
-    } else if (source == QStringLiteral("binanceus")) {
-        f.venue_symbol = binance_pair(symbol);
-        f.url = QStringLiteral("wss://stream.binance.us:9443/ws/%1@trade").arg(f.venue_symbol);
     } else if (source == QStringLiteral("bitcointicker")) {
         f.url = QStringLiteral("ticker.bitcointicker.co:10080");
         f.venue_symbol = QStringLiteral("bitcointicker:coinbase-usd");
+    } else if (source == QStringLiteral("binanceus")) {
+        f.venue_symbol = binance_pair(symbol);
+        f.url = QStringLiteral("wss://stream.binance.us:9443/stream?streams=%1@trade/%1@bookTicker")
+                    .arg(f.venue_symbol);
     } else {
         f.venue_symbol = binance_pair(symbol);
-        f.url = QStringLiteral("wss://stream.binance.com:9443/ws/%1@trade").arg(f.venue_symbol);
+        f.url = QStringLiteral("wss://stream.binance.com:9443/stream?streams=%1@trade/%1@bookTicker")
+                    .arg(f.venue_symbol);
     }
     return f;
 }
@@ -239,16 +245,19 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
         set_state(source, QStringLiteral("connected"));
         if (source == QStringLiteral("coinbase")) {
             QJsonObject msg{{QStringLiteral("type"), QStringLiteral("subscribe")},
-                            {QStringLiteral("channel"), QStringLiteral("market_trades")},
-                            {QStringLiteral("product_ids"), QJsonArray{venue}}};
+                            {QStringLiteral("product_ids"), QJsonArray{venue}},
+                            {QStringLiteral("channels"), QJsonArray{QStringLiteral("matches"),
+                                                                    QStringLiteral("ticker")}}};
             socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
         } else if (source == QStringLiteral("kraken")) {
-            QJsonObject params{{QStringLiteral("channel"), QStringLiteral("trade")},
-                               {QStringLiteral("symbol"), QJsonArray{venue}},
-                               {QStringLiteral("snapshot"), false}};
-            QJsonObject msg{{QStringLiteral("method"), QStringLiteral("subscribe")},
-                            {QStringLiteral("params"), params}};
-            socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+            for (const QString& channel : {QStringLiteral("trade"), QStringLiteral("ticker")}) {
+                QJsonObject params{{QStringLiteral("channel"), channel},
+                                   {QStringLiteral("symbol"), QJsonArray{venue}},
+                                   {QStringLiteral("snapshot"), false}};
+                QJsonObject msg{{QStringLiteral("method"), QStringLiteral("subscribe")},
+                                {QStringLiteral("params"), params}};
+                socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+            }
         }
     });
     connect(socket, &QWebSocket::disconnected, this, [this, source = feed.source]() {
@@ -297,7 +306,9 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
     const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8(), &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject())
         return;
-    const QJsonObject obj = doc.object();
+    QJsonObject obj = doc.object();
+    if (obj.contains(QStringLiteral("data")) && obj.value(QStringLiteral("data")).isObject())
+        obj = obj.value(QStringLiteral("data")).toObject();
     QString message_type;
     if (source == QStringLiteral("binance") || source == QStringLiteral("binanceus")) {
         message_type = obj.value(QStringLiteral("e")).toString();
@@ -321,27 +332,90 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
     tick.received_ts_ms = now_ms();
 
     if (source == QStringLiteral("binance") || source == QStringLiteral("binanceus")) {
-        if (obj.value(QStringLiteral("e")).toString() != QStringLiteral("trade"))
+        const QString event = obj.value(QStringLiteral("e")).toString();
+        if (event == QStringLiteral("bookTicker")) {
+            tick.best_bid = as_double(obj.value(QStringLiteral("b")));
+            tick.best_ask = as_double(obj.value(QStringLiteral("a")));
+            tick.bid_size = as_double(obj.value(QStringLiteral("B")));
+            tick.ask_size = as_double(obj.value(QStringLiteral("A")));
+            tick.price = (tick.best_bid > 0.0 && tick.best_ask > 0.0)
+                             ? (tick.best_bid + tick.best_ask) / 2.0
+                             : 0.0;
+            tick.exchange_ts_ms = now_ms();
+        } else if (event == QStringLiteral("trade")) {
+            tick.price = as_double(obj.value(QStringLiteral("p")));
+            tick.exchange_ts_ms = as_i64(obj.value(QStringLiteral("T")));
+        } else {
             return;
-        tick.price = as_double(obj.value(QStringLiteral("p")));
-        tick.exchange_ts_ms = as_i64(obj.value(QStringLiteral("T")));
+        }
     } else if (source == QStringLiteral("coinbase")) {
+        const QString type = obj.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("ticker")) {
+            tick.price = as_double(obj.value(QStringLiteral("price")));
+            tick.best_bid = as_double(obj.value(QStringLiteral("best_bid")));
+            tick.best_ask = as_double(obj.value(QStringLiteral("best_ask")));
+            tick.bid_size = as_double(obj.value(QStringLiteral("best_bid_size")));
+            tick.ask_size = as_double(obj.value(QStringLiteral("best_ask_size")));
+            tick.exchange_ts_ms = parse_time_ms(obj.value(QStringLiteral("time")));
+            if (tick.price > 0.0)
+                emit_tick(tick);
+            return;
+        }
+        if (type == QStringLiteral("match") || type == QStringLiteral("last_match")) {
+            tick.price = as_double(obj.value(QStringLiteral("price")));
+            tick.exchange_ts_ms = parse_time_ms(obj.value(QStringLiteral("time")));
+            if (tick.price > 0.0)
+                emit_tick(tick);
+            return;
+        }
         const QJsonArray events = obj.value(QStringLiteral("events")).toArray();
         for (const auto& ev : events) {
-            const QJsonArray trades = ev.toObject().value(QStringLiteral("trades")).toArray();
+            const QJsonObject event = ev.toObject();
+            const QJsonArray trades = event.value(QStringLiteral("trades")).toArray();
             for (const auto& tv : trades) {
                 const QJsonObject trade = tv.toObject();
                 tick.price = as_double(trade.value(QStringLiteral("price")));
                 tick.exchange_ts_ms = parse_time_ms(trade.value(QStringLiteral("time")));
+                tick.best_bid = as_double(trade.value(QStringLiteral("best_bid")));
+                tick.best_ask = as_double(trade.value(QStringLiteral("best_ask")));
+                if (tick.price > 0.0)
+                    emit_tick(tick);
+            }
+            const QJsonArray tickers = event.value(QStringLiteral("tickers")).toArray();
+            for (const auto& tv : tickers) {
+                const QJsonObject ticker = tv.toObject();
+                tick.price = as_double(ticker.value(QStringLiteral("price")));
+                tick.best_bid = as_double(ticker.value(QStringLiteral("best_bid")));
+                tick.best_ask = as_double(ticker.value(QStringLiteral("best_ask")));
+                tick.bid_size = as_double(ticker.value(QStringLiteral("best_bid_quantity")));
+                tick.ask_size = as_double(ticker.value(QStringLiteral("best_ask_quantity")));
+                tick.exchange_ts_ms = parse_time_ms(ticker.value(QStringLiteral("time")));
                 if (tick.price > 0.0)
                     emit_tick(tick);
             }
         }
         return;
     } else if (source == QStringLiteral("kraken")) {
-        if (obj.value(QStringLiteral("channel")).toString() != QStringLiteral("trade"))
-            return;
+        const QString channel = obj.value(QStringLiteral("channel")).toString();
         const QJsonArray data = obj.value(QStringLiteral("data")).toArray();
+        if (channel == QStringLiteral("ticker")) {
+            for (const auto& tv : data) {
+                const QJsonObject ticker = tv.toObject();
+                tick.price = as_double(ticker.value(QStringLiteral("last")));
+                if (tick.price <= 0.0)
+                    tick.price = as_double(ticker.value(QStringLiteral("price")));
+                tick.best_bid = as_double(ticker.value(QStringLiteral("bid")));
+                tick.best_ask = as_double(ticker.value(QStringLiteral("ask")));
+                tick.bid_size = as_double(ticker.value(QStringLiteral("bid_qty")));
+                tick.ask_size = as_double(ticker.value(QStringLiteral("ask_qty")));
+                tick.exchange_ts_ms = parse_time_ms(ticker.value(QStringLiteral("timestamp")));
+                if (tick.price > 0.0)
+                    emit_tick(tick);
+            }
+            return;
+        }
+        if (channel != QStringLiteral("trade"))
+            return;
         for (const auto& tv : data) {
             const QJsonObject trade = tv.toObject();
             tick.price = as_double(trade.value(QStringLiteral("price")));
@@ -404,8 +478,13 @@ void CryptoLatencyService::handle_tcp_bytes(const QString& source,
     const double price = parse_bitcointicker_price(term);
     if (price <= 0.0)
         return;
+    double bid = 0.0;
+    double ask = 0.0;
+    parse_bitcointicker_book(term, &bid, &ask);
     const auto previous = latest_.value(source);
-    if (previous.price > 0.0 && std::abs(previous.price - price) < 0.000001)
+    if (previous.price > 0.0 && std::abs(previous.price - price) < 0.000001 &&
+        std::abs(previous.best_bid - bid) < 0.000001 &&
+        std::abs(previous.best_ask - ask) < 0.000001)
         return;
 
     CryptoLatencyTick tick;
@@ -413,6 +492,8 @@ void CryptoLatencyService::handle_tcp_bytes(const QString& source,
     tick.symbol = symbol_;
     tick.venue_symbol = venue_symbol;
     tick.price = price;
+    tick.best_bid = bid;
+    tick.best_ask = ask;
     tick.exchange_ts_ms = 0;
     tick.received_ts_ms = now_ms();
     emit_tick(tick);
@@ -462,6 +543,39 @@ double CryptoLatencyService::parse_bitcointicker_price(const TerminalState& term
             return price;
     }
     return 0.0;
+}
+
+bool CryptoLatencyService::parse_bitcointicker_book(const TerminalState& term, double* bid, double* ask) const {
+    if (bid)
+        *bid = 0.0;
+    if (ask)
+        *ask = 0.0;
+    static const QRegularExpression bid_re(QStringLiteral("\\bBid\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)"),
+                                           QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression ask_re(QStringLiteral("\\bAsk\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)"),
+                                           QRegularExpression::CaseInsensitiveOption);
+    bool found = false;
+    for (const QString& row : term.rows) {
+        const auto bm = bid_re.match(row);
+        if (bm.hasMatch() && bid) {
+            bool ok = false;
+            const double v = bm.captured(1).toDouble(&ok);
+            if (ok && v > 0.0) {
+                *bid = v;
+                found = true;
+            }
+        }
+        const auto am = ask_re.match(row);
+        if (am.hasMatch() && ask) {
+            bool ok = false;
+            const double v = am.captured(1).toDouble(&ok);
+            if (ok && v > 0.0) {
+                *ask = v;
+                found = true;
+            }
+        }
+    }
+    return found;
 }
 
 void CryptoLatencyService::note_message(const QString& source, const QString& message_type) {

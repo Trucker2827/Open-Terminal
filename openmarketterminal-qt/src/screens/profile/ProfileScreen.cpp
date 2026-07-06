@@ -548,8 +548,9 @@ QWidget* ProfileScreen::build_automation() {
     gl->setHorizontalSpacing(10);
     gl->setVerticalSpacing(8);
     gl->addWidget(make_stat_box(tr("INSTALLED"), daemon_installed_, ui::colors::AMBER()), 0, 0);
-    gl->addWidget(make_stat_box(tr("RUNNING"), daemon_running_, ui::colors::POSITIVE()), 0, 1);
-    gl->addWidget(make_stat_box(tr("JOBS"), daemon_jobs_summary_, ui::colors::TEXT_PRIMARY()), 0, 2);
+    gl->addWidget(make_stat_box(tr("OWNER"), daemon_owner_, ui::colors::AMBER()), 0, 1);
+    gl->addWidget(make_stat_box(tr("SCHEDULER"), daemon_running_, ui::colors::POSITIVE()), 0, 2);
+    gl->addWidget(make_stat_box(tr("JOBS"), daemon_jobs_summary_, ui::colors::TEXT_PRIMARY()), 0, 3);
     svl->addWidget(grid);
 
     auto* controls = new QWidget(this);
@@ -581,6 +582,79 @@ QWidget* ProfileScreen::build_automation() {
     cl->addWidget(refresh_btn);
     svl->addWidget(controls);
     vl->addWidget(status_panel);
+
+    auto* collectors_panel = make_panel(tr("DATA COLLECTORS"));
+    auto* cvl = qobject_cast<QVBoxLayout*>(collectors_panel->layout());
+    auto* collectors_top = new QWidget(this);
+    collectors_top->setStyleSheet("background:transparent;");
+    auto* ctl = new QHBoxLayout(collectors_top);
+    ctl->setContentsMargins(12, 8, 12, 8);
+    ctl->setSpacing(8);
+    daemon_collectors_summary_ = new QLabel(tr("Checking collectors..."));
+    daemon_collectors_summary_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
+                                                  .arg(ui::colors::TEXT_SECONDARY(), MF));
+    ctl->addWidget(daemon_collectors_summary_, 1);
+    auto add_collector_action = [&](const QString& text, const QString& action) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [this, action]() {
+            if (daemon_collectors_status_)
+                daemon_collectors_status_->setText(tr("Running collectors %1...").arg(action));
+            run_daemon_cli({QStringLiteral("collectors"), action},
+                           [this, action](const QJsonObject&, const QString&) {
+                               if (daemon_collectors_status_)
+                                   daemon_collectors_status_->setText(tr("Collectors %1 complete").arg(action));
+                               refresh_daemon();
+                           },
+                           [this](const QString& msg) {
+                               if (daemon_collectors_status_)
+                                   daemon_collectors_status_->setText(msg);
+                               refresh_daemon();
+                           });
+        });
+        ctl->addWidget(btn);
+    };
+    add_collector_action(tr("REPAIR"), QStringLiteral("repair"));
+    add_collector_action(tr("RUN NOW"), QStringLiteral("run"));
+    auto* collectors_refresh = new QPushButton(tr("REFRESH"));
+    collectors_refresh->setFixedHeight(26);
+    collectors_refresh->setCursor(Qt::PointingHandCursor);
+    collectors_refresh->setStyleSheet(button_style());
+    connect(collectors_refresh, &QPushButton::clicked, this, [this]() {
+        run_daemon_cli({QStringLiteral("collectors"), QStringLiteral("status")},
+                       [this](const QJsonObject& o, const QString&) { populate_daemon_collectors(o); },
+                       [this](const QString& msg) {
+                           if (daemon_collectors_status_)
+                               daemon_collectors_status_->setText(msg);
+                       });
+    });
+    ctl->addWidget(collectors_refresh);
+    cvl->addWidget(collectors_top);
+
+    daemon_collectors_table_ = new QTableWidget;
+    daemon_collectors_table_->setColumnCount(6);
+    daemon_collectors_table_->setHorizontalHeaderLabels(
+        {tr("Name"), tr("State"), tr("Every"), tr("Last"), tr("Runs"), tr("Next")});
+    daemon_collectors_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    daemon_collectors_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    daemon_collectors_table_->setAlternatingRowColors(true);
+    daemon_collectors_table_->verticalHeader()->setVisible(false);
+    daemon_collectors_table_->horizontalHeader()->setStretchLastSection(true);
+    daemon_collectors_table_->setMinimumHeight(118);
+    daemon_collectors_table_->setStyleSheet(QString("QTableWidget{background:%1;color:%2;border:none;gridline-color:%3;font-size:11px;%4}"
+                                                    "QHeaderView::section{background:%5;color:%6;border:1px solid %3;padding:4px;font-size:10px;font-weight:700;%4}"
+                                                    "QTableWidget::item{padding:3px 6px;border-bottom:1px solid %3;}"
+                                                    "QTableWidget::item:selected{background:rgba(217,119,6,0.18);color:%2;}")
+                                            .arg(ui::colors::BG_BASE(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                                                 ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY()));
+    cvl->addWidget(daemon_collectors_table_);
+    daemon_collectors_status_ = new QLabel;
+    daemon_collectors_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;padding:6px 12px;%2")
+                                                 .arg(ui::colors::TEXT_TERTIARY(), MF));
+    cvl->addWidget(daemon_collectors_status_);
+    vl->addWidget(collectors_panel);
 
     auto* add_panel = make_panel(tr("ADD SCHEDULED JOB"));
     auto* avl = qobject_cast<QVBoxLayout*>(add_panel->layout());
@@ -845,26 +919,55 @@ void ProfileScreen::populate_daemon_health(const QJsonObject& health) {
         l->setStyleSheet(QString("color:%1;font-size:28px;font-weight:700;background:transparent;%2").arg(color, MF));
     };
     const bool installed = health.value("installed").toBool();
-    const bool running = health.value("running").toBool();
+    const bool scheduler_running = health.value("scheduler_running").toBool(
+        health.value("daemon_running").toBool(health.value("running").toBool()));
+    const bool daemon_bridge_owner = health.value("daemon_bridge_owner").toBool(
+        health.value("active_owner_kind").toString() == QStringLiteral("daemon"));
+    const bool owner_live = health.value("profile_owner_reachable").toBool();
+    const QString owner = health.value("active_owner_kind").toString(
+        health.value("owner_kind").toString()).trimmed().toLower();
     const QJsonObject jobs = health.value("jobs").toObject();
     set(daemon_installed_, installed ? tr("YES") : tr("NO"), installed ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY());
-    set(daemon_running_, running ? tr("YES") : tr("NO"), running ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY());
+    QString owner_text = tr("NONE");
+    QString owner_color = ui::colors::TEXT_TERTIARY();
+    if (owner_live) {
+        owner_text = owner.isEmpty() ? tr("OTHER") : owner.toUpper();
+        owner_color = owner == QStringLiteral("daemon") ? ui::colors::POSITIVE()
+                    : owner == QStringLiteral("gui") ? ui::colors::AMBER()
+                                                     : ui::colors::TEXT_PRIMARY();
+    }
+    set(daemon_owner_, owner_text, owner_color);
+    set(daemon_running_, scheduler_running ? tr("ACTIVE") : tr("STANDBY"),
+        scheduler_running ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY());
     set(daemon_jobs_summary_, QString::number(jobs.value("total").toInt()), ui::colors::TEXT_PRIMARY());
     if (daemon_status_) {
         const QString endpoint = health.value("endpoint").toString();
-        const QString owner = health.value("owner_kind").toString();
         const QString profile = health.value("profile").toString();
-        if (running) {
-            daemon_status_->setText(endpoint.isEmpty() ? tr("Profile '%1' daemon is running").arg(profile)
-                                                       : tr("Profile '%1' daemon is running at %2").arg(profile, endpoint));
-        } else if (!endpoint.isEmpty() && !owner.isEmpty()) {
-            daemon_status_->setText(tr("Profile '%1' is owned by %2 at %3; daemon is stopped")
-                                        .arg(profile, owner.toUpper(), endpoint));
+        if (daemon_bridge_owner) {
+            daemon_status_->setText(endpoint.isEmpty()
+                                        ? tr("Sync: daemon owns profile '%1'; scheduler and unattended jobs are active").arg(profile)
+                                        : tr("Sync: daemon owns profile '%1' at %2; scheduler and unattended jobs are active")
+                                              .arg(profile, endpoint));
+        } else if (scheduler_running && owner == QStringLiteral("gui") && !endpoint.isEmpty()) {
+            daemon_status_->setText(
+                tr("Sync: GUI owns profile '%1' at %2; daemon scheduler is warm and background jobs can run")
+                    .arg(profile, endpoint));
+        } else if (owner_live && !endpoint.isEmpty()) {
+            if (owner == QStringLiteral("gui")) {
+                daemon_status_->setText(
+                    tr("Sync: GUI owns profile '%1' at %2; CLI can attach/read, daemon scheduler can be started warm")
+                        .arg(profile, endpoint));
+            } else {
+                daemon_status_->setText(tr("Sync: profile '%1' is owned by %2 at %3; daemon scheduler is standby")
+                                            .arg(profile, owner.toUpper(), endpoint));
+            }
         } else {
-            daemon_status_->setText(tr("Profile '%1' daemon is stopped").arg(profile));
+            daemon_status_->setText(
+                tr("Sync: no active owner for profile '%1'; start the GUI for interactive work or daemon for unattended jobs")
+                    .arg(profile));
         }
         daemon_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
-                                          .arg(running ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY(), MF));
+                                          .arg(scheduler_running ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY(), MF));
     }
 }
 
@@ -910,6 +1013,72 @@ void ProfileScreen::populate_daemon_jobs(const QJsonArray& jobs) {
         daemon_jobs_table_->selectRow(0);
     } else {
         refresh_selected_daemon_job_detail();
+    }
+}
+
+void ProfileScreen::populate_daemon_collectors(const QJsonObject& collectors) {
+    const int total = collectors.value("total").toInt();
+    const int found = collectors.value("found").toInt();
+    const int enabled = collectors.value("enabled").toInt();
+    const int failed = collectors.value("failed").toInt();
+    const int stale = collectors.value("stale").toInt();
+    const bool ok = total > 0 && found == total && enabled == total && failed == 0 && stale == 0;
+    if (daemon_collectors_summary_) {
+        daemon_collectors_summary_->setText(
+            ok ? tr("COLLECTORS READY  %1/%2").arg(found).arg(total)
+               : tr("COLLECTORS NEED ATTENTION  %1/%2  failed %3  stale %4").arg(found).arg(total).arg(failed).arg(stale));
+        daemon_collectors_summary_->setStyleSheet(
+            QString("color:%1;font-size:13px;font-weight:700;background:transparent;%2")
+                .arg(ok ? ui::colors::POSITIVE() : ui::colors::AMBER(), MF));
+    }
+
+    const QJsonArray rows = collectors.value("collectors").toArray();
+    if (daemon_collectors_table_) {
+        daemon_collectors_table_->setRowCount(rows.size());
+        for (int r = 0; r < rows.size(); ++r) {
+            const QJsonObject row = rows.at(r).toObject();
+            QString state = row.value("status").toString(QStringLiteral("missing"));
+            if (state == QStringLiteral("found")) {
+                if (row.value("running").toBool())
+                    state = QStringLiteral("running");
+                else
+                    state = row.value("last_status").toString(QStringLiteral("-"));
+            }
+            const QString every = row.value("interval_sec").toInt() > 0
+                                      ? tr("%1s").arg(row.value("interval_sec").toInt())
+                                      : tr("manual");
+            const QStringList cols = {
+                row.value("name").toString(),
+                state,
+                every,
+                row.value("last_status").toString(QStringLiteral("-")),
+                QString::number(row.value("run_count").toInt()),
+                row.value("next_run_at").toString(QStringLiteral("-"))
+            };
+            const QColor state_color =
+                state == QStringLiteral("ok") ? QColor(ui::colors::POSITIVE())
+                : state == QStringLiteral("running") ? QColor(ui::colors::AMBER())
+                : state == QStringLiteral("missing") || state == QStringLiteral("failed") || state == QStringLiteral("timeout")
+                    ? QColor(ui::colors::NEGATIVE())
+                    : QColor(ui::colors::TEXT_SECONDARY());
+            for (int c = 0; c < cols.size(); ++c) {
+                auto* item = new QTableWidgetItem(cols.at(c));
+                item->setData(Qt::UserRole, row.value("id").toString());
+                if (c == 1 || c == 3)
+                    item->setForeground(state_color);
+                daemon_collectors_table_->setItem(r, c, item);
+            }
+        }
+        daemon_collectors_table_->resizeColumnsToContents();
+        daemon_collectors_table_->horizontalHeader()->setStretchLastSection(true);
+    }
+
+    if (daemon_collectors_status_) {
+        daemon_collectors_status_->setText(
+            ok ? tr("BTC ticks and prediction snapshots are being kept warm.")
+               : tr("Use REPAIR to recreate missing managed feed jobs, or RUN NOW to force an immediate refresh."));
+        daemon_collectors_status_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;padding:6px 12px;%2")
+                                                    .arg(ok ? ui::colors::TEXT_SECONDARY() : ui::colors::AMBER(), MF));
     }
 }
 
@@ -1047,6 +1216,12 @@ void ProfileScreen::refresh_daemon() {
                        run_daemon_cli({QStringLiteral("jobs"), QStringLiteral("list")},
                                       [this](const QJsonObject& o, const QString&) {
                                           populate_daemon_jobs(o.value("jobs").toArray());
+                                      });
+                       run_daemon_cli({QStringLiteral("collectors"), QStringLiteral("status")},
+                                      [this](const QJsonObject& o, const QString&) { populate_daemon_collectors(o); },
+                                      [this](const QString& msg) {
+                                          if (daemon_collectors_status_)
+                                              daemon_collectors_status_->setText(msg);
                                       });
                        run_daemon_cli({QStringLiteral("audit")},
                                       [this](const QJsonObject& o, const QString&) { populate_daemon_audit(o); });

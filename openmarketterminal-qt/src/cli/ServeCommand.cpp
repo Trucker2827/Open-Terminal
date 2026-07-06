@@ -5,6 +5,8 @@
 #include "mcp/McpProvider.h"
 #include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
+#include "services/crypto_latency/CryptoLatencyService.h"
+#include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/sqlite/Database.h"
 #include <QCoreApplication>
@@ -31,7 +33,9 @@
 #include <cstdio>
 #include <csignal>
 #include <algorithm>
+#include <cmath>
 #include <functional>
+#include <memory>
 #include <optional>
 #ifdef _WIN32
 #  include <windows.h>
@@ -81,12 +85,32 @@ QString daemon_jobs_path(const QString& profile) {
     return daemon_state_dir(profile) + QStringLiteral("/jobs.json");
 }
 
+QString daemon_runtime_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/runtime.json");
+}
+
 QString daemon_history_db_path(const QString& profile) {
     return daemon_state_dir(profile) + QStringLiteral("/runs.sqlite");
 }
 
 QString daemon_job_log_path(const QString& profile) {
     return daemon_logs_dir(profile) + QStringLiteral("/daemon.jobs.log");
+}
+
+QString daemon_scalp_config_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/scalp_engine.json");
+}
+
+QString daemon_scalp_state_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/scalp_state.json");
+}
+
+QString daemon_scalp_ticks_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/scalp_ticks.jsonl");
+}
+
+QString daemon_scalp_decisions_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/scalp_decisions.jsonl");
 }
 
 QString now_utc() {
@@ -244,6 +268,40 @@ QString compact_tail(const QString& s, int max_chars = 2000) {
     if (out.size() > max_chars)
         out = out.right(max_chars);
     return out;
+}
+
+QJsonObject read_json_object_file(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    return err.error == QJsonParseError::NoError && doc.isObject() ? doc.object() : QJsonObject{};
+}
+
+bool write_json_object_file(const QString& path, const QJsonObject& obj, QString* error = nullptr) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (error) *error = QStringLiteral("could not write %1").arg(path);
+        return false;
+    }
+    f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    if (!f.commit()) {
+        if (error) *error = QStringLiteral("could not commit %1").arg(path);
+        return false;
+    }
+    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    return true;
+}
+
+void append_jsonl(const QString& path, const QJsonObject& obj) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+        return;
+    f.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    f.write("\n");
 }
 
 struct DaemonHistoryDb {
@@ -580,19 +638,107 @@ void write_plist_key_bool(QXmlStreamWriter& w, const QString& key, bool value) {
     return true;
 }
 
+QJsonObject read_daemon_runtime(const QString& profile) {
+    QFile f(daemon_runtime_path(profile));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    QJsonParseError pe;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject())
+        return {};
+    return doc.object();
+}
+
+bool daemon_runtime_live(const QJsonObject& rt) {
+    const qint64 pid = static_cast<qint64>(rt.value(QStringLiteral("pid")).toDouble());
+    return pid > 0 && is_pid_alive(pid);
+}
+
+bool write_daemon_runtime(const QString& profile,
+                          const QString& mode,
+                          const QString& endpoint = {},
+                          const QString& bridge_owner_kind = {},
+                          const QString& bridge_owner_endpoint = {}) {
+    QDir().mkpath(daemon_state_dir(profile));
+    QJsonObject old = read_daemon_runtime(profile);
+    QJsonObject rt{{"schema", 1},
+                   {"profile", profile},
+                   {"pid", QCoreApplication::applicationPid()},
+                   {"mode", mode},
+                   {"scheduler_running", true},
+                   {"heartbeat_at", now_utc()}};
+    rt["started_at"] = old.value("pid").toDouble() == QCoreApplication::applicationPid()
+                           ? old.value("started_at").toString(now_utc())
+                           : now_utc();
+    if (!endpoint.isEmpty())
+        rt["endpoint"] = endpoint;
+    if (!bridge_owner_kind.isEmpty())
+        rt["bridge_owner_kind"] = bridge_owner_kind;
+    if (!bridge_owner_endpoint.isEmpty())
+        rt["bridge_owner_endpoint"] = bridge_owner_endpoint;
+
+    QSaveFile f(daemon_runtime_path(profile));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    f.write(QJsonDocument(rt).toJson(QJsonDocument::Indented));
+    if (!f.commit())
+        return false;
+    QFile::setPermissions(daemon_runtime_path(profile), QFile::ReadOwner | QFile::WriteOwner);
+    return true;
+}
+
+bool remove_daemon_runtime(const QString& profile) {
+    const QString path = daemon_runtime_path(profile);
+    return !QFile::exists(path) || QFile::remove(path);
+}
+
 QJsonObject daemon_status_object(const QString& profile) {
     auto info = read_bridge_file(profile_root_for(profile));
-    const bool running = info && is_pid_alive(info->pid) && info->kind == QStringLiteral("daemon");
+    const bool owner_live = info && is_pid_alive(info->pid);
+    const QJsonObject runtime = read_daemon_runtime(profile);
+    const bool runtime_live = daemon_runtime_live(runtime);
+    const QString runtime_mode = runtime_live ? runtime.value("mode").toString() : QString();
+    const bool bridge_daemon_owner = owner_live && info->kind == QStringLiteral("daemon");
+    const bool scheduler_running = runtime_live || bridge_daemon_owner;
+    const bool running = scheduler_running;
+    const QString owner_kind = owner_live ? info->kind : QString();
+    const QString mode = bridge_daemon_owner ? QStringLiteral("daemon-owner")
+                       : runtime_live && owner_live ? QStringLiteral("%1-owner+daemon-warm").arg(owner_kind)
+                       : runtime_live ? QStringLiteral("daemon-warm")
+                       : owner_live ? QStringLiteral("%1-owner").arg(owner_kind)
+                       : info ? QStringLiteral("stale-owner")
+                              : QStringLiteral("idle");
     QJsonObject o{{"profile", profile},
                   {"label", daemon_label(profile)},
                   {"plist", daemon_plist_path(profile)},
                   {"installed", QFileInfo::exists(daemon_plist_path(profile))},
                   {"loaded", launchd_loaded(profile)},
-                  {"running", running}};
-    if (info && is_pid_alive(info->pid)) {
+                  {"running", running},
+                  {"daemon_running", running},
+                  {"daemon_bridge_owner", bridge_daemon_owner},
+                  {"daemon_warm", runtime_live && !bridge_daemon_owner},
+                  {"scheduler_running", scheduler_running},
+                  {"profile_owner_reachable", owner_live},
+                  {"active_owner_kind", owner_kind},
+                  {"mode", mode},
+                  {"runtime", runtime},
+                  {"can_start_daemon", !scheduler_running}};
+    if (owner_live) {
         o["owner_kind"] = info->kind;
+        o["active_owner_pid"] = info->pid;
+        o["active_endpoint"] = info->endpoint;
         o["pid"] = info->pid;
         o["endpoint"] = info->endpoint;
+        if (!bridge_daemon_owner)
+            o["daemon_blocked_by"] = QStringLiteral("profile is currently owned by %1").arg(info->kind);
+    } else if (info) {
+        o["daemon_blocked_by"] = QStringLiteral("stale bridge owner metadata");
+    }
+    if (runtime_live) {
+        o["daemon_process_pid"] = runtime.value("pid");
+        o["daemon_process_mode"] = runtime_mode;
+        o["daemon_heartbeat_at"] = runtime.value("heartbeat_at");
+        o["daemon_started_at"] = runtime.value("started_at");
     }
     return o;
 }
@@ -608,6 +754,594 @@ bool wait_for_daemon_running(const QString& profile, int timeout_ms) {
     return daemon_status_object(profile).value("running").toBool();
 }
 
+QStringList split_csv(QString raw) {
+    raw.replace(';', ',');
+    QStringList out;
+    for (QString part : raw.split(',', Qt::SkipEmptyParts)) {
+        part = part.trimmed();
+        if (!part.isEmpty())
+            out << part;
+    }
+    return out;
+}
+
+QStringList scalp_sources_for_symbol(QStringList sources, const QString& symbol) {
+    if (sources.isEmpty())
+        sources = services::crypto_latency::CryptoLatencyService::default_sources();
+    const QString normalized = services::crypto_latency::CryptoLatencyService::normalize_symbol(symbol);
+    QStringList out;
+    for (QString source : sources) {
+        source = source.trimmed().toLower();
+        if (source.isEmpty())
+            continue;
+        if (source == QStringLiteral("bitcointicker") && normalized != QStringLiteral("BTC-USD"))
+            continue;
+        if (!out.contains(source))
+            out << source;
+    }
+    return out;
+}
+
+struct ScalpVenueFeeProfile {
+    QString key;
+    double maker_bps = 0.0;
+    double taker_bps = 0.0;
+    QString source;
+};
+
+struct ScalpCoinbaseFeeTier {
+    const char* key;
+    const char* volume;
+    double maker_bps;
+    double taker_bps;
+};
+
+static constexpr ScalpCoinbaseFeeTier kScalpCoinbaseFeeTiers[] = {
+    {"coinbase_advanced", "$0K-$10K", 40.0, 60.0},
+    {"coinbase_tier2", "$10K-$50K", 25.0, 40.0},
+    {"coinbase_tier3", "$50K-$100K", 15.0, 25.0},
+    {"coinbase_tier4", "$100K-$1M", 10.0, 20.0},
+    {"coinbase_tier5", "$1M-$15M", 8.0, 18.0},
+    {"coinbase_tier6", "$15M-$75M", 6.0, 16.0},
+    {"coinbase_tier7", "$75M-$250M", 3.0, 10.0},
+    {"coinbase_tier8", "$250M-$400M", 0.0, 6.0},
+    {"coinbase_tier9", "$400M+", 0.0, 4.0},
+};
+
+std::optional<ScalpCoinbaseFeeTier> scalp_coinbase_fee_tier_by_key(const QString& key) {
+    for (const ScalpCoinbaseFeeTier& tier : kScalpCoinbaseFeeTiers) {
+        if (key == QLatin1String(tier.key))
+            return tier;
+    }
+    return std::nullopt;
+}
+
+QString scalp_fee_venue(QString venue) {
+    venue = venue.trimmed().toLower();
+    QString compact = venue;
+    compact.replace(QLatin1Char('-'), QLatin1Char('_'));
+    compact.replace(QLatin1Char(' '), QLatin1Char('_'));
+    if (compact == QLatin1String("coinbase_tier1") || compact == QLatin1String("coinbase_tier_1") ||
+        compact == QLatin1String("coinbase_base") || compact == QLatin1String("coinbase_advanced"))
+        return QStringLiteral("coinbase_advanced");
+    if (compact == QLatin1String("coinbase_tier2") || compact == QLatin1String("coinbase_tier_2") ||
+        compact == QLatin1String("coinbase_10k") || compact == QLatin1String("coinbase_10k_50k"))
+        return QStringLiteral("coinbase_tier2");
+    if (compact == QLatin1String("coinbase_tier3") || compact == QLatin1String("coinbase_tier_3") ||
+        compact == QLatin1String("coinbase_50k") || compact == QLatin1String("coinbase_50k_100k"))
+        return QStringLiteral("coinbase_tier3");
+    if (compact == QLatin1String("coinbase_tier4") || compact == QLatin1String("coinbase_tier_4") ||
+        compact == QLatin1String("coinbase_100k") || compact == QLatin1String("coinbase_100k_1m"))
+        return QStringLiteral("coinbase_tier4");
+    if (compact == QLatin1String("coinbase_tier5") || compact == QLatin1String("coinbase_tier_5") ||
+        compact == QLatin1String("coinbase_1m") || compact == QLatin1String("coinbase_1m_15m"))
+        return QStringLiteral("coinbase_tier5");
+    if (compact == QLatin1String("coinbase_tier6") || compact == QLatin1String("coinbase_tier_6") ||
+        compact == QLatin1String("coinbase_15m") || compact == QLatin1String("coinbase_15m_75m"))
+        return QStringLiteral("coinbase_tier6");
+    if (compact == QLatin1String("coinbase_tier7") || compact == QLatin1String("coinbase_tier_7") ||
+        compact == QLatin1String("coinbase_75m") || compact == QLatin1String("coinbase_75m_250m"))
+        return QStringLiteral("coinbase_tier7");
+    if (compact == QLatin1String("coinbase_tier8") || compact == QLatin1String("coinbase_tier_8") ||
+        compact == QLatin1String("coinbase_250m") || compact == QLatin1String("coinbase_250m_400m"))
+        return QStringLiteral("coinbase_tier8");
+    if (compact == QLatin1String("coinbase_tier9") || compact == QLatin1String("coinbase_tier_9") ||
+        compact == QLatin1String("coinbase_400m") || compact == QLatin1String("coinbase_400m_plus"))
+        return QStringLiteral("coinbase_tier9");
+    if (venue.contains(QStringLiteral("coinbase")))
+        return QStringLiteral("coinbase_advanced");
+    if (venue.contains(QStringLiteral("alpaca")))
+        return QStringLiteral("alpaca_crypto");
+    if (venue.contains(QStringLiteral("kraken")))
+        return QStringLiteral("kraken_pro");
+    if (venue.contains(QStringLiteral("binance")))
+        return QStringLiteral("binanceus");
+    return venue.isEmpty() || venue == QLatin1String("unknown") ? QStringLiteral("coinbase_advanced") : venue;
+}
+
+QString scalp_liquidity_mode(QString mode) {
+    mode = mode.trimmed().toLower();
+    if (mode == QLatin1String("post-only") || mode == QLatin1String("postonly") ||
+        mode == QLatin1String("limit-maker"))
+        return QStringLiteral("maker");
+    if (mode == QLatin1String("market"))
+        return QStringLiteral("taker");
+    if (mode == QLatin1String("maker") || mode == QLatin1String("taker"))
+        return mode;
+    return QStringLiteral("maker");
+}
+
+ScalpVenueFeeProfile scalp_fee_profile(const QString& venue) {
+    const QString v = scalp_fee_venue(venue);
+    if (const auto coinbase_tier = scalp_coinbase_fee_tier_by_key(v))
+        return {v,
+                coinbase_tier->maker_bps,
+                coinbase_tier->taker_bps,
+                QStringLiteral("Coinbase Advanced, %1 trailing 30-day volume").arg(QString::fromLatin1(coinbase_tier->volume))};
+    if (v == QLatin1String("kraken_pro"))
+        return {v, 25.0, 40.0, QStringLiteral("Kraken Pro spot base tier")};
+    if (v == QLatin1String("binanceus"))
+        return {v, 0.0, 1.0, QStringLiteral("Binance.US Tier 0 spot pairs, public fee page")};
+    if (v == QLatin1String("alpaca_crypto"))
+        return {v, 15.0, 25.0, QStringLiteral("Alpaca crypto tier 1")};
+    return {v, 10.0, 20.0, QStringLiteral("generic local fallback")};
+}
+
+double scalp_default_fee_bps(const QString& venue, const QString& liquidity_mode) {
+    const ScalpVenueFeeProfile p = scalp_fee_profile(venue);
+    return scalp_liquidity_mode(liquidity_mode) == QLatin1String("maker") ? p.maker_bps : p.taker_bps;
+}
+
+struct ScalpMsWindow {
+    int ms = 0;
+    int ticks = 0;
+    int upticks = 0;
+    int downticks = 0;
+    int flat_ticks = 0;
+    double start_price = 0.0;
+    double end_price = 0.0;
+    double move_bps = 0.0;
+    double pressure = 0.0;
+    bool available = false;
+};
+
+QJsonObject scalp_ms_window_json(const ScalpMsWindow& w) {
+    return QJsonObject{{"ms", w.ms},
+                       {"ticks", w.ticks},
+                       {"upticks", w.upticks},
+                       {"downticks", w.downticks},
+                       {"flat_ticks", w.flat_ticks},
+                       {"start_price", w.start_price},
+                       {"end_price", w.end_price},
+                       {"move_bps", w.move_bps},
+                       {"pressure", w.pressure},
+                       {"available", w.available}};
+}
+
+QJsonArray double_list_json(const QVector<double>& values) {
+    QJsonArray arr;
+    for (const double v : values)
+        arr.append(v);
+    return arr;
+}
+
+class DaemonScalpEngine {
+  public:
+    explicit DaemonScalpEngine(QString profile)
+        : profile_(std::move(profile)),
+          config_path_(daemon_scalp_config_path(profile_)),
+          state_path_(daemon_scalp_state_path(profile_)),
+          ticks_path_(daemon_scalp_ticks_path(profile_)),
+          decisions_path_(daemon_scalp_decisions_path(profile_)) {
+        config_timer_ = new QTimer(qApp);
+        config_timer_->setInterval(1000);
+        QObject::connect(config_timer_, &QTimer::timeout, qApp, [this]() { reload_config(); });
+        config_timer_->start();
+
+        decision_timer_ = new QTimer(qApp);
+        decision_timer_->setInterval(cadence_ms_);
+        QObject::connect(decision_timer_, &QTimer::timeout, qApp, [this]() { evaluate(); });
+        decision_timer_->start();
+        QTimer::singleShot(0, qApp, [this]() { reload_config(); });
+    }
+
+    ~DaemonScalpEngine() { stop_services(); }
+
+  private:
+    using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
+    using CryptoLatencyTick = services::crypto_latency::CryptoLatencyTick;
+    using CryptoMicrostructureRadar = services::edge_radar::CryptoMicrostructureRadar;
+
+    ScalpMsWindow ms_window(const QVector<CryptoLatencyTick>& ticks, int ms) const {
+        ScalpMsWindow out;
+        out.ms = ms;
+        if (ticks.size() < 2 || ms <= 0)
+            return out;
+        const qint64 newest = ticks.last().received_ts_ms;
+        QVector<CryptoLatencyTick> rows;
+        for (const auto& tick : ticks) {
+            if (newest - tick.received_ts_ms <= ms)
+                rows << tick;
+        }
+        if (rows.size() < 2)
+            return out;
+        out.ticks = rows.size();
+        out.start_price = rows.first().price;
+        out.end_price = rows.last().price;
+        if (out.start_price <= 0.0 || out.end_price <= 0.0)
+            return out;
+        for (int i = 1; i < rows.size(); ++i) {
+            if (rows[i].price > rows[i - 1].price)
+                ++out.upticks;
+            else if (rows[i].price < rows[i - 1].price)
+                ++out.downticks;
+            else
+                ++out.flat_ticks;
+        }
+        const int directional = out.upticks + out.downticks;
+        out.pressure = directional > 0
+                           ? std::clamp(static_cast<double>(out.upticks - out.downticks) /
+                                            static_cast<double>(directional),
+                                        -1.0, 1.0)
+                           : 0.0;
+        out.move_bps = ((out.end_price / out.start_price) - 1.0) * 10000.0;
+        out.available = true;
+        return out;
+    }
+
+    QJsonObject public_config() const {
+        return QJsonObject{{"enabled", enabled_},
+                           {"paper", true},
+                           {"symbols", QJsonArray::fromStringList(symbols_)},
+                           {"sources", QJsonArray::fromStringList(sources_)},
+                           {"paper_amounts_usd", double_list_json(paper_amounts_usd_)},
+                           {"cadence_ms", cadence_ms_},
+                           {"venue", fee_venue_},
+                           {"liquidity", liquidity_mode_},
+                           {"fee_bps", fee_bps_},
+                           {"slippage_bps", slippage_bps_},
+                           {"safety_bps", safety_bps_},
+                           {"minimum_profit_bps", minimum_profit_bps_},
+                           {"min_net_bps", min_net_bps_},
+                           {"capture_ratio", capture_ratio_},
+                           {"max_age_ms", max_age_ms_},
+                           {"max_spread_bps", max_spread_bps_},
+                           {"min_live_sources", min_live_sources_}};
+    }
+
+    QString config_fingerprint(const QJsonObject& obj) const {
+        return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    }
+
+    int int_value(const QJsonObject& obj, const QString& key, int fallback, int min_v, int max_v) const {
+        return std::clamp(obj.value(key).toInt(fallback), min_v, max_v);
+    }
+
+    double double_value(const QJsonObject& obj,
+                        const QString& key,
+                        double fallback,
+                        double min_v,
+                        double max_v) const {
+        const double v = obj.value(key).toDouble(fallback);
+        return std::isfinite(v) ? std::clamp(v, min_v, max_v) : fallback;
+    }
+
+    QStringList string_array_value(const QJsonObject& obj,
+                                   const QString& key,
+                                   const QStringList& fallback) const {
+        QStringList out;
+        const QJsonArray arr = obj.value(key).toArray();
+        for (const auto& v : arr) {
+            const QString s = v.toString().trimmed();
+            if (!s.isEmpty())
+                out << s;
+        }
+        return out.isEmpty() ? fallback : out;
+    }
+
+    QVector<double> double_array_value(const QJsonObject& obj,
+                                       const QString& key,
+                                       const QVector<double>& fallback) const {
+        QVector<double> out;
+        const QJsonArray arr = obj.value(key).toArray();
+        for (const auto& v : arr) {
+            const double d = v.toDouble(-1.0);
+            if (std::isfinite(d) && d > 0.0)
+                out << d;
+        }
+        std::sort(out.begin(), out.end());
+        out.erase(std::unique(out.begin(), out.end()), out.end());
+        return out.isEmpty() ? fallback : out;
+    }
+
+    void reload_config() {
+        const QJsonObject cfg = read_json_object_file(config_path_);
+        const bool enabled = cfg.value(QStringLiteral("enabled")).toBool(false);
+        const QString fingerprint = config_fingerprint(cfg);
+        if (fingerprint == active_fingerprint_)
+            return;
+        active_fingerprint_ = fingerprint;
+
+        if (!enabled) {
+            enabled_ = false;
+            stop_services();
+            write_state(QStringLiteral("disabled"));
+            return;
+        }
+
+        QStringList symbols = string_array_value(cfg, QStringLiteral("symbols"), {QStringLiteral("BTC-USD")});
+        for (QString& symbol : symbols)
+            symbol = CryptoLatencyService::normalize_symbol(symbol);
+        symbols.removeDuplicates();
+
+        QStringList sources = string_array_value(cfg, QStringLiteral("sources"), CryptoLatencyService::default_sources());
+        for (QString& source : sources)
+            source = source.trimmed().toLower();
+        sources.removeDuplicates();
+
+        cadence_ms_ = int_value(cfg, QStringLiteral("cadence_ms"), 250, 50, 5000);
+        paper_amounts_usd_ = double_array_value(cfg, QStringLiteral("paper_amounts_usd"), {25.0, 50.0});
+        fee_venue_ = scalp_fee_venue(cfg.value(QStringLiteral("venue")).toString(QStringLiteral("coinbase")));
+        liquidity_mode_ = scalp_liquidity_mode(cfg.value(QStringLiteral("liquidity")).toString(QStringLiteral("maker")));
+        fee_bps_ = double_value(cfg, QStringLiteral("fee_bps"),
+                                scalp_default_fee_bps(fee_venue_, liquidity_mode_), 0.0, 1000.0);
+        slippage_bps_ = double_value(cfg, QStringLiteral("slippage_bps"), 0.0, 0.0, 1000.0);
+        safety_bps_ = double_value(cfg, QStringLiteral("safety_bps"), 5.0, 0.0, 1000.0);
+        minimum_profit_bps_ = double_value(cfg, QStringLiteral("minimum_profit_bps"),
+                                           cfg.value(QStringLiteral("min_net_bps")).toDouble(10.0),
+                                           0.0, 1000.0);
+        min_net_bps_ = minimum_profit_bps_;
+        capture_ratio_ = double_value(cfg, QStringLiteral("capture_ratio"), 0.35, 0.01, 1.0);
+        max_age_ms_ = int_value(cfg, QStringLiteral("max_age_ms"), 1000, 50, 30000);
+        max_spread_bps_ = double_value(cfg, QStringLiteral("max_spread_bps"), 8.0, 0.0, 1000.0);
+        min_live_sources_ = int_value(cfg, QStringLiteral("min_live_sources"), 2, 1, 10);
+        symbols_ = symbols;
+        sources_ = sources;
+        enabled_ = true;
+        started_at_ = now_utc();
+        decision_timer_->setInterval(cadence_ms_);
+        restart_services();
+        append_job_log(profile_, QStringLiteral("scalp-engine-start symbols=%1 cadence_ms=%2")
+                                     .arg(symbols_.join(','), QString::number(cadence_ms_)));
+        write_state(QStringLiteral("starting"));
+    }
+
+    void restart_services() {
+        stop_services();
+        for (const QString& symbol : symbols_) {
+            auto* svc = new CryptoLatencyService(qApp);
+            services_.insert(symbol, svc);
+            radars_.insert(symbol, CryptoMicrostructureRadar{});
+            recent_.insert(symbol, {});
+            const QStringList safe_sources = scalp_sources_for_symbol(sources_, symbol);
+            QObject::connect(svc, &CryptoLatencyService::tick_received, svc,
+                             [this, symbol](const CryptoLatencyTick& tick) { ingest_tick(symbol, tick); });
+            svc->start(symbol, safe_sources);
+        }
+    }
+
+    void stop_services() {
+        for (auto it = services_.begin(); it != services_.end(); ++it) {
+            if (it.value()) {
+                it.value()->stop();
+                it.value()->deleteLater();
+            }
+        }
+        services_.clear();
+        radars_.clear();
+        recent_.clear();
+        last_decisions_.clear();
+        last_decision_hash_.clear();
+        last_journal_ms_.clear();
+    }
+
+    void ingest_tick(const QString& symbol, const CryptoLatencyTick& tick) {
+        auto& rows = recent_[symbol];
+        rows << tick;
+        std::stable_sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
+            if (a.received_ts_ms != b.received_ts_ms)
+                return a.received_ts_ms < b.received_ts_ms;
+            return a.sequence < b.sequence;
+        });
+        const qint64 newest = rows.isEmpty() ? 0 : rows.last().received_ts_ms;
+        while (!rows.isEmpty() && newest - rows.first().received_ts_ms > 300000)
+            rows.removeFirst();
+        while (rows.size() > 5000)
+            rows.removeFirst();
+        radars_[symbol].add_tick(tick);
+        append_jsonl(ticks_path_, CryptoLatencyService::tick_to_json(tick));
+    }
+
+    QJsonObject evaluate_symbol(const QString& symbol, CryptoLatencyService* svc) {
+        const auto latency_snapshot = svc->snapshot();
+        const auto micro = radars_[symbol].snapshot(latency_snapshot);
+        const QVector<CryptoLatencyTick> rows = recent_.value(symbol);
+        const ScalpMsWindow w250 = ms_window(rows, 250);
+        const ScalpMsWindow w500 = ms_window(rows, 500);
+        const ScalpMsWindow w1000 = ms_window(rows, 1000);
+        const ScalpMsWindow w5000 = ms_window(rows, 5000);
+
+        QStringList blockers;
+        QString verdict = QStringLiteral("NO TRADE");
+        QString action = QStringLiteral("NO_ORDER");
+        QString direction = QStringLiteral("flat");
+        const double pressure = (w250.pressure * 0.25) + (w500.pressure * 0.30) +
+                                (w1000.pressure * 0.30) + (micro.book_pressure * 0.15);
+        const double confidence = std::clamp(std::abs(pressure), 0.0, 1.0);
+        if (pressure > 0.15)
+            direction = QStringLiteral("up");
+        else if (pressure < -0.15)
+            direction = QStringLiteral("down");
+
+        const double observed_bps = w1000.available ? w1000.move_bps : (w500.available ? w500.move_bps : 0.0);
+        const double directional_bps = direction == QLatin1String("up") ? std::max(0.0, observed_bps) : 0.0;
+        const double expected_capture_bps = directional_bps * capture_ratio_ * confidence;
+        const double spread_cost_bps = liquidity_mode_ == QLatin1String("taker")
+                                           ? std::max(0.0, latency_snapshot.cross_source_spread_bps)
+                                           : 0.0;
+        const double entry_fee_bps = fee_bps_;
+        const double exit_fee_bps = fee_bps_;
+        const double round_trip_bps = entry_fee_bps + exit_fee_bps + (slippage_bps_ * 2.0) +
+                                      spread_cost_bps + safety_bps_;
+        const double net_bps = expected_capture_bps - round_trip_bps;
+        const double required_edge_bps = round_trip_bps + minimum_profit_bps_;
+        const double edge_surplus_bps = expected_capture_bps - required_edge_bps;
+
+        if (latency_snapshot.freshest_age_ms < 0 || latency_snapshot.freshest_age_ms > max_age_ms_)
+            blockers << QStringLiteral("freshest tick too stale");
+        if (latency_snapshot.live_sources < min_live_sources_)
+            blockers << QStringLiteral("not enough live sources");
+        if (latency_snapshot.cross_source_spread_bps > max_spread_bps_)
+            blockers << QStringLiteral("spread/divergence too wide");
+        if (!w500.available && !w1000.available)
+            blockers << QStringLiteral("not enough millisecond window history");
+        if (direction != QLatin1String("up"))
+            blockers << QStringLiteral("paper spot scalp only supports long/up candidates");
+        if (edge_surplus_bps < 0.0)
+            blockers << QStringLiteral("estimated captured move does not clear required edge");
+
+        if (blockers.isEmpty()) {
+            verdict = QStringLiteral("PAPER TRADE CANDIDATE");
+            action = QStringLiteral("PAPER_LIMIT_BUY_ONLY");
+        } else if (direction == QLatin1String("up") && latency_snapshot.freshest_age_ms >= 0 &&
+                   latency_snapshot.freshest_age_ms <= max_age_ms_) {
+            verdict = QStringLiteral("WATCH");
+        }
+
+        QJsonArray windows;
+        windows << scalp_ms_window_json(w250) << scalp_ms_window_json(w500)
+                << scalp_ms_window_json(w1000) << scalp_ms_window_json(w5000);
+        QJsonArray paper_amounts;
+        for (const double amount : paper_amounts_usd_) {
+            paper_amounts.append(QJsonObject{{"notional_usd", amount},
+                                             {"expected_capture_usd", amount * expected_capture_bps / 10000.0},
+                                             {"round_trip_cost_usd", amount * round_trip_bps / 10000.0},
+                                             {"minimum_profit_usd", amount * minimum_profit_bps_ / 10000.0},
+                                             {"required_edge_usd", amount * required_edge_bps / 10000.0},
+                                             {"net_after_cost_usd", amount * net_bps / 10000.0},
+                                             {"edge_surplus_usd", amount * edge_surplus_bps / 10000.0}});
+        }
+        QJsonObject decision{{"ts", now_utc()},
+                             {"ts_ms", QString::number(QDateTime::currentMSecsSinceEpoch())},
+                             {"profile", profile_},
+                             {"engine", "daemon-scalp-ms"},
+                             {"paper", true},
+                             {"symbol", symbol},
+                             {"verdict", verdict},
+                             {"action", action},
+                             {"direction", direction},
+                             {"reference_price", latency_snapshot.mid_price},
+                             {"freshest_source", latency_snapshot.freshest_source},
+                             {"freshest_age_ms", latency_snapshot.freshest_age_ms},
+                             {"live_sources", latency_snapshot.live_sources},
+                             {"spread_bps", latency_snapshot.cross_source_spread_bps},
+                             {"cross_source_spread_bps", latency_snapshot.cross_source_spread_bps},
+                             {"spread_cost_bps", spread_cost_bps},
+                             {"pressure", pressure},
+                             {"confidence", confidence},
+                             {"observed_move_bps", observed_bps},
+                             {"expected_capture_bps", expected_capture_bps},
+                             {"round_trip_cost_bps", round_trip_bps},
+                             {"minimum_profit_bps", minimum_profit_bps_},
+                             {"required_edge_bps", required_edge_bps},
+                             {"net_after_cost_bps", net_bps},
+                             {"edge_surplus_bps", edge_surplus_bps},
+                             {"venue", fee_venue_},
+                             {"liquidity", liquidity_mode_},
+                             {"entry_fee_bps", entry_fee_bps},
+                             {"exit_fee_bps", exit_fee_bps},
+                             {"fee_bps", fee_bps_},
+                             {"slippage_bps", slippage_bps_},
+                             {"safety_bps", safety_bps_},
+                             {"paper_amounts", paper_amounts},
+                             {"cadence_ms", cadence_ms_},
+                             {"blockers", QJsonArray::fromStringList(blockers)},
+                             {"windows_ms", windows},
+                             {"microstructure", services::edge_radar::CryptoMicrostructureRadar::to_json(micro)}};
+
+        const QString hash = QStringLiteral("%1|%2|%3|%4").arg(symbol, verdict, direction, blockers.join(';'));
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const bool should_journal = last_decision_hash_.value(symbol) != hash ||
+                                    now - last_journal_ms_.value(symbol, 0) >= 1000;
+        if (should_journal) {
+            append_jsonl(decisions_path_, decision);
+            last_decision_hash_[symbol] = hash;
+            last_journal_ms_[symbol] = now;
+        }
+        return decision;
+    }
+
+    void evaluate() {
+        if (!enabled_)
+            return;
+        QJsonArray decisions;
+        for (auto it = services_.begin(); it != services_.end(); ++it) {
+            if (!it.value())
+                continue;
+            const QJsonObject decision = evaluate_symbol(it.key(), it.value());
+            last_decisions_[it.key()] = decision;
+            decisions.append(decision);
+        }
+        write_state(QStringLiteral("running"), decisions);
+    }
+
+    void write_state(const QString& status, QJsonArray decisions = {}) const {
+        if (decisions.isEmpty()) {
+            for (auto it = last_decisions_.begin(); it != last_decisions_.end(); ++it)
+                decisions.append(it.value());
+        }
+        QJsonObject source_map;
+        for (const QString& symbol : symbols_)
+            source_map[symbol] = QJsonArray::fromStringList(scalp_sources_for_symbol(sources_, symbol));
+        const QJsonObject state{{"profile", profile_},
+                                {"status", status},
+                                {"enabled", enabled_},
+                                {"pid", static_cast<double>(QCoreApplication::applicationPid())},
+                                {"started_at", started_at_},
+                                {"heartbeat_at", now_utc()},
+                                {"config", public_config()},
+                                {"effective_sources", source_map},
+                                {"decisions", decisions},
+                                {"ticks_path", ticks_path_},
+                                {"decisions_path", decisions_path_}};
+        QString error;
+        if (!write_json_object_file(state_path_, state, &error))
+            append_job_log(profile_, QStringLiteral("scalp-state-write-failed error=\"%1\"").arg(error));
+    }
+
+    QString profile_;
+    QString config_path_;
+    QString state_path_;
+    QString ticks_path_;
+    QString decisions_path_;
+    QTimer* config_timer_ = nullptr;
+    QTimer* decision_timer_ = nullptr;
+    QString active_fingerprint_;
+    bool enabled_ = false;
+    QString started_at_;
+    QStringList symbols_{QStringLiteral("BTC-USD")};
+    QStringList sources_ = CryptoLatencyService::default_sources();
+    QVector<double> paper_amounts_usd_{25.0, 50.0};
+    int cadence_ms_ = 250;
+    QString fee_venue_{QStringLiteral("coinbase")};
+    QString liquidity_mode_{QStringLiteral("maker")};
+    double fee_bps_ = 40.0;
+    double slippage_bps_ = 0.0;
+    double safety_bps_ = 5.0;
+    double minimum_profit_bps_ = 10.0;
+    double min_net_bps_ = 5.0;
+    double capture_ratio_ = 0.35;
+    int max_age_ms_ = 1000;
+    double max_spread_bps_ = 8.0;
+    int min_live_sources_ = 2;
+    QHash<QString, CryptoLatencyService*> services_;
+    QHash<QString, CryptoMicrostructureRadar> radars_;
+    QHash<QString, QVector<CryptoLatencyTick>> recent_;
+    QHash<QString, QJsonObject> last_decisions_;
+    QHash<QString, QString> last_decision_hash_;
+    QHash<QString, qint64> last_journal_ms_;
+};
+
 QJsonObject daemon_health_object(const QString& profile) {
     QJsonObject o = daemon_status_object(profile);
     auto info = read_bridge_file(profile_root_for(profile));
@@ -621,7 +1355,7 @@ QJsonObject daemon_health_object(const QString& profile) {
     o["logs"] = QJsonObject{{"stdout", daemon_logs_dir(profile) + QStringLiteral("/daemon.out.log")},
                             {"stderr", daemon_logs_dir(profile) + QStringLiteral("/daemon.err.log")},
                             {"jobs", daemon_job_log_path(profile)}};
-    o["capabilities"] = QJsonArray{"health", "readiness", "logs", "jobs", "monitors", "notify",
+    o["capabilities"] = QJsonArray{"health", "readiness", "logs", "jobs", "monitors", "collectors", "notify",
                                    "paper-strategy", "ai-automation", "audit"};
     return o;
 }
@@ -633,10 +1367,24 @@ int emit_daemon_health(const QString& profile, bool json) {
         return 0;
     }
     std::printf("profile      %s\n", qUtf8Printable(profile));
-    std::printf("running      %s\n", o.value("running").toBool() ? "yes" : "no");
+    std::printf("mode         %s\n", qUtf8Printable(o.value("mode").toString()));
+    std::printf("daemon       %s\n", o.value("daemon_running").toBool() ? "running" : "not running");
     std::printf("installed    %s\n", o.value("installed").toBool() ? "yes" : "no");
-    if (o.contains("pid"))
-        std::printf("pid          %lld\n", static_cast<long long>(o.value("pid").toDouble()));
+    if (o.value("profile_owner_reachable").toBool()) {
+        std::printf("owner        %s pid=%lld endpoint=%s\n",
+                    qUtf8Printable(o.value("active_owner_kind").toString()),
+                    static_cast<long long>(o.value("active_owner_pid").toDouble()),
+                    qUtf8Printable(o.value("active_endpoint").toString()));
+    }
+    if (o.value("scheduler_running").toBool()) {
+        const qint64 scheduler_pid = o.contains("daemon_process_pid")
+                                         ? static_cast<qint64>(o.value("daemon_process_pid").toDouble())
+                                         : static_cast<qint64>(o.value("pid").toDouble());
+        std::printf("scheduler    %s pid=%lld\n",
+                    qUtf8Printable(o.value("daemon_process_mode").toString(
+                        o.value("daemon_bridge_owner").toBool() ? QStringLiteral("owner") : QStringLiteral("warm"))),
+                    static_cast<long long>(scheduler_pid));
+    }
     if (o.contains("uptime_sec"))
         std::printf("uptime       %llds\n", static_cast<long long>(o.value("uptime_sec").toDouble()));
     const QJsonObject j = o.value("jobs").toObject();
@@ -645,6 +1393,10 @@ int emit_daemon_health(const QString& profile, bool json) {
                 j.value("failed").toInt(), j.value("stale").toInt(),
                 j.value("failed_history").toInt(), j.value("interval").toInt());
     std::printf("endpoint     %s\n", qUtf8Printable(o.value("endpoint").toString("(none)")));
+    if (o.contains("daemon_blocked_by"))
+        std::printf("note         bridge %s; daemon scheduler %s\n",
+                    qUtf8Printable(o.value("daemon_blocked_by").toString()),
+                    o.value("scheduler_running").toBool() ? "is warm and can run jobs" : "is not running");
     return 0;
 }
 
@@ -734,13 +1486,26 @@ int emit_daemon_status(const QString& profile, bool json) {
     std::printf("plist      %s\n", qUtf8Printable(o.value("plist").toString()));
     std::printf("installed  %s\n", o.value("installed").toBool() ? "yes" : "no");
     std::printf("loaded     %s\n", o.value("loaded").toBool() ? "yes" : "no");
-    std::printf("running    %s\n", o.value("running").toBool() ? "yes" : "no");
+    std::printf("daemon     %s\n", o.value("scheduler_running").toBool() ? "running" : "not running");
+    if (o.value("scheduler_running").toBool()) {
+        const qint64 scheduler_pid = o.contains("daemon_process_pid")
+                                         ? static_cast<qint64>(o.value("daemon_process_pid").toDouble())
+                                         : static_cast<qint64>(o.value("pid").toDouble());
+        std::printf("scheduler  %s pid=%lld\n",
+                    qUtf8Printable(o.value("daemon_process_mode").toString(
+                        o.value("daemon_bridge_owner").toBool() ? QStringLiteral("owner") : QStringLiteral("warm"))),
+                    static_cast<long long>(scheduler_pid));
+    }
+    std::printf("mode       %s\n", qUtf8Printable(o.value("mode").toString()));
     if (o.contains("owner_kind")) {
         std::printf("owner      %s pid=%lld endpoint=%s\n",
                     qUtf8Printable(o.value("owner_kind").toString()),
                     static_cast<long long>(o.value("pid").toDouble()),
                     qUtf8Printable(o.value("endpoint").toString()));
     }
+    if (o.contains("daemon_blocked_by"))
+        std::printf("note       bridge %s; daemon scheduler can still run warm in the background\n",
+                    qUtf8Printable(o.value("daemon_blocked_by").toString()));
     return o.value("installed").toBool() || o.value("running").toBool() ? 0 : 3;
 }
 
@@ -773,6 +1538,9 @@ int daemon_start_impl(const QString& profile, bool json) {
                      qUtf8Printable(profile));
         return 3;
     }
+    const QJsonObject current = daemon_status_object(profile);
+    if (current.value("scheduler_running").toBool())
+        return emit_started(true);
     if (!launchd_loaded(profile)) {
         const ProcessResult boot = run_process(QStringLiteral("launchctl"),
                                                {QStringLiteral("bootstrap"), launch_domain(), plist},
@@ -857,11 +1625,23 @@ void start_daemon_job_scheduler(const QString& profile);
 
 int serve_run(const QString& profile) {
     const QString root = profile_root_for(profile);
-    // Single-owner: refuse if a live instance (GUI or daemon) already owns it.
-    if (auto info = read_bridge_file(root); info && is_pid_alive(info->pid)) {
+    std::optional<BridgeInfo> startup_owner = read_bridge_file(root);
+    const bool startup_owner_live = startup_owner && is_pid_alive(startup_owner->pid);
+    // The bridge is still single-owner. A daemon may now coexist with a GUI as
+    // a warm scheduler, but two daemon owners would duplicate scheduled jobs.
+    if (startup_owner_live && startup_owner->kind == QStringLiteral("daemon")) {
         std::fprintf(stderr, "An instance already owns profile '%s' (%s, pid %lld) at %s\n",
-                     qUtf8Printable(profile), qUtf8Printable(info->kind),
-                     static_cast<long long>(info->pid), qUtf8Printable(info->endpoint));
+                     qUtf8Printable(profile), qUtf8Printable(startup_owner->kind),
+                     static_cast<long long>(startup_owner->pid), qUtf8Printable(startup_owner->endpoint));
+        return 3;
+    }
+    const QJsonObject existing_runtime = read_daemon_runtime(profile);
+    if (daemon_runtime_live(existing_runtime) &&
+        static_cast<qint64>(existing_runtime.value(QStringLiteral("pid")).toDouble()) !=
+            QCoreApplication::applicationPid()) {
+        std::fprintf(stderr, "A daemon scheduler already runs for profile '%s' (pid %lld)\n",
+                     qUtf8Printable(profile),
+                     static_cast<long long>(existing_runtime.value(QStringLiteral("pid")).toDouble()));
         return 3;
     }
 
@@ -926,18 +1706,74 @@ int serve_run(const QString& profile) {
 #endif
 
     auto& bridge = mcp::TerminalMcpBridge::instance();
-    bridge.set_owner_kind("daemon");
-    if (!bridge.start()) {                                 // binds 127.0.0.1 + writes bridge.json(kind=daemon)
-        std::fprintf(stderr, "daemon: failed to start the bridge\n");
-        return 7;
+    bool bridge_started = false;
+    auto write_runtime_state = [&]() {
+        if (bridge_started) {
+            write_daemon_runtime(profile, QStringLiteral("owner"), bridge.endpoint());
+            return;
+        }
+        auto owner = read_bridge_file(root);
+        const bool owner_live = owner && is_pid_alive(owner->pid);
+        write_daemon_runtime(profile,
+                             owner_live ? QStringLiteral("warm") : QStringLiteral("warm-no-owner"),
+                             {},
+                             owner_live ? owner->kind : QString(),
+                             owner_live ? owner->endpoint : QString());
+    };
+
+    auto try_promote_to_owner = [&]() {
+        if (bridge_started)
+            return;
+        auto owner = read_bridge_file(root);
+        if (owner && is_pid_alive(owner->pid))
+            return;
+        bridge.set_owner_kind("daemon");
+        if (!bridge.start()) {
+            append_job_log(profile, QStringLiteral("daemon-promote-failed"));
+            return;
+        }
+        bridge_started = true;
+        append_job_log(profile, QStringLiteral("daemon-promoted-to-owner endpoint=%1").arg(bridge.endpoint()));
+        write_runtime_state();
+    };
+
+    if (!startup_owner_live) {
+        bridge.set_owner_kind("daemon");
+        if (!bridge.start()) {                                 // binds 127.0.0.1 + writes bridge.json(kind=daemon)
+            std::fprintf(stderr, "daemon: failed to start the bridge\n");
+            return 7;
+        }
+        bridge_started = true;
+        std::fprintf(stderr, "openterminalcli serve: %s (profile '%s', pid %lld). Ctrl-C / SIGTERM to stop.\n",
+                     qUtf8Printable(bridge.endpoint()), qUtf8Printable(profile),
+                     static_cast<long long>(QCoreApplication::applicationPid()));
+    } else {
+        std::fprintf(stderr,
+                     "openterminalcli serve: warm scheduler for profile '%s' beside %s pid %lld at %s "
+                     "(daemon pid %lld). It will promote when the bridge owner exits.\n",
+                     qUtf8Printable(profile),
+                     qUtf8Printable(startup_owner->kind),
+                     static_cast<long long>(startup_owner->pid),
+                     qUtf8Printable(startup_owner->endpoint),
+                     static_cast<long long>(QCoreApplication::applicationPid()));
     }
-    std::fprintf(stderr, "openterminalcli serve: %s (profile '%s', pid %lld). Ctrl-C / SIGTERM to stop.\n",
-                 qUtf8Printable(bridge.endpoint()), qUtf8Printable(profile),
-                 static_cast<long long>(QCoreApplication::applicationPid()));
+    write_runtime_state();
+    auto* heartbeat = new QTimer(qApp);
+    heartbeat->setInterval(2000);
+    QObject::connect(heartbeat, &QTimer::timeout, qApp, [&, profile]() {
+        try_promote_to_owner();
+        write_runtime_state();
+    });
+    heartbeat->start();
+    QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [profile]() { remove_daemon_runtime(profile); });
     start_daemon_job_scheduler(profile);
+    auto* scalp_engine = new DaemonScalpEngine(profile);
+    QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [scalp_engine]() { delete scalp_engine; });
 
     const int rc = QCoreApplication::exec();              // feeds/subscriptions live here
-    bridge.stop();                                        // removes bridge.json
+    if (bridge_started)
+        bridge.stop();                                    // removes bridge.json only if this daemon owned it
+    remove_daemon_runtime(profile);
     return rc;
 }
 
@@ -1284,16 +2120,6 @@ bool consume_int(QStringList& args, int& i, const QString& flag, int* out) {
     return true;
 }
 
-struct DaemonReadinessOptions {
-    QString symbol = QStringLiteral("BTC");
-    int tick_stale_sec = 45;
-    int market_stale_sec = 300;
-    int model_output_stale_sec = 600;
-    int train_stale_sec = 86400;
-    int min_samples = 30;
-    int min_fresh_sources = 2;
-};
-
 int readiness_rank(const QString& status) {
     if (status == QStringLiteral("not_safe"))
         return 3;
@@ -1343,6 +2169,16 @@ bool init_readiness_runtime(const QString& profile, QString* error) {
     }
     return true;
 }
+
+struct DaemonReadinessOptions {
+    QString symbol = QStringLiteral("BTC");
+    int tick_stale_sec = 45;
+    int market_stale_sec = 300;
+    int model_output_stale_sec = 600;
+    int train_stale_sec = 86400;
+    int min_samples = 30;
+    int min_fresh_sources = 2;
+};
 
 QJsonObject readiness_check(QString key,
                             QString label,
@@ -1407,7 +2243,14 @@ QJsonObject build_daemon_readiness(const QString& profile, const DaemonReadiness
     QString scheduler_status = QStringLiteral("ready");
     if (!health.value(QStringLiteral("running")).toBool()) {
         scheduler_status = QStringLiteral("not_safe");
-        scheduler_reasons << QStringLiteral("daemon is not running");
+        if (health.value(QStringLiteral("profile_owner_reachable")).toBool() &&
+            health.value(QStringLiteral("active_owner_kind")).toString() != QStringLiteral("daemon")) {
+            scheduler_reasons << QStringLiteral("profile is owned by ") +
+                                     health.value(QStringLiteral("active_owner_kind")).toString() +
+                                     QStringLiteral(", so daemon scheduler is on standby");
+        } else {
+            scheduler_reasons << QStringLiteral("daemon is not running");
+        }
     }
     if (jobs.value(QStringLiteral("enabled")).toInt() <= 0) {
         scheduler_status = merge_readiness_status(scheduler_status, QStringLiteral("degraded"));
@@ -1425,9 +2268,15 @@ QJsonObject build_daemon_readiness(const QString& profile, const DaemonReadiness
                               scheduler_status,
                               health.value(QStringLiteral("running")).toBool()
                                   ? QStringLiteral("daemon is running")
-                                  : QStringLiteral("daemon process is unavailable"),
+                                  : health.value(QStringLiteral("profile_owner_reachable")).toBool()
+                                        ? QStringLiteral("profile endpoint is owned by %1; daemon scheduler is not active")
+                                              .arg(health.value(QStringLiteral("active_owner_kind")).toString())
+                                        : QStringLiteral("daemon process is unavailable"),
                               scheduler_reasons,
                               QJsonObject{{"running", health.value(QStringLiteral("running")).toBool()},
+                                          {"mode", health.value(QStringLiteral("mode")).toString()},
+                                          {"profile_owner_reachable", health.value(QStringLiteral("profile_owner_reachable")).toBool()},
+                                          {"active_owner_kind", health.value(QStringLiteral("active_owner_kind")).toString()},
                                           {"installed", health.value(QStringLiteral("installed")).toBool()},
                                           {"jobs", jobs}}));
 
@@ -2285,6 +3134,948 @@ int daemon_monitors_command(const QString& profile, bool json, QStringList args)
     return 2;
 }
 
+struct CollectorJobSpec {
+    QString key;
+    QString name;
+    QString description;
+    int every_sec = 60;
+    int timeout_sec = 60;
+    QStringList command;
+};
+
+QList<CollectorJobSpec> collector_job_specs() {
+    return {
+        CollectorJobSpec{
+            QStringLiteral("btc-tick-collector"),
+            QStringLiteral("collector BTC ticks"),
+            QStringLiteral("Keep local BTC ticks warm from Coinbase, Kraken, and advisory Bitcointicker."),
+            20,
+            30,
+            {QStringLiteral("edge"), QStringLiteral("collect"), QStringLiteral("BTC"),
+             QStringLiteral("--sources"), QStringLiteral("coinbase,kraken,bitcointicker"),
+             QStringLiteral("--stream-ms"), QStringLiteral("8000"),
+             QStringLiteral("--timeout-ms"), QStringLiteral("5000")}},
+        CollectorJobSpec{
+            QStringLiteral("kalshi-snapshot-collector"),
+            QStringLiteral("collector Kalshi snapshots"),
+            QStringLiteral("Store live Kalshi prediction-market snapshots for edge readiness and audit history."),
+            300,
+            75,
+            {QStringLiteral("edge"), QStringLiteral("snapshot-kalshi"),
+             QStringLiteral("--limit"), QStringLiteral("100"),
+             QStringLiteral("--timeout-ms"), QStringLiteral("20000")}},
+        CollectorJobSpec{
+            QStringLiteral("btc5m-market-collector"),
+            QStringLiteral("collector BTC 5m market"),
+            QStringLiteral("Store current BTC five-minute prediction-market snapshots when available."),
+            60,
+            45,
+            {QStringLiteral("edge"), QStringLiteral("snapshot-btc5m-live"),
+             QStringLiteral("--timeout-ms"), QStringLiteral("15000")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-recommendation-collector"),
+            QStringLiteral("collector crypto universe recommendations"),
+            QStringLiteral("Scan the major crypto universe, store cost-aware buy/no-buy recommendations, and keep them available for outcome scoring."),
+            300,
+            180,
+            {QStringLiteral("edge"), QStringLiteral("crypto-universe"),
+             QStringLiteral("--venue"), QStringLiteral("coinbase"),
+             QStringLiteral("--horizon-sec"), QStringLiteral("60"),
+             QStringLiteral("--duration-ms"), QStringLiteral("1500"),
+             QStringLiteral("--min-edge-bps"), QStringLiteral("25")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-spot-swing-gate-collector"),
+            QStringLiteral("collector crypto spot swing gate"),
+            QStringLiteral("Scan major spot crypto for larger 1h move candidates using round-trip fees plus a profit buffer, not scalp economics."),
+            900,
+            120,
+            {QStringLiteral("edge"), QStringLiteral("spot-swing-gate"),
+             QStringLiteral("--venue"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("--horizon"), QStringLiteral("1h"),
+             QStringLiteral("--duration-ms"), QStringLiteral("1500"),
+             QStringLiteral("--min-profit-bps"), QStringLiteral("50"),
+             QStringLiteral("--max-symbols"), QStringLiteral("5")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-scalp-btc-gate"),
+            QStringLiteral("collector BTC scalp gate"),
+            QStringLiteral("Run the strict BTC scalping gate against live microstructure and journal every pre-trade verdict for later proof scoring."),
+            15,
+            20,
+            {QStringLiteral("edge"), QStringLiteral("scalp-gate"), QStringLiteral("BTC-USD"),
+             QStringLiteral("--venue"), QStringLiteral("coinbase"),
+             QStringLiteral("--horizon-sec"), QStringLiteral("15"),
+             QStringLiteral("--duration-ms"), QStringLiteral("2500"),
+             QStringLiteral("--allow-warmup")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-scalp-eth-gate"),
+            QStringLiteral("collector ETH scalp gate"),
+            QStringLiteral("Run the strict ETH scalping gate as a BTC-correlated alt-coin lane and journal every pre-trade verdict for later proof scoring."),
+            30,
+            20,
+            {QStringLiteral("edge"), QStringLiteral("scalp-gate"), QStringLiteral("ETH-USD"),
+             QStringLiteral("--venue"), QStringLiteral("coinbase"),
+             QStringLiteral("--horizon-sec"), QStringLiteral("15"),
+             QStringLiteral("--duration-ms"), QStringLiteral("2500"),
+             QStringLiteral("--allow-warmup")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-scalp-sol-gate"),
+            QStringLiteral("collector SOL scalp gate"),
+            QStringLiteral("Run the strict SOL scalping gate as a high-beta crypto lane and journal every pre-trade verdict for later proof scoring."),
+            30,
+            20,
+            {QStringLiteral("edge"), QStringLiteral("scalp-gate"), QStringLiteral("SOL-USD"),
+             QStringLiteral("--venue"), QStringLiteral("coinbase"),
+             QStringLiteral("--horizon-sec"), QStringLiteral("15"),
+             QStringLiteral("--duration-ms"), QStringLiteral("2500"),
+             QStringLiteral("--allow-warmup")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-recommendation-scorer"),
+            QStringLiteral("collector crypto universe scorer"),
+            QStringLiteral("Resolve matured crypto recommendations against later ticks so accuracy and post-cost profitability stay current."),
+            60,
+            120,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("score-crypto"),
+             QStringLiteral("--limit"), QStringLiteral("1000"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("48")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-paper-simulator"),
+            QStringLiteral("collector crypto paper simulator"),
+            QStringLiteral("Replay resolved crypto BUY recommendations as fixed-size paper trades after estimated fees, spread, and slippage."),
+            300,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("paper-sim"),
+             QStringLiteral("--horizon"), QStringLiteral("60s"),
+             QStringLiteral("--amount-usd"), QStringLiteral("100"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("48")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-proof-loop-scoreboard"),
+            QStringLiteral("collector crypto proof loop"),
+            QStringLiteral("Join crypto signals, no-trade decisions, broker audit events, and matured outcomes into one post-cost proof scoreboard."),
+            120,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("proof-loop"),
+             QStringLiteral("--horizon"), QStringLiteral("60s"),
+             QStringLiteral("--amount-usd"), QStringLiteral("100"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("48"),
+             QStringLiteral("--limit"), QStringLiteral("500")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-scalp-proof-loop-scoreboard"),
+            QStringLiteral("collector scalp proof loop"),
+            QStringLiteral("Join 15-second scalp gate verdicts with later ticks so the daemon can prove whether micro-scalp signals beat costs."),
+            60,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("proof-loop"),
+             QStringLiteral("--horizon"), QStringLiteral("15s"),
+             QStringLiteral("--amount-usd"), QStringLiteral("100"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("24"),
+             QStringLiteral("--limit"), QStringLiteral("1000")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-scalp-trust-scorecard"),
+            QStringLiteral("collector scalp trust scorecard"),
+            QStringLiteral("Refresh 15-second per-symbol trust scores so the scalp gate can separate useful symbols from noise."),
+            120,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("trust"),
+             QStringLiteral("--horizon"), QStringLiteral("15s"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("72")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-trust-scorecard"),
+            QStringLiteral("collector crypto trust scorecard"),
+            QStringLiteral("Refresh per-symbol trust scores so weak/noisy coins can be ignored and stronger symbols can be watched."),
+            300,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("trust"),
+             QStringLiteral("--horizon"), QStringLiteral("60s"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("168")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-regime-scorecard"),
+            QStringLiteral("collector crypto regime scorecard"),
+            QStringLiteral("Bucket crypto recommendation quality by trend, chop, conflict, spread, and thin-data regimes."),
+            300,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("regimes"),
+             QStringLiteral("--horizon"), QStringLiteral("60s"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("168")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-no-trade-dashboard"),
+            QStringLiteral("collector crypto no-trade dashboard"),
+            QStringLiteral("Keep the latest do-nothing reasons visible: weak signal, stale data, cost, conflict, or low confidence."),
+            300,
+            90,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("no-trade"),
+             QStringLiteral("--limit"), QStringLiteral("25"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("24")}},
+        CollectorJobSpec{
+            QStringLiteral("crypto-universe-rare-edge-alerts"),
+            QStringLiteral("collector crypto rare edge alerts"),
+            QStringLiteral("Scan fresh recommendations for rare post-cost BUY candidates that pass confidence and trust gates."),
+            60,
+            60,
+            {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("rare-alerts"),
+             QStringLiteral("--min-edge-bps"), QStringLiteral("50"),
+             QStringLiteral("--min-confidence"), QStringLiteral("45"),
+             QStringLiteral("--max-age-min"), QStringLiteral("10")}},
+        CollectorJobSpec{
+            QStringLiteral("combined-decision-cockpit"),
+            QStringLiteral("collector combined decision cockpit"),
+            QStringLiteral("Compare crypto spot decisions against BTC 5-minute and Kalshi prediction-market lanes so trade type ambiguity is visible."),
+            60,
+            60,
+            {QStringLiteral("edge"), QStringLiteral("decision-cockpit"),
+             QStringLiteral("--symbols"), QStringLiteral("BTC,ETH,SOL"),
+             QStringLiteral("--max-age-hours"), QStringLiteral("24")}},
+        CollectorJobSpec{
+            QStringLiteral("local-lake-edge-mirror"),
+            QStringLiteral("collector data lake mirror"),
+            QStringLiteral("Mirror recent local edge ticks and model outputs into the profile data lake for DuckDB research."),
+            60,
+            45,
+            {QStringLiteral("data"), QStringLiteral("lake"), QStringLiteral("mirror-edge"),
+             QStringLiteral("--symbol"), QStringLiteral("BTC")}},
+        CollectorJobSpec{
+            QStringLiteral("local-lake-decision-mirror"),
+            QStringLiteral("collector data lake decisions"),
+            QStringLiteral("Mirror recent edge decision journal rows into the profile data lake."),
+            120,
+            45,
+            {QStringLiteral("data"), QStringLiteral("lake"), QStringLiteral("mirror-decisions"),
+             QStringLiteral("--limit"), QStringLiteral("5000")}},
+        CollectorJobSpec{
+            QStringLiteral("local-lake-broker-event-mirror"),
+            QStringLiteral("collector data lake broker events"),
+            QStringLiteral("Mirror recent broker/order audit events into the profile data lake."),
+            120,
+            45,
+            {QStringLiteral("data"), QStringLiteral("lake"), QStringLiteral("mirror-broker-events"),
+             QStringLiteral("--limit"), QStringLiteral("5000")}},
+    };
+}
+
+bool job_matches_collector(const QJsonObject& job, const CollectorJobSpec& spec) {
+    return job.value(QStringLiteral("managed_by")).toString() == QStringLiteral("daemon-collectors") &&
+           job.value(QStringLiteral("collector_key")).toString() == spec.key;
+}
+
+QJsonObject make_collector_job(const CollectorJobSpec& spec, const QJsonObject& existing = {}) {
+    QJsonObject job = existing.isEmpty()
+                          ? make_job(QStringLiteral("command"),
+                                     spec.name,
+                                     QJsonObject{{"command", strings_to_json_array(spec.command)}},
+                                     spec.every_sec,
+                                     spec.timeout_sec,
+                                     true)
+                          : existing;
+    const QString now = now_utc();
+    job["name"] = spec.name;
+    job["kind"] = QStringLiteral("command");
+    job["enabled"] = true;
+    job["schedule"] = QStringLiteral("interval");
+    job["interval_sec"] = spec.every_sec;
+    job["timeout_sec"] = spec.timeout_sec;
+    job["spec"] = QJsonObject{{"command", strings_to_json_array(spec.command)}};
+    job["command"] = strings_to_json_array(spec.command);
+    job["managed_by"] = QStringLiteral("daemon-collectors");
+    job["collector_key"] = spec.key;
+    job["description"] = spec.description;
+    job["updated_at"] = now;
+    if (job.value(QStringLiteral("created_at")).toString().isEmpty())
+        job["created_at"] = now;
+    if (job.value(QStringLiteral("id")).toString().isEmpty())
+        job["id"] = QStringLiteral("job_%1").arg(QUuid::createUuid().toString(QUuid::Id128).left(12));
+    if (job.value(QStringLiteral("next_run_at")).toString().isEmpty())
+        job["next_run_at"] = now;
+    job["running"] = false;
+    job["current_run_id"] = QString();
+    return job;
+}
+
+QJsonObject collector_state_for_job(const CollectorJobSpec& spec, const QJsonArray& jobs) {
+    for (const auto& v : jobs) {
+        const QJsonObject job = v.toObject();
+        if (!job_matches_collector(job, spec))
+            continue;
+        return QJsonObject{{"key", spec.key},
+                           {"name", spec.name},
+                           {"description", spec.description},
+                           {"status", "found"},
+                           {"id", job.value("id")},
+                           {"enabled", job.value("enabled").toBool()},
+                           {"running", job.value("running").toBool()},
+                           {"interval_sec", job.value("interval_sec").toInt()},
+                           {"timeout_sec", job.value("timeout_sec").toInt()},
+                           {"last_status", job.value("last_status").toString("-")},
+                           {"last_run_at", job.value("last_run_at").toString()},
+                           {"next_run_at", job.value("next_run_at").toString()},
+                           {"run_count", job.value("run_count").toInt()},
+                           {"fail_count", job.value("fail_count").toInt()},
+                           {"command", job.value("command").toArray()}};
+    }
+    return QJsonObject{{"key", spec.key},
+                       {"name", spec.name},
+                       {"description", spec.description},
+                       {"status", "missing"},
+                       {"enabled", false},
+                       {"running", false},
+                       {"interval_sec", spec.every_sec},
+                       {"timeout_sec", spec.timeout_sec},
+                       {"command", strings_to_json_array(spec.command)}};
+}
+
+QJsonObject collectors_status_object(const QString& profile) {
+    const QJsonArray jobs = load_jobs_doc(profile).value("jobs").toArray();
+    QJsonArray rows;
+    int found = 0;
+    int enabled = 0;
+    int failed = 0;
+    int stale = 0;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (const auto& spec : collector_job_specs()) {
+        const QJsonObject row = collector_state_for_job(spec, jobs);
+        if (row.value("status").toString() == QStringLiteral("found"))
+            ++found;
+        if (row.value("enabled").toBool())
+            ++enabled;
+        if (row.value("last_status").toString() == QStringLiteral("failed") ||
+            row.value("last_status").toString() == QStringLiteral("timeout") ||
+            row.value("last_status").toString() == QStringLiteral("stale-timeout"))
+            ++failed;
+        const QDateTime last = parse_utc(row.value("last_run_at").toString());
+        if (last.isValid() && last.addSecs(std::max(120, row.value("interval_sec").toInt() * 3)) < now)
+            ++stale;
+        rows.append(row);
+    }
+    return QJsonObject{{"profile", profile},
+                       {"total", collector_job_specs().size()},
+                       {"found", found},
+                       {"enabled", enabled},
+                       {"failed", failed},
+                       {"stale", stale},
+                       {"collectors", rows}};
+}
+
+QJsonObject repair_collectors(const QString& profile) {
+    QJsonObject doc = load_jobs_doc(profile);
+    QJsonArray jobs = doc.value("jobs").toArray();
+    QJsonArray changed;
+    int created = 0;
+    int updated = 0;
+    for (const auto& spec : collector_job_specs()) {
+        int idx = -1;
+        for (int i = 0; i < jobs.size(); ++i) {
+            if (job_matches_collector(jobs.at(i).toObject(), spec)) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx >= 0) {
+            const QJsonObject fixed = make_collector_job(spec, jobs.at(idx).toObject());
+            jobs.replace(idx, fixed);
+            changed.append(fixed);
+            ++updated;
+        } else {
+            const QJsonObject created_job = make_collector_job(spec);
+            jobs.append(created_job);
+            changed.append(created_job);
+            ++created;
+        }
+    }
+    const int rc = jobs_save_update(profile, jobs);
+    append_job_log(profile, QStringLiteral("collectors-repair created=%1 updated=%2 rc=%3")
+                                .arg(created)
+                                .arg(updated)
+                                .arg(rc));
+    return QJsonObject{{"profile", profile},
+                       {"created", created},
+                       {"updated", updated},
+                       {"ok", rc == 0},
+                       {"jobs", changed},
+                       {"status", collectors_status_object(profile)}};
+}
+
+QJsonArray tail_jsonl_objects(const QString& path, int limit, const QString& symbol_filter = {}) {
+    QJsonArray rows;
+    const QString text = tail_text(path, std::max(1, limit) * 4);
+    const QStringList lines = text.split('\n', Qt::SkipEmptyParts);
+    for (const QString& line : lines) {
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8(), &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject())
+            continue;
+        const QJsonObject obj = doc.object();
+        if (!symbol_filter.isEmpty() &&
+            obj.value(QStringLiteral("symbol")).toString().compare(symbol_filter, Qt::CaseInsensitive) != 0)
+            continue;
+        rows.append(obj);
+    }
+    while (rows.size() > limit)
+        rows.removeFirst();
+    return rows;
+}
+
+int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
+    if (sub == "venues" || sub == "costs" || sub == "compare") {
+        QString liquidity_raw;
+        QString slippage_raw;
+        QString safety_raw;
+        QString min_profit_raw;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == QStringLiteral("--liquidity")) {
+                if (!consume_value(args, i, flag, &liquidity_raw)) return 2;
+            } else if (flag == QStringLiteral("--slippage-bps")) {
+                if (!consume_value(args, i, flag, &slippage_raw)) return 2;
+            } else if (flag == QStringLiteral("--safety-bps")) {
+                if (!consume_value(args, i, flag, &safety_raw)) return 2;
+            } else if (flag == QStringLiteral("--min-profit-bps") || flag == QStringLiteral("--minimum-profit-bps")) {
+                if (!consume_value(args, i, flag, &min_profit_raw)) return 2;
+            } else if (flag == QStringLiteral("--maker") || flag == QStringLiteral("--post-only")) {
+                args.removeAt(i--);
+                liquidity_raw = QStringLiteral("maker");
+            } else if (flag == QStringLiteral("--taker") || flag == QStringLiteral("--market")) {
+                args.removeAt(i--);
+                liquidity_raw = QStringLiteral("taker");
+            }
+        }
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+            return 2;
+        }
+        auto parse_double = [](const QString& raw, double fallback, const char* label, bool* ok_out) {
+            if (raw.trimmed().isEmpty())
+                return fallback;
+            bool ok = false;
+            const double v = raw.toDouble(&ok);
+            if (!ok || !std::isfinite(v) || v < 0.0 || v > 1000.0) {
+                std::fprintf(stderr, "%s must be 0.00..1000.00\n", label);
+                *ok_out = false;
+                return fallback;
+            }
+            return v;
+        };
+        bool ok = true;
+        const QString liquidity_mode = scalp_liquidity_mode(liquidity_raw);
+        const double slippage_bps = parse_double(slippage_raw, 0.0, "--slippage-bps", &ok);
+        const double safety_bps = parse_double(safety_raw, 5.0, "--safety-bps", &ok);
+        const double min_profit_bps = parse_double(min_profit_raw, 10.0, "--min-profit-bps", &ok);
+        if (!ok)
+            return 2;
+        const QStringList venues{QStringLiteral("binanceus"),
+                                 QStringLiteral("alpaca_crypto"),
+                                 QStringLiteral("kraken_pro"),
+                                 QStringLiteral("coinbase_tier9"),
+                                 QStringLiteral("coinbase_tier8"),
+                                 QStringLiteral("coinbase_tier7"),
+                                 QStringLiteral("coinbase_tier6"),
+                                 QStringLiteral("coinbase_tier5"),
+                                 QStringLiteral("coinbase_tier4"),
+                                 QStringLiteral("coinbase_tier3"),
+                                 QStringLiteral("coinbase_tier2"),
+                                 QStringLiteral("coinbase_advanced")};
+        QJsonArray rows;
+        for (const QString& venue : venues) {
+            const ScalpVenueFeeProfile profile = scalp_fee_profile(venue);
+            const double fee_bps = liquidity_mode == QLatin1String("maker") ? profile.maker_bps : profile.taker_bps;
+            const double round_trip = (fee_bps * 2.0) + (slippage_bps * 2.0) + safety_bps;
+            rows.append(QJsonObject{{"venue", venue},
+                                    {"source", profile.source},
+                                    {"liquidity", liquidity_mode},
+                                    {"entry_fee_bps", fee_bps},
+                                    {"exit_fee_bps", fee_bps},
+                                    {"slippage_bps", slippage_bps},
+                                    {"safety_bps", safety_bps},
+                                    {"round_trip_cost_bps", round_trip},
+                                    {"minimum_profit_bps", min_profit_bps},
+                                    {"required_edge_bps", round_trip + min_profit_bps}});
+        }
+        if (json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile}, {"rows", rows}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("SCALP VENUE COST FLOOR (%s)\n", qUtf8Printable(liquidity_mode));
+            std::printf("%-18s %-9s %-9s %-9s %-9s %-9s\n",
+                        "VENUE", "FEE", "RT_COST", "MIN_PROF", "REQ_EDGE", "NOTE");
+            for (const auto& v : rows) {
+                const QJsonObject o = v.toObject();
+                std::printf("%-18s %-9.2f %-9.2f %-9.2f %-9.2f %s\n",
+                            qUtf8Printable(o.value("venue").toString()),
+                            o.value("entry_fee_bps").toDouble(),
+                            o.value("round_trip_cost_bps").toDouble(),
+                            o.value("minimum_profit_bps").toDouble(),
+                            o.value("required_edge_bps").toDouble(),
+                            o.value("required_edge_bps").toDouble() <= 35.0 ? "paper-testable" : "high hurdle");
+            }
+        }
+        return 0;
+    }
+
+    if (sub == "start" || sub == "enable" || sub == "run") {
+        QString symbols_raw;
+        QString sources_raw;
+        QString amounts_raw;
+        QString cadence_raw;
+        QString venue_raw;
+        QString liquidity_raw;
+        QString fee_raw;
+        QString slippage_raw;
+        QString safety_raw;
+        QString min_profit_raw;
+        QString min_net_raw;
+        QString capture_raw;
+        QString max_age_raw;
+        QString max_spread_raw;
+        QString min_sources_raw;
+        bool paper = true;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == QStringLiteral("--symbols")) {
+                if (!consume_value(args, i, flag, &symbols_raw)) return 2;
+            } else if (flag == QStringLiteral("--sources")) {
+                if (!consume_value(args, i, flag, &sources_raw)) return 2;
+            } else if (flag == QStringLiteral("--amounts") || flag == QStringLiteral("--amount-usd") ||
+                       flag == QStringLiteral("--paper-amounts")) {
+                if (!consume_value(args, i, flag, &amounts_raw)) return 2;
+            } else if (flag == QStringLiteral("--cadence-ms") || flag == QStringLiteral("--interval-ms")) {
+                if (!consume_value(args, i, flag, &cadence_raw)) return 2;
+            } else if (flag == QStringLiteral("--venue")) {
+                if (!consume_value(args, i, flag, &venue_raw)) return 2;
+            } else if (flag == QStringLiteral("--liquidity")) {
+                if (!consume_value(args, i, flag, &liquidity_raw)) return 2;
+            } else if (flag == QStringLiteral("--fee-bps")) {
+                if (!consume_value(args, i, flag, &fee_raw)) return 2;
+            } else if (flag == QStringLiteral("--slippage-bps")) {
+                if (!consume_value(args, i, flag, &slippage_raw)) return 2;
+            } else if (flag == QStringLiteral("--safety-bps")) {
+                if (!consume_value(args, i, flag, &safety_raw)) return 2;
+            } else if (flag == QStringLiteral("--min-profit-bps") || flag == QStringLiteral("--minimum-profit-bps")) {
+                if (!consume_value(args, i, flag, &min_profit_raw)) return 2;
+            } else if (flag == QStringLiteral("--min-net-bps")) {
+                if (!consume_value(args, i, flag, &min_net_raw)) return 2;
+            } else if (flag == QStringLiteral("--capture-ratio")) {
+                if (!consume_value(args, i, flag, &capture_raw)) return 2;
+            } else if (flag == QStringLiteral("--max-age-ms")) {
+                if (!consume_value(args, i, flag, &max_age_raw)) return 2;
+            } else if (flag == QStringLiteral("--max-spread-bps")) {
+                if (!consume_value(args, i, flag, &max_spread_raw)) return 2;
+            } else if (flag == QStringLiteral("--min-live-sources")) {
+                if (!consume_value(args, i, flag, &min_sources_raw)) return 2;
+            } else if (flag == QStringLiteral("--paper")) {
+                args.removeAt(i--);
+                paper = true;
+            } else if (flag == QStringLiteral("--maker") || flag == QStringLiteral("--post-only")) {
+                args.removeAt(i--);
+                liquidity_raw = QStringLiteral("maker");
+            } else if (flag == QStringLiteral("--taker") || flag == QStringLiteral("--market")) {
+                args.removeAt(i--);
+                liquidity_raw = QStringLiteral("taker");
+            } else if (flag == QStringLiteral("--live")) {
+                std::fprintf(stderr, "daemon scalp is paper-only in this release; live execution is intentionally blocked\n");
+                return 2;
+            }
+        }
+
+        QStringList symbols = split_csv(symbols_raw);
+        if (symbols.isEmpty())
+            symbols = args.isEmpty() ? QStringList{QStringLiteral("BTC-USD")} : args;
+        for (QString& symbol : symbols)
+            symbol = services::crypto_latency::CryptoLatencyService::normalize_symbol(symbol);
+        symbols.removeDuplicates();
+
+        QStringList sources = split_csv(sources_raw);
+        if (sources.isEmpty())
+            sources = services::crypto_latency::CryptoLatencyService::default_sources();
+        for (QString& source : sources)
+            source = source.trimmed().toLower();
+        sources.removeDuplicates();
+
+        QVector<double> paper_amounts;
+        for (const QString& raw : split_csv(amounts_raw)) {
+            bool amount_ok = false;
+            const double amount = raw.toDouble(&amount_ok);
+            if (!amount_ok || amount <= 0.0 || amount > 1000000.0) {
+                std::fprintf(stderr, "--amounts values must be positive USD notionals\n");
+                return 2;
+            }
+            paper_amounts << amount;
+        }
+        if (paper_amounts.isEmpty())
+            paper_amounts = {25.0, 50.0};
+        std::sort(paper_amounts.begin(), paper_amounts.end());
+        paper_amounts.erase(std::unique(paper_amounts.begin(), paper_amounts.end()), paper_amounts.end());
+
+        auto parse_int = [](const QString& raw, int fallback, int min_v, int max_v, const char* label, bool* ok_out) {
+            if (raw.trimmed().isEmpty())
+                return fallback;
+            bool ok = false;
+            const int v = raw.toInt(&ok);
+            if (!ok || v < min_v || v > max_v) {
+                std::fprintf(stderr, "%s must be %d..%d\n", label, min_v, max_v);
+                *ok_out = false;
+                return fallback;
+            }
+            return v;
+        };
+        auto parse_double = [](const QString& raw,
+                               double fallback,
+                               double min_v,
+                               double max_v,
+                               const char* label,
+                               bool* ok_out) {
+            if (raw.trimmed().isEmpty())
+                return fallback;
+            bool ok = false;
+            const double v = raw.toDouble(&ok);
+            if (!ok || !std::isfinite(v) || v < min_v || v > max_v) {
+                std::fprintf(stderr, "%s must be %.2f..%.2f\n", label, min_v, max_v);
+                *ok_out = false;
+                return fallback;
+            }
+            return v;
+        };
+
+        bool ok = true;
+        const int cadence_ms = parse_int(cadence_raw, 250, 50, 5000, "--cadence-ms", &ok);
+        const int max_age_ms = parse_int(max_age_raw, 1000, 50, 30000, "--max-age-ms", &ok);
+        const int min_live_sources = parse_int(min_sources_raw, 2, 1, 10, "--min-live-sources", &ok);
+        const QString fee_venue = scalp_fee_venue(venue_raw);
+        const QString liquidity_mode = scalp_liquidity_mode(liquidity_raw);
+        const double fee_bps = parse_double(fee_raw, scalp_default_fee_bps(fee_venue, liquidity_mode),
+                                            0.0, 1000.0, "--fee-bps", &ok);
+        const double slippage_bps = parse_double(slippage_raw, 0.0, 0.0, 1000.0, "--slippage-bps", &ok);
+        const double safety_bps = parse_double(safety_raw, 5.0, 0.0, 1000.0, "--safety-bps", &ok);
+        if (min_profit_raw.trimmed().isEmpty() && !min_net_raw.trimmed().isEmpty())
+            min_profit_raw = min_net_raw;
+        const double min_profit_bps = parse_double(min_profit_raw, 10.0, 0.0, 1000.0, "--min-profit-bps", &ok);
+        const double capture_ratio = parse_double(capture_raw, 0.35, 0.01, 1.0, "--capture-ratio", &ok);
+        const double max_spread_bps = parse_double(max_spread_raw, 8.0, 0.0, 1000.0, "--max-spread-bps", &ok);
+        if (!ok)
+            return 2;
+
+        const QJsonObject cfg{{"enabled", true},
+                              {"paper", paper},
+                              {"symbols", QJsonArray::fromStringList(symbols)},
+                              {"sources", QJsonArray::fromStringList(sources)},
+                              {"paper_amounts_usd", double_list_json(paper_amounts)},
+                              {"cadence_ms", cadence_ms},
+                              {"venue", fee_venue},
+                              {"liquidity", liquidity_mode},
+                              {"fee_bps", fee_bps},
+                              {"slippage_bps", slippage_bps},
+                              {"safety_bps", safety_bps},
+                              {"minimum_profit_bps", min_profit_bps},
+                              {"min_net_bps", min_profit_bps},
+                              {"capture_ratio", capture_ratio},
+                              {"max_age_ms", max_age_ms},
+                              {"max_spread_bps", max_spread_bps},
+                              {"min_live_sources", min_live_sources},
+                              {"updated_at", now_utc()}};
+        QString error;
+        if (!write_json_object_file(daemon_scalp_config_path(profile), cfg, &error)) {
+            std::fprintf(stderr, "scalp config write failed: %s\n", qUtf8Printable(error));
+            return 7;
+        }
+
+        const QJsonObject daemon = daemon_status_object(profile);
+        const QJsonObject out{{"profile", profile},
+                              {"config", cfg},
+                              {"daemon", daemon},
+                              {"state", read_json_object_file(daemon_scalp_state_path(profile))}};
+        if (json) {
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("scalp engine  enabled paper cadence=%dms symbols=%s\n",
+                        cadence_ms, qUtf8Printable(symbols.join(',')));
+            std::printf("amounts       $%s\n", qUtf8Printable([&]() {
+                            QStringList parts;
+                            for (const double amount : paper_amounts)
+                                parts << QString::number(amount, 'f', amount == std::floor(amount) ? 0 : 2);
+                            return parts.join(QStringLiteral(", $"));
+                        }()));
+            std::printf("sources       %s\n", qUtf8Printable(sources.join(',')));
+            std::printf("cost model    %s %s entry=%.2fbps exit=%.2fbps slippage=%.2fbps safety=%.2fbps min_profit=%.2fbps\n",
+                        qUtf8Printable(fee_venue),
+                        qUtf8Printable(liquidity_mode),
+                        fee_bps, fee_bps, slippage_bps, safety_bps, min_profit_bps);
+            for (const QString& symbol : symbols)
+                std::printf("effective    %s -> %s\n",
+                            qUtf8Printable(symbol),
+                            qUtf8Printable(scalp_sources_for_symbol(sources, symbol).join(',')));
+            std::printf("daemon        %s mode=%s\n",
+                        daemon.value("running").toBool() ? "running" : "not running",
+                        qUtf8Printable(daemon.value("mode").toString()));
+            if (!daemon.value("running").toBool())
+                std::printf("note          start the daemon with `daemon start` or `daemon install --start`\n");
+        }
+        return 0;
+    }
+
+    if (sub == "stop" || sub == "disable") {
+        QJsonObject cfg = read_json_object_file(daemon_scalp_config_path(profile));
+        cfg["enabled"] = false;
+        cfg["updated_at"] = now_utc();
+        QString error;
+        if (!write_json_object_file(daemon_scalp_config_path(profile), cfg, &error)) {
+            std::fprintf(stderr, "scalp config write failed: %s\n", qUtf8Printable(error));
+            return 7;
+        }
+        if (json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile}, {"config", cfg}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("scalp engine  disabled\n");
+        return 0;
+    }
+
+    if (sub == "status" || sub == "state") {
+        const QJsonObject cfg = read_json_object_file(daemon_scalp_config_path(profile));
+        const QJsonObject state = read_json_object_file(daemon_scalp_state_path(profile));
+        const QJsonObject daemon = daemon_status_object(profile);
+        if (json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile},
+                                                          {"config", cfg},
+                                                          {"state", state},
+                                                          {"daemon", daemon}})
+                                    .toJson(QJsonDocument::Compact)
+                                    .constData());
+        } else {
+            const QJsonObject effective_cfg = state.value("config").toObject(cfg);
+            QStringList symbols;
+            for (const auto& v : effective_cfg.value("symbols").toArray())
+                symbols << v.toString();
+            std::printf("scalp engine  %s daemon=%s mode=%s\n",
+                        effective_cfg.value("enabled").toBool() ? "enabled" : "disabled",
+                        daemon.value("running").toBool() ? "running" : "not running",
+                        qUtf8Printable(daemon.value("mode").toString()));
+            std::printf("cadence       %dms paper=yes heartbeat=%s\n",
+                        effective_cfg.value("cadence_ms").toInt(),
+                        qUtf8Printable(state.value("heartbeat_at").toString("-")));
+            std::printf("symbols       %s\n", qUtf8Printable(symbols.join(',')));
+            QStringList amounts;
+            for (const auto& v : effective_cfg.value("paper_amounts_usd").toArray())
+                amounts << QString::number(v.toDouble(), 'f', v.toDouble() == std::floor(v.toDouble()) ? 0 : 2);
+            if (!amounts.isEmpty())
+                std::printf("amounts       $%s\n", qUtf8Printable(amounts.join(QStringLiteral(", $"))));
+            std::printf("cost model    %s %s entry=%.2fbps exit=%.2fbps slippage=%.2fbps safety=%.2fbps min_profit=%.2fbps\n",
+                        qUtf8Printable(effective_cfg.value("venue").toString("coinbase")),
+                        qUtf8Printable(effective_cfg.value("liquidity").toString("maker")),
+                        effective_cfg.value("fee_bps").toDouble(),
+                        effective_cfg.value("fee_bps").toDouble(),
+                        effective_cfg.value("slippage_bps").toDouble(),
+                        effective_cfg.value("safety_bps").toDouble(),
+                        effective_cfg.value("minimum_profit_bps").toDouble(
+                            effective_cfg.value("min_net_bps").toDouble()));
+            const QJsonArray decisions = state.value("decisions").toArray();
+            if (!decisions.isEmpty()) {
+                std::printf("%-10s %-22s %-8s %-10s %-9s %-9s %-9s %-10s %s\n",
+                            "SYMBOL", "VERDICT", "DIR", "PRICE", "REQ_BPS", "NET_BPS", "SURPLUS", "AGE_MS", "BLOCKERS");
+                for (const auto& v : decisions) {
+                    const QJsonObject d = v.toObject();
+                    QStringList blockers;
+                    for (const auto& b : d.value("blockers").toArray())
+                        blockers << b.toString();
+                    std::printf("%-10s %-22s %-8s %-10.2f %-9.2f %-9.2f %-9.2f %-10lld %s\n",
+                                qUtf8Printable(d.value("symbol").toString()),
+                                qUtf8Printable(d.value("verdict").toString().left(22)),
+                                qUtf8Printable(d.value("direction").toString()),
+                                d.value("reference_price").toDouble(),
+                                d.value("required_edge_bps").toDouble(),
+                                d.value("net_after_cost_bps").toDouble(),
+                                d.value("edge_surplus_bps").toDouble(),
+                                static_cast<long long>(d.value("freshest_age_ms").toInteger()),
+                                qUtf8Printable(blockers.join(QStringLiteral("; ")).left(120)));
+                }
+            }
+        }
+        return 0;
+    }
+
+    if (sub == "tape" || sub == "ticks" || sub == "decisions" || sub == "journal") {
+        QString limit_raw;
+        QString symbol_raw;
+        const bool use_decisions = sub == "decisions" || sub == "journal" ||
+                                   args.removeAll(QStringLiteral("--decisions")) > 0;
+        for (int i = 0; i < args.size(); ++i) {
+            const QString flag = args.at(i);
+            if (flag == QStringLiteral("--limit")) {
+                if (!consume_value(args, i, flag, &limit_raw)) return 2;
+            } else if (flag == QStringLiteral("--symbol")) {
+                if (!consume_value(args, i, flag, &symbol_raw)) return 2;
+            }
+        }
+        if (!args.isEmpty() && symbol_raw.isEmpty())
+            symbol_raw = args.takeFirst();
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "unknown args: %s\n", qUtf8Printable(args.join(' ')));
+            return 2;
+        }
+        bool ok = true;
+        const int limit = limit_raw.isEmpty() ? 20 : limit_raw.toInt(&ok);
+        if (!ok || limit < 1 || limit > 500) {
+            std::fprintf(stderr, "--limit must be 1..500\n");
+            return 2;
+        }
+        const QString symbol = symbol_raw.trimmed().isEmpty()
+                                   ? QString()
+                                   : services::crypto_latency::CryptoLatencyService::normalize_symbol(symbol_raw);
+        const QString path = use_decisions ? daemon_scalp_decisions_path(profile) : daemon_scalp_ticks_path(profile);
+        const QJsonArray rows = tail_jsonl_objects(path, limit, symbol);
+        if (json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile},
+                                                          {"kind", use_decisions ? "decisions" : "ticks"},
+                                                          {"path", path},
+                                                          {"rows", rows}})
+                                    .toJson(QJsonDocument::Compact)
+                                    .constData());
+        } else {
+            std::printf("%s\n", use_decisions ? "SCALP PAPER DECISIONS" : "SCALP TICK TAPE");
+            for (const auto& v : rows) {
+                const QJsonObject o = v.toObject();
+                if (use_decisions) {
+                    std::printf("%s %-8s %-22s price=%.2f rt=%.2fbps req=%.2fbps surplus=%.2fbps age=%lldms\n",
+                                qUtf8Printable(o.value("ts").toString()),
+                                qUtf8Printable(o.value("symbol").toString()),
+                                qUtf8Printable(o.value("verdict").toString().left(22)),
+                                o.value("reference_price").toDouble(),
+                                o.value("round_trip_cost_bps").toDouble(),
+                                o.value("required_edge_bps").toDouble(),
+                                o.value("edge_surplus_bps").toDouble(),
+                                static_cast<long long>(o.value("freshest_age_ms").toInteger()));
+                } else {
+                    std::printf("%s %-8s %-12s price=%.2f bid=%.2f ask=%.2f seq=%s\n",
+                                qUtf8Printable(o.value("received_ts_ms").toString()),
+                                qUtf8Printable(o.value("symbol").toString()),
+                                qUtf8Printable(o.value("source").toString()),
+                                o.value("price").toDouble(),
+                                o.value("best_bid").toDouble(),
+                                o.value("best_ask").toDouble(),
+                                qUtf8Printable(o.value("sequence").toString()));
+                }
+            }
+        }
+        return 0;
+    }
+
+    std::fprintf(stderr,
+                 "usage: daemon scalp start [BTC-USD] [--symbols S] [--cadence-ms N] [--sources S]\n"
+                 "       [--amounts 25,50] [--venue coinbase] [--liquidity maker|taker]\n"
+                 "       [--min-profit-bps N] [--paper]\n"
+                 "       daemon scalp venues [--maker|--taker] [--min-profit-bps N]\n"
+                 "       daemon scalp status\n"
+                 "       daemon scalp tape [SYMBOL] [--limit N] [--decisions]\n"
+                 "       daemon scalp stop\n");
+    return 2;
+}
+
+int daemon_collectors_command(const QString& profile, bool json, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: daemon collectors status|repair|run\n");
+        return 2;
+    }
+    if (sub == "status" || sub == "list" || sub == "ls") {
+        const QJsonObject out = collectors_status_object(profile);
+        if (json) {
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("collectors   found=%d/%d enabled=%d failed=%d stale=%d\n",
+                        out.value("found").toInt(),
+                        out.value("total").toInt(),
+                        out.value("enabled").toInt(),
+                        out.value("failed").toInt(),
+                        out.value("stale").toInt());
+            std::printf("%-28s %-10s %-8s %-8s %-8s %s\n",
+                        "NAME", "STATUS", "ENABLED", "LAST", "EVERY", "NEXT");
+            for (const auto& v : out.value("collectors").toArray()) {
+                const QJsonObject row = v.toObject();
+                const QString every = QStringLiteral("%1s").arg(row.value("interval_sec").toInt());
+                std::printf("%-28s %-10s %-8s %-8s %-8s %s\n",
+                            qUtf8Printable(row.value("name").toString().left(28)),
+                            qUtf8Printable(row.value("status").toString()),
+                            row.value("enabled").toBool() ? "yes" : "no",
+                            qUtf8Printable(row.value("last_status").toString("-").left(8)),
+                            qUtf8Printable(every),
+                            qUtf8Printable(row.value("next_run_at").toString("-")));
+            }
+        }
+        return 0;
+    }
+    if (sub == "repair" || sub == "install" || sub == "ensure") {
+        const QJsonObject out = repair_collectors(profile);
+        if (json) {
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("collectors repaired: created=%d updated=%d\n",
+                        out.value("created").toInt(), out.value("updated").toInt());
+            const QJsonObject status = out.value("status").toObject();
+            std::printf("collectors status: found=%d/%d enabled=%d failed=%d stale=%d\n",
+                        status.value("found").toInt(),
+                        status.value("total").toInt(),
+                        status.value("enabled").toInt(),
+                        status.value("failed").toInt(),
+                        status.value("stale").toInt());
+        }
+        return out.value("ok").toBool() ? 0 : 7;
+    }
+    if (sub == "run") {
+        QJsonObject repaired = repair_collectors(profile);
+        QJsonArray rows = repaired.value("status").toObject().value("collectors").toArray();
+        QJsonArray results;
+        int failures = 0;
+        for (const auto& row_value : rows) {
+            const QJsonObject row = row_value.toObject();
+            const QString id = row.value("id").toString();
+            if (id.isEmpty())
+                continue;
+            QJsonObject doc = load_jobs_doc(profile);
+            QJsonArray jobs = doc.value("jobs").toArray();
+            const int idx = find_job_index(jobs, id);
+            if (idx < 0)
+                continue;
+            QJsonObject job = jobs.at(idx).toObject();
+            const QString run_id = record_job_run_start(profile, job, QStringLiteral("manual-collectors"));
+            ProcessResult r = run_job_once_sync(profile, job);
+            const QString status = r.exit_code == 0 ? QStringLiteral("ok") : QStringLiteral("failed");
+            job["last_run_at"] = now_utc();
+            job["last_exit_code"] = r.exit_code;
+            job["last_status"] = status;
+            job["last_output_tail"] = compact_tail(r.out + "\n" + r.err);
+            job["running"] = false;
+            job["current_run_id"] = QString();
+            job["updated_at"] = now_utc();
+            job["run_count"] = job.value("run_count").toInt() + 1;
+            if (r.exit_code != 0) {
+                job["fail_count"] = job.value("fail_count").toInt() + 1;
+                ++failures;
+            }
+            jobs.replace(idx, job);
+            jobs_save_update(profile, jobs);
+            record_job_run_finish(profile, run_id, status, r.exit_code, r.out, r.err,
+                                  r.exit_code == 0 ? QString() : compact_tail(r.err));
+            results.append(QJsonObject{{"id", id},
+                                       {"name", job.value("name")},
+                                       {"status", status},
+                                       {"exit_code", r.exit_code},
+                                       {"stdout_tail", compact_tail(r.out)},
+                                       {"stderr_tail", compact_tail(r.err)}});
+            if (!json) {
+                std::printf("[%s] %s\n", qUtf8Printable(status), qUtf8Printable(job.value("name").toString()));
+                if (!r.out.trimmed().isEmpty())
+                    std::printf("%s\n", qUtf8Printable(compact_tail(r.out)));
+                if (!r.err.trimmed().isEmpty())
+                    std::fprintf(stderr, "%s\n", qUtf8Printable(compact_tail(r.err)));
+            }
+        }
+        if (json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"results", results},
+                                                          {"failures", failures}})
+                                    .toJson(QJsonDocument::Compact)
+                                    .constData());
+        return failures == 0 ? 0 : 5;
+    }
+    std::fprintf(stderr, "usage: daemon collectors status|repair|run\n");
+    return 2;
+}
+
 int daemon_add_template_job(const QString& profile, bool json, const QString& kind, QStringList args) {
     QString name;
     int every_sec = 0;
@@ -2334,12 +4125,190 @@ int daemon_notify_command(const QString& profile, bool json, QStringList args) {
     return r.exit_code == 0 ? 0 : 5;
 }
 
+bool wait_for_owner_clear(const QString& profile, qint64 pid, int timeout_ms) {
+    const int sleep_ms = 100;
+    const int tries = std::max(1, timeout_ms / sleep_ms);
+    for (int i = 0; i < tries; ++i) {
+        auto info = read_bridge_file(profile_root_for(profile));
+        if (!info || !is_pid_alive(info->pid) || info->pid != pid)
+            return true;
+        QThread::msleep(sleep_ms);
+    }
+    auto info = read_bridge_file(profile_root_for(profile));
+    return !info || !is_pid_alive(info->pid) || info->pid != pid;
+}
+
+int signal_profile_owner(const QString& profile, const QJsonObject& owner, bool force_kill, QString* error) {
+    const qint64 pid = static_cast<qint64>(owner.value(QStringLiteral("active_owner_pid")).toDouble());
+    if (pid <= 0) {
+        if (error) *error = QStringLiteral("active owner has no usable pid");
+        return 7;
+    }
+#ifdef _WIN32
+    HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(pid));
+    if (!process) {
+        if (error) *error = QStringLiteral("failed to open owner pid %1 for termination").arg(pid);
+        return 7;
+    }
+    if (!TerminateProcess(process, 0)) {
+        CloseHandle(process);
+        if (error) *error = QStringLiteral("failed to terminate owner pid %1").arg(pid);
+        return 7;
+    }
+    WaitForSingleObject(process, 5000);
+    CloseHandle(process);
+    remove_bridge_file(profile_root_for(profile));
+    return 0;
+#else
+    if (::kill(static_cast<pid_t>(pid), SIGTERM) != 0) {
+        if (error) *error = QStringLiteral("failed to signal owner pid %1").arg(pid);
+        return 7;
+    }
+    if (wait_for_owner_clear(profile, pid, 5000)) {
+        remove_bridge_file(profile_root_for(profile));
+        return 0;
+    }
+    if (!force_kill) {
+        if (error) *error = QStringLiteral("owner pid %1 did not exit after SIGTERM").arg(pid);
+        return 7;
+    }
+    if (::kill(static_cast<pid_t>(pid), SIGKILL) != 0) {
+        if (error) *error = QStringLiteral("failed to force-stop owner pid %1").arg(pid);
+        return 7;
+    }
+    if (!wait_for_owner_clear(profile, pid, 3000)) {
+        if (error) *error = QStringLiteral("owner pid %1 is still alive after SIGKILL").arg(pid);
+        return 7;
+    }
+    remove_bridge_file(profile_root_for(profile));
+    return 0;
+#endif
+}
+
+int daemon_owner_command(const QString& profile, bool json) {
+    const QJsonObject o = daemon_status_object(profile);
+    if (json) {
+        std::printf("%s\n", QJsonDocument(o).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("profile  %s\n", qUtf8Printable(profile));
+    std::printf("mode     %s\n", qUtf8Printable(o.value("mode").toString()));
+    if (o.value("profile_owner_reachable").toBool()) {
+        std::printf("owner    %s pid=%lld endpoint=%s\n",
+                    qUtf8Printable(o.value("active_owner_kind").toString()),
+                    static_cast<long long>(o.value("active_owner_pid").toDouble()),
+                    qUtf8Printable(o.value("active_endpoint").toString()));
+    } else {
+        std::printf("owner    none\n");
+    }
+    std::printf("daemon   installed=%s loaded=%s running=%s\n",
+                o.value("installed").toBool() ? "yes" : "no",
+                o.value("loaded").toBool() ? "yes" : "no",
+                o.value("scheduler_running").toBool() ? "yes" : "no");
+    if (o.value("scheduler_running").toBool()) {
+        const qint64 scheduler_pid = o.contains("daemon_process_pid")
+                                         ? static_cast<qint64>(o.value("daemon_process_pid").toDouble())
+                                         : static_cast<qint64>(o.value("pid").toDouble());
+        std::printf("scheduler %s pid=%lld\n",
+                    qUtf8Printable(o.value("daemon_process_mode").toString(
+                        o.value("daemon_bridge_owner").toBool() ? QStringLiteral("owner") : QStringLiteral("warm"))),
+                    static_cast<long long>(scheduler_pid));
+    }
+    return 0;
+}
+
+int daemon_takeover_command(const QString& profile, bool json, QStringList args) {
+    auto has_flag = [&](const QString& flag) { return args.removeAll(flag) > 0; };
+    const bool yes = has_flag(QStringLiteral("--yes"));
+    const bool force = has_flag(QStringLiteral("--force"));
+    const bool force_kill = has_flag(QStringLiteral("--kill"));
+    const bool install = has_flag(QStringLiteral("--install"));
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: daemon takeover [--install] [--force --yes] [--kill]\n");
+        return 2;
+    }
+
+    if (!QFileInfo::exists(daemon_plist_path(profile))) {
+        if (!install) {
+            std::fprintf(stderr, "daemon is not installed for profile '%s'; run daemon install or daemon takeover --install --yes\n",
+                         qUtf8Printable(profile));
+            return 3;
+        }
+        if (!yes) {
+            std::fprintf(stderr, "usage: daemon takeover --install --yes\n");
+            return 2;
+        }
+#if defined(Q_OS_MACOS)
+        QString error;
+        if (!write_daemon_plist(profile, &error)) {
+            std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+            return 7;
+        }
+#else
+        std::fprintf(stderr, "daemon install/start is currently supported on macOS launchd only\n");
+        return 2;
+#endif
+    }
+
+    QJsonObject current = daemon_status_object(profile);
+    if (current.value("daemon_running").toBool()) {
+        if (json) {
+            current["takeover"] = QStringLiteral("already_daemon_owner");
+            std::printf("%s\n", QJsonDocument(current).toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("CLI daemon already owns profile '%s'\n", qUtf8Printable(profile));
+        }
+        return 0;
+    }
+
+    if (current.value("profile_owner_reachable").toBool()) {
+        const QString owner = current.value("active_owner_kind").toString();
+        if (!force || !yes) {
+            if (json) {
+                current["takeover"] = QStringLiteral("blocked");
+                current["reason"] = QStringLiteral("profile is owned by %1; rerun with --force --yes to move ownership")
+                                        .arg(owner);
+                std::printf("%s\n", QJsonDocument(current).toJson(QJsonDocument::Compact).constData());
+            } else {
+                std::fprintf(stderr,
+                             "profile '%s' is owned by %s pid=%lld at %s\n"
+                             "rerun `daemon takeover --force --yes` to terminate that owner and start the CLI daemon\n",
+                             qUtf8Printable(profile),
+                             qUtf8Printable(owner),
+                             static_cast<long long>(current.value("active_owner_pid").toDouble()),
+                             qUtf8Printable(current.value("active_endpoint").toString()));
+            }
+            return 3;
+        }
+        QString error;
+        const int rc = signal_profile_owner(profile, current, force_kill, &error);
+        if (rc != 0) {
+            if (json) {
+                current["takeover"] = QStringLiteral("failed_to_clear_owner");
+                current["error"] = error;
+                std::printf("%s\n", QJsonDocument(current).toJson(QJsonDocument::Compact).constData());
+            } else {
+                std::fprintf(stderr, "%s\n", qUtf8Printable(error));
+            }
+            return rc;
+        }
+    }
+
+    return daemon_start_impl(profile, json);
+}
+
 int daemon_command(const QString& profile, bool json, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
     [[maybe_unused]] auto has_flag = [&](const QString& flag) { return args.removeAll(flag) > 0; };
 
     if (sub == "status" || sub == "check")
         return emit_daemon_status(profile, json);
+    if (sub == "owner" || sub == "who")
+        return daemon_owner_command(profile, json);
+    if (sub == "takeover" || sub == "claim" || sub == "own")
+        return daemon_takeover_command(profile, json, args);
+    if (sub == "release")
+        return daemon_stop_impl(profile, json);
     if (sub == "health")
         return emit_daemon_health(profile, json);
     if (sub == "readiness" || sub == "ready" || sub == "safety" || sub == "trade-gate")
@@ -2352,6 +4321,10 @@ int daemon_command(const QString& profile, bool json, QStringList args) {
         return daemon_jobs_command(profile, json, args);
     if (sub == "monitors" || sub == "monitor")
         return daemon_monitors_command(profile, json, args);
+    if (sub == "scalp" || sub == "scalper" || sub == "microstructure-engine")
+        return daemon_scalp_command(profile, json, args);
+    if (sub == "collectors" || sub == "collector" || sub == "feeds")
+        return daemon_collectors_command(profile, json, args);
     if (sub == "notify" || sub == "notification")
         return daemon_notify_command(profile, json, args);
     if (sub == "ai") {
@@ -2483,9 +4456,98 @@ int daemon_command(const QString& profile, bool json, QStringList args) {
     }
 
     std::fprintf(stderr,
-                 "usage: daemon status|health|readiness|logs|audit|jobs|monitors|notify|ai|paper|"
+                 "usage: daemon status|owner|takeover|release|health|readiness|logs|audit|jobs|monitors|collectors|notify|ai|paper|"
                  "install|uninstall|start|stop|restart|plist\n");
     return 2;
+}
+
+int sync_command(const QString& profile, bool json, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
+    if (sub != QStringLiteral("status") && sub != QStringLiteral("check")) {
+        std::fprintf(stderr, "usage: sync status\n");
+        return 2;
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sync status\n");
+        return 2;
+    }
+
+    const QJsonObject daemon = daemon_status_object(profile);
+    DaemonReadinessOptions opt;
+    const QJsonObject readiness = build_daemon_readiness(profile, opt);
+    const bool owner_live = daemon.value("profile_owner_reachable").toBool();
+    const QString owner = daemon.value("active_owner_kind").toString();
+    const bool scheduler_running = daemon.value("scheduler_running").toBool();
+    const bool daemon_bridge_owner = daemon.value("daemon_bridge_owner").toBool();
+
+    QString overall = QStringLiteral("in_sync_for_interactive");
+    QStringList notes;
+    QStringList recommendations;
+    if (!owner_live) {
+        overall = QStringLiteral("no_owner");
+        notes << QStringLiteral("no GUI or daemon currently owns the profile endpoint");
+        recommendations << QStringLiteral("start the GUI for interactive work or start the daemon for unattended collection");
+    } else if (daemon_bridge_owner) {
+        overall = QStringLiteral("daemon_owner");
+        notes << QStringLiteral("daemon owns the profile endpoint; CLI can attach and unattended jobs can run");
+    } else if (owner == QStringLiteral("gui") && scheduler_running) {
+        overall = QStringLiteral("gui_owner_daemon_warm");
+        notes << QStringLiteral("GUI owns the profile endpoint; daemon scheduler is warm and can run background jobs");
+    } else if (owner == QStringLiteral("gui")) {
+        overall = QStringLiteral("gui_owner_daemon_standby");
+        notes << QStringLiteral("GUI owns the profile endpoint; start daemon for warm background collection");
+        recommendations << QStringLiteral("run `daemon start` to keep the scheduler warm while the GUI stays open");
+    } else {
+        overall = QStringLiteral("external_owner");
+        notes << QStringLiteral("another process owns the profile endpoint");
+        recommendations << QStringLiteral("inspect the owner before starting unattended daemon jobs");
+    }
+
+    if (readiness.value("status").toString() != QStringLiteral("ready"))
+        recommendations << QStringLiteral("run `daemon readiness` for collector/model blockers");
+    recommendations.removeDuplicates();
+
+    QJsonObject out{{"profile", profile},
+                    {"overall", overall},
+                    {"daemon", daemon},
+                    {"daemon_readiness", readiness},
+                    {"notes", QJsonArray::fromStringList(notes)},
+                    {"recommendations", QJsonArray::fromStringList(recommendations)},
+                    {"generated_at", now_utc()}};
+
+    if (json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("sync         %s\n", qUtf8Printable(overall));
+    std::printf("profile      %s\n", qUtf8Printable(profile));
+    if (owner_live) {
+        std::printf("owner        %s pid=%lld endpoint=%s\n",
+                    qUtf8Printable(owner),
+                    static_cast<long long>(daemon.value("active_owner_pid").toDouble()),
+                    qUtf8Printable(daemon.value("active_endpoint").toString()));
+    } else {
+        std::printf("owner        none\n");
+    }
+    std::printf("daemon       %s installed=%s loaded=%s\n",
+                scheduler_running ? (daemon_bridge_owner ? "owner" : "warm") : "standby",
+                daemon.value("installed").toBool() ? "yes" : "no",
+                daemon.value("loaded").toBool() ? "yes" : "no");
+    std::printf("readiness    %s  trade gate=%s\n",
+                qUtf8Printable(readiness.value("overall").toString()),
+                qUtf8Printable(readiness.value("trade_gate").toString()));
+    if (!notes.isEmpty()) {
+        std::printf("\nNOTES\n");
+        for (const QString& n : notes)
+            std::printf("- %s\n", qUtf8Printable(n));
+    }
+    if (!recommendations.isEmpty()) {
+        std::printf("\nNEXT\n");
+        for (const QString& r : recommendations)
+            std::printf("- %s\n", qUtf8Printable(r));
+    }
+    return 0;
 }
 
 } // namespace openmarketterminal::cli

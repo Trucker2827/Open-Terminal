@@ -354,6 +354,21 @@ QJsonObject edge_prediction_raw_tick_to_json(const EdgePredictionRawTick& t) {
                        {"received_ts", QString::number(t.received_ts)}};
 }
 
+QJsonObject edge_prediction_market_snapshot_to_json(const EdgePredictionMarketSnapshot& s) {
+    return QJsonObject{{"id", s.id},
+                       {"venue", s.venue},
+                       {"symbol", s.symbol},
+                       {"horizon", s.horizon},
+                       {"market_id", s.market_id},
+                       {"question", s.question},
+                       {"yes_price", s.yes_price},
+                       {"no_price", s.no_price},
+                       {"spread_cost", s.spread_cost},
+                       {"liquidity_score", s.liquidity_score},
+                       {"seconds_left", s.seconds_left},
+                       {"observed_at", QString::number(s.observed_at)}};
+}
+
 QJsonObject edge_prediction_model_to_json(const EdgePredictionModelRecord& m) {
     return QJsonObject{{"id", m.id},
                        {"symbol", m.symbol},

@@ -1,6 +1,9 @@
 #include "storage/repositories/TradeAuditRepository.h"
 #include "core/events/EventBus.h"
 #include "core/logging/Logger.h"
+#include "storage/LocalDataLake.h"
+#include <QCryptographicHash>
+#include <QJsonDocument>
 #include <QVariantMap>
 
 namespace openmarketterminal {
@@ -43,6 +46,78 @@ TradeAuditRow audit_row_from_map(const QVariantMap& m) {
     return r;
 }
 
+namespace {
+
+QJsonObject parsed_json_object(const QString& raw) {
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return {};
+    return doc.object();
+}
+
+QString stable_audit_id(const TradeAuditRow& row) {
+    const QByteArray material = QStringList{row.ts, row.phase, row.tool, row.account, row.mode,
+                                            row.decision, row.reason, row.intent_json}
+                                    .join(QChar(0x1f))
+                                    .toUtf8();
+    return QString::fromLatin1(QCryptographicHash::hash(material, QCryptographicHash::Sha256).toHex().left(32));
+}
+
+double json_number(const QJsonObject& obj, const QStringList& keys) {
+    for (const auto& key : keys) {
+        const auto v = obj.value(key);
+        if (v.isDouble())
+            return v.toDouble();
+        if (v.isString()) {
+            bool ok = false;
+            const double n = v.toString().toDouble(&ok);
+            if (ok)
+                return n;
+        }
+    }
+    return 0.0;
+}
+
+QString json_string(const QJsonObject& obj, const QStringList& keys) {
+    for (const auto& key : keys) {
+        const QString value = obj.value(key).toString().trimmed();
+        if (!value.isEmpty())
+            return value;
+    }
+    return {};
+}
+
+} // namespace
+
+QJsonObject trade_audit_row_to_json(const TradeAuditRow& row) {
+    const QJsonObject intent = parsed_json_object(row.intent_json);
+    const QJsonObject risk = parsed_json_object(row.risk_snapshot_json);
+    return QJsonObject{{"id", stable_audit_id(row)},
+                       {"event_ts", row.ts},
+                       {"phase", row.phase},
+                       {"tool", row.tool},
+                       {"account", row.account},
+                       {"mode", row.mode},
+                       {"decision", row.decision},
+                       {"reason", row.reason},
+                       {"symbol", json_string(intent, {QStringLiteral("symbol"),
+                                                       QStringLiteral("ticker"),
+                                                       QStringLiteral("asset_id"),
+                                                       QStringLiteral("outcome")})},
+                       {"side", json_string(intent, {QStringLiteral("side"), QStringLiteral("action")})},
+                       {"quantity", json_number(intent, {QStringLiteral("quantity"),
+                                                         QStringLiteral("qty"),
+                                                         QStringLiteral("amount")})},
+                       {"order_type", json_string(intent, {QStringLiteral("type"),
+                                                           QStringLiteral("order_type")})},
+                       {"limit_price", json_number(intent, {QStringLiteral("limit_price"),
+                                                            QStringLiteral("limitPrice"),
+                                                            QStringLiteral("price")})},
+                       {"intent", intent},
+                       {"risk_snapshot", risk}};
+}
+
 Result<void> TradeAuditRepository::append(const TradeAuditRow& row) {
     auto r = exec_write("INSERT INTO trade_audit "
                         "(ts, phase, tool, account, mode, intent_json, decision, reason, risk_snapshot_json) "
@@ -50,6 +125,9 @@ Result<void> TradeAuditRepository::append(const TradeAuditRow& row) {
                         {row.ts, row.phase, row.tool, row.account, row.mode, row.intent_json,
                          row.decision, row.reason, row.risk_snapshot_json});
     if (r.is_ok()) {
+        QString lake_error;
+        if (!storage::LocalDataLake::instance().append_broker_event(row, &lake_error))
+            LOG_WARN("TradeAudit", "broker_events lake append failed: " + lake_error);
         // Fire-and-forget: the audit row is already committed. A publish failure
         // or a throwing subscriber must NEVER surface here or change the result.
         try {

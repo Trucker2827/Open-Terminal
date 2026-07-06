@@ -4,7 +4,9 @@
 #include "screens/dashboard/widgets/BrokerHoldingsWidget.h"
 #include "screens/dashboard/widgets/CommoditiesWidget.h"
 #include "screens/dashboard/widgets/CryptoTickerWidget.h"
+#include "screens/dashboard/widgets/CryptoMicrostructureWidget.h"
 #include "screens/dashboard/widgets/CryptoWidget.h"
+#include "screens/dashboard/widgets/DataLakeHealthWidget.h"
 #include "screens/dashboard/widgets/DashboardCandleWidget.h"
 #include "screens/dashboard/widgets/DineroNetworkWidget.h"
 #include "screens/dashboard/widgets/EconomicCalendarWidget.h"
@@ -151,6 +153,10 @@ WidgetRegistry::WidgetRegistry() {
                      QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Live Kraken / HyperLiquid ticker strip — configurable pair list"), 3, 5, 2, 3,
                      [](const QJsonObject& cfg) { return new widgets::CryptoTickerWidget(cfg); }});
 
+    register_widget({"crypto_microstructure", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "BTC Microstructure Radar"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Markets"),
+                     QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Live BTC tape, bid/ask pressure, source freshness and cross-source divergence"), 4, 5, 3, 4,
+                     [](const QJsonObject& cfg) { return new widgets::CryptoMicrostructureWidget(cfg); }});
+
     register_widget({"dinero_network", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Dinero Network"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Dinero"),
                      QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Live Dinero chain stats + a GET DINERO download button (read-only, no trading)"), 3, 6, 2, 4,
                      [](const QJsonObject& cfg) { return new widgets::DineroNetworkWidget(cfg); }});
@@ -162,6 +168,10 @@ WidgetRegistry::WidgetRegistry() {
     register_widget({"agent_errors", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Agent Errors"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Tools"),
                      QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Recent agent execution failures — subscribes to agent:error:*"), 5, 4, 3, 3,
                      [](const QJsonObject& cfg) { return new widgets::AgentErrorsWidget(cfg); }});
+
+    register_widget({"data_lake_health", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Data Lake Health"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Tools"),
+                     QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Profile-local DuckDB/data lake dataset freshness and storage health"), 4, 4, 3, 3,
+                     [](const QJsonObject& cfg) { return new widgets::DataLakeHealthWidget(cfg); }});
 
     register_widget({"sparklines", QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Sparklines"), QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Markets"),
                      QT_TRANSLATE_NOOP("openmarketterminal::screens::WidgetRegistry", "Configurable sparkline strip — subscribes to market:sparkline:*"), 4, 5, 3, 3,

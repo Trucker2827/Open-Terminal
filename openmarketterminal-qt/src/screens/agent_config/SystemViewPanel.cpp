@@ -303,10 +303,13 @@ void SystemViewPanel::populate_llm_list() {
 
         hl->addStretch();
 
+        const bool is_local = (p.provider.compare("ollama", Qt::CaseInsensitive) == 0 ||
+                               p.provider.compare("lmstudio", Qt::CaseInsensitive) == 0 ||
+                               p.provider.compare("llama_cpp", Qt::CaseInsensitive) == 0);
         const bool has_key = !p.api_key.isEmpty();
-        auto* key_status = new QLabel(has_key ? tr("KEY SET") : tr("NO KEY"));
+        auto* key_status = new QLabel(is_local ? tr("LOCAL") : (has_key ? tr("KEY SET") : tr("NO KEY")));
         key_status->setStyleSheet(QString("color:%1;font-size:9px;font-weight:600;")
-                                      .arg(has_key ? ui::colors::POSITIVE() : ui::colors::NEGATIVE()));
+                                      .arg((has_key || is_local) ? ui::colors::POSITIVE() : ui::colors::NEGATIVE()));
         hl->addWidget(key_status);
 
         llm_list_layout_->addWidget(row);

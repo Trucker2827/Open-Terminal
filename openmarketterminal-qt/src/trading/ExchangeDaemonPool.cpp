@@ -10,6 +10,8 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
+
 namespace openmarketterminal::trading {
 
 namespace {
@@ -35,7 +37,17 @@ ExchangeDaemonPool::ExchangeDaemonPool() {
 }
 
 ExchangeDaemonPool::~ExchangeDaemonPool() {
-    stop();
+    ready_ = false;
+    if (!process_)
+        return;
+    auto* proc = process_;
+    process_ = nullptr;
+    proc->closeWriteChannel();
+    if (proc->state() != QProcess::NotRunning && !proc->waitForFinished(1000)) {
+        proc->kill();
+        proc->waitForFinished(1000);
+    }
+    proc->deleteLater();
 }
 
 void ExchangeDaemonPool::start() {
@@ -77,6 +89,12 @@ void ExchangeDaemonPool::start() {
     QStringList args;
     args << "-u" << "-B" << script_path;
     process_->start(python_path, args);
+    if (!process_->waitForStarted(3000)) {
+        LOG_WARN(kPoolTag, "Exchange daemon failed to start: " + process_->errorString());
+        process_->deleteLater();
+        process_ = nullptr;
+        return;
+    }
     LOG_INFO(kPoolTag,"Exchange daemon starting...");
 }
 
@@ -105,6 +123,16 @@ bool ExchangeDaemonPool::wait_for_ready(int timeout_ms) {
         } else {
             QMetaObject::invokeMethod(this, [this]() { start(); }, Qt::QueuedConnection);
         }
+    }
+
+    if (QThread::currentThread() == thread()) {
+        QElapsedTimer elapsed;
+        elapsed.start();
+        while (!ready_.load() && elapsed.elapsed() < timeout_ms) {
+            const int remaining = timeout_ms - static_cast<int>(elapsed.elapsed());
+            pump_process_once(std::clamp(remaining, 1, 50));
+        }
+        return ready_.load();
     }
 
     QMutexLocker lock(&mutex_);
@@ -204,6 +232,24 @@ void ExchangeDaemonPool::drain_buffer() {
     }
 }
 
+void ExchangeDaemonPool::pump_process_once(int timeout_ms) {
+    if (!process_)
+        return;
+
+    if (process_->state() == QProcess::Running &&
+        !process_->canReadLine() &&
+        process_->bytesAvailable() <= 0 &&
+        timeout_ms > 0) {
+        process_->waitForReadyRead(timeout_ms);
+    }
+
+    drain_buffer();
+
+    const QString err = QString::fromUtf8(process_->readAllStandardError()).trimmed();
+    if (!err.isEmpty())
+        LOG_DEBUG(kPoolTag, "Daemon stderr: " + err);
+}
+
 QJsonObject ExchangeDaemonPool::call(const QString& exchange,
                                      const QString& method,
                                      const QJsonObject& args,
@@ -226,25 +272,36 @@ QJsonObject ExchangeDaemonPool::call(const QString& exchange,
 
     // Marshal the write + any credential send to the owner thread. Returns
     // immediately — the worker then blocks on the response wait below.
-    QMetaObject::invokeMethod(
-        this,
-        [this, exchange, credentials, payload]() {
-            if (!process_)
-                return;
-            send_credentials_if_needed(exchange, credentials);
-            process_->write(payload);
-        },
-        Qt::QueuedConnection);
+    const bool owner_thread = QThread::currentThread() == thread();
+    if (owner_thread) {
+        if (!process_)
+            return {{"error", "Daemon not running"}};
+        send_credentials_if_needed(exchange, credentials);
+        process_->write(payload);
+        process_->waitForBytesWritten(1000);
+    } else {
+        QMetaObject::invokeMethod(
+            this,
+            [this, exchange, credentials, payload]() {
+                if (!process_)
+                    return;
+                send_credentials_if_needed(exchange, credentials);
+                process_->write(payload);
+            },
+            Qt::QueuedConnection);
+    }
 
-    QMutexLocker lock(&mutex_);
     QElapsedTimer elapsed;
     elapsed.start();
     while (elapsed.elapsed() < timeout_ms) {
+        if (owner_thread)
+            pump_process_once(50);
+
+        QMutexLocker lock(&mutex_);
         auto it = responses_.find(req_id);
         if (it != responses_.end()) {
             const QJsonObject resp = it.value();
             responses_.erase(it);
-            lock.unlock();
             // Unwrap {"success":true,"data":{...}} when the data is an object.
             if (resp.value("success").toBool(false) && resp.contains("data")) {
                 const auto d = resp.value("data");
@@ -262,9 +319,9 @@ QJsonObject ExchangeDaemonPool::call(const QString& exchange,
             }
             return resp;
         }
-        response_ready_.wait(&mutex_, 50);
+        if (!owner_thread)
+            response_ready_.wait(&mutex_, 50);
     }
-    lock.unlock();
     LOG_WARN(kPoolTag,QString("Daemon call timed out: %1/%2").arg(exchange, method));
     return {{"error", QString("Daemon call timed out: %1/%2").arg(exchange, method)}};
 }

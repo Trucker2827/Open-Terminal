@@ -31,7 +31,10 @@ def main():
                 "cost": t.get("cost"),
                 "fee": t.get("fee", {}).get("cost", 0),
                 "fee_currency": t.get("fee", {}).get("currency", ""),
+                "taker_or_maker": t.get("takerOrMaker") or t.get("liquidity"),
+                "type": t.get("type"),
                 "timestamp": t.get("timestamp"),
+                "datetime": t.get("datetime"),
             }
             for t in trades
         ],

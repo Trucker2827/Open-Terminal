@@ -3,19 +3,32 @@
 
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
+#include "python/PythonRunner.h"
 #include "screens/excel/SpreadsheetWidget.h"
+#include "services/llm/LlmService.h"
 #include "services/file_manager/FileManagerService.h"
 #include "ui/theme/Theme.h"
 
+#include <QApplication>
+#include <QClipboard>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QFuture>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QTabBar>
+#include <QTextEdit>
 #include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrent>
 
 #ifdef OPENMARKETTERMINAL_HAS_QXLSX
 #include <xlsxdocument.h>
@@ -28,6 +41,49 @@ using namespace openmarketterminal::ui;
 static QString kAccent() {
     return QString("#ea580c");
 } // Orange accent
+
+static QJsonArray cells_to_json_trimmed(const QVector<QVector<QString>>& cells) {
+    int last_row = -1;
+    int last_col = -1;
+    for (int r = 0; r < cells.size(); ++r) {
+        for (int c = 0; c < cells[r].size(); ++c) {
+            if (!cells[r][c].isEmpty()) {
+                last_row = std::max(last_row, r);
+                last_col = std::max(last_col, c);
+            }
+        }
+    }
+
+    QJsonArray rows;
+    if (last_row < 0 || last_col < 0)
+        return rows;
+
+    for (int r = 0; r <= last_row; ++r) {
+        QJsonArray row;
+        for (int c = 0; c <= last_col; ++c)
+            row.append(c < cells[r].size() ? cells[r][c] : QString());
+        rows.append(row);
+    }
+    return rows;
+}
+
+static QVector<QVector<QString>> json_rows_to_cells(const QJsonArray& rows) {
+    QVector<QVector<QString>> cells;
+    cells.reserve(rows.size());
+    for (const QJsonValue& row_value : rows) {
+        const QJsonArray row_array = row_value.toArray();
+        QVector<QString> row;
+        row.reserve(row_array.size());
+        for (const QJsonValue& cell : row_array) {
+            if (cell.isNull() || cell.isUndefined())
+                row.append(QString());
+            else
+                row.append(cell.toVariant().toString());
+        }
+        cells.append(row);
+    }
+    return cells;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -149,6 +205,10 @@ QWidget* ExcelScreen::build_toolbar() {
     connect(export_csv_btn_, &QPushButton::clicked, this, &ExcelScreen::on_export_csv);
     hl->addWidget(export_csv_btn_);
 
+    ai_analyze_btn_ = make_btn(tr("AI ANALYZE"), tr("Analyze the active sheet with the configured AI provider"));
+    connect(ai_analyze_btn_, &QPushButton::clicked, this, &ExcelScreen::on_ai_analyze);
+    hl->addWidget(ai_analyze_btn_);
+
     // Separator
     auto* sep1 = new QWidget(bar);
     sep1->setFixedSize(1, 20);
@@ -184,139 +244,119 @@ QWidget* ExcelScreen::build_toolbar() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Import (XLSX via QXlsx)
+// Import (XLSX/CSV via bundled Python spreadsheet helper)
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ExcelScreen::on_import() {
     QString path = QFileDialog::getOpenFileName(this, tr("Import Spreadsheet"), {},
-                                                tr("Spreadsheet Files (*.xlsx *.xls *.csv);;All Files (*)"));
+                                                tr("Spreadsheet Files (*.xlsx *.csv);;All Files (*)"));
     if (path.isEmpty())
         return;
 
-#ifdef OPENMARKETTERMINAL_HAS_QXLSX
-    QXlsx::Document xlsx(path);
-    QStringList sheet_names = xlsx.sheetNames();
-    if (sheet_names.isEmpty()) {
-        LOG_ERROR("ExcelScreen", "No sheets found in file");
+    if (!python::PythonRunner::instance().is_available()) {
+        QMessageBox::warning(this, tr("Import failed"), tr("Python environment is not ready, so XLSX/CSV import cannot run."));
         return;
     }
 
-    // Remove existing tabs
-    while (sheet_tabs_->count() > 0) {
-        auto* w = sheet_tabs_->widget(0);
-        sheet_tabs_->removeTab(0);
-        w->deleteLater();
+    QJsonObject args;
+    args["source"] = "local";
+    args["file_path"] = path;
+    const QString ext = QFileInfo(path).suffix().toLower();
+    if (ext == "csv") {
+        args["operation"] = "read";
+        args["sheet_name"] = "Sheet1";
+        args["range"] = "A1:ZZ100000";
+    } else {
+        args["operation"] = "read_workbook";
     }
 
-    for (const auto& name : sheet_names) {
-        xlsx.selectSheet(name);
-
-        // Determine dimensions
-        auto dim = xlsx.dimension();
-        int max_row = std::max(dim.lastRow(), 100);
-        int max_col = std::max(dim.lastColumn(), 26);
-
-        auto* sheet = new SpreadsheetWidget(name, max_row, max_col, sheet_tabs_);
-
-        // Load data
-        QVector<QVector<QString>> cells(max_row);
-        for (int r = 0; r < max_row; ++r) {
-            cells[r].resize(max_col);
-            for (int c = 0; c < max_col; ++c) {
-                auto cell = xlsx.read(r + 1, c + 1); // QXlsx is 1-based
-                cells[r][c] = cell.isValid() ? cell.toString() : "";
+    const QString payload = QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact));
+    QPointer<ExcelScreen> self = this;
+    import_btn_->setEnabled(false);
+    import_btn_->setText(tr("IMPORTING"));
+    python::PythonRunner::instance().run(
+        "spreadsheet.py", {"--args", payload},
+        [self, path](const python::PythonResult& result) {
+            if (!self)
+                return;
+            self->import_btn_->setEnabled(true);
+            self->import_btn_->setText(self->tr("IMPORT"));
+            if (!result.success) {
+                QMessageBox::warning(self, self->tr("Import failed"),
+                                     result.error.isEmpty() ? self->tr("Spreadsheet import failed.") : result.error);
+                return;
             }
-        }
-        sheet->set_data(cells);
-        sheet_tabs_->addTab(sheet, name);
-    }
 
-    // Update file info
-    file_name_ = QFileInfo(path).fileName();
-    file_path_ = path;
-    auto* fname = findChild<QLabel*>("excelFileName");
-    if (fname)
-        fname->setText(file_name_);
-
-    sheet_counter_ = sheet_names.size() + 1;
-    update_status();
-    LOG_INFO("ExcelScreen", QString("Imported %1 sheets from %2").arg(sheet_names.size()).arg(file_name_));
-
-    // Register with File Manager so it appears in the Files tab
-    services::FileManagerService::instance().import_file(path, "excel");
-#else
-    QMessageBox::information(this, tr("Excel Import"),
-        tr("Excel (.xlsx) import requires Qt6 private headers.\n"
-           "This build was compiled without QXlsx support.\n\n"
-           "CSV files can still be imported via the toolbar."));
-#endif
+            const QString json = python::extract_json(result.output);
+            const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+            if (!doc.isObject()) {
+                QMessageBox::warning(self, self->tr("Import failed"), self->tr("Spreadsheet helper returned invalid JSON."));
+                return;
+            }
+            const QJsonObject obj = doc.object();
+            if (obj.contains("error")) {
+                QMessageBox::warning(self, self->tr("Import failed"), obj.value("error").toString());
+                return;
+            }
+            self->import_workbook_from_result(obj, path);
+        });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Export (XLSX via QXlsx)
+// Export (XLSX via bundled Python spreadsheet helper)
 // ─────────────────────────────────────────────────────────────────────────────
 
 void ExcelScreen::on_export() {
-#ifdef OPENMARKETTERMINAL_HAS_QXLSX
     QString path = QFileDialog::getSaveFileName(this, tr("Export as XLSX"), file_name_, tr("Excel Files (*.xlsx)"));
     if (path.isEmpty())
         return;
+    if (!path.endsWith(".xlsx", Qt::CaseInsensitive))
+        path += ".xlsx";
 
-    QXlsx::Document xlsx;
+    if (!python::PythonRunner::instance().is_available()) {
+        QMessageBox::warning(this, tr("Export failed"), tr("Python environment is not ready, so XLSX export cannot run."));
+        return;
+    }
 
-    for (int i = 0; i < sheet_tabs_->count(); ++i) {
-        auto* sheet = qobject_cast<SpreadsheetWidget*>(sheet_tabs_->widget(i));
-        if (!sheet)
-            continue;
+    QJsonObject args;
+    args["source"] = "local";
+    args["operation"] = "write_workbook";
+    args["file_path"] = path;
+    args["sheets"] = workbook_to_json();
 
-        if (i > 0)
-            xlsx.addSheet(sheet->sheet_name());
-        else
-            xlsx.selectSheet(xlsx.sheetNames().first());
-
-        // Rename sheet
-        xlsx.renameSheet(xlsx.sheetNames().last(), sheet->sheet_name());
-
-        auto cells = sheet->get_data();
-        for (int r = 0; r < cells.size(); ++r) {
-            for (int c = 0; c < cells[r].size(); ++c) {
-                const QString& val = cells[r][c];
-                if (val.isEmpty())
-                    continue;
-
-                // Write formulas as formulas, numbers as numbers
-                bool ok = false;
-                double d = val.toDouble(&ok);
-                if (ok) {
-                    xlsx.write(r + 1, c + 1, d);
-                } else if (val.startsWith('=')) {
-                    xlsx.write(r + 1, c + 1, val); // QXlsx handles formulas
-                } else {
-                    xlsx.write(r + 1, c + 1, val);
-                }
+    const QString payload = QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact));
+    QPointer<ExcelScreen> self = this;
+    export_btn_->setEnabled(false);
+    export_btn_->setText(tr("EXPORTING"));
+    python::PythonRunner::instance().run(
+        "spreadsheet.py", {"--args", payload},
+        [self, path](const python::PythonResult& result) {
+            if (!self)
+                return;
+            self->export_btn_->setEnabled(true);
+            self->export_btn_->setText(self->tr("EXPORT"));
+            if (!result.success) {
+                QMessageBox::warning(self, self->tr("Export failed"),
+                                     result.error.isEmpty() ? self->tr("Spreadsheet export failed.") : result.error);
+                return;
             }
-        }
-    }
+            const QString json = python::extract_json(result.output);
+            const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+            const QJsonObject obj = doc.object();
+            if (!doc.isObject() || obj.contains("error")) {
+                QMessageBox::warning(self, self->tr("Export failed"),
+                                     obj.value("error").toString(self->tr("Spreadsheet helper returned invalid JSON.")));
+                return;
+            }
 
-    if (xlsx.saveAs(path)) {
-        file_name_ = QFileInfo(path).fileName();
-        file_path_ = path;
-        auto* fname = findChild<QLabel*>("excelFileName");
-        if (fname)
-            fname->setText(file_name_);
-        LOG_INFO("ExcelScreen", QString("Exported to %1").arg(path));
-
-        // Register with File Manager so it appears in the Files tab
-        services::FileManagerService::instance().import_file(path, "excel");
-    } else {
-        LOG_ERROR("ExcelScreen", "Failed to save XLSX file");
-    }
-#else
-    QMessageBox::information(this, tr("Excel Export"),
-        tr("Excel (.xlsx) export requires Qt6 private headers.\n"
-           "This build was compiled without QXlsx support.\n\n"
-           "CSV export is still available via the toolbar."));
-#endif
+            self->file_name_ = QFileInfo(path).fileName();
+            self->file_path_ = path;
+            if (auto* fname = self->findChild<QLabel*>("excelFileName"))
+                fname->setText(self->file_name_);
+            self->update_status();
+            services::FileManagerService::instance().import_file(path, "excel");
+            LOG_INFO("ExcelScreen", QString("Exported XLSX to %1").arg(path));
+        });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -370,6 +410,161 @@ void ExcelScreen::on_export_csv() {
 
     // Register with File Manager so it appears in the Files tab
     services::FileManagerService::instance().import_file(path, "excel");
+}
+
+void ExcelScreen::import_workbook_from_result(const QJsonObject& result, const QString& source_path) {
+    QJsonArray sheets;
+    if (result.value("operation").toString() == "read_workbook") {
+        sheets = result.value("sheets").toArray();
+    } else {
+        QJsonObject sheet;
+        sheet["name"] = QFileInfo(source_path).completeBaseName().isEmpty()
+                            ? QStringLiteral("Sheet1")
+                            : QFileInfo(source_path).completeBaseName();
+        sheet["data"] = result.value("data").toArray();
+        sheets.append(sheet);
+    }
+
+    if (sheets.isEmpty()) {
+        QMessageBox::warning(this, tr("Import failed"), tr("No sheets or rows were found in the spreadsheet."));
+        return;
+    }
+
+    while (sheet_tabs_->count() > 0) {
+        auto* w = sheet_tabs_->widget(0);
+        sheet_tabs_->removeTab(0);
+        w->deleteLater();
+    }
+
+    for (const QJsonValue& sheet_value : sheets) {
+        const QJsonObject sheet_obj = sheet_value.toObject();
+        const QString name = sheet_obj.value("name").toString(QStringLiteral("Sheet%1").arg(sheet_tabs_->count() + 1));
+        auto cells = json_rows_to_cells(sheet_obj.value("data").toArray());
+        const int row_count = std::max(static_cast<int>(cells.size()), 100);
+        auto* sheet = new SpreadsheetWidget(name, row_count, 26, sheet_tabs_);
+        sheet->set_data(cells);
+        sheet->set_sheet_name(name);
+        sheet_tabs_->addTab(sheet, name);
+    }
+
+    file_name_ = QFileInfo(source_path).fileName();
+    file_path_ = source_path;
+    if (auto* fname = findChild<QLabel*>("excelFileName"))
+        fname->setText(file_name_);
+    sheet_counter_ = sheet_tabs_->count() + 1;
+    sheet_tabs_->setCurrentIndex(0);
+    update_status();
+    services::FileManagerService::instance().import_file(source_path, "excel");
+    LOG_INFO("ExcelScreen", QString("Imported spreadsheet %1 (%2 sheets)").arg(file_name_).arg(sheet_tabs_->count()));
+}
+
+QJsonArray ExcelScreen::workbook_to_json() const {
+    QJsonArray sheets;
+    if (!sheet_tabs_)
+        return sheets;
+    for (int i = 0; i < sheet_tabs_->count(); ++i) {
+        auto* sheet = qobject_cast<SpreadsheetWidget*>(sheet_tabs_->widget(i));
+        if (!sheet)
+            continue;
+        QJsonObject obj;
+        obj["name"] = sheet->sheet_name();
+        obj["data"] = cells_to_json_trimmed(sheet->get_data());
+        sheets.append(obj);
+    }
+    return sheets;
+}
+
+QString ExcelScreen::active_sheet_preview_markdown(int max_rows, int max_cols) const {
+    auto* sheet = current_sheet();
+    if (!sheet)
+        return {};
+    const auto cells = sheet->get_data();
+    const int rows = std::min(max_rows, static_cast<int>(cells.size()));
+    int cols = 0;
+    for (int r = 0; r < rows; ++r)
+        cols = std::max(cols, std::min(max_cols, static_cast<int>(cells[r].size())));
+    if (rows <= 0 || cols <= 0)
+        return {};
+
+    QString out = QString("Sheet: %1\nRows sampled: %2 of %3\n\n")
+                      .arg(sheet->sheet_name())
+                      .arg(rows)
+                      .arg(sheet->row_count());
+    for (int r = 0; r < rows; ++r) {
+        QStringList row;
+        for (int c = 0; c < cols; ++c) {
+            QString value = (c < cells[r].size()) ? cells[r][c] : QString();
+            value.replace('\n', ' ');
+            if (value.length() > 80)
+                value = value.left(77) + "...";
+            row << value;
+        }
+        out += row.join(" | ") + "\n";
+    }
+    return out;
+}
+
+void ExcelScreen::show_text_dialog(const QString& title, const QString& text) {
+    QDialog dlg(this);
+    dlg.setWindowTitle(title);
+    dlg.resize(760, 520);
+    dlg.setStyleSheet(QString("QDialog{background:%1;color:%2;}"
+                              "QTextEdit{background:%3;color:%2;border:1px solid %4;"
+                              "font-family:%5;font-size:12px;padding:10px;}"
+                              "QPushButton{background:%3;color:%2;border:1px solid %4;"
+                              "padding:6px 16px;font-family:%5;font-weight:700;}"
+                              "QPushButton:hover{border-color:%6;}")
+                          .arg(colors::BG_SURFACE(), colors::TEXT_PRIMARY(), colors::BG_BASE(),
+                               colors::BORDER_DIM(), fonts::DATA_FAMILY, kAccent()));
+    auto* vl = new QVBoxLayout(&dlg);
+    auto* edit = new QTextEdit(&dlg);
+    edit->setReadOnly(true);
+    edit->setPlainText(text);
+    vl->addWidget(edit, 1);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    auto* copy_btn = buttons->addButton(tr("Copy"), QDialogButtonBox::ActionRole);
+    connect(copy_btn, &QPushButton::clicked, this, [text]() { QApplication::clipboard()->setText(text); });
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::accept);
+    vl->addWidget(buttons);
+    dlg.exec();
+}
+
+void ExcelScreen::on_ai_analyze() {
+    const QString preview = active_sheet_preview_markdown();
+    if (preview.trimmed().isEmpty()) {
+        QMessageBox::information(this, tr("AI Analyze"), tr("The active sheet is empty."));
+        return;
+    }
+    if (!ai_chat::LlmService::instance().is_configured()) {
+        QMessageBox::information(this, tr("AI Analyze"),
+                                 tr("No AI provider is configured. Add Ollama, OpenAI, Anthropic, or another provider in Settings."));
+        return;
+    }
+
+    const QString prompt =
+        tr("You are a financial spreadsheet analyst. Analyze this spreadsheet preview.\n"
+           "Give concise output with: structure, likely purpose, key figures, formula/data issues, risk flags, and next useful actions.\n\n%1")
+            .arg(preview);
+
+    ai_analyze_btn_->setEnabled(false);
+    ai_analyze_btn_->setText(tr("AI..."));
+    QPointer<ExcelScreen> self = this;
+    auto future = QtConcurrent::run([self, prompt]() {
+        auto response = ai_chat::LlmService::instance().chat(prompt, {}, false);
+        QMetaObject::invokeMethod(qApp, [self, response]() {
+            if (!self)
+                return;
+            self->ai_analyze_btn_->setEnabled(true);
+            self->ai_analyze_btn_->setText(self->tr("AI ANALYZE"));
+            if (!response.success) {
+                QMessageBox::warning(self, self->tr("AI Analyze failed"),
+                                     response.error.isEmpty() ? self->tr("AI request failed.") : response.error);
+                return;
+            }
+            self->show_text_dialog(self->tr("AI Spreadsheet Analysis"), response.content);
+        }, Qt::QueuedConnection);
+    });
+    Q_UNUSED(future);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -479,6 +674,10 @@ void ExcelScreen::retranslateUi() {
     if (export_csv_btn_) {
         export_csv_btn_->setText(tr("CSV"));
         export_csv_btn_->setToolTip(tr("Export active sheet as CSV"));
+    }
+    if (ai_analyze_btn_) {
+        ai_analyze_btn_->setText(tr("AI ANALYZE"));
+        ai_analyze_btn_->setToolTip(tr("Analyze the active sheet with the configured AI provider"));
     }
     if (add_sheet_btn_) {
         add_sheet_btn_->setText(tr("+ SHEET"));

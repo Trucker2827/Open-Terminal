@@ -11,11 +11,15 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     doctor [--live-ai]              # diagnose local CLI/profile setup
     security network-audit           # audit local MCP/AI/network exposure
     setup [status|profile|ai|doctor]# local profile/account + AI onboarding
+    demo trading-system              # one-screen daemon/data/broker/gate proof
+    sync status                      # GUI/daemon/CLI ownership alignment
     serve [--status|--stop]
     daemon install|start|status|stop # macOS login LaunchAgent wrapper for serve
+    daemon owner|takeover|release     # warm daemon + ownership handoff
     daemon health | readiness | logs  # daemon visibility and trade-gate safety
     daemon jobs list|add|run|remove   # local scheduled automation jobs
     daemon monitors status|repair     # monitor/job supervisor view
+    daemon collectors status|repair   # keep ticks and prediction snapshots warm
     screens [query]                  # list openable app screens
     open <screen-or-alias>            # open a GUI screen, e.g. profile, ai, markets
     cmd <command-bar text...>         # run raw command-bar navigation text
@@ -41,6 +45,7 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     research insiders AAPL --limit 20 # SEC Form 4 insider transactions
     research 13f-top BRK-B --limit 25 # SEC 13F holdings/top holders
     research politicians AAPL         # local AInvest-backed congress trades
+    research health --gaps            # research source provenance/runtime gaps
     macro dbnomics search inflation   # DB.NOMICS provider/dataset/series data
     macro fred UNRATE                 # FRED series via local FRED credential
     macro calendar 2026-07-03         # global economic calendar
@@ -48,7 +53,16 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     macro gov providers               # government data providers
     macro gov treasury-summary 2026-07-03
     trade accounts | drafts | paper   # accounts, audited drafts, paper/live reads
+    crypto balance | orders | fills   # Coinbase/crypto account reads
+    crypto fees | readiness           # local fee profile and execution readiness
+    crypto ticker BTC/USD             # crypto quote through configured venue
+    crypto book BTC/USD --limit 5     # live order book
+    crypto buy BTC/USD 0.0001 --limit-price 62000 --post-only
     data connections | connectors     # local data-source connection manager
+    data lake status | kalshi | decisions | broker-events
+    data lake mirror-edge --symbol BTC# mirror edge ticks/model outputs to lake
+    data lake mirror-decisions       # mirror edge decisions to lake
+    data lake mirror-broker-events   # mirror broker/order audit events to lake
     files list | read | write         # local File Manager artifacts
     notes list | create | show        # local research notes
     notebook list | open | run        # local notebook catalog + runner
@@ -71,6 +85,9 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     portfolio add <portfolio> <symbol> <quantity> <price>
     portfolio sell <portfolio> <symbol> <quantity> <price>
     portfolio tx <portfolio> [--limit N]
+    playlist templates | follow | status
+    playlist follow btc-hourly-edge --every-sec 60 --yes
+    playlist run btc-hourly-edge
     strategy list | templates | show  # saved trading strategies
     strategy backtest <strategy> --symbol AAPL
     strategy paper-run meanrev --symbols AAPL
@@ -110,24 +127,61 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     scanner pause <watch-id> --yes
     scanner events --limit 50
     strategy templates
+    playlist templates
+    playlist follow btc-hourly-edge --every-sec 60 --yes
+    playlist status
+    playlist run btc-hourly-edge
     strategy backtest "Golden Cross" --symbol AAPL --capital 100000
     coverage trading --gaps
     security network-audit --no-sockets
     daemon install --start
+    daemon owner
+    daemon takeover --force --yes
     daemon status
     daemon health
     daemon readiness --symbol BTC
+    daemon scalp venues --maker
+    daemon scalp start BTC-USD --cadence-ms 250 --amounts 25,50 --venue coinbase_tier2 --liquidity maker --min-profit-bps 10 --paper
+    daemon scalp status
+    daemon scalp tape BTC-USD --limit 20
+    daemon collectors repair
+    daemon collectors status
+    daemon collectors run       # one-shot: ticks, scalp gates, scoring, lake mirrors
+    edge scalp-gate BTC-USD --venue coinbase --horizon-sec 15
+    edge scalp-gate BTC-USD --watch --iterations 20 --interval-sec 5 --allow-warmup
+    edge spot-swing-gate --symbols BTC,ETH,SOL --horizon 1h --venue coinbase_tier2
+    edge crypto-recommend BTC/USD --venue coinbase --horizon-sec 60
+    edge crypto-universe --symbols BTC,ETH,SOL --venue coinbase --horizon-sec 60
+    edge decision-cockpit --symbols BTC,ETH,SOL
+    edge context BTC-USD
+    edge context AAPL --asset-class equity
+    edge journal score-crypto --symbol BTC-USD
+    edge journal crypto-stats --horizon 60s
+    edge journal evidence latest
+    edge journal paper-sim --horizon 60s --amount-usd 100
+    edge journal proof-loop --horizon 60s --amount-usd 100
+    edge journal trust --horizon 60s
+    edge journal regimes --horizon 60s
+    edge journal no-trade --limit 20
+    edge journal rare-alerts --min-edge-bps 50 --min-confidence 45
+    edge journal replay --horizon 60s --amount-usd 100
+    demo trading-system --symbol BTC --crypto-symbol BTC/USD --horizon 1h --market-prob 50
     daemon jobs add brief NVDA --every-sec 86400
     daemon jobs add notebook trading-sma-crossover-backtest --every-sec 604800
     daemon paper meanrev --symbols AAPL,MSFT --every-sec 300 --max-iters 1
     daemon ai radar "AI semiconductors" --every-sec 3600
     daemon notify --title "OpenTerminal" --message "Daemon is alive"
-    daemon stop
+    daemon release
     daemon uninstall
     trade prepare buy AAPL 1 --type limit --limit-price 250 --reason "breakout setup"
     trade drafts --status prepared
     trade submit <draft-id> --mode paper --yes
     trade audit --limit 25
+    crypto balance
+    crypto orders BTC/USD
+    crypto fills BTC/USD --limit 25
+    crypto buy BTC/USD 0.0001 --limit-price 62000 --post-only
+    crypto buy BTC/USD 0.0001 --limit-price 62000 --post-only --yes
     ask <prompt...>
     ai providers                    # list local AI provider config
     ai use <provider>               # select/save openai, anthropic, or ollama
@@ -136,6 +190,7 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     risk <portfolio-or-symbol>
     thesis <ticker>
     radar <watchlist-or-topic>
+    edge microstructure BTC-USD --watch # live BTC tape + bid/ask pressure
     agent list | discover | run       # local agent registry and execution
     workflow list | show | save       # saved workflow CRUD and execution
     ai run strategy <meanrev|claude> --mode paper
@@ -147,6 +202,10 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
 ## Notes
 - Attach mode requires the GUI or `openterminalcli serve` running with a bridge.
 - `--headless` initializes the core runtime directly and needs no GUI.
+- `sync status` is the single-owner truth view. The selected local profile has
+  one live endpoint owner at a time: the GUI for interactive work, or the daemon
+  for unattended jobs. The CLI can attach to that owner or run one-shot headless
+  commands, but it does not become a second long-running owner.
 - `daemon` installs/manages a per-user macOS LaunchAgent that runs
   `openterminalcli --profile <profile> serve` at login. It uses the selected
   local profile, writes logs under that profile, and keeps live trading gated.
@@ -169,11 +228,38 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
   `watchlist lookup` uses the shared symbol lookup tool for ticker resolution.
 - `portfolio` commands edit the selected local profile database directly and
   record BUY/SELL transactions when positions are added or sold.
+- `playlist` commands are the strategy-playlist control plane: curated bundles
+  of goal, risk profile, watched assets, CLI run command, daemon monitor, AI
+  explanation role, and broker-execution boundary. `playlist follow ... --yes`
+  stores the bundle under the local profile and, unless `--no-daemon` is used,
+  creates the matching daemon job. Live trading is not automatic; playlists
+  monitor, explain, paper-run, or prepare candidates until a separate guarded
+  broker/prediction flow explicitly submits an order.
+- `daemon owner` shows the current single-owner profile endpoint. `daemon start`
+  starts the scheduler as bridge owner when the profile is idle, or as a warm
+  background daemon when the GUI owns the bridge. If the GUI exits, the warm
+  daemon promotes itself to bridge owner. Use `daemon takeover --force --yes`
+  only when you deliberately want the CLI daemon to terminate the GUI owner and
+  become bridge owner immediately. `daemon release` stops the CLI daemon while
+  leaving the GUI owner alone.
 - `trade prepare` / `trade submit` use the audited two-phase order flow:
   prepare validates and records a local draft, submit re-runs risk checks and
   then routes through the existing guarded order-flow tool. Live submit requires
   `--yes --live-armed` at the CLI layer and still requires the GUI-owned live
   trading gates to be armed.
+- `crypto` is the direct CLI surface for configured crypto venues such as
+  Coinbase. `crypto balance`, `orders`, `fills`, `ticker`, `book`, and
+  `candles` are read paths. `crypto fees tiers` prints the Coinbase Advanced
+  maker/taker schedule, and `crypto fees` shows or updates the local fee profile
+  used by order previews, including maker/taker bps, rebates, free-fee allowance
+  handling, and slippage bps. `crypto readiness` checks daemon reachability,
+  bid/ask reads, balance reads, safety gates, allowed venues, and fee profile.
+  `crypto buy|sell|order` prints a local cost preview by default, including
+  gross fee, rebate/free adjustment, net fee, spread cost, slippage estimate,
+  and round-trip breakeven. Add `--yes` only when you intend to submit; the order
+  still routes through the existing gated `crypto_submit_order` tool.
+  `crypto cancel` also requires `--yes`. Prefer `--post-only`/`--maker` limit
+  orders when you want the command to avoid taker execution.
 - `data` commands manage per-profile data-source connections. Connector
   definitions are available headless, so discovery works without opening the UI.
 - `workflow` CRUD edits the selected profile database directly. `workflow run`
@@ -213,11 +299,38 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
   is still owned by the app/runtime scanner monitor.
 - `strategy` commands expose saved Strategy Builder rows. Backtests run through
   the native C++ backtest service; `paper-run` wraps the existing paper-only AI
-  strategy loop, and `deploy` opens the guarded GUI deployment flow.
+  strategy loop, `playlist` routes into the strategy-playlist control plane,
+  and `deploy` opens the guarded GUI deployment flow.
 - `research insiders`, `research 13f`, and `research 13f-top` use the same
   local SEC EDGAR tooling as the ownership screens. `research politicians` uses
   the local `ainvest_data.py` path and reads `AINVEST_API_KEY` from this machine;
   the CLI does not transmit or persist that key.
+- `edge context <symbol>` is the bridge between Dashboard/Equity history and edge
+  decisions. It inventories local news, decision-journal rows, model-output
+  snapshots, broker audit rows, and the public evidence commands that can be
+  legally checked before a trade.
+- `edge scalp-gate` is the strict intraday/scalping pre-trade gate. It estimates
+  round-trip breakeven from fee, spread, slippage, and safety buffer, then blocks
+  weak setups unless live tape, captured-move estimate, and local proof history
+  clear the thresholds. Use `--watch --iterations N` for a paper observation
+  session. It does not place orders. `daemon collectors repair` installs managed
+  BTC/ETH/SOL scalp-gate jobs plus 15-second proof/trust scorecards, so the same
+  gate can keep collecting evidence while the GUI is closed or only warming.
+- `edge spot-swing-gate` is the longer-horizon companion to the scalp gate. It
+  scans major spot crypto for 1h/4h/1d move candidates using round-trip fees,
+  slippage, a safety buffer, and a larger minimum profit hurdle before it calls
+  anything `BUY CANDIDATE`. It journals into the same `edge crypto-recommend`
+  lane, so the decision cockpit and scoreboards can compare it with the rest of
+  the system.
+- `daemon scalp start` turns on the persistent paper-only millisecond
+  microstructure engine inside the daemon. It keeps websocket/tick feeds open,
+  builds 250ms/500ms/1s/5s rolling features, writes a local tick tape and paper
+  decision journal, and refuses live execution. `daemon scalp venues` compares
+  maker/taker cost floors by venue profile (`coinbase_advanced` base tier,
+  `coinbase_tier2`...`coinbase_tier9`, `kraken_pro`, `binanceus`,
+  `alpaca_crypto`) before you choose what to paper-test.
+  `bitcointicker` is used only for BTC/BTC-USD and is automatically excluded
+  from ETH/SOL/other symbols.
 - `macro` is the friendly front door for economics data: FRED, BLS, calendar,
   central-bank series, ONS, StatCan, Census, DB.NOMICS, and government-data
   tools. Use `macro econ-run ...` or `macro tool <mcp-tool> ...` when a

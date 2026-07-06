@@ -33,7 +33,7 @@ if(WIN32 AND CMAKE_HOST_WIN32)
     unset(_openmarketterminal_sdk_dirs)
 endif()
 
-project(OpenTerminal VERSION 0.3.24 LANGUAGES C CXX)
+project(OpenTerminal VERSION 0.3.25 LANGUAGES C CXX)
 
 # Strip C/C++ flags out of RC invocations — rc.exe only understands /D, /I, /fo.
 if(WIN32)
@@ -851,6 +851,7 @@ set(STORAGE_SOURCES
 
     # Storage manager
     src/storage/StorageManager.cpp
+    src/storage/LocalDataLake.cpp
     src/storage/BackupService.cpp
     # Cache + tab sessions
     src/storage/cache/CacheManager.cpp
@@ -985,6 +986,7 @@ set(LLM_SERVICE_SOURCES
     src/services/edge_radar/EdgeRadarService.cpp
     src/services/edge_radar/CryptoHourlyEdgeModel.cpp
     src/services/edge_radar/CryptoImpulseModel.cpp
+    src/services/edge_radar/CryptoMicrostructureRadar.cpp
     src/services/edge_radar/KalshiUniversalEdgeModel.cpp
     src/services/llm/LlmService.cpp
     src/services/llm/AnalysisSkillLoader.cpp
@@ -1469,6 +1471,8 @@ set(SCREEN_SOURCES
     src/screens/about/AboutScreen.cpp
     src/screens/observer/ObserverJournalView.cpp
     src/screens/observer/ObserverJournalPanel.cpp
+    src/screens/tools_health/ToolsHealthScreen.cpp
+    src/screens/research_sources/ResearchSourcesScreen.cpp
     src/screens/trade_viz/TradeVizScreen.cpp
     # DocsScreen split into pages files; see DocsScreen.cpp header.
     src/screens/docs/DocsScreen.cpp
@@ -1531,6 +1535,8 @@ set(SCREEN_SOURCES
     src/screens/dashboard/widgets/TodayPnLWidget.cpp
     src/screens/dashboard/widgets/BrokerHoldingsWidget.cpp
     src/screens/dashboard/widgets/MarketQuoteStripWidget.cpp
+    src/screens/dashboard/widgets/CryptoMicrostructureWidget.cpp
+    src/screens/dashboard/widgets/DataLakeHealthWidget.cpp
     src/screens/dashboard/widgets/CryptoTickerWidget.cpp
     src/screens/dashboard/widgets/PolymarketPriceWidget.cpp
     src/screens/dashboard/widgets/AgentErrorsWidget.cpp
@@ -2067,6 +2073,8 @@ set_source_files_properties(
     src/screens/dashboard/widgets/TodayPnLWidget.cpp
     src/screens/dashboard/widgets/BrokerHoldingsWidget.cpp
     src/screens/dashboard/widgets/MarketQuoteStripWidget.cpp
+    src/screens/dashboard/widgets/CryptoMicrostructureWidget.cpp
+    src/screens/dashboard/widgets/DataLakeHealthWidget.cpp
     src/screens/dashboard/widgets/CryptoTickerWidget.cpp
     src/screens/dashboard/widgets/PolymarketPriceWidget.cpp
     src/screens/dashboard/widgets/AgentErrorsWidget.cpp
@@ -2249,6 +2257,8 @@ set_source_files_properties(
     src/screens/surface_analytics/SurfaceDemoData.cpp
     src/screens/surface_analytics/SurfaceLineWidget.cpp
     src/screens/surface_analytics/SurfaceTableWidget.cpp
+    src/screens/tools_health/ToolsHealthScreen.cpp
+    src/screens/research_sources/ResearchSourcesScreen.cpp
     src/screens/trade_viz/TradeVizScreen.cpp
     src/screens/watchlist/WatchlistScreen.cpp
     # Storage repositories — each defines kCols in namespace openmarketterminal
@@ -2502,6 +2512,7 @@ set_source_files_properties(
     src/trading/WebhookListener.cpp
     # Phase 3 storage/core — file-scope kLog / anonymous-namespace helpers
     src/storage/HistoricalDataStore.cpp
+    src/storage/LocalDataLake.cpp
     src/core/HealthMonitor.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
 )

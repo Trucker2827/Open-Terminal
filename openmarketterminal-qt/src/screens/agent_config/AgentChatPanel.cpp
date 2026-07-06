@@ -34,8 +34,8 @@ namespace fnt = openmarketterminal::ui::fonts;
 
 static QString bubble_style(const QString& role) {
     if (role == "user")
-        return "background:rgba(120,53,15,0.45);border:1px solid rgba(217,119,6,0.28);"
-               "border-radius:6px;padding:10px 14px;";
+        return QString("background:%1;border:1px solid %1;border-radius:0px;padding:10px 14px;")
+            .arg(col::AMBER());
     if (role == "system")
         return QString("background:%1;border:1px solid %2;"
                        "border-radius:6px;padding:10px 14px;")
@@ -46,7 +46,7 @@ static QString bubble_style(const QString& role) {
 
 static QString body_color(const QString& role) {
     if (role == "user")
-        return "#fff7ed";
+        return col::TEXT_ON_ACCENT();
     if (role == "system")
         return col::TEXT_SECONDARY;
     return col::TEXT_PRIMARY;

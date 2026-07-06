@@ -21,6 +21,43 @@ namespace {
 static const QString kIn =
     QString("background:%1;color:%2;border:1px solid %3;padding:4px 8px;font-size:11px;")
         .arg(openmarketterminal::ui::colors::BG_RAISED(), openmarketterminal::ui::colors::TEXT_PRIMARY(), openmarketterminal::ui::colors::BORDER_MED());
+
+static bool is_local_provider(const QString& provider) {
+    const QString p = provider.trimmed().toLower();
+    return p == "ollama" || p == "local" || p == "lmstudio";
+}
+
+static bool is_stale_openmarketterminal_profile(const openmarketterminal::ResolvedLlmProfile& profile) {
+    return profile.provider.compare("openmarketterminal", Qt::CaseInsensitive) == 0
+           && (profile.base_url.trimmed().isEmpty()
+               || profile.base_url.contains("api.example.com", Qt::CaseInsensitive)
+               || profile.model_id.compare("openmarketterminal-llm", Qt::CaseInsensitive) == 0);
+}
+
+static openmarketterminal::ResolvedLlmProfile normalize_team_llm_profile(openmarketterminal::ResolvedLlmProfile profile) {
+    if (!is_stale_openmarketterminal_profile(profile))
+        return profile;
+
+    profile.provider = "ollama";
+    profile.model_id = "llama3.3:latest";
+    profile.base_url = "http://localhost:11434";
+    profile.api_key.clear();
+    return profile;
+}
+
+static QString team_llm_label(const openmarketterminal::ResolvedLlmProfile& profile, bool inherited) {
+    QString text = profile.provider.toUpper() + " / " + profile.model_id;
+    QStringList badges;
+    if (is_local_provider(profile.provider))
+        badges << QObject::tr("local");
+    if (inherited)
+        badges << QObject::tr("inherited");
+    if (!badges.isEmpty())
+        text += " (" + badges.join(", ") + ")";
+    if (text.length() > 78)
+        text = text.left(76) + "..";
+    return text;
+}
 } // namespace
 
 namespace openmarketterminal::screens {
@@ -467,16 +504,14 @@ void TeamsViewPanel::refresh_team_llm_label() {
     }
     if (resolved.provider.isEmpty())
         resolved = ai_chat::LlmService::instance().resolve_profile("team_coordinator", {});
+    resolved = normalize_team_llm_profile(resolved);
 
     if (!resolved.provider.isEmpty()) {
-        QString text = resolved.provider.toUpper() + " / " + resolved.model_id;
-        if (text.length() > 60)
-            text = text.left(58) + "..";
-        if (profile_id.isEmpty())
-            text += tr(" (inherited)");
+        const QString text = team_llm_label(resolved, profile_id.isEmpty());
         team_resolved_lbl_->setText(text);
         team_resolved_lbl_->setStyleSheet(
-            QString("color:%1;font-size:10px;padding:2px 0;").arg(ui::colors::TEXT_TERTIARY()));
+            QString("color:%1;font-size:10px;padding:2px 0;")
+                .arg(is_local_provider(resolved.provider) ? ui::colors::POSITIVE() : ui::colors::TEXT_TERTIARY()));
     } else {
         team_resolved_lbl_->setText(tr("No provider — go to Settings > LLM Config"));
         team_resolved_lbl_->setStyleSheet(QString("color:%1;font-size:10px;padding:2px 0;").arg(ui::colors::NEGATIVE()));
@@ -518,13 +553,17 @@ void TeamsViewPanel::run_team() {
     }
     if (coord.provider.isEmpty())
         coord = ai_chat::LlmService::instance().resolve_profile("team_coordinator", {});
+    coord = normalize_team_llm_profile(coord);
 
     QJsonObject tc;
     tc["name"] = "Custom Team";
     tc["mode"] = mode_combo_->currentText();
     tc["show_members_responses"] = show_responses_check_->isChecked();
     tc["leader_index"] = leader_combo_->currentIndex();
+    tc["timeout_ms"] = 120000;
     tc["model"] = ai_chat::LlmService::profile_to_json(coord);
+    log_display_->append(QString("[LLM] Coordinator: %1").arg(team_llm_label(coord, coord_profile_id.isEmpty())));
+    log_display_->append("[TIMEOUT] 120s guard enabled");
 
     QJsonArray members;
     for (const auto& m : team_members_) {
@@ -544,7 +583,8 @@ void TeamsViewPanel::run_team() {
 
         // Resolve per-member LLM profile via assignment chain, then override with
         // any explicit api_key stored in the agent's saved config (takes priority).
-        const ResolvedLlmProfile member_profile = ai_chat::LlmService::instance().resolve_profile("agent", m.id);
+        ResolvedLlmProfile member_profile = ai_chat::LlmService::instance().resolve_profile("agent", m.id);
+        member_profile = normalize_team_llm_profile(member_profile);
         QJsonObject mc = ai_chat::LlmService::profile_to_json(member_profile);
 
         if (fresh_config.contains("model")) {

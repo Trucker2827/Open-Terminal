@@ -82,6 +82,7 @@ class ExchangeDaemonPool : public QObject {
     ~ExchangeDaemonPool();
 
     void drain_buffer();
+    void pump_process_once(int timeout_ms);
     void send_credentials_if_needed(const QString& exchange, const ExchangeCredentials& creds);
     static QString credential_fingerprint(const ExchangeCredentials& creds);
 

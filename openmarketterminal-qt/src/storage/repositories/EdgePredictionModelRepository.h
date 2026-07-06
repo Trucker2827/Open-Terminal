@@ -119,6 +119,7 @@ class EdgePredictionModelRepository : public BaseRepository<EdgePredictionObserv
 
 QJsonObject edge_prediction_observation_to_json(const EdgePredictionObservation& o);
 QJsonObject edge_prediction_raw_tick_to_json(const EdgePredictionRawTick& t);
+QJsonObject edge_prediction_market_snapshot_to_json(const EdgePredictionMarketSnapshot& s);
 QJsonObject edge_prediction_model_to_json(const EdgePredictionModelRecord& m);
 QJsonObject edge_prediction_model_output_to_json(const EdgePredictionModelOutput& o);
 

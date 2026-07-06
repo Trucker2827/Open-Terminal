@@ -102,6 +102,7 @@ PolymarketDetailPanel::PolymarketDetailPanel(QWidget* parent) : QWidget(parent) 
     connect(feed_race_service_, &latency::CryptoLatencyService::tick_received,
             this, [this](const latency::CryptoLatencyTick& tick) {
                 impulse_model_.add_tick(tick);
+                microstructure_model_.add_tick(tick);
                 render_impulse(impulse_model_.signal(15));
             });
 }
@@ -958,6 +959,7 @@ void PolymarketDetailPanel::start_feed_race() {
         return;
 
     impulse_model_.clear();
+    microstructure_model_.clear();
     if (impulse_move_lbl_)
         impulse_move_lbl_->setText(tr("warming up"));
     if (impulse_velocity_lbl_)
@@ -973,6 +975,12 @@ void PolymarketDetailPanel::start_feed_race() {
             QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
         feed_race_fresh_lbl_->setText(tr("connecting"));
     }
+    if (micro_call_lbl_)
+        micro_call_lbl_->setText(tr("warming up"));
+    if (micro_pressure_lbl_)
+        micro_pressure_lbl_->setText(tr("tape - book -"));
+    if (micro_divergence_lbl_)
+        micro_divergence_lbl_->setText(tr("divergence -"));
     feed_race_service_->start(symbol);
     if (feed_race_timer_)
         feed_race_timer_->start();
@@ -1005,6 +1013,8 @@ void PolymarketDetailPanel::render_feed_race(const latency::CryptoLatencySnapsho
     if (!feed_race_table_)
         return;
 
+    render_microstructure(microstructure_model_.snapshot(snapshot));
+
     if (feed_race_fresh_lbl_) {
         const bool live = snapshot.freshest_age_ms >= 0;
         const QColor color = live ? QColor(colors::POSITIVE()) : QColor(colors::TEXT_DIM());
@@ -1032,6 +1042,12 @@ void PolymarketDetailPanel::render_feed_race(const latency::CryptoLatencySnapsho
         const QString price = tick.price > 0.0
                                   ? QString::number(tick.price, 'f', tick.price < 10.0 ? 4 : 2)
                                   : QStringLiteral("-");
+        const QString bid = tick.best_bid > 0.0
+                                ? QString::number(tick.best_bid, 'f', tick.best_bid < 10.0 ? 4 : 2)
+                                : QStringLiteral("-");
+        const QString ask = tick.best_ask > 0.0
+                                ? QString::number(tick.best_ask, 'f', tick.best_ask < 10.0 ? 4 : 2)
+                                : QStringLiteral("-");
         const QString msg = state.error.isEmpty()
                                 ? (state.last_message_type.isEmpty() ? QStringLiteral("-") : state.last_message_type)
                                 : state.error.left(24);
@@ -1039,6 +1055,8 @@ void PolymarketDetailPanel::render_feed_race(const latency::CryptoLatencySnapsho
         const QStringList cells = {
             state.source,
             state.status,
+            bid,
+            ask,
             price,
             age >= 0 ? tr("%1ms").arg(age) : QStringLiteral("-"),
             QString::number(state.ticks),
@@ -1053,6 +1071,30 @@ void PolymarketDetailPanel::render_feed_race(const latency::CryptoLatencySnapsho
         }
     }
     feed_race_table_->resizeColumnsToContents();
+}
+
+void PolymarketDetailPanel::render_microstructure(const edge::CryptoMicrostructureSnapshot& snapshot) {
+    if (!micro_call_lbl_ || !micro_pressure_lbl_ || !micro_divergence_lbl_)
+        return;
+    const bool candidate = snapshot.call == QStringLiteral("TRADE CANDIDATE");
+    const bool watch = snapshot.call == QStringLiteral("WATCH");
+    const QColor color = candidate ? QColor(colors::POSITIVE())
+                       : watch ? QColor(colors::WARNING())
+                               : QColor(colors::TEXT_SECONDARY());
+    micro_call_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; font-weight: 800; background: transparent;")
+            .arg(color.name()));
+    micro_call_lbl_->setText(QStringLiteral("%1 %2")
+                                 .arg(snapshot.call, snapshot.direction.toUpper()));
+    micro_pressure_lbl_->setText(
+        tr("tape %1  book %2  conf %3%")
+            .arg(snapshot.tape_pressure, 0, 'f', 2)
+            .arg(snapshot.book_pressure, 0, 'f', 2)
+            .arg(snapshot.confidence * 100.0, 0, 'f', 0));
+    micro_divergence_lbl_->setText(
+        tr("divergence %1bps  %2")
+            .arg(snapshot.cross_source_spread_bps, 0, 'f', 2)
+            .arg(snapshot.rationale));
 }
 
 void PolymarketDetailPanel::render_impulse(const edge::CryptoImpulseSignal& signal) {
@@ -1153,7 +1195,7 @@ QWidget* PolymarketDetailPanel::create_edge_page() {
     auto* ftl = new QHBoxLayout(feed_top);
     ftl->setContentsMargins(0, 0, 0, 0);
     ftl->setSpacing(8);
-    auto* feed_title = make_edge_caption(tr("FEED RACE"));
+    auto* feed_title = make_edge_caption(tr("BTC MICROSTRUCTURE"));
     feed_race_symbol_lbl_ = new QLabel(tr("BTC-USD public exchange WebSockets"));
     feed_race_symbol_lbl_->setStyleSheet(
         QString("color: %1; font-size: 10px; font-weight: 700; background: transparent;")
@@ -1168,9 +1210,9 @@ QWidget* PolymarketDetailPanel::create_edge_page() {
     fvl->addWidget(feed_top);
 
     feed_race_table_ = new QTableWidget(feed_box);
-    feed_race_table_->setColumnCount(6);
+    feed_race_table_->setColumnCount(8);
     feed_race_table_->setHorizontalHeaderLabels(
-        {tr("SOURCE"), tr("STATUS"), tr("PRICE"), tr("AGE"), tr("TICKS"), tr("MSG")});
+        {tr("SOURCE"), tr("STATUS"), tr("BID"), tr("ASK"), tr("PRICE"), tr("AGE"), tr("TICKS"), tr("MSG")});
     feed_race_table_->verticalHeader()->setVisible(false);
     feed_race_table_->horizontalHeader()->setStretchLastSection(true);
     feed_race_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1185,6 +1227,30 @@ QWidget* PolymarketDetailPanel::create_edge_page() {
             .arg(colors::BG_BASE(), colors::TEXT_PRIMARY(), colors::BORDER_DIM(),
                  colors::BG_RAISED(), colors::TEXT_SECONDARY()));
     fvl->addWidget(feed_race_table_);
+
+    auto* micro_row = new QWidget(feed_box);
+    micro_row->setStyleSheet(
+        QString("background: %1; border: 1px solid %2;")
+            .arg(colors::BG_BASE(), colors::BORDER_DIM()));
+    auto* mrl = new QHBoxLayout(micro_row);
+    mrl->setContentsMargins(8, 6, 8, 6);
+    mrl->setSpacing(10);
+    mrl->addWidget(make_edge_caption(tr("RADAR")));
+    micro_call_lbl_ = new QLabel(tr("not running"));
+    micro_call_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; font-weight: 800; background: transparent;")
+            .arg(colors::TEXT_SECONDARY()));
+    micro_pressure_lbl_ = new QLabel(tr("tape - book -"));
+    micro_pressure_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_PRIMARY()));
+    micro_divergence_lbl_ = new QLabel(tr("divergence -"));
+    micro_divergence_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
+    mrl->addWidget(micro_call_lbl_);
+    mrl->addWidget(micro_pressure_lbl_);
+    mrl->addStretch(1);
+    mrl->addWidget(micro_divergence_lbl_);
+    fvl->addWidget(micro_row);
 
     auto* impulse_row = new QWidget(feed_box);
     impulse_row->setStyleSheet(

@@ -1,4 +1,5 @@
 #pragma once
+#include "core/symbol/SymbolRef.h"
 #include "ui/navigation/CommandBar.h"
 
 #include <QLabel>
@@ -12,7 +13,7 @@ namespace openmarketterminal::ui {
 
 class PushpinBar;
 
-/// Combined toolbar: File/Navigate/View/Help menus + branding + clock + user info + logout.
+/// Combined toolbar: File/Markets/Trading/Research/Tools/View/Help menus + clock + user info + logout.
 /// Replaces both ToolBar and NavigationBar in a single row.
 ///
 /// Internationalised: all menus and labels flow through tr(). Menus are
@@ -31,6 +32,7 @@ class ToolBar : public QWidget {
     void navigate_to(const QString& tab_id);
     void dock_command(const QString& action, const QString& primary, const QString& secondary);
     void action_triggered(const QString& action);
+    void symbol_pin_activated(openmarketterminal::SymbolRef ref);
     void logout_clicked();
 
   protected:
@@ -65,7 +67,10 @@ class ToolBar : public QWidget {
     void apply_responsive_layout(int width);
 
     QMenu* build_file_menu();
-    QMenu* build_navigate_menu();
+    QMenu* build_markets_menu();
+    QMenu* build_trading_menu();
+    QMenu* build_research_menu();
+    QMenu* build_tools_menu();
     QMenu* build_view_menu();
     QMenu* build_help_menu();
 };

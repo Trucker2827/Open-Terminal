@@ -23,6 +23,8 @@
 
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 
+#include "storage/repositories/SettingsRepository.h"
+
 #include <QComboBox>
 #include <QDoubleValidator>
 #include <QFrame>
@@ -86,6 +88,103 @@ void repolish(QWidget* w) {
     if (!w || !w->style()) return;
     w->style()->unpolish(w);
     w->style()->polish(w);
+}
+
+struct FeeSchedule {
+    double maker = 0.0010;
+    double taker = 0.0015;
+    double rebate_pct = 0.0;
+    double free_remaining_usd = 0.0;
+    bool free_applies_to_advanced = false;
+    double slippage = 0.0;
+    QString label = QStringLiteral("venue est");
+    QString note;
+};
+
+QString fee_venue_key(QString exchange_id) {
+    exchange_id = exchange_id.trimmed().toLower();
+    if (exchange_id.contains(QStringLiteral("coinbase")))
+        return QStringLiteral("coinbase");
+    if (exchange_id.contains(QStringLiteral("alpaca")))
+        return QStringLiteral("alpaca");
+    if (exchange_id.contains(QStringLiteral("kraken")))
+        return QStringLiteral("kraken");
+    if (exchange_id.contains(QStringLiteral("binance")))
+        return QStringLiteral("binance");
+    return exchange_id.isEmpty() ? QStringLiteral("default") : exchange_id;
+}
+
+QString fee_setting_key(const QString& venue_key, const QString& field) {
+    return QStringLiteral("crypto.fee.%1.%2").arg(venue_key, field);
+}
+
+QString fee_setting_string(const QString& key, const QString& fallback = {}) {
+    auto r = SettingsRepository::instance().get(key, fallback);
+    if (r.is_err())
+        return fallback;
+    const QString value = r.value().trimmed();
+    return value.isEmpty() ? fallback : value;
+}
+
+double fee_setting_double(const QString& key, double fallback) {
+    bool ok = false;
+    const double value = fee_setting_string(key, QString::number(fallback, 'g', 12)).toDouble(&ok);
+    return ok ? value : fallback;
+}
+
+bool fee_setting_bool(const QString& key, bool fallback) {
+    const QString raw = fee_setting_string(key, fallback ? QStringLiteral("true") : QStringLiteral("false")).toLower();
+    if (raw == QLatin1String("true") || raw == QLatin1String("yes") || raw == QLatin1String("1") ||
+        raw == QLatin1String("on"))
+        return true;
+    if (raw == QLatin1String("false") || raw == QLatin1String("no") || raw == QLatin1String("0") ||
+        raw == QLatin1String("off"))
+        return false;
+    return fallback;
+}
+
+FeeSchedule fee_schedule_for(QString exchange_id) {
+    exchange_id = exchange_id.trimmed().toLower();
+    FeeSchedule schedule;
+    if (exchange_id == QLatin1String("coinbase")) {
+        // Conservative Coinbase Advanced base-tier estimate for small accounts.
+        // The account-specific tier can be lower; keep this pessimistic until
+        // we read live fee tier data from the authenticated account.
+        schedule = {0.0060, 0.0120, 0.0, 0.0, false, 0.0,
+                    QStringLiteral("Coinbase Advanced est"),
+                    QStringLiteral("Coinbase One simple-trade fee perks are not assumed for Advanced/API orders.")};
+    } else if (exchange_id == QLatin1String("alpaca")) {
+        schedule = {0.0015, 0.0025, 0.0, 0.0, false, 0.0, QStringLiteral("Alpaca tier 1"), QString()};
+    } else if (exchange_id == QLatin1String("kraken")) {
+        schedule = {0.0025, 0.0040, 0.0, 0.0, false, 0.0, QStringLiteral("Kraken starter"), QString()};
+    } else if (exchange_id == QLatin1String("binance")) {
+        schedule = {0.0010, 0.0010, 0.0, 0.0, false, 0.0, QStringLiteral("Binance starter"), QString()};
+    } else {
+        schedule = {0.0010, 0.0015, 0.0, 0.0, false, 0.0, QStringLiteral("default est"), QString()};
+    }
+
+    const QString venue_key = fee_venue_key(exchange_id);
+    const QString profile = fee_setting_string(fee_setting_key(venue_key, QStringLiteral("profile")));
+    schedule.maker = fee_setting_double(fee_setting_key(venue_key, QStringLiteral("maker_bps")),
+                                        schedule.maker * 10000.0) / 10000.0;
+    schedule.taker = fee_setting_double(fee_setting_key(venue_key, QStringLiteral("taker_bps")),
+                                        schedule.taker * 10000.0) / 10000.0;
+    schedule.rebate_pct = std::clamp(fee_setting_double(fee_setting_key(venue_key, QStringLiteral("rebate_pct")),
+                                                        schedule.rebate_pct), 0.0, 100.0);
+    schedule.free_remaining_usd =
+        std::max(0.0, fee_setting_double(fee_setting_key(venue_key, QStringLiteral("free_remaining_usd")),
+                                         schedule.free_remaining_usd));
+    schedule.free_applies_to_advanced =
+        fee_setting_bool(fee_setting_key(venue_key, QStringLiteral("free_applies_to_advanced")),
+                         schedule.free_applies_to_advanced);
+    schedule.slippage = std::max(0.0, fee_setting_double(fee_setting_key(venue_key, QStringLiteral("slippage_bps")),
+                                                        schedule.slippage * 10000.0)) / 10000.0;
+    const QString note = fee_setting_string(fee_setting_key(venue_key, QStringLiteral("note")));
+    if (!note.isEmpty())
+        schedule.note = note;
+    if (!profile.isEmpty())
+        schedule.label = profile + QStringLiteral(" local");
+    return schedule;
 }
 
 } // namespace
@@ -276,6 +375,14 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         price_row_->setVisible(false); // shown only when type is Limit / Stop-Limit
     }
 
+    post_only_check_ = new QCheckBox(tr("POST ONLY"));
+    post_only_check_->setObjectName("cryptoOeCheck");
+    post_only_check_->setCursor(Qt::PointingHandCursor);
+    post_only_check_->setToolTip(tr("Maker protection: the exchange should reject/cancel the order if it would fill immediately."));
+    post_only_check_->setVisible(false);
+    connect(post_only_check_, &QCheckBox::toggled, this, [this]() { update_cost_preview(); });
+    form->addWidget(post_only_check_);
+
     // ── 6. Stop trigger price (Stop / Stop-Limit) ───────────────────────────
     {
         stop_row_ = new QWidget;
@@ -322,10 +429,10 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         grid->setColumnStretch(1, 1);
 
         cost_label_     = add_kv_row(grid, 0, tr("ORDER VALUE"));
-        fee_label_      = add_kv_row(grid, 1, tr("FEE EST"),     "cryptoOeKvValueDim");
+        fee_label_      = add_kv_row(grid, 1, tr("COST EST"),    "cryptoOeKvValueDim");
         total_label_    = add_kv_row(grid, 2, tr("TOTAL"),       "cryptoOeKvValueAccent");
         recv_label_     = add_kv_row(grid, 3, tr("YOU RECEIVE"), "cryptoOeKvValueDim");
-        pct_used_label_ = add_kv_row(grid, 4, tr("% OF BALANCE"),"cryptoOeKvValueDim");
+        pct_used_label_ = add_kv_row(grid, 4, tr("BREAKEVEN"),   "cryptoOeKvValueDim");
         cost_title_     = qobject_cast<QLabel*>(grid->itemAtPosition(0, 0)->widget());
         fee_title_      = qobject_cast<QLabel*>(grid->itemAtPosition(1, 0)->widget());
         total_title_    = qobject_cast<QLabel*>(grid->itemAtPosition(2, 0)->widget());
@@ -467,6 +574,7 @@ void CryptoOrderEntry::set_order_type(int idx) {
     if (idx == active_type_) {
         // Defensive: still recompute visibility / preview in case state drifted.
         if (price_row_) price_row_->setVisible(idx == 1 || idx == 3);
+        if (post_only_check_) post_only_check_->setVisible(idx == 1 || idx == 3);
         if (stop_row_)  stop_row_->setVisible(idx == 2 || idx == 3);
         if (price_edit_) price_edit_->setEnabled(idx == 1 || idx == 3);
         if (stop_price_edit_) stop_price_edit_->setEnabled(idx == 2 || idx == 3);
@@ -481,6 +589,7 @@ void CryptoOrderEntry::set_order_type(int idx) {
     repolish(type_btns_[idx]);
 
     if (price_row_) price_row_->setVisible(idx == 1 || idx == 3);
+    if (post_only_check_) post_only_check_->setVisible(idx == 1 || idx == 3);
     if (stop_row_)  stop_row_->setVisible(idx == 2 || idx == 3);
     if (price_edit_) price_edit_->setEnabled(idx == 1 || idx == 3);
     if (stop_price_edit_) stop_price_edit_->setEnabled(idx == 2 || idx == 3);
@@ -509,6 +618,17 @@ void CryptoOrderEntry::set_current_price(double price) {
     update_cost_preview();
 }
 
+void CryptoOrderEntry::set_exchange_id(const QString& exchange_id) {
+    exchange_id_ = exchange_id.trimmed().toLower();
+    update_cost_preview();
+}
+
+void CryptoOrderEntry::set_orderbook_quote(double bid, double ask) {
+    best_bid_ = bid > 0 ? bid : 0;
+    best_ask_ = ask > 0 ? ask : 0;
+    update_cost_preview();
+}
+
 void CryptoOrderEntry::set_mode(bool is_paper) {
     is_paper_ = is_paper;
     mode_label_->setText(is_paper ? tr("PAPER") : tr("LIVE"));
@@ -518,6 +638,8 @@ void CryptoOrderEntry::set_mode(bool is_paper) {
 
 void CryptoOrderEntry::set_symbol(const QString& symbol) {
     current_symbol_ = symbol;
+    best_bid_ = 0;
+    best_ask_ = 0;
     if (!submit_busy_)
         submit_btn_->setText(is_buy_side_ ? tr("BUY  %1").arg(symbol) : tr("SELL  %1").arg(symbol));
 
@@ -593,6 +715,22 @@ void CryptoOrderEntry::on_submit() {
         return;
     }
 
+    const bool post_only = post_only_check_ && post_only_check_->isVisible() && post_only_check_->isChecked();
+    if (post_only && (active_type_ == 1 || active_type_ == 3) && best_bid_ > 0 && best_ask_ > best_bid_) {
+        const double limit_price = price_edit_->text().toDouble();
+        const bool would_cross = (is_buy_side_ && limit_price >= best_ask_) || (!is_buy_side_ && limit_price <= best_bid_);
+        if (would_cross) {
+            status_label_->setText(is_buy_side_
+                                       ? tr("⚠ Post-only buy would cross the ask. Lower the limit below best ask.")
+                                       : tr("⚠ Post-only sell would cross the bid. Raise the limit above best bid."));
+            status_label_->setProperty("severity", "error");
+            status_label_->setVisible(true);
+            repolish(status_label_);
+            price_edit_->setFocus();
+            return;
+        }
+    }
+
     status_label_->setVisible(false);
 
     const double price = price_edit_->text().toDouble();
@@ -600,7 +738,7 @@ void CryptoOrderEntry::on_submit() {
     const double sl = sl_edit_->text().toDouble();
     const double tp = tp_edit_->text().toDouble();
 
-    emit order_submitted(side, order_type, qty, price, stop_price, sl, tp);
+    emit order_submitted(side, order_type, qty, price, stop_price, sl, tp, post_only);
 }
 
 void CryptoOrderEntry::on_pct_clicked(int pct) {
@@ -649,19 +787,57 @@ void CryptoOrderEntry::update_cost_preview() {
         const int leverage = (is_futures_ && leverage_spin_) ? leverage_spin_->value() : 1;
         const double margin = notional / std::max(1, leverage);
 
-        // Taker fee assumption — used purely for the on-screen estimate. Real
-        // fees come back from the exchange post-fill.
-        constexpr double kAssumedFeeBps = 0.0007; // 7 bps / 0.07 %
-        const double fee = notional * kAssumedFeeBps;
-        const double total = margin + fee;
+        const bool has_quote = best_bid_ > 0 && best_ask_ > best_bid_;
+        const bool has_limit = (active_type_ == 1 || active_type_ == 3) && price > 0;
+        const bool marketable_limit =
+            has_limit && has_quote && ((is_buy_side_ && price >= best_ask_) || (!is_buy_side_ && price <= best_bid_));
+        const bool post_only = post_only_check_ && post_only_check_->isVisible() && post_only_check_->isChecked();
+        const bool taker = !post_only && (active_type_ == 0 || active_type_ == 2 || marketable_limit || !has_limit);
+        const FeeSchedule schedule = fee_schedule_for(exchange_id_);
+        const double fee_rate = taker ? schedule.taker : schedule.maker;
+        const double gross_fee = notional * fee_rate;
+        const double rebate = gross_fee * (schedule.rebate_pct / 100.0);
+        const double free_allowance =
+            schedule.free_applies_to_advanced ? std::min(std::max(0.0, gross_fee - rebate), schedule.free_remaining_usd)
+                                              : 0.0;
+        const double fee = std::max(0.0, gross_fee - rebate - free_allowance);
+        const double half_spread = has_quote ? std::max(0.0, (best_ask_ - best_bid_) / 2.0) : 0.0;
+        const double spread_cost = taker ? half_spread * qty : 0.0;
+        const double default_slippage =
+            taker ? std::max(notional * 0.0001, spread_cost * (active_type_ == 0 ? 0.35 : 0.20)) : 0.0;
+        const double slippage_cost = taker ? (schedule.slippage > 0.0 ? notional * schedule.slippage
+                                                                      : default_slippage)
+                                           : 0.0;
+        const double execution_cost = fee + spread_cost + slippage_cost;
+        const double round_trip_breakeven_pct = notional > 0 ? (2.0 * execution_cost / notional) * 100.0 : 0.0;
+        const double total = is_buy_side_ ? margin + execution_cost : std::max(0.0, margin - execution_cost);
         const double pct = balance_ > 0 ? (margin / balance_) * 100.0 : 0.0;
         const double avail = std::max(0.0, balance_ - total);
 
         cost_label_->setText(fmt_money(notional));
-        fee_label_->setText(QString("~%1").arg(fmt_money(fee)));
+        fee_label_->setText(QStringLiteral("~%1").arg(fmt_money(execution_cost)));
+        QString tooltip = QStringLiteral("%1 %2\nGross fee: %3\nRebate/free: -%4 / -%5\nNet fee: %6\nSpread: %7\nSlippage: %8")
+                              .arg(post_only ? QStringLiteral("MAKER / POST ONLY")
+                                             : (taker ? QStringLiteral("TAKER") : QStringLiteral("MAKER")),
+                                   schedule.label,
+                                   fmt_money(gross_fee),
+                                   fmt_money(rebate),
+                                   fmt_money(free_allowance),
+                                   fmt_money(fee),
+                                   fmt_money(spread_cost),
+                                   fmt_money(slippage_cost));
+        if (!schedule.note.isEmpty())
+            tooltip += QStringLiteral("\n") + schedule.note;
+        if (post_only)
+            tooltip += QStringLiteral("\nWill reject/cancel if immediately marketable.");
+        fee_label_->setToolTip(tooltip);
         total_label_->setText(fmt_money(total));
-        recv_label_->setText(is_buy_side_ ? fmt_base(qty) : fmt_money(qty * price));
-        pct_used_label_->setText(QString("%1%").arg(pct, 0, 'f', 2));
+        total_label_->setToolTip(is_buy_side_ ? tr("Estimated debit including fee, spread, and slippage")
+                                              : tr("Estimated proceeds after fee, spread, and slippage"));
+        recv_label_->setText(is_buy_side_ ? fmt_base(qty) : fmt_money(std::max(0.0, qty * price - execution_cost)));
+        pct_used_label_->setText(QStringLiteral("RT %1%  ·  bal %2%")
+                                     .arg(round_trip_breakeven_pct, 0, 'f', 2)
+                                     .arg(pct, 0, 'f', 2));
         if (avail_label_)
             avail_label_->setText(fmt_money(avail));
 
@@ -669,13 +845,28 @@ void CryptoOrderEntry::update_cost_preview() {
         // appends the leverage.
         const QString subtitle =
             is_futures_
-                ? QString("%1 @ %2x  ≈  %3").arg(fmt_base(qty)).arg(leverage).arg(fmt_money(margin))
-                : QString("%1  ≈  %2").arg(fmt_base(qty), fmt_money(notional));
+                ? QString("%1 @ %2x  ≈  %3  ·  RT BE %4%")
+                      .arg(fmt_base(qty))
+                      .arg(leverage)
+                      .arg(fmt_money(margin))
+                      .arg(round_trip_breakeven_pct, 0, 'f', 2)
+                : QString("%1  ≈  %2  ·  %3 %4  ·  RT BE %5%")
+                      .arg(fmt_base(qty), fmt_money(notional),
+                           post_only ? QStringLiteral("POST ONLY") : (taker ? QStringLiteral("TAKER") : QStringLiteral("MAKER")),
+                           schedule.label)
+                      .arg(round_trip_breakeven_pct, 0, 'f', 2);
         submit_subtitle_->setText(subtitle);
 
         const bool insufficient = !is_futures_ && total > balance_ && balance_ > 0;
         if (insufficient) {
             status_label_->setText(tr("⚠ Insufficient balance for this order"));
+            status_label_->setProperty("severity", "warning");
+            status_label_->setVisible(true);
+            repolish(status_label_);
+        } else if (post_only && marketable_limit) {
+            status_label_->setText(is_buy_side_
+                                       ? tr("⚠ Post-only buy would reject at/above best ask")
+                                       : tr("⚠ Post-only sell would reject at/below best bid"));
             status_label_->setProperty("severity", "warning");
             status_label_->setVisible(true);
             repolish(status_label_);
@@ -685,7 +876,9 @@ void CryptoOrderEntry::update_cost_preview() {
     } else {
         cost_label_->setText(QStringLiteral("--"));
         fee_label_->setText(QStringLiteral("--"));
+        fee_label_->setToolTip(QString());
         total_label_->setText(QStringLiteral("--"));
+        total_label_->setToolTip(QString());
         recv_label_->setText(QStringLiteral("--"));
         pct_used_label_->setText(QStringLiteral("--"));
         if (avail_label_ && balance_ > 0)
@@ -726,6 +919,10 @@ void CryptoOrderEntry::retranslateUi() {
     if (stop_title_)     stop_title_->setText(tr("STOP PRICE"));
     if (sl_title_)       sl_title_->setText(tr("STOP LOSS"));
     if (tp_title_)       tp_title_->setText(tr("TAKE PROFIT"));
+    if (post_only_check_) {
+        post_only_check_->setText(tr("POST ONLY"));
+        post_only_check_->setToolTip(tr("Maker protection: the exchange should reject/cancel the order if it would fill immediately."));
+    }
     if (sl_edit_)        sl_edit_->setPlaceholderText(tr("Trigger price"));
     if (tp_edit_)        tp_edit_->setPlaceholderText(tr("Trigger price"));
     if (leverage_title_) leverage_title_->setText(tr("LEVERAGE"));
@@ -739,10 +936,10 @@ void CryptoOrderEntry::retranslateUi() {
 
     // Order breakdown titles
     if (cost_title_)     cost_title_->setText(tr("ORDER VALUE"));
-    if (fee_title_)      fee_title_->setText(tr("FEE EST"));
+    if (fee_title_)      fee_title_->setText(tr("COST EST"));
     if (total_title_)    total_title_->setText(tr("TOTAL"));
     if (recv_title_)     recv_title_->setText(tr("YOU RECEIVE"));
-    if (pct_used_title_) pct_used_title_->setText(tr("% OF BALANCE"));
+    if (pct_used_title_) pct_used_title_->setText(tr("BREAKEVEN"));
 
     // Advanced toggle reflects current expanded state
     if (advanced_toggle_ && advanced_section_)

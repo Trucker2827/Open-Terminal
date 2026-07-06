@@ -789,7 +789,7 @@ void register_builtins() {
     register_screen("ma_analytics", "M&A Analytics", {"ma", "m&a", "deals"});
     register_screen("alt_investments", "Alt Investments", {"alts", "alternative investments"});
     register_screen("surface_analytics", "Surface Analytics", {"surface", "surface analytics"});
-    register_screen("trade_viz", "Trade Viz", {"trade viz", "trade visualization"});
+    register_screen("trade_viz", "Trade Intelligence", {"trade viz", "trade visualization", "trade intelligence", "trade flows"});
     register_screen("docs", "Docs", {"help docs", "manual", "docs"});
 
     register_one(ActionDef{

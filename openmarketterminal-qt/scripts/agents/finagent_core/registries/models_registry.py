@@ -7,6 +7,8 @@ Provides lazy loading and standardized model creation.
 from typing import Dict, Any, Optional, List
 import logging
 import os
+import json
+import urllib.request
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +317,19 @@ class ModelsRegistry:
         }
         provider_lower = _PROVIDER_ALIASES.get(provider_lower, provider_lower)
 
+        if provider_lower == "openmarketterminal":
+            requested_base_url = (
+                kwargs.get("base_url")
+                or (api_keys or {}).get("OPENMARKETTERMINAL_BASE_URL")
+                or cls.MODEL_CATALOG.get("openmarketterminal", {}).get("base_url")
+            )
+            if not requested_base_url or "api.example.com" in str(requested_base_url):
+                installed = cls._list_ollama_models(cls.MODEL_CATALOG["ollama"].get("base_url"))
+                model_id = installed[0] if installed else cls.MODEL_CATALOG["ollama"].get("default_model")
+                provider_lower = "ollama"
+                kwargs["base_url"] = cls.MODEL_CATALOG["ollama"].get("base_url")
+                logger.info("Stale openmarketterminal placeholder LLM profile redirected to local Ollama")
+
         if provider_lower not in cls.MODEL_CATALOG:
             # Unknown provider - treat as OpenAI-compatible with custom base_url
             # This supports custom endpoints like "openmarketterminal", "local-llm", etc.
@@ -433,7 +448,10 @@ class ModelsRegistry:
                 )
                 return _OAI(**{k: v for k, v in oai_kwargs.items() if v is not None})
 
-            if provider_lower not in NO_BASE_URL_PROVIDERS:
+            if provider_lower == "ollama":
+                if effective_base_url:
+                    model_kwargs["host"] = effective_base_url
+            elif provider_lower not in NO_BASE_URL_PROVIDERS:
                 if effective_base_url:
                     model_kwargs["base_url"] = effective_base_url
 
@@ -441,7 +459,21 @@ class ModelsRegistry:
             # Google Gemini uses max_output_tokens instead of max_tokens
             USES_MAX_OUTPUT_TOKENS = {"google", "vertexai"}
 
-            if "temperature" in kwargs:
+            if provider_lower == "ollama":
+                ollama_options = dict(kwargs.pop("options", {}) or {})
+                if "temperature" in kwargs:
+                    ollama_options["temperature"] = kwargs.pop("temperature")
+                if "max_tokens" in kwargs:
+                    max_tok = kwargs.pop("max_tokens")
+                    if max_tok is not None:
+                        ollama_options["num_predict"] = max_tok
+                if "max_completion_tokens" in kwargs:
+                    max_tok = kwargs.pop("max_completion_tokens")
+                    if max_tok is not None:
+                        ollama_options["num_predict"] = max_tok
+                if ollama_options:
+                    model_kwargs["options"] = ollama_options
+            elif "temperature" in kwargs:
                 model_kwargs["temperature"] = kwargs.pop("temperature")
             if "max_tokens" in kwargs:
                 max_tok = kwargs.pop("max_tokens")
@@ -498,7 +530,25 @@ class ModelsRegistry:
         provider_lower = provider.lower()
         if provider_lower not in cls.MODEL_CATALOG:
             return []
+        if provider_lower == "ollama":
+            installed = cls._list_ollama_models(cls.MODEL_CATALOG[provider_lower].get("base_url"))
+            if installed:
+                return installed
         return cls.MODEL_CATALOG[provider_lower].get("models", [])
+
+    @staticmethod
+    def _list_ollama_models(base_url: Optional[str]) -> List[str]:
+        """Return locally installed Ollama tags when the daemon is reachable."""
+        url = (base_url or "http://localhost:11434").rstrip("/") + "/api/tags"
+        try:
+            with urllib.request.urlopen(url, timeout=1.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            models = payload.get("models", [])
+            names = [item.get("name") for item in models if item.get("name")]
+            return names
+        except Exception as exc:
+            logger.debug("Unable to list local Ollama models from %s: %s", url, exc)
+            return []
 
     @classmethod
     def get_provider_info(cls, provider: str) -> Optional[Dict[str, Any]]:

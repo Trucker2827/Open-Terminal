@@ -16,6 +16,12 @@ using namespace openmarketterminal::ui;
 // Single dialog-level stylesheet using objectName selectors — 18+ inline
 // setStyleSheet calls collapsed into one CSS parse. Applied in the ctor.
 namespace {
+QString exchange_display_name(const QString& exchange_id) {
+    if (exchange_id.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("Coinbase Advanced");
+    return exchange_id.toUpper();
+}
+
 static QString kDialogStyle() {
     const QString mono = "'Consolas', 'Courier New', monospace";
     return QString(
@@ -62,7 +68,7 @@ namespace openmarketterminal::screens::crypto {
 
 CryptoCredentials::CryptoCredentials(const QString& exchange_id, QWidget* parent)
     : QDialog(parent), exchange_id_(exchange_id) {
-    setWindowTitle(tr("API Credentials — %1").arg(exchange_id.toUpper()));
+    setWindowTitle(tr("API Credentials — %1").arg(exchange_display_name(exchange_id)));
     setMinimumWidth(400);
     // ONE dialog-level stylesheet drives all widgets via objectName selectors.
     setStyleSheet(kDialogStyle());
@@ -72,12 +78,16 @@ CryptoCredentials::CryptoCredentials(const QString& exchange_id, QWidget* parent
     layout->setContentsMargins(14, 14, 14, 14);
 
     // Header
-    title_label_ = new QLabel(tr("API CREDENTIALS  %1").arg(exchange_id.toUpper()));
+    title_label_ = new QLabel(tr("API CREDENTIALS  %1").arg(exchange_display_name(exchange_id)));
     title_label_->setObjectName("credTitle");
     layout->addWidget(title_label_);
 
-    info_label_ = new QLabel(tr("Enter your exchange API credentials for live trading.\n"
-                                "Keys are stored locally in encrypted secure storage."));
+    const bool is_coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+    info_label_ = new QLabel(is_coinbase
+                                 ? tr("Enter your Coinbase Advanced / CDP API credentials for live trading.\n"
+                                      "Keys are stored locally in encrypted secure storage.")
+                                 : tr("Enter your exchange API credentials for live trading.\n"
+                                      "Keys are stored locally in encrypted secure storage."));
     info_label_->setObjectName("credInfo");
     info_label_->setWordWrap(true);
     layout->addWidget(info_label_);
@@ -106,7 +116,6 @@ CryptoCredentials::CryptoCredentials(const QString& exchange_id, QWidget* parent
     // Coinbase (CDP) secrets are multi-line EC private-key PEMs — a single-line
     // field can't hold them. Use a multi-line input for Coinbase; keep the masked
     // single-line field for every other exchange.
-    const bool is_coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
     if (is_coinbase) {
         secret_multiline_ = new QPlainTextEdit;
         secret_multiline_->setObjectName("credSecretMultiline");
@@ -245,10 +254,15 @@ void CryptoCredentials::changeEvent(QEvent* event) {
 }
 
 void CryptoCredentials::retranslateUi() {
-    setWindowTitle(tr("API Credentials — %1").arg(exchange_id_.toUpper()));
-    if (title_label_)          title_label_->setText(tr("API CREDENTIALS  %1").arg(exchange_id_.toUpper()));
-    if (info_label_)           info_label_->setText(tr("Enter your exchange API credentials for live trading.\n"
-                                                       "Keys are stored locally in encrypted secure storage."));
+    const bool is_coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
+    setWindowTitle(tr("API Credentials — %1").arg(exchange_display_name(exchange_id_)));
+    if (title_label_)          title_label_->setText(tr("API CREDENTIALS  %1").arg(exchange_display_name(exchange_id_)));
+    if (info_label_)
+        info_label_->setText(is_coinbase
+                                 ? tr("Enter your Coinbase Advanced / CDP API credentials for live trading.\n"
+                                      "Keys are stored locally in encrypted secure storage.")
+                                 : tr("Enter your exchange API credentials for live trading.\n"
+                                      "Keys are stored locally in encrypted secure storage."));
     if (key_field_label_)      key_field_label_->setText(tr("API KEY"));
     if (key_edit_)             key_edit_->setPlaceholderText(tr("Enter API key"));
     if (secret_field_label_)
@@ -320,7 +334,7 @@ void CryptoCredentials::mark_connected(const QString& key, const QString& pw, co
         secret_edit_->setPlaceholderText(keep);
     if (private_key_edit_)
         private_key_edit_->setPlaceholderText(keep);
-    set_status(tr("● Connected to %1").arg(exchange_id_.toUpper()), "credStatusOk");
+    set_status(tr("● Connected to %1").arg(exchange_display_name(exchange_id_)), "credStatusOk");
 }
 
 void CryptoCredentials::on_save() {

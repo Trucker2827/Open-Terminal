@@ -70,9 +70,11 @@
 #include "screens/profile/ProfileScreen.h"
 #include "screens/quantlib/QuantLibScreen.h"
 #include "screens/relationship_map/RelationshipMapScreen.h"
+#include "screens/research_sources/ResearchSourcesScreen.h"
 #include "screens/report_builder/ReportBuilderScreen.h"
 #include "screens/settings/SettingsScreen.h"
 #include "screens/surface_analytics/SurfaceAnalyticsScreen.h"
+#include "screens/tools_health/ToolsHealthScreen.h"
 #include "screens/trade_viz/TradeVizScreen.h"
 #include "screens/watchlist/WatchlistScreen.h"
 #include "ui/navigation/DockStatusBar.h"
@@ -277,7 +279,9 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("geopolitics", []() { return new screens::GeopoliticsScreen; });
     dock_router_->register_factory("maritime", []() { return new screens::MaritimeScreen; });
     dock_router_->register_factory("surface_analytics", []() { return new openmarketterminal::surface::SurfaceAnalyticsScreen; });
+    dock_router_->register_factory("research_sources", []() { return new screens::ResearchSourcesScreen; });
     dock_router_->register_factory("agent_config", []() { return new screens::AgentConfigScreen; });
+    dock_router_->register_factory("tools_health", []() { return new screens::ToolsHealthScreen; });
     dock_router_->register_factory("mcp_servers", []() { return new screens::McpServersScreen; });
     dock_router_->register_factory("data_mapping", []() { return new screens::DataMappingScreen; });
     dock_router_->register_factory("data_sources", []() { return new screens::DataSourcesScreen; });

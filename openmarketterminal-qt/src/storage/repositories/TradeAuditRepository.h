@@ -1,5 +1,6 @@
 #pragma once
 #include "storage/repositories/BaseRepository.h"
+#include <QJsonObject>
 #include <QVariantMap>
 
 namespace openmarketterminal {
@@ -39,5 +40,6 @@ class TradeAuditRepository : public BaseRepository<TradeAuditRow> {
 /// (used by the EventBus "trade.audit" payload and any other in-process consumers).
 QVariantMap audit_row_to_map(const TradeAuditRow& row);
 TradeAuditRow audit_row_from_map(const QVariantMap& m);
+QJsonObject trade_audit_row_to_json(const TradeAuditRow& row);
 
 } // namespace openmarketterminal

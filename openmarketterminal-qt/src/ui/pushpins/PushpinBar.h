@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include "core/symbol/SymbolRef.h"
+
 #include <QEvent>
 #include <QWidget>
 
@@ -21,6 +23,9 @@ class PushpinBar : public QWidget {
     Q_OBJECT
   public:
     explicit PushpinBar(QWidget* parent = nullptr);
+
+  signals:
+    void symbol_activated(openmarketterminal::SymbolRef ref);
 
   protected:
     void changeEvent(QEvent* event) override;

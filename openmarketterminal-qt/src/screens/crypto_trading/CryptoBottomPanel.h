@@ -6,6 +6,7 @@
 
 #include <QEvent>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QLabel>
 #include <QStackedWidget>
 #include <QTabWidget>
@@ -65,6 +66,7 @@ class CryptoBottomPanel : public QWidget {
   private:
     void retranslateUi();
     void update_my_trades_empty_text(); // mode-aware empty-state for the MY TRADES tab
+    void update_live_stats();
     void setup_positions_tab();
     void setup_orders_tab();
     void setup_trades_tab();
@@ -128,8 +130,8 @@ class CryptoBottomPanel : public QWidget {
     QLabel* next_funding_title_ = nullptr;
 
     // Stats (data grid)
-    QLabel* stat_values_[5] = {};
-    QLabel* stat_titles_[5] = {};
+    QLabel* stat_values_[9] = {};
+    QLabel* stat_titles_[9] = {};
 
     // Live balance
     QLabel* live_balance_label_ = nullptr;
@@ -146,6 +148,11 @@ class CryptoBottomPanel : public QWidget {
 
     QString account_id_;
     bool is_paper_ = true;
+    QJsonObject live_trades_json_;
+    QJsonArray live_positions_json_;
+    double live_balance_ = 0.0;
+    double live_equity_ = 0.0;
+    double live_used_margin_ = 0.0;
 };
 
 } // namespace openmarketterminal::screens::crypto

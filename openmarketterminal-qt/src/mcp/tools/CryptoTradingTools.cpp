@@ -70,9 +70,13 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             auto& svc = trading::ExchangeService::instance();
             if (svc.get_exchange().isEmpty())
                 return ToolResult::fail("No exchange configured — set one in Crypto Trading first");
+            if (!svc.wait_for_daemon_ready(8000))
+                return ToolResult::fail("Exchange daemon not ready");
 
             try {
                 auto ticker = svc.fetch_ticker(symbol);
+                if (ticker.last <= 0.0 && ticker.bid <= 0.0 && ticker.ask <= 0.0)
+                    return ToolResult::fail("No ticker data returned for " + symbol);
                 return ToolResult::ok_data(QJsonObject{{"symbol", ticker.symbol},
                                                        {"last", ticker.last},
                                                        {"bid", ticker.bid},
@@ -112,9 +116,13 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             auto& svc = trading::ExchangeService::instance();
             if (svc.get_exchange().isEmpty())
                 return ToolResult::fail("No exchange configured");
+            if (!svc.wait_for_daemon_ready(8000))
+                return ToolResult::fail("Exchange daemon not ready");
 
             try {
                 auto ob = svc.fetch_orderbook(symbol, limit);
+                if (ob.bids.isEmpty() && ob.asks.isEmpty())
+                    return ToolResult::fail("No order book data returned for " + symbol);
                 QJsonArray bids, asks;
                 for (const auto& level : ob.bids)
                     bids.append(QJsonObject{{"price", level.first}, {"amount", level.second}});
@@ -156,9 +164,13 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             auto& svc = trading::ExchangeService::instance();
             if (svc.get_exchange().isEmpty())
                 return ToolResult::fail("No exchange configured");
+            if (!svc.wait_for_daemon_ready(8000))
+                return ToolResult::fail("Exchange daemon not ready");
 
             try {
                 auto candles = svc.fetch_ohlcv(symbol, timeframe, limit);
+                if (candles.isEmpty())
+                    return ToolResult::fail("No candles returned for " + symbol);
                 QJsonArray result;
                 for (const auto& c : candles) {
                     result.append(QJsonObject{{"timestamp", static_cast<double>(c.timestamp)},
@@ -294,18 +306,21 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             {"side", QJsonObject{{"type", "string"}, {"description", "buy or sell"}}},
             {"quantity", QJsonObject{{"type", "number"}, {"description", "Base-asset amount (> 0)"}}},
             {"order_type", QJsonObject{{"type", "string"}, {"description", "market or limit (default market)"}}},
-            {"limit_price", QJsonObject{{"type", "number"}, {"description", "Required for limit orders"}}}};
+            {"limit_price", QJsonObject{{"type", "number"}, {"description", "Required for limit orders"}}},
+            {"post_only", QJsonObject{{"type", "boolean"}, {"description", "Maker-only protection for limit orders"}}}};
         t.input_schema.required = {"symbol", "side", "quantity"};
         t.handler = [](const QJsonObject& args) -> ToolResult {
             const QString symbol = args.value("symbol").toString().trimmed();
             const QString side = args.value("side").toString().trimmed().toLower();
             const double quantity = args.value("quantity").toDouble(0.0);
             const QString otype = args.value("order_type").toString("market").trimmed().toLower();
+            const bool post_only = args.value("post_only").toBool(false);
             auto& svc = trading::ExchangeService::instance();
             const QString venue = svc.get_exchange();
             QJsonObject intent{{"symbol", symbol}, {"side", side}, {"quantity", quantity},
                                {"order_type", otype}};
             if (args.contains("limit_price")) intent["limit_price"] = args.value("limit_price").toDouble();
+            if (post_only) intent["post_only"] = true;
 
             if (mcp::cli_kill_switch_engaged()) {
                 crypto_exec_audit("crypto_submit_order", venue, "denied", "kill switch engaged", intent);
@@ -326,6 +341,10 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             if (side != "buy" && side != "sell") {
                 crypto_exec_audit("crypto_submit_order", venue, "denied", "invalid side", intent);
                 return ToolResult::fail("side must be buy or sell");
+            }
+            if (post_only && otype != "limit") {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "post_only requires limit", intent);
+                return ToolResult::fail("post_only requires order_type=limit");
             }
 
             double price = 0.0;
@@ -350,7 +369,8 @@ std::vector<ToolDef> get_crypto_trading_tools() {
 
             try {
                 const double limit_px = (otype == "limit") ? price : 0.0;
-                const QJsonObject res = svc.place_exchange_order(symbol, side, otype, quantity, limit_px);
+                const QJsonObject res = svc.place_exchange_order(symbol, side, otype, quantity, limit_px, 0.0, 0.0, 0.0,
+                                                                 false, post_only);
                 if (res.contains("error") || (res.contains("success") && !res.value("success").toBool())) {
                     const QString msg = res.value("error").toString(res.value("message").toString("exchange error"));
                     crypto_exec_audit("crypto_submit_order", venue, "rejected", msg, intent);

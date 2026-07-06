@@ -46,8 +46,9 @@ QVector<DashboardTemplate> all_dashboard_templates() {
          QT_TRANSLATE_NOOP("openmarketterminal::screens::DashboardTemplates", "Crypto Trader"),
          QT_TRANSLATE_NOOP("openmarketterminal::screens::DashboardTemplates", "Crypto prices, quick trade, sentiment and movers"),
          {
-             gi("crypto", 0, 0, 6, 4),
-             gi("top_movers", 6, 0, 6, 5, 3, 4),
+             gi("crypto", 0, 0, 4, 4),
+             gi("crypto_microstructure", 4, 0, 4, 5, 3, 4),
+             gi("top_movers", 8, 0, 4, 5, 3, 4),
              gi("quick_trade", 0, 4, 4, 5),
              gi("watchlist", 4, 4, 8, 5),
              gi("sentiment", 0, 9, 6, 4),

@@ -22,6 +22,8 @@ import sys
 import json
 import argparse
 import os
+import datetime
+import csv
 
 
 def parse_range(range_str):
@@ -49,6 +51,15 @@ def parse_range(range_str):
 
 # ── LOCAL ─────────────────────────────────────────────────────────────────────
 
+def json_safe_value(value):
+    """Convert openpyxl values into JSON-safe scalars while preserving formulas."""
+    if value is None:
+        return None
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    return value
+
+
 def local_read(file_path, sheet_name, range_str):
     ext = os.path.splitext(file_path)[1].lower()
     parsed = parse_range(range_str)
@@ -56,32 +67,75 @@ def local_read(file_path, sheet_name, range_str):
 
     if ext == ".csv":
         rows = []
-        with open(file_path, "r", encoding="utf-8") as f:
-            for line_no, line in enumerate(f, start=1):
+        with open(file_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f)
+            for line_no, cells in enumerate(reader, start=1):
                 if line_no < r1:
                     continue
                 if line_no > r2:
                     break
-                cells = line.rstrip("\n").split(",")
                 rows.append(cells[c1 - 1 : c2])
         return {"source": "local", "operation": "read", "path": file_path,
                 "rows": len(rows), "data": rows}
-    else:
-        import openpyxl
-        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-        ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
+
+    import openpyxl
+    wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+    ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.active
+    rows = []
+    for r_idx, row in enumerate(ws.iter_rows(min_row=r1, max_row=r2,
+                                              min_col=c1, max_col=c2,
+                                              values_only=True), start=r1):
+        if any(v is not None for v in row):
+            rows.append([v if v is not None else None for v in row])
+    wb.close()
+    return {"source": "local", "operation": "read", "path": file_path,
+            "rows": len(rows), "data": rows}
+
+
+def local_read_workbook(file_path):
+    """Read every worksheet, preserving formulas and trimming blank trailing rows/cols."""
+    import openpyxl
+    wb = openpyxl.load_workbook(file_path, read_only=False, data_only=False)
+    sheets = []
+    for ws in wb.worksheets:
+        max_row = ws.max_row or 1
+        max_col = ws.max_column or 1
         rows = []
-        for r_idx, row in enumerate(ws.iter_rows(min_row=r1, max_row=r2,
-                                                  min_col=c1, max_col=c2,
-                                                  values_only=True), start=r1):
-            if any(v is not None for v in row):
-                rows.append([v if v is not None else None for v in row])
-        wb.close()
-        return {"source": "local", "operation": "read", "path": file_path,
-                "rows": len(rows), "data": rows}
+        last_row = -1
+        last_col = -1
+        for r in range(1, max_row + 1):
+            row_values = []
+            row_has_data = False
+            for c in range(1, max_col + 1):
+                value = json_safe_value(ws.cell(row=r, column=c).value)
+                if value is not None and value != "":
+                    row_has_data = True
+                    last_col = max(last_col, c - 1)
+                row_values.append(value)
+            if row_has_data:
+                last_row = r - 1
+            rows.append(row_values)
+
+        if last_row >= 0 and last_col >= 0:
+            rows = [row[: last_col + 1] for row in rows[: last_row + 1]]
+        else:
+            rows = []
+        sheets.append({"name": ws.title, "rows": len(rows), "data": rows})
+    wb.close()
+    return {"source": "local", "operation": "read_workbook", "path": file_path,
+            "sheet_count": len(sheets), "sheets": sheets}
 
 
 def local_write(file_path, sheet_name, range_str, data, append=False):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".csv":
+        mode = "a" if append and os.path.exists(file_path) else "w"
+        with open(file_path, mode, encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(data)
+        return {"source": "local", "operation": "append" if append else "write",
+                "path": file_path, "rows_written": len(data)}
+
     import openpyxl
     parsed = parse_range(range_str)
     r1, c1 = (parsed[0], parsed[1]) if parsed else (1, 1)
@@ -112,6 +166,56 @@ def local_write(file_path, sheet_name, range_str, data, append=False):
     wb.save(file_path)
     return {"source": "local", "operation": "append" if append else "write",
             "path": file_path, "rows_written": rows_written}
+
+
+def safe_sheet_title(name, existing):
+    title = str(name or "Sheet").strip()[:31] or "Sheet"
+    for ch in "[]:*?/\\":
+        title = title.replace(ch, "_")
+    base = title
+    suffix = 2
+    while title in existing:
+        tail = f"_{suffix}"
+        title = (base[: 31 - len(tail)] + tail) if len(base) + len(tail) > 31 else base + tail
+        suffix += 1
+    existing.add(title)
+    return title
+
+
+def local_write_workbook(file_path, sheets):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    default = wb.active
+    wb.remove(default)
+    existing = set()
+    sheet_count = 0
+    rows_written = 0
+
+    for sheet in sheets:
+        if not isinstance(sheet, dict):
+            continue
+        title = safe_sheet_title(sheet.get("name", f"Sheet{sheet_count + 1}"), existing)
+        ws = wb.create_sheet(title)
+        data = sheet.get("data", [])
+        if not isinstance(data, list):
+            data = []
+        for ri, row in enumerate(data, start=1):
+            if not isinstance(row, list):
+                row = [row]
+            for ci, value in enumerate(row, start=1):
+                if value is None or value == "":
+                    continue
+                ws.cell(row=ri, column=ci, value=value)
+            rows_written += 1
+        sheet_count += 1
+
+    if sheet_count == 0:
+        wb.create_sheet("Sheet1")
+        sheet_count = 1
+
+    wb.save(file_path)
+    return {"source": "local", "operation": "write_workbook",
+            "path": file_path, "sheet_count": sheet_count, "rows_written": rows_written}
 
 
 def local_clear(file_path, sheet_name, range_str):
@@ -208,6 +312,7 @@ def main():
     range_str        = args.get("range", "A1:Z1000")
     credentials_path = args.get("credentials_path", "")
     data             = args.get("data", [])
+    sheets           = args.get("sheets", [])
 
     # Normalise data: may be a list of rows or a wrapped object
     if isinstance(data, dict) and "data" in data:
@@ -219,6 +324,10 @@ def main():
         if source == "local":
             if not file_path:
                 result = {"error": "file_path is required for source=local"}
+            elif operation == "read_workbook":
+                result = local_read_workbook(file_path)
+            elif operation == "write_workbook":
+                result = local_write_workbook(file_path, sheets)
             elif operation == "read":
                 result = local_read(file_path, sheet_name, range_str)
             elif operation in ("write", "append"):

@@ -124,8 +124,19 @@ class CoreAgent:
         """Execute a multi-agent team."""
         from finagent_core.modules import TeamModule
 
+        member_configs = team_config.get("agents", team_config.get("members", []))
+        if len(member_configs) == 1:
+            member_config = dict(member_configs[0])
+            return self.run(
+                query,
+                member_config,
+                session_id=session_id,
+                agent_id=member_config.get("agent_id") or member_config.get("id") or member_config.get("name"),
+                user_id=member_config.get("user_id"),
+            )
+
         agents = []
-        for agent_config in team_config.get("agents", team_config.get("members", [])):
+        for agent_config in member_configs:
             agent = self._agno_for(agent_config)
             agents.append(agent)
 

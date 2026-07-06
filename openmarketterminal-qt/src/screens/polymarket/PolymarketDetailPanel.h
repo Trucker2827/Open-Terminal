@@ -3,6 +3,7 @@
 #include "screens/polymarket/ExchangePresentation.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/edge_radar/CryptoImpulseModel.h"
+#include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/polymarket/PolymarketTypes.h"
 #include "services/prediction/PredictionTypes.h"
 
@@ -113,6 +114,8 @@ class PolymarketDetailPanel : public QWidget {
     void refresh_feed_race();
     void render_feed_race(
         const openmarketterminal::services::crypto_latency::CryptoLatencySnapshot& snapshot);
+    void render_microstructure(
+        const openmarketterminal::services::edge_radar::CryptoMicrostructureSnapshot& snapshot);
     void render_impulse(
         const openmarketterminal::services::edge_radar::CryptoImpulseSignal& signal);
     void retranslateUi();
@@ -185,6 +188,9 @@ class PolymarketDetailPanel : public QWidget {
     QTimer*         feed_race_timer_      = nullptr;
     QLabel*         feed_race_symbol_lbl_ = nullptr;
     QLabel*         feed_race_fresh_lbl_  = nullptr;
+    QLabel*         micro_call_lbl_        = nullptr;
+    QLabel*         micro_pressure_lbl_    = nullptr;
+    QLabel*         micro_divergence_lbl_  = nullptr;
     QLabel*         impulse_move_lbl_     = nullptr;
     QLabel*         impulse_velocity_lbl_ = nullptr;
     QLabel*         impulse_call_lbl_     = nullptr;
@@ -192,6 +198,7 @@ class PolymarketDetailPanel : public QWidget {
     QPushButton*    feed_race_start_btn_  = nullptr;
     QPushButton*    feed_race_stop_btn_   = nullptr;
     openmarketterminal::services::edge_radar::CryptoImpulseModel impulse_model_;
+    openmarketterminal::services::edge_radar::CryptoMicrostructureRadar microstructure_model_;
 
     // Holders
     QTableWidget* holders_table_ = nullptr;

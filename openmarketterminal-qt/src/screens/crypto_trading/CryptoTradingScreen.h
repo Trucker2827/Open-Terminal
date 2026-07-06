@@ -28,7 +28,6 @@ class CryptoChart;
 class CryptoOrderEntry;
 class CryptoOrderBook;
 class CryptoBottomPanel;
-class CryptoPredictionsPanel;
 } // namespace openmarketterminal::screens::crypto
 
 namespace openmarketterminal::screens {
@@ -70,8 +69,9 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     void on_symbol_selected(const QString& symbol);
     void on_mode_toggled();
     void on_api_clicked();
+    void on_accounts_clicked();
     void on_order_submitted(const QString& side, const QString& order_type, double qty, double price, double stop_price,
-                            double sl, double tp);
+                            double sl, double tp, bool post_only);
     void on_cancel_order(const QString& order_id);
     void on_cancel_all_orders();                     // CANCEL ALL (live + paper)
     void on_close_all_positions();                   // SQUARE OFF ALL (live + paper)
@@ -126,6 +126,7 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     QLineEdit* symbol_input_ = nullptr;
     QPushButton* mode_btn_ = nullptr;
     QPushButton* api_btn_ = nullptr;
+    QPushButton* accounts_btn_ = nullptr;
     QLabel* ws_status_ = nullptr;
     QLabel* ws_transport_ = nullptr;  // tiny hint: "NATIVE" for Kraken, "DAEMON" for ccxt
     QLabel* clock_label_ = nullptr;
@@ -142,7 +143,6 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     crypto::CryptoOrderEntry* order_entry_ = nullptr;
     crypto::CryptoOrderBook* orderbook_ = nullptr;
     crypto::CryptoBottomPanel* bottom_panel_ = nullptr;
-    crypto::CryptoPredictionsPanel* predictions_panel_ = nullptr;  // shown when source == Coinbase
 
     // ── Timers ──
     QTimer* ticker_timer_ = nullptr;

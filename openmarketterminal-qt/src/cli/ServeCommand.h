@@ -9,4 +9,5 @@ int serve_run(const QString& profile);
 int serve_status(const QString& profile, bool json);
 int serve_stop(const QString& profile);
 int daemon_command(const QString& profile, bool json, QStringList args);
+int sync_command(const QString& profile, bool json, QStringList args);
 }

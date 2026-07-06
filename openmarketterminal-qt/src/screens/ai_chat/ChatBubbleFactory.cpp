@@ -31,8 +31,8 @@ static int bubble_inner_width(bool is_user, const ChatBubbleFactory::Options& op
 
 static QString bubble_style(const QString& role) {
     if (role == "user")
-        return "background:rgba(120,53,15,0.45);border:1px solid rgba(217,119,6,0.28);"
-               "border-radius:0px;padding:10px 14px;";
+        return QString("background:%1;border:1px solid %1;border-radius:0px;padding:10px 14px;")
+            .arg(col::AMBER());
     if (role == "system")
         return "background:rgba(50,12,12,0.85);border:1px solid rgba(220,38,38,0.22);"
                "border-radius:0px;padding:10px 14px;";
@@ -42,7 +42,7 @@ static QString bubble_style(const QString& role) {
 
 static QString body_color(const QString& role) {
     if (role == "user")
-        return "#fff7ed";
+        return col::TEXT_ON_ACCENT();
     if (role == "system")
         return "#fee2e2";
     return col::TEXT_PRIMARY();

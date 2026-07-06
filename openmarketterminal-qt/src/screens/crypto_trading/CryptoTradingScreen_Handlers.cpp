@@ -15,9 +15,9 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
-#include "screens/crypto_trading/CryptoPredictionsPanel.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
+#include "screens/equity_trading/AccountManagementDialog.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSession.h"
 #include "trading/ExchangeSessionManager.h"
@@ -48,22 +48,24 @@ using namespace openmarketterminal::screens::crypto;
 
 static const QString TAG = "CryptoTrading";
 
+namespace {
+QString exchange_display_name(const QString& exchange_id) {
+    if (exchange_id.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("COINBASE ADVANCED");
+    return exchange_id.toUpper();
+}
+} // namespace
+
 
 void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     if (exchange == exchange_id_)
         return;
     LOG_INFO(TAG, QString("Exchange changed: %1 → %2").arg(exchange_id_, exchange));
     exchange_id_ = exchange;
-    exchange_btn_->setText(exchange.toUpper());
+    exchange_btn_->setText(exchange_display_name(exchange));
+    if (order_entry_)
+        order_entry_->set_exchange_id(exchange_id_);
 
-    // Coinbase prediction markets (Kalshi-powered) are only shown when Coinbase
-    // is the active source; refresh the list when revealing it.
-    if (predictions_panel_) {
-        const bool coinbase = exchange.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
-        predictions_panel_->setVisible(coinbase);
-        if (coinbase)
-            predictions_panel_->refresh();
-    }
     if (ws_transport_) {
         ws_transport_->setText(tr("DAEMON"));
         ws_transport_->setToolTip(tr("ws_stream.py via ccxt.pro — Python subprocess"));
@@ -175,6 +177,7 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     symbol_input_->setText(normalized);
     ticker_bar_->set_symbol(normalized);
     order_entry_->set_symbol(normalized);
+    order_entry_->set_orderbook_quote(0, 0);
     watchlist_->set_active_symbol(normalized);
 
     // Drop per-symbol buffers tied to the old symbol to prevent cross-symbol leakage.
@@ -261,11 +264,24 @@ void CryptoTradingScreen::on_api_clicked() {
     dlg->deleteLater();
 }
 
+void CryptoTradingScreen::on_accounts_clicked() {
+    auto* dlg = new equity::AccountManagementDialog(this);
+    dlg->setWindowTitle(tr("Manage Trading Accounts"));
+
+    connect(dlg, &equity::AccountManagementDialog::credentials_saved, this, [](const QString& account_id) {
+        Q_UNUSED(account_id);
+        LOG_INFO(TAG, "Broker account credentials saved from crypto workspace");
+    });
+
+    dlg->exec();
+    dlg->deleteLater();
+}
+
 void CryptoTradingScreen::on_order_submitted(const QString& side, const QString& order_type, double qty, double price,
-                                             double stop_price, double sl, double tp) {
-    LOG_INFO(TAG, QString("Order submit: mode=%1 %2 %3 qty=%4 px=%5 stop=%6 sl=%7 tp=%8 sym=%9")
+                                             double stop_price, double sl, double tp, bool post_only) {
+    LOG_INFO(TAG, QString("Order submit: mode=%1 %2 %3 qty=%4 px=%5 stop=%6 sl=%7 tp=%8 post_only=%9 sym=%10")
                       .arg(trading_mode_ == TradingMode::Paper ? "PAPER" : "LIVE", side, order_type)
-                      .arg(qty).arg(price).arg(stop_price).arg(sl).arg(tp).arg(selected_symbol_));
+                      .arg(qty).arg(price).arg(stop_price).arg(sl).arg(tp).arg(post_only ? "yes" : "no").arg(selected_symbol_));
     try {
         if (trading_mode_ == TradingMode::Paper) {
             auto ticker = ExchangeService::instance().get_cached_price(selected_symbol_);
@@ -300,7 +316,7 @@ void CryptoTradingScreen::on_order_submitted(const QString& side, const QString&
             const bool reduce_only = order_entry_->reduce_only();
             QPointer<CryptoTradingScreen> self = this;
             QPointer<crypto::CryptoOrderEntry> oe = order_entry_;
-            (void)QtConcurrent::run([self, oe, side, order_type, qty, price, stop_price, sl, tp, reduce_only]() {
+            (void)QtConcurrent::run([self, oe, side, order_type, qty, price, stop_price, sl, tp, reduce_only, post_only]() {
                 // stop_price drives Stop / Stop-Limit triggers; sl/tp attach native
                 // bracket legs; reduce_only is honoured on perps. The daemon maps
                 // these to ccxt unified params (triggerPrice / stopLoss / takeProfit).
@@ -309,7 +325,7 @@ void CryptoTradingScreen::on_order_submitted(const QString& side, const QString&
                 try {
                     if (self) {
                         ExchangeService::instance().place_exchange_order(self->selected_symbol_, side, order_type, qty,
-                                                                         price, stop_price, sl, tp, reduce_only);
+                                                                         price, stop_price, sl, tp, reduce_only, post_only);
                     }
                 } catch (const std::exception& e) {
                     LOG_ERROR(TAG, QString("Live order failed: %1").arg(e.what()));

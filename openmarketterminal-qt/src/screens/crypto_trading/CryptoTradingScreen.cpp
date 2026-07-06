@@ -18,7 +18,6 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
-#include "screens/crypto_trading/CryptoPredictionsPanel.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -47,6 +46,14 @@ using namespace openmarketterminal::trading;
 using namespace openmarketterminal::screens::crypto;
 
 static const QString TAG = "CryptoTrading";
+
+namespace {
+QString exchange_display_name(const QString& exchange_id) {
+    if (exchange_id.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("COINBASE ADVANCED");
+    return exchange_id.toUpper();
+}
+} // namespace
 
 CryptoTradingScreen::CryptoTradingScreen(QWidget* parent)
     : CryptoTradingScreen(Focus::MultiAsset, parent) {}
@@ -159,7 +166,7 @@ void CryptoTradingScreen::setup_ui() {
     cmd_layout->setSpacing(6);
 
     // Exchange button + menu
-    exchange_btn_ = new QPushButton(exchange_id_.toUpper());
+    exchange_btn_ = new QPushButton(exchange_display_name(exchange_id_));
     exchange_btn_->setObjectName("cryptoExchangeBtn");
     exchange_btn_->setFixedHeight(22);
     exchange_btn_->setCursor(Qt::PointingHandCursor);
@@ -169,7 +176,7 @@ void CryptoTradingScreen::setup_ui() {
     // policies — so the dropdown can never drift out of sync with what the hub
     // actually publishes. Add a new exchange there (one line) and it appears here.
     for (const QString& ex : ExchangeSessionManager::supported_exchange_ids()) {
-        exchange_menu_->addAction(ex, this, [this, ex]() { on_exchange_changed(ex); });
+        exchange_menu_->addAction(exchange_display_name(ex), this, [this, ex]() { on_exchange_changed(ex); });
     }
     exchange_btn_->setMenu(exchange_menu_);
     cmd_layout->addWidget(exchange_btn_);
@@ -247,6 +254,16 @@ void CryptoTradingScreen::setup_ui() {
     api_btn_->setCursor(Qt::PointingHandCursor);
     cmd_layout->addWidget(api_btn_);
 
+    // Broker accounts button — opens the shared multi-account manager used for
+    // Alpaca/IBKR/etc. This is separate from API, which configures the selected
+    // crypto exchange session (Coinbase/Kraken/Binance...).
+    accounts_btn_ = new QPushButton(tr("ACCOUNTS"));
+    accounts_btn_->setObjectName("cryptoApiBtn");
+    accounts_btn_->setFixedHeight(22);
+    accounts_btn_->setCursor(Qt::PointingHandCursor);
+    accounts_btn_->setToolTip(tr("Manage broker accounts such as Alpaca. Exchange API keys stay under API."));
+    cmd_layout->addWidget(accounts_btn_);
+
     // Mode button
     mode_btn_ = new QPushButton(tr("PAPER"));
     mode_btn_->setObjectName("cryptoModeBtn");
@@ -285,21 +302,6 @@ void CryptoTradingScreen::setup_ui() {
 
     main_splitter->addWidget(center_splitter);
 
-    // PREDICTIONS: its own full-height column between the chart and the order
-    // panels — symbols | chart | predictions | order book/entry. Coinbase's
-    // prediction markets (Kalshi-powered) only apply when Coinbase is the
-    // source, so the column is shown/hidden in on_exchange_changed().
-    predictions_panel_ = new crypto::CryptoPredictionsPanel;
-    main_splitter->addWidget(predictions_panel_);
-    connect(predictions_panel_, &crypto::CryptoPredictionsPanel::bet_requested, this,
-            &CryptoTradingScreen::open_predictions_requested);
-    {
-        const bool coinbase = exchange_id_.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0;
-        predictions_panel_->setVisible(coinbase);
-        if (coinbase)
-            predictions_panel_->refresh();
-    }
-
     // RIGHT: Order Book (top) + Order Entry (bottom)
     auto* right_splitter = new QSplitter(Qt::Vertical);
     right_splitter->setObjectName("cryptoRightSplitter");
@@ -309,25 +311,30 @@ void CryptoTradingScreen::setup_ui() {
     right_splitter->addWidget(orderbook_);
 
     order_entry_ = new CryptoOrderEntry;
+    order_entry_->set_exchange_id(exchange_id_);
     right_splitter->addWidget(order_entry_);
 
-    right_splitter->setStretchFactor(0, 3); // OB 55%
-    right_splitter->setStretchFactor(1, 2); // OE 45%
+    right_splitter->setChildrenCollapsible(false);
+    right_splitter->setStretchFactor(0, 5); // order book gets the useful vertical scan space
+    right_splitter->setStretchFactor(1, 3); // order ticket stays usable but no longer dominates
+    right_splitter->setSizes({560, 420});
 
     main_splitter->addWidget(right_splitter);
 
-    // Splitter proportions: watchlist 220 | chart stretch | predictions 260 | right 290
-    main_splitter->setSizes({220, 520, 260, 290});
+    // Splitter proportions: watchlist 220 | chart stretch | right 290.
+    // Prediction markets live in the dedicated Predictions screen, not in the
+    // crypto/bitcoin trading workspace.
+    main_splitter->setSizes({220, 780, 290});
     main_splitter->setStretchFactor(0, 0);
     main_splitter->setStretchFactor(1, 1);  // chart column absorbs extra width
     main_splitter->setStretchFactor(2, 0);
-    main_splitter->setStretchFactor(3, 0);
 
     main_layout->addWidget(main_splitter, 1);
 
     // ── Signal Connections ────────────────────────────────────────────────────
     connect(mode_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_mode_toggled);
     connect(api_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_api_clicked);
+    connect(accounts_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_accounts_clicked);
     connect(watchlist_, &CryptoWatchlist::symbol_selected, this, &CryptoTradingScreen::on_symbol_selected);
     connect(watchlist_, &CryptoWatchlist::search_requested, this, &CryptoTradingScreen::on_search_requested);
     connect(order_entry_, &CryptoOrderEntry::order_submitted, this, &CryptoTradingScreen::on_order_submitted);
@@ -472,6 +479,10 @@ void CryptoTradingScreen::changeEvent(QEvent* event) {
 
 void CryptoTradingScreen::retranslateUi() {
     if (api_btn_) api_btn_->setText(tr("API"));
+    if (accounts_btn_) {
+        accounts_btn_->setText(tr("ACCOUNTS"));
+        accounts_btn_->setToolTip(tr("Manage broker accounts such as Alpaca. Exchange API keys stay under API."));
+    }
 
     // Mode button reflects the live trading mode.
     if (mode_btn_)

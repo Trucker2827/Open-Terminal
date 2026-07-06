@@ -1,5 +1,5 @@
-// Relational Database connectors (9): PostgreSQL, MySQL, MariaDB, SQLite, Oracle, MSSQL, CockroachDB, Snowflake,
-// Vertica
+// Relational / local database connectors: PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, Oracle, MSSQL,
+// CockroachDB, Vertica.
 #include "screens/data_sources/ConnectorRegistry.h"
 
 namespace openmarketterminal::screens::datasources {
@@ -60,6 +60,19 @@ static QVector<ConnectorConfig> relational_configs() {
          false, // file-based: no network endpoint to test
          false,
          {{"filepath", "Database File Path", FieldType::Text, "/path/to/database.db", true, "", {}},
+          {"readonly", "Read Only", FieldType::Checkbox, "", false, "false", {}}}},
+
+        {"duckdb",
+         "DuckDB / Local Analytics Lake",
+         "duckdb",
+         Category::Database,
+         "D",
+         "#FFF000",
+         "Local columnar analytics database used by OpenTerminal's profile-local data lake",
+         false, // local embedded database: no network endpoint to test
+         false,
+         {{"filepath", "DuckDB File Path", FieldType::Text, "data/lake/openterminal.duckdb", true, "", {}},
+          {"lakeRoot", "Data Lake Root", FieldType::Text, "data/lake", false, "data/lake", {}},
           {"readonly", "Read Only", FieldType::Checkbox, "", false, "false", {}}}},
 
         {"oracle",

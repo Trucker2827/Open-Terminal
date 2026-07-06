@@ -623,7 +623,7 @@ QJsonObject ExchangeSession::fetch_balance() {
 
 QJsonObject ExchangeSession::place_exchange_order(const QString& symbol, const QString& side, const QString& type,
                                                   double amount, double price, double stop_price, double sl, double tp,
-                                                  bool reduce_only) {
+                                                  bool reduce_only, bool post_only) {
     QJsonObject args;
     args["symbol"] = symbol;
     args["side"] = side;
@@ -641,6 +641,8 @@ QJsonObject ExchangeSession::place_exchange_order(const QString& symbol, const Q
         args["tp"] = tp;
     if (reduce_only)
         args["reduce_only"] = true;
+    if (post_only)
+        args["post_only"] = true;
     return daemon_call("place_order", args);
 }
 

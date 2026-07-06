@@ -37,8 +37,10 @@ PushpinBar::PushpinBar(QWidget* parent) : QWidget(parent) {
     strip_layout_->addStretch(1);
     scroll_->setWidget(strip_);
 
-    empty_hint_ = new QLabel(tr("Drag any symbol here to pin"), strip_);
+    empty_hint_ = new QLabel(tr("Drag from Watchlist, Crypto, Equity, or Research here to pin"), strip_);
     empty_hint_->setStyleSheet("color:#6b7280;font-size:11px;font-style:italic;");
+    setToolTip(tr("Pin symbols by dragging rows from Watchlist, Crypto, Equity, or Equity Research. "
+                  "Click a pinned chip to broadcast it to linked panels; right-click to remove."));
 
     // Dropping a symbol anywhere on the bar pins it.
     symbol_dnd::installDropFilter(this, [](const SymbolRef& ref, SymbolGroup) {
@@ -57,7 +59,9 @@ void PushpinBar::changeEvent(QEvent* event) {
 
 void PushpinBar::retranslateUi() {
     if (empty_hint_)
-        empty_hint_->setText(tr("Drag any symbol here to pin"));
+        empty_hint_->setText(tr("Drag from Watchlist, Crypto, Equity, or Research here to pin"));
+    setToolTip(tr("Pin symbols by dragging rows from Watchlist, Crypto, Equity, or Equity Research. "
+                  "Click a pinned chip to broadcast it to linked panels; right-click to remove."));
 }
 
 void PushpinBar::rebuild() {
@@ -79,6 +83,7 @@ void PushpinBar::rebuild() {
         empty_hint_->hide();
         for (const SymbolRef& p : pins) {
             auto* chip = new SymbolChip(p, strip_);
+            connect(chip, &SymbolChip::activated, this, &PushpinBar::symbol_activated);
             strip_layout_->addWidget(chip);
         }
     }

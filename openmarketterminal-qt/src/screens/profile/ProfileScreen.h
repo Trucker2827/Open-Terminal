@@ -67,13 +67,17 @@ class ProfileScreen : public QWidget {
     // Local daemon / automation
     QLabel* daemon_status_ = nullptr;
     QLabel* daemon_installed_ = nullptr;
+    QLabel* daemon_owner_ = nullptr;
     QLabel* daemon_running_ = nullptr;
     QLabel* daemon_jobs_summary_ = nullptr;
+    QLabel* daemon_collectors_summary_ = nullptr;
+    QLabel* daemon_collectors_status_ = nullptr;
     QLabel* daemon_audit_status_ = nullptr;
     QLabel* daemon_action_status_ = nullptr;
     QPlainTextEdit* daemon_logs_ = nullptr;
     QPlainTextEdit* daemon_job_detail_ = nullptr;
     QTableWidget* daemon_jobs_table_ = nullptr;
+    QTableWidget* daemon_collectors_table_ = nullptr;
     QComboBox* daemon_job_kind_ = nullptr;
     QLineEdit* daemon_job_target_ = nullptr;
     QSpinBox* daemon_job_interval_ = nullptr;
@@ -100,6 +104,7 @@ class ProfileScreen : public QWidget {
     void run_daemon_action(const QString& action, const QStringList& extra_args = {});
     void populate_daemon_health(const QJsonObject& health);
     void populate_daemon_jobs(const QJsonArray& jobs);
+    void populate_daemon_collectors(const QJsonObject& collectors);
     void populate_daemon_audit(const QJsonObject& audit);
     void populate_daemon_logs(const QJsonObject& logs);
     void populate_daemon_job_detail(const QJsonObject& job);

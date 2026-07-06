@@ -7,6 +7,7 @@
 
 #include <QEvent>
 #include <QHideEvent>
+#include <QJsonArray>
 #include <QLabel>
 #include <QPushButton>
 #include <QShowEvent>
@@ -41,12 +42,17 @@ class ExcelScreen : public QWidget, public IStatefulScreen {
     void on_rename_sheet();
     void on_tab_changed(int index);
     void on_export_csv();
+    void on_ai_analyze();
 
   private:
     void build_ui();
     QWidget* build_toolbar();
     void retranslateUi();
     void update_status();
+    void import_workbook_from_result(const QJsonObject& result, const QString& source_path);
+    QJsonArray workbook_to_json() const;
+    QString active_sheet_preview_markdown(int max_rows = 40, int max_cols = 12) const;
+    void show_text_dialog(const QString& title, const QString& text);
     SpreadsheetWidget* current_sheet() const;
     QString generate_sheet_name() const;
 
@@ -64,6 +70,7 @@ class ExcelScreen : public QWidget, public IStatefulScreen {
     QPushButton* add_sheet_btn_ = nullptr;
     QPushButton* rename_btn_ = nullptr;
     QPushButton* delete_btn_ = nullptr;
+    QPushButton* ai_analyze_btn_ = nullptr;
 };
 
 } // namespace openmarketterminal::screens
