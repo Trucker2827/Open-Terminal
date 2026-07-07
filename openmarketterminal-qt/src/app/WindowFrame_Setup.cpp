@@ -160,7 +160,8 @@ void WindowFrame::setup_docking_mode() {
         // DockScreenRouter::create_dock_widget) — see note there.
         ads::CDockManager::setConfigFlags(
             ads::CDockManager::DefaultOpaqueConfig |
-            ads::CDockManager::AlwaysShowTabs | ads::CDockManager::DockAreaHasTabsMenuButton |
+            ads::CDockManager::HideSingleCentralWidgetTitleBar |
+            ads::CDockManager::DockAreaHasTabsMenuButton |
             ads::CDockManager::DockAreaDynamicTabsMenuButtonVisibility |
             ads::CDockManager::FloatingContainerHasWidgetTitle | ads::CDockManager::FloatingContainerHasWidgetIcon |
             ads::CDockManager::EqualSplitOnInsertion       // prevents new panels from spawning tiny slivers
