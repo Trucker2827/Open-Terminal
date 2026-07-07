@@ -66,7 +66,6 @@ QString DockScreenRouter::title_for_id(const QString& id) {
         {"economics", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Economics")},
         {"dbnomics", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "DBnomics")},
         {"akshare", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "AkShare Data")},
-        {"asia_markets", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Asia Markets")},
         {"geopolitics", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Geopolitics")},
         {"gov_data", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Gov Data")},
         {"maritime", QT_TRANSLATE_NOOP("openmarketterminal::DockScreenRouter", "Maritime")},

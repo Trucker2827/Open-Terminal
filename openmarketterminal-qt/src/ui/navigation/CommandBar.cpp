@@ -246,7 +246,6 @@ void CommandBar::build_commands() {
          {"aks", "akshare", "chinese"},
          "",
          {"akshare", "chinese", "china"}},
-        {"asia_markets", tr("Asia Markets"), "Asian market data", {"asia", "apac", "asian"}, "", {"asia", "asian", "apac"}},
         // Geopolitics
         {"geopolitics",
          tr("Geopolitics"),

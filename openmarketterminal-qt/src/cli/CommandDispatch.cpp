@@ -1197,7 +1197,6 @@ static const QList<ScreenEntry>& screen_catalog() {
         {"relationship_map", "Relationship Map", "Global", {"map", "graph", "relationships"}},
         {"surface_analytics", "Surface Analytics", "Global", {"surface"}},
         {"akshare", "AkShare", "Asia", {"china", "cn_data"}},
-        {"asia_markets", "Asia Markets", "Asia", {"asia"}},
         {"about", "About", "Help", {}},
     };
     return screens;
@@ -1319,7 +1318,6 @@ static const QList<CoverageEntry>& coverage_catalog() {
         {"relationship_map", false, false, true, false, "open relationship_map", "graph editing is GUI-only"},
         {"surface_analytics", true, false, true, true, "mcp surface analytics tools", "direct CLI wrapper pending"},
         {"akshare", true, false, true, true, "mcp/connector data tools", "direct AkShare CLI wrapper pending"},
-        {"asia_markets", true, false, true, true, "mcp asia markets tools", "direct CLI wrapper pending"},
         {"docs", true, false, true, false, "open docs", "readable in GUI; CLI docs are README/help"},
         {"about", false, false, true, false, "open about", "informational GUI screen"},
     };

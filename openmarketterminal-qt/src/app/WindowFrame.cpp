@@ -31,7 +31,6 @@
 #include "screens/algo_trading/AlgoTradingScreen.h"
 #include "screens/alpha_arena/AlphaArenaScreen.h"
 #include "screens/alt_investments/AltInvestmentsScreen.h"
-#include "screens/asia_markets/AsiaMarketsScreen.h"
 #include "screens/auth/LockScreen.h"
 #include "screens/auth/LoginScreen.h"
 #include "screens/backtesting/BacktestingScreen.h"
@@ -623,7 +622,7 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
                 {"perspective_news", {"news", "markets"}},
                 {"perspective_markets", {"markets", "watchlist"}},
                 // Economics & Data
-                {"perspective_economics", {"economics", "dbnomics", "gov_data", "asia_markets"}},
+                {"perspective_economics", {"economics", "dbnomics", "gov_data"}},
                 {"perspective_data", {"data_sources", "data_mapping"}},
                 // Geopolitics
                 {"perspective_geopolitics", {"geopolitics", "maritime", "relationship_map", "news"}},

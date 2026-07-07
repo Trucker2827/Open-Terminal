@@ -1144,7 +1144,7 @@ set(TRADING_SOURCES
     src/trading/brokers/BrokerHttp.cpp
     # Trading WebSocket
     # Phase 2 broker WebSocket adapters (shared base + per-broker)
-    # Indian brokers
+    # Broker adapters
     src/trading/auth/RedirectServer.cpp
     # Global brokers
     src/trading/brokers/alpaca/AlpacaBroker.cpp
@@ -1205,7 +1205,6 @@ set(SERVICE_SOURCES
     src/services/alpha_arena/OrderRouter.cpp
     src/services/alpha_arena/AlphaArenaEngine.cpp
     src/services/alpha_arena/AlphaArenaService.cpp
-    src/services/asia_markets/AsiaMarketsService.cpp
     src/services/crypto/TotpService.cpp
     src/services/python_cli/PythonCliService.cpp
     src/services/markets/MarketDataService.cpp
@@ -1688,9 +1687,6 @@ set(SCREEN_SOURCES
     # AkShare Data Explorer
     src/screens/akshare/AkShareScreen.cpp
 
-    # Asia Markets
-    src/screens/asia_markets/AsiaMarketsScreen.cpp
-
     # Geopolitics
     src/screens/geopolitics/GeopoliticsScreen.cpp
     src/screens/geopolitics/ConflictMonitorPanel.cpp
@@ -2001,7 +1997,6 @@ set_source_files_properties(
     src/screens/alt_investments/AltInvestmentsScreen.cpp
     src/screens/alt_investments/AltInvestmentsScreen_Layout.cpp
     src/screens/alt_investments/AltInvestmentsScreen_Analysis.cpp
-    src/screens/asia_markets/AsiaMarketsScreen.cpp
     src/screens/auth/LockScreen.cpp
     src/screens/auth/LoginScreen.cpp
     src/screens/backtesting/BacktestingScreen.cpp

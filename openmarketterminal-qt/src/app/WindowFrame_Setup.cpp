@@ -32,7 +32,6 @@
 #include "screens/algo_trading/AlgoTradingScreen.h"
 #include "screens/alpha_arena/AlphaArenaScreen.h"
 #include "screens/alt_investments/AltInvestmentsScreen.h"
-#include "screens/asia_markets/AsiaMarketsScreen.h"
 #include "screens/auth/LockScreen.h"
 #include "screens/auth/LoginScreen.h"
 #include "screens/backtesting/BacktestingScreen.h"
@@ -266,7 +265,6 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("gov_data", []() { return new screens::GovDataScreen; });
     dock_router_->register_factory("dbnomics", []() { return new screens::DBnomicsScreen; });
     dock_router_->register_factory("akshare", []() { return new screens::AkShareScreen; });
-    dock_router_->register_factory("asia_markets", []() { return new screens::AsiaMarketsScreen; });
     dock_router_->register_factory("relationship_map", []() { return new screens::RelationshipMapScreen; });
     dock_router_->register_factory("equity_trading", []() { return new screens::EquityTradingScreen; });
     dock_router_->register_factory("alpha_arena", []() { return new screens::AlphaArenaScreen; });
