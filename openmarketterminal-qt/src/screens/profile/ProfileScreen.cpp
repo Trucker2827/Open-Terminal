@@ -12,6 +12,7 @@
 
 #include <QApplication>
 #include <QAbstractItemView>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -583,6 +584,242 @@ QWidget* ProfileScreen::build_automation() {
     svl->addWidget(controls);
     vl->addWidget(status_panel);
 
+    auto* simple_panel = make_panel(tr("SIMPLE TRADE AUTOMATION"));
+    auto* stl = qobject_cast<QVBoxLayout*>(simple_panel->layout());
+    daemon_simple_automation_status_ = new QLabel(tr("Checking paper automation..."));
+    daemon_simple_automation_status_->setWordWrap(true);
+    daemon_simple_automation_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                                                        .arg(ui::colors::TEXT_SECONDARY(), MF));
+    stl->addWidget(daemon_simple_automation_status_);
+
+    auto* simple_controls = new QWidget(this);
+    simple_controls->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* scl = new QHBoxLayout(simple_controls);
+    scl->setContentsMargins(12, 8, 12, 8);
+    scl->setSpacing(8);
+    auto run_simple = [&](const QStringList& automation_args, const QString& working_text) {
+        if (daemon_simple_automation_status_)
+            daemon_simple_automation_status_->setText(working_text);
+        run_daemon_cli(QStringList{QStringLiteral("automation")} + automation_args,
+                       [this](const QJsonObject& o, const QString&) {
+                           populate_daemon_simple_automation(o);
+                           refresh_daemon();
+                       },
+                       [this](const QString& msg) {
+                           if (daemon_simple_automation_status_) {
+                               daemon_simple_automation_status_->setText(msg);
+                               daemon_simple_automation_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                                                                                   .arg(ui::colors::NEGATIVE(), MF));
+                           }
+                       });
+    };
+    auto add_simple_button = [&](const QString& text, const QStringList& args, const QString& working_text) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [=]() { run_simple(args, working_text); });
+        scl->addWidget(btn);
+    };
+    add_simple_button(tr("PAPER BTC"), {QStringLiteral("start"), QStringLiteral("btc"), QStringLiteral("--amount"), QStringLiteral("50")},
+                      tr("Starting paper BTC automation..."));
+    add_simple_button(tr("PAPER MAJORS"), {QStringLiteral("start"), QStringLiteral("major"), QStringLiteral("--amount"), QStringLiteral("50")},
+                      tr("Starting paper automation for BTC, ETH, and SOL..."));
+    add_simple_button(tr("FOREVER PAPER BTC"),
+                      {QStringLiteral("forever"), QStringLiteral("btc"), QStringLiteral("--amount"), QStringLiteral("50"),
+                       QStringLiteral("--min-confidence"), QStringLiteral("80")},
+                      tr("Configuring forever paper BTC automation..."));
+    add_simple_button(tr("STATUS"), {QStringLiteral("status")}, tr("Checking paper automation..."));
+    add_simple_button(tr("STOP"), {QStringLiteral("stop")}, tr("Stopping paper automation..."));
+    scl->addStretch();
+    stl->addWidget(simple_controls);
+    vl->addWidget(simple_panel);
+
+    auto* live_panel = make_panel(tr("LIVE TRADE PERMISSIONS"));
+    auto* lbot = qobject_cast<QVBoxLayout*>(live_panel->layout());
+    auto* live_note = new QLabel(
+        tr("Arm only the trade types you explicitly want this local profile to allow. Spot can submit guarded Coinbase orders today; prediction markets and leveraged long/short stay paper/journal-only until their live routers are separately wired."));
+    live_note->setWordWrap(true);
+    live_note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 0 12px;%2")
+                                 .arg(ui::colors::TEXT_SECONDARY(), MF));
+    lbot->addWidget(live_note);
+    daemon_live_bot_status_ = new QLabel(tr("Checking live bot guard..."));
+    daemon_live_bot_status_->setWordWrap(true);
+    daemon_live_bot_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:8px 12px 2px 12px;%2")
+                                               .arg(ui::colors::TEXT_SECONDARY(), MF));
+    lbot->addWidget(daemon_live_bot_status_);
+
+    auto* live_controls = new QWidget(this);
+    live_controls->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* live_grid = new QGridLayout(live_controls);
+    live_grid->setContentsMargins(12, 8, 12, 8);
+    live_grid->setHorizontalSpacing(10);
+    live_grid->setVerticalSpacing(8);
+    auto run_live = [&](const QStringList& args, const QString& working_text) {
+        if (daemon_live_bot_status_)
+            daemon_live_bot_status_->setText(working_text);
+        run_cli_command(QStringList{QStringLiteral("automation")} + args,
+                        [this, args](const QJsonObject& o, const QString&) {
+                            if (args.value(0) == QStringLiteral("live-status")) {
+                                populate_live_bot_status(o);
+                                return;
+                            }
+                            if (args.value(0) == QStringLiteral("execute-next")) {
+                                const bool submitted = o.value(QStringLiteral("submitted")).toBool();
+                                const QString reason = o.value(QStringLiteral("reason")).toString();
+                                const QString order_id = o.value(QStringLiteral("order_id")).toString();
+                                const QString text = submitted
+                                    ? tr("Dry run passed: next action would submit. Order preview id: %1").arg(order_id.isEmpty() ? tr("preview") : order_id)
+                                    : tr("Dry run refused: %1").arg(reason.isEmpty() ? tr("no approved live candidate") : reason);
+                                if (daemon_live_bot_status_) {
+                                    daemon_live_bot_status_->setText(text);
+                                    daemon_live_bot_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                                                                               .arg(submitted ? ui::colors::AMBER() : ui::colors::TEXT_SECONDARY(), MF));
+                                }
+                                return;
+                            }
+                            run_cli_command({QStringLiteral("automation"), QStringLiteral("live-status")},
+                                            [this](const QJsonObject& status, const QString&) {
+                                                populate_live_bot_status(status);
+                                            },
+                                            [this](const QString& msg) {
+                                                if (daemon_live_bot_status_)
+                                                    daemon_live_bot_status_->setText(msg);
+                                            });
+                        },
+                        [this](const QString& msg) {
+                            if (daemon_live_bot_status_) {
+                                daemon_live_bot_status_->setText(msg);
+                                daemon_live_bot_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                                                                           .arg(ui::colors::NEGATIVE(), MF));
+                            }
+                        });
+    };
+    auto add_live_button = [&](QLayout* target, const QString& text, const QStringList& args, const QString& working_text) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [=]() { run_live(args, working_text); });
+        target->addWidget(btn);
+        return btn;
+    };
+    auto label_style = []() {
+        return QString("color:%1;font-size:11px;font-weight:700;background:transparent;%2")
+            .arg(ui::colors::TEXT_SECONDARY(), MF);
+    };
+    auto checkbox_style = []() {
+        return QString("QCheckBox{color:%1;font-size:12px;font-weight:700;background:transparent;%2}"
+                       "QCheckBox:disabled{color:%3;}")
+            .arg(ui::colors::TEXT_PRIMARY(), MF, ui::colors::TEXT_TERTIARY());
+    };
+
+    auto* venue_label = new QLabel(tr("TRADING COMPANY"));
+    venue_label->setStyleSheet(label_style());
+    auto* venue_combo = new QComboBox;
+    venue_combo->addItem(tr("Coinbase"), QStringLiteral("coinbase"));
+    venue_combo->setStyleSheet(combo_style());
+    live_grid->addWidget(venue_label, 0, 0);
+    live_grid->addWidget(venue_combo, 1, 0);
+
+    auto* symbols_label = new QLabel(tr("SYMBOLS"));
+    symbols_label->setStyleSheet(label_style());
+    auto* symbols_field = new QLineEdit(QStringLiteral("BTC-USD"));
+    symbols_field->setPlaceholderText(tr("BTC-USD or BTC-USD,ETH-USD"));
+    symbols_field->setStyleSheet(field_style());
+    live_grid->addWidget(symbols_label, 0, 1);
+    live_grid->addWidget(symbols_field, 1, 1);
+
+    auto* amount_label = new QLabel(tr("MAX ORDER"));
+    amount_label->setStyleSheet(label_style());
+    auto* amount_field = new QLineEdit(QStringLiteral("100"));
+    amount_field->setPlaceholderText(tr("USD"));
+    amount_field->setStyleSheet(field_style());
+    live_grid->addWidget(amount_label, 0, 2);
+    live_grid->addWidget(amount_field, 1, 2);
+
+    auto* strategy_label = new QLabel(tr("BOT MAY USE"));
+    strategy_label->setStyleSheet(label_style());
+    live_grid->addWidget(strategy_label, 2, 0);
+    auto* strategy_row = new QWidget(this);
+    strategy_row->setStyleSheet("background:transparent;");
+    auto* sr = new QHBoxLayout(strategy_row);
+    sr->setContentsMargins(0, 0, 0, 0);
+    sr->setSpacing(14);
+    auto* scalp_box = new QCheckBox(tr("SCALP"));
+    auto* spot_box = new QCheckBox(tr("SPOT BUY/SELL"));
+    auto* long_short_box = new QCheckBox(tr("LONG/SHORT WATCH"));
+    scalp_box->setStyleSheet(checkbox_style());
+    spot_box->setStyleSheet(checkbox_style());
+    long_short_box->setStyleSheet(checkbox_style());
+    spot_box->setChecked(true);
+    long_short_box->setToolTip(tr("Arms long/short monitoring and decision journaling only. Live leveraged order submission is still locked."));
+    sr->addWidget(scalp_box);
+    sr->addWidget(spot_box);
+    sr->addWidget(long_short_box);
+    sr->addStretch();
+    live_grid->addWidget(strategy_row, 3, 0, 1, 3);
+
+    auto* strategy_note = new QLabel(
+        tr("If multiple executable lanes are armed, execute-next searches them for a fresh approved candidate. Long/short is included for monitoring and scoring, not live leveraged submission."));
+    strategy_note->setWordWrap(true);
+    strategy_note->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
+                                     .arg(ui::colors::TEXT_SECONDARY(), MF));
+    live_grid->addWidget(strategy_note, 4, 0, 1, 3);
+
+    auto* action_row = new QWidget(this);
+    action_row->setStyleSheet("background:transparent;");
+    auto* ar = new QHBoxLayout(action_row);
+    ar->setContentsMargins(0, 0, 0, 0);
+    ar->setSpacing(8);
+    auto* arm_selected = new QPushButton(tr("ARM SELECTED BOT"));
+    arm_selected->setFixedHeight(28);
+    arm_selected->setCursor(Qt::PointingHandCursor);
+    arm_selected->setStyleSheet(button_style());
+    connect(arm_selected, &QPushButton::clicked, this, [=, this]() {
+        QStringList strategies;
+        if (scalp_box->isChecked()) strategies << QStringLiteral("scalp");
+        if (spot_box->isChecked()) strategies << QStringLiteral("spot");
+        if (long_short_box->isChecked()) strategies << QStringLiteral("long-short");
+        if (strategies.isEmpty()) {
+            if (daemon_live_bot_status_)
+                daemon_live_bot_status_->setText(tr("Choose at least one strategy lane before arming the bot."));
+            return;
+        }
+        const QString amount = amount_field->text().trimmed().isEmpty() ? QStringLiteral("100") : amount_field->text().trimmed();
+        const QString symbols = symbols_field->text().trimmed().isEmpty() ? QStringLiteral("BTC-USD") : symbols_field->text().trimmed();
+        run_live({QStringLiteral("arm-bot"),
+                  QStringLiteral("--venue"), venue_combo->currentData().toString(),
+                  QStringLiteral("--strategies"), strategies.join(','),
+                  QStringLiteral("--max-order-usd"), amount,
+                  QStringLiteral("--symbols"), symbols,
+                  QStringLiteral("--target-move-pct"), QStringLiteral("5"),
+                  QStringLiteral("--min-spot-edge-bps"), QStringLiteral("50"),
+                  QStringLiteral("--min-confidence"), QStringLiteral("80"),
+                  QStringLiteral("--expires-min"), QStringLiteral("120"),
+                  QStringLiteral("--max-age-sec"), QStringLiteral("900"),
+                  QStringLiteral("--max-daily-orders"), QStringLiteral("1"),
+                  QStringLiteral("--entry-offset-bps"), QStringLiteral("5"),
+                  QStringLiteral("--yes"),
+                  QStringLiteral("--i-understand-live-risk")},
+                 tr("Arming selected bot lanes..."));
+    });
+    ar->addWidget(arm_selected);
+    add_live_button(ar, tr("DISARM ALL"),
+                    {QStringLiteral("disarm-live"), QStringLiteral("--yes")},
+                    tr("Disarming live bot..."));
+    add_live_button(ar, tr("DRY RUN NEXT"),
+                    {QStringLiteral("execute-next"),
+                     QStringLiteral("--symbol"), QStringLiteral("BTC-USD"),
+                     QStringLiteral("--dry-run")},
+                    tr("Testing next armed bot action without sending an order..."));
+    add_live_button(ar, tr("STATUS"), {QStringLiteral("live-status")}, tr("Checking live bot guard..."));
+    ar->addStretch();
+    live_grid->addWidget(action_row, 5, 0, 1, 3);
+
+    lbot->addWidget(live_controls);
+    vl->addWidget(live_panel);
+
     auto* collectors_panel = make_panel(tr("DATA COLLECTORS"));
     auto* cvl = qobject_cast<QVBoxLayout*>(collectors_panel->layout());
     auto* collectors_top = new QWidget(this);
@@ -852,6 +1089,12 @@ QString ProfileScreen::daemon_cli_path() const {
 void ProfileScreen::run_daemon_cli(const QStringList& daemon_args,
                                    std::function<void(const QJsonObject&, const QString&)> on_success,
                                    std::function<void(const QString&)> on_error) {
+    run_cli_command(QStringList{QStringLiteral("daemon")} + daemon_args, on_success, on_error);
+}
+
+void ProfileScreen::run_cli_command(const QStringList& command_args,
+                                    std::function<void(const QJsonObject&, const QString&)> on_success,
+                                    std::function<void(const QString&)> on_error) {
     const QString cli = daemon_cli_path();
     if (cli.isEmpty()) {
         const QString msg = tr("openterminalcli not found next to the app or in PATH");
@@ -861,9 +1104,8 @@ void ProfileScreen::run_daemon_cli(const QStringList& daemon_args,
     }
 
     auto* proc = new QProcess(this);
-    QStringList args{QStringLiteral("--json"), QStringLiteral("--profile"), ProfileManager::instance().active(),
-                     QStringLiteral("daemon")};
-    args << daemon_args;
+    QStringList args{QStringLiteral("--json"), QStringLiteral("--profile"), ProfileManager::instance().active()};
+    args << command_args;
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             [this, proc, on_success, on_error](int code, QProcess::ExitStatus status) {
                 const QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
@@ -1082,6 +1324,146 @@ void ProfileScreen::populate_daemon_collectors(const QJsonObject& collectors) {
     }
 }
 
+void ProfileScreen::populate_daemon_simple_automation(const QJsonObject& automation) {
+    if (!daemon_simple_automation_status_)
+        return;
+
+    const QJsonObject cfg = automation.value(QStringLiteral("config")).toObject();
+    const QJsonObject state = automation.value(QStringLiteral("state")).toObject();
+    const QJsonObject daemon = automation.value(QStringLiteral("daemon")).toObject();
+    const QJsonObject effective = state.value(QStringLiteral("config")).toObject(cfg);
+    const bool enabled = effective.value(QStringLiteral("enabled")).toBool(cfg.value(QStringLiteral("enabled")).toBool());
+    const bool running = daemon.value(QStringLiteral("running")).toBool();
+
+    QStringList symbols;
+    for (const QJsonValue& v : effective.value(QStringLiteral("symbols")).toArray())
+        symbols << v.toString();
+    if (symbols.isEmpty())
+        symbols << tr("none");
+
+    QStringList amounts;
+    for (const QJsonValue& v : effective.value(QStringLiteral("paper_amounts_usd")).toArray()) {
+        const double amount = v.toDouble();
+        amounts << tr("$%1").arg(QString::number(amount, 'f', amount == std::floor(amount) ? 0 : 2));
+    }
+    if (amounts.isEmpty())
+        amounts << tr("$50");
+    const double min_confidence = effective.value(QStringLiteral("min_confidence")).toDouble();
+    const QString confidence_label = min_confidence > 0.0
+                                         ? tr("%1%+ confidence").arg(QString::number(min_confidence * 100.0, 'f', 0))
+                                         : tr("cost gate only");
+
+    const QJsonArray decisions = state.value(QStringLiteral("decisions")).toArray();
+    int candidates = 0;
+    int watches = 0;
+    int no_trades = 0;
+    for (const QJsonValue& v : decisions) {
+        const QString verdict = v.toObject().value(QStringLiteral("verdict")).toString();
+        if (verdict.contains(QStringLiteral("CANDIDATE"), Qt::CaseInsensitive))
+            ++candidates;
+        else if (verdict.contains(QStringLiteral("WATCH"), Qt::CaseInsensitive))
+            ++watches;
+        else
+            ++no_trades;
+    }
+
+    QString text;
+    QString color = ui::colors::TEXT_SECONDARY();
+    if (!enabled) {
+        text = tr("Paper automation is off. Use PAPER BTC or PAPER MAJORS to start a safe paper-only watcher.");
+        color = ui::colors::TEXT_TERTIARY();
+    } else {
+        text = tr("Paper automation is on for %1 using %2, %3. Daemon: %4. Latest scan: %5 candidates, %6 watch, %7 no-trade.")
+                   .arg(symbols.join(QStringLiteral(", ")),
+                        amounts.join(QStringLiteral(", ")),
+                        confidence_label,
+                        running ? tr("running") : tr("not running"),
+                        QString::number(candidates),
+                        QString::number(watches),
+                        QString::number(no_trades));
+        color = running ? ui::colors::POSITIVE() : ui::colors::AMBER();
+    }
+
+    daemon_simple_automation_status_->setText(text);
+    daemon_simple_automation_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                                                        .arg(color, MF));
+}
+
+void ProfileScreen::populate_live_bot_status(const QJsonObject& status) {
+    if (!daemon_live_bot_status_)
+        return;
+
+    const bool armed = status.value(QStringLiteral("bot_armed")).toBool();
+    const bool expired = status.value(QStringLiteral("bot_expired")).toBool();
+    const bool kill = status.value(QStringLiteral("kill_switch")).toBool();
+    const bool cli = status.value(QStringLiteral("cli_trading_allowed")).toBool();
+    const bool live = status.value(QStringLiteral("cli_live_armed")).toBool();
+    const bool fast = status.value(QStringLiteral("cli_fast_live_armed")).toBool();
+    const bool venue = status.value(QStringLiteral("venue_allowed")).toBool();
+    const QString active_venue = status.value(QStringLiteral("venue")).toString(QStringLiteral("coinbase"));
+    const QJsonObject guard = status.value(QStringLiteral("guard")).toObject();
+
+    QStringList allowed;
+    for (const QJsonValue& v : status.value(QStringLiteral("allowed_venues")).toArray())
+        allowed << v.toString();
+    QStringList strategies;
+    for (const QJsonValue& v : status.value(QStringLiteral("strategies")).toArray())
+        strategies << v.toString();
+    QStringList journal_only;
+    for (const QJsonValue& v : status.value(QStringLiteral("journal_only_strategies")).toArray())
+        journal_only << v.toString();
+
+    QStringList blocked;
+    if (!armed)
+        blocked << tr("bot not armed");
+    if (expired)
+        blocked << tr("arm window expired");
+    if (kill)
+        blocked << tr("kill switch is on");
+    if (!cli)
+        blocked << tr("CLI trading is off");
+    if (!live)
+        blocked << tr("CLI LIVE trading is not armed");
+    if (!fast)
+        blocked << tr("FAST live mode is not armed");
+    if (!venue)
+        blocked << tr("%1 is not in allowed AI venues").arg(active_venue);
+
+    const double max_order = guard.value(QStringLiteral("max_order_usd")).toDouble(100.0);
+    const double target = guard.value(QStringLiteral("target_move_pct")).toDouble(5.0);
+    const double min_conf = guard.value(QStringLiteral("min_confidence")).toDouble(0.8) * 100.0;
+    const QString expires = guard.value(QStringLiteral("expires_at")).toString();
+
+    QString text;
+    QString color;
+    if (blocked.isEmpty()) {
+        text = tr("READY: %1 bot is armed for %2. It may place at most one post-only live order up to $%3 when an armed executable lane produces a fresh approved BUY candidate. Target move: %4%. Minimum confidence: %5%. Expires: %6.")
+                   .arg(active_venue,
+                        strategies.isEmpty() ? tr("scalp") : strategies.join(QStringLiteral(", ")),
+                        QString::number(max_order, 'f', 0),
+                        QString::number(target, 'f', 1),
+                        QString::number(min_conf, 'f', 0),
+                        expires.isEmpty() ? tr("unknown") : expires);
+        if (!journal_only.isEmpty() && strategies.contains(QStringLiteral("long-short")))
+            text += tr(" Long/short is armed for watch/journal only, not live leveraged submission.");
+        color = ui::colors::POSITIVE();
+    } else if (armed && !expired) {
+        text = tr("ARMED BUT BLOCKED: %1. Armed company: %2. Armed lanes: %3. To allow live execution, open Settings > Security, keep Kill Switch off, enable CLI Trading, CLI LIVE Trading, FAST Live Mode, and add the company to Allowed AI venues.")
+                   .arg(blocked.join(QStringLiteral("; ")),
+                        active_venue,
+                        strategies.isEmpty() ? tr("none") : strategies.join(QStringLiteral(", ")));
+        color = ui::colors::AMBER();
+    } else {
+        text = tr("OFF: live bot is not currently ready. Choose a trading company, choose the strategy lanes, then use ARM SELECTED BOT. Master safety gates still live in Settings > Security. Allowed venues now: %1.")
+                   .arg(allowed.isEmpty() ? tr("none") : allowed.join(QStringLiteral(", ")));
+        color = ui::colors::TEXT_SECONDARY();
+    }
+
+    daemon_live_bot_status_->setText(text);
+    daemon_live_bot_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 2px 12px;%2")
+                                               .arg(color, MF));
+}
+
 void ProfileScreen::populate_daemon_audit(const QJsonObject& audit) {
     if (!daemon_audit_status_)
         return;
@@ -1223,6 +1605,18 @@ void ProfileScreen::refresh_daemon() {
                                           if (daemon_collectors_status_)
                                               daemon_collectors_status_->setText(msg);
                                       });
+                       run_daemon_cli({QStringLiteral("automation"), QStringLiteral("status")},
+                                      [this](const QJsonObject& o, const QString&) { populate_daemon_simple_automation(o); },
+                                      [this](const QString& msg) {
+                                          if (daemon_simple_automation_status_)
+                                              daemon_simple_automation_status_->setText(msg);
+                                      });
+                       run_cli_command({QStringLiteral("automation"), QStringLiteral("live-status")},
+                                       [this](const QJsonObject& o, const QString&) { populate_live_bot_status(o); },
+                                       [this](const QString& msg) {
+                                           if (daemon_live_bot_status_)
+                                               daemon_live_bot_status_->setText(msg);
+                                       });
                        run_daemon_cli({QStringLiteral("audit")},
                                       [this](const QJsonObject& o, const QString&) { populate_daemon_audit(o); });
                        run_daemon_cli({QStringLiteral("logs"), QStringLiteral("jobs"), QStringLiteral("--lines"), QStringLiteral("80")},

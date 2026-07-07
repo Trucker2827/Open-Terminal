@@ -810,6 +810,9 @@ void CryptoOrderEntry::update_cost_preview() {
                                            : 0.0;
         const double execution_cost = fee + spread_cost + slippage_cost;
         const double round_trip_breakeven_pct = notional > 0 ? (2.0 * execution_cost / notional) * 100.0 : 0.0;
+        const double swing3 = 3.0 - round_trip_breakeven_pct;
+        const double swing5 = 5.0 - round_trip_breakeven_pct;
+        const double swing8 = 8.0 - round_trip_breakeven_pct;
         const double total = is_buy_side_ ? margin + execution_cost : std::max(0.0, margin - execution_cost);
         const double pct = balance_ > 0 ? (margin / balance_) * 100.0 : 0.0;
         const double avail = std::max(0.0, balance_ - total);
@@ -826,6 +829,11 @@ void CryptoOrderEntry::update_cost_preview() {
                                    fmt_money(fee),
                                    fmt_money(spread_cost),
                                    fmt_money(slippage_cost));
+        tooltip += QStringLiteral("\nRound-trip breakeven: %1%\nSwing lens net after cost: 3%% -> %2%%, 5%% -> %3%%, 8%% -> %4%%")
+                       .arg(round_trip_breakeven_pct, 0, 'f', 2)
+                       .arg(swing3, 0, 'f', 2)
+                       .arg(swing5, 0, 'f', 2)
+                       .arg(swing8, 0, 'f', 2);
         if (!schedule.note.isEmpty())
             tooltip += QStringLiteral("\n") + schedule.note;
         if (post_only)
@@ -835,8 +843,9 @@ void CryptoOrderEntry::update_cost_preview() {
         total_label_->setToolTip(is_buy_side_ ? tr("Estimated debit including fee, spread, and slippage")
                                               : tr("Estimated proceeds after fee, spread, and slippage"));
         recv_label_->setText(is_buy_side_ ? fmt_base(qty) : fmt_money(std::max(0.0, qty * price - execution_cost)));
-        pct_used_label_->setText(QStringLiteral("RT %1%  ·  bal %2%")
+        pct_used_label_->setText(QStringLiteral("RT %1%  ·  5% swing net %2%  ·  bal %3%")
                                      .arg(round_trip_breakeven_pct, 0, 'f', 2)
+                                     .arg(swing5, 0, 'f', 2)
                                      .arg(pct, 0, 'f', 2));
         if (avail_label_)
             avail_label_->setText(fmt_money(avail));

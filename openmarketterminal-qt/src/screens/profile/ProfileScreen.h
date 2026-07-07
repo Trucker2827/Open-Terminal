@@ -72,6 +72,8 @@ class ProfileScreen : public QWidget {
     QLabel* daemon_jobs_summary_ = nullptr;
     QLabel* daemon_collectors_summary_ = nullptr;
     QLabel* daemon_collectors_status_ = nullptr;
+    QLabel* daemon_simple_automation_status_ = nullptr;
+    QLabel* daemon_live_bot_status_ = nullptr;
     QLabel* daemon_audit_status_ = nullptr;
     QLabel* daemon_action_status_ = nullptr;
     QPlainTextEdit* daemon_logs_ = nullptr;
@@ -98,6 +100,9 @@ class ProfileScreen : public QWidget {
     QWidget* make_data_row(const QString& label, QLabel*& value_out);
     QWidget* make_stat_box(const QString& label, QLabel*& value_out, const QString& color);
     QString daemon_cli_path() const;
+    void run_cli_command(const QStringList& args,
+                         std::function<void(const QJsonObject&, const QString&)> on_success,
+                         std::function<void(const QString&)> on_error = {});
     void run_daemon_cli(const QStringList& daemon_args,
                         std::function<void(const QJsonObject&, const QString&)> on_success,
                         std::function<void(const QString&)> on_error = {});
@@ -105,6 +110,8 @@ class ProfileScreen : public QWidget {
     void populate_daemon_health(const QJsonObject& health);
     void populate_daemon_jobs(const QJsonArray& jobs);
     void populate_daemon_collectors(const QJsonObject& collectors);
+    void populate_daemon_simple_automation(const QJsonObject& automation);
+    void populate_live_bot_status(const QJsonObject& status);
     void populate_daemon_audit(const QJsonObject& audit);
     void populate_daemon_logs(const QJsonObject& logs);
     void populate_daemon_job_detail(const QJsonObject& job);
