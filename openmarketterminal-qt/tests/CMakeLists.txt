@@ -350,3 +350,10 @@ add_executable(tst_sandbox_registry tst_sandbox_registry.cpp)
 target_include_directories(tst_sandbox_registry PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_registry PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_registry COMMAND tst_sandbox_registry)
+
+# Strategy Sandbox Task 3 — TickTail: tail reader over scalp_ticks.jsonl (+
+# .1 rotation predecessor) for the fill model. Pure file reader, no DB.
+add_executable(tst_sandbox_ticktail tst_sandbox_ticktail.cpp)
+target_include_directories(tst_sandbox_ticktail PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_sandbox_ticktail PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_sandbox_ticktail COMMAND tst_sandbox_ticktail)
