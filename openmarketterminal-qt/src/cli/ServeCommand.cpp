@@ -4528,14 +4528,39 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
               QStringLiteral("--stream-ms"), QStringLiteral("8000"),
               QStringLiteral("--timeout-ms"), QStringLiteral("5000")},
              20, 30},
-            {QStringLiteral("crypto-universe-decisions"), QStringLiteral("Strategy sandbox crypto decisions"),
-             QStringLiteral("Produce cost-aware crypto spot recommendation rows for the spot strategy book."),
-             {QStringLiteral("edge"), QStringLiteral("crypto-universe"),
+            // Real-horizon reshape (task 3): the season-1 spot books trade
+            // 1h/4h/1d swings (see SandboxRegistry.cpp's spot_1h/4h/1d
+            // seeds), not a 60s scalp-adjacent horizon -- crypto-universe
+            // --horizon-sec 60 never matched any of them (min_horizon_sec
+            // 3600 always rejected it). `edge spot-swing-gate` forwards to
+            // the same crypto-universe producer (source='edge crypto-
+            // recommend', CommandDispatch.cpp:14491 -> :13611) with a cost-
+            // aware fee/target profile computed from --horizon, so one job
+            // per spot book horizon now feeds all three real books.
+            {QStringLiteral("spot-swing-1h-decisions"), QStringLiteral("Strategy sandbox spot swing 1h decisions"),
+             QStringLiteral("Produce Coinbase spot swing recommendation rows (1h horizon) for the spot_1h strategy book."),
+             {QStringLiteral("edge"), QStringLiteral("spot-swing-gate"),
+              QStringLiteral("--symbols"), QStringLiteral("BTC,ETH,SOL"),
               QStringLiteral("--venue"), QStringLiteral("coinbase"),
-              QStringLiteral("--horizon-sec"), QStringLiteral("60"),
-              QStringLiteral("--duration-ms"), QStringLiteral("1500"),
-              QStringLiteral("--min-edge-bps"), QStringLiteral("25")},
+              QStringLiteral("--horizon"), QStringLiteral("1h"),
+              QStringLiteral("--duration-ms"), QStringLiteral("1500")},
              300, 180},
+            {QStringLiteral("spot-swing-4h-decisions"), QStringLiteral("Strategy sandbox spot swing 4h decisions"),
+             QStringLiteral("Produce Coinbase spot swing recommendation rows (4h horizon) for the spot_4h strategy book."),
+             {QStringLiteral("edge"), QStringLiteral("spot-swing-gate"),
+              QStringLiteral("--symbols"), QStringLiteral("BTC,ETH,SOL"),
+              QStringLiteral("--venue"), QStringLiteral("coinbase"),
+              QStringLiteral("--horizon"), QStringLiteral("4h"),
+              QStringLiteral("--duration-ms"), QStringLiteral("1500")},
+             900, 180},
+            {QStringLiteral("spot-swing-1d-decisions"), QStringLiteral("Strategy sandbox spot swing 1d decisions"),
+             QStringLiteral("Produce Coinbase spot swing recommendation rows (1d horizon) for the spot_1d strategy book."),
+             {QStringLiteral("edge"), QStringLiteral("spot-swing-gate"),
+              QStringLiteral("--symbols"), QStringLiteral("BTC,ETH,SOL"),
+              QStringLiteral("--venue"), QStringLiteral("coinbase"),
+              QStringLiteral("--horizon"), QStringLiteral("1d"),
+              QStringLiteral("--duration-ms"), QStringLiteral("1500")},
+             3600, 180},
             {QStringLiteral("btc5m-decisions"), QStringLiteral("Strategy sandbox BTC 5m decisions"),
              QStringLiteral("Produce BTC five-minute prediction decision rows for the btc5m strategy book."),
              {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("evaluate-btc5m-live"),
@@ -4561,14 +4586,10 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
               QStringLiteral("--limit"), QStringLiteral("50"),
               QStringLiteral("--timeout-ms"), QStringLiteral("20000")},
              300, 120},
-            {QStringLiteral("chronos2-btc-5m"), QStringLiteral("Strategy sandbox Chronos BTC 5m"),
-             QStringLiteral("Run Chronos-2 BTC 5m forecast and journal price-forecast candidates."),
-             {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
-              QStringLiteral("BTC-USD"),
-              QStringLiteral("--horizon"), QStringLiteral("5m"),
-              QStringLiteral("--journal"),
-              QStringLiteral("--min-journal-edge-bps"), QStringLiteral("8")},
-             300, 300},
+            // Real-horizon reshape (task 3): the chronos2_5m book is retired
+            // (no venue / no edge, SandboxRegistry.cpp's seed no longer
+            // registers it) -- its forecast producer job is removed too, so
+            // no installed job spends a Chronos-2 call on a 5m horizon.
             {QStringLiteral("chronos2-btc-15m"), QStringLiteral("Strategy sandbox Chronos BTC 15m"),
              QStringLiteral("Run Chronos-2 BTC forecast and journal price-forecast candidates for sandbox proofing."),
              {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),

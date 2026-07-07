@@ -483,6 +483,15 @@ private slots:
     // slot with no predecessors, so a slot may not lean on an earlier slot
     // having set HOME or brought the runtime/DB up; sandbox_test_home()
     // does both.
+    // Real-horizon reshape (task 2): the season-1 seed set is now 11 rows
+    // (spot 1h/4h/1d, kalshi 15m/1h/1d, long_short, chronos2/1h/1d/equity --
+    // scalp/btc5m/chronos2_5m retired, not seeded), and 'spot'/'kalshi' are
+    // each THREE rows of the same kind (distinct strategy_ids). This test
+    // picks the LAST-seen row of kind 'spot' for the pause/resume half and
+    // the LAST-seen row of kind 'kalshi' for the retire half (replacing the
+    // old btc5m fixture, which no longer exists post-reshape) -- exercising
+    // the exact same pause/resume/retire status-flip contract on two
+    // distinct still-seeded kinds.
     void sandbox_seed_list_pause_resume_retire() {
         sandbox_test_home();
         int rc = -1;
@@ -490,27 +499,27 @@ private slots:
             QStringList{"--json", "sandbox", "seed"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray seeded_ids = seeded.value("seeded").toArray();
-        QCOMPARE(seeded_ids.size(), 10);
+        QCOMPARE(seeded_ids.size(), 11);
         QCOMPARE(seeded.value("retired_stale").toInt(-1), 0);
 
         QJsonObject listed = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray rows = listed.value("strategies").toArray();
-        QCOMPARE(rows.size(), 10);
+        QCOMPARE(rows.size(), 11);
 
         QString spot_id;
-        QString btc5m_id;
+        QString kalshi_id;
         for (const QJsonValue& v : rows) {
             const QJsonObject row = v.toObject();
             QCOMPARE(row.value("status").toString(), QString("active"));
             if (row.value("kind").toString() == QLatin1String("spot"))
                 spot_id = row.value("strategy_id").toString();
-            if (row.value("kind").toString() == QLatin1String("btc5m"))
-                btc5m_id = row.value("strategy_id").toString();
+            if (row.value("kind").toString() == QLatin1String("kalshi"))
+                kalshi_id = row.value("strategy_id").toString();
         }
         QVERIFY(!spot_id.isEmpty());
-        QVERIFY(!btc5m_id.isEmpty());
+        QVERIFY(!kalshi_id.isEmpty());
 
         // pause prints the updated row and flips it out of the active count.
         const QJsonObject paused = json_object_from_dispatch(
@@ -522,7 +531,7 @@ private slots:
         QJsonObject active_after_pause = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 9);
+        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 10);
 
         // resume flips it back.
         const QJsonObject resumed = json_object_from_dispatch(
@@ -532,22 +541,22 @@ private slots:
         QJsonObject active_after_resume = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 10);
+        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 11);
 
         // retire is permanent-by-convention here but still just a status flip.
         const QJsonObject retired = json_object_from_dispatch(
-            QStringList{"--json", "sandbox", "retire", btc5m_id}, &rc);
+            QStringList{"--json", "sandbox", "retire", kalshi_id}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(retired.value("status").toString(), QString("retired"));
         QJsonObject active_after_retire = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 9);
+        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 10);
 
         // put it back so later slots in this file see the full season-1 set.
         rc = -1;
         capture_stdout([&]() {
-            rc = dispatch({QStringLiteral("sandbox"), QStringLiteral("resume"), btc5m_id});
+            rc = dispatch({QStringLiteral("sandbox"), QStringLiteral("resume"), kalshi_id});
             return rc;
         });
         QCOMPARE(rc, 0);
@@ -680,6 +689,8 @@ private slots:
         bool has_chronos_15m = false;
         bool has_chronos_1h = false;
         bool has_chronos_1d = false;
+        bool has_spot_swing_1h = false;
+        bool has_stale_crypto_universe_60 = false;
         auto starts_with = [](const QStringList& command, const QStringList& prefix) {
             if (command.size() < prefix.size())
                 return false;
@@ -697,8 +708,11 @@ private slots:
                 has_btc_ticks = true;
             } else if (starts_with(command, QStringList{"edge", "long-short-strategy", "BTC-USD"})) {
                 has_long_short = true;
-            } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "5m",
-                                             "--journal", "--min-journal-edge-bps", "8"}) {
+            } else if (starts_with(command, QStringList{"edge", "chronos2", "forecast", "BTC-USD"}) &&
+                       command.contains(QStringLiteral("--horizon")) &&
+                       command.at(command.indexOf(QStringLiteral("--horizon")) + 1) == QStringLiteral("5m")) {
+                // Real-horizon reshape (task 3): no installed job may run a
+                // 5m chronos forecast -- unreal, no venue, retired kind.
                 has_chronos_5m = true;
             } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "15m",
                                              "--journal", "--min-journal-edge-bps", "15"}) {
@@ -709,6 +723,16 @@ private slots:
             } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "1d",
                                              "--journal", "--min-journal-edge-bps", "75"}) {
                 has_chronos_1d = true;
+            } else if (starts_with(command, QStringList{"edge", "spot-swing-gate"})) {
+                // Real-horizon reshape (task 3): the spot feed emits >=1h
+                // horizons via spot-swing-gate, not crypto-universe
+                // --horizon-sec 60. At minimum the 1h feed must exist.
+                const int hidx = command.indexOf(QStringLiteral("--horizon"));
+                if (hidx >= 0 && hidx + 1 < command.size() && command.at(hidx + 1) == QStringLiteral("1h"))
+                    has_spot_swing_1h = true;
+            } else if (command == QStringList{"edge", "crypto-universe", "--venue", "coinbase", "--horizon-sec",
+                                             "60", "--duration-ms", "1500", "--min-edge-bps", "25"}) {
+                has_stale_crypto_universe_60 = true;
             } else if (command == QStringList{"sandbox", "tick"}) {
                 has_tick = true;
                 QCOMPARE(job.value("interval_sec").toInt(), 30);
@@ -721,10 +745,14 @@ private slots:
         }
         QVERIFY2(has_btc_ticks, "install-jobs must keep BTC tick data warm");
         QVERIFY2(has_long_short, "install-jobs must create the Coinbase long/short proof producer");
-        QVERIFY2(has_chronos_5m, "install-jobs must create the Chronos BTC 5m producer");
+        QVERIFY2(!has_chronos_5m, "install-jobs must not install a 5m chronos forecast job");
         QVERIFY2(has_chronos_15m, "install-jobs must create the Chronos BTC 15m producer");
         QVERIFY2(has_chronos_1h, "install-jobs must create the Chronos BTC 1h producer");
         QVERIFY2(has_chronos_1d, "install-jobs must create the Chronos BTC 1d producer");
+        QVERIFY2(has_spot_swing_1h,
+                 "install-jobs must create the spot-swing-gate 1h producer feeding the spot_1h book");
+        QVERIFY2(!has_stale_crypto_universe_60,
+                 "install-jobs must not install the stale crypto-universe --horizon-sec 60 spot job");
         QVERIFY2(has_tick, "install-jobs must create the sandbox tick job");
         QVERIFY2(has_score, "install-jobs must create the sandbox score-now job");
     }
