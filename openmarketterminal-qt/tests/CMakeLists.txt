@@ -365,3 +365,12 @@ add_executable(tst_sandbox_fillmodel tst_sandbox_fillmodel.cpp)
 target_include_directories(tst_sandbox_fillmodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_fillmodel PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_fillmodel COMMAND tst_sandbox_fillmodel)
+
+# Strategy Sandbox Task 5 — PaperExecutor::run_cycle: candidate selection/
+# opening per strategy kind, pending_fill -> open|unfilled, open -> closed.
+# Same DB bootstrap as tst_sandbox_registry/tst_sandbox_schema, plus fixture
+# ticks/decisions files under a per-test QTemporaryDir daemon_dir.
+add_executable(tst_sandbox_executor tst_sandbox_executor.cpp)
+target_include_directories(tst_sandbox_executor PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_sandbox_executor PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_sandbox_executor COMMAND tst_sandbox_executor)

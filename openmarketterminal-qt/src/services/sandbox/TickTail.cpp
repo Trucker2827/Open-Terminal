@@ -32,10 +32,14 @@ QByteArray read_tail(const QString& path, qint64 max_bytes) {
     return f.readAll();
 }
 
+} // namespace
+
 // Copy of automation::latest_candidate's active+prev blending: when the
 // active file is shorter than tail_bytes, fill the remaining budget from the
 // tail of the ".1" rotation predecessor, placed BEFORE the active file's
-// bytes so overall ordering stays oldest-to-newest.
+// bytes so overall ordering stays oldest-to-newest. Promoted out of this
+// file's anonymous namespace (Task 5) so PaperExecutor.cpp can reuse it to
+// tail-scan scalp_decisions.jsonl instead of duplicating a third copy.
 QByteArray read_tail_with_prev(const QString& path, qint64 tail_bytes) {
     const qint64 active_size = QFileInfo(path).size();
     const QByteArray active_tail = read_tail(path, tail_bytes);
@@ -45,8 +49,6 @@ QByteArray read_tail_with_prev(const QString& path, qint64 tail_bytes) {
     }
     return active_tail;
 }
-
-} // namespace
 
 QVector<TickRow> ticks_since(const QString& ticks_path, const QString& symbol, qint64 since_ms,
                               qint64 tail_bytes) {

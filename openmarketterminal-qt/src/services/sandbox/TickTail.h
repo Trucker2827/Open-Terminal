@@ -15,6 +15,7 @@
 // prepend-when-short fallback. Keep the two in sync by hand if either
 // changes.
 
+#include <QByteArray>
 #include <QString>
 #include <QVector>
 
@@ -42,5 +43,15 @@ inline constexpr qint64 kTickTailBytes = 2LL * 1024 * 1024;
 
 QVector<TickRow> ticks_since(const QString& ticks_path, const QString& symbol, qint64 since_ms,
                               qint64 tail_bytes = kTickTailBytes);
+
+// Promoted for reuse by PaperExecutor.cpp (Task 5), which needs the exact
+// same active+".1" blending rule to tail-scan scalp_decisions.jsonl for scalp
+// candidates without including the CLI-layer AutomationState.h (see the
+// layering note above). Reads the last tail_bytes of path, plus, when the
+// active file is shorter than tail_bytes, the tail end of path + ".1" to
+// fill the remaining budget -- placed BEFORE the active file's bytes so
+// overall ordering stays oldest-to-newest. Same trim-at-first-newline
+// semantics as automation::read_tail when a file exceeds its byte budget.
+QByteArray read_tail_with_prev(const QString& path, qint64 tail_bytes);
 
 } // namespace openmarketterminal::services::sandbox

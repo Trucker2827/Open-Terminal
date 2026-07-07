@@ -1373,6 +1373,8 @@ set(SERVICE_SOURCES
     src/services/sandbox/TickTail.cpp
     # Strategy Sandbox — pure fill/exit rules for the paper executor (Task 4).
     src/services/sandbox/PaperFillModel.cpp
+    # Strategy Sandbox — PaperExecutor: run_cycle candidate open/fill/exit (Task 5).
+    src/services/sandbox/PaperExecutor.cpp
 )
 
 # UI framework
