@@ -91,6 +91,12 @@ class EdgePredictionModelRepository : public BaseRepository<EdgePredictionObserv
     // real historical series — backfilled ticks share one received_ts, so the
     // default received_ts ordering hides imported history.
     Result<QVector<EdgePredictionRawTick>> list_raw_ticks_by_exchange_time(const QString& symbol, int limit);
+    // Per-minute downsampled price series since a market time (exchange_ts). Live
+    // ticks are dense (~hundreds/min), so a raw-tick count cap can't span the days
+    // a long-horizon forecast needs; aggregating to one point per minute decouples
+    // context length from tick density.
+    Result<QVector<EdgePredictionRawTick>> list_price_series_since(const QString& symbol, qint64 since_ms,
+                                                                  int max_rows = 300000);
     Result<int> count_raw_ticks(const QString& symbol = {}, qint64 since_ms = 0);
     Result<void> add_market_snapshot(const EdgePredictionMarketSnapshot& snapshot);
 

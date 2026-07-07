@@ -18168,7 +18168,19 @@ static int edge_chronos2_command(const GlobalOpts& opts, QStringList args) {
     if (!edge_parse_bps_text(journal_edge_raw, min_journal_edge_bps, "--min-journal-edge-bps"))
         return 2;
 
-    auto ticks_result = EdgePredictionModelRepository::instance().list_raw_ticks_by_exchange_time(raw_symbol, limit);
+    // Window the market-time read by horizon: long horizons reach the backfilled
+    // history, short ones stay light. Per-minute downsample keeps it independent
+    // of live-tick density (which is far too high for a raw count cap to span days).
+    int window_days = 5;
+    if (horizon == QLatin1String("5m") || horizon == QLatin1String("15m"))
+        window_days = 2;
+    else if (horizon == QLatin1String("1h"))
+        window_days = 5;
+    else if (horizon == QLatin1String("1d"))
+        window_days = 45;
+    const qint64 since_ms = QDateTime::currentMSecsSinceEpoch() -
+                            static_cast<qint64>(window_days) * 86400LL * 1000LL;
+    auto ticks_result = EdgePredictionModelRepository::instance().list_price_series_since(raw_symbol, since_ms, limit);
     if (ticks_result.is_err()) {
         std::fprintf(stderr, "%s\n", ticks_result.error().c_str());
         return 5;
