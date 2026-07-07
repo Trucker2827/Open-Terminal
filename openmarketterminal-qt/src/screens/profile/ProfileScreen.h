@@ -75,11 +75,14 @@ class ProfileScreen : public QWidget {
     QLabel* daemon_simple_automation_status_ = nullptr;
     QLabel* daemon_live_bot_status_ = nullptr;
     QLabel* daemon_scenario_lab_status_ = nullptr;
+    QLabel* daemon_sandbox_status_ = nullptr;
     QLabel* daemon_audit_status_ = nullptr;
     QLabel* daemon_action_status_ = nullptr;
     QPlainTextEdit* daemon_logs_ = nullptr;
     QPlainTextEdit* daemon_job_detail_ = nullptr;
     QTableWidget* daemon_scenario_lab_table_ = nullptr;
+    QTableWidget* daemon_sandbox_books_table_ = nullptr;
+    QTableWidget* daemon_sandbox_leaderboard_table_ = nullptr;
     QTableWidget* daemon_jobs_table_ = nullptr;
     QTableWidget* daemon_collectors_table_ = nullptr;
     QComboBox* daemon_job_kind_ = nullptr;
@@ -115,6 +118,9 @@ class ProfileScreen : public QWidget {
     void populate_daemon_simple_automation(const QJsonObject& automation);
     void populate_live_bot_status(const QJsonObject& status);
     void populate_coinbase_scenario_lab(const QJsonObject& scenario_lab);
+    void refresh_sandbox();
+    void populate_sandbox_books(const QJsonArray& strategies);
+    void populate_sandbox_leaderboard(const QJsonArray& leaderboard, const QJsonArray& eligibility);
     void populate_daemon_audit(const QJsonObject& audit);
     void populate_daemon_logs(const QJsonObject& logs);
     void populate_daemon_job_detail(const QJsonObject& job);

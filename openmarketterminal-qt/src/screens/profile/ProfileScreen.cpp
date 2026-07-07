@@ -22,6 +22,7 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -934,6 +935,84 @@ QWidget* ProfileScreen::build_automation() {
     scvl->addWidget(daemon_scenario_lab_table_);
     vl->addWidget(scenario_panel);
 
+    auto* sandbox_panel = make_panel(tr("STRATEGY SANDBOX"));
+    auto* sbvl = qobject_cast<QVBoxLayout*>(sandbox_panel->layout());
+    auto* sandbox_top = new QWidget(this);
+    sandbox_top->setStyleSheet(QString("background:transparent;border-bottom:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* sbl = new QHBoxLayout(sandbox_top);
+    sbl->setContentsMargins(12, 8, 12, 8);
+    sbl->setSpacing(8);
+    daemon_sandbox_status_ = new QLabel(tr("Paper proof stack: seed books, install jobs, then let daemon collect evidence."));
+    daemon_sandbox_status_->setWordWrap(true);
+    daemon_sandbox_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;%2")
+                                              .arg(ui::colors::TEXT_SECONDARY(), MF));
+    sbl->addWidget(daemon_sandbox_status_, 1);
+    auto add_sandbox_action = [&](const QString& text, const QStringList& args) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [this, args, text]() {
+            if (daemon_sandbox_status_)
+                daemon_sandbox_status_->setText(tr("%1...").arg(text));
+            run_cli_command(args,
+                            [this, text](const QJsonObject&, const QString&) {
+                                if (daemon_sandbox_status_)
+                                    daemon_sandbox_status_->setText(tr("%1 complete").arg(text));
+                                refresh_sandbox();
+                                refresh_daemon();
+                            },
+                            [this](const QString& msg) {
+                                if (daemon_sandbox_status_)
+                                    daemon_sandbox_status_->setText(msg);
+                            });
+        });
+        sbl->addWidget(btn);
+    };
+    add_sandbox_action(tr("SEED BOOKS"), {QStringLiteral("sandbox"), QStringLiteral("seed")});
+    add_sandbox_action(tr("INSTALL PROOF JOBS"), {QStringLiteral("sandbox"), QStringLiteral("install-jobs")});
+    add_sandbox_action(tr("TICK"), {QStringLiteral("sandbox"), QStringLiteral("tick")});
+    add_sandbox_action(tr("SCORE"), {QStringLiteral("sandbox"), QStringLiteral("score-now")});
+    auto* sandbox_refresh = new QPushButton(tr("REFRESH"));
+    sandbox_refresh->setFixedHeight(26);
+    sandbox_refresh->setCursor(Qt::PointingHandCursor);
+    sandbox_refresh->setStyleSheet(button_style());
+    connect(sandbox_refresh, &QPushButton::clicked, this, &ProfileScreen::refresh_sandbox);
+    sbl->addWidget(sandbox_refresh);
+    sbvl->addWidget(sandbox_top);
+
+    daemon_sandbox_books_table_ = new QTableWidget;
+    daemon_sandbox_books_table_->setColumnCount(7);
+    daemon_sandbox_books_table_->setHorizontalHeaderLabels(
+        {tr("Book"), tr("Symbols"), tr("Venue"), tr("Horizon"), tr("Source"), tr("Mode"), tr("Status")});
+    daemon_sandbox_books_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    daemon_sandbox_books_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    daemon_sandbox_books_table_->setAlternatingRowColors(true);
+    daemon_sandbox_books_table_->verticalHeader()->setVisible(false);
+    daemon_sandbox_books_table_->horizontalHeader()->setStretchLastSection(true);
+    daemon_sandbox_books_table_->setMinimumHeight(178);
+    daemon_sandbox_books_table_->setStyleSheet(QString("QTableWidget{background:%1;color:%2;border:none;gridline-color:%3;font-size:11px;%4}"
+                                                       "QHeaderView::section{background:%5;color:%6;border:1px solid %3;padding:4px;font-size:10px;font-weight:700;%4}"
+                                                       "QTableWidget::item{padding:3px 6px;border-bottom:1px solid %3;}"
+                                                       "QTableWidget::item:selected{background:rgba(217,119,6,0.18);color:%2;}")
+                                               .arg(ui::colors::BG_BASE(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                                                    ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY()));
+    sbvl->addWidget(daemon_sandbox_books_table_);
+
+    daemon_sandbox_leaderboard_table_ = new QTableWidget;
+    daemon_sandbox_leaderboard_table_->setColumnCount(8);
+    daemon_sandbox_leaderboard_table_->setHorizontalHeaderLabels(
+        {tr("Book"), tr("Resolved"), tr("Net"), tr("Hit"), tr("DD"), tr("Ranked"), tr("Eligible"), tr("Blockers")});
+    daemon_sandbox_leaderboard_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    daemon_sandbox_leaderboard_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    daemon_sandbox_leaderboard_table_->setAlternatingRowColors(true);
+    daemon_sandbox_leaderboard_table_->verticalHeader()->setVisible(false);
+    daemon_sandbox_leaderboard_table_->horizontalHeader()->setStretchLastSection(true);
+    daemon_sandbox_leaderboard_table_->setMinimumHeight(178);
+    daemon_sandbox_leaderboard_table_->setStyleSheet(daemon_sandbox_books_table_->styleSheet());
+    sbvl->addWidget(daemon_sandbox_leaderboard_table_);
+    vl->addWidget(sandbox_panel);
+
     auto* collectors_panel = make_panel(tr("DATA COLLECTORS"));
     auto* cvl = qobject_cast<QVBoxLayout*>(collectors_panel->layout());
     auto* collectors_top = new QWidget(this);
@@ -1189,6 +1268,7 @@ QWidget* ProfileScreen::build_automation() {
 
     scroll->setWidget(page);
     refresh_daemon();
+    refresh_sandbox();
     return scroll;
 }
 
@@ -1660,6 +1740,144 @@ void ProfileScreen::populate_coinbase_scenario_lab(const QJsonObject& scenario_l
     daemon_scenario_lab_table_->horizontalHeader()->setStretchLastSection(true);
 }
 
+void ProfileScreen::refresh_sandbox() {
+    if (!daemon_sandbox_books_table_ && !daemon_sandbox_leaderboard_table_)
+        return;
+    if (daemon_sandbox_status_)
+        daemon_sandbox_status_->setText(tr("Refreshing sandbox proof stack..."));
+
+    run_cli_command({QStringLiteral("sandbox"), QStringLiteral("list"), QStringLiteral("--status"), QStringLiteral("active")},
+                    [this](const QJsonObject& books, const QString&) {
+                        populate_sandbox_books(books.value(QStringLiteral("strategies")).toArray());
+                        run_cli_command({QStringLiteral("sandbox"), QStringLiteral("leaderboard")},
+                                        [this](const QJsonObject& board, const QString&) {
+                                            run_cli_command({QStringLiteral("sandbox"), QStringLiteral("eligibility")},
+                                                            [this, board](const QJsonObject& elig, const QString&) {
+                                                                populate_sandbox_leaderboard(
+                                                                    board.value(QStringLiteral("leaderboard")).toArray(),
+                                                                    elig.value(QStringLiteral("eligibility")).toArray());
+                                                            },
+                                                            [this](const QString& msg) {
+                                                                if (daemon_sandbox_status_)
+                                                                    daemon_sandbox_status_->setText(msg);
+                                                            });
+                                        },
+                                        [this](const QString& msg) {
+                                            if (daemon_sandbox_status_)
+                                                daemon_sandbox_status_->setText(msg);
+                                        });
+                    },
+                    [this](const QString& msg) {
+                        if (daemon_sandbox_status_)
+                            daemon_sandbox_status_->setText(msg);
+                    });
+}
+
+void ProfileScreen::populate_sandbox_books(const QJsonArray& strategies) {
+    if (!daemon_sandbox_books_table_)
+        return;
+    daemon_sandbox_books_table_->setRowCount(strategies.size());
+    auto add_item = [&](int row, int col, const QString& text, const QString& color = {}) {
+        auto* item = new QTableWidgetItem(text);
+        if (!color.isEmpty())
+            item->setData(Qt::ForegroundRole, QColor(color));
+        daemon_sandbox_books_table_->setItem(row, col, item);
+    };
+    for (int i = 0; i < strategies.size(); ++i) {
+        const QJsonObject row = strategies.at(i).toObject();
+        const QJsonObject params = row.value(QStringLiteral("params")).toObject();
+        QString mode = tr("paper");
+        if (params.value(QStringLiteral("prediction")).toBool())
+            mode = tr("prediction");
+        else if (params.value(QStringLiteral("price_forecast")).toBool())
+            mode = tr("forecast");
+        else if (params.value(QStringLiteral("hypothetical")).toBool())
+            mode = tr("long/short");
+        const QString source = params.value(QStringLiteral("journal_source")).toString(
+            params.value(QStringLiteral("source")).toString(QStringLiteral("-")));
+        const QString horizon = params.value(QStringLiteral("horizon")).toString(
+            params.contains(QStringLiteral("horizon_sec"))
+                ? tr("%1s").arg(params.value(QStringLiteral("horizon_sec")).toInt())
+                : QStringLiteral("-"));
+        const QString venue = params.value(QStringLiteral("venue")).toString(QStringLiteral("-"));
+        const QString status = row.value(QStringLiteral("status")).toString();
+        add_item(i, 0, row.value(QStringLiteral("kind")).toString(),
+                 status == QLatin1String("active") ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY());
+        add_item(i, 1, row.value(QStringLiteral("symbols")).toString());
+        add_item(i, 2, venue);
+        add_item(i, 3, horizon);
+        add_item(i, 4, source);
+        add_item(i, 5, mode);
+        add_item(i, 6, status, status == QLatin1String("active") ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY());
+    }
+    daemon_sandbox_books_table_->resizeColumnsToContents();
+    daemon_sandbox_books_table_->horizontalHeader()->setStretchLastSection(true);
+}
+
+void ProfileScreen::populate_sandbox_leaderboard(const QJsonArray& leaderboard, const QJsonArray& eligibility) {
+    if (!daemon_sandbox_leaderboard_table_)
+        return;
+    QHash<QString, QJsonObject> eligibility_by_id;
+    for (const QJsonValue& v : eligibility) {
+        const QJsonObject row = v.toObject();
+        eligibility_by_id.insert(row.value(QStringLiteral("strategy_id")).toString(), row);
+    }
+    daemon_sandbox_leaderboard_table_->setRowCount(leaderboard.size());
+    auto fmt_money = [](double value) {
+        return QStringLiteral("$%1").arg(QString::number(value, 'f', 2));
+    };
+    auto fmt_pct = [](double value) {
+        return QStringLiteral("%1%").arg(QString::number(value * 100.0, 'f', 1));
+    };
+    auto add_item = [&](int row, int col, const QString& text, const QString& color = {}) {
+        auto* item = new QTableWidgetItem(text);
+        if (!color.isEmpty())
+            item->setData(Qt::ForegroundRole, QColor(color));
+        daemon_sandbox_leaderboard_table_->setItem(row, col, item);
+    };
+    int eligible_count = 0;
+    int ranked_count = 0;
+    int resolved_total = 0;
+    double net_total = 0.0;
+    for (int i = 0; i < leaderboard.size(); ++i) {
+        const QJsonObject row = leaderboard.at(i).toObject();
+        const QString id = row.value(QStringLiteral("strategy_id")).toString();
+        const QJsonObject elig = eligibility_by_id.value(id);
+        const bool eligible = elig.value(QStringLiteral("eligible")).toBool(false);
+        const bool ranked = row.value(QStringLiteral("ranked")).toBool(false);
+        const int resolved = row.value(QStringLiteral("resolved")).toInt();
+        const double net = row.value(QStringLiteral("net_pnl")).toDouble();
+        resolved_total += resolved;
+        net_total += net;
+        if (eligible) ++eligible_count;
+        if (ranked) ++ranked_count;
+        QStringList blockers;
+        for (const QJsonValue& b : elig.value(QStringLiteral("blockers")).toArray())
+            blockers << b.toString();
+        add_item(i, 0, row.value(QStringLiteral("kind")).toString());
+        add_item(i, 1, QString::number(resolved));
+        add_item(i, 2, fmt_money(net), net > 0.0 ? ui::colors::POSITIVE() : (net < 0.0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY()));
+        add_item(i, 3, fmt_pct(row.value(QStringLiteral("hit_rate")).toDouble()));
+        add_item(i, 4, fmt_money(row.value(QStringLiteral("max_drawdown")).toDouble()), ui::colors::TEXT_SECONDARY());
+        add_item(i, 5, ranked ? tr("yes") : tr("no"), ranked ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY());
+        add_item(i, 6, eligible ? tr("yes") : tr("no"), eligible ? ui::colors::POSITIVE() : ui::colors::AMBER());
+        add_item(i, 7, blockers.isEmpty() ? tr("-") : blockers.join(QStringLiteral("; ")));
+    }
+    daemon_sandbox_leaderboard_table_->resizeColumnsToContents();
+    daemon_sandbox_leaderboard_table_->horizontalHeader()->setStretchLastSection(true);
+    if (daemon_sandbox_status_) {
+        daemon_sandbox_status_->setText(
+            tr("%1 books. Resolved: %2. Net PnL: %3. Ranked: %4. Live eligible: %5. Paper-only until live gates are armed.")
+                .arg(QString::number(leaderboard.size()),
+                     QString::number(resolved_total),
+                     fmt_money(net_total),
+                     QString::number(ranked_count),
+                     QString::number(eligible_count)));
+        daemon_sandbox_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;%2")
+                                                  .arg(eligible_count > 0 ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY(), MF));
+    }
+}
+
 void ProfileScreen::populate_daemon_audit(const QJsonObject& audit) {
     if (!daemon_audit_status_)
         return;
@@ -1936,6 +2154,7 @@ void ProfileScreen::refresh_all() {
 
     refresh_ai_accounts();
     refresh_daemon();
+    refresh_sandbox();
 }
 
 void ProfileScreen::refresh_ai_accounts() {
