@@ -39,9 +39,9 @@ static const QList<WbHealthIndicator> kWbHealthIndicators = {
 
 static const QList<QPair<QString, QString>> kWbHealthCountries = {
     {"United States", "US"}, {"China", "CN"},       {"Germany", "DE"}, {"Japan", "JP"},        {"United Kingdom", "GB"},
-    {"France", "FR"},        {"India", "IN"},       {"Brazil", "BR"},  {"Canada", "CA"},       {"South Korea", "KR"},
+    {"France", "FR"},        {"Türkiye", "TR"},     {"Brazil", "BR"},  {"Canada", "CA"},       {"South Korea", "KR"},
     {"Australia", "AU"},     {"Russia", "RU"},      {"Mexico", "MX"},  {"Indonesia", "ID"},    {"Spain", "ES"},
-    {"Italy", "IT"},         {"Netherlands", "NL"}, {"Turkey", "TR"},  {"Saudi Arabia", "SA"}, {"South Africa", "ZA"},
+    {"Italy", "IT"},         {"Netherlands", "NL"}, {"Türkiye", "TR"},  {"Saudi Arabia", "SA"}, {"South Africa", "ZA"},
     {"Nigeria", "NG"},       {"World", "WLD"},
 };
 

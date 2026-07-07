@@ -15,7 +15,7 @@
     { "id": "equity_trading",    "title": "Equity Trading",     "category": "Trading",     "description": "Multi-account equity trading across 16+ brokers",          "tags": ["equity","trading","brokers"] },
     { "id": "algo_trading",      "title": "Strategies",         "category": "Strategies",  "description": "Build, test, scan, alert, and deploy trading strategies",    "tags": ["algo","strategy","execution"] },
     { "id": "backtesting",       "title": "Strategy Lab",       "category": "Strategies",  "description": "Advanced historical simulation and provider comparison",     "tags": ["backtest","simulation","advanced"] },
-    { "id": "trade_viz",         "title": "Trade Viz",          "category": "Trading",     "description": "Order and position visualisation on price charts",         "tags": ["trade","visualise","orders"] },
+    { "id": "trade_viz",         "title": "Trade Intelligence", "category": "Economics",   "description": "UN Comtrade macro trade flows — partners, balance, and market-impact hints", "tags": ["trade","comtrade","intelligence","flows"] },
 
     { "id": "portfolio",         "title": "Portfolio",          "category": "Research",    "description": "Holdings, P&L, allocation and performance attribution",    "tags": ["portfolio","pnl","holdings"] },
     { "id": "equity_research",   "title": "Equity Research",    "category": "Research",    "description": "Fundamentals, technicals, peers, sentiment in one view",   "tags": ["research","fundamentals","peers"] },

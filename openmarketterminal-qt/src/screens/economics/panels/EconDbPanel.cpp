@@ -50,10 +50,10 @@ static const QList<QPair<QString, QString>> kEconDbIndicators = {
 // 49 countries available in EconDB (ISO2 codes)
 static const QList<QPair<QString, QString>> kEconDbCountries = {
     {"United States", "US"},  {"China", "CN"},        {"Germany", "DE"},        {"Japan", "JP"},
-    {"United Kingdom", "GB"}, {"France", "FR"},       {"India", "IN"},          {"Brazil", "BR"},
+    {"United Kingdom", "GB"}, {"France", "FR"},       {"Türkiye", "TR"},          {"Brazil", "BR"},
     {"Canada", "CA"},         {"South Korea", "KR"},  {"Australia", "AU"},      {"Russia", "RU"},
     {"Mexico", "MX"},         {"Spain", "ES"},        {"Italy", "IT"},          {"Netherlands", "NL"},
-    {"Switzerland", "CH"},    {"Turkey", "TR"},       {"Poland", "PL"},         {"Sweden", "SE"},
+    {"Switzerland", "CH"},    {"Türkiye", "TR"},       {"Poland", "PL"},         {"Sweden", "SE"},
     {"Belgium", "BE"},        {"Argentina", "AR"},    {"Austria", "AT"},        {"Bangladesh", "BD"},
     {"Chile", "CL"},          {"Colombia", "CO"},     {"Czech Republic", "CZ"}, {"Denmark", "DK"},
     {"Egypt", "EG"},          {"Finland", "FI"},      {"Greece", "GR"},         {"Hong Kong", "HK"},

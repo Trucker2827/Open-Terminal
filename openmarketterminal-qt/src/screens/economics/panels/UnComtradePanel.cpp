@@ -22,7 +22,7 @@ static constexpr const char* kUnComtradeColor = "#0891B2"; // cyan
 // ISO numeric reporter codes for major economies
 static const QList<QPair<QString, QString>> kReporters = {
     {"United States", "842"}, {"China", "156"},  {"Germany", "276"}, {"Japan", "392"},  {"United Kingdom", "826"},
-    {"France", "251"},        {"India", "699"},  {"Brazil", "76"},   {"Canada", "124"}, {"South Korea", "410"},
+    {"France", "251"},        {"Türkiye", "792"},  {"Brazil", "76"},   {"Canada", "124"}, {"South Korea", "410"},
     {"Australia", "36"},      {"Russia", "643"}, {"Mexico", "484"},  {"World", "0"},
 };
 

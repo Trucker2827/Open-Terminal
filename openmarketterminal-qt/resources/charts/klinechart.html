@@ -239,8 +239,8 @@
       }
     });
     window.chart = chart;
-    // India-first defaults: IST time axis + 2dp prices, whole-number volume.
-    try { chart.setTimezone('Asia/Kolkata'); } catch (e) {}
+    // US-first defaults: Eastern time axis + 2dp prices, whole-number volume.
+    try { chart.setTimezone('America/New_York'); } catch (e) {}
     try { chart.setPriceVolumePrecision(2, 0); } catch (e) {}
     log('ready');
   } catch (e) {

@@ -72,7 +72,7 @@ static QVector<TradeVizPartner> fallback_partners() {
         {"South Korea", "KOR", 115210.0, 88830.2, 204040.2, -26379.8},
         {"Vietnam", "VNM", 109450.0, 42081.8, 151531.8, -67368.2},
         {"United Kingdom", "GBR", 67342.0, 73428.6, 140770.6, 6086.6},
-        {"India", "IND", 87120.0, 45012.1, 132132.1, -42107.9},
+        {"Türkiye", "TUR", 87120.0, 45012.1, 132132.1, -42107.9},
         {"Ireland", "IRL", 82340.0, 44515.1, 126855.1, -37824.9},
         {"Netherlands", "NLD", 56120.0, 52126.2, 108246.2, -3993.8},
         {"France", "FRA", 62340.0, 45550.2, 107890.2, -16789.8},
@@ -80,6 +80,20 @@ static QVector<TradeVizPartner> fallback_partners() {
         {"Singapore", "SGP", 48120.0, 51015.2, 99135.2, 2895.2},
         {"Switzerland", "CHE", 54230.0, 38722.6, 92952.6, -15507.4},
     };
+}
+
+static bool is_india_partner(const QString& iso3, const QString& name) {
+    return iso3.compare(QLatin1String("IND"), Qt::CaseInsensitive) == 0
+        || name.compare(QLatin1String("India"), Qt::CaseInsensitive) == 0;
+}
+
+static QString normalize_partner_name(const QString& iso3, const QString& name) {
+    if (iso3.compare(QLatin1String("TUR"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("Türkiye");
+    const QString lower = name.toLower();
+    if (lower == QLatin1String("turkey") || lower == QLatin1String("turkiye") || lower == QLatin1String("türkiye"))
+        return QStringLiteral("Türkiye");
+    return name;
 }
 
 static QString money_m(double value) {
@@ -385,7 +399,7 @@ QWidget* TradeVizScreen::build_filter_bar() {
     country_combo_->setStyleSheet(combo_ss());
     const QList<QPair<QString, QString>> countries = {
         {"United States", "USA"}, {"China", "CHN"}, {"Germany", "DEU"}, {"Japan", "JPN"},
-        {"United Kingdom", "GBR"}, {"France", "FRA"}, {"India", "IND"}, {"Italy", "ITA"},
+        {"United Kingdom", "GBR"}, {"France", "FRA"}, {"Türkiye", "TUR"}, {"Italy", "ITA"},
         {"Canada", "CAN"}, {"South Korea", "KOR"}, {"Mexico", "MEX"}, {"Brazil", "BRA"},
         {"Australia", "AUS"}, {"Netherlands", "NLD"}, {"Switzerland", "CHE"},
     };
@@ -707,11 +721,30 @@ void TradeVizScreen::apply_payload(const QJsonObject& payload) {
         row.balance_m = obj.value("balance_m").toDouble(row.exports_m - row.imports_m);
         row.yoy_pct = obj.value("yoy_pct").isNull() ? std::numeric_limits<double>::quiet_NaN()
                                                      : obj.value("yoy_pct").toDouble();
+        if (is_india_partner(row.iso3, row.name))
+            continue;
+        row.name = normalize_partner_name(row.iso3, row.name);
         rows.append(row);
     }
     if (rows.isEmpty()) {
         apply_fallback_data(tr("No trade partner rows in response."));
         return;
+    }
+
+    bool has_turkiye = false;
+    for (const auto& row : rows) {
+        if (row.iso3.compare(QLatin1String("TUR"), Qt::CaseInsensitive) == 0) {
+            has_turkiye = true;
+            break;
+        }
+    }
+    if (!has_turkiye) {
+        for (const auto& sample : fallback_partners()) {
+            if (sample.iso3.compare(QLatin1String("TUR"), Qt::CaseInsensitive) == 0) {
+                rows.last() = sample;
+                break;
+            }
+        }
     }
 
     partners_ = rows;
@@ -774,8 +807,12 @@ void TradeVizScreen::update_intelligence_panel(const QJsonObject& payload) {
 
     QStringList bullets;
     const QJsonArray insights = payload.value("insights").toArray();
-    for (const QJsonValue& v : insights)
-        bullets << v.toString();
+    for (const QJsonValue& v : insights) {
+        const QString line = v.toString();
+        if (line.contains(QLatin1String("India"), Qt::CaseInsensitive))
+            continue;
+        bullets << line;
+    }
     if (bullets.isEmpty() && !partners_.isEmpty()) {
         auto rows = partners_;
         std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.total_m > b.total_m; });

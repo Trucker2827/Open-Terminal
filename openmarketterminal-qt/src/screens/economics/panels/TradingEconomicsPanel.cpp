@@ -38,7 +38,7 @@ static const QList<TeDataset> kTEDatasets = {
 static const QList<QPair<QString, QString>> kTECountries = {
     {"United States", "US"}, {"Germany", "DE"},   {"Japan", "JP"},  {"United Kingdom", "GB"},
     {"France", "FR"},        {"Italy", "IT"},     {"China", "CN"},  {"Brazil", "BR"},
-    {"India", "IN"},         {"Australia", "AU"}, {"Canada", "CA"}, {"Spain", "ES"},
+    {"France", "FR"},        {"Türkiye", "TR"},   {"Australia", "AU"}, {"Canada", "CA"}, {"Spain", "ES"},
 };
 
 TradingEconomicsPanel::TradingEconomicsPanel(QWidget* parent)

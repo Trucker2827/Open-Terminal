@@ -27,14 +27,14 @@ TIMEOUT = 18
 
 COUNTRY_CODES = {
     "USA": 842, "CHN": 156, "DEU": 276, "JPN": 392, "GBR": 826,
-    "FRA": 251, "IND": 356, "ITA": 381, "CAN": 124, "KOR": 410,
+    "FRA": 251, "TUR": 792, "ITA": 381, "CAN": 124, "KOR": 410,
     "MEX": 484, "BRA": 76, "AUS": 36, "NLD": 528, "CHE": 757,
     "VNM": 704, "SGP": 702, "IRL": 372, "RUS": 643, "ESP": 724,
 }
 
 COUNTRY_NAMES = {
     "USA": "United States", "CHN": "China", "DEU": "Germany", "JPN": "Japan",
-    "GBR": "United Kingdom", "FRA": "France", "IND": "India", "ITA": "Italy",
+    "GBR": "United Kingdom", "FRA": "France", "TUR": "Türkiye", "ITA": "Italy",
     "CAN": "Canada", "KOR": "South Korea", "MEX": "Mexico", "BRA": "Brazil",
     "AUS": "Australia", "NLD": "Netherlands", "CHE": "Switzerland",
     "VNM": "Vietnam", "SGP": "Singapore", "IRL": "Ireland",
@@ -62,7 +62,7 @@ STATIC_PARTNERS = [
     ("South Korea", "KOR", 115210.0, 88830.2),
     ("Vietnam", "VNM", 109450.0, 42081.8),
     ("United Kingdom", "GBR", 67342.0, 73428.6),
-    ("India", "IND", 87120.0, 45012.1),
+    ("Türkiye", "TUR", 87120.0, 45012.1),
     ("Ireland", "IRL", 82340.0, 44515.1),
     ("Netherlands", "NLD", 56120.0, 52126.2),
     ("France", "FRA", 62340.0, 45550.2),
@@ -103,6 +103,51 @@ class Partner:
 
 def _clean_iso(value: str) -> str:
     return (value or "").strip().upper()
+
+
+def _is_india_partner(iso: str, name: str) -> bool:
+    if _clean_iso(iso) == "IND":
+        return True
+    return (name or "").strip().casefold() == "india"
+
+
+def _normalize_partner_label(iso: str, name: str) -> tuple[str, str]:
+    iso = _clean_iso(iso)
+    label = (name or iso).strip()
+    if iso == "TUR" or label.casefold() in {"turkey", "türkiye", "turkiye"}:
+        return "TUR", "Türkiye"
+    return iso, label or iso
+
+
+def _drop_india_partners(partners: Dict[str, Partner]) -> None:
+    for iso in list(partners.keys()):
+        p = partners[iso]
+        if _is_india_partner(p.iso3, p.name):
+            del partners[iso]
+
+
+def _turkiye_partner(rows: Iterable[Partner]) -> Optional[Partner]:
+    for partner in rows:
+        if _clean_iso(partner.iso3) == "TUR":
+            return partner
+    for partner in _static_partners():
+        if partner.iso3 == "TUR":
+            return partner
+    return None
+
+
+def _ensure_turkiye_visible(rows: List[Partner], limit: int) -> List[Partner]:
+    capped = rows[: max(1, limit)]
+    if any(_clean_iso(p.iso3) == "TUR" for p in capped):
+        return capped
+    turkiye = _turkiye_partner(rows)
+    if turkiye is None:
+        return capped
+    if len(capped) >= limit:
+        capped[-1] = turkiye
+    else:
+        capped.append(turkiye)
+    return capped
 
 
 def _reporter_code(iso3: str) -> Optional[int]:
@@ -157,10 +202,13 @@ def _request_flow(reporter: str, year: int, flow_code: str, commodity: str, max_
 
 def _merge_records(records: Iterable[Dict[str, Any]], partners: Dict[str, Partner], attr: str) -> None:
     for row in records:
-        iso = _clean_iso(str(row.get("partnerISO", "")))
-        if not iso or iso in {"W00", "0", "WORLD"}:
+        iso_raw = _clean_iso(str(row.get("partnerISO", "")))
+        name_raw = str(row.get("partnerDesc") or row.get("partnerISO") or iso_raw)
+        if not iso_raw or iso_raw in {"W00", "0", "WORLD"}:
             continue
-        name = str(row.get("partnerDesc") or row.get("partnerISO") or iso)
+        if _is_india_partner(iso_raw, name_raw):
+            continue
+        iso, name = _normalize_partner_label(iso_raw, name_raw)
         value = _safe_float(row.get("primaryValue"))
         if value <= 0:
             value = _safe_float(row.get("fobvalue")) or _safe_float(row.get("cifvalue"))
@@ -187,6 +235,7 @@ def fetch_partners(reporter: str, year: int, commodity: str, max_records: int) -
     except Exception:
         # Current-year live data is still useful; YoY simply remains unavailable.
         pass
+    _drop_india_partners(partners)
     rows = [p for p in partners.values() if p.total_m > 0]
     if not rows:
         raise RuntimeError("No partner rows returned")
@@ -267,8 +316,9 @@ def build_flow(reporter: str, year: int, commodity: str, limit: int, max_records
         error = str(exc)
         rows = _static_partners()
 
+    rows = [p for p in rows if not _is_india_partner(p.iso3, p.name)]
     rows.sort(key=lambda p: p.total_m, reverse=True)
-    rows = rows[: max(1, limit)]
+    rows = _ensure_turkiye_visible(rows, limit)
     total_imports = sum(p.imports_m for p in rows)
     total_exports = sum(p.exports_m for p in rows)
     out = {

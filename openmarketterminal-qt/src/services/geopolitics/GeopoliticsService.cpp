@@ -243,7 +243,7 @@ void GeopoliticsService::fetch_unique_countries() {
     static const char* kCountries[] = {
         "United States", "China", "Russia", "Ukraine", "Israel", "Iran", "India",
         "United Kingdom", "France", "Germany", "Japan", "North Korea", "South Korea",
-        "Taiwan", "Saudi Arabia", "Turkey", "Pakistan", "Brazil", "Venezuela", "Syria",
+        "Taiwan", "Saudi Arabia", "Türkiye", "Pakistan", "Brazil", "Venezuela", "Syria",
         "Yemen", "Afghanistan", "Egypt", "Nigeria", "South Africa", "Mexico", "Canada",
         "Australia", "Italy", "Spain", "Poland", "European Union"};
     QVector<UniqueCountry> countries;

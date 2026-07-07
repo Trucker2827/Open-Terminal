@@ -41,10 +41,10 @@ static const QList<QPair<QString, QString>> kImfIndicators = {
 // Curated country list
 static const QList<QPair<QString, QString>> kImfCountries = {
     {"All Countries", ""}, {"United States", "USA"},  {"China", "CHN"},       {"Japan", "JPN"},
-    {"Germany", "DEU"},    {"United Kingdom", "GBR"}, {"France", "FRA"},      {"India", "IND"},
+    {"Germany", "DEU"},    {"United Kingdom", "GBR"}, {"France", "FRA"},      {"Türkiye", "TUR"},
     {"Brazil", "BRA"},     {"Canada", "CAN"},         {"South Korea", "KOR"}, {"Australia", "AUS"},
     {"Russia", "RUS"},     {"Mexico", "MEX"},         {"Indonesia", "IDN"},   {"Saudi Arabia", "SAU"},
-    {"Turkey", "TUR"},     {"Netherlands", "NLD"},    {"Switzerland", "CHE"}, {"Argentina", "ARG"},
+    {"Netherlands", "NLD"},    {"Switzerland", "CHE"}, {"Argentina", "ARG"},
 };
 
 } // namespace
