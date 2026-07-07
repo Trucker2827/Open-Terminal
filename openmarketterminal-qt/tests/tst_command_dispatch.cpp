@@ -746,6 +746,170 @@ private slots:
         }
         QVERIFY2(persisted, "a true return must mean the mutation actually reached jobs.json");
     }
+
+    // --- Task 9: `sandbox score-now` / `leaderboard` / `book` ---------------
+    // These are dispatch/shape tests only -- SandboxScorer's aggregation
+    // arithmetic (hand-computed fixture, NULL-pnl exclusion, drawdown, etc.)
+    // is covered exhaustively by tst_sandbox_scorer.cpp. Here we just confirm
+    // the CLI wires score_all/leaderboard through correctly and that the
+    // `ranked` bool follows the resolved>=30 && !hypothetical rule.
+    void sandbox_score_now_reports_per_strategy_rollup() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out =
+            json_object_from_dispatch(QStringList{"--json", "sandbox", "score-now"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(out.value("scored").toBool());
+        const QJsonArray strategies = out.value("strategies").toArray();
+        QVERIFY2(!strategies.isEmpty(), "score-now must roll up every registered strategy");
+        for (const QJsonValue& v : strategies) {
+            const QJsonObject row = v.toObject();
+            QVERIFY(row.contains("strategy_id"));
+            QVERIFY(row.contains("resolved"));
+            QVERIFY(row.contains("net_pnl"));
+            QVERIFY(row.contains("ranked"));
+        }
+    }
+
+    void sandbox_leaderboard_ranked_bool_follows_sample_and_hypothetical_rule() {
+        sandbox_test_home();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+        auto insert_strategy = [](const QString& id, const QString& kind, const QString& params) {
+            auto r = Database::instance().execute(
+                "INSERT INTO sandbox_strategy (strategy_id, kind, symbols, params_json, status, created_at,"
+                " notes) VALUES (?,?,?,?,?,?,?)",
+                {id, kind, QStringLiteral("BTC-USD"), params, QStringLiteral("active"),
+                 QDateTime::currentMSecsSinceEpoch(), QStringLiteral("")});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        auto insert_closed = [&](const QString& strategy_id, const QString& position_id, double pnl,
+                                 qint64 closed_at) {
+            auto r = Database::instance().execute(
+                "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side,"
+                " hypothetical, qty, limit_price, expires_at, state, opened_at, closed_at, entry_fee,"
+                " exit_fee, realized_pnl, close_reason, data_quality, notional_usd, created_at)"
+                " VALUES (?,?,?,?,'buy',0,1.0,100.0,?,'closed',?,?,0,0,?,'target','ok',10.0,?)",
+                {position_id, strategy_id, position_id + QStringLiteral("-dec"), QStringLiteral("BTC-USD"),
+                 closed_at, closed_at, closed_at, pnl, closed_at});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+
+        // Ranked: 30 resolved closes, not hypothetical.
+        const QString ranked_id = QStringLiteral("t9_ranked_strategy");
+        insert_strategy(ranked_id, QStringLiteral("spot"), QStringLiteral("{}"));
+        for (int i = 0; i < 30; ++i)
+            insert_closed(ranked_id, QStringLiteral("t9_ranked_pos_%1").arg(i), 1.0, now - i * 1000);
+
+        // Insufficient sample: only 2 resolved closes, not hypothetical.
+        const QString thin_id = QStringLiteral("t9_thin_strategy");
+        insert_strategy(thin_id, QStringLiteral("spot"), QStringLiteral("{}"));
+        insert_closed(thin_id, QStringLiteral("t9_thin_pos_0"), 1.0, now);
+        insert_closed(thin_id, QStringLiteral("t9_thin_pos_1"), -1.0, now - 1000);
+
+        // Hypothetical: 30 resolved closes, but hypothetical=true in params
+        // -- must never be ranked regardless of sample size.
+        const QString hyp_id = QStringLiteral("t9_hyp_strategy");
+        insert_strategy(hyp_id, QStringLiteral("long_short"), QStringLiteral("{\"hypothetical\":true}"));
+        for (int i = 0; i < 30; ++i)
+            insert_closed(hyp_id, QStringLiteral("t9_hyp_pos_%1").arg(i), 1.0, now - i * 1000);
+
+        // Flat/zero ranked book (net_pnl == 0, 30 resolved, not hypothetical)
+        // -- a valid outcome, not an error: text mode must print
+        // "no demonstrated edge" for it rather than treating it specially.
+        const QString flat_id = QStringLiteral("t9_flat_strategy");
+        insert_strategy(flat_id, QStringLiteral("spot"), QStringLiteral("{}"));
+        for (int i = 0; i < 30; ++i)
+            insert_closed(flat_id, QStringLiteral("t9_flat_pos_%1").arg(i), (i % 2 == 0) ? 1.0 : -1.0,
+                         now - i * 1000);
+
+        int score_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "sandbox", "score-now"}, &score_rc);
+        QCOMPARE(score_rc, 0);
+
+        int rc = -1;
+        const QJsonObject lb = json_object_from_dispatch(QStringList{"--json", "sandbox", "leaderboard"}, &rc);
+        QCOMPARE(rc, 0);
+        bool found_ranked = false, found_thin = false, found_hyp = false, found_flat = false;
+        for (const QJsonValue& v : lb.value("leaderboard").toArray()) {
+            const QJsonObject row = v.toObject();
+            const QString id = row.value("strategy_id").toString();
+            if (id == ranked_id) {
+                found_ranked = true;
+                QVERIFY2(row.value("ranked").toBool(), "30 resolved, non-hypothetical must be ranked");
+            } else if (id == thin_id) {
+                found_thin = true;
+                QVERIFY2(!row.value("ranked").toBool(), "2 resolved must be insufficient-sample, never ranked");
+            } else if (id == hyp_id) {
+                found_hyp = true;
+                QVERIFY2(!row.value("ranked").toBool(), "hypothetical must never be ranked regardless of sample");
+                QVERIFY(row.value("hypothetical").toBool());
+            } else if (id == flat_id) {
+                found_flat = true;
+                QVERIFY2(row.value("ranked").toBool(), "a flat (net_pnl==0) book with enough samples is still ranked");
+                QVERIFY(qFuzzyIsNull(row.value("net_pnl").toDouble()));
+            }
+        }
+        QVERIFY(found_ranked);
+        QVERIFY(found_thin);
+        QVERIFY(found_hyp);
+        QVERIFY(found_flat);
+
+        // Text mode must not crash, must bucket into the documented section
+        // headings, and must print "no demonstrated edge" for the flat
+        // ranked book -- a valid result, not an error/different code path.
+        const QString text = capture_stdout(
+            [&]() { return dispatch(QStringList{"sandbox", "leaderboard"}); }, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(text.contains("RANKED"));
+        QVERIFY2(text.contains("no demonstrated edge"), qUtf8Printable(text));
+        QVERIFY(text.contains("INSUFFICIENT SAMPLE"));
+        QVERIFY(text.contains("HYPOTHETICAL"));
+    }
+
+    void sandbox_book_returns_per_day_rows_and_live_counts() {
+        sandbox_test_home();
+        const QString strategy_id = QStringLiteral("t9_book_strategy");
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_strategy (strategy_id, kind, symbols, params_json, status, created_at,"
+            " notes) VALUES (?,?,?,?,?,?,?)",
+            {strategy_id, QStringLiteral("spot"), QStringLiteral("BTC-USD"), QStringLiteral("{}"),
+             QStringLiteral("active"), QDateTime::currentMSecsSinceEpoch(), QStringLiteral("")});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        auto pos = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side,"
+            " hypothetical, qty, limit_price, expires_at, state, opened_at, closed_at, entry_fee, exit_fee,"
+            " realized_pnl, close_reason, data_quality, notional_usd, created_at)"
+            " VALUES (?,?,?,?,'buy',0,1.0,100.0,?,'closed',?,?,0,0,2.0,'target','ok',10.0,?)",
+            {QStringLiteral("t9_book_pos_0"), strategy_id, QStringLiteral("t9_book_dec_0"),
+             QStringLiteral("BTC-USD"), now, now, now, now});
+        QVERIFY2(pos.is_ok(), pos.is_err() ? pos.error().c_str() : "");
+
+        int score_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "sandbox", "score-now"}, &score_rc);
+        QCOMPARE(score_rc, 0);
+
+        int rc = -1;
+        const QJsonObject book =
+            json_object_from_dispatch(QStringList{"--json", "sandbox", "book", strategy_id}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(book.value("strategy_id").toString(), strategy_id);
+        QCOMPARE(book.value("closed_count").toInt(), 1);
+        QCOMPARE(book.value("open_count").toInt(), 0);
+        const QJsonArray days = book.value("days").toArray();
+        QVERIFY2(days.size() >= 1, "book must return at least today's score_date row");
+        bool found_resolved_day = false;
+        for (const QJsonValue& v : days) {
+            if (v.toObject().value("resolved_count").toInt() == 1)
+                found_resolved_day = true;
+        }
+        QVERIFY2(found_resolved_day, "the day the position closed on must show resolved_count=1");
+
+        int bad_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "sandbox", "book", "nonexistent_strategy_id"}, &bad_rc);
+        QCOMPARE(bad_rc, 4);
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

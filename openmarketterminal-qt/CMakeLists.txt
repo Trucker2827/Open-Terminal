@@ -1378,6 +1378,8 @@ set(SERVICE_SOURCES
     src/services/sandbox/PaperExecutor.cpp
     # Strategy Sandbox — Outcome Resolver: settle prediction/hypothetical books (Task 8).
     src/services/sandbox/SandboxResolver.cpp
+    # Strategy Sandbox — Scorer + Leaderboard: sandbox_score rollups (Task 9).
+    src/services/sandbox/SandboxScorer.cpp
 )
 
 # UI framework

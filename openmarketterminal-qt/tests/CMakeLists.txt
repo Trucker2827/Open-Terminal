@@ -382,3 +382,11 @@ add_executable(tst_sandbox_resolver tst_sandbox_resolver.cpp)
 target_include_directories(tst_sandbox_resolver PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_resolver PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_resolver COMMAND tst_sandbox_resolver)
+
+# Strategy Sandbox Task 9 — SandboxScorer::score_all / leaderboard: sandbox_score
+# day-bucketed rollups and the season-to-date leaderboard aggregation. Same DB
+# bootstrap as tst_sandbox_resolver.
+add_executable(tst_sandbox_scorer tst_sandbox_scorer.cpp)
+target_include_directories(tst_sandbox_scorer PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_sandbox_scorer PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_sandbox_scorer COMMAND tst_sandbox_scorer)

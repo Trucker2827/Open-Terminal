@@ -41,6 +41,7 @@
 #include "services/data_normalization/DataNormalizationService.h"
 #include "services/sandbox/PaperExecutor.h"
 #include "services/sandbox/SandboxRegistry.h"
+#include "services/sandbox/SandboxScorer.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/polymarket/PolymarketTypeMap.h"
 #include "services/polymarket/PolymarketTypes.h"
@@ -399,10 +400,17 @@ static int command_help(const QString& topic) {
             "  sandbox retire <id>\n"
             "  sandbox tick\n"
             "  sandbox positions [--open|--closed] [--limit N]\n"
+            "  sandbox score-now\n"
+            "  sandbox leaderboard [--json]\n"
+            "  sandbox book <strategy_id> [--json]\n"
             "\n"
             "Registers/lists the five season-1 paper strategy books (scalp, spot, btc5m,\n"
             "kalshi, long_short), advances one PaperExecutor cycle for the profile, and\n"
-            "inspects sandbox_position rows. Entirely local paper trading — no live orders.\n");
+            "inspects sandbox_position rows. Entirely local paper trading — no live orders.\n"
+            "score-now recomputes sandbox_score rollups; leaderboard shows the season-to-\n"
+            "date ranking (books with fewer than 30 resolved trades are insufficient-sample,\n"
+            "never ranked; hypothetical books get their own section); book shows one\n"
+            "strategy's per-day score history plus live open/closed counts.\n");
         return 0;
     }
     if (topic == "data" || topic == "datasources" || topic == "ds") {
@@ -7632,6 +7640,209 @@ static int sandbox_positions_command(const GlobalOpts& opts, QStringList args) {
     return automation_emit_object(opts, QJsonObject{{"positions", arr}});
 }
 
+// One LeaderboardRow (see SandboxScorer.h) as JSON, with the CLI-layer
+// `ranked` bool folded in: true only for books with enough resolved round
+// trips (kMinResolvedSample) that are NOT hypothetical -- insufficient-
+// sample and hypothetical books are their own display sections and are
+// never ranked, per the Task 9 brief's display rules.
+static QJsonObject sandbox_leaderboard_row_json(const sandboxsvc::LeaderboardRow& row) {
+    const bool ranked = !row.hypothetical && row.resolved >= sandboxsvc::kMinResolvedSample;
+    return QJsonObject{{"strategy_id", row.strategy_id},
+                       {"kind", row.kind},
+                       {"status", row.status},
+                       {"resolved", row.resolved},
+                       {"net_pnl", row.net_pnl},
+                       {"hit_rate", row.hit_rate},
+                       {"max_drawdown", row.max_drawdown},
+                       {"gross_notional", row.gross_notional},
+                       {"degraded", row.degraded},
+                       {"hypothetical", row.hypothetical},
+                       {"unknown_count", row.unknown_count},
+                       {"data_gap_count", row.data_gap_count},
+                       {"ranked", ranked}};
+}
+
+static int sandbox_score_now_command(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto scored = sandboxsvc::score_all(opts.profile, QDateTime::currentMSecsSinceEpoch());
+    if (scored.is_err()) {
+        std::fprintf(stderr, "sandbox score-now failed: %s\n", scored.error().c_str());
+        return 5;
+    }
+    auto rows = sandboxsvc::leaderboard(opts.profile);
+    if (rows.is_err()) {
+        std::fprintf(stderr, "sandbox score-now failed: %s\n", rows.error().c_str());
+        return 5;
+    }
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& row : rows.value())
+            arr.append(sandbox_leaderboard_row_json(row));
+        return automation_emit_object(opts, QJsonObject{{"scored", true}, {"strategies", arr}});
+    }
+    std::printf("%-18s %-10s %8s %10s %8s %10s %8s\n", "strategy_id", "kind", "resolved", "net_pnl", "hit",
+               "drawdown", "degraded");
+    for (const auto& row : rows.value()) {
+        std::printf("%-18s %-10s %8d %10.2f %7.0f%% %10.2f %8d\n",
+                    qUtf8Printable(elide_text(row.strategy_id, 18)), qUtf8Printable(row.kind), row.resolved,
+                    row.net_pnl, row.hit_rate * 100.0, row.max_drawdown, row.degraded);
+    }
+    return 0;
+}
+
+static int sandbox_leaderboard_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox leaderboard [--json]\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto rows = sandboxsvc::leaderboard(opts.profile);
+    if (rows.is_err()) {
+        std::fprintf(stderr, "sandbox leaderboard failed: %s\n", rows.error().c_str());
+        return 5;
+    }
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& row : rows.value())
+            arr.append(sandbox_leaderboard_row_json(row));
+        return automation_emit_object(opts, QJsonObject{{"leaderboard", arr}});
+    }
+
+    // Display rules (Task 9 brief): insufficient-sample and hypothetical
+    // books are their own sections and never ranked; a flat (net_pnl == 0)
+    // ranked book prints "no demonstrated edge" -- a valid result, not an
+    // error.
+    QList<sandboxsvc::LeaderboardRow> ranked, insufficient, hypothetical;
+    for (const auto& row : rows.value()) {
+        if (row.hypothetical)
+            hypothetical.append(row);
+        else if (row.resolved < sandboxsvc::kMinResolvedSample)
+            insufficient.append(row);
+        else
+            ranked.append(row);
+    }
+    std::sort(ranked.begin(), ranked.end(),
+             [](const auto& a, const auto& b) { return a.net_pnl > b.net_pnl; });
+
+    if (!ranked.isEmpty()) {
+        std::printf("RANKED\n");
+        for (const auto& row : ranked) {
+            std::printf("  %-18s net_pnl=%.2f hit=%.0f%% drawdown=%.2f degraded=%d%s\n",
+                        qUtf8Printable(row.strategy_id), row.net_pnl, row.hit_rate * 100.0, row.max_drawdown,
+                        row.degraded, qFuzzyIsNull(row.net_pnl) ? "  (no demonstrated edge)" : "");
+        }
+    }
+    if (!insufficient.isEmpty()) {
+        std::printf("INSUFFICIENT SAMPLE (< %d resolved)\n", sandboxsvc::kMinResolvedSample);
+        for (const auto& row : insufficient) {
+            std::printf("  %-18s resolved=%d net_pnl=%.2f\n", qUtf8Printable(row.strategy_id), row.resolved,
+                        row.net_pnl);
+        }
+    }
+    if (!hypothetical.isEmpty()) {
+        std::printf("HYPOTHETICAL\n");
+        for (const auto& row : hypothetical) {
+            std::printf("  %-18s resolved=%d net_pnl=%.2f hit=%.0f%% drawdown=%.2f\n",
+                        qUtf8Printable(row.strategy_id), row.resolved, row.net_pnl, row.hit_rate * 100.0,
+                        row.max_drawdown);
+        }
+    }
+    if (ranked.isEmpty() && insufficient.isEmpty() && hypothetical.isEmpty())
+        std::printf("no strategies scored yet\n");
+    return 0;
+}
+
+static int sandbox_book_command(const GlobalOpts& opts, QStringList args) {
+    if (args.isEmpty() || args.size() > 2) {
+        std::fprintf(stderr, "usage: sandbox book <strategy_id> [--json]\n");
+        return 2;
+    }
+    const QString strategy_id = args.takeFirst();
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox book <strategy_id> [--json]\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    auto strategies = sandboxsvc::list_strategies();
+    if (strategies.is_err()) {
+        std::fprintf(stderr, "sandbox book failed: %s\n", strategies.error().c_str());
+        return 5;
+    }
+    bool found = false;
+    for (const auto& row : strategies.value()) {
+        if (row.strategy_id == strategy_id) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        std::fprintf(stderr, "sandbox: unknown strategy id: %s\n", qUtf8Printable(strategy_id));
+        return 4;
+    }
+
+    auto days = Database::instance().execute(
+        "SELECT score_date, resolved_count, open_count, unfilled_count, net_pnl, hit_rate, avg_win, avg_loss,"
+        " max_drawdown, degraded_count, gross_notional FROM sandbox_score WHERE strategy_id = ?"
+        " ORDER BY score_date ASC",
+        {strategy_id});
+    if (days.is_err()) {
+        std::fprintf(stderr, "sandbox book failed: %s\n", days.error().c_str());
+        return 5;
+    }
+    QJsonArray day_rows;
+    {
+        auto& q = days.value();
+        while (q.next()) {
+            day_rows.append(QJsonObject{{"score_date", q.value(0).toString()},
+                                        {"resolved_count", q.value(1).toInt()},
+                                        {"open_count", q.value(2).toInt()},
+                                        {"unfilled_count", q.value(3).toInt()},
+                                        {"net_pnl", q.value(4).toDouble()},
+                                        {"hit_rate", q.value(5).toDouble()},
+                                        {"avg_win", q.value(6).toDouble()},
+                                        {"avg_loss", q.value(7).toDouble()},
+                                        {"max_drawdown", q.value(8).toDouble()},
+                                        {"degraded_count", q.value(9).toInt()},
+                                        {"gross_notional", q.value(10).toDouble()}});
+        }
+    }
+
+    auto open_r = Database::instance().execute(
+        "SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ? AND state IN ('open','pending_fill')",
+        {strategy_id});
+    const int open_count = (open_r.is_ok() && open_r.value().next()) ? open_r.value().value(0).toInt() : 0;
+    auto closed_r = Database::instance().execute(
+        "SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ? AND state = 'closed'", {strategy_id});
+    const int closed_count = (closed_r.is_ok() && closed_r.value().next()) ? closed_r.value().value(0).toInt() : 0;
+
+    if (opts.json) {
+        return automation_emit_object(opts, QJsonObject{{"strategy_id", strategy_id},
+                                                        {"days", day_rows},
+                                                        {"open_count", open_count},
+                                                        {"closed_count", closed_count}});
+    }
+    std::printf("strategy_id: %s   open=%d closed=%d\n", qUtf8Printable(strategy_id), open_count, closed_count);
+    std::printf("%-12s %8s %6s %8s %10s %6s %8s %8s %10s %8s %10s\n", "date", "resolved", "open", "unfilled",
+               "net_pnl", "hit%", "avg_win", "avg_loss", "drawdown", "degrad", "notional");
+    for (const auto& v : day_rows) {
+        const QJsonObject r = v.toObject();
+        std::printf("%-12s %8d %6d %8d %10.2f %6.0f %8.2f %8.2f %10.2f %8d %10.2f\n",
+                    qUtf8Printable(r.value("score_date").toString()), r.value("resolved_count").toInt(),
+                    r.value("open_count").toInt(), r.value("unfilled_count").toInt(), r.value("net_pnl").toDouble(),
+                    r.value("hit_rate").toDouble() * 100.0, r.value("avg_win").toDouble(),
+                    r.value("avg_loss").toDouble(), r.value("max_drawdown").toDouble(),
+                    r.value("degraded_count").toInt(), r.value("gross_notional").toDouble());
+    }
+    return 0;
+}
+
 static int sandbox_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     if (sub == "seed")
@@ -7648,6 +7859,12 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
         return sandbox_tick_command(opts);
     if (sub == "positions")
         return sandbox_positions_command(opts, args);
+    if (sub == "score-now" || sub == "score")
+        return sandbox_score_now_command(opts);
+    if (sub == "leaderboard" || sub == "board")
+        return sandbox_leaderboard_command(opts, args);
+    if (sub == "book")
+        return sandbox_book_command(opts, args);
     if (sub == "install-jobs" || sub == "remove-jobs") {
         // Job manipulation is owned by the daemon's job store (ServeCommand.cpp),
         // same as automation_command's fallback to daemon_command for its own
@@ -7658,7 +7875,8 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
     }
     std::fprintf(stderr,
                  "usage: sandbox seed|list [--status S]|pause <id>|resume <id>|retire <id>|tick|"
-                 "positions [--open|--closed] [--limit N]|install-jobs|remove-jobs\n");
+                 "positions [--open|--closed] [--limit N]|score-now|leaderboard [--json]|"
+                 "book <strategy_id> [--json]|install-jobs|remove-jobs\n");
     return 2;
 }
 
