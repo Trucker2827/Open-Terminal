@@ -11,6 +11,7 @@ add_test(NAME tst_bridge_discovery_file COMMAND tst_bridge_discovery_file)
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
@@ -31,6 +32,14 @@ add_executable(tst_bridge_client
 target_include_directories(tst_bridge_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_bridge_client PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME tst_bridge_client COMMAND tst_bridge_client)
+
+add_executable(tst_automation_state
+    tst_automation_state.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
+target_include_directories(tst_automation_state PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_automation_state PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_automation_state COMMAND tst_automation_state)
 
 # Off-thread dispatch proof — drives the REAL TerminalMcpBridge (in
 # openterminal_core) via BridgeClient against a probe tool and asserts the

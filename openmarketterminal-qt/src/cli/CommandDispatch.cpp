@@ -4,6 +4,7 @@
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
 #include "cli/ServeCommand.h"
+#include "cli/automation/AutomationState.h"
 #include "core/config/AppConfig.h"
 #include "core/config/AppPaths.h"
 #include "core/layout/LayoutCatalog.h"
@@ -6508,62 +6509,6 @@ static int crypto_order_command(const GlobalOpts& opts, QStringList args, const 
     return crypto_call(opts, QStringLiteral("crypto_submit_order"), order);
 }
 
-static QString automation_state_dir() {
-    ProfilePaths::ensure_all();
-    const QString dir = ProfilePaths::profile_root() + QStringLiteral("/daemon");
-    QDir().mkpath(dir);
-    return dir;
-}
-
-static QString automation_live_guard_path() {
-    return automation_state_dir() + QStringLiteral("/automation_live_guard.json");
-}
-
-static QString automation_decisions_path() {
-    return automation_state_dir() + QStringLiteral("/scalp_decisions.jsonl");
-}
-
-static QString automation_orders_path() {
-    return automation_state_dir() + QStringLiteral("/automation_orders.jsonl");
-}
-
-static QJsonObject automation_read_json_object(const QString& path) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return {};
-    QJsonParseError pe;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
-    return pe.error == QJsonParseError::NoError && doc.isObject() ? doc.object() : QJsonObject{};
-}
-
-static bool automation_write_json_object(const QString& path, const QJsonObject& o, QString* error = nullptr) {
-    QDir().mkpath(QFileInfo(path).absolutePath());
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if (error) *error = QStringLiteral("could not write %1").arg(path);
-        return false;
-    }
-    f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
-    if (!f.commit()) {
-        if (error) *error = QStringLiteral("could not commit %1").arg(path);
-        return false;
-    }
-    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
-    return true;
-}
-
-static bool automation_append_jsonl(const QString& path, const QJsonObject& o, QString* error = nullptr) {
-    QDir().mkpath(QFileInfo(path).absolutePath());
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        if (error) *error = QStringLiteral("could not append %1").arg(path);
-        return false;
-    }
-    f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
-    f.write("\n");
-    return true;
-}
-
 static QStringList automation_json_string_list(const QJsonArray& a) {
     QStringList out;
     for (const QJsonValue& v : a) {
@@ -6894,11 +6839,11 @@ static int automation_coinbase_scenarios_command(const GlobalOpts& opts, QString
     }
     QString report_path;
     if (write_report) {
-        report_path = automation_state_dir() + QStringLiteral("/coinbase_scenario_lab.jsonl");
+        report_path = automation::state_dir(opts.profile) + QStringLiteral("/coinbase_scenario_lab.jsonl");
         QFile::remove(report_path);
         QString error;
         for (const QJsonValue& v : filtered) {
-            if (!automation_append_jsonl(report_path, v.toObject(), &error)) {
+            if (!automation::append_jsonl(report_path, v.toObject(), &error)) {
                 std::fprintf(stderr, "%s\n", qUtf8Printable(error));
                 return 7;
             }
@@ -6950,41 +6895,6 @@ static int automation_coinbase_scenarios_command(const GlobalOpts& opts, QString
     }
     std::printf("\nUse `--json` to feed this into DuckDB/notebooks; use `--success-only` to inspect only survivable cases.\n");
     return 0;
-}
-
-static QJsonObject automation_latest_candidate(const QString& symbol_filter, int max_age_sec, QString* error = nullptr) {
-    QFile f(automation_decisions_path());
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        if (error) *error = QStringLiteral("no paper decisions yet; start automation and daemon first");
-        return {};
-    }
-    const QList<QByteArray> lines = f.readAll().split('\n');
-    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    const QString filter = symbol_filter.trimmed().toUpper();
-    for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
-        const QByteArray line = it->trimmed();
-        if (line.isEmpty())
-            continue;
-        QJsonParseError pe;
-        const QJsonDocument doc = QJsonDocument::fromJson(line, &pe);
-        if (pe.error != QJsonParseError::NoError || !doc.isObject())
-            continue;
-        const QJsonObject d = doc.object();
-        const QString symbol = d.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
-        if (!filter.isEmpty() && symbol != filter)
-            continue;
-        if (d.value(QStringLiteral("verdict")).toString() != QLatin1String("PAPER TRADE CANDIDATE"))
-            continue;
-        if (d.value(QStringLiteral("action")).toString() != QLatin1String("PAPER_LIMIT_BUY_ONLY"))
-            continue;
-        bool ok = false;
-        const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
-        if (!ok || ts_ms <= 0 || now_ms - ts_ms > static_cast<qint64>(max_age_sec) * 1000)
-            continue;
-        return d;
-    }
-    if (error) *error = QStringLiteral("no fresh approved paper candidate found");
-    return {};
 }
 
 static QJsonObject automation_latest_spot_candidate(const GlobalOpts& opts,
@@ -7043,29 +6953,6 @@ static QJsonObject automation_latest_spot_candidate(const GlobalOpts& opts,
     }
     if (error) *error = QStringLiteral("no fresh approved spot candidate found");
     return {};
-}
-
-static int automation_submitted_today_count() {
-    QFile f(automation_orders_path());
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return 0;
-    const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
-    int count = 0;
-    for (const QByteArray& raw : f.readAll().split('\n')) {
-        const QByteArray line = raw.trimmed();
-        if (line.isEmpty())
-            continue;
-        QJsonParseError pe;
-        const QJsonDocument doc = QJsonDocument::fromJson(line, &pe);
-        if (pe.error != QJsonParseError::NoError || !doc.isObject())
-            continue;
-        const QJsonObject o = doc.object();
-        if (!o.value(QStringLiteral("submitted")).toBool())
-            continue;
-        if (o.value(QStringLiteral("ts")).toString().startsWith(today))
-            ++count;
-    }
-    return count;
 }
 
 static int automation_emit_object(const GlobalOpts& opts, const QJsonObject& o) {
@@ -7221,7 +7108,7 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
                       {"armed_at", now.toString(Qt::ISODateWithMs)},
                       {"expires_at", now.addSecs(expires_min * 60).toString(Qt::ISODateWithMs)}};
     QString error;
-    if (!automation_write_json_object(automation_live_guard_path(), guard, &error)) {
+    if (!automation::write_json_object(automation::live_guard_path(opts.profile), guard, &error)) {
         std::fprintf(stderr, "%s\n", qUtf8Printable(error));
         return 7;
     }
@@ -7240,11 +7127,11 @@ static int automation_disarm_live_command(const GlobalOpts& opts, QStringList ar
         std::fprintf(stderr, "usage: automation disarm-live --yes\n");
         return 2;
     }
-    QJsonObject guard = automation_read_json_object(automation_live_guard_path());
+    QJsonObject guard = automation::read_json_object(automation::live_guard_path(opts.profile));
     guard["enabled"] = false;
     guard["disarmed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     QString error;
-    if (!automation_write_json_object(automation_live_guard_path(), guard, &error)) {
+    if (!automation::write_json_object(automation::live_guard_path(opts.profile), guard, &error)) {
         std::fprintf(stderr, "%s\n", qUtf8Printable(error));
         return 7;
     }
@@ -7252,7 +7139,7 @@ static int automation_disarm_live_command(const GlobalOpts& opts, QStringList ar
 }
 
 static int automation_live_status_command(const GlobalOpts& opts) {
-    const QJsonObject guard = automation_read_json_object(automation_live_guard_path());
+    const QJsonObject guard = automation::read_json_object(automation::live_guard_path(opts.profile));
     const bool enabled = guard.value(QStringLiteral("enabled")).toBool();
     const QDateTime expires = QDateTime::fromString(guard.value(QStringLiteral("expires_at")).toString(), Qt::ISODateWithMs);
     const bool expired = expires.isValid() && expires < QDateTime::currentDateTimeUtc();
@@ -7297,7 +7184,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
         return 2;
     }
 
-    QJsonObject guard = automation_read_json_object(automation_live_guard_path());
+    QJsonObject guard = automation::read_json_object(automation::live_guard_path(opts.profile));
     QString mode = mode_raw.trimmed().toLower();
     const QString requested_mode = automation_normalize_strategy(mode);
     const QStringList armed_strategies = automation_guard_strategies(guard);
@@ -7336,7 +7223,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
         return automation_emit_object(opts, out);
     }
     const int max_daily_orders = guard.value(QStringLiteral("max_daily_orders")).toInt(3);
-    const int submitted_today = automation_submitted_today_count();
+    const int submitted_today = automation::submitted_today_count(opts.profile);
     if (!dry_run && submitted_today >= max_daily_orders) {
         return automation_emit_object(opts, QJsonObject{{"submitted", false},
                                                        {"dry_run", false},
@@ -7392,7 +7279,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
         const QJsonObject candidate = candidate_mode == QLatin1String("spot")
                                           ? automation_latest_spot_candidate(opts, symbol, max_age_sec,
                                                                              min_spot_edge_bps, min_confidence, &candidate_error)
-                                          : automation_latest_candidate(symbol, max_age_sec, &candidate_error);
+                                          : automation::latest_candidate(opts.profile, symbol, max_age_sec, &candidate_error);
         if (!candidate.isEmpty()) {
             decision = candidate;
             chosen_mode = candidate_mode;
@@ -7449,7 +7336,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
                                       ? QStringLiteral("fresh local spot candidate passed edge/confidence gate; submitting post-only limit buy under reference")
                                       : QStringLiteral("fresh local paper candidate passed cost gate; submitting post-only limit buy under reference")}};
     if (dry_run) {
-        automation_append_jsonl(automation_orders_path(), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        automation::append_jsonl(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                                                                       {"dry_run", true},
                                                                       {"order", order},
                                                                       {"decision", decision}});
@@ -7460,7 +7347,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
     const int rc = call_headless_tool_json(opts, QStringLiteral("crypto_submit_order"), order, body);
     out["submitted"] = rc == 0;
     out["broker_response"] = body;
-    automation_append_jsonl(automation_orders_path(), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+    automation::append_jsonl(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                                                                   {"submitted", rc == 0},
                                                                   {"order", order},
                                                                   {"decision", decision},
