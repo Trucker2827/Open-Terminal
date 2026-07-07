@@ -37,6 +37,14 @@ class TstSandboxFillModel : public QObject {
         QVERIFY(r.filled);
         QCOMPARE(r.price, 100.0);
         QCOMPARE(r.ts_ms, qint64(2000));
+
+        // Maker rule, discriminated: a tick strictly THROUGH the limit
+        // (99.5 < 100 limit) must still fill at the LIMIT price (100.0),
+        // never at the better trade print (99.5) -- resting maker orders
+        // don't get price improvement.
+        const FillResult deep = try_fill(QStringLiteral("buy"), 100.0, {tick(99.5, 1000)}, 5000);
+        QVERIFY(deep.filled);
+        QVERIFY(qAbs(deep.price - 100.0) < 1e-9);
     }
 
     // Case 2: buy limit 100, every tick trades at or above 100.01 -> never
@@ -159,6 +167,13 @@ class TstSandboxFillModel : public QObject {
         QVERIFY(fill_r.filled);
         QCOMPARE(fill_r.price, 100.0);
         QCOMPARE(fill_r.ts_ms, qint64(2000));
+
+        // Maker rule mirror, discriminated: a tick strictly THROUGH the
+        // sell limit (100.5 > 100 limit) still fills at the LIMIT (100.0),
+        // never at the better trade print (100.5).
+        const FillResult deep = try_fill(QStringLiteral("sell"), 100.0, {tick(100.5, 1000)}, 5000);
+        QVERIFY(deep.filled);
+        QVERIFY(qAbs(deep.price - 100.0) < 1e-9);
 
         const QVector<TickRow> not_filled_ticks = {tick(99.99, 1000), tick(98.0, 2000)};
         const FillResult not_filled = try_fill(QStringLiteral("sell"), 100.0, not_filled_ticks, 5000);
