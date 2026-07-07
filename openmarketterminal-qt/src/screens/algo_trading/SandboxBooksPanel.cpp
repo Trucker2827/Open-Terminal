@@ -459,7 +459,14 @@ void SandboxBooksPanel::populate_leaderboard() {
     for (const auto& s : strategies.value())
         strat_by_id.insert(s.strategy_id, s);
 
-    leaderboard_table_->setRowCount(board.value().size());
+    QList<services::sandbox::LeaderboardRow> visible;
+    for (const auto& r : board.value()) {
+        const auto it = strat_by_id.constFind(r.strategy_id);
+        if (it != strat_by_id.constEnd() && it->status == QStringLiteral("retired"))
+            continue; // hide retired books, matching the books table above
+        visible.append(r);
+    }
+    leaderboard_table_->setRowCount(visible.size());
     int resolved_total = 0;
     int eligible_total = 0;
     double net_total = 0.0;
@@ -469,8 +476,8 @@ void SandboxBooksPanel::populate_leaderboard() {
             item->setData(Qt::ForegroundRole, QColor(color));
         leaderboard_table_->setItem(row, col, item);
     };
-    for (int i = 0; i < board.value().size(); ++i) {
-        const auto& row = board.value().at(i);
+    for (int i = 0; i < visible.size(); ++i) {
+        const auto& row = visible.at(i);
         const bool ranked = !row.hypothetical && row.resolved >= services::sandbox::kMinResolvedSample;
         const int total_positions = scalar_query_int(
             QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ?"), {row.strategy_id});
@@ -551,7 +558,9 @@ void SandboxBooksPanel::populate_pipeline_health() {
                         QList<QJsonObject> rows;
                         for (const auto& v : jobs) {
                             const QJsonObject job = v.toObject();
-                            if (is_sandbox_pipeline_job(job))
+                            // Health view = the active pipeline; skip disabled/retired
+                            // producer jobs (e.g. feeds the reshape dropped).
+                            if (is_sandbox_pipeline_job(job) && job.value(QStringLiteral("enabled")).toBool())
                                 rows.append(job);
                         }
                         std::sort(rows.begin(), rows.end(), [](const QJsonObject& a, const QJsonObject& b) {
