@@ -22,8 +22,8 @@ class ScannerPanel;
 class DeploymentDashboard;
 class UniverseScannerPanel;
 
-/// Algo Trading screen — strategy library plus paper proof books.
-/// Tabs: Builder, Library, Proof Books, Scanner, Alerts, Dashboard, Universe
+/// Strategy workspace: proof books first, classic indicator tools kept behind it.
+/// Tabs: Proof Books, Deployments, Classic Rules, Builder, Scanner, Alerts, Universe.
 class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     Q_OBJECT
   public:
@@ -32,7 +32,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     void restore_state(const QVariantMap& state) override;
     QVariantMap save_state() const override;
     QString state_key() const override { return "algo_trading"; }
-    int state_version() const override { return 1; }
+    int state_version() const override { return 2; }
 
   protected:
     void showEvent(QShowEvent* event) override;
