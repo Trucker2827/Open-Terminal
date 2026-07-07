@@ -16,8 +16,8 @@
 # Flow (mirrors the scalp lane's real daemon-tick contract — see
 # PaperExecutor.cpp's open_scalp_candidates/advance_pending_fills/
 # advance_open_positions and PaperFillModel.cpp's try_fill/check_exit):
-#   1. `sandbox seed` registers the five season-1 books (scalp/spot/btc5m/
-#      kalshi/long_short).
+#   1. `sandbox seed` registers the ten season-1 books (scalp/spot/btc5m/
+#      kalshi/long_short plus Chronos BTC 5m/15m/1h/1d and equity).
 #   2. A fresh scalp PAPER TRADE CANDIDATE decision is written to
 #      daemon/scalp_decisions.jsonl (ts_ms within the scalp book's 15s
 #      max_age_sec window), plus a FIRST tick in daemon/scalp_ticks.jsonl
@@ -89,15 +89,15 @@ echo "CLI=$CLI  watchdog=${TIMEOUT:-none}"
 echo
 
 # ============================================================================
-# Step 1 — seed the seven season-1 books.
+# Step 1 — seed the ten season-1 books.
 # ============================================================================
 SEED_JSON="$(wd 30 "$CLI" --json sandbox seed)" || fail "sandbox seed exited nonzero"
 printf '%s' "$SEED_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 7, d
-" || fail "sandbox seed did not report 7 seeded strategy ids: $SEED_JSON"
-echo "PASS: sandbox seed -> 7 strategies"
+assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 10, d
+" || fail "sandbox seed did not report 10 seeded strategy ids: $SEED_JSON"
+echo "PASS: sandbox seed -> 10 strategies"
 
 SCALP_ID="$(printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json

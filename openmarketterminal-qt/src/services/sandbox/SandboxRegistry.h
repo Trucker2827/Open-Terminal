@@ -57,7 +57,8 @@ Result<QList<StrategyRow>> list_strategies(const QString& status_filter = {});
 Result<void> set_status(const QString& strategy_id, const QString& status);
 
 // Registers the season-1 default strategy books (scalp, spot, btc5m, kalshi,
-// long_short, chronos2) via register_strategy — idempotent, safe to call on
+// long_short, chronos2_5m, chronos2, chronos2_1h, chronos2_1d, chronos2_equity)
+// via register_strategy — idempotent, safe to call on
 // every startup. Returns the strategy_ids in registration order.
 Result<QList<QString>> seed_default_strategies();
 

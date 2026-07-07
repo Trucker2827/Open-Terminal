@@ -792,6 +792,78 @@ class TstSandboxExecutor : public QObject {
             if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
         QCOMPARE(opened_kind, QStringLiteral("kalshi"));
     }
+
+    // Chronos-2 journal rows are price forecasts, not binary yes/no
+    // contracts. The seeded chronos2 book must therefore open a concrete
+    // tick-resolved paper position, preserving down forecasts as sell/short
+    // economics with target below entry and stop above entry.
+    void chronos_seed_book_opens_price_forecast_as_concrete_position() {
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+
+        const qint64 t0 = 15000000;
+        insert_journal_row(QStringLiteral("dec-chronos-seed-1"), QStringLiteral("chronos2-forecast"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("sell"),
+                           QStringLiteral("SELL CANDIDATE"), QStringLiteral("pass"), 0.88, t0,
+                           QStringLiteral("15m"), QJsonObject{{"reference_price", 100.0}},
+                           QJsonObject{{"freshest_age_ms", 100}, {"live_sources", 3}});
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-chronos-seed-1"));
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("open"));
+        QCOMPARE(row.side, QStringLiteral("sell"));
+        QVERIFY(!row.hypothetical);
+        QVERIFY(qAbs(row.limit_price - 100.0) < 1e-9);
+        QVERIFY(row.has_target);
+        QVERIFY(qAbs(row.target_price - 99.55) < 1e-9);   // -45 bps for sell/short
+        QVERIFY(row.has_stop);
+        QVERIFY(qAbs(row.stop_price - 100.25) < 1e-9);    // +25 bps for sell/short
+        QVERIFY(qAbs(row.entry_fee - (50.0 * 60.0 / 10000.0)) < 1e-9);
+
+        auto rows = list_strategies();
+        QVERIFY(rows.is_ok());
+        QString opened_kind;
+        for (const auto& r : rows.value())
+            if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
+        QCOMPARE(opened_kind, QStringLiteral("chronos2"));
+    }
+
+    void chronos_horizon_books_do_not_cross_feed() {
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+
+        const qint64 t0 = 16000000;
+        insert_journal_row(QStringLiteral("dec-chronos-1h-only"), QStringLiteral("chronos2-forecast"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("buy"),
+                           QStringLiteral("BUY CANDIDATE"), QStringLiteral("pass"), 0.82, t0,
+                           QStringLiteral("1h"), QJsonObject{{"reference_price", 100.0}},
+                           QJsonObject{{"freshest_age_ms", 100}, {"live_sources", 3}});
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-chronos-1h-only"));
+        QVERIFY(row.found);
+        QCOMPARE(row.side, QStringLiteral("buy"));
+        QVERIFY(qAbs(row.target_price - 101.0) < 1e-9);  // +100 bps for 1h book
+        QVERIFY(qAbs(row.stop_price - 99.5) < 1e-9);     // -50 bps for 1h book
+
+        auto rows = list_strategies();
+        QVERIFY(rows.is_ok());
+        QString opened_kind;
+        for (const auto& r : rows.value())
+            if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
+        QCOMPARE(opened_kind, QStringLiteral("chronos2_1h"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxExecutor)

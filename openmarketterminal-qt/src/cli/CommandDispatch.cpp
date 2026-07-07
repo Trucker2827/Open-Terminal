@@ -355,9 +355,9 @@ static int command_help(const QString& topic) {
             "  daemon notify --title T --message M [--provider P] [--job]\n"
             "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N] [--timeout-sec N]\n"
             "  daemon paper <meanrev|claude> [--symbols AAPL,MSFT] [--every-sec N] [--timeout-sec N]\n"
-            "  daemon chronos2 BTC-USD [--horizon 15m] [--every-sec 900]\n"
+            "  daemon chronos2 BTC-USD [--horizon 5m|15m|1h|1d] [--every-sec N]\n"
             "  daemon chronos2-equity AAPL [--horizon 1d] [--every-sec 86400]\n"
-            "  daemon jobs add chronos2 BTC-USD [--horizon 15m] [--every-sec 900]\n"
+            "  daemon jobs add chronos2 BTC-USD [--horizon 5m|15m|1h|1d] [--every-sec N]\n"
             "  daemon install [--replace] [--start] [--dry-run]\n"
             "  daemon start\n"
             "  daemon stop\n"
@@ -410,10 +410,15 @@ static int command_help(const QString& topic) {
             "  sandbox leaderboard [--json] (alias: board)\n"
             "  sandbox book <strategy_id> [--json]\n"
             "  sandbox eligibility [--json]\n"
+            "  sandbox install-jobs\n"
             "\n"
-            "Registers/lists the five season-1 paper strategy books (scalp, spot, btc5m,\n"
-            "kalshi, long_short), advances one PaperExecutor cycle for the profile, and\n"
-            "inspects sandbox_position rows. Entirely local paper trading — no live orders.\n"
+            "Registers/lists the season-1 paper strategy books (scalp, spot, btc5m,\n"
+            "kalshi, long_short, chronos2_5m, chronos2, chronos2_1h, chronos2_1d,\n"
+            "chronos2_equity), advances one PaperExecutor\n"
+            "cycle for the profile, and inspects sandbox_position rows. install-jobs\n"
+            "installs the managed proof stack: Coinbase-first input collectors, spot and\n"
+            "long/short decision producers, Chronos 5m/15m/1h/1d producers, sandbox tick,\n"
+            "and score refresh. Entirely local paper trading — no live orders.\n"
             "score-now recomputes sandbox_score rollups; leaderboard shows the season-to-\n"
             "date ranking (books with fewer than 30 resolved trades are insufficient-sample,\n"
             "never ranked; hypothetical books get their own section); book shows one\n"
@@ -7477,14 +7482,16 @@ static int sandbox_seed_command(const GlobalOpts& opts) {
     const QStringList ids = seeded.value();
     const QSet<QString> current_ids(ids.begin(), ids.end());
 
-    // T5-review residual: any 'active' row whose kind is one of the five seed
+    // T5-review residual: any 'active' row whose kind is one of the seed
     // kinds but whose id is not among the ids seed_default_strategies just
     // returned is a stale book from an earlier param set (content-addressed
     // ids mean changed params mint a brand-new id rather than updating the
     // old row) -- retire it so it stops being picked up by run_cycle.
     static const QSet<QString> kSeedKinds = {QStringLiteral("scalp"), QStringLiteral("spot"),
                                              QStringLiteral("btc5m"), QStringLiteral("kalshi"),
-                                             QStringLiteral("long_short")};
+                                             QStringLiteral("long_short"), QStringLiteral("chronos2_5m"),
+                                             QStringLiteral("chronos2"), QStringLiteral("chronos2_1h"),
+                                             QStringLiteral("chronos2_1d"), QStringLiteral("chronos2_equity")};
     auto active = sandboxsvc::list_strategies(QStringLiteral("active"));
     if (active.is_err()) {
         std::fprintf(stderr, "sandbox seed failed: %s\n", active.error().c_str());

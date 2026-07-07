@@ -172,16 +172,16 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(status, QStringLiteral("paused"));
     }
 
-    // (e) seed_default_strategies is idempotent -> 7 rows both times, kinds
-    // exactly {scalp, spot, btc5m, kalshi, long_short, chronos2, chronos2_equity}.
+    // (e) seed_default_strategies is idempotent -> 10 rows both times, with
+    // separate Chronos BTC books for 5m/15m/1h/1d plus the equity book.
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 7);
+        QCOMPARE(first.value().size(), 10);
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 7);
+        QCOMPARE(second.value().size(), 10);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -192,13 +192,14 @@ class TstSandboxRegistry : public QObject {
             if (seed_ids.contains(row.strategy_id))
                 kinds.insert(row.kind);
         QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "btc5m", "kalshi", "long_short",
-                                       "chronos2", "chronos2_equity"}));
+                                       "chronos2_5m", "chronos2", "chronos2_1h",
+                                       "chronos2_1d", "chronos2_equity"}));
 
         int seed_row_count = 0;
         for (const auto& row : rows.value())
             if (seed_ids.contains(row.strategy_id))
                 ++seed_row_count;
-        QCOMPARE(seed_row_count, 7);
+        QCOMPARE(seed_row_count, 10);
     }
 
     // Contract test (task-11 follow-up): the kalshi season-1 seed shipped
@@ -239,6 +240,16 @@ class TstSandboxRegistry : public QObject {
                  QStringLiteral("edge journal-kalshi-scan")); // producer @ CommandDispatch.cpp ~19481
         QCOMPARE(journal_source_by_kind.value(QStringLiteral("long_short")),
                  QStringLiteral("edge long-short-strategy")); // producer @ CommandDispatch.cpp ~13824
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_5m")),
+                 QStringLiteral("chronos2-forecast"));
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2")),
+                 QStringLiteral("chronos2-forecast"));
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_1h")),
+                 QStringLiteral("chronos2-forecast"));
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_1d")),
+                 QStringLiteral("chronos2-forecast"));
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_equity")),
+                 QStringLiteral("chronos2-equity-forecast"));
     }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)

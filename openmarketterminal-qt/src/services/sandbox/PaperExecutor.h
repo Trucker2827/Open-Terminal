@@ -43,6 +43,11 @@
 //     -> skipped" dedup -- see PaperExecutor.cpp for the neuter-verified
 //     query text; do not "harden" it with an extra pre-check, or a broken
 //     anti-join stops failing loudly).
+//   - price_forecast (e.g. chronos2): journal rows for journal_source with
+//     gate='pass' and side buy/sell/long/short. These are price-return model
+//     forecasts, not binary prediction contracts, so they open concrete paper
+//     positions at features_json.reference_price and are tick-exited by the
+//     normal target/stop/expiry path.
 //   - prediction (params prediction:true, e.g. btc5m/kalshi): edge_decision_
 //     journal rows for journal_source with gate='pass', opened at the row's
 //     market_probability (side "yes"; a non-positive probability is a data

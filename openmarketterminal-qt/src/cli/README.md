@@ -144,7 +144,10 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     daemon scalp start BTC-USD --cadence-ms 250 --amounts 25,50 --venue coinbase_tier2 --liquidity maker --min-profit-bps 10 --paper
     daemon scalp status
     daemon scalp tape BTC-USD --limit 20
+    daemon chronos2 BTC-USD --horizon 5m --every-sec 300 --timeout-sec 300
     daemon chronos2 BTC-USD --horizon 15m --every-sec 900 --timeout-sec 300
+    daemon chronos2 BTC-USD --horizon 1h --every-sec 3600 --timeout-sec 420
+    daemon chronos2 BTC-USD --horizon 1d --every-sec 86400 --timeout-sec 600
     daemon collectors repair
     daemon collectors status
     daemon collectors run       # one-shot: ticks, scalp gates, scoring, lake mirrors
@@ -154,7 +157,7 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     edge crypto-recommend BTC/USD --venue coinbase --horizon-sec 60
     edge crypto-universe --symbols BTC,ETH,SOL --venue coinbase --horizon-sec 60
     edge decision-cockpit --symbols BTC,ETH,SOL
-    edge chronos2 forecast BTC-USD --horizon 15m --publish
+    edge chronos2 forecast BTC-USD --horizon 5m --publish
     edge chronos2 forecast BTC-USD --horizon 15m --journal --min-journal-edge-bps 15
     edge context BTC-USD
     edge context AAPL --asset-class equity
@@ -325,6 +328,10 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
   anything `BUY CANDIDATE`. It journals into the same `edge crypto-recommend`
   lane, so the decision cockpit and scoreboards can compare it with the rest of
   the system.
+- `edge chronos2 forecast` can run BTC-USD as separate 5m, 15m, 1h, and 1d
+  price-forecast producers. The sandbox keeps each horizon in its own book and
+  rejects cross-horizon leakage, so a 5m forecast cannot accidentally prove a
+  daily setup.
 - `daemon scalp start` turns on the persistent paper-only millisecond
   microstructure engine inside the daemon. It keeps websocket/tick feeds open,
   builds 250ms/500ms/1s/5s rolling features, writes a local tick tape and paper

@@ -479,6 +479,102 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
     return Result<void>::ok();
 }
 
+// price_forecast (season-1: chronos2 / chronos2_equity): these journal rows
+// describe expected price movement, not a binary market payout. Open them as
+// concrete paper positions so the ordinary tick target/stop/expiry path can
+// prove whether the forecast had net edge after costs.
+Result<void> open_price_forecast_candidates(const StrategyRow& strategy, const QJsonObject& params, qint64 now_ms,
+                                            CycleReport& report) {
+    const QString journal_source = params.value(QStringLiteral("journal_source")).toString();
+    const QString horizon_filter = params.value(QStringLiteral("horizon")).toString().trimmed().toLower();
+    const double notional_usd = params.value(QStringLiteral("notional_usd")).toDouble(0.0);
+    int horizon_sec_param = params.value(QStringLiteral("horizon_sec")).toInt(0);
+    if (horizon_sec_param <= 0)
+        horizon_sec_param = 86400;
+    const double target_bps = params.value(QStringLiteral("target_bps")).toDouble(0.0);
+    const double stop_bps = params.value(QStringLiteral("stop_bps")).toDouble(0.0);
+    const FeeModel fees = fee_model_from_params(params);
+    const int max_age_sec = params.contains(QStringLiteral("max_age_sec"))
+                                 ? params.value(QStringLiteral("max_age_sec")).toInt()
+                                 : 3600;
+    const qint64 cutoff = now_ms - static_cast<qint64>(std::max(1, max_age_sec)) * 1000;
+
+    for (const QString& symbol : split_symbols(strategy.symbols)) {
+        auto sel = Database::instance().execute(
+            "SELECT id, created_at, symbol, side, horizon, features_json, freshness_json"
+            " FROM edge_decision_journal"
+            " WHERE source = ? AND symbol = ? AND gate = 'pass' AND created_at >= ?"
+            " AND side IN ('buy','sell','long','short')"
+            " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
+            " ORDER BY created_at DESC LIMIT 20",
+            {journal_source, symbol, cutoff});
+        if (sel.is_err())
+            return Result<void>::err(sel.error());
+
+        auto& q = sel.value();
+        while (q.next()) {
+            const QString id = q.value(0).toString();
+            const qint64 created_at = q.value(1).toLongLong();
+            const QString row_symbol = q.value(2).toString();
+            const QString side = q.value(3).toString();
+            const QString row_horizon = q.value(4).toString().trimmed().toLower();
+            const QJsonObject features = parse_object(q.value(5).toString());
+            const QJsonObject freshness = parse_object(q.value(6).toString());
+            const double ref = features.value(QStringLiteral("reference_price")).toDouble();
+
+            if (!horizon_filter.isEmpty() && row_horizon != horizon_filter) {
+                report.skipped++;
+                report.notes << QStringLiteral("%1 candidate %2 skipped: horizon %3 does not match book %4")
+                                    .arg(strategy.kind, id, row_horizon, horizon_filter);
+                continue;
+            }
+            if (!is_recognized_side(side)) {
+                report.skipped++;
+                report.notes << QStringLiteral("%1 candidate %2 skipped: unrecognized side %3")
+                                    .arg(strategy.kind, id, side);
+                continue;
+            }
+            if (ref <= 0.0) {
+                report.skipped++;
+                report.notes << QStringLiteral("%1 candidate %2 skipped: non-positive reference_price")
+                                    .arg(strategy.kind, id);
+                continue;
+            }
+
+            const bool short_side = side == QLatin1String("short") || side == QLatin1String("sell");
+            OpenPlan plan;
+            plan.decision_id = id;
+            plan.symbol = row_symbol;
+            plan.side = side;
+            plan.hypothetical = false;
+            plan.limit_price = ref;
+            plan.qty = notional_usd / ref;
+            plan.target_price = target_bps > 0.0
+                                    ? QVariant(ref * (short_side ? (1.0 - target_bps / 10000.0)
+                                                                  : (1.0 + target_bps / 10000.0)))
+                                    : QVariant();
+            plan.stop_price = stop_bps > 0.0
+                                  ? QVariant(ref * (short_side ? (1.0 + stop_bps / 10000.0)
+                                                               : (1.0 - stop_bps / 10000.0)))
+                                  : QVariant();
+            plan.expires_at = created_at + static_cast<qint64>(horizon_sec_param) * 1000;
+            plan.created_at = created_at;
+            plan.state = QStringLiteral("open");
+            plan.opened_at = QVariant(now_ms);
+            plan.entry_fee = fee_for(notional_usd, fees.taker_bps);
+            plan.data_quality = data_quality_from_freshness(freshness);
+            plan.notional_usd = notional_usd;
+
+            auto ins = insert_position(strategy.strategy_id, plan);
+            if (ins.is_err())
+                return ins;
+            report.opened++;
+            break; // one latest forecast per symbol per cycle.
+        }
+    }
+    return Result<void>::ok();
+}
+
 // hypothetical (params hypothetical:true, e.g. long_short): journal rows for
 // journal_source with gate='pass', opened directly at 'open' at features_
 // json.reference_price, side taken from the row's own `side` column
@@ -534,7 +630,7 @@ Result<void> open_hypothetical_candidates(const StrategyRow& strategy, const QJs
             continue;
         }
 
-        const bool is_short = side == QLatin1String("short");
+        const bool is_short = side == QLatin1String("short") || side == QLatin1String("sell");
         OpenPlan plan;
         plan.decision_id = id;
         plan.symbol = symbol;
@@ -804,12 +900,15 @@ Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir,
         const QJsonObject params = parse_object(strategy.params_json);
         const bool is_prediction = params.value(QStringLiteral("prediction")).toBool(false);
         const bool is_hypothetical = params.value(QStringLiteral("hypothetical")).toBool(false);
+        const bool is_price_forecast = params.value(QStringLiteral("price_forecast")).toBool(false);
 
         Result<void> r = Result<void>::ok();
         if (strategy.kind == QLatin1String("scalp"))
             r = open_scalp_candidates(strategy, params, daemon_dir, now_ms, report);
         else if (is_prediction)
             r = open_prediction_candidates(strategy, params, now_ms, report);
+        else if (is_price_forecast)
+            r = open_price_forecast_candidates(strategy, params, now_ms, report);
         else if (is_hypothetical)
             r = open_hypothetical_candidates(strategy, params, now_ms, report);
         else

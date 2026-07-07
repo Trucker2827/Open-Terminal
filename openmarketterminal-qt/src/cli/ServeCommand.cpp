@@ -4469,16 +4469,12 @@ int disable_automation_247_jobs(const QString& profile, int* disabled_out) {
 }
 
 // --- Strategy Sandbox daemon jobs (Task 7) ----------------------------------
-// Two jobs, both tagged managed_by:"strategy-sandbox" and matched for
+// Managed proof-stack jobs, tagged managed_by:"strategy-sandbox" and matched for
 // idempotent re-install by the "sandbox_job" key (mirrors how
 // make_automation_247_job matches on automation_symbol):
-//   - "tick": runs `sandbox tick` (fills/expires paper positions off the
-//     latest tick tail) every 30s, timeout 25s.
-//   - "score-now": runs `sandbox score-now` every 6h (21600s), timeout 120s.
-//     `sandbox score-now` does not exist yet (lands in Task 9); until then
-//     the scheduled subprocess exits non-zero and the job accrues
-//     fail_count like any other missing-command job -- the spec still
-//     installs and schedules correctly.
+//   - producers keep ticks and decision-journal rows warm.
+//   - tick advances paper fills/exits.
+//   - score-now refreshes the strategy leaderboard.
 QJsonObject make_sandbox_job(const QString& sandbox_job_key,
                              const QString& name,
                              const QString& description,
@@ -4525,7 +4521,88 @@ struct SandboxJobSpec {
 };
 
 QVector<SandboxJobSpec> sandbox_job_specs() {
-    return {{QStringLiteral("tick"), QStringLiteral("Strategy sandbox tick"),
+    return {{QStringLiteral("btc-tick-collector"), QStringLiteral("Strategy sandbox BTC ticks"),
+             QStringLiteral("Keep BTC tick tail warm for sandbox fills, exits, and Chronos context."),
+             {QStringLiteral("edge"), QStringLiteral("collect"), QStringLiteral("BTC"),
+              QStringLiteral("--sources"), QStringLiteral("coinbase,kraken,bitcointicker"),
+              QStringLiteral("--stream-ms"), QStringLiteral("8000"),
+              QStringLiteral("--timeout-ms"), QStringLiteral("5000")},
+             20, 30},
+            {QStringLiteral("crypto-universe-decisions"), QStringLiteral("Strategy sandbox crypto decisions"),
+             QStringLiteral("Produce cost-aware crypto spot recommendation rows for the spot strategy book."),
+             {QStringLiteral("edge"), QStringLiteral("crypto-universe"),
+              QStringLiteral("--venue"), QStringLiteral("coinbase"),
+              QStringLiteral("--horizon-sec"), QStringLiteral("60"),
+              QStringLiteral("--duration-ms"), QStringLiteral("1500"),
+              QStringLiteral("--min-edge-bps"), QStringLiteral("25")},
+             300, 180},
+            {QStringLiteral("btc5m-decisions"), QStringLiteral("Strategy sandbox BTC 5m decisions"),
+             QStringLiteral("Produce BTC five-minute prediction decision rows for the btc5m strategy book."),
+             {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("evaluate-btc5m-live"),
+              QStringLiteral("--timeout-ms"), QStringLiteral("15000")},
+             60, 45},
+            {QStringLiteral("coinbase-long-short-decisions"), QStringLiteral("Strategy sandbox Coinbase long/short"),
+             QStringLiteral("Produce guarded Coinbase long/short paper decision rows for the long_short book."),
+             {QStringLiteral("edge"), QStringLiteral("long-short-strategy"), QStringLiteral("BTC-USD"),
+              QStringLiteral("--venue"), QStringLiteral("coinbase_perps"),
+              QStringLiteral("--horizon-sec"), QStringLiteral("300"),
+              QStringLiteral("--duration-ms"), QStringLiteral("8000"),
+              QStringLiteral("--leverage"), QStringLiteral("3"),
+              QStringLiteral("--margin-usd"), QStringLiteral("10"),
+              QStringLiteral("--fee-bps"), QStringLiteral("5"),
+              QStringLiteral("--slippage-bps"), QStringLiteral("2"),
+              QStringLiteral("--min-edge-bps"), QStringLiteral("50"),
+              QStringLiteral("--target-bps"), QStringLiteral("100"),
+              QStringLiteral("--stop-bps"), QStringLiteral("45")},
+             300, 60},
+            {QStringLiteral("kalshi-decisions"), QStringLiteral("Strategy sandbox Kalshi decisions"),
+             QStringLiteral("Produce Kalshi scan decision rows for the prediction strategy book."),
+             {QStringLiteral("edge"), QStringLiteral("journal-kalshi-scan"),
+              QStringLiteral("--limit"), QStringLiteral("50"),
+              QStringLiteral("--timeout-ms"), QStringLiteral("20000")},
+             300, 120},
+            {QStringLiteral("chronos2-btc-5m"), QStringLiteral("Strategy sandbox Chronos BTC 5m"),
+             QStringLiteral("Run Chronos-2 BTC 5m forecast and journal price-forecast candidates."),
+             {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
+              QStringLiteral("BTC-USD"),
+              QStringLiteral("--horizon"), QStringLiteral("5m"),
+              QStringLiteral("--journal"),
+              QStringLiteral("--min-journal-edge-bps"), QStringLiteral("8")},
+             300, 300},
+            {QStringLiteral("chronos2-btc-15m"), QStringLiteral("Strategy sandbox Chronos BTC 15m"),
+             QStringLiteral("Run Chronos-2 BTC forecast and journal price-forecast candidates for sandbox proofing."),
+             {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
+              QStringLiteral("BTC-USD"),
+              QStringLiteral("--horizon"), QStringLiteral("15m"),
+              QStringLiteral("--journal"),
+              QStringLiteral("--min-journal-edge-bps"), QStringLiteral("15")},
+             900, 300},
+            {QStringLiteral("chronos2-btc-1h"), QStringLiteral("Strategy sandbox Chronos BTC 1h"),
+             QStringLiteral("Run Chronos-2 BTC hourly forecast and journal price-forecast candidates."),
+             {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
+              QStringLiteral("BTC-USD"),
+              QStringLiteral("--horizon"), QStringLiteral("1h"),
+              QStringLiteral("--journal"),
+              QStringLiteral("--min-journal-edge-bps"), QStringLiteral("35")},
+             3600, 420},
+            {QStringLiteral("chronos2-btc-1d"), QStringLiteral("Strategy sandbox Chronos BTC 1d"),
+             QStringLiteral("Run Chronos-2 BTC daily forecast and journal price-forecast candidates."),
+             {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
+              QStringLiteral("BTC-USD"),
+              QStringLiteral("--horizon"), QStringLiteral("1d"),
+              QStringLiteral("--journal"),
+              QStringLiteral("--min-journal-edge-bps"), QStringLiteral("75")},
+             86400, 600},
+            {QStringLiteral("chronos2-equity-spy-1d"), QStringLiteral("Strategy sandbox Chronos SPY 1d"),
+             QStringLiteral("Run Chronos-2 SPY daily forecast and journal equity price-forecast candidates."),
+             {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("equity"),
+              QStringLiteral("SPY"),
+              QStringLiteral("--horizon"), QStringLiteral("1d"),
+              QStringLiteral("--period"), QStringLiteral("2y"),
+              QStringLiteral("--journal"),
+              QStringLiteral("--min-journal-edge-bps"), QStringLiteral("50")},
+             86400, 600},
+            {QStringLiteral("tick"), QStringLiteral("Strategy sandbox tick"),
              QStringLiteral("Fills/expires hypothetical sandbox positions off the latest tick tail."),
              {QStringLiteral("sandbox"), QStringLiteral("tick")}, 30, 25},
             {QStringLiteral("score-now"), QStringLiteral("Strategy sandbox score"),

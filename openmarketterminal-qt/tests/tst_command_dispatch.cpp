@@ -490,14 +490,14 @@ private slots:
             QStringList{"--json", "sandbox", "seed"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray seeded_ids = seeded.value("seeded").toArray();
-        QCOMPARE(seeded_ids.size(), 5);
+        QCOMPARE(seeded_ids.size(), 10);
         QCOMPARE(seeded.value("retired_stale").toInt(-1), 0);
 
         QJsonObject listed = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray rows = listed.value("strategies").toArray();
-        QCOMPARE(rows.size(), 5);
+        QCOMPARE(rows.size(), 10);
 
         QString spot_id;
         QString btc5m_id;
@@ -522,7 +522,7 @@ private slots:
         QJsonObject active_after_pause = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 4);
+        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 9);
 
         // resume flips it back.
         const QJsonObject resumed = json_object_from_dispatch(
@@ -532,7 +532,7 @@ private slots:
         QJsonObject active_after_resume = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 5);
+        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 10);
 
         // retire is permanent-by-convention here but still just a status flip.
         const QJsonObject retired = json_object_from_dispatch(
@@ -542,7 +542,7 @@ private slots:
         QJsonObject active_after_retire = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 4);
+        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 9);
 
         // put it back so later slots in this file see the full season-1 set.
         rc = -1;
@@ -671,14 +671,45 @@ private slots:
             QStringList{"--json", "sandbox", "install-jobs"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray jobs = out.value("jobs").toArray();
-        QCOMPARE(jobs.size(), 2);
-        bool has_tick = false, has_score = false;
+        QVERIFY2(jobs.size() >= 12, "install-jobs must create the full sandbox proof stack");
+        bool has_tick = false;
+        bool has_score = false;
+        bool has_btc_ticks = false;
+        bool has_long_short = false;
+        bool has_chronos_5m = false;
+        bool has_chronos_15m = false;
+        bool has_chronos_1h = false;
+        bool has_chronos_1d = false;
+        auto starts_with = [](const QStringList& command, const QStringList& prefix) {
+            if (command.size() < prefix.size())
+                return false;
+            for (int i = 0; i < prefix.size(); ++i)
+                if (command.at(i) != prefix.at(i))
+                    return false;
+            return true;
+        };
         for (const QJsonValue& v : jobs) {
             const QJsonObject job = v.toObject();
             QCOMPARE(job.value("managed_by").toString(), QStringLiteral("strategy-sandbox"));
             QVERIFY(job.value("enabled").toBool());
             const QStringList command = json_strings(job.value("command").toArray());
-            if (command == QStringList{"sandbox", "tick"}) {
+            if (starts_with(command, QStringList{"edge", "collect", "BTC"})) {
+                has_btc_ticks = true;
+            } else if (starts_with(command, QStringList{"edge", "long-short-strategy", "BTC-USD"})) {
+                has_long_short = true;
+            } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "5m",
+                                             "--journal", "--min-journal-edge-bps", "8"}) {
+                has_chronos_5m = true;
+            } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "15m",
+                                             "--journal", "--min-journal-edge-bps", "15"}) {
+                has_chronos_15m = true;
+            } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "1h",
+                                             "--journal", "--min-journal-edge-bps", "35"}) {
+                has_chronos_1h = true;
+            } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "1d",
+                                             "--journal", "--min-journal-edge-bps", "75"}) {
+                has_chronos_1d = true;
+            } else if (command == QStringList{"sandbox", "tick"}) {
                 has_tick = true;
                 QCOMPARE(job.value("interval_sec").toInt(), 30);
                 QCOMPARE(job.value("timeout_sec").toInt(), 25);
@@ -688,6 +719,12 @@ private slots:
                 QCOMPARE(job.value("timeout_sec").toInt(), 120);
             }
         }
+        QVERIFY2(has_btc_ticks, "install-jobs must keep BTC tick data warm");
+        QVERIFY2(has_long_short, "install-jobs must create the Coinbase long/short proof producer");
+        QVERIFY2(has_chronos_5m, "install-jobs must create the Chronos BTC 5m producer");
+        QVERIFY2(has_chronos_15m, "install-jobs must create the Chronos BTC 15m producer");
+        QVERIFY2(has_chronos_1h, "install-jobs must create the Chronos BTC 1h producer");
+        QVERIFY2(has_chronos_1d, "install-jobs must create the Chronos BTC 1d producer");
         QVERIFY2(has_tick, "install-jobs must create the sandbox tick job");
         QVERIFY2(has_score, "install-jobs must create the sandbox score-now job");
     }
@@ -695,13 +732,15 @@ private slots:
     void sandbox_remove_jobs_disables_but_does_not_delete() {
         sandbox_test_home();
         int rc = -1;
-        json_object_from_dispatch(QStringList{"--json", "sandbox", "install-jobs"}, &rc);
+        const QJsonObject installed = json_object_from_dispatch(QStringList{"--json", "sandbox", "install-jobs"}, &rc);
         QCOMPARE(rc, 0);
+        const int installed_count = installed.value("jobs").toArray().size();
+        QVERIFY(installed_count > 2);
 
         const QJsonObject removed = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "remove-jobs"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(removed.value("disabled").toInt(), 2);
+        QCOMPARE(removed.value("disabled").toInt(), installed_count);
 
         const QJsonObject listed = json_object_from_dispatch(
             QStringList{"--json", "daemon", "jobs", "list"}, &rc);
@@ -714,7 +753,7 @@ private slots:
             ++sandbox_jobs_seen;
             QVERIFY2(!job.value("enabled").toBool(), "remove-jobs must disable, not just report, the job");
         }
-        QCOMPARE(sandbox_jobs_seen, 2);  // disabled, not deleted -- both rows must still be present
+        QCOMPARE(sandbox_jobs_seen, installed_count);  // disabled, not deleted -- rows must still be present
     }
 
     void update_job_by_id_reports_failure_under_held_jobs_lock() {

@@ -1031,7 +1031,10 @@ QWidget* ProfileScreen::build_automation() {
     add_preset(tr("NEWS RADAR"), QStringLiteral("radar"), QStringLiteral("AI semiconductors"), 3600);
     add_preset(tr("WEEKLY NOTEBOOK"), QStringLiteral("notebook"), QStringLiteral("trading-sma-crossover-backtest"), 604800);
     add_preset(tr("PAPER WATCH"), QStringLiteral("paper"), QStringLiteral("meanrev"), 300);
+    add_preset(tr("CHRONOS 5M"), QStringLiteral("chronos2-5m"), QStringLiteral("BTC-USD"), 300);
     add_preset(tr("CHRONOS 15M"), QStringLiteral("chronos2"), QStringLiteral("BTC-USD"), 900);
+    add_preset(tr("CHRONOS 1H"), QStringLiteral("chronos2-1h"), QStringLiteral("BTC-USD"), 3600);
+    add_preset(tr("CHRONOS 1D"), QStringLiteral("chronos2-1d"), QStringLiteral("BTC-USD"), 86400);
     add_preset(tr("CHRONOS EQ 1D"), QStringLiteral("chronos2-equity"), QStringLiteral("AAPL"), 86400);
     add_preset(tr("HEALTH CHECK"), QStringLiteral("health"), QStringLiteral("daemon health"), 300);
     add_preset(tr("NOTIFY TEST"), QStringLiteral("notify"), QStringLiteral("Daemon is alive"), 3600);
@@ -1057,7 +1060,10 @@ QWidget* ProfileScreen::build_automation() {
     daemon_job_kind_->addItem(tr("Thesis Monitor"), QStringLiteral("thesis"));
     daemon_job_kind_->addItem(tr("Notebook Run"), QStringLiteral("notebook"));
     daemon_job_kind_->addItem(tr("Paper Strategy"), QStringLiteral("paper"));
-    daemon_job_kind_->addItem(tr("Chronos Forecast"), QStringLiteral("chronos2"));
+    daemon_job_kind_->addItem(tr("Chronos BTC 5M"), QStringLiteral("chronos2-5m"));
+    daemon_job_kind_->addItem(tr("Chronos BTC 15M"), QStringLiteral("chronos2"));
+    daemon_job_kind_->addItem(tr("Chronos BTC 1H"), QStringLiteral("chronos2-1h"));
+    daemon_job_kind_->addItem(tr("Chronos BTC 1D"), QStringLiteral("chronos2-1d"));
     daemon_job_kind_->addItem(tr("Chronos Equity Forecast"), QStringLiteral("chronos2-equity"));
     daemon_job_kind_->addItem(tr("Daemon Health Check"), QStringLiteral("health"));
     daemon_job_kind_->addItem(tr("Notification"), QStringLiteral("notify"));
@@ -1841,11 +1847,27 @@ void ProfileScreen::add_daemon_job() {
         args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("notebook") << target;
     } else if (kind == "paper") {
         args << QStringLiteral("paper") << target;
-    } else if (kind == "chronos2") {
+    } else if (kind == "chronos2" || kind == "chronos2-5m" || kind == "chronos2-1h" ||
+               kind == "chronos2-1d") {
+        QString horizon = QStringLiteral("15m");
+        QString min_edge = QStringLiteral("15");
+        QString timeout = QStringLiteral("300");
+        if (kind == "chronos2-5m") {
+            horizon = QStringLiteral("5m");
+            min_edge = QStringLiteral("8");
+        } else if (kind == "chronos2-1h") {
+            horizon = QStringLiteral("1h");
+            min_edge = QStringLiteral("35");
+            timeout = QStringLiteral("420");
+        } else if (kind == "chronos2-1d") {
+            horizon = QStringLiteral("1d");
+            min_edge = QStringLiteral("75");
+            timeout = QStringLiteral("600");
+        }
         args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("chronos2") << target
-             << QStringLiteral("--horizon") << QStringLiteral("15m")
-             << QStringLiteral("--min-journal-edge-bps") << QStringLiteral("15")
-             << QStringLiteral("--timeout-sec") << QStringLiteral("300");
+             << QStringLiteral("--horizon") << horizon
+             << QStringLiteral("--min-journal-edge-bps") << min_edge
+             << QStringLiteral("--timeout-sec") << timeout;
     } else if (kind == "chronos2-equity") {
         args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("chronos2-equity") << target
              << QStringLiteral("--horizon") << QStringLiteral("1d")
