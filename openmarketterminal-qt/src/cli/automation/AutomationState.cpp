@@ -127,6 +127,9 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
     const QList<QByteArray> lines = read_tail(path, kTailBytes).split('\n');
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
     const QString filter = symbol_filter.trimmed().toUpper();
+    // Read the consumed set once instead of re-reading the file per row.
+    const QJsonObject consumed_keys =
+        read_json_object(consumed_path(profile)).value(QStringLiteral("keys")).toObject();
     for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
         const QByteArray line = it->trimmed();
         if (line.isEmpty())
@@ -147,7 +150,7 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
         const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
         if (!ok || ts_ms <= 0 || now_ms - ts_ms > static_cast<qint64>(max_age_sec) * 1000)
             continue;
-        if (is_consumed(profile, candidate_key(d)))
+        if (consumed_keys.contains(candidate_key(d)))
             continue;
         return d;
     }
@@ -155,19 +158,11 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
     return {};
 }
 
-int submitted_today_count(const QString& profile) {
-    const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
-    // The dedicated daily counter is authoritative when it exists and is
-    // fresh (dated today): unlike the tail scan below, it is never blind to
-    // entries that scrolled out of the 512 KB window on a chatty journal.
-    // Absent or stale (previous day's) counters fall back to the legacy
-    // tail scan so behavior is unchanged for profiles that predate Task 4.
-    const QString counter_path = daily_orders_path(profile);
-    if (QFile::exists(counter_path)) {
-        const QJsonObject counter = read_json_object(counter_path);
-        if (counter.value(QStringLiteral("date")).toString() == today)
-            return counter.value(QStringLiteral("count")).toInt();
-    }
+// Legacy tail scan of the orders jsonl: counts submitted orders whose "ts"
+// falls on the given UTC day. Blind to lines that scrolled out of the
+// kTailBytes window, so it only serves as a fallback/seed for the dedicated
+// daily counter file.
+static int submitted_today_scan(const QString& profile, const QString& today) {
     int count = 0;
     for (const QByteArray& raw : read_tail(orders_path(profile), kTailBytes).split('\n')) {
         const QByteArray line = raw.trimmed();
@@ -186,13 +181,33 @@ int submitted_today_count(const QString& profile) {
     return count;
 }
 
+int submitted_today_count(const QString& profile) {
+    const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
+    // The dedicated daily counter is authoritative when it exists and is
+    // fresh (dated today): unlike the tail scan, it is never blind to
+    // entries that scrolled out of the 512 KB window on a chatty journal.
+    // Absent or stale (previous day's) counters fall back to the legacy
+    // tail scan so behavior is unchanged for profiles that predate Task 4.
+    const QString counter_path = daily_orders_path(profile);
+    if (QFile::exists(counter_path)) {
+        const QJsonObject counter = read_json_object(counter_path);
+        if (counter.value(QStringLiteral("date")).toString() == today)
+            return counter.value(QStringLiteral("count")).toInt();
+    }
+    return submitted_today_scan(profile, today);
+}
+
 bool record_live_attempt(const QString& profile, QString* error) {
     const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
     const QString path = daily_orders_path(profile);
     QJsonObject doc = read_json_object(path);
+    // On the first counter write of a day (absent file or stale date), seed
+    // from the journal scan so live orders recorded before the counter
+    // existed still count against the daily cap. Without this, deploy-day
+    // attempt N+1 would restart the cap at 1.
     int count = doc.value(QStringLiteral("date")).toString() == today
                     ? doc.value(QStringLiteral("count")).toInt()
-                    : 0;
+                    : submitted_today_scan(profile, today);
     doc[QStringLiteral("date")] = today;
     doc[QStringLiteral("count")] = ++count;
     return write_json_object(path, doc, error);

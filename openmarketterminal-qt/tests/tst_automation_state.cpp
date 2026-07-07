@@ -138,6 +138,24 @@ class TstAutomationState : public QObject {
         QVERIFY(record_live_attempt("default", &err));
         QCOMPARE(submitted_today_count("default"), 2);
     }
+    void record_live_attempt_seeds_from_journal_on_first_write() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        // Deploy-day scenario: live orders already journaled today, but no
+        // counter file exists yet. The first counter write must seed from
+        // the journal scan, not restart the daily cap at 1.
+        const QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        QVERIFY(append_jsonl(orders_path("default"), QJsonObject{{"ts", ts}, {"submitted", true}}, &err));
+        QVERIFY(append_jsonl(orders_path("default"), QJsonObject{{"ts", ts}, {"submitted", true}}, &err));
+        QVERIFY(!QFile::exists(daily_orders_path("default")));
+        QVERIFY(record_live_attempt("default", &err));
+        QCOMPARE(submitted_today_count("default"), 3);
+        const QJsonObject counter = read_json_object(daily_orders_path("default"));
+        QCOMPARE(counter.value("date").toString(),
+                 QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate));
+        QCOMPARE(counter.value("count").toInt(), 3);
+    }
     void record_live_attempt_resets_on_new_day_and_scan_falls_back_when_stale() {
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());
@@ -150,10 +168,13 @@ class TstAutomationState : public QObject {
         QCOMPARE(submitted_today_count("default"), 1);  // counter is stale (yesterday) -> falls back to tail scan
         QVERIFY(record_live_attempt("default", &err));
         const QJsonObject counter = read_json_object(daily_orders_path("default"));
-        QCOMPARE(counter.value("count").toInt(), 1);
+        // Stale counter resets for the new day but seeds from today's journal
+        // (1 submitted line) before counting this attempt: 1 + 1 = 2.
+        // Yesterday's count of 5 must NOT carry over.
+        QCOMPARE(counter.value("count").toInt(), 2);
         QCOMPARE(counter.value("date").toString(),
                  QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate));
-        QCOMPARE(submitted_today_count("default"), 1);  // now authoritative via the fresh counter
+        QCOMPARE(submitted_today_count("default"), 2);  // now authoritative via the fresh counter
     }
 };
 QTEST_GUILESS_MAIN(TstAutomationState)

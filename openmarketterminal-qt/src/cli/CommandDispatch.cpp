@@ -6925,12 +6925,16 @@ static QJsonObject automation_latest_spot_candidate(const GlobalOpts& opts,
         return {};
     }
     auto& q = r.value();
+    // Read the consumed set once instead of re-reading the file per row.
+    const QJsonObject consumed_keys =
+        automation::read_json_object(automation::consumed_path(opts.profile))
+            .value(QStringLiteral("keys")).toObject();
     while (q.next()) {
         const double edge_after_cost_bps = q.value(10).toDouble() * 10000.0;
         const double confidence = q.value(12).toDouble();
         if (edge_after_cost_bps < min_edge_after_cost_bps || confidence < min_confidence)
             continue;
-        if (automation::is_consumed(opts.profile, q.value(0).toString()))
+        if (consumed_keys.contains(q.value(0).toString()))
             continue;
         QJsonParseError pe;
         const QJsonDocument features_doc = QJsonDocument::fromJson(q.value(14).toString().toUtf8(), &pe);
@@ -7348,11 +7352,13 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
     QString consume_error;
     if (!automation::mark_consumed(opts.profile, automation::candidate_key(decision), &consume_error)) {
         return automation_emit_object(opts, QJsonObject{{"submitted", false},
+                                                        {"dry_run", false},
                                                         {"reason", QStringLiteral("could not record candidate consumption: %1").arg(consume_error)}});
     }
     QString daily_count_error;
     if (!automation::record_live_attempt(opts.profile, &daily_count_error)) {
         return automation_emit_object(opts, QJsonObject{{"submitted", false},
+                                                        {"dry_run", false},
                                                         {"reason", QStringLiteral("could not record daily order count: %1").arg(daily_count_error)}});
     }
 
