@@ -13,6 +13,14 @@
 using namespace openmarketterminal::cli;
 using openmarketterminal::Database;
 
+namespace openmarketterminal::cli {
+// Defined in ServeCommand.cpp (compiled into this test binary); declared here
+// to unit-test the lock-contention return path of the daemon's job updater
+// that launch_scheduled_job's double-launch guard depends on.
+bool update_job_by_id(const QString& profile, const QString& id,
+                      const std::function<void(QJsonObject&)>& fn, int lock_timeout_ms);
+}
+
 static QString capture_stdout(const std::function<int()>& fn, int* rc_out = nullptr) {
     fflush(stdout);
     int fds[2];
@@ -699,6 +707,44 @@ private slots:
             QVERIFY2(!job.value("enabled").toBool(), "remove-jobs must disable, not just report, the job");
         }
         QCOMPARE(sandbox_jobs_seen, 2);  // disabled, not deleted -- both rows must still be present
+    }
+
+    void update_job_by_id_reports_failure_under_held_jobs_lock() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "install-jobs"}, &rc);
+        QCOMPARE(rc, 0);
+        const QString job_id = out.value("jobs").toArray().at(0).toObject().value("id").toString();
+        QVERIFY(!job_id.isEmpty());
+
+        bool mutated = false;
+        {
+            openmarketterminal::cli::automation::StateLock held(
+                QStringLiteral("default"), QStringLiteral("jobs"));
+            QVERIFY2(held.locked(), "test setup: must be able to take the jobs lock");
+            const bool ok = update_job_by_id(QStringLiteral("default"), job_id,
+                                             [&mutated](QJsonObject&) { mutated = true; },
+                                             /*lock_timeout_ms=*/100);
+            QVERIFY2(!ok, "update_job_by_id must report failure when the jobs lock is held elsewhere "
+                          "-- launch_scheduled_job's double-launch guard depends on this");
+            QVERIFY2(!mutated, "the mutation callback must not run when the lock was not acquired");
+        }
+        // Lock released: the same update must now succeed and persist.
+        const bool ok = update_job_by_id(QStringLiteral("default"), job_id,
+                                         [](QJsonObject& j) { j["last_error"] = QStringLiteral("t7-probe"); },
+                                         /*lock_timeout_ms=*/100);
+        QVERIFY(ok);
+        const QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "daemon", "jobs", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        bool persisted = false;
+        for (const QJsonValue& v : listed.value("jobs").toArray()) {
+            const QJsonObject job = v.toObject();
+            if (job.value("id").toString() == job_id)
+                persisted = job.value("last_error").toString() == QStringLiteral("t7-probe");
+        }
+        QVERIFY2(persisted, "a true return must mean the mutation actually reached jobs.json");
     }
 };
 QTEST_MAIN(TstCommandDispatch)

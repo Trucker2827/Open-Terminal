@@ -2118,10 +2118,20 @@ int emit_jobs_stats(const QString& profile, bool json, QStringList args) {
     return 0;
 }
 
-// Internal, lock-free load->mutate->save cycle. Only called with the shared
-// automation StateLock already held (by jobs_save_update or
-// update_job_by_id) so the two entry points never try to re-enter the same
-// QLockFile from one call stack.
+// The daemon-side jobs-lock timeout is deliberately SHORT: jobs_save_update
+// and update_job_by_id run on the daemon's single Qt event loop, and
+// QLockFile::tryLock blocks the calling thread -- a long contended wait
+// would freeze every scheduled job and QProcess finished/error callback for
+// its duration. 250ms bounds that stall; on contention the write is dropped
+// and the scheduler's next scan (every few seconds) retries. The automation
+// writers keep the 5s default (see AutomationState.h): the live order path
+// is fail-closed and can afford to wait.
+inline constexpr int kJobsLockTimeoutMs = 250;
+
+// Internal, lock-free load->mutate->save cycle. Only called with the "jobs"
+// StateLock already held (by jobs_save_update or update_job_by_id) so the
+// two entry points never try to re-enter the same QLockFile from one call
+// stack.
 int jobs_save_update_locked(const QString& profile, const QJsonArray& jobs) {
     QJsonObject doc = load_jobs_doc(profile);
     doc["jobs"] = jobs;
@@ -2135,9 +2145,9 @@ int jobs_save_update_locked(const QString& profile, const QJsonArray& jobs) {
 }
 
 int jobs_save_update(const QString& profile, const QJsonArray& jobs) {
-    automation::StateLock lock(profile);
+    automation::StateLock lock(profile, QStringLiteral("jobs"), kJobsLockTimeoutMs);
     if (!lock.locked()) {
-        std::fprintf(stderr, "state lock busy\n");
+        std::fprintf(stderr, "jobs lock busy\n");
         return 7;
     }
     return jobs_save_update_locked(profile, jobs);
@@ -3030,11 +3040,20 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
     return 2;
 }
 
-void update_job_by_id(const QString& profile, const QString& id, const std::function<void(QJsonObject&)>& fn) {
-    automation::StateLock lock(profile);
+// Returns true only when the mutation was PERSISTED (job found under the
+// "jobs" lock and the save succeeded). False means the write was dropped
+// (lock contention, job id gone, or save failure) -- callers whose next
+// action depends on the persisted state (launch_scheduled_job's running=true
+// double-launch guard) must not proceed as if it landed. lock_timeout_ms is
+// a test seam; the daemon uses the short kJobsLockTimeoutMs default (see its
+// comment for the event-loop-stall rationale).
+bool update_job_by_id(const QString& profile, const QString& id,
+                      const std::function<void(QJsonObject&)>& fn,
+                      int lock_timeout_ms = kJobsLockTimeoutMs) {
+    automation::StateLock lock(profile, QStringLiteral("jobs"), lock_timeout_ms);
     if (!lock.locked()) {
         append_job_log(profile, QStringLiteral("update_job_by_id lock busy id=%1 (scheduler retries next scan)").arg(id));
-        return;
+        return false;
     }
     QJsonObject doc = load_jobs_doc(profile);
     QJsonArray jobs = doc.value("jobs").toArray();
@@ -3045,9 +3064,9 @@ void update_job_by_id(const QString& profile, const QString& id, const std::func
         fn(job);
         job["updated_at"] = now_utc();
         jobs.replace(i, job);
-        jobs_save_update_locked(profile, jobs);
-        return;
+        return jobs_save_update_locked(profile, jobs) == 0;
     }
+    return false;
 }
 
 void launch_scheduled_job(const QString& profile, const QJsonObject& job) {
@@ -3055,13 +3074,26 @@ void launch_scheduled_job(const QString& profile, const QJsonObject& job) {
     const QString name = job.value("name").toString();
     const int timeout_sec = job_timeout_sec(job);
     const QString run_id = record_job_run_start(profile, job, QStringLiteral("scheduled"));
-    update_job_by_id(profile, id, [run_id](QJsonObject& j) {
+    const bool marked_running = update_job_by_id(profile, id, [run_id](QJsonObject& j) {
         j["running"] = true;
         j["last_status"] = QStringLiteral("running");
         j["last_started_at"] = now_utc();
         j["last_error"] = QString();
         j["current_run_id"] = run_id;
     });
+    if (!marked_running) {
+        // Double-launch guard: if the running=true persist was dropped (jobs
+        // lock contention or save failure), the on-disk job still looks idle
+        // and the NEXT scheduler scan would launch it again while this
+        // process ran -- for a live executor that means two concurrent order
+        // processes. Do not start the process at all; close the just-opened
+        // history row and let the scheduler retry next tick.
+        record_job_run_finish(profile, run_id, QStringLiteral("failed"), -1, {}, {},
+                              QStringLiteral("jobs lock busy; launch skipped"));
+        append_job_log(profile, QStringLiteral("scheduled-skip id=%1 reason=running-flag-not-persisted "
+                                               "(scheduler retries next scan)").arg(id));
+        return;
+    }
     append_job_log(profile, QStringLiteral("scheduled-start id=%1 name=\"%2\" timeout=%3s")
                                 .arg(id, name)
                                 .arg(timeout_sec));

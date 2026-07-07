@@ -255,7 +255,7 @@ class TstAutomationState : public QObject {
         // untouched by the blocked call.
         QVERIFY(mark_consumed("default", "SEED-KEY", &err));
         const QJsonObject before = read_json_object(consumed_path("default"));
-        StateLock held("default");
+        StateLock held("default", "automation");
         QVERIFY2(held.locked(), "test setup: must be able to take the lock before contending it");
         QString lock_err;
         QVERIFY2(!mark_consumed("default", "NEW-KEY", &lock_err, /*lock_timeout_ms=*/100),
@@ -272,7 +272,7 @@ class TstAutomationState : public QObject {
         QString err;
         QVERIFY(record_live_attempt("default", &err));
         const QJsonObject before = read_json_object(daily_orders_path("default"));
-        StateLock held("default");
+        StateLock held("default", "automation");
         QVERIFY(held.locked());
         QString lock_err;
         QVERIFY2(!record_live_attempt("default", &lock_err, /*lock_timeout_ms=*/100),
@@ -280,6 +280,22 @@ class TstAutomationState : public QObject {
         QCOMPARE(lock_err, QStringLiteral("state lock busy"));
         const QJsonObject after = read_json_object(daily_orders_path("default"));
         QCOMPARE(after, before);
+    }
+    void distinct_lock_names_do_not_contend() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        // The discriminating test for the lock split: a held "jobs" lock (the
+        // daemon's jobs.json bookkeeping) must NOT block the live-order-path
+        // "automation" writers. Under a single shared lock file this fails.
+        StateLock jobs_held("default", "jobs");
+        QVERIFY2(jobs_held.locked(), "test setup: must be able to take the jobs lock");
+        QString err;
+        QVERIFY2(mark_consumed("default", "KEY-UNDER-JOBS-LOCK", &err, /*lock_timeout_ms=*/100),
+                 "automation writer must not contend with the jobs lock");
+        QVERIFY(is_consumed("default", "KEY-UNDER-JOBS-LOCK"));
+        QVERIFY2(record_live_attempt("default", &err, /*lock_timeout_ms=*/100),
+                 "daily counter writer must not contend with the jobs lock");
+        QCOMPARE(submitted_today_count("default"), 1);
     }
     void submitted_today_count_falls_back_to_previous_generation() {
         QTemporaryDir home;

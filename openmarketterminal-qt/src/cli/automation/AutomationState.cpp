@@ -59,8 +59,8 @@ bool write_json_object(const QString& path, const QJsonObject& o, QString* error
     return true;
 }
 
-StateLock::StateLock(const QString& profile, int timeout_ms)
-    : lock_(state_dir(profile) + QStringLiteral("/automation.lock")) {
+StateLock::StateLock(const QString& profile, const QString& name, int timeout_ms)
+    : lock_(state_dir(profile) + QLatin1Char('/') + name + QStringLiteral(".lock")) {
     locked_ = lock_.tryLock(timeout_ms);
 }
 
@@ -143,7 +143,7 @@ bool is_consumed(const QString& profile, const QString& key) {
 }
 
 bool mark_consumed(const QString& profile, const QString& key, QString* error, int lock_timeout_ms) {
-    StateLock lock(profile, lock_timeout_ms);
+    StateLock lock(profile, QStringLiteral("automation"), lock_timeout_ms);
     if (!lock.locked()) {
         if (error) *error = QStringLiteral("state lock busy");
         return false;
@@ -282,7 +282,7 @@ int submitted_today_count(const QString& profile) {
 }
 
 bool record_live_attempt(const QString& profile, QString* error, int lock_timeout_ms) {
-    StateLock lock(profile, lock_timeout_ms);
+    StateLock lock(profile, QStringLiteral("automation"), lock_timeout_ms);
     if (!lock.locked()) {
         if (error) *error = QStringLiteral("state lock busy");
         return false;

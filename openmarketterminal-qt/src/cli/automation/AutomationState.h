@@ -19,16 +19,26 @@ QJsonObject read_json_object(const QString& path);
 bool write_json_object(const QString& path, const QJsonObject& o, QString* error = nullptr);
 bool append_jsonl(const QString& path, const QJsonObject& o, QString* error = nullptr);
 
-// Cross-process mutual exclusion for the shared automation state files (the
-// consumed-keys map and the daily order counter both do read-modify-write on
-// a single JSON file; the daemon's jobs file does the same). Wraps a
-// QLockFile at state_dir(profile) + "/automation.lock" with a bounded
-// tryLock so a stuck holder cannot wedge writers forever. locked() reports
-// whether the constructor's tryLock succeeded; callers must check it before
-// trusting the critical section is exclusive.
+// Cross-process mutual exclusion for shared daemon-state files that do
+// read-modify-write on a single JSON document. Wraps a QLockFile at
+// state_dir(profile) + "/" + name + ".lock" with a bounded tryLock so a
+// stuck holder cannot wedge writers forever. locked() reports whether the
+// constructor's tryLock succeeded; callers must check it before trusting
+// the critical section is exclusive.
+//
+// One lock per RESOURCE, never one global lock: the live-order safety
+// writers (mark_consumed / record_live_attempt) use name "automation"
+// (guards automation_consumed.json + automation_daily_orders.json), while
+// the daemon's jobs bookkeeping (jobs_save_update / update_job_by_id in
+// ServeCommand.cpp) uses name "jobs" (guards jobs.json). Distinct names
+// mean chatty jobs-file traffic can never starve or delay a live
+// order-path write, and vice versa. Rule: NEVER take two StateLocks in
+// one call chain -- each function locks exactly the one resource it
+// mutates, does its read-modify-write, and releases; with no nesting,
+// lock-ordering deadlocks are impossible.
 class StateLock {
   public:
-    explicit StateLock(const QString& profile, int timeout_ms = 5000);
+    StateLock(const QString& profile, const QString& name, int timeout_ms = 5000);
     ~StateLock();
     StateLock(const StateLock&) = delete;
     StateLock& operator=(const StateLock&) = delete;
