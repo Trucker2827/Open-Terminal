@@ -910,6 +910,172 @@ private slots:
         json_object_from_dispatch(QStringList{"--json", "sandbox", "book", "nonexistent_strategy_id"}, &bad_rc);
         QCOMPARE(bad_rc, 4);
     }
+
+    // T9-review fold: score-now must reject trailing args like every other
+    // sandbox subcommand (leaderboard/book already do) instead of silently
+    // ignoring them.
+    void sandbox_score_now_rejects_trailing_args() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch({QStringLiteral("sandbox"), QStringLiteral("score-now"),
+                           QStringLiteral("bogus-trailing-arg")});
+            return rc;
+        });
+        QCOMPARE(rc, 2);
+    }
+
+    // --- Task 10: `sandbox eligibility` --------------------------------------
+    // Dispatch/shape tests only -- the spec-§4.7 boundary matrix itself is
+    // covered exhaustively by tst_sandbox_eligibility.cpp's pure-function
+    // tests. Here we confirm the CLI wires list_strategies()/leaderboard()/
+    // the first-position-date and total_positions queries into
+    // evaluate_eligibility correctly, retired books are skipped, and
+    // hypothetical books show up as unconditionally blocked.
+    void sandbox_eligibility_blocks_thin_sample_and_hypothetical_and_skips_retired() {
+        sandbox_test_home();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+        auto insert_strategy = [](const QString& id, const QString& kind, const QString& params,
+                                  const QString& status) {
+            auto r = Database::instance().execute(
+                "INSERT INTO sandbox_strategy (strategy_id, kind, symbols, params_json, status, created_at,"
+                " notes) VALUES (?,?,?,?,?,?,?)",
+                {id, kind, QStringLiteral("BTC-USD"), params, status, QDateTime::currentMSecsSinceEpoch(),
+                 QStringLiteral("")});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        auto insert_closed = [&](const QString& strategy_id, const QString& position_id, double pnl,
+                                 qint64 closed_at, qint64 created_at) {
+            auto r = Database::instance().execute(
+                "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side,"
+                " hypothetical, qty, limit_price, expires_at, state, opened_at, closed_at, entry_fee,"
+                " exit_fee, realized_pnl, close_reason, data_quality, notional_usd, created_at)"
+                " VALUES (?,?,?,?,'buy',0,1.0,100.0,?,'closed',?,?,0,0,?,'target','ok',10.0,?)",
+                {position_id, strategy_id, position_id + QStringLiteral("-dec"), QStringLiteral("BTC-USD"),
+                 closed_at, closed_at, closed_at, pnl, created_at});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+
+        // Thin sample: only 5 resolved closes, recent (well under both the
+        // 28-day and 30-resolved bars) -> multiple blockers expected.
+        const QString thin_id = QStringLiteral("t10_thin_strategy");
+        insert_strategy(thin_id, QStringLiteral("spot"), QStringLiteral("{}"), QStringLiteral("active"));
+        for (int i = 0; i < 5; ++i)
+            insert_closed(thin_id, QStringLiteral("t10_thin_pos_%1").arg(i), 1.0, now - i * 1000, now - i * 1000);
+
+        // Hypothetical: 30 resolved, 40 days of history, positive pnl, tiny
+        // drawdown, zero degraded -- would pass every other bar, but must
+        // still come back blocked with exactly "hypothetical instrument".
+        const QString hyp_id = QStringLiteral("t10_hyp_strategy");
+        insert_strategy(hyp_id, QStringLiteral("long_short"), QStringLiteral("{\"hypothetical\":true}"),
+                        QStringLiteral("active"));
+        const qint64 forty_days_ago = now - 40LL * 24 * 3600 * 1000;
+        for (int i = 0; i < 30; ++i)
+            insert_closed(hyp_id, QStringLiteral("t10_hyp_pos_%1").arg(i), 1.0, now - i * 1000,
+                         forty_days_ago - i * 1000);
+
+        // Retired: would otherwise pass every bar, but must not even appear
+        // in the output -- nothing to promote about a book nobody runs.
+        const QString retired_id = QStringLiteral("t10_retired_strategy");
+        insert_strategy(retired_id, QStringLiteral("spot"), QStringLiteral("{}"), QStringLiteral("retired"));
+        for (int i = 0; i < 30; ++i)
+            insert_closed(retired_id, QStringLiteral("t10_retired_pos_%1").arg(i), 1.0, now - i * 1000,
+                         forty_days_ago - i * 1000);
+
+        int rc = -1;
+        const QJsonObject out =
+            json_object_from_dispatch(QStringList{"--json", "sandbox", "eligibility"}, &rc);
+        QCOMPARE(rc, 0);
+
+        bool found_thin = false, found_hyp = false, found_retired = false;
+        for (const QJsonValue& v : out.value("eligibility").toArray()) {
+            const QJsonObject row = v.toObject();
+            const QString id = row.value("strategy_id").toString();
+            if (id == thin_id) {
+                found_thin = true;
+                QVERIFY(!row.value("eligible").toBool());
+                QVERIFY2(!row.value("blockers").toArray().isEmpty(), "thin sample must carry blockers");
+            } else if (id == hyp_id) {
+                found_hyp = true;
+                QVERIFY(!row.value("eligible").toBool());
+                const QJsonArray blockers = row.value("blockers").toArray();
+                QCOMPARE(blockers.size(), 1);
+                QCOMPARE(blockers.first().toString(), QStringLiteral("hypothetical instrument"));
+            } else if (id == retired_id) {
+                found_retired = true;
+            }
+        }
+        QVERIFY(found_thin);
+        QVERIFY(found_hyp);
+        QVERIFY2(!found_retired, "retired strategies must be skipped entirely by sandbox eligibility");
+
+        // Text mode must not crash and must bucket into ELIGIBLE/BLOCKED.
+        const QString text = capture_stdout(
+            [&]() { return dispatch(QStringList{"sandbox", "eligibility"}); }, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(text.contains("BLOCKED"));
+
+        int bad_rc = -1;
+        capture_stdout([&]() {
+            bad_rc = dispatch({QStringLiteral("sandbox"), QStringLiteral("eligibility"),
+                              QStringLiteral("bogus-trailing-arg")});
+            return bad_rc;
+        });
+        QCOMPARE(bad_rc, 2);
+    }
+
+    void sandbox_eligibility_reports_eligible_for_a_fully_qualifying_book() {
+        sandbox_test_home();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qint64 forty_days_ago = now - 40LL * 24 * 3600 * 1000;
+
+        const QString id = QStringLiteral("t10_qualifying_strategy");
+        auto r = Database::instance().execute(
+            "INSERT INTO sandbox_strategy (strategy_id, kind, symbols, params_json, status, created_at,"
+            " notes) VALUES (?,?,?,?,?,?,?)",
+            {id, QStringLiteral("spot"), QStringLiteral("BTC-USD"), QStringLiteral("{}"),
+             QStringLiteral("active"), QDateTime::currentMSecsSinceEpoch(), QStringLiteral("")});
+        QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+
+        // 40 resolved closes, net positive, negligible drawdown, zero
+        // degraded, spanning 40 days of history -- clears every bar.
+        for (int i = 0; i < 40; ++i) {
+            const double pnl = (i % 4 == 0) ? -1.0 : 1.0; // net positive, small drawdown.
+            auto pos = Database::instance().execute(
+                "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side,"
+                " hypothetical, qty, limit_price, expires_at, state, opened_at, closed_at, entry_fee,"
+                " exit_fee, realized_pnl, close_reason, data_quality, notional_usd, created_at)"
+                " VALUES (?,?,?,?,'buy',0,1.0,100.0,?,'closed',?,?,0,0,?,'target','ok',10.0,?)",
+                {QStringLiteral("t10_qual_pos_%1").arg(i), id, QStringLiteral("t10_qual_dec_%1").arg(i),
+                 QStringLiteral("BTC-USD"), now - i * 1000, now - i * 1000, now - i * 1000, pnl,
+                 forty_days_ago - i * 1000});
+            QVERIFY2(pos.is_ok(), pos.is_err() ? pos.error().c_str() : "");
+        }
+
+        int rc = -1;
+        const QJsonObject out =
+            json_object_from_dispatch(QStringList{"--json", "sandbox", "eligibility"}, &rc);
+        QCOMPARE(rc, 0);
+        bool found = false;
+        for (const QJsonValue& v : out.value("eligibility").toArray()) {
+            const QJsonObject row = v.toObject();
+            if (row.value("strategy_id").toString() == id) {
+                found = true;
+                QVERIFY2(row.value("eligible").toBool(),
+                        qUtf8Printable(QJsonDocument(row.value("blockers").toArray()).toJson()));
+                QVERIFY(row.value("blockers").toArray().isEmpty());
+                QVERIFY(row.value("active_days").toInt() >= 28);
+                QCOMPARE(row.value("resolved").toInt(), 40);
+            }
+        }
+        QVERIFY(found);
+
+        const QString text = capture_stdout(
+            [&]() { return dispatch(QStringList{"sandbox", "eligibility"}); }, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(text.contains("ELIGIBLE"));
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

@@ -23,8 +23,8 @@
 //      redundant, not wrong; the state check alone is exact.
 //
 // Two independent aggregation surfaces, sharing one per-bucket aggregator
-// (see SandboxScorer.cpp's aggregate_bucket) so their arithmetic can never
-// drift apart:
+// (see SandboxScorer.cpp's Bucket) so their arithmetic can never drift
+// apart:
 //   - score_all writes one sandbox_score row per (strategy_id, UTC calendar
 //     day of closed_at) -- a historical, day-bucketed ledger consumed by the
 //     CLI's `sandbox book` view.

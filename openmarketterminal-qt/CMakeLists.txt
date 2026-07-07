@@ -1380,6 +1380,8 @@ set(SERVICE_SOURCES
     src/services/sandbox/SandboxResolver.cpp
     # Strategy Sandbox — Scorer + Leaderboard: sandbox_score rollups (Task 9).
     src/services/sandbox/SandboxScorer.cpp
+    # Strategy Sandbox — Live Eligibility Gate: report-only verdict (Task 10).
+    src/services/sandbox/SandboxEligibility.cpp
 )
 
 # UI framework

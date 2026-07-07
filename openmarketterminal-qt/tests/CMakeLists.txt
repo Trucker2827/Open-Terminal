@@ -390,3 +390,12 @@ add_executable(tst_sandbox_scorer tst_sandbox_scorer.cpp)
 target_include_directories(tst_sandbox_scorer PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_scorer PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_scorer COMMAND tst_sandbox_scorer)
+
+# Strategy Sandbox Task 10 — SandboxEligibility::evaluate_eligibility: pure,
+# report-only spec-§4.7 boundary matrix. No DB bring-up needed (unlike its
+# sandbox siblings above) -- evaluate_eligibility takes a plain
+# EligibilityInput struct and returns a verdict, no I/O at all.
+add_executable(tst_sandbox_eligibility tst_sandbox_eligibility.cpp)
+target_include_directories(tst_sandbox_eligibility PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_sandbox_eligibility PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_sandbox_eligibility COMMAND tst_sandbox_eligibility)

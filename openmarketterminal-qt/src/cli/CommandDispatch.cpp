@@ -40,6 +40,7 @@
 #include "services/report_builder/ReportBuilderService.h"
 #include "services/data_normalization/DataNormalizationService.h"
 #include "services/sandbox/PaperExecutor.h"
+#include "services/sandbox/SandboxEligibility.h"
 #include "services/sandbox/SandboxRegistry.h"
 #include "services/sandbox/SandboxScorer.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
@@ -400,9 +401,10 @@ static int command_help(const QString& topic) {
             "  sandbox retire <id>\n"
             "  sandbox tick\n"
             "  sandbox positions [--open|--closed] [--limit N]\n"
-            "  sandbox score-now\n"
-            "  sandbox leaderboard [--json]\n"
+            "  sandbox score-now (alias: score)\n"
+            "  sandbox leaderboard [--json] (alias: board)\n"
             "  sandbox book <strategy_id> [--json]\n"
+            "  sandbox eligibility [--json]\n"
             "\n"
             "Registers/lists the five season-1 paper strategy books (scalp, spot, btc5m,\n"
             "kalshi, long_short), advances one PaperExecutor cycle for the profile, and\n"
@@ -410,7 +412,10 @@ static int command_help(const QString& topic) {
             "score-now recomputes sandbox_score rollups; leaderboard shows the season-to-\n"
             "date ranking (books with fewer than 30 resolved trades are insufficient-sample,\n"
             "never ranked; hypothetical books get their own section); book shows one\n"
-            "strategy's per-day score history plus live open/closed counts.\n");
+            "strategy's per-day score history plus live open/closed counts. eligibility is a\n"
+            "REPORT-ONLY gate: per non-retired strategy, prints eligible yes/no plus named\n"
+            "blockers against the spec-§4.7 evidence bars -- it never arms or configures\n"
+            "anything live.\n");
         return 0;
     }
     if (topic == "data" || topic == "datasources" || topic == "ds") {
@@ -7662,7 +7667,11 @@ static QJsonObject sandbox_leaderboard_row_json(const sandboxsvc::LeaderboardRow
                        {"ranked", ranked}};
 }
 
-static int sandbox_score_now_command(const GlobalOpts& opts) {
+static int sandbox_score_now_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox score-now\n");
+        return 2;
+    }
     int code = 0;
     if (!init_headless_for_cli(opts, code))
         return code;
@@ -7843,6 +7852,143 @@ static int sandbox_book_command(const GlobalOpts& opts, QStringList args) {
     return 0;
 }
 
+// One strategy's `sandbox eligibility` row: the raw EligibilityInput this
+// CLI built (registry + leaderboard() + first-position created_at), echoed
+// alongside the verdict so --json output is self-explanatory without a
+// second `sandbox book` round trip.
+struct EligibilityDisplayRow {
+    QString strategy_id, kind, status;
+    sandboxsvc::EligibilityInput input;
+    sandboxsvc::EligibilityVerdict verdict;
+};
+
+static QJsonObject sandbox_eligibility_row_json(const EligibilityDisplayRow& row) {
+    const auto& in = row.input;
+    return QJsonObject{{"strategy_id", row.strategy_id},
+                       {"kind", row.kind},
+                       {"status", row.status},
+                       {"eligible", row.verdict.eligible},
+                       {"blockers", QJsonArray::fromStringList(row.verdict.blockers)},
+                       {"active_days", in.active_days},
+                       {"resolved", in.resolved},
+                       {"degraded", in.degraded},
+                       {"total_positions", in.total_positions},
+                       {"net_pnl", in.net_pnl},
+                       {"max_drawdown", in.max_drawdown},
+                       {"gross_notional", in.gross_notional},
+                       {"hypothetical", in.hypothetical}};
+}
+
+// `sandbox eligibility` -- REPORT-ONLY (see SandboxEligibility.h): builds
+// each non-retired strategy's EligibilityInput from list_strategies() +
+// leaderboard() (Task 9) + a direct MIN(created_at)/COUNT(*) query over
+// sandbox_position for active_days and total_positions (neither of which
+// LeaderboardRow carries), evaluates it, and prints eligible/blocked plus
+// named blockers. Retired books are skipped entirely -- there is nothing to
+// "promote to live" about a book nobody is running any more.
+static int sandbox_eligibility_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox eligibility [--json]\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+
+    auto strategies = sandboxsvc::list_strategies();
+    if (strategies.is_err()) {
+        std::fprintf(stderr, "sandbox eligibility failed: %s\n", strategies.error().c_str());
+        return 5;
+    }
+    auto lb = sandboxsvc::leaderboard(opts.profile);
+    if (lb.is_err()) {
+        std::fprintf(stderr, "sandbox eligibility failed: %s\n", lb.error().c_str());
+        return 5;
+    }
+
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    auto& db = Database::instance();
+    QList<EligibilityDisplayRow> out;
+    for (const auto& strat : strategies.value()) {
+        if (strat.status == QStringLiteral("retired"))
+            continue;
+
+        const sandboxsvc::LeaderboardRow* lrow = nullptr;
+        for (const auto& r : lb.value()) {
+            if (r.strategy_id == strat.strategy_id) {
+                lrow = &r;
+                break;
+            }
+        }
+        if (!lrow)
+            continue; // leaderboard() covers every strategy row; defensive only.
+
+        auto first_r = db.execute(
+            "SELECT MIN(created_at) FROM sandbox_position WHERE strategy_id = ?", {strat.strategy_id});
+        int active_days = 0;
+        if (first_r.is_ok() && first_r.value().next() && !first_r.value().value(0).isNull()) {
+            const qint64 first_created_at = first_r.value().value(0).toLongLong();
+            const qint64 delta_ms = now_ms - first_created_at;
+            active_days = delta_ms > 0 ? static_cast<int>(delta_ms / (24LL * 3600 * 1000)) : 0;
+        }
+        // else: no positions at all yet -> active_days stays 0.
+
+        auto total_r = db.execute(
+            "SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ?", {strat.strategy_id});
+        const int total_positions =
+            (total_r.is_ok() && total_r.value().next()) ? total_r.value().value(0).toInt() : 0;
+
+        sandboxsvc::EligibilityInput in;
+        in.active_days = active_days;
+        in.resolved = lrow->resolved;
+        in.degraded = lrow->degraded;
+        in.total_positions = total_positions;
+        in.net_pnl = lrow->net_pnl;
+        in.max_drawdown = lrow->max_drawdown;
+        in.gross_notional = lrow->gross_notional;
+        in.hypothetical = lrow->hypothetical;
+
+        EligibilityDisplayRow row;
+        row.strategy_id = strat.strategy_id;
+        row.kind = strat.kind;
+        row.status = strat.status;
+        row.input = in;
+        row.verdict = sandboxsvc::evaluate_eligibility(in);
+        out.append(row);
+    }
+
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& row : out)
+            arr.append(sandbox_eligibility_row_json(row));
+        return automation_emit_object(opts, QJsonObject{{"eligibility", arr}});
+    }
+
+    QList<const EligibilityDisplayRow*> eligible, blocked;
+    for (const auto& row : out) {
+        if (row.verdict.eligible)
+            eligible.append(&row);
+        else
+            blocked.append(&row);
+    }
+    if (!eligible.isEmpty()) {
+        std::printf("ELIGIBLE\n");
+        for (const auto* row : eligible)
+            std::printf("  %-18s kind=%-10s resolved=%d net_pnl=%.2f\n", qUtf8Printable(row->strategy_id),
+                        qUtf8Printable(row->kind), row->input.resolved, row->input.net_pnl);
+    }
+    if (!blocked.isEmpty()) {
+        std::printf("BLOCKED\n");
+        for (const auto* row : blocked) {
+            std::printf("  %-18s kind=%-10s %s\n", qUtf8Printable(row->strategy_id), qUtf8Printable(row->kind),
+                        qUtf8Printable(row->verdict.blockers.join(QStringLiteral("; "))));
+        }
+    }
+    if (eligible.isEmpty() && blocked.isEmpty())
+        std::printf("no non-retired strategies to evaluate\n");
+    return 0;
+}
+
 static int sandbox_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     if (sub == "seed")
@@ -7860,11 +8006,13 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
     if (sub == "positions")
         return sandbox_positions_command(opts, args);
     if (sub == "score-now" || sub == "score")
-        return sandbox_score_now_command(opts);
+        return sandbox_score_now_command(opts, args);
     if (sub == "leaderboard" || sub == "board")
         return sandbox_leaderboard_command(opts, args);
     if (sub == "book")
         return sandbox_book_command(opts, args);
+    if (sub == "eligibility")
+        return sandbox_eligibility_command(opts, args);
     if (sub == "install-jobs" || sub == "remove-jobs") {
         // Job manipulation is owned by the daemon's job store (ServeCommand.cpp),
         // same as automation_command's fallback to daemon_command for its own
@@ -7875,8 +8023,9 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
     }
     std::fprintf(stderr,
                  "usage: sandbox seed|list [--status S]|pause <id>|resume <id>|retire <id>|tick|"
-                 "positions [--open|--closed] [--limit N]|score-now|leaderboard [--json]|"
-                 "book <strategy_id> [--json]|install-jobs|remove-jobs\n");
+                 "positions [--open|--closed] [--limit N]|score-now (alias: score)|"
+                 "leaderboard [--json] (alias: board)|book <strategy_id> [--json]|"
+                 "eligibility [--json]|install-jobs|remove-jobs\n");
     return 2;
 }
 

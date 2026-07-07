@@ -270,6 +270,87 @@ class TstSandboxScorer : public QObject {
         QVERIFY(lrow->hypothetical);
         QCOMPARE(lrow->kind, QStringLiteral("long_short"));
     }
+
+    // (e) T9-review fold: max_drawdown must be zeroed on every score_all-
+    // upserted row whose score_date is NOT the latest day THIS CALL touches
+    // -- not just "never written" on old rows, but actively re-zeroed each
+    // call, since load_activity rescans full history and re-buckets every
+    // day that ever had activity. A first call scores day0 (the latest day
+    // at that time) with its real drawdown; a second call two days later,
+    // with zero new activity, must re-touch day0 (still reachable via full-
+    // history rescan) and overwrite its drawdown to 0 now that day0 is no
+    // longer the latest day, while the new latest day (today of the second
+    // call) gets the (unchanged) real drawdown.
+    void score_all_zeros_drawdown_on_non_latest_day_across_calls() {
+        auto strat = register_strategy(QStringLiteral("spot"), QStringLiteral("BTC-USD"),
+                                       QJsonObject{{"case", "e"}});
+        QVERIFY(strat.is_ok());
+        const QString sid = strat.value();
+
+        const qint64 day0 = day_anchor_ms(4);
+        // +5.0 then -3.0: cumulative peak 5.0, trough 2.0 -> drawdown 3.0.
+        insert_position(QStringLiteral("scorer-e-1"), sid, QStringLiteral("closed"), 5.0, 100.0,
+                        QStringLiteral("ok"), day0 + 1000, QStringLiteral("target"), day0 + 1000);
+        insert_position(QStringLiteral("scorer-e-2"), sid, QStringLiteral("closed"), -3.0, 100.0,
+                        QStringLiteral("ok"), day0 + 2000, QStringLiteral("stop"), day0 + 2000);
+
+        auto rep1 = score_all(QStringLiteral("default"), day0 + 10000); // still day0 -> day0 is latest.
+        QVERIFY2(rep1.is_ok(), rep1.is_err() ? rep1.error().c_str() : "");
+        const ScoreRow first = fetch_score(sid, day_string(day0));
+        QVERIFY(first.found);
+        QVERIFY2(qAbs(first.max_drawdown - 3.0) < 1e-9, "day0 is the latest touched day on the first call");
+
+        const qint64 day2 = day_anchor_ms(6); // two days later, no new activity in between.
+        auto rep2 = score_all(QStringLiteral("default"), day2 + 10000);
+        QVERIFY2(rep2.is_ok(), rep2.is_err() ? rep2.error().c_str() : "");
+
+        const ScoreRow day0_after = fetch_score(sid, day_string(day0));
+        QVERIFY(day0_after.found);
+        QVERIFY2(qAbs(day0_after.max_drawdown - 0.0) < 1e-9,
+                 "day0's drawdown must be re-zeroed once it is no longer the latest touched day");
+
+        const ScoreRow day2_row = fetch_score(sid, day_string(day2));
+        QVERIFY(day2_row.found);
+        QVERIFY2(qAbs(day2_row.max_drawdown - 3.0) < 1e-9,
+                 "the new latest day must carry the (unchanged) full-history drawdown");
+    }
+
+    // (f) T9-review fold: realized_pnl == 0 is a resolved round trip (not a
+    // data-gap -- has_pnl is true), counts toward resolved_count/net_pnl/
+    // hit_rate's denominator, but is neither a win nor a loss: it must not
+    // land in avg_win or avg_loss.
+    void realized_pnl_zero_counts_resolved_but_not_win_or_loss() {
+        auto strat = register_strategy(QStringLiteral("spot"), QStringLiteral("BTC-USD"),
+                                       QJsonObject{{"case", "f"}});
+        QVERIFY(strat.is_ok());
+        const QString sid = strat.value();
+
+        const qint64 day0 = day_anchor_ms(5);
+        insert_position(QStringLiteral("scorer-f-1"), sid, QStringLiteral("closed"), 2.0, 100.0,
+                        QStringLiteral("ok"), day0 + 1000, QStringLiteral("target"), day0 + 1000);
+        insert_position(QStringLiteral("scorer-f-2"), sid, QStringLiteral("closed"), -1.0, 100.0,
+                        QStringLiteral("ok"), day0 + 2000, QStringLiteral("stop"), day0 + 2000);
+        insert_position(QStringLiteral("scorer-f-3"), sid, QStringLiteral("closed"), 0.0, 100.0,
+                        QStringLiteral("ok"), day0 + 3000, QStringLiteral("target"), day0 + 3000);
+
+        auto rep = score_all(QStringLiteral("default"), day0 + 10000);
+        QVERIFY2(rep.is_ok(), rep.is_err() ? rep.error().c_str() : "");
+
+        const ScoreRow row = fetch_score(sid, day_string(day0));
+        QVERIFY(row.found);
+        QCOMPARE(row.resolved_count, 3);
+        QVERIFY2(qAbs(row.net_pnl - 1.0) < 1e-9, "the flat 0.0 row still contributes 0 to net_pnl");
+        QVERIFY2(qAbs(row.hit_rate - (1.0 / 3.0)) < 1e-9, "the flat row is not a win -- hit_rate denominator is 3");
+        QVERIFY2(qAbs(row.avg_win - 2.0) < 1e-9, "avg_win must be unaffected by the flat row");
+        QVERIFY2(qAbs(row.avg_loss - (-1.0)) < 1e-9, "avg_loss must be unaffected by the flat row");
+
+        auto lb = leaderboard(QStringLiteral("default"));
+        QVERIFY2(lb.is_ok(), lb.is_err() ? lb.error().c_str() : "");
+        const LeaderboardRow* lrow = find_row(lb.value(), sid);
+        QVERIFY(lrow);
+        QCOMPARE(lrow->resolved, 3);
+        QVERIFY(qAbs(lrow->net_pnl - 1.0) < 1e-9);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxScorer)
