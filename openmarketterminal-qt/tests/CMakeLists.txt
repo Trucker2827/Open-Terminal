@@ -357,3 +357,11 @@ add_executable(tst_sandbox_ticktail tst_sandbox_ticktail.cpp)
 target_include_directories(tst_sandbox_ticktail PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_ticktail PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_sandbox_ticktail COMMAND tst_sandbox_ticktail)
+
+# Strategy Sandbox Task 4 — PaperFillModel: pure fill/exit rules for the
+# paper executor. No DB, no files; Qt6::Sql is linked only because
+# openterminal_core drags it in transitively.
+add_executable(tst_sandbox_fillmodel tst_sandbox_fillmodel.cpp)
+target_include_directories(tst_sandbox_fillmodel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_sandbox_fillmodel PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_sandbox_fillmodel COMMAND tst_sandbox_fillmodel)

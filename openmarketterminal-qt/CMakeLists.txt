@@ -1371,6 +1371,8 @@ set(SERVICE_SOURCES
     src/services/sandbox/SandboxRegistry.cpp
     # Strategy Sandbox — tick tail reader for the fill model (Task 3).
     src/services/sandbox/TickTail.cpp
+    # Strategy Sandbox — pure fill/exit rules for the paper executor (Task 4).
+    src/services/sandbox/PaperFillModel.cpp
 )
 
 # UI framework

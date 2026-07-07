@@ -1,0 +1,182 @@
+// tst_sandbox_fillmodel.cpp — PaperFillModel: pure fill/exit rules for the
+// Strategy Sandbox paper executor (Task 4). Spec-4.3 matrix, one slot per
+// case, all hand-computed expectations.
+//
+// Pure functions over QVector<TickRow> -- no DB, no files, no fixtures
+// beyond building small tick vectors inline.
+
+#include <QtTest>
+
+#include "services/sandbox/PaperFillModel.h"
+
+using namespace openmarketterminal::services::sandbox;
+
+namespace {
+
+TickRow tick(double price, qint64 ts_ms, const QString& symbol = QStringLiteral("BTC-USD")) {
+    TickRow t;
+    t.symbol = symbol;
+    t.price = price;
+    t.best_bid = price;
+    t.best_ask = price;
+    t.ts_ms = ts_ms;
+    return t;
+}
+
+} // namespace
+
+class TstSandboxFillModel : public QObject {
+    Q_OBJECT
+  private slots:
+
+    // Case 1: buy limit 100, a tick trades exactly at 100.0 -> fills at 100
+    // (the resting maker price, not the trade print), maker side.
+    void case1_buy_limit_fills_at_limit_price() {
+        const QVector<TickRow> ticks = {tick(101.0, 1000), tick(100.0, 2000), tick(99.5, 3000)};
+        const FillResult r = try_fill(QStringLiteral("buy"), 100.0, ticks, 5000);
+        QVERIFY(r.filled);
+        QCOMPARE(r.price, 100.0);
+        QCOMPARE(r.ts_ms, qint64(2000));
+    }
+
+    // Case 2: buy limit 100, every tick trades at or above 100.01 -> never
+    // qualifies (buy fills at/below limit only) -> NOT filled.
+    void case2_buy_limit_not_filled_when_all_ticks_above() {
+        const QVector<TickRow> ticks = {tick(100.01, 1000), tick(100.5, 2000), tick(101.0, 3000)};
+        const FillResult r = try_fill(QStringLiteral("buy"), 100.0, ticks, 5000);
+        QVERIFY(!r.filled);
+    }
+
+    // Case 3: a tick at 99.9 (which would otherwise qualify a buy-limit-100)
+    // arrives strictly after entry_deadline_ms -> excluded -> NOT filled.
+    void case3_tick_after_entry_deadline_not_filled() {
+        const QVector<TickRow> ticks = {tick(99.9, 6000)};
+        const FillResult r = try_fill(QStringLiteral("buy"), 100.0, ticks, 5000);
+        QVERIFY(!r.filled);
+    }
+
+    // Case 4: long open entry 100, target 105, stop 97. Tick sequence 103
+    // (no bound crossed), then 105.2 (crosses target). Exit price is the
+    // tick's ACTUAL traded price (105.2), not the target price (105).
+    void case4_long_target_exit_uses_actual_tick_price() {
+        const QVector<TickRow> ticks = {tick(103.0, 1000), tick(105.2, 2000)};
+        const ExitResult r = check_exit(QStringLiteral("long"), 105.0, 97.0, 999999, ticks, 1500);
+        QVERIFY(r.exited);
+        QCOMPARE(r.reason, QStringLiteral("target"));
+        QVERIFY(qAbs(r.price - 105.2) < 1e-9);
+        QCOMPARE(r.ts_ms, qint64(2000));
+    }
+
+    // Case 5: gap-through in both directions -- exit always uses the tick's
+    // actual traded price, never the configured stop/target price.
+    // 5a: stop gap-through: ticks 99 (no cross), 92 (blows through stop 97)
+    //     -> reason "stop", price 92 (worse than the stop level, not 97).
+    // 5b: target gap-through: ticks 103 (no cross), 108 (blows through
+    //     target 105) -> reason "target", price 108 (not clamped to 105).
+    void case5_gap_through_ticks_exit_at_actual_price_both_directions() {
+        const QVector<TickRow> stop_gap = {tick(99.0, 1000), tick(92.0, 2000)};
+        const ExitResult stop_r = check_exit(QStringLiteral("long"), 105.0, 97.0, 999999, stop_gap, 1500);
+        QVERIFY(stop_r.exited);
+        QCOMPARE(stop_r.reason, QStringLiteral("stop"));
+        QVERIFY(qAbs(stop_r.price - 92.0) < 1e-9);
+
+        const QVector<TickRow> target_gap = {tick(103.0, 1000), tick(108.0, 2000)};
+        const ExitResult target_r = check_exit(QStringLiteral("long"), 105.0, 97.0, 999999, target_gap, 1500);
+        QVERIFY(target_r.exited);
+        QCOMPARE(target_r.reason, QStringLiteral("target"));
+        QVERIFY(qAbs(target_r.price - 108.0) < 1e-9);
+    }
+
+    // Case 6: the stop-wins rule. Only meaningful when a SINGLE tick's price
+    // satisfies both bounds simultaneously, which requires a misconfigured
+    // stop_price >= target_price (long): here stop == target == 100, tick
+    // trades at exactly 100 -> both bounds are satisfied by the same tick,
+    // ordering within the tick is unknowable -> conservative stop wins.
+    void case6_single_tick_satisfies_both_bounds_stop_wins() {
+        const QVector<TickRow> ticks = {tick(100.0, 1000)};
+        const ExitResult r = check_exit(QStringLiteral("long"), 100.0, 100.0, 999999, ticks, 1500);
+        QVERIFY(r.exited);
+        QCOMPARE(r.reason, QStringLiteral("stop"));
+        QVERIFY(qAbs(r.price - 100.0) < 1e-9);
+    }
+
+    // Case 7: no target/stop hit by any tick; now_ms has passed expires_at
+    // -> reason "expiry" at the LAST known tick's price (101), not the
+    // first or any intermediate one.
+    void case7_expiry_uses_last_tick_price() {
+        const QVector<TickRow> ticks = {tick(102.0, 1000), tick(99.0, 2000), tick(101.0, 3000)};
+        const ExitResult r = check_exit(QStringLiteral("long"), 200.0, 50.0, 2500, ticks, 3000);
+        QVERIFY(r.exited);
+        QCOMPARE(r.reason, QStringLiteral("expiry"));
+        QVERIFY(qAbs(r.price - 101.0) < 1e-9);
+        QCOMPARE(r.ts_ms, qint64(3000));
+    }
+
+    // Case 8: expiry with zero ticks available at all -- still exits with
+    // reason "expiry" but price 0 (caller's job to recognize the data gap).
+    void case8_expiry_with_zero_ticks_reports_price_zero() {
+        const QVector<TickRow> ticks;
+        const ExitResult r = check_exit(QStringLiteral("long"), 200.0, 50.0, 2500, ticks, 3000);
+        QVERIFY(r.exited);
+        QCOMPARE(r.reason, QStringLiteral("expiry"));
+        QCOMPARE(r.price, 0.0);
+    }
+
+    // Case 9: no exit at all -- every tick stays strictly within
+    // (stop, target), and now_ms has not yet reached expires_at.
+    void case9_no_exit_when_within_bounds_and_before_expiry() {
+        const QVector<TickRow> ticks = {tick(100.5, 1000), tick(101.0, 2000), tick(99.5, 3000)};
+        const ExitResult r = check_exit(QStringLiteral("long"), 105.0, 97.0, 5000, ticks, 3000);
+        QVERIFY(!r.exited);
+    }
+
+    // Case 10: realized_pnl, long and short mirrors, both exactly 2.40.
+    // Long:  (105 - 100) * 0.5 - 0.05 - 0.05 = 2.5 - 0.10 = 2.40
+    // Short: (100 - 95)  * 0.5 - 0.05 - 0.05 = 2.5 - 0.10 = 2.40
+    // Also exercises fee_for on a clean round number: 10000 * 5bps / 10000
+    // = 5.0 exactly.
+    void case10_realized_pnl_long_and_short_mirror() {
+        const double long_pnl = realized_pnl(QStringLiteral("long"), 100.0, 105.0, 0.5, 0.05, 0.05);
+        QVERIFY(qAbs(long_pnl - 2.40) < 1e-9);
+
+        const double short_pnl = realized_pnl(QStringLiteral("short"), 100.0, 95.0, 0.5, 0.05, 0.05);
+        QVERIFY(qAbs(short_pnl - 2.40) < 1e-9);
+
+        QVERIFY(qAbs(fee_for(10000.0, 5.0) - 5.0) < 1e-9);
+    }
+
+    // Case 11: short side mirrors on both try_fill and check_exit.
+    // try_fill: sell limit 100 fills at/above limit (tick 100.0 qualifies;
+    // all-below-100 ticks do not). check_exit: for a short, stop is ABOVE
+    // entry and target is BELOW entry -- entry 100, target 95, stop 103;
+    // tick sequence 97 (no cross) then 94.8 (crosses target, below 95) ->
+    // reason "target" at actual price 94.8. Then separately a stop mirror:
+    // ticks 101 (no cross) then 103.7 (crosses stop, at/above 103) ->
+    // reason "stop" at actual price 103.7.
+    void case11_short_side_mirrors_fill_and_exit() {
+        const QVector<TickRow> fill_ticks = {tick(99.0, 1000), tick(100.0, 2000)};
+        const FillResult fill_r = try_fill(QStringLiteral("sell"), 100.0, fill_ticks, 5000);
+        QVERIFY(fill_r.filled);
+        QCOMPARE(fill_r.price, 100.0);
+        QCOMPARE(fill_r.ts_ms, qint64(2000));
+
+        const QVector<TickRow> not_filled_ticks = {tick(99.99, 1000), tick(98.0, 2000)};
+        const FillResult not_filled = try_fill(QStringLiteral("sell"), 100.0, not_filled_ticks, 5000);
+        QVERIFY(!not_filled.filled);
+
+        const QVector<TickRow> target_ticks = {tick(97.0, 1000), tick(94.8, 2000)};
+        const ExitResult target_r = check_exit(QStringLiteral("short"), 95.0, 103.0, 999999, target_ticks, 1500);
+        QVERIFY(target_r.exited);
+        QCOMPARE(target_r.reason, QStringLiteral("target"));
+        QVERIFY(qAbs(target_r.price - 94.8) < 1e-9);
+
+        const QVector<TickRow> stop_ticks = {tick(101.0, 1000), tick(103.7, 2000)};
+        const ExitResult stop_r = check_exit(QStringLiteral("short"), 95.0, 103.0, 999999, stop_ticks, 1500);
+        QVERIFY(stop_r.exited);
+        QCOMPARE(stop_r.reason, QStringLiteral("stop"));
+        QVERIFY(qAbs(stop_r.price - 103.7) < 1e-9);
+    }
+};
+
+QTEST_GUILESS_MAIN(TstSandboxFillModel)
+#include "tst_sandbox_fillmodel.moc"
