@@ -690,7 +690,10 @@ private slots:
         bool has_chronos_1h = false;
         bool has_chronos_1d = false;
         bool has_spot_swing_1h = false;
+        bool has_spot_swing_4h = false;
+        bool has_spot_swing_1d = false;
         bool has_stale_crypto_universe_60 = false;
+        bool has_btc5m_producer = false;
         auto starts_with = [](const QStringList& command, const QStringList& prefix) {
             if (command.size() < prefix.size())
                 return false;
@@ -726,13 +729,24 @@ private slots:
             } else if (starts_with(command, QStringList{"edge", "spot-swing-gate"})) {
                 // Real-horizon reshape (task 3): the spot feed emits >=1h
                 // horizons via spot-swing-gate, not crypto-universe
-                // --horizon-sec 60. At minimum the 1h feed must exist.
+                // --horizon-sec 60. One job per real spot book horizon
+                // (1h/4h/1d) must be installed.
                 const int hidx = command.indexOf(QStringLiteral("--horizon"));
-                if (hidx >= 0 && hidx + 1 < command.size() && command.at(hidx + 1) == QStringLiteral("1h"))
+                const QString hz = (hidx >= 0 && hidx + 1 < command.size()) ? command.at(hidx + 1) : QString();
+                if (hz == QStringLiteral("1h"))
                     has_spot_swing_1h = true;
+                else if (hz == QStringLiteral("4h"))
+                    has_spot_swing_4h = true;
+                else if (hz == QStringLiteral("1d"))
+                    has_spot_swing_1d = true;
             } else if (command == QStringList{"edge", "crypto-universe", "--venue", "coinbase", "--horizon-sec",
                                              "60", "--duration-ms", "1500", "--min-edge-bps", "25"}) {
                 has_stale_crypto_universe_60 = true;
+            } else if (command.contains(QStringLiteral("evaluate-btc5m-live"))) {
+                // Real-horizon reshape (task 3): the btc5m book is retired, so
+                // its producer job (source='edge journal-evaluate-btc5m-live')
+                // must be gone -- nothing consumes those rows anymore.
+                has_btc5m_producer = true;
             } else if (command == QStringList{"sandbox", "tick"}) {
                 has_tick = true;
                 QCOMPARE(job.value("interval_sec").toInt(), 30);
@@ -751,8 +765,15 @@ private slots:
         QVERIFY2(has_chronos_1d, "install-jobs must create the Chronos BTC 1d producer");
         QVERIFY2(has_spot_swing_1h,
                  "install-jobs must create the spot-swing-gate 1h producer feeding the spot_1h book");
+        QVERIFY2(has_spot_swing_4h,
+                 "install-jobs must create the spot-swing-gate 4h producer feeding the spot_4h book");
+        QVERIFY2(has_spot_swing_1d,
+                 "install-jobs must create the spot-swing-gate 1d producer feeding the spot_1d book");
         QVERIFY2(!has_stale_crypto_universe_60,
                  "install-jobs must not install the stale crypto-universe --horizon-sec 60 spot job");
+        QVERIFY2(!has_btc5m_producer,
+                 "install-jobs must not install a btc5m producer job -- the btc5m book is retired, so its "
+                 "'edge journal-evaluate-btc5m-live' rows have no consumer");
         QVERIFY2(has_tick, "install-jobs must create the sandbox tick job");
         QVERIFY2(has_score, "install-jobs must create the sandbox score-now job");
     }

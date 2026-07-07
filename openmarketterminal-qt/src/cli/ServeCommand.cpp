@@ -4561,11 +4561,12 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
               QStringLiteral("--horizon"), QStringLiteral("1d"),
               QStringLiteral("--duration-ms"), QStringLiteral("1500")},
              3600, 180},
-            {QStringLiteral("btc5m-decisions"), QStringLiteral("Strategy sandbox BTC 5m decisions"),
-             QStringLiteral("Produce BTC five-minute prediction decision rows for the btc5m strategy book."),
-             {QStringLiteral("edge"), QStringLiteral("journal"), QStringLiteral("evaluate-btc5m-live"),
-              QStringLiteral("--timeout-ms"), QStringLiteral("15000")},
-             60, 45},
+            // Real-horizon reshape (task 3): the btc5m book is retired (no
+            // venue / no edge, SandboxRegistry.cpp no longer seeds it), so its
+            // producer job is removed too -- nothing consumes source='edge
+            // journal-evaluate-btc5m-live' rows anymore, and leaving the 60s
+            // job in place would burn compute and grow edge_decision_journal
+            // with orphaned rows forever.
             {QStringLiteral("coinbase-long-short-decisions"), QStringLiteral("Strategy sandbox Coinbase long/short"),
              QStringLiteral("Produce guarded Coinbase long/short paper decision rows for the long_short book."),
              {QStringLiteral("edge"), QStringLiteral("long-short-strategy"), QStringLiteral("BTC-USD"),
