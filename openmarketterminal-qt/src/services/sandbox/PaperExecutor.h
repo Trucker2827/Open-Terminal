@@ -77,6 +77,19 @@ struct CycleReport {
 // in rather than recomputed here, keeping services/ free of cli/ includes.
 // `now_ms` is the cycle's wall-clock time, threaded through explicitly so
 // tests can drive expiry/unfilled transitions deterministically.
+//
+// Data-gap contract: a position that expires with NO pre-expiry tick to
+// close against (PaperFillModel::check_exit's price-0 expiry sentinel) is
+// closed with realized_pnl = NULL, close_reason = 'expiry', exit_fee = 0,
+// and data_quality forced to 'degraded'. Closed rows with NULL realized_pnl
+// are data-gap closes, not real round trips: the scorer (Task 9) MUST
+// exclude them from resolved counts / pnl aggregates rather than coalescing
+// NULL to 0.
+//
+// data_quality on newly opened positions is three-valued: 'ok' | 'degraded'
+// | 'unknown'. 'unknown' means the candidate carried no freshness telemetry
+// at all (neither freshest_age_ms nor live_sources -- e.g. btc5m/kalshi
+// prediction journal rows); it is NOT evidence of degradation.
 Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir, qint64 now_ms);
 
 } // namespace openmarketterminal::services::sandbox

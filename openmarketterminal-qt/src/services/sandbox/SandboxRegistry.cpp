@@ -127,21 +127,29 @@ Result<QList<QString>> seed_default_strategies() {
                      {"target_move_pct", 5.0},
                      {"stop_move_pct", 2.5},
                      {"horizon_sec", 86400}}},
+        // max_age_sec on the prediction/hypothetical books (task-5 review
+        // fix 3): the executor's staleness cutoff -- without it, activating
+        // a book would backfill positions from arbitrarily old gate-pass
+        // journal history. Changing these params changes the strategy_ids
+        // (content-addressed) -- acceptable pre-season.
         {QStringLiteral("btc5m"), QStringLiteral("BTC-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
                      {"journal_source", "edge journal-evaluate-btc5m-live"},
+                     {"max_age_sec", 900},
                      {"prediction", true}}},
         {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
                      {"journal_source", "kalshi"},
+                     {"max_age_sec", 3600},
                      {"prediction", true}}},
         {QStringLiteral("long_short"), QStringLiteral("BTC-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
                      {"journal_source", "edge long-short-strategy"},
                      {"hypothetical", true},
+                     {"max_age_sec", 600},
                      {"target_bps", 100.0},
                      {"stop_bps", 45.0},
                      {"horizon_sec", 300}}},

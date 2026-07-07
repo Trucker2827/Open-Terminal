@@ -27,20 +27,6 @@ QJsonObject parse_object(const QString& json) {
     return pe.error == QJsonParseError::NoError && doc.isObject() ? doc.object() : QJsonObject{};
 }
 
-// A value that may be stored as a JSON number OR (defensively) as a numeric
-// string -- QJsonValue::toDouble() silently returns 0 for a string value, so
-// this checks isString() first and parses it explicitly. Guards
-// freshness_json's freshest_age_ms, which different journal producers have
-// been observed to write both ways.
-double number_maybe_string(const QJsonValue& v) {
-    if (v.isString()) {
-        bool ok = false;
-        const double parsed = v.toString().toDouble(&ok);
-        return ok ? parsed : 0.0;
-    }
-    return v.toDouble();
-}
-
 // Copy of automation::horizon_seconds (src/cli/automation/AutomationState.cpp)
 // -- parses "15s"/"60s"/"1h"/"4h"/"1d" into seconds. Duplicated for the same
 // layering reason TickTail.cpp duplicates automation::read_tail: that file
@@ -95,22 +81,53 @@ FeeModel fee_model_from_params(const QJsonObject& params) {
     return fm;
 }
 
-// data_quality: degraded iff freshest_age_ms > 5000 OR live_sources < 2, read
-// out of a freshness_json object (spot/btc5m/kalshi/long_short journal rows).
-QString data_quality_from_freshness(const QJsonObject& freshness) {
-    const double freshest_age_ms = number_maybe_string(freshness.value(QStringLiteral("freshest_age_ms")));
-    const double live_sources = number_maybe_string(freshness.value(QStringLiteral("live_sources")));
-    return (freshest_age_ms > 5000.0 || live_sources < 2.0) ? QStringLiteral("degraded") : QStringLiteral("ok");
+// Field presence for the data_quality rule: a freshness field counts as
+// PRESENT only when the key exists AND its value is a number or a
+// numeric string (some journal producers write freshest_age_ms both ways).
+// A key holding garbage (non-numeric string, null, object) is treated as
+// absent -- there is no usable signal in it.
+bool freshness_field(const QJsonObject& o, const QString& key, double* out) {
+    if (!o.contains(key))
+        return false;
+    const QJsonValue v = o.value(key);
+    if (v.isDouble()) {
+        *out = v.toDouble();
+        return true;
+    }
+    if (v.isString()) {
+        bool ok = false;
+        const double parsed = v.toString().toDouble(&ok);
+        if (ok)
+            *out = parsed;
+        return ok;
+    }
+    return false;
 }
 
-// Scalp candidates carry freshest_age_ms/live_sources at the decision row's
-// TOP level (no freshness_json wrapper), and may not carry them at all (an
-// older daemon build) -- absent either field, 'ok' is the honest answer:
-// there is no signal to call degraded.
-QString data_quality_from_scalp_decision(const QJsonObject& decision) {
-    if (!decision.contains(QStringLiteral("freshest_age_ms")) || !decision.contains(QStringLiteral("live_sources")))
-        return QStringLiteral("ok");
-    return data_quality_from_freshness(decision);
+// data_quality, three-way (controller decision, task-5 review fix 4):
+//   - 'unknown'  when the row provides NEITHER freshest_age_ms NOR
+//     live_sources -- absence of freshness telemetry is not evidence of
+//     degradation (prediction journal rows, e.g. btc5m/kalshi, carry
+//     neither and would otherwise be permanently 'degraded').
+//   - 'degraded' iff (freshest_age_ms present AND > 5000) OR (live_sources
+//     present AND < 2) -- each field is only evaluated when present, so a
+//     row with live_sources:1 and no age field is correctly degraded (the
+//     old unconditional-|| logic defaulted a missing age to 0 and a missing
+//     live_sources to 0 as well, which happened to work for missing
+//     live_sources but silently passed a missing-age/bad-sources mix).
+//   - 'ok' otherwise.
+// Works over a freshness_json object (spot/btc5m/kalshi/long_short journal
+// rows) or a scalp decision row's top level -- both use the same key names.
+QString data_quality_from_freshness(const QJsonObject& freshness) {
+    double freshest_age_ms = 0;
+    double live_sources = 0;
+    const bool has_age = freshness_field(freshness, QStringLiteral("freshest_age_ms"), &freshest_age_ms);
+    const bool has_sources = freshness_field(freshness, QStringLiteral("live_sources"), &live_sources);
+    if (!has_age && !has_sources)
+        return QStringLiteral("unknown");
+    if ((has_age && freshest_age_ms > 5000.0) || (has_sources && live_sources < 2.0))
+        return QStringLiteral("degraded");
+    return QStringLiteral("ok");
 }
 
 QString new_id() {
@@ -156,9 +173,15 @@ Result<void> insert_position(const QString& strategy_id, const OpenPlan& plan) {
     if (ins.is_err())
         return Result<void>::err(ins.error());
 
+    // fee mirrors plan.entry_fee for bookkeeping symmetry: prediction/
+    // hypothetical positions pay their taker entry fee at this immediate
+    // synthetic open, so it belongs on this row; pending_fill positions
+    // carry entry_fee == 0 here and get their maker fee on the later 'fill'
+    // row instead.
     auto fill = db.execute(
         "INSERT INTO sandbox_fill (fill_id, position_id, ts, kind, price, fee, note) VALUES (?,?,?,?,?,?,?)",
-        {new_id(), position_id, plan.created_at, QStringLiteral("open"), plan.limit_price, 0.0, QStringLiteral("")});
+        {new_id(), position_id, plan.created_at, QStringLiteral("open"), plan.limit_price, plan.entry_fee,
+         QStringLiteral("")});
     if (fill.is_err())
         return Result<void>::err(fill.error());
     return Result<void>::ok();
@@ -262,7 +285,11 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
         plan.state = QStringLiteral("pending_fill");
         plan.opened_at = QVariant();
         plan.entry_fee = 0.0;
-        plan.data_quality = data_quality_from_scalp_decision(found);
+        // Scalp decisions carry freshest_age_ms/live_sources at the row's
+        // TOP level (no freshness_json wrapper); the shared three-way rule
+        // applies directly, yielding 'unknown' when an older daemon build
+        // wrote neither field.
+        plan.data_quality = data_quality_from_freshness(found);
         plan.notional_usd = notional_usd;
 
         auto ins = insert_position(strategy.strategy_id, plan);
@@ -393,14 +420,21 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
     if (horizon_sec_param <= 0)
         horizon_sec_param = 86400;
     const FeeModel fees = fee_model_from_params(params);
+    // Staleness cutoff (task-5 review fix 3): without it, activating a book
+    // against a journal with months of gate-pass history would backfill
+    // "positions" for decisions the executor never could have traded live.
+    const int max_age_sec = params.contains(QStringLiteral("max_age_sec"))
+                                 ? params.value(QStringLiteral("max_age_sec")).toInt()
+                                 : 3600;
+    const qint64 cutoff = now_ms - static_cast<qint64>(std::max(1, max_age_sec)) * 1000;
 
     auto sel = Database::instance().execute(
         "SELECT id, created_at, symbol, market_probability, freshness_json"
         " FROM edge_decision_journal"
-        " WHERE source = ? AND gate = 'pass'"
+        " WHERE source = ? AND gate = 'pass' AND created_at >= ?"
         " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
         " ORDER BY created_at DESC LIMIT 50",
-        {journal_source});
+        {journal_source, cutoff});
     if (sel.is_err())
         return Result<void>::err(sel.error());
 
@@ -459,14 +493,20 @@ Result<void> open_hypothetical_candidates(const StrategyRow& strategy, const QJs
     const double target_bps = params.value(QStringLiteral("target_bps")).toDouble(0.0);
     const double stop_bps = params.value(QStringLiteral("stop_bps")).toDouble(0.0);
     const FeeModel fees = fee_model_from_params(params);
+    // Staleness cutoff (task-5 review fix 3) -- same rationale as the
+    // prediction lane above.
+    const int max_age_sec = params.contains(QStringLiteral("max_age_sec"))
+                                 ? params.value(QStringLiteral("max_age_sec")).toInt()
+                                 : 3600;
+    const qint64 cutoff = now_ms - static_cast<qint64>(std::max(1, max_age_sec)) * 1000;
 
     auto sel = Database::instance().execute(
         "SELECT id, created_at, symbol, side, features_json, freshness_json"
         " FROM edge_decision_journal"
-        " WHERE source = ? AND gate = 'pass'"
+        " WHERE source = ? AND gate = 'pass' AND created_at >= ?"
         " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
         " ORDER BY created_at DESC LIMIT 50",
-        {journal_source});
+        {journal_source, cutoff});
     if (sel.is_err())
         return Result<void>::err(sel.error());
 
@@ -667,22 +707,60 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
             report.skipped++;
             continue;
         }
-        if (!row.has_target || !row.has_stop) {
-            // A concrete (buy/sell/long/short) position always carries both
-            // -- a row missing either is a data anomaly, not a Resolver-
-            // owned position (those are already excluded above by side/
-            // hypothetical), so skip it defensively rather than crash on a
-            // meaningless check_exit call.
-            report.skipped++;
-            continue;
-        }
+        // NULL target/stop (task-5 review fix 2): a concrete position with a
+        // missing bound must still EXPIRE, or it lives forever as a zombie
+        // (the old skip-guard here never re-evaluated it). Map each absent
+        // bound to a per-side never-trigger sentinel and let check_exit's
+        // expiry path do its normal job: prices are always > 0, so for a
+        // long, target +1e308 / stop 0 can never be crossed (and mirrored
+        // for a short: target 0 / stop +1e308) -- only expiry can fire.
+        const bool short_side = row.side == QLatin1String("short") || row.side == QLatin1String("sell");
+        constexpr double kNever = 1e308;
+        const double target_price = row.has_target ? row.target_price : (short_side ? 0.0 : kNever);
+        const double stop_price = row.has_stop ? row.stop_price : (short_side ? kNever : 0.0);
 
         const auto ticks = ticks_since(ticks_path, row.symbol, row.opened_at);
-        const ExitResult exit = check_exit(row.side, row.target_price, row.stop_price, row.expires_at, ticks, now_ms);
+        const ExitResult exit = check_exit(row.side, target_price, stop_price, row.expires_at, ticks, now_ms);
         if (!exit.exited)
             continue;
 
+        // Data-gap expiry (task-5 review fix 1): check_exit's documented
+        // sentinel for "expired with NO pre-expiry tick" is reason 'expiry'
+        // with price 0. Booking realized_pnl against price 0 would fabricate
+        // a full -notional loss (long) or +notional gain (short) out of a
+        // MISSING PRINT. Instead: close the position with realized_pnl NULL
+        // (excluded from resolved stats -- see run_cycle's header contract),
+        // no exit fee (nothing traded), close_reason 'expiry', and
+        // data_quality forced to 'degraded'.
+        if (exit.reason == QLatin1String("expiry") && exit.price <= 0.0) {
+            auto upd = db.execute(
+                "UPDATE sandbox_position SET state='closed', closed_at=?, exit_fee=0, realized_pnl=NULL,"
+                " close_reason='expiry', data_quality='degraded'"
+                " WHERE position_id=? AND state='open'",
+                {exit.ts_ms, row.position_id});
+            if (upd.is_err())
+                return Result<void>::err(upd.error());
+            if (upd.value().numRowsAffected() == 0) {
+                report.skipped++;
+                continue;
+            }
+            auto f = db.execute(
+                "INSERT INTO sandbox_fill (fill_id, position_id, ts, kind, price, fee, note) VALUES (?,?,?,?,?,?,?)",
+                {new_id(), row.position_id, exit.ts_ms, QStringLiteral("expiry"), 0.0, 0.0,
+                 QStringLiteral("data gap: no pre-expiry tick")});
+            if (f.is_err())
+                return Result<void>::err(f.error());
+            report.closed++;
+            continue;
+        }
+
         const FeeModel fees = fee_model_from_params(row.params);
+        // Deliberate modeling approximation: the exit fee is charged on the
+        // position's ENTRY notional (notional_usd), not the actual exit
+        // notional (exit.price * qty). For the small per-position moves this
+        // sandbox trades (bps-scale targets/stops) the difference is second-
+        // order, and using the fixed entry notional keeps entry and exit
+        // fees directly comparable across a book.
         const double exit_fee = fee_for(row.notional_usd, fees.taker_bps);
         const double pnl = realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
 

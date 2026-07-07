@@ -147,6 +147,14 @@ double fill_fee(const QString& position_id, const QString& kind) {
     return r.value().value(0).toDouble();
 }
 
+QString fill_note(const QString& position_id, const QString& kind) {
+    auto r = Database::instance().execute(
+        "SELECT note FROM sandbox_fill WHERE position_id = ? AND kind = ?", {position_id, kind});
+    if (r.is_err() || !r.value().next())
+        return QStringLiteral("<no fill row>");
+    return r.value().value(0).toString();
+}
+
 // One scalp_ticks.jsonl / scalp_decisions.jsonl line writer -- same shape as
 // tst_sandbox_ticktail.cpp's tick_line and ServeCommand's decision object.
 QString tick_line(const QString& symbol, double price, qint64 ts_ms) {
@@ -470,11 +478,11 @@ class TstSandboxExecutor : public QObject {
 
     // Extra (beyond the binding (a)-(h) list): a prediction book (params
     // prediction:true, e.g. btc5m/kalshi) opens directly at 'open' priced at
-    // the journal row's market_probability, side "yes", entry fee at taker,
-    // no target/stop -- and is NOT advanced by step 3 (Resolver-owned).
-    // Also documents a real asymmetry: prediction journal rows carry no
-    // freshest_age_ms/live_sources, so data_quality is unconditionally
-    // 'degraded' for this kind (see PaperExecutor.h/report note).
+    // the journal row's market_probability, side "yes", entry fee at taker
+    // (recorded on the 'open' fill row -- review fix 6), no target/stop --
+    // and is NOT advanced by step 3 (Resolver-owned). Prediction rows carry
+    // no freshness telemetry, so data_quality is 'unknown' (review fix 4;
+    // see PaperExecutor.h's data-quality contract).
     void prediction_candidate_opens_directly_at_market_probability() {
         auto strat = register_strategy(QStringLiteral("test_pred_i"), QStringLiteral("XPP-USD"),
                                        QJsonObject{{"notional_usd", 100.0}, {"journal_source", "journal-i"},
@@ -482,9 +490,11 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(strat.is_ok());
 
         const qint64 t0 = 9000000;
+        // Empty freshness_json -- the realistic btc5m/kalshi shape (neither
+        // freshest_age_ms nor live_sources).
         insert_journal_row(QStringLiteral("dec-i1"), QStringLiteral("journal-i"), QStringLiteral("XPP-USD"),
                            QStringLiteral(""), QStringLiteral(""), QStringLiteral("pass"), 0.0, t0,
-                           QStringLiteral(""), QJsonObject{}, QJsonObject{{"live_sources", 1}},
+                           QStringLiteral(""), QJsonObject{}, QJsonObject{},
                            /*market_probability=*/0.65);
 
         QTemporaryDir daemon;
@@ -503,9 +513,16 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(!row.has_target);
         QVERIFY(!row.has_stop);
         QVERIFY(qAbs(row.entry_fee - (100.0 * 60.0 / 10000.0)) < 1e-9);
-        // Documents the always-degraded asymmetry: no freshest_age_ms at
-        // all, live_sources explicitly < 2.
-        QCOMPARE(row.data_quality, QStringLiteral("degraded"));
+        // Fee bookkeeping symmetry (review fix 6): the taker entry fee paid
+        // at this immediate synthetic open is recorded on the 'open'
+        // sandbox_fill row itself, not left at 0.
+        QVERIFY(has_fill(row.position_id, QStringLiteral("open")));
+        QVERIFY(qAbs(fill_fee(row.position_id, QStringLiteral("open")) - row.entry_fee) < 1e-9);
+        // data_quality three-way rule (review fix 4): a row with NO
+        // freshness telemetry at all is 'unknown' -- absence of signal is
+        // not evidence of degradation (prediction rows would otherwise be
+        // permanently 'degraded').
+        QCOMPARE(row.data_quality, QStringLiteral("unknown"));
 
         // Not Resolver-owned-excluded from step 3: a ticks file crossing any
         // price for this symbol must NOT close it (side 'yes' is filtered
@@ -558,6 +575,176 @@ class TstSandboxExecutor : public QObject {
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
         QCOMPARE(second.value().opened, 0);
         QCOMPARE(count_positions(decision_id), 1);
+    }
+
+    // Regression (review fix 1, RED without the NULL-pnl branch): an open
+    // position that expires with NO pre-expiry tick (only post-expiry
+    // prints in the file -- check_exit's documented price-0 expiry
+    // sentinel) must NOT book a fake +-notional realized_pnl against price
+    // 0. Contract: closed, close_reason 'expiry', realized_pnl NULL,
+    // exit_fee 0, data_quality forced 'degraded', and a sandbox_fill row
+    // kind 'expiry' with the data-gap note.
+    void data_gap_expiry_closes_with_null_pnl() {
+        auto strat = register_strategy(QStringLiteral("test_gap_j"), QStringLiteral("XJJ-USD"),
+                                       QJsonObject{{"notional_usd", 100.0}, {"taker_bps", 50.0}});
+        QVERIFY(strat.is_ok());
+
+        const qint64 t0 = 10000000;
+        const qint64 expires_at = t0 + 50000;
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, hypothetical,"
+            " qty, limit_price, target_price, stop_price, expires_at, state, opened_at, entry_fee, data_quality,"
+            " notional_usd, created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("pos-j1"), strat.value(), QStringLiteral("dec-j1"), QStringLiteral("XJJ-USD"),
+             QStringLiteral("long"), 1.0, 100.0, 105.0, 97.0, expires_at, QStringLiteral("open"), t0, 0.4,
+             QStringLiteral("ok"), 100.0, t0});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        // The ONLY tick is post-expiry (and target-crossing, which must not
+        // matter -- the position died at expires_at).
+        write_lines(daemon.filePath("scalp_ticks.jsonl"),
+                   {tick_line(QStringLiteral("XJJ-USD"), 106.0, expires_at + 5000)});
+
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), expires_at + 10000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().closed, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-j1"));
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("closed"));
+        QCOMPARE(row.close_reason, QStringLiteral("expiry"));
+        QVERIFY2(!row.has_realized_pnl, "data-gap close must leave realized_pnl NULL, never +-notional");
+        QCOMPARE(row.exit_fee, 0.0);
+        QCOMPARE(row.data_quality, QStringLiteral("degraded"));
+        QVERIFY(row.has_closed_at);
+        QCOMPARE(row.closed_at, expires_at);
+        QVERIFY(has_fill(row.position_id, QStringLiteral("expiry")));
+        QCOMPARE(fill_note(row.position_id, QStringLiteral("expiry")),
+                 QStringLiteral("data gap: no pre-expiry tick"));
+        QCOMPARE(fill_fee(row.position_id, QStringLiteral("expiry")), 0.0);
+    }
+
+    // Regression (review fix 2): an open position with NULL target AND
+    // stop must still EXPIRE (the old guard skipped it forever -- a
+    // zombie). NULL bounds map to never-trigger sentinels, so the only
+    // possible exit is expiry at the last pre-expiry tick's real price.
+    void null_bounds_position_still_expires() {
+        auto strat = register_strategy(QStringLiteral("test_null_k"), QStringLiteral("XKK-USD"),
+                                       QJsonObject{{"notional_usd", 100.0}, {"taker_bps", 50.0}});
+        QVERIFY(strat.is_ok());
+
+        const qint64 t0 = 11000000;
+        const qint64 expires_at = t0 + 50000;
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, hypothetical,"
+            " qty, limit_price, target_price, stop_price, expires_at, state, opened_at, entry_fee, data_quality,"
+            " notional_usd, created_at) VALUES (?,?,?,?,?,0,?,?,NULL,NULL,?,?,?,?,?,?,?)",
+            {QStringLiteral("pos-k1"), strat.value(), QStringLiteral("dec-k1"), QStringLiteral("XKK-USD"),
+             QStringLiteral("long"), 1.0, 100.0, expires_at, QStringLiteral("open"), t0, 0.4,
+             QStringLiteral("ok"), 100.0, t0});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        write_lines(daemon.filePath("scalp_ticks.jsonl"),
+                   {tick_line(QStringLiteral("XKK-USD"), 101.0, t0 + 1000)});
+
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), expires_at);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().closed, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-k1"));
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("closed"));
+        QCOMPARE(row.close_reason, QStringLiteral("expiry"));
+        QVERIFY(row.has_realized_pnl);
+        // Real close at the pre-expiry tick's price 101:
+        // (101 - 100) * 1.0 - 0.4 (entry) - 0.5 (exit taker on notional) = 0.1
+        QVERIFY(qAbs(row.realized_pnl - 0.1) < 1e-9);
+        QVERIFY(qAbs(row.exit_fee - 0.5) < 1e-9);
+        QVERIFY(has_fill(row.position_id, QStringLiteral("expiry")));
+    }
+
+    // Regression (review fix 3): the prediction/hypothetical lanes must not
+    // backfill positions from gate-pass journal rows older than params
+    // max_age_sec. A stale row is skipped entirely; a fresh row for the
+    // same book opens (also exercising the hypothetical lane end-to-end:
+    // side from the row, entry at features_json.reference_price, target/
+    // stop from params bps, hypothetical=1, state 'open').
+    void stale_journal_rows_are_not_backfilled() {
+        auto strat = register_strategy(
+            QStringLiteral("test_hypo_l"), QStringLiteral("XLL-USD"),
+            QJsonObject{{"notional_usd", 100.0}, {"journal_source", "journal-l"}, {"hypothetical", true},
+                        {"max_age_sec", 600}, {"target_bps", 100.0}, {"stop_bps", 45.0},
+                        {"horizon_sec", kFarHorizonSec}, {"taker_bps", 60.0}});
+        QVERIFY(strat.is_ok());
+
+        // Stays in the same low-time regime as every other test's synthetic
+        // clock (t0 ~ 1e7): rows here must age out of LATER tests' cutoff
+        // windows too, or they'd leak into those cycles' opened counts.
+        const qint64 now_ms = 12000000; // now - 601s = 11399000 > 0
+        // Stale: 601s old (one second past max_age_sec).
+        insert_journal_row(QStringLiteral("dec-l-stale"), QStringLiteral("journal-l"), QStringLiteral("XLL-USD"),
+                           QStringLiteral("long"), QStringLiteral(""), QStringLiteral("pass"), 0.9,
+                           now_ms - 601 * 1000, QStringLiteral("5m"), QJsonObject{{"reference_price", 100.0}},
+                           QJsonObject{{"freshest_age_ms", 100}, {"live_sources", 3}});
+        // Fresh: 100s old.
+        insert_journal_row(QStringLiteral("dec-l-fresh"), QStringLiteral("journal-l"), QStringLiteral("XLL-USD"),
+                           QStringLiteral("long"), QStringLiteral(""), QStringLiteral("pass"), 0.9,
+                           now_ms - 100 * 1000, QStringLiteral("5m"), QJsonObject{{"reference_price", 200.0}},
+                           QJsonObject{{"freshest_age_ms", 100}, {"live_sources", 3}});
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), now_ms);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 1);
+        QCOMPARE(count_positions(QStringLiteral("dec-l-stale")), 0);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-l-fresh"));
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("open"));
+        QCOMPARE(row.side, QStringLiteral("long"));
+        QVERIFY(row.hypothetical);
+        QVERIFY(qAbs(row.limit_price - 200.0) < 1e-9);
+        QVERIFY(row.has_target);
+        QVERIFY(qAbs(row.target_price - 200.0 * 1.01) < 1e-6);  // +100 bps
+        QVERIFY(row.has_stop);
+        QVERIFY(qAbs(row.stop_price - 200.0 * 0.9955) < 1e-6);  // -45 bps
+        QVERIFY(qAbs(row.entry_fee - (100.0 * 60.0 / 10000.0)) < 1e-9);
+        QVERIFY(qAbs(fill_fee(row.position_id, QStringLiteral("open")) - row.entry_fee) < 1e-9);
+    }
+
+    // Regression (review fix 4 / minor 5): a freshness_json providing ONLY
+    // live_sources (< 2, no freshest_age_ms) must classify 'degraded' --
+    // the old || logic defaulted the missing age to 0 and marked it 'ok'.
+    // ('unknown' with NO fields is pinned by the prediction test; 'ok' with
+    // both fields healthy by test (a).)
+    void live_sources_only_freshness_classifies_degraded() {
+        auto strat = register_strategy(
+            QStringLiteral("test_spot_m"), QStringLiteral("XMM-USD"),
+            QJsonObject{{"notional_usd", 100.0}, {"journal_source", "journal-m"}, {"min_confidence", 0.0},
+                        {"min_horizon_sec", 0}, {"max_age_sec", 3600}, {"target_move_pct", 5.0},
+                        {"stop_move_pct", 2.0}, {"horizon_sec", kFarHorizonSec}});
+        QVERIFY(strat.is_ok());
+
+        const qint64 t0 = 13000000;
+        insert_journal_row(QStringLiteral("dec-m1"), QStringLiteral("journal-m"), QStringLiteral("XMM-USD"),
+                           QStringLiteral("buy"), QStringLiteral("BUY CANDIDATE"), QStringLiteral("pass"), 0.9, t0,
+                           QStringLiteral("5m"), QJsonObject{{"reference_price", 100.0}},
+                           QJsonObject{{"live_sources", 1}});  // no freshest_age_ms at all
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-m1"));
+        QVERIFY(row.found);
+        QCOMPARE(row.data_quality, QStringLiteral("degraded"));
     }
 };
 
