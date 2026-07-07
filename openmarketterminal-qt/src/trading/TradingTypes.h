@@ -23,7 +23,7 @@ namespace openmarketterminal::trading {
 struct PtLeverageConfig {
     double equity_mis = 5.0;   // intraday equity
     double equity_cnc = 1.0;   // delivery equity
-    double futures = 10.0;     // futures (FUT suffix on NFO/BFO/MCX/CDS)
+    double futures = 10.0;     // futures (FUT suffix)
     double options_buy = 1.0;  // option buy (premium only)
     double options_sell = 1.0; // option sell (margin estimate)
 };
@@ -474,8 +474,8 @@ struct GttTrigger {
 
 struct GttOrder {
     QString gtt_id;   // broker-assigned GTT ID
-    QString symbol;   // normalised symbol, e.g. "RELIANCE"
-    QString exchange; // "NSE" / "BSE"
+    QString symbol;   // normalised symbol, e.g. "AAPL"
+    QString exchange;
     GttOrderType type = GttOrderType::Single;
     double last_price = 0.0; // LTP at the time of GTT creation
     QString status;          // "active" / "triggered" / "cancelled" / "expired"

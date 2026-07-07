@@ -523,7 +523,7 @@ void EquityTradingScreen::retranslateUi() {
     // "NO ACCOUNTS" placeholders) while preserving the live state.
     update_account_menu();
     update_connection_status();
-    // exchange_label_ holds a market code (NSE/BSE/…), symbol_input_ the ticker,
+    // exchange_label_ holds a market code, symbol_input_ the ticker,
     // clock_label_ a timestamp — all data, not translated.
 }
 

@@ -37,20 +37,20 @@ QString format_strike(double strike);
 QString expiry_friendly(const QString& display_expiry);
 
 /// Human-readable picker label so users aren't shown the raw canonical symbol
-/// (e.g. NIFTY07JUL2618250CE). Built from the catalog fields:
-///   FUT   → "NIFTY 30 Jun 26 FUT"
-///   CE/PE → "NIFTY 7 Jul 26 18250 CE"
-///   EQ    → the trading symbol (already clean, e.g. RELIANCE)
-///   INDEX → the underlying name (e.g. NIFTY)
+/// (e.g. SPX07JUL265000CE). Built from the catalog fields:
+///   FUT   → "ES 30 Jun 26 FUT"
+///   CE/PE → "SPX 7 Jul 26 5000 CE"
+///   EQ    → the trading symbol (already clean, e.g. AAPL)
+///   INDEX → the underlying name (e.g. SPX)
 /// `fallback_symbol` is used for EQ / when fields are missing.
 QString display_name(const QString& name, InstrumentType itype, const QString& expiry, double strike,
                      const QString& fallback_symbol);
 
-/// RELIANCE-EQ / -BE / -MF / -SG / -SM → RELIANCE (case-insensitive suffix).
+/// Broker EQ suffixes such as -EQ / -BE / -MF / -SG / -SM are stripped.
 QString strip_eq_suffix(const QString& trading_symbol);
 
-/// Underlying/index name → canonical ("NIFTY 50"→"NIFTY", "NIFTYBANK"→"BANKNIFTY",
-/// "SNSX50"→"SENSEX50"). Handles both spaced and pre-stripped inputs.
+/// Underlying/index name → canonical ("S&P 500"→"SPX", "NASDAQ 100"→"NDX").
+/// Handles both spaced and pre-stripped inputs.
 QString normalise_index_symbol(const QString& raw_name);
 
 /// Build the canonical symbol. `expiry_nd` is the compact "28MAR24" form (""
@@ -59,12 +59,12 @@ QString normalise_index_symbol(const QString& raw_name);
 QString synthesize_symbol(const QString& name, InstrumentType itype, const QString& expiry_nd, double strike,
                           const QString& eq_or_index_fallback);
 
-/// Canonical exchange. Brokers pass an already-broker-mapped exchange (NSE/BSE/
-/// NFO/BFO/CDS/BCD/MCX). For INDEX types the "_INDEX" suffix is ensured.
+/// Canonical exchange. Brokers pass an already-broker-mapped exchange. For INDEX
+/// types the "_INDEX" suffix is ensured.
 QString normalise_exchange(const QString& exchange, InstrumentType itype);
 
 /// Stable numeric token for brokers whose native token is non-numeric (e.g.
-/// "NSE_EQ|INE...", "758960_NSE"). Uses the leading integer when present,
+/// composite broker tokens). Uses the leading integer when present,
 /// else a positive 63-bit FNV-1a hash of the full key. Guarantees a non-zero,
 /// per-key-distinct value so UNIQUE(instrument_token, broker_id) never collapses.
 qint64 stable_token(const QString& broker_native_token);

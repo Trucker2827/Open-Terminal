@@ -208,8 +208,6 @@ QString format_currency(double v, const QString& currency) {
         return sign + "$" + QString::number(abs_v, 'f', 2);
     if (currency == "EUR")
         return sign + QString::number(abs_v, 'f', 2) + " EUR";
-    if (currency == "INR")
-        return sign + "Rs." + QString::number(abs_v, 'f', 2);
     return sign + QString::number(abs_v, 'f', 2) + " " + currency;
 }
 

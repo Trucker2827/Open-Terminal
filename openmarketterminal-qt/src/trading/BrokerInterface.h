@@ -83,7 +83,7 @@ struct BrokerProfile {
     QString id;           // e.g. "alpaca"
     QString display_name; // e.g. "Alpaca"
     QString region;       // "IN", "US", "EU"
-    QString currency;     // "INR", "USD", "GBP", "EUR"
+    QString currency;     // "USD", "GBP", "EUR", etc.
 
     // Credentials dialog — only listed fields are shown
     QVector<CredentialFieldDef> credential_fields;

@@ -94,7 +94,7 @@ std::vector<ToolDef> get_markets_tools() {
     // Why this exists: without this tool, the model used to *guess* tickers
     // from training data and silently store nonsense in the watchlist
     // (e.g. "RITES Limited" → wrong ticker). Cross-exchange names like
-    // RITES.NS / TCS.NS / 7203.T are especially prone to that. The model
+    // International suffixed tickers such as 7203.T or VOD.L are especially prone to that. The model
     // should call lookup_symbol BEFORE add_to_watchlist whenever the user
     // names a company by name rather than ticker.
     {
@@ -106,7 +106,7 @@ std::vector<ToolDef> get_markets_tools() {
             "ALWAYS call this BEFORE add_to_watchlist / get_quote when the user names a company "
             "(e.g. 'Apple', 'Microsoft', 'Tesla') rather than giving a ticker — "
             "guessing the ticker from prior knowledge frequently gets the suffix wrong "
-            "(.NS for NSE, .BO for BSE, .T for Tokyo, .L for London, etc.) and stores a "
+            "(.T for Tokyo, .L for London, .TO for Toronto, etc.) and stores a "
             "broken symbol. Backed by Yahoo Finance's search API.";
         t.category = "markets";
         t.input_schema.properties = QJsonObject{

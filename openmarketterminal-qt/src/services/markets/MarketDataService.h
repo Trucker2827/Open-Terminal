@@ -133,8 +133,8 @@ class MarketDataService : public QObject
     using NamesCallback = std::function<void(const QHash<QString, QString>&)>;
     void resolve_names(const QStringList& symbols, NamesCallback cb);
 
-    /// Currency-symbol prefix for a symbol's price (e.g. "AAPL" → "$",
-    /// "RELIANCE.NS" → "₹"), or an empty string when unknown or not meaningful
+    /// Currency-symbol prefix for a symbol's price (e.g. "AAPL" → "$"),
+    /// or an empty string when unknown or not meaningful
     /// (forex pairs, index levels/yields). Resolved alongside display names by
     /// `resolve_names` and read from the same disk-backed cache, so this is a
     /// cheap synchronous lookup.

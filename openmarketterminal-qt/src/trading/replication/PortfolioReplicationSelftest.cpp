@@ -21,9 +21,9 @@ int run_portfolio_replication_selftest() {
 
     // Synthetic source: 1 holding, 1 short MIS position, 1 unmappable holding.
     QVector<SourceItem> items;
-    items.push_back({ItemKind::Holding,  "RELIANCE", "NSE", "",    "",      10, 2400, 2500});
-    items.push_back({ItemKind::Position, "TCS",      "NSE", "MIS", "SHORT",  5, 3500, 3600});
-    items.push_back({ItemKind::Holding,  "UNKNOWNX", "NSE", "",    "",       3,  100,  110});
+    items.push_back({ItemKind::Holding,  "AAPL",     "NASDAQ", "",    "",      10, 240, 250});
+    items.push_back({ItemKind::Position, "MSFT",     "NASDAQ", "MIS", "SHORT",  5, 350, 360});
+    items.push_back({ItemKind::Holding,  "UNKNOWNX", "NASDAQ", "",    "",       3,  100,  110});
 
     // Resolver: identity-normalize, but UNKNOWNX is not tradable on target.
     SymbolResolver resolver = [](const QString& s, const QString&) -> ResolveResult {
@@ -38,14 +38,14 @@ int run_portfolio_replication_selftest() {
 
     check("emits one row per in-scope item", plan.orders.size() == 3);
 
-    const auto& r0 = plan.orders[0]; // RELIANCE holding
+    const auto& r0 = plan.orders[0]; // AAPL holding
     check("holding -> buy",        r0.side == QStringLiteral("buy"));
     check("holding -> CNC",        r0.product == QStringLiteral("CNC"));
     check("quantity is exact 1:1", approx(r0.quantity, 10));
-    check("est_value = qty*ltp",   approx(r0.est_value, 25000.0)); // 10 * 2500
+    check("est_value = qty*ltp",   approx(r0.est_value, 2500.0)); // 10 * 250
     check("mapped holding included", r0.included && r0.mapped);
 
-    const auto& r1 = plan.orders[1]; // TCS short MIS
+    const auto& r1 = plan.orders[1]; // MSFT short MIS
     check("short position -> sell", r1.side == QStringLiteral("sell"));
     check("position keeps product MIS", r1.product == QStringLiteral("MIS"));
 
@@ -54,8 +54,8 @@ int run_portfolio_replication_selftest() {
     check("unmapped unchecked", !r2.included);
     check("unmapped has warning", !r2.warning.isEmpty());
 
-    // required_capital counts included rows only: 25000 (RELIANCE) + 18000 (TCS).
-    check("required_capital excludes unmapped", approx(plan.required_capital, 43000.0));
+    // required_capital counts included rows only: 2500 (AAPL) + 1800 (MSFT).
+    check("required_capital excludes unmapped", approx(plan.required_capital, 4300.0));
 
     // Scope toggle: holdings only → positions dropped entirely.
     ReplicationOptions holdings_only{true, false};

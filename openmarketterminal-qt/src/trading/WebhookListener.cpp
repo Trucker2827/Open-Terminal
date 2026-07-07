@@ -119,13 +119,7 @@ bool WebhookListener::parse_http_request(const QByteArray& raw, QString& path, Q
 
 void WebhookListener::route_payload(const QString& path, const QJsonObject& body,
                                     const QJsonArray& body_array, bool is_array) {
-    const QString p = path.toLower();
-
-    // ChartInk scanner alert — carries scan_name + comma-separated "stocks".
-    if (p.contains("chartink") || body.contains("stocks") || body.contains("scan_name")) {
-        route_chartink(body);
-        return;
-    }
+    Q_UNUSED(path);
 
     // TradingView alert(s). Array payloads are treated as multiple alerts.
     auto emit_tv = [this](const QJsonObject& obj) {
@@ -140,45 +134,6 @@ void WebhookListener::route_payload(const QString& path, const QJsonObject& body
         }
     } else {
         emit_tv(body);
-    }
-}
-
-void WebhookListener::route_chartink(const QJsonObject& body) {
-    // ChartInk webhook format:
-    //   { "stocks": "SBIN,INFY", "trigger_prices": "500,1450",
-    //     "scan_name": "Bullish Breakout BUY", "alert_name": "...", "triggered_at": "..." }
-    // The action is inferred from a keyword in scan_name.
-    const QString scan_name = body.value("scan_name").toString().toUpper();
-    QString action;
-    if (scan_name.contains("SHORT"))
-        action = "SELL";
-    else if (scan_name.contains("COVER"))
-        action = "BUY";
-    else if (scan_name.contains("SELL"))
-        action = "SELL";
-    else if (scan_name.contains("BUY"))
-        action = "BUY";
-
-    if (action.isEmpty()) {
-        LOG_WARN(WH_TAG, QString("ChartInk alert has no BUY/SELL/SHORT/COVER keyword in scan_name: %1")
-                             .arg(scan_name));
-        emit error_occurred("ChartInk: no action keyword in scan_name");
-        return;
-    }
-
-    const QStringList stocks = body.value("stocks").toString().split(',', Qt::SkipEmptyParts);
-    const QStringList prices = body.value("trigger_prices").toString().split(',', Qt::SkipEmptyParts);
-
-    for (int i = 0; i < stocks.size(); ++i) {
-        QJsonObject alert;
-        alert["symbol"] = stocks[i].trimmed();
-        alert["exchange"] = "NSE"; // ChartInk is NSE/BSE; default NSE, consumer can remap
-        alert["action"] = action;
-        if (i < prices.size())
-            alert["trigger_price"] = prices[i].trimmed().toDouble();
-        alert["scan_name"] = scan_name;
-        alert["source"] = "chartink";
-        emit chartink_alert(alert);
     }
 }
 

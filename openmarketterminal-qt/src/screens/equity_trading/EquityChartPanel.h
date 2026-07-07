@@ -45,7 +45,7 @@ class EquityChartPanel : public QWidget {
     // Show/refresh the open position for the displayed symbol: a floating P&L
     // card with an EXIT button plus a dashed entry-price line in the chart.
     // `side` is "long"/"short"; `qty` is the absolute size.
-    // `currency_code` (e.g. "INR") pins the P&L symbol to the position's own
+    // `currency_code` (e.g. "USD") pins the P&L symbol to the position's own
     // currency; empty falls back to the global preference.
     void set_position(const QString& symbol, const QString& side, double qty, double entry_price,
                       const QString& exchange, const QString& product_type,
@@ -108,7 +108,7 @@ class EquityChartPanel : public QWidget {
     QString pos_side_; // "long" | "short"
     QString pos_exchange_;
     QString pos_product_;
-    QString pos_currency_; // currency code for P&L (e.g. "INR"); empty = global
+    QString pos_currency_; // currency code for P&L (e.g. "USD"); empty = global
     double pos_qty_ = 0.0;
     double pos_entry_ = 0.0;
     double pos_ltp_ = 0.0;

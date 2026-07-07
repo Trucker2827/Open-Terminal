@@ -17,8 +17,8 @@
 //     target_row    = chain.rows[ atm_index + actual_offset ]
 //
 // So a Bull Call Spread (offsets 0 and +1) at width=3 buys ATM CE and sells
-// the strike three rows above (e.g. NIFTY ATM=24000, strikes step 50 →
-// sells 24150). Shift moves the whole construction up/down without changing
+// the strike three rows above (e.g. SPX ATM=5000, strikes step 5 →
+// sells 5015). Shift moves the whole construction up/down without changing
 // width — useful when the user has a directional bias.
 //
 // Lots are signed at the recipe level (positive = buy, negative = sell) and

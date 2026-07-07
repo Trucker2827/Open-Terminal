@@ -56,8 +56,8 @@ int yahoo_max_lookback_days(const QString& native_interval) {
 }
 
 // US-first: a bare symbol is treated as a US equity (yfinance uses the bare
-// ticker, e.g. "AAPL"). Symbols with an explicit exchange suffix ("RELIANCE.NS",
-// "7203.T", "VOD.L") or a pair separator pass through unchanged, so non-US
+// ticker, e.g. "AAPL"). Symbols with an explicit exchange suffix ("7203.T",
+// "VOD.L") or a pair separator pass through unchanged, so non-US
 // markets still work when the suffix is given.
 QString symbol_to_yahoo(const QString& symbol) {
     return symbol.trimmed().toUpper();

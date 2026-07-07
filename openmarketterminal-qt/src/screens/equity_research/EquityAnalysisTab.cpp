@@ -735,8 +735,6 @@ QString EquityAnalysisTab::fmt_pct(double v) const {
 
 QString EquityAnalysisTab::cur_symbol_() const {
     const QString c = cached_info_.currency.toUpper();
-    if (c == "INR")
-        return QStringLiteral("₹");
     if (c == "EUR")
         return QStringLiteral("€");
     if (c == "GBP")

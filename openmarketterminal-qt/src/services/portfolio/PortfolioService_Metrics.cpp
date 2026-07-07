@@ -166,7 +166,6 @@ QString PortfolioService::default_benchmark_for_currency(const QString& currency
     if (c == "GBP") return QStringLiteral("^FTSE");
     if (c == "EUR") return QStringLiteral("^STOXX50E");
     if (c == "AUD") return QStringLiteral("^AXJO");
-    if (c == "INR") return QStringLiteral("^NSEI");
     if (c == "JPY") return QStringLiteral("^N225");
     if (c == "HKD") return QStringLiteral("^HSI");
     return QStringLiteral("SPY"); // USD and unknown

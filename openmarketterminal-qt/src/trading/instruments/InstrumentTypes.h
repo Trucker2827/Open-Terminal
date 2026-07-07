@@ -41,11 +41,11 @@ inline const char* instrument_type_str(InstrumentType t) {
 struct Instrument {
     qint64 instrument_token = 0; // Broker numeric token (used in historical/market-data APIs)
     qint64 exchange_token = 0;   // Exchange-level token (broker-specific)
-    QString symbol;              // Normalised symbol  e.g. "NIFTY28MAR24FUT"
-    QString brsymbol;            // Broker native      e.g. "NIFTY 50 MAR24 FUT"
-    QString name;                // Underlying         e.g. "NIFTY"
-    QString exchange;            // Normalised exchange e.g. "NSE", "NFO", "NSE_INDEX"
-    QString brexchange;          // Broker exchange     e.g. "NSE", "NFO"
+    QString symbol;              // Normalised symbol  e.g. "SPX28MAR24C5000"
+    QString brsymbol;            // Broker native      e.g. "SPX MAR24 5000 C"
+    QString name;                // Underlying         e.g. "SPX"
+    QString exchange;            // Normalised exchange e.g. "NASDAQ", "OPRA"
+    QString brexchange;          // Broker-native exchange
     QString expiry;              // "28-MAR-24" or ""
     double strike = 0.0;         // Option strike, 0 for others
     int lot_size = 1;
@@ -58,7 +58,7 @@ struct Instrument {
 
     /// Canonical DataHub topic id for this instrument: "<exchange>:<symbol>"
     /// when exchange is set, else just the symbol. Stable across brokers.
-    /// Used to compose topics like "market:quote:NSE:RELIANCE".
+    /// Used to compose topics like "market:quote:NASDAQ:AAPL".
     QString canonical_topic_id() const {
         return exchange.isEmpty() ? symbol : exchange + ":" + symbol;
     }

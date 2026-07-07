@@ -67,7 +67,7 @@ using namespace openmarketterminal::screens::equity;
 
 static QString yfinance_symbol_for(const QString& symbol, const QString& exchange) {
     static const QHash<QString, QString> suffix_map = {
-        {"NSE", ".NS"},        {"BSE", ".BO"},  {"HKEX", ".HK"}, {"TSE", ".T"},
+        {"HKEX", ".HK"},       {"TSE", ".T"},
         {"KRX", ".KS"},        {"SGX", ".SI"},  {"ASX", ".AX"},  {"IDX", ".JK"},
         {"MYX", ".KL"},        {"SET", ".BK"},  {"PSE", ".PS"},  {"XETR", ".DE"},
         {"FWB", ".F"},         {"LSE", ".L"},   {"BME", ".MC"},  {"MIL", ".MI"},
@@ -106,7 +106,7 @@ void EquityTradingScreen::on_import_holdings_requested(const QVector<trading::Br
 
     auto* info = new QLabel(tr("Importing <b>%1</b> holdings from <b>%2</b>. "
                                "Tickers are auto-mapped to Yahoo Finance format "
-                               "(NSE→.NS, BSE→.BO). Edit the <i>Yahoo Ticker</i> column "
+                               "Edit the <i>Yahoo Ticker</i> column "
                                "if any symbol needs a manual override.")
                                 .arg(holdings.size())
                                 .arg(account.display_name.isEmpty() ? broker_id.toUpper()
@@ -270,9 +270,9 @@ void EquityTradingScreen::on_import_holdings_requested(const QVector<trading::Br
     // the broker instead of yfinance for portfolios linked to a connected
     // account. See migration v022.
     struct ImportRow {
-        QString symbol;          // yfinance-format ("RELIANCE.NS"). Canonical key.
-        QString broker_symbol;   // broker-native ("RELIANCE")
-        QString exchange;        // "NSE" / "BSE" / etc.
+        QString symbol;          // yfinance-format ("AAPL"). Canonical key.
+        QString broker_symbol;   // broker-native ("AAPL")
+        QString exchange;
         double quantity = 0;
         double avg_price = 0;
     };

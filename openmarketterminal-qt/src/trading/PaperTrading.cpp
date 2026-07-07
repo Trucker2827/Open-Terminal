@@ -107,27 +107,20 @@ bool pt_is_future(const QString& symbol) {
 
 namespace {
 
-// Select leverage for a trade based on instrument type, product, exchange and
-// side. Mirrors OpenAlgo fund_manager.py::_get_leverage.
+// Select leverage for a trade based on instrument type, product, and side.
 double select_leverage(const PtLeverageConfig& cfg, const QString& symbol, const QString& exchange,
                        const QString& product, const QString& side) {
+    Q_UNUSED(exchange);
     // Futures take priority (FUT suffix), then options (CE/PE suffix).
     if (pt_is_future(symbol))
         return cfg.futures;
     if (pt_is_option(symbol))
         return (side.compare("buy", Qt::CaseInsensitive) == 0) ? cfg.options_buy : cfg.options_sell;
 
-    // Equity: leverage depends on product. MIS (intraday) gets equity_mis,
-    // everything else (CNC/NRML/delivery/blank) gets equity_cnc.
-    const QString ex = exchange.toUpper();
-    if (ex == "NSE" || ex == "BSE" || ex.isEmpty()) {
-        if (product.compare("MIS", Qt::CaseInsensitive) == 0 || product.compare("intraday", Qt::CaseInsensitive) == 0)
-            return cfg.equity_mis;
-        return cfg.equity_cnc;
-    }
-
-    // Unknown exchange: fall back to 1x (full margin) — safest default.
-    return 1.0;
+    // Equity/spot: leverage depends on product, not on a region-specific exchange.
+    if (product.compare("MIS", Qt::CaseInsensitive) == 0 || product.compare("intraday", Qt::CaseInsensitive) == 0)
+        return cfg.equity_mis;
+    return cfg.equity_cnc;
 }
 
 } // namespace
@@ -151,25 +144,22 @@ double pt_calculate_required_margin(const QString& portfolio_id, const QString& 
 // ============================================================================
 
 bool pt_is_market_open(const QString& exchange) {
-    // IST = UTC + 5:30.
-    QDateTime ist = QDateTime::currentDateTimeUtc().addSecs(5 * 3600 + 30 * 60);
-    QTime t = ist.time();
     const QString ex = exchange.toUpper();
+    if (ex.isEmpty() || ex == "CRYPTO" || ex == "FOREX")
+        return true;
 
-    if (ex == "NSE" || ex == "BSE" || ex == "NFO" || ex == "BFO") {
-        // Equity / equity derivatives: 09:15 – 15:30 IST.
-        return t >= QTime(9, 15) && t <= QTime(15, 30);
-    }
-    if (ex == "MCX") {
-        // Commodities: 09:00 – 23:30 IST.
-        return t >= QTime(9, 0) && t <= QTime(23, 30);
-    }
-    if (ex == "CDS" || ex == "BCD") {
-        // Currency derivatives: 09:00 – 17:00 IST.
-        return t >= QTime(9, 0) && t <= QTime(17, 0);
-    }
+    const QDateTime now = QDateTime::currentDateTime();
+    const int dow = now.date().dayOfWeek();
+    if (dow == 6 || dow == 7)
+        return false;
 
-    // Unknown / crypto / international: always open (24/7).
+    const QTime t = now.time();
+    if (ex == "NYSE" || ex == "NASDAQ" || ex == "AMEX" || ex == "CBOE" || ex == "ARCA" || ex == "BATS")
+        return t >= QTime(9, 30) && t <= QTime(16, 0);
+    if (ex == "LSE" || ex == "XETRA" || ex == "EURONEXT" || ex == "TSX")
+        return t >= QTime(8, 0) && t <= QTime(16, 30);
+
+    // Unknown exchanges are treated as always open until a venue calendar is wired.
     return true;
 }
 
@@ -600,32 +590,31 @@ PtStats pt_get_stats(const QString& portfolio_id) {
 
 namespace {
 
-// IST = UTC + 5:30. The UTC instant at which the given IST calendar day begins.
-QDateTime ist_day_start_utc(const QDate& ist_day) {
-    QDateTime utc_midnight(ist_day, QTime(0, 0, 0), QTimeZone::UTC);
-    return utc_midnight.addSecs(-330 * 60); // shift IST-midnight back to its UTC instant
+// Local calendar-day boundary expressed as UTC for repository range queries.
+QDateTime local_day_start_utc(const QDate& local_day) {
+    return QDateTime(local_day, QTime(0, 0, 0)).toUTC();
 }
 
-// The IST calendar date of a stored (naive/Z UTC) ISO timestamp.
-QDate ist_date_of(const QString& iso_utc, const QDate& fallback) {
+// The local calendar date of a stored (naive/Z UTC) ISO timestamp.
+QDate local_date_of(const QString& iso_utc, const QDate& fallback) {
     QDateTime dt = QDateTime::fromString(iso_utc, Qt::ISODate);
     if (!dt.isValid())
         return fallback;
     dt.setTimeZone(QTimeZone::UTC); // timestamps are UTC; reinterpret if no zone was parsed
-    return dt.addSecs(330 * 60).date();
+    return dt.toLocalTime().date();
 }
 
 } // namespace
 
-QVector<PtOrder> pt_get_orders_for_day(const QString& portfolio_id, const QDate& ist_day) {
-    const QDateTime start = ist_day_start_utc(ist_day);
+QVector<PtOrder> pt_get_orders_for_day(const QString& portfolio_id, const QDate& day) {
+    const QDateTime start = local_day_start_utc(day);
     auto r = repo().get_orders_between(portfolio_id, start.toString(Qt::ISODate),
                                        start.addDays(1).toString(Qt::ISODate));
     return r.is_ok() ? r.value() : QVector<PtOrder>{};
 }
 
-QVector<PtTrade> pt_get_trades_for_day(const QString& portfolio_id, const QDate& ist_day) {
-    const QDateTime start = ist_day_start_utc(ist_day);
+QVector<PtTrade> pt_get_trades_for_day(const QString& portfolio_id, const QDate& day) {
+    const QDateTime start = local_day_start_utc(day);
     auto r = repo().get_trades_between(portfolio_id, start.toString(Qt::ISODate),
                                        start.addDays(1).toString(Qt::ISODate));
     return r.is_ok() ? r.value() : QVector<PtTrade>{};
@@ -666,30 +655,27 @@ void pt_convert_position_product(const QString& position_id, const QString& new_
 }
 
 int pt_settle_intraday(const QString& portfolio_id) {
-    // Intraday auto-square applies ONLY to INR-denominated equity portfolios.
-    // Crypto and USD paper portfolios use other schedules and must never hit the
-    // IST 15:30 cutoff (this previously closed month-old crypto positions because
-    // their product had defaulted to MIS).
     PtPortfolio portfolio;
     try {
         portfolio = pt_get_portfolio(portfolio_id);
     } catch (...) {
         return 0;
     }
-    if (portfolio.currency.compare("INR", Qt::CaseInsensitive) != 0)
+    const QString ex = portfolio.exchange.toUpper();
+    if (ex.isEmpty() || ex == "CRYPTO" || ex == "FOREX")
         return 0;
 
-    const QDateTime ist_now = QDateTime::currentDateTimeUtc().addSecs(330 * 60);
-    const QDate ist_today = ist_now.date();
-    const bool past_close = ist_now.time() >= QTime(15, 30);
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDate today = now.date();
+    const bool past_close = now.time() >= QTime(16, 0);
 
     int squared = 0;
     const auto positions = pt_get_positions(portfolio_id);
     for (const auto& pos : positions) {
         if (!product_is_intraday(pos.product))
             continue; // CNC / NRML carry forward
-        const QDate opened_ist = ist_date_of(pos.opened_at, ist_today);
-        const bool from_prior_day = opened_ist < ist_today;
+        const QDate opened_day = local_date_of(pos.opened_at, today);
+        const bool from_prior_day = opened_day < today;
         if (!past_close && !from_prior_day)
             continue; // still within today's session and not yet 15:30
 
@@ -697,12 +683,11 @@ int pt_settle_intraday(const QString& portfolio_id) {
         if (price <= 0.0)
             continue; // can't price the square-off
 
-        // Stamp the square-off at the session close it actually belongs to: 15:30
-        // IST on the day the position was opened. For a same-day position past the
-        // cutoff that's today's 15:30; for a carried-over position it's that prior
-        // day's close — so a catch-up auto-square lands in THAT day's book, never
+        // Stamp the square-off at the session close it actually belongs to. For
+        // a same-day position past the cutoff that's today's close; for a
+        // carried-over position it's that prior day's close — so a catch-up lands in THAT day's book, never
         // polluting today's order list with trades the user didn't place.
-        const QDateTime close_utc = QDateTime(opened_ist, QTime(15, 30, 0), QTimeZone::UTC).addSecs(-330 * 60);
+        const QDateTime close_utc = QDateTime(opened_day, QTime(16, 0, 0)).toUTC();
         const QString close_iso = close_utc.toString(Qt::ISODate);
 
         // Square off = insert a reduce-only market order on the opposite side and
@@ -734,11 +719,11 @@ int pt_settle_intraday(const QString& portfolio_id) {
         }
     }
 
-    // Stale DAY orders from earlier IST sessions expire at the close — cancel them
+    // Stale DAY orders from earlier sessions expire at the close — cancel them
     // so they don't linger as pending or fire on a later day.
     const auto pending = pt_get_orders(portfolio_id, "pending");
     for (const auto& o : pending) {
-        if (ist_date_of(o.created_at, ist_today) < ist_today) {
+        if (local_date_of(o.created_at, today) < today) {
             try {
                 pt_cancel_order(o.id);
             } catch (...) {

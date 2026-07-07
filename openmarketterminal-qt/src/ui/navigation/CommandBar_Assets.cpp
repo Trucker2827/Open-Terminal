@@ -45,9 +45,6 @@ static QString to_yfinance_symbol(const QString& symbol, const QString& exchange
     }
 
     static const QHash<QString, QString> suffix_map = {
-        // India
-        {"NSE", ".NS"},
-        {"BSE", ".BO"},
         // Asia-Pacific
         {"HKEX", ".HK"},
         {"TSE", ".T"},
@@ -190,7 +187,7 @@ void CommandBar::on_asset_results(const QJsonArray& results) {
         if (symbol.isEmpty())
             continue;
 
-        // Convert to yfinance-compatible ticker (e.g. RELIANCE → RELIANCE.NS)
+        // Convert to yfinance-compatible ticker when an exchange suffix is needed.
         const QString yf_symbol = to_yfinance_symbol(symbol, exchange, country);
 
         auto* item = new QListWidgetItem(list_);

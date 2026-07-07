@@ -836,7 +836,7 @@ QString MarketDataService::currency_prefix(const QString& symbol) {
 
     static const QHash<QString, QString> kSymbols = {
         {"USD", "$"},   {"EUR", "€"},   {"GBP", "£"},    {"JPY", "¥"},
-        {"CNY", "CN¥"}, {"INR", "₹"},   {"HKD", "HK$"},  {"AUD", "A$"},
+        {"CNY", "CN¥"}, {"HKD", "HK$"}, {"AUD", "A$"},
         {"CAD", "C$"},  {"NZD", "NZ$"}, {"SGD", "S$"},   {"KRW", "₩"},
         {"BRL", "R$"},  {"ZAR", "R"},   {"CHF", "CHF "}, {"RUB", "₽"},
         {"TWD", "NT$"}, {"THB", "฿"},   {"IDR", "Rp"},   {"MYR", "RM"},

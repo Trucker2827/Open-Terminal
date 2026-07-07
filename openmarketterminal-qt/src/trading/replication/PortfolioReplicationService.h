@@ -20,7 +20,7 @@ enum class ItemKind { Holding, Position };
 struct SourceItem {
     ItemKind kind = ItemKind::Holding;
     QString  src_symbol;        // broker-native symbol from get_holdings/get_positions
-    QString  exchange;          // "NSE"/"BSE"/"NFO"... ("" → treated as NSE)
+    QString  exchange;          // Broker/venue code, e.g. "NASDAQ", "NYSE", "OPRA"
     QString  product;           // "" for holdings; "MIS"/"CNC"/"NRML" for positions
     QString  side;              // "" for holdings; "long"/"short"/"LONG"/"SHORT" for positions
     double   quantity = 0;

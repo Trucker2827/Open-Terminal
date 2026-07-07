@@ -39,7 +39,6 @@ void register_all_migrations() {
     register_migration_v024();
     register_migration_v025();
     register_migration_v026();
-    register_migration_v027();
     register_migration_v028();
     register_migration_v029();
     register_migration_v030();

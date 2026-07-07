@@ -783,7 +783,7 @@ void PlanningView::set_data(const portfolio::PortfolioSummary& summary, const QS
     has_data_ = true;
 
     // Money inputs must reflect the portfolio's own currency, not a hardcoded
-    // "$". Result labels in this view already use currency_ (e.g. "INR 60000"),
+    // "$". Result labels in this view already use currency_ (e.g. "USD 60000"),
     // so prefix the spin boxes with the same currency code to stay consistent.
     const QString prefix = (currency_.isEmpty() ? QStringLiteral("USD") : currency_) + " ";
     for (QDoubleSpinBox* sb : {annual_expense_, monthly_contrib_, goal_target_, goal_monthly_, sav_income_}) {

@@ -11,10 +11,10 @@
 //   - portfolios.broker_account_id  — FK-ish to broker_accounts.id (kept
 //     loose so portfolios survive account deletion). Empty = manual / non-
 //     broker portfolio. yfinance path is preserved for these.
-//   - portfolio_assets.broker_symbol — broker-native ticker (e.g. "RELIANCE")
-//   - portfolio_assets.exchange      — exchange code (e.g. "NSE")
+//   - portfolio_assets.broker_symbol — broker-native ticker (e.g. "AAPL")
+//   - portfolio_assets.exchange      — exchange code (e.g. "NASDAQ")
 //
-// PortfolioAsset.symbol stays in yfinance format ("RELIANCE.NS") so every
+// PortfolioAsset.symbol stays in yfinance format ("AAPL") so every
 // existing downstream consumer (sparklines, correlation, NAV replay, news,
 // SectorResolver) keeps working unchanged. Live quote routing in
 // PortfolioService picks broker_symbol+exchange when broker_account_id is

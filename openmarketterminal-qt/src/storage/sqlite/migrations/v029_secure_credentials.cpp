@@ -1,7 +1,7 @@
 // v029_secure_credentials — pure-SQL credential store backing SecureStorage.
 //
 // Renumbered from v025 → v029 during the merge with a8 (which introduced
-// v025_oi_snapshots, v026_strategies, v027_fii_dii, v028_iv_history). This
+// v025_oi_snapshots, v026_strategies, v028_iv_history). This
 // migration is otherwise unchanged.
 //
 // Replaces the OS-native keychain backends (Windows Credential Manager,

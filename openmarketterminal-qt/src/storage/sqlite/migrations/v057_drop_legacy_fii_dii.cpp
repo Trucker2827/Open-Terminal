@@ -1,4 +1,4 @@
-// v057_drop_legacy_fii_dii — Remove dormant India NSE FII/DII storage (legacy v027).
+// v057_drop_legacy_fii_dii — Remove dormant legacy FII/DII storage (legacy v027).
 //
 // The planned FiiDiiService / fii_dii_scraper.py pipeline was never shipped and
 // the F&O UI is out of the current build. Drop the orphaned table on upgrade.

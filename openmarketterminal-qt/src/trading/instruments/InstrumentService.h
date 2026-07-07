@@ -89,22 +89,20 @@ class InstrumentService : public QObject {
     QVector<Instrument> search_all(const QString& query, const QString& exchange, const QStringList& broker_ids,
                                    int limit = 50) const;
 
-    // ── F&O / Options chain helpers ──────────────────────────────────────────
+    // ── Options chain helpers ────────────────────────────────────────────────
     //
-    // All three read the in-memory cache; they expect refresh()/load_from_db()
-    // to have populated NFO instruments first. Empty results when cache is
-    // not loaded — callers should check is_loaded(broker_id).
+    // All three read the in-memory cache. Empty results mean the cache is not
+    // loaded, or the selected broker/venue does not provide options metadata.
 
-    /// All option-bearing underlyings on a given exchange (default NFO).
-    /// Distinct `name` field across CE/PE/FUT entries — typically yields
-    /// {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", ...stock symbols...}.
+    /// All option-bearing underlyings on a given exchange.
+    /// Distinct `name` field across CE/PE/FUT entries.
     QStringList list_underlyings(const QString& broker_id,
-                                 const QString& exchange = "NFO") const;
+                                 const QString& exchange = "OPRA") const;
 
     /// Distinct expiries (display format "DD-MMM-YY") for a given underlying,
     /// sorted ascending by date.
     QStringList list_expiries(const QString& broker_id, const QString& underlying,
-                              const QString& exchange = "NFO") const;
+                              const QString& exchange = "OPRA") const;
 
     /// All CE+PE+FUT instruments matching (underlying, expiry). Strikes
     /// returned in ascending order. FUT entries (strike==0) are included
@@ -112,7 +110,7 @@ class InstrumentService : public QObject {
     QVector<Instrument> find_options_for_underlying(const QString& broker_id,
                                                     const QString& underlying,
                                                     const QString& expiry,
-                                                    const QString& exchange = "NFO") const;
+                                                    const QString& exchange = "OPRA") const;
 
     /// How many instruments are cached for this broker.
     int cached_count(const QString& broker_id) const;

@@ -199,8 +199,8 @@ UnifiedOrderResponse UnifiedTrading::place_order(const QString& account_id, Unif
         return {false, "", "Validation failed: " + err, account.trading_mode};
     }
 
-    // Quantity freeze check (Phase 3 §17). Exchanges cap the max quantity per
-    // single order (e.g. NSE NIFTY futures = 1800). place_order is synchronous;
+    // Quantity freeze check (Phase 3 §17). Exchanges can cap the max quantity per
+    // single order. place_order is synchronous;
     // an auto-split is inherently async (place_split_orders runs on a worker
     // thread with a callback). To keep place_order's sync contract, we REJECT
     // over-limit orders here with an actionable message rather than silently
@@ -293,7 +293,7 @@ UnifiedOrderResponse UnifiedTrading::place_paper_order_for_account(const QString
     // Store the BARE symbol (no exchange prefix). Positions mark to market against
     // the live quote feed published under the bare symbol (broker:<id>:<acct>:quote:
     // <bare>), and this matches the Equity screen's convention. Re-prefixing here as
-    // "NFO:NIFTY…" was why F&O positions never marked (the prefix never matched a
+    // an exchange-prefixed symbol was why option positions never marked (the prefix never matched a
     // quote topic) and showed a frozen/garbage price.
     const QString symbol = order.symbol;
     const QString side_str = order_side_str(order.side);

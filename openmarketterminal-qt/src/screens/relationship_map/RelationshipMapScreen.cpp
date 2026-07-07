@@ -38,7 +38,7 @@ static QString to_yfinance_symbol(const QString& symbol, const QString& exchange
         return symbol + (it != m.end() ? it.value() : ".PA");
     }
     static const QHash<QString, QString> s = {
-        {"NSE", ".NS"}, {"BSE", ".BO"}, {"HKEX", ".HK"}, {"TSE", ".T"},
+        {"HKEX", ".HK"}, {"TSE", ".T"},
         {"KRX", ".KS"}, {"SGX", ".SI"}, {"ASX", ".AX"}, {"IDX", ".JK"},
         {"XETR", ".DE"}, {"FWB", ".F"}, {"LSE", ".L"}, {"BME", ".MC"},
         {"MIL", ".MI"}, {"SIX", ".SW"}, {"VIE", ".VI"}, {"TSX", ".TO"},

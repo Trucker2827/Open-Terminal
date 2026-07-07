@@ -13,10 +13,9 @@ namespace openmarketterminal::trading {
 
 namespace {
 
-// Default exchange for option legs. Index/equity F&O on NSE trade on NFO.
-// BSE F&O (SENSEX/BANKEX) would use "BFO" — symbol resolution will refine this
-// once InstrumentService is wired in.
-constexpr const char* kDefaultFnoExchange = "NFO";
+// Default exchange for listed option legs. Symbol resolution can refine this
+// once InstrumentService is wired for the selected broker.
+constexpr const char* kDefaultOptionExchange = "OPRA";
 
 // Compact an expiry into the form used in tradingsymbols: "2025-03-28" -> "28MAR25".
 // Falls back to the digits/letters of the input string when it is not an ISO date.
@@ -57,7 +56,7 @@ OptionsLeg make_leg(const QString& underlying, const QString& expiry, double str
 {
     OptionsLeg leg;
     leg.symbol = OptionsStrategyBuilder::build_option_symbol(underlying, expiry, strike, opt_type);
-    leg.exchange = QString::fromLatin1(kDefaultFnoExchange);
+    leg.exchange = QString::fromLatin1(kDefaultOptionExchange);
     leg.side = side;
     leg.quantity = quantity;
     leg.strike = strike;
@@ -109,7 +108,7 @@ QString OptionsStrategyBuilder::build_option_symbol(const QString& underlying,
                                                     const QString& opt_type)
 {
     // TODO: Replace with InstrumentService lookup. Real broker tradingsymbols
-    // (e.g. "NIFTY25MAR24500CE", or numeric security IDs) must be
+    // (or numeric security IDs) must be
     // resolved from the instrument master — this placeholder is a human-readable
     // approximation only and is not guaranteed to be tradable as-is.
     return underlying.toUpper() + compact_expiry(expiry) + strike_str(strike) + opt_type.toUpper();

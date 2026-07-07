@@ -386,7 +386,7 @@ void EquityResearchScreen::load_symbol(const QString& symbol) {
     // Trigger quote + info + historical
     services::equity::EquityResearchService::instance().load_symbol(symbol);
 
-    // Subscribe to broker live quote if this is an NSE/BSE stock with a region-matched broker connected
+    // Subscribe to broker live quote if this symbol has a region-matched broker connected.
     if (isVisible())
         hub_subscribe_broker_quote();
 
@@ -684,8 +684,8 @@ static ResearchTradeRoute research_trade_route(const QString& sym) {
         const char* exchange;
     };
     static const Suffix kSuffixes[] = {
-        {".NS", "NSE"}, {".BO", "BSE"},  {".L", "LSE"},       {".TO", "TSX"},
-        {".HK", "HKEX"}, {".DE", "XETRA"}, {".PA", "EURONEXT"}, {".AS", "EURONEXT"}, {".SW", "SIX"},
+        {".L", "LSE"}, {".TO", "TSX"}, {".HK", "HKEX"}, {".DE", "XETRA"},
+        {".PA", "EURONEXT"}, {".AS", "EURONEXT"}, {".SW", "SIX"},
     };
     for (const auto& s : kSuffixes) {
         const QString suffix = QLatin1String(s.suffix);

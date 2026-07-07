@@ -163,7 +163,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
             .string("symbol", "Trading symbol (e.g. AAPL, MSFT)").required().length(1, 64)
-            .string("exchange", "Exchange (e.g. NSE, BSE, NFO, MCX)").required()
+            .string("exchange", "Exchange (e.g. NASDAQ, NYSE, OPRA, LSE)").required()
             .string("action", "Order side").required().enums({"BUY", "SELL"})
             .number("quantity", "Order quantity (must be > 0)").required().min(0.0)
             .string("order_type", "Price type").default_str("MARKET")
@@ -238,7 +238,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
             .string("symbol", "Trading symbol").required().length(1, 64)
-            .string("exchange", "Exchange (e.g. NSE, NFO)").required()
+            .string("exchange", "Exchange (e.g. NASDAQ, NYSE, OPRA, LSE)").required()
             .number("position_size", "Target net position (positive=long, negative=short, 0=flatten)").required()
             .string("order_type", "Price type").default_str("MARKET")
                 .enums({"MARKET", "LIMIT", "SL", "SL-M"})
@@ -629,7 +629,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
             .string("symbol", "Trading symbol").required().length(1, 64)
-            .string("exchange", "Exchange (e.g. NSE, NFO)").required()
+            .string("exchange", "Exchange (e.g. NASDAQ, NYSE, OPRA, LSE)").required()
             .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
             QString account_id, err;
@@ -708,7 +708,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
             .string("symbol", "Trading symbol").required().length(1, 64)
-            .string("exchange", "Exchange (e.g. NSE, NFO)").required()
+            .string("exchange", "Exchange (e.g. NASDAQ, NYSE, OPRA, LSE)").required()
             .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
             QString account_id, err;
@@ -751,7 +751,7 @@ std::vector<ToolDef> get_live_trading_tools() {
         t.input_schema = ToolSchemaBuilder()
             .string("account_id", "Broker account ID (optional if exactly one active account)")
             .string("underlying", "Underlying symbol (e.g. SPX, NDX)").required().length(1, 64)
-            .string("exchange", "Exchange (e.g. NFO, BFO)").required()
+            .string("exchange", "Exchange (e.g. OPRA)").required()
             .string("expiry", "Expiry date (broker format, e.g. 2026-05-29)").required()
             .integer("strike_count", "Number of strikes around ATM (0 = broker default)")
                 .default_int(0).min(0.0)

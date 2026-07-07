@@ -113,7 +113,7 @@ EquityWatchlist::EquityWatchlist(QWidget* parent) : QWidget(parent) {
     // Completer backed by InstrumentService::search_all(). The model already holds
     // server-side-filtered results, so use UnfilteredPopupCompletion — otherwise
     // the completer re-filters them against the typed text and hides name-based
-    // matches (e.g. typing "infosys" finds symbol "INFY", whose display string
+    // matches (e.g. typing a company name finds its symbol, whose display string
     // doesn't contain "infosys", so a MatchContains filter would drop it).
     // Parent the completer to the edit and the model to the completer so teardown
     // frees the completer (and its internal QCompletionModel) before the source

@@ -275,7 +275,7 @@ void EquityTradingScreen::on_symbol_search_changed(const QString& text) {
     suggestions.reserve(results.size());
     symbol_suggestion_map_.clear();
     for (const auto& inst : results) {
-        // Show a clean human label (e.g. "NIFTY 7 Jul 26 18250 CE  ·  NFO") instead
+        // Show a clean human label (e.g. "SPX 7 Jul 26 5000 CE  ·  OPRA") instead
         // of the raw canonical symbol, and remember the real symbol for selection.
         const QString friendly =
             norm::display_name(inst.name, inst.instrument_type, inst.expiry, inst.strike, inst.symbol);
@@ -534,7 +534,7 @@ void EquityTradingScreen::on_chart_add_to_watchlist() {
         on_watchlist_symbol_added(selected_symbol_);
 }
 
-// Kite-style chart trading: a compact confirm ticket (qty + limit price,
+// Chart trading: a compact confirm ticket (qty + limit price,
 // prefilled at the clicked level), then route through the normal placement path
 // so paper/live handling, balances and status all behave exactly like the order
 // panel. For live accounts on_order_submitted() still applies its own pre-send
@@ -993,8 +993,7 @@ void EquityTradingScreen::open_external_order_ticket(const QString& symbol, cons
         return;
 
     // Route to a usable account whose broker can actually trade this symbol's market
-    // (broker.exchanges ∩ match_exchanges) — so a US ticker goes to a US broker
-    // and an NSE ticker to a region-matched broker, even with several brokers connected.
+    // (broker.exchanges ∩ match_exchanges), even with several brokers connected.
     // When the caller didn't constrain the market, fall back to the credential-aware
     // focused pick (also covers a never-shown screen with no focus yet).
     QString target = pick_account_for_exchanges(match_exchanges);

@@ -23,7 +23,7 @@ namespace openmarketterminal::trading {
 struct SavedStrategy {
     QString id;         // uuid (generated on save if empty)
     QString name;
-    QString underlying; // e.g. "NIFTY"
+    QString underlying; // e.g. "SPX"
     QString notes;
     QVector<OptionsLeg> legs;
     QString created_at; // ISO-8601, set on first save
@@ -64,7 +64,7 @@ class StrategyPortfolio {
 // ----------------------------------------------------------------------------
 // Quantity freeze limits (§17).
 //
-// Exchanges cap the max quantity per single order (e.g. NSE NIFTY futures 1800).
+// Exchanges cap the max quantity per single order for some derivatives.
 // These free functions read the qty_freeze table seeded/edited via migration
 // v034. Returns 0 when no limit is configured for (symbol, exchange) — callers
 // treat 0 as "no freeze limit, place as-is".

@@ -72,7 +72,7 @@ CreatePortfolioDialog::CreatePortfolioDialog(QWidget* parent) : QDialog(parent) 
     currency_cb_ = new QComboBox;
     QStringList currencies = {
         "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "HKD", "SGD", "SEK", "NOK",
-        "DKK", "CNY", "INR", "BRL", "MXN", "KRW", "TWD", "THB", "ZAR", "TRY", "RUB", "PLN",
+        "DKK", "CNY", "BRL", "MXN", "KRW", "TWD", "THB", "ZAR", "TRY", "RUB", "PLN",
         "CZK", "HUF", "ILS", "AED", "SAR", "IDR", "MYR", "PHP", "VND", "NGN", "EGP", "BDT",
     };
     currency_cb_->addItems(currencies);
@@ -395,7 +395,7 @@ void AddAssetDialog::show_results(const QList<openmarketterminal::services::Mark
         // Resolve yfinance-compatible ticker (same logic as CommandBar)
         QString yf_sym = sym;
         static const QHash<QString, QString> suffix_map = {
-            {"NSE", ".NS"}, {"BSE", ".BO"},        {"HKEX", ".HK"}, {"TSE", ".T"},  {"KRX", ".KS"}, {"SGX", ".SI"},
+            {"HKEX", ".HK"}, {"TSE", ".T"},        {"KRX", ".KS"},  {"SGX", ".SI"},
             {"ASX", ".AX"}, {"IDX", ".JK"},        {"MYX", ".KL"},  {"SET", ".BK"}, {"PSE", ".PS"}, {"XETR", ".DE"},
             {"FWB", ".F"},  {"LSE", ".L"},         {"BME", ".MC"},  {"MIL", ".MI"}, {"SIX", ".SW"}, {"TSX", ".TO"},
             {"TSXV", ".V"}, {"BMFBOVESPA", ".SA"}, {"BIST", ".IS"}, {"EGX", ".CA"},

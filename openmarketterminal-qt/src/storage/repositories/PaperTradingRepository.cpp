@@ -398,17 +398,9 @@ Result<void> PaperTradingRepository::delete_all_trades(const QString& portfolio_
 // ── Stats ────────────────────────────────────────────────────────────────────
 
 Result<PtStats> PaperTradingRepository::get_stats(const QString& portfolio_id) {
-    QString currency;
-    if (auto pr = get_portfolio(portfolio_id); pr.is_ok())
-        currency = pr.value().currency;
-
-    // today_pnl: IST (+330 min) for INR portfolios; local calendar day otherwise.
-    const bool ist_day = currency.compare(QStringLiteral("INR"), Qt::CaseInsensitive) == 0;
-    const char* today_pnl_sql = ist_day
-        ? "  COALESCE(SUM(CASE WHEN date(datetime(timestamp, '+330 minutes')) "
-          "    = date(datetime('now', '+330 minutes')) THEN pnl ELSE 0 END), 0)"
-        : "  COALESCE(SUM(CASE WHEN date(datetime(timestamp, 'localtime')) "
-          "    = date(datetime('now', 'localtime')) THEN pnl ELSE 0 END), 0)";
+    const char* today_pnl_sql =
+        "  COALESCE(SUM(CASE WHEN date(datetime(timestamp, 'localtime')) "
+        "    = date(datetime('now', 'localtime')) THEN pnl ELSE 0 END), 0)";
 
     const QString sql = QString(
         "SELECT "

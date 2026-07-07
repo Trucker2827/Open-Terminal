@@ -7,9 +7,8 @@
 //   See StrategyPortfolio.cpp for the leg schema.
 //
 // qty_freeze: per (symbol, exchange) maximum quantity an exchange accepts in a
-//   single order (e.g. NSE NIFTY futures = 1800). Looked up before placing an
-//   order; over-limit orders are auto-split via place_split_orders. See
-//   QtyFreeze.cpp. A few well-known NSE F&O defaults are seeded here.
+//   single order. Looked up before placing an order; over-limit orders are
+//   auto-split via place_split_orders. See QtyFreeze.cpp.
 //
 // Version note: v033 is reserved for the parallel Historify (DuckDB) work; this
 // migration deliberately takes v034 to avoid colliding with it.
@@ -54,16 +53,6 @@ Result<void> apply_v034(QSqlDatabase& db) {
                 "  freeze_qty INTEGER NOT NULL,"
                 "  PRIMARY KEY (symbol, exchange)"
                 ")");
-    if (r.is_err())
-        return r;
-
-    // Seed a few well-known NSE F&O freeze limits. INSERT OR IGNORE so a later
-    // user/admin edit is never clobbered on re-run.
-    r = sql(db, "INSERT OR IGNORE INTO qty_freeze (symbol, exchange, freeze_qty) VALUES "
-                "  ('NIFTY',      'NFO', 1800),"
-                "  ('BANKNIFTY',  'NFO', 900),"
-                "  ('FINNIFTY',   'NFO', 1800),"
-                "  ('MIDCPNIFTY', 'NFO', 4200)");
     if (r.is_err())
         return r;
 

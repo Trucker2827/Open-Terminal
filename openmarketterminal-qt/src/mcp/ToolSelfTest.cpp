@@ -58,7 +58,7 @@ std::vector<EvalCase> corpus() {
         {"cancel my open broker order", {"live_cancel_order", "live_cancel_all_orders"}},
         {"check my available trading funds and margin", {"live_get_funds"}},
         {"close all my open positions immediately", {"live_close_all_positions", "live_close_position"}},
-        {"get the live option chain for NIFTY", {"live_get_option_chain"}},
+        {"get the live option chain for SPX", {"live_get_option_chain"}},
 
         // ── markets / quotes ──
         {"what is the current price of Apple stock", {"get_quote", "live_get_quote"}},

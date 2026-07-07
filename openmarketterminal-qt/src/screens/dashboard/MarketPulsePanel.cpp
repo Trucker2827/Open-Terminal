@@ -674,7 +674,7 @@ QWidget* MarketPulsePanel::build_market_hours_section() {
         const char* region;
     };
     ExDef exchanges[] = {
-        {"NYSE/NASDAQ", "US"}, {"LSE", "UK"}, {"TSE (TOKYO)", "JP"}, {"SSE (SHANGHAI)", "CN"}, {"NSE (INDIA)", "IN"},
+        {"NYSE/NASDAQ", "US"}, {"LSE", "UK"}, {"TSE (TOKYO)", "JP"}, {"SSE (SHANGHAI)", "CN"},
     };
 
     for (auto& ex : exchanges) {
@@ -1083,7 +1083,6 @@ void MarketPulsePanel::retranslateUi() {
         else if (k == QLatin1String("LSE"))              hr.name_lbl->setText(tr("LSE"));
         else if (k == QLatin1String("TSE (TOKYO)"))      hr.name_lbl->setText(tr("TSE (TOKYO)"));
         else if (k == QLatin1String("SSE (SHANGHAI)"))   hr.name_lbl->setText(tr("SSE (SHANGHAI)"));
-        else if (k == QLatin1String("NSE (INDIA)"))      hr.name_lbl->setText(tr("NSE (INDIA)"));
     }
     refresh_market_hours();
     if (isVisible())
@@ -1091,4 +1090,3 @@ void MarketPulsePanel::retranslateUi() {
 }
 
 } // namespace openmarketterminal::screens
-

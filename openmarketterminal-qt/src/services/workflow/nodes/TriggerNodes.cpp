@@ -105,7 +105,7 @@ void register_trigger_nodes(NodeRegistry& registry) {
         .parameters =
             {
                 {"cron", "Cron Expression", "string", "*/15 * * * *", {}, ""},
-                {"exchange", "Exchange", "select", "NYSE", {"NYSE", "NASDAQ", "LSE", "TSE", "NSE"}, ""},
+                {"exchange", "Exchange", "select", "NYSE", {"NYSE", "NASDAQ", "LSE", "TSE", "SSE"}, ""},
                 {"include_premarket", "Include Pre-Market", "boolean", false, {}, ""},
             },
         .execute =

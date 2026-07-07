@@ -97,7 +97,7 @@ BrokerRegistry::BrokerRegistry() {
 }
 
 void BrokerRegistry::register_all() {
-    // Active non-India broker adapters. Free paper trading needs no broker; it
+    // Active broker adapters. Free paper trading needs no broker; it
     // runs on the yfinance market feed.
     brokers_["alpaca"] = std::make_unique<AlpacaBroker>();   // US equities — free API, paper + live
     brokers_["ibkr"] = std::make_unique<IBKRBroker>();       // Interactive Brokers

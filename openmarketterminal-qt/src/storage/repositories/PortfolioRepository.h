@@ -25,8 +25,8 @@ class PortfolioRepository : public BaseRepository<portfolio::Portfolio> {
     // ── Assets CRUD ──────────────────────────────────────────────────────────
     Result<QVector<portfolio::PortfolioAsset>> get_assets(const QString& portfolio_id);
     /// `broker_symbol` + `exchange` are the broker-native pair (e.g.
-    /// "RELIANCE" + "NSE"); both empty for manual / JSON imports. The
-    /// canonical `symbol` arg stays in yfinance-format ("RELIANCE.NS")
+    /// symbol + exchange); both empty for manual / JSON imports. The
+    /// canonical `symbol` arg stays in yfinance-format ("AAPL")
     /// regardless — every downstream consumer treats it as such.
     Result<qint64> add_asset(const QString& portfolio_id, const QString& symbol, double qty, double price,
                              const QString& date = {}, const QString& sector = {},

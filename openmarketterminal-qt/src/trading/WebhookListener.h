@@ -1,6 +1,6 @@
 #pragma once
 // WebhookListener — local loopback HTTP server that receives alert webhooks
-// from external charting platforms (TradingView, ChartInk) and turns them into
+// from external charting platforms (TradingView) and turns them into
 // orders routed through UnifiedTrading.
 //
 // Desktop app: there is no public server, so this binds 127.0.0.1:<port>. To
@@ -9,7 +9,6 @@
 //
 // TradingView alert JSON (line alert)    → placeorder
 // TradingView alert JSON (strategy)      → smartorder (has "position_size")
-// ChartInk scanner alert JSON            → placeorder per scanned symbol
 //
 // The listener does NOT place orders itself. It validates + parses the payload
 // and emits a signal; the owner (a screen or a service) decides what to do —
@@ -38,8 +37,6 @@ class WebhookListener : public QObject {
     // Emitted for a TradingView line/strategy alert. `is_smart` is true when the
     // payload carried "position_size" (strategy alert → smart order).
     void tradingview_alert(const QJsonObject& alert, bool is_smart);
-    // Emitted once per scanned symbol from a ChartInk scanner alert.
-    void chartink_alert(const QJsonObject& alert);
     void error_occurred(const QString& message);
 
   private slots:
@@ -53,8 +50,6 @@ class WebhookListener : public QObject {
 
     void route_payload(const QString& path, const QJsonObject& body,
                        const QJsonArray& body_array, bool is_array);
-    void route_chartink(const QJsonObject& body);
-
     static QByteArray http_response(int status, const QString& message);
 
     QTcpServer* server_ = nullptr;

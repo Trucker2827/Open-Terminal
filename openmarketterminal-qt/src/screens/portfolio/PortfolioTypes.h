@@ -28,17 +28,17 @@ struct Portfolio {
 struct PortfolioAsset {
     int id = 0;
     QString portfolio_id;
-    QString symbol;          // canonical: yfinance-format ("RELIANCE.NS"). Used by sparklines, replay, news, sectors.
+    QString symbol;          // canonical: yfinance-format ("AAPL"). Used by sparklines, replay, news, sectors.
     double quantity = 0;
     double avg_buy_price = 0;
     QString first_purchase_date;
     QString last_updated;
     QString sector;          // empty = not yet resolved; filled from import JSON or SectorResolver
-    /// Broker-native ticker (e.g. "RELIANCE", no exchange suffix). Empty for
+    /// Broker-native ticker (e.g. "AAPL", no exchange suffix). Empty for
     /// manually-imported assets. Combined with `exchange` to form the
     /// EXCHANGE:SYMBOL key some brokers need for /quote calls.
     QString broker_symbol;
-    /// Exchange code (e.g. "NSE", "BSE"). Empty for non-broker imports.
+    /// Exchange code. Empty for non-broker imports.
     QString exchange;
 };
 

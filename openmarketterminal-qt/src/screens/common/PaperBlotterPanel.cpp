@@ -33,8 +33,6 @@ namespace {
 constexpr int kRefreshThrottleMs = 400;
 
 QString currency_glyph(const QString& code) {
-    if (code.compare(QLatin1String("INR"), Qt::CaseInsensitive) == 0)
-        return QStringLiteral("₹"); // ₹
     if (code.compare(QLatin1String("USD"), Qt::CaseInsensitive) == 0 || code.isEmpty())
         return QStringLiteral("$");
     return code + QLatin1Char(' ');

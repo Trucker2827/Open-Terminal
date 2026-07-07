@@ -204,7 +204,7 @@ void register_safety_nodes(NodeRegistry& registry) {
             },
         .parameters =
             {
-                {"exchange", "Exchange", "select", "NYSE", {"NYSE", "NASDAQ", "LSE", "TSE", "NSE", "BSE"}, ""},
+                {"exchange", "Exchange", "select", "NYSE", {"NYSE", "NASDAQ", "LSE", "TSE", "SSE"}, ""},
                 {"allow_premarket", "Allow Pre-Market", "boolean", false, {}, ""},
             },
         .execute =
@@ -229,7 +229,6 @@ void register_safety_nodes(NodeRegistry& registry) {
                 // NYSE/NASDAQ: 14:30-21:00 UTC (pre-market 09:00-14:30)
                 // LSE: 08:00-16:30 UTC
                 // TSE (Tokyo): 00:00-06:00 UTC (09:00-15:00 JST)
-                // NSE/BSE (India): 03:45-10:00 UTC (09:15-15:30 IST)
                 struct Session {
                     int open;
                     int close;
@@ -240,8 +239,6 @@ void register_safety_nodes(NodeRegistry& registry) {
                     session = {800, 1630, 700};
                 else if (exchange == "TSE")
                     session = {0, 600, 2300};
-                else if (exchange == "NSE" || exchange == "BSE")
-                    session = {345, 1000, 300};
 
                 bool in_regular = !is_weekend && time_utc >= session.open && time_utc < session.close;
                 bool in_premarket = !is_weekend && time_utc >= session.pre_open && time_utc < session.open;

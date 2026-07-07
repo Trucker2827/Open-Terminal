@@ -154,10 +154,6 @@ QStringList ScanMonitor::resolve_universe(const ScanWatch& w) {
         return openmarketterminal::services::algo::us_mega_cap_symbols();
     if (u == QStringLiteral("US_TECH"))
         return openmarketterminal::services::algo::us_tech_symbols();
-    // Legacy India universe keys — no instrument master loaded; treat as empty.
-    if (u == QStringLiteral("NSE_EQ") || u == QStringLiteral("BSE_EQ") ||
-        u == QStringLiteral("NIFTY50"))
-        return {};
     return w.symbols; // '' / CUSTOM
 }
 

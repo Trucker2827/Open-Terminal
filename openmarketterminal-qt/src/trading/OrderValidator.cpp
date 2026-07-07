@@ -4,9 +4,6 @@ namespace openmarketterminal::trading {
 
 const QSet<QString>& OrderValidator::valid_exchanges() {
     static const QSet<QString> kExchanges = {
-        // India
-        "NSE", "BSE", "NFO", "BFO", "MCX", "CDS", "BCD", "NCDEX",
-        "NSE_INDEX", "BSE_INDEX", "MCX_INDEX",
         // US / global
         "NYSE", "NASDAQ", "AMEX", "ARCA", "BATS", "CBOE", "LSE", "TSX",
         "XETRA", "EURONEXT", "XNYS", "XNAS", "OPRA",

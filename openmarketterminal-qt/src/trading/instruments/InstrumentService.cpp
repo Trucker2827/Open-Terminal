@@ -88,28 +88,18 @@ void InstrumentService::refresh(const QString& broker_id, const BrokerCredential
             }
         }
     }
-    // For some brokers we need NSE equities to be present — check specifically for NSE count.
-    // A partial cache (e.g. only NFO/MCX) means a previous download was incomplete.
     {
         QMutexLocker lock(&mutex_);
         if (caches_.contains(broker_id) && caches_[broker_id].loaded) {
             const Cache& c = caches_[broker_id];
-            // Count NSE equity entries (exchange == "NSE", no expiry = spot equity)
-            int nse_count = 0;
-            for (auto it = c.by_symbol.constBegin(); it != c.by_symbol.constEnd(); ++it) {
-                if (it.key().second == "NSE" && it->expiry.isEmpty())
-                    ++nse_count;
-            }
-            if (nse_count > 100) {
+            if (!c.by_symbol.isEmpty()) {
                 LOG_INFO("InstrumentService",
-                         QString("%1 instruments already loaded (%2 NSE equities), skipping refresh")
+                         QString("%1 instruments already loaded (%2 rows), skipping refresh")
                              .arg(broker_id)
-                             .arg(nse_count));
+                             .arg(c.by_symbol.size()));
                 return;
             }
-            LOG_WARN(
-                "InstrumentService",
-                QString("%1 cache incomplete (only %2 NSE equities) — re-downloading").arg(broker_id).arg(nse_count));
+            LOG_WARN("InstrumentService", QString("%1 instrument cache is empty — re-downloading").arg(broker_id));
         }
     }
     force_refresh(broker_id, creds);
@@ -139,9 +129,18 @@ void InstrumentService::load_from_db(const QString& broker_id) {
     // the main thread so that the single QSqlDatabase connection is not
     // accessed concurrently (QSqlDatabase is not thread-safe).
     QVector<Instrument> all;
-    for (const QString& exch : QStringList{"NSE", "BSE", "NFO", "CDS", "MCX", "NSE_INDEX", "BSE_INDEX", "BFO", "BCD"}) {
-        auto rows = InstrumentRepository::instance().list(exch, broker_id);
-        all.append(rows);
+    QSqlQuery q(Database::instance().connection());
+    q.prepare("SELECT instrument_token, exchange_token, symbol, brsymbol, name, "
+              "exchange, brexchange, expiry, strike, lot_size, instrument_type, "
+              "tick_size, broker_id, broker_token "
+              "FROM instruments WHERE broker_id = ?");
+    q.addBindValue(broker_id);
+    if (q.exec()) {
+        while (q.next())
+            all.append(InstrumentRepository::map_row_static(q));
+    } else {
+        LOG_ERROR("InstrumentService",
+                  QString("Failed loading instruments for %1: %2").arg(broker_id, q.lastError().text()));
     }
     if (all.isEmpty()) {
         LOG_WARN("InstrumentService", QString("No instruments found in DB for %1 — run refresh").arg(broker_id));

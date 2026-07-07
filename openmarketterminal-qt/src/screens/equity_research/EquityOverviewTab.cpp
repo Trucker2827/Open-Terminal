@@ -781,7 +781,6 @@ QString EquityOverviewTab::currency_symbol(const QString& currency_code) {
         {"GBP", "\xc2\xa3"},
         {"JPY", "\xc2\xa5"},
         {"CNY", "\xc2\xa5"},
-        {"INR", "\xe2\x82\xb9"},
         {"KRW", "\xe2\x82\xa9"},
         {"RUB", "\xe2\x82\xbd"},
         {"BRL", "R$"},

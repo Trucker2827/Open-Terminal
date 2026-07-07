@@ -66,8 +66,8 @@ class PortfolioService : public QObject {
     /// AND the legacy spy_history_loaded(...) so older consumers keep working.
     void fetch_benchmark_history(const QString& symbol = "SPY", const QString& period = "1y");
     /// Convenience wrapper: pick a default benchmark from a portfolio currency
-    /// (CAD → ^GSPTSE, USD → SPY, GBP → ^FTSE, EUR → ^STOXX50E, AUD → ^AXJO,
-    /// INR → ^NSEI). Falls back to SPY for unknown currencies.
+    /// (CAD → ^GSPTSE, USD → SPY, GBP → ^FTSE, EUR → ^STOXX50E, AUD → ^AXJO).
+    /// Falls back to SPY for unknown currencies.
     static QString default_benchmark_for_currency(const QString& currency);
     /// Legacy shim — calls fetch_benchmark_history("SPY", period).
     void fetch_spy_history(const QString& period = "1y");

@@ -84,7 +84,7 @@ static QString list_ss() {
 // ── yfinance symbol conversion ───────────────────────────────────────────────
 
 /// Convert exchange + symbol to yfinance-compatible ticker.
-/// The /market/search API returns clean symbols (e.g. "RELIANCE") with exchange
+/// The /market/search API returns clean symbols (e.g. "AAPL") with exchange
 /// as a separate field. yfinance needs suffixed tickers for non-US exchanges.
 
 void CommandBar::build_commands() {

@@ -59,11 +59,10 @@ enum StatCard {
     SC_TotalFees,
 };
 
-// Money with the connected broker's currency symbol and locale-aware grouping
-// (INR lakh grouping; USD/US-style grouping otherwise). `signed_pfx` for P&L +/-.
+// Money with the connected broker's currency symbol and locale-aware grouping.
+// `signed_pfx` for P&L +/-.
 QString fmt_money(double v, const QString& sym, bool signed_pfx = false) {
-    const QLocale loc = (sym == QString::fromUtf8("₹")) ? QLocale(QLocale::English, QLocale::India)
-                                                        : QLocale(QLocale::English, QLocale::UnitedStates);
+    const QLocale loc(QLocale::English, QLocale::UnitedStates);
     const QString mag = loc.toString(qAbs(v), 'f', 2);
     const QString prefix = v < 0 ? QStringLiteral("-") : (signed_pfx ? QStringLiteral("+") : QString());
     return prefix + sym + mag;

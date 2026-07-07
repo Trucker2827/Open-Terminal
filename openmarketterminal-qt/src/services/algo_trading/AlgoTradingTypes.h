@@ -84,12 +84,12 @@ struct AlgoDeployment {
     QString strategy_name;
     QString strategy_kind = "dsl";              // 'dsl' | 'qc' — cached from strategy_id prefix at deploy time
     QString symbol;
-    QString exchange;                            // e.g. "NSE", "NASDAQ" — from broker profile
+    QString exchange;                            // e.g. "NASDAQ", "OPRA" — from broker profile
     QString instrument_type = "equity";          // equity | option | future
-    QString underlying;                          // F&O underlying, e.g. "NIFTY" (option/future only)
+    QString underlying;                          // option/future underlying, e.g. "SPX" (derivatives only)
     QString resolved_expiry;                     // concrete expiry chosen at entry, "DD-MMM-YY"
     QJsonArray resolved_legs;                    // concrete contracts placed at entry (restart reattach)
-    QString product_type;                        // e.g. "MIS", "CNC" — broker-specific
+    QString product_type;                        // e.g. "delivery", "intraday" — broker-specific
     QString mode;                                // paper | live
     QString entry_side = "BUY";                 // BUY | SELL — direction of the entry signal
     QString backend = "paper";                   // paper | equity_broker | crypto_exchange

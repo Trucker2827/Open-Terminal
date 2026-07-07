@@ -51,10 +51,9 @@ double pt_calculate_required_margin(const QString& portfolio_id, const QString& 
                                     const QString& product, double quantity, double price, const QString& side);
 
 // --- Exchange hours (Phase 3 §4) ---
-// Exchange-local session hours (IST for NSE/BSE/NFO/BFO, etc.). MCX 09:00–23:30,
-// CDS 09:00–17:00; all other/unknown exchanges (incl. US venues and crypto) are
-// treated as always open unless extended here. Opt-in per portfolio via
-// pt_set_enforce_market_hours().
+// Exchange-local session hours. Known equity venues use a simple local-day
+// regular-session check; crypto/forex/unknown venues remain always open until a
+// venue calendar is wired. Opt-in per portfolio via pt_set_enforce_market_hours().
 bool pt_is_market_open(const QString& exchange);
 
 // --- Orders ---
@@ -79,10 +78,10 @@ void pt_cancel_order(const QString& order_id);
 QVector<PtOrder> pt_get_orders(const QString& portfolio_id, const QString& status = "");
 
 // --- Day-scoped order/trade queries (v040) ---
-// Orders / executions whose timestamp falls on the given calendar day (IST for
-// INR portfolios, local timezone otherwise). Backs the order book's per-day view.
-QVector<PtOrder> pt_get_orders_for_day(const QString& portfolio_id, const QDate& ist_day);
-QVector<PtTrade> pt_get_trades_for_day(const QString& portfolio_id, const QDate& ist_day);
+// Orders / executions whose timestamp falls on the given local calendar day.
+// Backs the order book's per-day view.
+QVector<PtOrder> pt_get_orders_for_day(const QString& portfolio_id, const QDate& day);
+QVector<PtTrade> pt_get_trades_for_day(const QString& portfolio_id, const QDate& day);
 
 // --- Product conversion (v040) ---
 // Convert an open position's broker product in place (e.g. MIS -> CNC). Re-prices
@@ -95,7 +94,7 @@ void pt_convert_position_product(const QString& position_id, const QString& new_
 
 // --- Intraday settlement / auto square-off (v040) ---
 // Square off every open MIS (intraday) position at its last known price when the
-// exchange session close is reached (15:30 IST for INR equity), OR when the
+// exchange session close is reached, OR when the
 // position was opened on an earlier session day (catch-up when the app was closed
 // at the cutoff). Also cancels stale pending DAY orders left from prior sessions.
 // CNC/NRML carry-forward positions are untouched. Returns the number squared off.

@@ -129,8 +129,6 @@ inline QColor ROW_ALT() {
 // ── Exchange → Currency mapping ────────────────────────────────────────────
 
 inline QString exchange_currency(const QString& exchange) {
-    if (exchange == "NSE" || exchange == "BSE" || exchange == "NFO" || exchange == "MCX" || exchange == "CDS")
-        return "INR";
     if (exchange == "NYSE" || exchange == "NASDAQ" || exchange == "AMEX" || exchange == "CBOE")
         return "USD";
     if (exchange == "LSE")
@@ -141,8 +139,6 @@ inline QString exchange_currency(const QString& exchange) {
 }
 
 inline QString currency_symbol(const QString& currency) {
-    if (currency == "INR")
-        return QString::fromUtf8("\u20B9");
     if (currency == "GBP")
         return QString::fromUtf8("\u00A3");
     if (currency == "EUR")
@@ -158,7 +154,7 @@ inline QString currency_symbol(const QString& currency) {
 // (the subset it knows), paper mode fills the full set from the paper engine.
 
 struct EquityFundsView {
-    QString currency = QStringLiteral("\u20B9"); // symbol, e.g. \u20B9 / $
+    QString currency = QStringLiteral("$"); // symbol, e.g. $ / €
     bool is_paper = false;
 
     double available = 0.0;       // free cash / available margin
@@ -173,7 +169,7 @@ struct EquityFundsView {
 };
 
 struct EquityStatsView {
-    QString currency = QStringLiteral("\u20B9");
+    QString currency = QStringLiteral("$");
 
     double net_pnl = 0.0;        // realized + unrealized
     double today_pnl = 0.0;      // realized today

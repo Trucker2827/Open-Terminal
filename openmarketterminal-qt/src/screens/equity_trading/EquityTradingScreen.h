@@ -70,7 +70,7 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     // never disturbs an in-progress trade here. Reuses open_order_ticket_for() +
     // on_order_submitted() — no duplicate form, no duplicate placement logic.
     // match_exchanges are the broker exchanges that can trade the symbol's market
-    // (e.g. {"NSE"} or the US venues); the order routes to a usable account whose
+    // (e.g. {"NASDAQ"} or other venue sets); the order routes to a usable account whose
     // broker serves one of them, so multi-broker setups pick the right account.
     void open_external_order_ticket(const QString& symbol, const QString& exchange,
                                     const QStringList& match_exchanges, bool is_buy, double ref_price);
@@ -226,8 +226,8 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     QCompleter* symbol_completer_ = nullptr;             // dynamic instrument-search popup
     QStringListModel* symbol_completer_model_ = nullptr; // suggestions, refreshed per keystroke
     // Friendly picker label → canonical symbol, rebuilt each keystroke. Lets the
-    // popup show clean F&O names (e.g. "NIFTY 7 Jul 26 18250 CE") while still
-    // resolving the real symbol (NIFTY07JUL2618250CE) on select.
+    // popup show clean derivatives names (e.g. "SPX 7 Jul 26 5000 CE") while still
+    // resolving the real symbol on select.
     QHash<QString, QString> symbol_suggestion_map_;
     QPushButton* mode_btn_ = nullptr;
     QPushButton* feeds_btn_ = nullptr;    // toggles the far-right feed monitor column

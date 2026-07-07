@@ -131,7 +131,7 @@ static QString pretty_exchange(const QString& ex) {
     if (e.endsWith(QStringLiteral("_INDEX"))) return e.left(e.size() - 6) + QStringLiteral(" IDX");
     static const QStringList known = {"NYSE", "NASDAQ", "AMEX", "ARCA", "CBOE",
                                       "LSE",  "XETRA",  "EURONEXT", "TSE", "HKEX",
-                                      "NSE",  "BSE",    "NFO", "BFO", "MCX", "CDS", "BCD", "NCDEX"};
+                                      "TSX",  "OPRA",   "CRYPTO", "FOREX"};
     return known.contains(e) ? e : QString();
 }
 
@@ -185,7 +185,7 @@ bool SymbolChipInput::eventFilter(QObject* obj, QEvent* ev) {
 }
 
 void SymbolChipInput::commit_text(const QString& raw) {
-    // If the whole text is a picked suggestion label (e.g. "HINDUNILVR · NSE"),
+    // If the whole text is a picked suggestion label (e.g. "AAPL · NASDAQ"),
     // resolve it to its single real symbol instead of fragmenting it.
     const QString whole = raw.trimmed();
     if (sugg_map_.contains(whole)) { commit_label(whole); return; }

@@ -26,9 +26,9 @@ Result<void> apply_v009(QSqlDatabase& db) {
                  "  instrument_token INTEGER NOT NULL," // broker numeric token
                  "  exchange_token   INTEGER NOT NULL DEFAULT 0,"
                  "  symbol           TEXT    NOT NULL,"            // normalised  e.g. NIFTY28MAR24FUT
-                 "  brsymbol         TEXT    NOT NULL,"            // broker native e.g. 'NIFTY 50 MAR24 FUT'
-                 "  name             TEXT    NOT NULL DEFAULT ''," // underlying e.g. NIFTY
-                 "  exchange         TEXT    NOT NULL,"            // NSE / BSE / NFO / NSE_INDEX …
+                 "  brsymbol         TEXT    NOT NULL,"            // broker native e.g. 'SPX MAR24 5000 C'
+                 "  name             TEXT    NOT NULL DEFAULT ''," // underlying e.g. SPX
+                 "  exchange         TEXT    NOT NULL,"            // NASDAQ / NYSE / OPRA / crypto venue …
                  "  brexchange       TEXT    NOT NULL DEFAULT '',"
                  "  expiry           TEXT    NOT NULL DEFAULT ''," // DD-MMM-YY or empty
                  "  strike           REAL    NOT NULL DEFAULT 0,"

@@ -29,7 +29,7 @@ namespace openmarketterminal::services::equity {
 
 namespace {
 
-// yfinance symbol → broker region. ".NS"/".BO" are NSE/BSE yfinance suffixes; a
+// yfinance symbol → broker region. Regional yfinance suffixes identify exchange; a
 // bare ticker with no exchange suffix is treated as US (yfinance convention).
 QString candle_symbol_region(const QString& sym) {
     if (sym.endsWith(QStringLiteral(".NS"), Qt::CaseInsensitive) ||
@@ -440,7 +440,7 @@ void EquityResearchService::fetch_news(const QString& symbol, int count, NewsPro
     // Primary source: Google News (fetch_company_news.py) — broader, more current
     // company coverage than yfinance's Yahoo feed. Google News recall is far better
     // for a clean company NAME than a bare ticker or the full legal name (e.g.
-    // "Reliance Industries" returns articles where "RELIANCE" and "Reliance
+    // Company-name queries can return articles where ticker-like tokens and names
     // Industries Limited" both return none), so query by the cleaned company_name
     // from the cached info when available, falling back to the bare ticker.
     const bool indian = symbol.endsWith(QStringLiteral(".NS"), Qt::CaseInsensitive) ||
@@ -1033,4 +1033,3 @@ QVector<NewsArticle> EquityResearchService::parse_news(const QJsonArray& arr) co
 }
 
 } // namespace openmarketterminal::services::equity
-

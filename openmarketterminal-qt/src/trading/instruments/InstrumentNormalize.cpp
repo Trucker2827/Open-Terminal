@@ -13,47 +13,10 @@ namespace {
 // so index naming is uniform across every broker.
 const QHash<QString, QString>& spaced_index_map() {
     static const QHash<QString, QString> m = {
-        {"NIFTY 50", "NIFTY"},
-        {"NIFTY BANK", "BANKNIFTY"},
-        {"NIFTY FIN SERVICE", "FINNIFTY"},
-        {"NIFTY MID SELECT", "MIDCPNIFTY"},
-        {"NIFTY MIDCAP SELECT", "MIDCPNIFTY"},
-        {"NIFTY NEXT 50", "NIFTYNXT50"},
-        {"INDIA VIX", "INDIAVIX"},
-        {"NIFTY100 LIQ 15", "NIFTY100LIQ15"},
-        {"NIFTY MIDCAP 50", "NIFTYMIDCAP50"},
-        {"NIFTY MIDCAP 100", "NIFTYMIDCAP100"},
-        {"NIFTY SMALLCAP 50", "NIFTYSMALLCAP50"},
-        {"NIFTY SMALLCAP 100", "NIFTYSMALLCAP100"},
-        {"NIFTY 100", "NIFTY100"},
-        {"NIFTY 200", "NIFTY200"},
-        {"NIFTY 500", "NIFTY500"},
-        {"NIFTY AUTO", "NIFTYAUTO"},
-        {"NIFTY ENERGY", "NIFTYENERGY"},
-        {"NIFTY FMCG", "NIFTYFMCG"},
-        {"NIFTY IT", "NIFTYIT"},
-        {"NIFTY MEDIA", "NIFTYMEDIA"},
-        {"NIFTY METAL", "NIFTYMETAL"},
-        {"NIFTY PHARMA", "NIFTYPHARMA"},
-        {"NIFTY PSU BANK", "NIFTYPSUBANK"},
-        {"NIFTY REALTY", "NIFTYREALTY"},
-        {"NIFTY INFRA", "NIFTYINFRA"},
-        {"NIFTY SERV SECTOR", "NIFTYSERVSECTOR"},
-        {"NIFTY COMMODITIES", "NIFTYCOMMODITIES"},
-        {"NIFTY CONSUMPTION", "NIFTYCONSUMPTION"},
-        {"NIFTY CPSE", "NIFTYCPSE"},
-        {"NIFTY GROWSECT 15", "NIFTYGROWSECT15"},
-        {"NIFTY100 QUALTY30", "NIFTY100QUALTY30"},
-        {"NIFTY50 VALUE 20", "NIFTY50VALUE20"},
-        {"NIFTY ALPHA 50", "NIFTYALPHA50"},
-        {"NIFTY ALPHA LOW-VOL", "NIFTYALPHALOWVOL"},
-        {"NIFTY200 QUALTY30", "NIFTY200QUALTY30"},
-        // BSE indices
-        {"SENSEX", "SENSEX"},
-        {"BSE SENSEX", "SENSEX"},
-        {"SENSEX 50", "SENSEX50"},
-        {"BANKEX", "BANKEX"},
-        {"BSE BANKEX", "BANKEX"},
+        {"S&P 500", "SPX"},
+        {"NASDAQ 100", "NDX"},
+        {"DOW JONES INDUSTRIAL AVERAGE", "DJI"},
+        {"RUSSELL 2000", "RUT"},
     };
     return m;
 }
@@ -61,18 +24,14 @@ const QHash<QString, QString>& spaced_index_map() {
 // Pre-stripped index map (spaces/hyphens already removed, upper-cased).
 const QHash<QString, QString>& stripped_index_map() {
     static const QHash<QString, QString> m = {
-        {"NIFTY50", "NIFTY"},
-        {"NIFTYBANK", "BANKNIFTY"},
-        {"NIFTYFINSERVICE", "FINNIFTY"},
-        {"NIFTYNEXT50", "NIFTYNXT50"},
-        {"NIFTYMIDSELECT", "MIDCPNIFTY"},
-        {"NIFTYMIDCAPSELECT", "MIDCPNIFTY"},
-        {"SNSX50", "SENSEX50"},
-        {"INDIAVIX", "INDIAVIX"},
-        {"BSESENSEX", "SENSEX"},
-        {"BSEBANKEX", "BANKEX"},
-        {"NIFTYMIDCAPSELECT", "MIDCPNIFTY"},
-        {"NIFTYMCAP50", "NIFTYMIDCAP50"},
+        {"SP500", "SPX"},
+        {"SPX", "SPX"},
+        {"NASDAQ100", "NDX"},
+        {"NDX", "NDX"},
+        {"DOWJONESINDUSTRIALAVERAGE", "DJI"},
+        {"DJI", "DJI"},
+        {"RUSSELL2000", "RUT"},
+        {"RUT", "RUT"},
     };
     return m;
 }

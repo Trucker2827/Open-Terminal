@@ -936,7 +936,6 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v024_alpha_arena.cpp
     src/storage/sqlite/migrations/v025_oi_snapshots.cpp
     src/storage/sqlite/migrations/v026_strategies.cpp
-    src/storage/sqlite/migrations/v027_fii_dii.cpp
     src/storage/sqlite/migrations/v028_iv_history.cpp
     src/storage/sqlite/migrations/v029_secure_credentials.cpp
     src/storage/sqlite/migrations/v030_max_tool_rounds.cpp
@@ -2330,7 +2329,6 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v024_alpha_arena.cpp
     src/storage/sqlite/migrations/v025_oi_snapshots.cpp
     src/storage/sqlite/migrations/v026_strategies.cpp
-    src/storage/sqlite/migrations/v027_fii_dii.cpp
     src/storage/sqlite/migrations/v028_iv_history.cpp
     src/storage/sqlite/migrations/v029_secure_credentials.cpp
     src/storage/sqlite/migrations/v030_max_tool_rounds.cpp
@@ -3067,7 +3065,7 @@ endif()
 find_package(OpenSSL REQUIRED)
 message(STATUS "OpenSSL found: ${OPENSSL_VERSION} — include: ${OPENSSL_INCLUDE_DIR}")
 
-# zlib: gzip (Upstox master) + zip (Shoonya symbol masters) decompression.
+# zlib: gzip/zip decompression for downloaded market-data payloads.
 # See trading/instruments/InstrumentDecompress.cpp. System zlib on macOS/Linux,
 # Qt-bundled on Windows.
 find_package(ZLIB REQUIRED)

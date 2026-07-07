@@ -17,14 +17,14 @@ namespace openmarketterminal::trading {
 // A single option leg within a strategy.
 // ----------------------------------------------------------------------------
 struct OptionsLeg {
-    QString symbol;       // e.g. "NIFTY28MAR25500CE" (placeholder — see build_option_symbol)
-    QString exchange;     // "NFO" (NSE F&O) / "BFO" (BSE F&O)
+    QString symbol;       // e.g. "SPX28MAR255000CE" (placeholder — see build_option_symbol)
+    QString exchange;     // options venue, e.g. "OPRA"
     OrderSide side = OrderSide::Buy;
     double quantity = 0;  // already multiplied by lot size
     double strike = 0;
     QString option_type;  // "CE" (call) or "PE" (put)
     QString expiry;       // "2025-03-28"
-    QString underlying;   // e.g. "NIFTY" — root symbol, used to resolve the real tradingsymbol
+    QString underlying;   // e.g. "SPX" — root symbol, used to resolve the real tradingsymbol
 };
 
 // ----------------------------------------------------------------------------
