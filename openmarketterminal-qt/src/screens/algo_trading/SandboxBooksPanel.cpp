@@ -119,6 +119,10 @@ QString command_text(const QJsonValue& value) {
 }
 
 bool is_sandbox_pipeline_job(const QJsonObject& job) {
+    // Authoritative match: jobs the sandbox installs are tagged managed_by.
+    if (job.value(QStringLiteral("managed_by")).toString() == QStringLiteral("strategy-sandbox"))
+        return true;
+    // Fallback name/command heuristics for legacy/unmanaged producer jobs.
     const QString text = QStringLiteral("%1 %2 %3 %4 %5")
                              .arg(job.value(QStringLiteral("id")).toString(),
                                   job.value(QStringLiteral("name")).toString(),
@@ -381,6 +385,7 @@ void SandboxBooksPanel::run_cli_command(const QStringList& command_args,
 void SandboxBooksPanel::refresh() {
     populate_books();
     populate_leaderboard();
+    populate_pipeline_health();
 }
 
 void SandboxBooksPanel::populate_books() {
