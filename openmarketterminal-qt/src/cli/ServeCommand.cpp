@@ -4632,11 +4632,13 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
              {QStringLiteral("sandbox"), QStringLiteral("score-now")}, 21600, 120}};
 }
 
-int install_sandbox_jobs(const QString& profile, QJsonArray* managed_out) {
+int install_sandbox_jobs(const QString& profile, QJsonArray* managed_out, int* retired_out) {
     QJsonObject doc = load_jobs_doc(profile);
     QJsonArray jobs = doc.value(QStringLiteral("jobs")).toArray();
     QJsonArray managed;
+    QStringList spec_keys;
     for (const SandboxJobSpec& spec : sandbox_job_specs()) {
+        spec_keys << spec.key;
         int idx = -1;
         for (int i = 0; i < jobs.size(); ++i) {
             const QJsonObject job = jobs.at(i).toObject();
@@ -4655,8 +4657,29 @@ int install_sandbox_jobs(const QString& profile, QJsonArray* managed_out) {
             jobs.append(job);
         managed.append(job);
     }
+    // Reconcile: a managed job whose sandbox_job key has dropped OUT of the
+    // current spec (e.g. a producer retired by a reshape) must be disabled
+    // rather than left running forever with no consumer.
+    int retired = 0;
+    for (int i = 0; i < jobs.size(); ++i) {
+        QJsonObject job = jobs.at(i).toObject();
+        if (job.value(QStringLiteral("managed_by")).toString() != QStringLiteral("strategy-sandbox"))
+            continue;
+        if (spec_keys.contains(job.value(QStringLiteral("sandbox_job")).toString()))
+            continue;
+        if (!job.value(QStringLiteral("enabled")).toBool())
+            continue;
+        job[QStringLiteral("enabled")] = false;
+        job[QStringLiteral("running")] = false;
+        job[QStringLiteral("current_run_id")] = QString();
+        job[QStringLiteral("updated_at")] = now_utc();
+        jobs.replace(i, job);
+        ++retired;
+    }
     if (managed_out)
         *managed_out = managed;
+    if (retired_out)
+        *retired_out = retired;
     return jobs_save_update(profile, jobs);
 }
 
@@ -4686,11 +4709,13 @@ int daemon_sandbox_jobs_command(const QString& profile, bool json, QStringList a
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     if (sub == QStringLiteral("install-jobs")) {
         QJsonArray managed;
-        const int rc = install_sandbox_jobs(profile, &managed);
+        int retired = 0;
+        const int rc = install_sandbox_jobs(profile, &managed, &retired);
         if (rc != 0)
             return rc;
         if (json) {
-            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile}, {"jobs", managed}})
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile}, {"jobs", managed},
+                                                           {"retired", retired}})
                                     .toJson(QJsonDocument::Compact).constData());
         } else {
             std::printf("installed sandbox daemon jobs:\n");
@@ -4701,6 +4726,8 @@ int daemon_sandbox_jobs_command(const QString& profile, bool json, QStringList a
                             job.value("interval_sec").toInt(), job.value("timeout_sec").toInt(),
                             qUtf8Printable(job.value("id").toString()));
             }
+            if (retired > 0)
+                std::printf("retired %d stale sandbox job%s\n", retired, retired == 1 ? "" : "s");
         }
         return 0;
     }

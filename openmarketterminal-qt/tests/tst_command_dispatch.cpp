@@ -778,6 +778,109 @@ private slots:
         QVERIFY2(has_score, "install-jobs must create the sandbox score-now job");
     }
 
+    // Reconcile regression: when a producer drops OUT of sandbox_job_specs()
+    // (e.g. the real-horizon reshape retiring crypto-universe-60, btc5m,
+    // chronos-5m), install-jobs must disable the now-orphaned managed job in
+    // jobs.json rather than leaving it enabled with no consumer forever.
+    void sandbox_install_jobs_retires_dropped_spec_jobs() {
+        sandbox_test_home();
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "sandbox", "install-jobs"}, &rc);
+        QCOMPARE(rc, 0);
+
+        const QString jobs_path = profile_root_for(QStringLiteral("default")) +
+                                   QStringLiteral("/daemon/jobs.json");
+        QFile jobs_file(jobs_path);
+        QVERIFY2(jobs_file.open(QIODevice::ReadOnly | QIODevice::Text), "jobs.json must exist after install-jobs");
+        QJsonParseError perr;
+        QJsonDocument doc = QJsonDocument::fromJson(jobs_file.readAll(), &perr);
+        jobs_file.close();
+        QCOMPARE(perr.error, QJsonParseError::NoError);
+        QVERIFY(doc.isObject());
+        QJsonArray jobs = doc.object().value("jobs").toArray();
+
+        // Inject a stale managed job whose sandbox_job key is NOT (and never
+        // will be) in sandbox_job_specs() -- simulates a producer that just
+        // got dropped from the spec by a reshape.
+        const QString now = QStringLiteral("2020-01-01T00:00:00Z");
+        QJsonObject stale{
+            {"id", QStringLiteral("job_obsolete")},
+            {"name", QStringLiteral("Strategy sandbox obsolete feed")},
+            {"kind", QStringLiteral("command")},
+            {"enabled", true},
+            {"schedule", QStringLiteral("interval")},
+            {"interval_sec", 60},
+            {"timeout_sec", 30},
+            {"next_run_at", now},
+            {"running", false},
+            {"run_count", 0},
+            {"fail_count", 0},
+            {"created_at", now},
+            {"updated_at", now},
+            {"managed_by", QStringLiteral("strategy-sandbox")},
+            {"sandbox_job", QStringLiteral("obsolete-feed")},
+            {"description", QStringLiteral("stale producer left over from a dropped spec entry")},
+            {"command", QJsonArray{QStringLiteral("edge"), QStringLiteral("journal"),
+                                    QStringLiteral("evaluate-btc5m-live")}},
+            {"spec", QJsonObject{{"command", QJsonArray{QStringLiteral("edge"), QStringLiteral("journal"),
+                                                         QStringLiteral("evaluate-btc5m-live")}}}}};
+        jobs.append(stale);
+        QJsonObject out_doc = doc.object();
+        out_doc["jobs"] = jobs;
+        QVERIFY2(jobs_file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text),
+                 "must be able to rewrite jobs.json to inject the stale job");
+        jobs_file.write(QJsonDocument(out_doc).toJson(QJsonDocument::Compact));
+        jobs_file.close();
+
+        // Run install-jobs again -- it must reconcile: disable the stale
+        // 'obsolete-feed' job (its key is no longer in the spec) while
+        // leaving current spec jobs (e.g. 'tick') enabled.
+        const QJsonObject second = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "install-jobs"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY2(second.value("retired").toInt() >= 1,
+                 "install-jobs JSON output must report at least one retired stale job");
+
+        QFile jobs_file2(jobs_path);
+        QVERIFY(jobs_file2.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QJsonDocument doc2 = QJsonDocument::fromJson(jobs_file2.readAll());
+        jobs_file2.close();
+        QVERIFY(doc2.isObject());
+        bool found_obsolete = false;
+        bool obsolete_disabled = false;
+        bool found_tick_enabled = false;
+        QJsonArray jobs_without_obsolete;
+        for (const QJsonValue& v : doc2.object().value("jobs").toArray()) {
+            const QJsonObject job = v.toObject();
+            if (job.value("managed_by").toString() == QStringLiteral("strategy-sandbox") &&
+                job.value("sandbox_job").toString() == QStringLiteral("obsolete-feed")) {
+                found_obsolete = true;
+                obsolete_disabled = !job.value("enabled").toBool();
+                continue;  // drop the synthetic stale job so it doesn't pollute shared
+                           // test-process state (sandbox_test_home() reuses one HOME/
+                           // jobs.json across every slot in this binary).
+            }
+            if (job.value("managed_by").toString() == QStringLiteral("strategy-sandbox") &&
+                job.value("sandbox_job").toString() == QStringLiteral("tick")) {
+                found_tick_enabled = job.value("enabled").toBool();
+            }
+            jobs_without_obsolete.append(job);
+        }
+        // Restore jobs.json to the state other test slots in this shared-HOME
+        // process expect (no leftover synthetic managed job).
+        QJsonObject cleaned_doc = doc2.object();
+        cleaned_doc["jobs"] = jobs_without_obsolete;
+        QFile jobs_file3(jobs_path);
+        if (jobs_file3.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            jobs_file3.write(QJsonDocument(cleaned_doc).toJson(QJsonDocument::Compact));
+            jobs_file3.close();
+        }
+
+        QVERIFY2(found_obsolete, "the injected stale job must still be present in jobs.json (disabled, not deleted)");
+        QVERIFY2(obsolete_disabled, "install-jobs must disable a managed job whose spec key was dropped");
+        QVERIFY2(found_tick_enabled, "a still-current spec job (tick) must remain enabled after reconcile");
+    }
+
     void sandbox_remove_jobs_disables_but_does_not_delete() {
         sandbox_test_home();
         int rc = -1;
