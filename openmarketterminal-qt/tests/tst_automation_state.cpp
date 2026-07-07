@@ -51,6 +51,14 @@ class TstAutomationState : public QObject {
         QVERIFY(append_jsonl(orders_path("default"), QJsonObject{{"ts", ts}, {"dry_run", true}}, &err));
         QCOMPARE(submitted_today_count("default"), 1);
     }
+    void profile_isolation() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QVERIFY(write_json_object(live_guard_path("botlab"), QJsonObject{{"enabled", true}}, nullptr));
+        // default profile must NOT see botlab's guard
+        QVERIFY(read_json_object(live_guard_path("default")).isEmpty());
+        QVERIFY(live_guard_path("botlab").contains(QStringLiteral("/profiles/botlab/daemon/")));
+    }
 };
 QTEST_GUILESS_MAIN(TstAutomationState)
 #include "tst_automation_state.moc"

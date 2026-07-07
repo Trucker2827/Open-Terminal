@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -7,6 +8,7 @@
 #include <unistd.h>
 #include "cli/CommandDispatch.h"
 #include "cli/BridgeDiscovery.h"
+#include "cli/automation/AutomationState.h"
 using namespace openmarketterminal::cli;
 
 static QString capture_stdout(const std::function<int()>& fn, int* rc_out = nullptr) {
@@ -327,6 +329,24 @@ private slots:
         QVERIFY(has_screen(excel, "excel"));
         QVERIFY(excel.first().toObject().value("command").toString().contains("excel read|write"));
         QVERIFY(!excel.first().toObject().value("notes").toString().contains("pending"));
+    }
+    void automation_arm_respects_profile() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch({QStringLiteral("--json"), QStringLiteral("--profile"), QStringLiteral("botlab"),
+                           QStringLiteral("automation"), QStringLiteral("arm-bot"),
+                           QStringLiteral("--max-order-usd"), QStringLiteral("50"),
+                           QStringLiteral("--symbols"), QStringLiteral("BTC-USD"),
+                           QStringLiteral("--yes"), QStringLiteral("--i-understand-live-risk")});
+            return rc;
+        });
+        QCOMPARE(rc, 0);
+        const QString botlab_guard = automation::live_guard_path(QStringLiteral("botlab"));
+        const QString default_guard = automation::live_guard_path(QStringLiteral("default"));
+        QVERIFY2(QFile::exists(botlab_guard), "guard must land in the armed profile");
+        QVERIFY2(!QFile::exists(default_guard), "guard must NOT leak into the default profile");
     }
 };
 QTEST_MAIN(TstCommandDispatch)
