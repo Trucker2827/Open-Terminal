@@ -28,7 +28,16 @@ FillResult try_fill(const QString& side, double limit_price, const QVector<TickR
 ExitResult check_exit(const QString& side, double target_price, double stop_price, qint64 expires_at,
                        const QVector<TickRow>& ticks, qint64 now_ms) {
     const bool short_side = is_short_side(side);
+    // Last tick at or before expires_at -- the only legal expiry close
+    // print. Post-expiry ticks are dead to this position in BOTH roles:
+    // they can neither trigger target/stop nor set the expiry close price
+    // (PnL-integrity: an expired position must not harvest later moves).
+    const TickRow* last_pre_expiry = nullptr;
     for (const TickRow& tick : ticks) {
+        if (tick.ts_ms > expires_at) {
+            continue; // post-expiry print: not ours to trade
+        }
+        last_pre_expiry = &tick;
         // Stop is checked before target on every tick: this is a no-op for
         // the overwhelming majority of ticks (which satisfy at most one of
         // the two), and only decides the outcome in the degenerate case
@@ -49,14 +58,14 @@ ExitResult check_exit(const QString& side, double target_price, double stop_pric
         }
     }
     if (now_ms >= expires_at) {
-        if (ticks.isEmpty()) {
-            // Data gap: no ticks to report a real exit price against.
-            // Caller is responsible for flagging this rather than trusting
-            // a bare price-0 exit.
-            return ExitResult{true, QStringLiteral("expiry"), 0.0, now_ms};
+        if (last_pre_expiry == nullptr) {
+            // Data gap: no tick at or before expiry to report a real exit
+            // price against. Caller is responsible for flagging this rather
+            // than trusting a bare price-0 exit. ts is expires_at -- the
+            // position legally died at expiry, not at observation time.
+            return ExitResult{true, QStringLiteral("expiry"), 0.0, expires_at};
         }
-        const TickRow& last = ticks.last();
-        return ExitResult{true, QStringLiteral("expiry"), last.price, last.ts_ms};
+        return ExitResult{true, QStringLiteral("expiry"), last_pre_expiry->price, expires_at};
     }
     return ExitResult{};
 }

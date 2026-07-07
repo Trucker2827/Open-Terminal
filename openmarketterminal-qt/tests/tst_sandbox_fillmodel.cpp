@@ -109,25 +109,59 @@ class TstSandboxFillModel : public QObject {
     }
 
     // Case 7: no target/stop hit by any tick; now_ms has passed expires_at
-    // -> reason "expiry" at the LAST known tick's price (101), not the
-    // first or any intermediate one.
+    // -> reason "expiry" at the LAST pre-expiry tick's price (101 @2400),
+    // not the first or any intermediate one, with ts_ms == expires_at (the
+    // position legally dies at expiry, not at observation time).
     void case7_expiry_uses_last_tick_price() {
-        const QVector<TickRow> ticks = {tick(102.0, 1000), tick(99.0, 2000), tick(101.0, 3000)};
+        const QVector<TickRow> ticks = {tick(102.0, 1000), tick(99.0, 2000), tick(101.0, 2400)};
         const ExitResult r = check_exit(QStringLiteral("long"), 200.0, 50.0, 2500, ticks, 3000);
         QVERIFY(r.exited);
         QCOMPARE(r.reason, QStringLiteral("expiry"));
         QVERIFY(qAbs(r.price - 101.0) < 1e-9);
-        QCOMPARE(r.ts_ms, qint64(3000));
+        QCOMPARE(r.ts_ms, qint64(2500));
+    }
+
+    // Regression (expiry bound, reviewer-mandated): a post-expiry tick at a
+    // target-crossing price must NOT trigger a target exit -- the position
+    // died at expires_at, and prints after that are not ours to trade.
+    // Without the ts_ms <= expires_at bound in check_exit's tick loop, this
+    // returned reason "target" @106 (PnL-integrity bias: free upside from
+    // dead positions). expires 2000, only tick @2500 at 106 (crosses target
+    // 105): result must be expiry, and with no pre-expiry tick at all,
+    // price 0 (data-gap sentinel) with ts == expires_at.
+    void case7a_post_expiry_tick_cannot_trigger_target() {
+        const QVector<TickRow> ticks = {tick(106.0, 2500)};
+        const ExitResult r = check_exit(QStringLiteral("long"), 105.0, 97.0, 2000, ticks, 3000);
+        QVERIFY(r.exited);
+        QCOMPARE(r.reason, QStringLiteral("expiry"));
+        QCOMPARE(r.price, 0.0);
+        QCOMPARE(r.ts_ms, qint64(2000));
+    }
+
+    // Regression (expiry bound, reviewer-mandated): the expiry close price
+    // is the last tick AT OR BEFORE expires_at, ignoring later prints
+    // entirely. Ticks 101 @1500 and 108 @2600 (post-expiry, and also
+    // target-crossing), expires 2000, now 3000 -> expiry at 101 with
+    // ts == expires_at (not 108, and not a target exit).
+    void case7b_expiry_price_ignores_post_expiry_tick() {
+        const QVector<TickRow> ticks = {tick(101.0, 1500), tick(108.0, 2600)};
+        const ExitResult r = check_exit(QStringLiteral("long"), 105.0, 97.0, 2000, ticks, 3000);
+        QVERIFY(r.exited);
+        QCOMPARE(r.reason, QStringLiteral("expiry"));
+        QVERIFY(qAbs(r.price - 101.0) < 1e-9);
+        QCOMPARE(r.ts_ms, qint64(2000));
     }
 
     // Case 8: expiry with zero ticks available at all -- still exits with
-    // reason "expiry" but price 0 (caller's job to recognize the data gap).
+    // reason "expiry" but price 0 (caller's job to recognize the data gap),
+    // timestamped at expires_at (when the position legally died).
     void case8_expiry_with_zero_ticks_reports_price_zero() {
         const QVector<TickRow> ticks;
         const ExitResult r = check_exit(QStringLiteral("long"), 200.0, 50.0, 2500, ticks, 3000);
         QVERIFY(r.exited);
         QCOMPARE(r.reason, QStringLiteral("expiry"));
         QCOMPARE(r.price, 0.0);
+        QCOMPARE(r.ts_ms, qint64(2500));
     }
 
     // Case 9: no exit at all -- every tick stays strictly within

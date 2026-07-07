@@ -69,6 +69,12 @@ struct ExitResult {
 // stop_price) -- a gap-through tick exits at the worse (or better) print it
 // actually traded at, in either direction.
 //
+// All exits are bounded at expires_at: ticks with ts_ms > expires_at are
+// post-expiry prints and are skipped entirely -- they can neither trigger
+// target/stop nor set the expiry close price. The position legally dies at
+// expires_at; anything that trades after that is not ours (PnL-integrity:
+// no harvesting moves from dead positions).
+//
 // If a single tick's price satisfies both bounds simultaneously, ordering
 // within that tick is unknowable, so the STOP wins (conservative). This can
 // only happen when stop_price and target_price are not on opposite sides of
@@ -78,9 +84,11 @@ struct ExitResult {
 // no single price can satisfy both.
 //
 // If no tick triggers and now_ms >= expires_at, reason is "expiry" at the
-// LAST tick's price (or price 0 if ticks is empty -- the caller is
-// responsible for treating that as a data gap rather than a real exit at
-// price 0). now_ms < expires_at with no tick trigger -> exited == false.
+// price of the LAST tick with ts_ms <= expires_at, with the result's ts_ms
+// set to expires_at itself (the moment the position died). If no such
+// pre-expiry tick exists, price is 0 -- the caller is responsible for
+// treating that as a data gap rather than a real exit at price 0.
+// now_ms < expires_at with no tick trigger -> exited == false.
 ExitResult check_exit(const QString& side, double target_price, double stop_price, qint64 expires_at,
                        const QVector<TickRow>& ticks, qint64 now_ms);
 
