@@ -399,3 +399,28 @@ add_executable(tst_sandbox_eligibility tst_sandbox_eligibility.cpp)
 target_include_directories(tst_sandbox_eligibility PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_eligibility PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_sandbox_eligibility COMMAND tst_sandbox_eligibility)
+
+# Strategy Sandbox Task 11 — power-boundary check: the sandbox service
+# object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/
+# SandboxEligibility/SandboxRegistry/TickTail, under
+# CMakeFiles/openterminal_core.dir/src/services/sandbox/) must never
+# reference the live order-placement surface (ExchangeService,
+# place_exchange_order, crypto_submit_order, place_order) in their
+# undefined-symbol table. REQUIRED (not non-blocking): this is deterministic,
+# offline, and the whole point of Task 11 is that it gates merges. BUILD_DIR
+# is passed via `cmake -E env` since ctest's working directory is not
+# guaranteed to be the build tree root.
+add_test(NAME sandbox_boundary_check
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/sandbox_boundary_check.sh)
+
+# Strategy Sandbox Task 11 — end-to-end smoke over the built openterminalcli
+# (offline, temp HOME, no GUI/daemon process): seed -> fixture scalp
+# decision+ticks -> sandbox tick (open+fill) -> sandbox tick (target exit) ->
+# positions --closed -> score-now/leaderboard (resolved + hand-computed
+# net_pnl) -> eligibility (scalp book BLOCKED, insufficient sample).
+# REQUIRED (not non-blocking) per the Task 11 brief: deterministic and
+# offline, so there is no excuse for it to be advisory-only.
+add_test(NAME e2e_sandbox_smoke
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_sandbox_smoke.sh)
