@@ -89,15 +89,15 @@ echo "CLI=$CLI  watchdog=${TIMEOUT:-none}"
 echo
 
 # ============================================================================
-# Step 1 — seed the five season-1 books.
+# Step 1 — seed the seven season-1 books.
 # ============================================================================
 SEED_JSON="$(wd 30 "$CLI" --json sandbox seed)" || fail "sandbox seed exited nonzero"
 printf '%s' "$SEED_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 5, d
-" || fail "sandbox seed did not report 5 seeded strategy ids: $SEED_JSON"
-echo "PASS: sandbox seed -> 5 strategies"
+assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 7, d
+" || fail "sandbox seed did not report 7 seeded strategy ids: $SEED_JSON"
+echo "PASS: sandbox seed -> 7 strategies"
 
 SCALP_ID="$(printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json

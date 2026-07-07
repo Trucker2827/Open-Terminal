@@ -293,6 +293,10 @@ private slots:
         QCOMPARE(dispatch(QStringList{"--profile", profile, "daemon", "jobs", "add", "notebook",
                                       "trading-sma-crossover-backtest", "--every-sec", "604800"}), 0);
         QCOMPARE(dispatch(QStringList{"--profile", profile, "daemon", "paper", "meanrev", "--every-sec", "300"}), 0);
+        QCOMPARE(dispatch(QStringList{"--profile", profile, "daemon", "jobs", "add", "chronos2", "BTC-USD",
+                                      "--horizon", "15m", "--every-sec", "900"}), 0);
+        QCOMPARE(dispatch(QStringList{"--profile", profile, "daemon", "jobs", "add", "chronos2-equity", "AAPL",
+                                      "--horizon", "1d", "--period", "2y", "--every-sec", "86400"}), 0);
         QCOMPARE(dispatch(QStringList{"--profile", profile, "daemon", "jobs", "add", "health-check",
                                       "--every-sec", "300"}), 0);
         QCOMPARE(dispatch(QStringList{"--profile", profile, "daemon", "notify", "--job", "--title", "OpenTerminal",
@@ -303,15 +307,19 @@ private slots:
             QStringList{"--json", "--profile", profile, "daemon", "jobs", "list"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray jobs = listed.value("jobs").toArray();
-        QCOMPARE(jobs.size(), 6);
+        QCOMPARE(jobs.size(), 8);
         auto command_at = [&](int i) { return json_strings(jobs.at(i).toObject().value("command").toArray()); };
         QCOMPARE(jobs.at(0).toObject().value("kind").toString(), QString("ai"));
         QCOMPARE(command_at(0), (QStringList{"brief", "SPY"}));
         QCOMPARE(command_at(1), (QStringList{"radar", "AI semiconductors"}));
         QCOMPARE(command_at(2), (QStringList{"notebook", "run", "trading-sma-crossover-backtest"}));
         QCOMPARE(command_at(3), (QStringList{"strategy", "paper-run", "meanrev", "--max-iters", "1", "--interval-sec", "0"}));
-        QCOMPARE(command_at(4), (QStringList{"daemon", "health"}));
-        QCOMPARE(command_at(5), (QStringList{"notify", "send", "--all", "--title", "OpenTerminal",
+        QCOMPARE(command_at(4), (QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "15m",
+                                             "--journal", "--min-journal-edge-bps", "15.00"}));
+        QCOMPARE(command_at(5), (QStringList{"edge", "chronos2", "equity", "AAPL", "--horizon", "1d",
+                                             "--period", "2y", "--journal", "--min-journal-edge-bps", "50.00"}));
+        QCOMPARE(command_at(6), (QStringList{"daemon", "health"}));
+        QCOMPARE(command_at(7), (QStringList{"notify", "send", "--all", "--title", "OpenTerminal",
                                              "--message", "Daemon is alive", "--level", "info", "--yes"}));
     }
     void daemon_job_detail_and_actions_are_ui_ready() {

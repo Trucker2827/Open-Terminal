@@ -172,16 +172,16 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(status, QStringLiteral("paused"));
     }
 
-    // (e) seed_default_strategies is idempotent -> 5 rows both times, kinds
-    // exactly {scalp, spot, btc5m, kalshi, long_short}.
+    // (e) seed_default_strategies is idempotent -> 7 rows both times, kinds
+    // exactly {scalp, spot, btc5m, kalshi, long_short, chronos2, chronos2_equity}.
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 5);
+        QCOMPARE(first.value().size(), 7);
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 5);
+        QCOMPARE(second.value().size(), 7);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -191,13 +191,14 @@ class TstSandboxRegistry : public QObject {
         for (const auto& row : rows.value())
             if (seed_ids.contains(row.strategy_id))
                 kinds.insert(row.kind);
-        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "btc5m", "kalshi", "long_short"}));
+        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "btc5m", "kalshi", "long_short",
+                                       "chronos2", "chronos2_equity"}));
 
         int seed_row_count = 0;
         for (const auto& row : rows.value())
             if (seed_ids.contains(row.strategy_id))
                 ++seed_row_count;
-        QCOMPARE(seed_row_count, 5);
+        QCOMPARE(seed_row_count, 7);
     }
 
     // Contract test (task-11 follow-up): the kalshi season-1 seed shipped

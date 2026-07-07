@@ -205,6 +205,8 @@ int default_job_timeout_sec(const QString& kind, int every_sec = 0) {
         base = 180;
     else if (k == "notebook" || k == "paper-strategy")
         base = 600;
+    else if (k == "chronos2" || k == "chronos2-equity")
+        base = 300;
     if (every_sec > 0)
         base = std::min(base, std::max(30, every_sec - 1));
     return base;
@@ -464,6 +466,50 @@ QStringList command_for_job_kind(const QString& kind, const QJsonObject& spec) {
         const int max_iters = spec.value("max_iters").toInt(1);
         args << QStringLiteral("--max-iters") << QString::number(max_iters);
         args << QStringLiteral("--interval-sec") << QString::number(spec.value("interval_sec").toInt(0));
+        return args;
+    }
+    if (k == "chronos2") {
+        QStringList args{QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
+                         spec.value("symbol").toString(QStringLiteral("BTC-USD")),
+                         QStringLiteral("--horizon"), spec.value("horizon").toString(QStringLiteral("15m")),
+                         QStringLiteral("--journal"),
+                         QStringLiteral("--min-journal-edge-bps"),
+                         QString::number(spec.value("min_journal_edge_bps").toDouble(15.0), 'f', 2)};
+        const QString model = spec.value("model").toString();
+        if (!model.isEmpty())
+            args << QStringLiteral("--model") << model;
+        const QString device = spec.value("device").toString();
+        if (!device.isEmpty())
+            args << QStringLiteral("--device") << device;
+        const int context_limit = spec.value("context_limit").toInt(0);
+        if (context_limit > 0)
+            args << QStringLiteral("--context-limit") << QString::number(context_limit);
+        if (spec.value("publish").toBool(false))
+            args << QStringLiteral("--publish");
+        return args;
+    }
+    if (k == "chronos2-equity") {
+        QStringList args{QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("equity"),
+                         spec.value("symbol").toString(QStringLiteral("AAPL")),
+                         QStringLiteral("--horizon"), spec.value("horizon").toString(QStringLiteral("1d")),
+                         QStringLiteral("--period"), spec.value("period").toString(QStringLiteral("2y")),
+                         QStringLiteral("--journal"),
+                         QStringLiteral("--min-journal-edge-bps"),
+                         QString::number(spec.value("min_journal_edge_bps").toDouble(50.0), 'f', 2)};
+        const QString model = spec.value("model").toString();
+        if (!model.isEmpty())
+            args << QStringLiteral("--model") << model;
+        const QString device = spec.value("device").toString();
+        if (!device.isEmpty())
+            args << QStringLiteral("--device") << device;
+        const QString interval = spec.value("interval").toString();
+        if (!interval.isEmpty())
+            args << QStringLiteral("--interval") << interval;
+        const int context_limit = spec.value("context_limit").toInt(0);
+        if (context_limit > 0)
+            args << QStringLiteral("--context-limit") << QString::number(context_limit);
+        if (spec.value("publish").toBool(false))
+            args << QStringLiteral("--publish");
         return args;
     }
     if (k == "notify") {
@@ -2829,6 +2875,79 @@ QJsonObject parse_job_spec(QString kind,
         if (name->isEmpty()) *name = QStringLiteral("paper ") + spec.value("strategy").toString("meanrev");
         return spec;
     }
+    if (kind == "chronos2" || kind == "chronos" || kind == "forecast-book") {
+        kind = QStringLiteral("chronos2");
+        if (args.removeAll(QStringLiteral("--publish")) > 0)
+            spec["publish"] = true;
+        take_named("--horizon", "horizon");
+        take_named("--model", "model");
+        take_named("--device", "device");
+        take_named_int("--context-limit", "context_limit");
+        if (take_named("--min-journal-edge-bps", "min_journal_edge_bps")) {
+        } else if (take_named("--min-edge-bps", "min_journal_edge_bps")) {
+        }
+        QString symbol;
+        if (!take_named("--symbol", "symbol")) {
+            symbol = args.isEmpty() ? QStringLiteral("BTC-USD") : args.takeFirst();
+            spec["symbol"] = symbol;
+        }
+        if (spec.value("horizon").toString().isEmpty())
+            spec["horizon"] = QStringLiteral("15m");
+        if (spec.value("min_journal_edge_bps").isUndefined())
+            spec["min_journal_edge_bps"] = 15.0;
+        else
+            spec["min_journal_edge_bps"] = spec.value("min_journal_edge_bps").toString().toDouble();
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "unknown chronos2 job args: %s\n", qUtf8Printable(args.join(' ')));
+            return {};
+        }
+        if (name->isEmpty()) {
+            *name = QStringLiteral("chronos2 %1 %2")
+                        .arg(spec.value("symbol").toString(QStringLiteral("BTC-USD")),
+                             spec.value("horizon").toString(QStringLiteral("15m")));
+        }
+        return spec;
+    }
+    if (kind == "chronos2-equity" || kind == "chronos-equity" ||
+        kind == "equity-chronos" || kind == "stock-chronos") {
+        kind = QStringLiteral("chronos2-equity");
+        if (args.removeAll(QStringLiteral("--publish")) > 0)
+            spec["publish"] = true;
+        take_named("--horizon", "horizon");
+        take_named("--period", "period");
+        take_named("--interval", "interval");
+        take_named("--model", "model");
+        take_named("--device", "device");
+        take_named_int("--context-limit", "context_limit");
+        if (take_named("--min-journal-edge-bps", "min_journal_edge_bps")) {
+        } else if (take_named("--min-edge-bps", "min_journal_edge_bps")) {
+        }
+        QString symbol;
+        if (!take_named("--symbol", "symbol")) {
+            symbol = args.isEmpty() ? QStringLiteral("AAPL") : args.takeFirst();
+            spec["symbol"] = symbol.trimmed().toUpper();
+        }
+        if (spec.value("horizon").toString().isEmpty())
+            spec["horizon"] = QStringLiteral("1d");
+        if (spec.value("period").toString().isEmpty())
+            spec["period"] = QStringLiteral("2y");
+        if (spec.value("min_journal_edge_bps").isUndefined())
+            spec["min_journal_edge_bps"] = 50.0;
+        else
+            spec["min_journal_edge_bps"] = spec.value("min_journal_edge_bps").toString().toDouble();
+        if (*every_sec <= 0)
+            *every_sec = 86400;
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "unknown chronos2-equity job args: %s\n", qUtf8Printable(args.join(' ')));
+            return {};
+        }
+        if (name->isEmpty()) {
+            *name = QStringLiteral("chronos2 equity %1 %2")
+                        .arg(spec.value("symbol").toString(QStringLiteral("AAPL")),
+                             spec.value("horizon").toString(QStringLiteral("1d")));
+        }
+        return spec;
+    }
     if (kind == "notify") {
         take_named("--provider", "provider");
         take_named("--level", "level");
@@ -2868,7 +2987,7 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
         return emit_jobs_stats(profile, json, args);
     if (sub == "add" || sub == "create") {
         if (args.isEmpty()) {
-        std::fprintf(stderr, "usage: daemon jobs add <command|brief|ai|notebook|paper-strategy|notify|health-check> ... [--timeout-sec N]\n");
+        std::fprintf(stderr, "usage: daemon jobs add <command|brief|ai|notebook|paper-strategy|chronos2|notify|health-check> ... [--timeout-sec N]\n");
             return 2;
         }
         QString kind = args.takeFirst().trimmed().toLower();
@@ -2880,6 +2999,7 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
         if (spec.isEmpty() && kind != "health-check")
             return 2;
         if (kind == "paper") kind = QStringLiteral("paper-strategy");
+        if (kind == "chronos" || kind == "forecast-book") kind = QStringLiteral("chronos2");
         QJsonObject doc = load_jobs_doc(profile);
         QJsonArray jobs = doc.value("jobs").toArray();
         QJsonObject job = make_job(kind, name, spec, every_sec, timeout_sec, enabled);
@@ -5123,7 +5243,12 @@ int daemon_add_template_job(const QString& profile, bool json, const QString& ki
     QJsonObject spec = parse_job_spec(kind, args, &name, &every_sec, &timeout_sec, &enabled);
     if (spec.isEmpty() && kind != "health-check")
         return 2;
-    const QString normalized_kind = kind == "paper" ? QStringLiteral("paper-strategy") : kind;
+    QString normalized_kind = kind == "paper" ? QStringLiteral("paper-strategy") : kind;
+    if (normalized_kind == "chronos" || normalized_kind == "forecast-book")
+        normalized_kind = QStringLiteral("chronos2");
+    if (normalized_kind == "chronos-equity" || normalized_kind == "equity-chronos" ||
+        normalized_kind == "stock-chronos")
+        normalized_kind = QStringLiteral("chronos2-equity");
     QJsonObject job = make_job(normalized_kind, name, spec, every_sec, timeout_sec, enabled);
     QJsonObject doc = load_jobs_doc(profile);
     QJsonArray jobs = doc.value("jobs").toArray();
@@ -5382,6 +5507,15 @@ int daemon_command(const QString& profile, bool json, QStringList args) {
         args.prepend(QStringLiteral("paper-strategy"));
         return daemon_jobs_command(profile, json, QStringList{QStringLiteral("add")} + args);
     }
+    if (sub == "chronos2" || sub == "chronos" || sub == "forecast-book") {
+        args.prepend(QStringLiteral("chronos2"));
+        return daemon_jobs_command(profile, json, QStringList{QStringLiteral("add")} + args);
+    }
+    if (sub == "chronos2-equity" || sub == "chronos-equity" ||
+        sub == "equity-chronos" || sub == "stock-chronos") {
+        args.prepend(QStringLiteral("chronos2-equity"));
+        return daemon_jobs_command(profile, json, QStringList{QStringLiteral("add")} + args);
+    }
 
     if (sub == "install") {
 #if !defined(Q_OS_MACOS)
@@ -5500,7 +5634,7 @@ int daemon_command(const QString& profile, bool json, QStringList args) {
 
     std::fprintf(stderr,
                  "usage: daemon status|owner|takeover|release|health|readiness|logs|audit|jobs|monitors|collectors|notify|ai|paper|"
-                 "install|uninstall|start|stop|restart|plist\n");
+                 "chronos2|chronos2-equity|install|uninstall|start|stop|restart|plist\n");
     return 2;
 }
 

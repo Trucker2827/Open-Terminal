@@ -14,6 +14,7 @@
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QColor>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
@@ -633,9 +634,8 @@ QWidget* ProfileScreen::build_automation() {
     add_simple_button(tr("STOP"), {QStringLiteral("stop")}, tr("Stopping paper automation..."));
     scl->addStretch();
     stl->addWidget(simple_controls);
-    vl->addWidget(simple_panel);
 
-    auto* live_panel = make_panel(tr("LIVE TRADE PERMISSIONS"));
+    auto* live_panel = make_panel(tr("ARM LIVE TRADING"));
     auto* lbot = qobject_cast<QVBoxLayout*>(live_panel->layout());
     auto* live_note = new QLabel(
         tr("Arm only the trade types you explicitly want this local profile to allow. Spot can submit guarded Coinbase orders today; prediction markets and leveraged long/short stay paper/journal-only until their live routers are separately wired."));
@@ -819,6 +819,120 @@ QWidget* ProfileScreen::build_automation() {
 
     lbot->addWidget(live_controls);
     vl->addWidget(live_panel);
+    vl->addWidget(simple_panel);
+
+    auto* scenario_panel = make_panel(tr("COINBASE SCENARIO LAB"));
+    auto* scvl = qobject_cast<QVBoxLayout*>(scenario_panel->layout());
+    auto* scenario_note = new QLabel(
+        tr("Run local what-if tests before arming live trading. The lab compares Coinbase fee tier, maker/taker behavior, spread, slippage, confidence, and expected move for scalp, spot, and long/short scenarios."));
+    scenario_note->setWordWrap(true);
+    scenario_note->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;padding:10px 12px 0 12px;%2")
+                                     .arg(ui::colors::TEXT_SECONDARY(), MF));
+    scvl->addWidget(scenario_note);
+
+    auto* scenario_controls = new QWidget(this);
+    scenario_controls->setStyleSheet(QString("background:transparent;border-top:1px solid %1;").arg(ui::colors::BORDER_DIM()));
+    auto* scg = new QGridLayout(scenario_controls);
+    scg->setContentsMargins(12, 8, 12, 8);
+    scg->setHorizontalSpacing(10);
+    scg->setVerticalSpacing(8);
+    auto* scenario_strategy_label = new QLabel(tr("WHAT TO TEST"));
+    scenario_strategy_label->setStyleSheet(label_style());
+    auto* scenario_strategy = new QComboBox;
+    scenario_strategy->addItem(tr("All strategies"), QString());
+    scenario_strategy->addItem(tr("Scalp only"), QStringLiteral("scalp"));
+    scenario_strategy->addItem(tr("Spot only"), QStringLiteral("spot"));
+    scenario_strategy->addItem(tr("Long/short only"), QStringLiteral("long-short"));
+    scenario_strategy->setStyleSheet(combo_style());
+    auto* scenario_amount_label = new QLabel(tr("ORDER SIZE"));
+    scenario_amount_label->setStyleSheet(label_style());
+    auto* scenario_amount = new QLineEdit(QStringLiteral("100"));
+    scenario_amount->setPlaceholderText(tr("USD"));
+    scenario_amount->setStyleSheet(field_style());
+    auto* scenario_count_label = new QLabel(tr("ROWS"));
+    scenario_count_label->setStyleSheet(label_style());
+    auto* scenario_count = new QLineEdit(QStringLiteral("96"));
+    scenario_count->setPlaceholderText(tr("96"));
+    scenario_count->setStyleSheet(field_style());
+    scg->addWidget(scenario_strategy_label, 0, 0);
+    scg->addWidget(scenario_amount_label, 0, 1);
+    scg->addWidget(scenario_count_label, 0, 2);
+    scg->addWidget(scenario_strategy, 1, 0);
+    scg->addWidget(scenario_amount, 1, 1);
+    scg->addWidget(scenario_count, 1, 2);
+
+    daemon_scenario_lab_status_ = new QLabel(tr("Scenario lab has not been run yet."));
+    daemon_scenario_lab_status_->setWordWrap(true);
+    daemon_scenario_lab_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;%2")
+                                                   .arg(ui::colors::TEXT_SECONDARY(), MF));
+    scg->addWidget(daemon_scenario_lab_status_, 2, 0, 1, 3);
+
+    auto run_scenario_lab = [=, this](bool write_report, bool success_only) {
+        if (daemon_scenario_lab_status_) {
+            daemon_scenario_lab_status_->setText(write_report ? tr("Running Coinbase scenarios and saving report...")
+                                                              : tr("Running Coinbase scenarios..."));
+            daemon_scenario_lab_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;%2")
+                                                           .arg(ui::colors::TEXT_SECONDARY(), MF));
+        }
+        QStringList args{QStringLiteral("automation"), QStringLiteral("scenarios"),
+                         QStringLiteral("--amount"), scenario_amount->text().trimmed().isEmpty() ? QStringLiteral("100") : scenario_amount->text().trimmed(),
+                         QStringLiteral("--count"), scenario_count->text().trimmed().isEmpty() ? QStringLiteral("96") : scenario_count->text().trimmed()};
+        const QString strategy = scenario_strategy->currentData().toString();
+        if (!strategy.isEmpty())
+            args << QStringLiteral("--strategy") << strategy;
+        if (write_report)
+            args << QStringLiteral("--write");
+        if (success_only)
+            args << QStringLiteral("--success-only");
+        run_cli_command(args,
+                        [this](const QJsonObject& o, const QString&) { populate_coinbase_scenario_lab(o); },
+                        [this](const QString& msg) {
+                            if (daemon_scenario_lab_status_) {
+                                daemon_scenario_lab_status_->setText(msg);
+                                daemon_scenario_lab_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;%2")
+                                                                               .arg(ui::colors::NEGATIVE(), MF));
+                            }
+                        });
+    };
+
+    auto* scenario_actions = new QWidget(this);
+    scenario_actions->setStyleSheet("background:transparent;");
+    auto* sal = new QHBoxLayout(scenario_actions);
+    sal->setContentsMargins(0, 0, 0, 0);
+    sal->setSpacing(8);
+    auto add_scenario_button = [&](const QString& text, bool write_report, bool success_only) {
+        auto* btn = new QPushButton(text);
+        btn->setFixedHeight(26);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setStyleSheet(button_style());
+        connect(btn, &QPushButton::clicked, this, [=]() { run_scenario_lab(write_report, success_only); });
+        sal->addWidget(btn);
+    };
+    add_scenario_button(tr("RUN LAB"), false, false);
+    add_scenario_button(tr("ONLY VIABLE"), false, true);
+    add_scenario_button(tr("SAVE REPORT"), true, false);
+    sal->addStretch();
+    scg->addWidget(scenario_actions, 3, 0, 1, 3);
+    scvl->addWidget(scenario_controls);
+
+    daemon_scenario_lab_table_ = new QTableWidget;
+    daemon_scenario_lab_table_->setColumnCount(9);
+    daemon_scenario_lab_table_->setHorizontalHeaderLabels(
+        {tr("ID"), tr("Strategy"), tr("Tier"), tr("Regime"), tr("Liq"), tr("Cost"), tr("Move"), tr("Net"), tr("Verdict")});
+    daemon_scenario_lab_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    daemon_scenario_lab_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    daemon_scenario_lab_table_->setAlternatingRowColors(true);
+    daemon_scenario_lab_table_->verticalHeader()->setVisible(false);
+    daemon_scenario_lab_table_->horizontalHeader()->setStretchLastSection(true);
+    daemon_scenario_lab_table_->setMinimumHeight(260);
+    daemon_scenario_lab_table_->setStyleSheet(QString("QTableWidget{background:%1;color:%2;border:none;gridline-color:%3;font-size:11px;%4}"
+                                                      "QHeaderView::section{background:%5;color:%6;border:1px solid %3;padding:4px;font-size:10px;font-weight:700;%4}"
+                                                      "QTableWidget::item{padding:3px 6px;border-bottom:1px solid %3;}"
+                                                      "QTableWidget::item:selected{background:rgba(217,119,6,0.18);color:%2;}")
+                                              .arg(ui::colors::BG_BASE(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_DIM(), MF,
+                                                   ui::colors::BG_RAISED(), ui::colors::TEXT_SECONDARY()));
+    scvl->addWidget(daemon_scenario_lab_table_);
+    vl->addWidget(scenario_panel);
 
     auto* collectors_panel = make_panel(tr("DATA COLLECTORS"));
     auto* cvl = qobject_cast<QVBoxLayout*>(collectors_panel->layout());
@@ -917,6 +1031,8 @@ QWidget* ProfileScreen::build_automation() {
     add_preset(tr("NEWS RADAR"), QStringLiteral("radar"), QStringLiteral("AI semiconductors"), 3600);
     add_preset(tr("WEEKLY NOTEBOOK"), QStringLiteral("notebook"), QStringLiteral("trading-sma-crossover-backtest"), 604800);
     add_preset(tr("PAPER WATCH"), QStringLiteral("paper"), QStringLiteral("meanrev"), 300);
+    add_preset(tr("CHRONOS 15M"), QStringLiteral("chronos2"), QStringLiteral("BTC-USD"), 900);
+    add_preset(tr("CHRONOS EQ 1D"), QStringLiteral("chronos2-equity"), QStringLiteral("AAPL"), 86400);
     add_preset(tr("HEALTH CHECK"), QStringLiteral("health"), QStringLiteral("daemon health"), 300);
     add_preset(tr("NOTIFY TEST"), QStringLiteral("notify"), QStringLiteral("Daemon is alive"), 3600);
     psl->addStretch();
@@ -941,11 +1057,13 @@ QWidget* ProfileScreen::build_automation() {
     daemon_job_kind_->addItem(tr("Thesis Monitor"), QStringLiteral("thesis"));
     daemon_job_kind_->addItem(tr("Notebook Run"), QStringLiteral("notebook"));
     daemon_job_kind_->addItem(tr("Paper Strategy"), QStringLiteral("paper"));
+    daemon_job_kind_->addItem(tr("Chronos Forecast"), QStringLiteral("chronos2"));
+    daemon_job_kind_->addItem(tr("Chronos Equity Forecast"), QStringLiteral("chronos2-equity"));
     daemon_job_kind_->addItem(tr("Daemon Health Check"), QStringLiteral("health"));
     daemon_job_kind_->addItem(tr("Notification"), QStringLiteral("notify"));
     daemon_job_kind_->setStyleSheet(combo_style());
     daemon_job_target_ = new QLineEdit;
-    daemon_job_target_->setPlaceholderText(tr("Ticker, topic, notebook id, or strategy name"));
+    daemon_job_target_->setPlaceholderText(tr("Ticker, topic, notebook id, strategy, BTC-USD, or AAPL"));
     daemon_job_target_->setStyleSheet(field_style());
     daemon_job_interval_ = new QSpinBox;
     daemon_job_interval_->setRange(0, 31536000);
@@ -1464,6 +1582,78 @@ void ProfileScreen::populate_live_bot_status(const QJsonObject& status) {
                                                .arg(color, MF));
 }
 
+void ProfileScreen::populate_coinbase_scenario_lab(const QJsonObject& scenario_lab) {
+    const int shown = scenario_lab.value(QStringLiteral("scenario_count")).toInt();
+    const int generated = scenario_lab.value(QStringLiteral("all_generated_count")).toInt(shown);
+    const int candidates = scenario_lab.value(QStringLiteral("trade_candidates")).toInt();
+    const int watch = scenario_lab.value(QStringLiteral("watch_or_journal")).toInt();
+    const int no_trade = scenario_lab.value(QStringLiteral("no_trade")).toInt();
+    const QString report_path = scenario_lab.value(QStringLiteral("report_path")).toString();
+
+    if (daemon_scenario_lab_status_) {
+        QString text = tr("Generated %1 Coinbase scenarios, showing %2. Trade candidates: %3. Watch/journal: %4. No-trade: %5.")
+                           .arg(QString::number(generated),
+                                QString::number(shown),
+                                QString::number(candidates),
+                                QString::number(watch),
+                                QString::number(no_trade));
+        if (!report_path.isEmpty())
+            text += tr(" Saved: %1").arg(report_path);
+        const QString color = candidates > 0 ? ui::colors::AMBER() : ui::colors::TEXT_SECONDARY();
+        daemon_scenario_lab_status_->setText(text);
+        daemon_scenario_lab_status_->setStyleSheet(QString("color:%1;font-size:12px;background:transparent;%2").arg(color, MF));
+    }
+
+    if (!daemon_scenario_lab_table_)
+        return;
+
+    const QJsonArray rows = scenario_lab.value(QStringLiteral("rows")).toArray();
+    daemon_scenario_lab_table_->setRowCount(rows.size());
+
+    auto short_tier = [](QString tier) {
+        tier.remove(QStringLiteral("coinbase_"));
+        tier.replace(QStringLiteral("advanced"), QStringLiteral("base"));
+        tier.replace(QStringLiteral("perps_reference"), QStringLiteral("perps"));
+        return tier;
+    };
+    auto fmt_bps = [](double value) {
+        return QStringLiteral("%1").arg(QString::number(value, 'f', 1));
+    };
+    auto color_for_verdict = [](const QString& verdict) {
+        if (verdict == QLatin1String("TRADE CANDIDATE"))
+            return ui::colors::POSITIVE();
+        if (verdict == QLatin1String("WATCH") || verdict == QLatin1String("JOURNAL ONLY"))
+            return ui::colors::AMBER();
+        if (verdict == QLatin1String("CLOSE BUT NOT ENOUGH"))
+            return ui::colors::TEXT_PRIMARY();
+        return ui::colors::TEXT_SECONDARY();
+    };
+    auto add_item = [&](int row, int col, const QString& text, const QString& color = {}) {
+        auto* item = new QTableWidgetItem(text);
+        if (!color.isEmpty())
+            item->setData(Qt::ForegroundRole, QColor(color));
+        daemon_scenario_lab_table_->setItem(row, col, item);
+    };
+
+    for (int i = 0; i < rows.size(); ++i) {
+        const QJsonObject row = rows.at(i).toObject();
+        const QString verdict = row.value(QStringLiteral("verdict")).toString();
+        const QString verdict_color = color_for_verdict(verdict);
+        add_item(i, 0, row.value(QStringLiteral("id")).toString());
+        add_item(i, 1, row.value(QStringLiteral("strategy")).toString());
+        add_item(i, 2, short_tier(row.value(QStringLiteral("fee_tier")).toString()));
+        add_item(i, 3, row.value(QStringLiteral("regime")).toString());
+        add_item(i, 4, row.value(QStringLiteral("liquidity")).toString());
+        add_item(i, 5, fmt_bps(row.value(QStringLiteral("round_trip_cost_bps")).toDouble()));
+        add_item(i, 6, fmt_bps(row.value(QStringLiteral("expected_move_bps")).toDouble()));
+        add_item(i, 7, fmt_bps(row.value(QStringLiteral("net_after_cost_bps")).toDouble()),
+                 row.value(QStringLiteral("net_after_cost_bps")).toDouble() >= 0.0 ? ui::colors::POSITIVE() : ui::colors::NEGATIVE());
+        add_item(i, 8, verdict, verdict_color);
+    }
+    daemon_scenario_lab_table_->resizeColumnsToContents();
+    daemon_scenario_lab_table_->horizontalHeader()->setStretchLastSection(true);
+}
+
 void ProfileScreen::populate_daemon_audit(const QJsonObject& audit) {
     if (!daemon_audit_status_)
         return;
@@ -1651,6 +1841,17 @@ void ProfileScreen::add_daemon_job() {
         args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("notebook") << target;
     } else if (kind == "paper") {
         args << QStringLiteral("paper") << target;
+    } else if (kind == "chronos2") {
+        args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("chronos2") << target
+             << QStringLiteral("--horizon") << QStringLiteral("15m")
+             << QStringLiteral("--min-journal-edge-bps") << QStringLiteral("15")
+             << QStringLiteral("--timeout-sec") << QStringLiteral("300");
+    } else if (kind == "chronos2-equity") {
+        args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("chronos2-equity") << target
+             << QStringLiteral("--horizon") << QStringLiteral("1d")
+             << QStringLiteral("--period") << QStringLiteral("2y")
+             << QStringLiteral("--min-journal-edge-bps") << QStringLiteral("50")
+             << QStringLiteral("--timeout-sec") << QStringLiteral("300");
     } else if (kind == "health") {
         args << QStringLiteral("jobs") << QStringLiteral("add") << QStringLiteral("health-check");
     } else if (kind == "notify") {

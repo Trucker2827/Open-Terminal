@@ -323,7 +323,7 @@ void SecuritySection::build_ui() {
     // AI-trading constitution (Phase B): which venues the agent may trade and the
     // per-topic exposure cap. GUI-only (cli.* keys the CLI/agent can never write).
     cli_allowed_venues_edit_ = new QLineEdit;
-    cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. polymarket, kalshi"));
+    cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. coinbase, kalshi"));
     cli_allowed_venues_edit_->setFixedWidth(280);
     cli_allowed_venues_edit_->setStyleSheet(input_ss());
     auto* row_cli_venues = make_row(
@@ -581,7 +581,7 @@ void SecuritySection::retranslateUi() {
     if (sec_current_pin_) sec_current_pin_->setPlaceholderText(tr("Current PIN"));
     if (sec_new_pin_)     sec_new_pin_->setPlaceholderText(tr("New PIN"));
     if (sec_confirm_pin_) sec_confirm_pin_->setPlaceholderText(tr("Confirm PIN"));
-    if (cli_allowed_venues_edit_) cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. polymarket, kalshi"));
+    if (cli_allowed_venues_edit_) cli_allowed_venues_edit_->setPlaceholderText(tr("e.g. coinbase, kalshi"));
     if (cli_max_exposure_edit_)   cli_max_exposure_edit_->setPlaceholderText(tr("e.g. 500"));
     if (cli_allowed_account_edit_) cli_allowed_account_edit_->setPlaceholderText(tr("e.g. acct-1"));
     if (cli_max_daily_loss_edit_)  cli_max_daily_loss_edit_->setPlaceholderText(tr("e.g. 5000"));

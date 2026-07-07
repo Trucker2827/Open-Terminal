@@ -63,6 +63,7 @@
 #include "storage/repositories/TradeAuditRepository.h"
 #include "storage/repositories/WatchlistRepository.h"
 #include "storage/repositories/WorkflowRepository.h"
+#include "storage/HistoricalDataStore.h"
 #include "storage/LocalDataLake.h"
 #include "storage/secure/SecureStorage.h"
 #include "storage/sqlite/Database.h"
@@ -85,6 +86,7 @@
 #include <QNetworkRequest>
 #include <QFile>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
@@ -353,6 +355,9 @@ static int command_help(const QString& topic) {
             "  daemon notify --title T --message M [--provider P] [--job]\n"
             "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N] [--timeout-sec N]\n"
             "  daemon paper <meanrev|claude> [--symbols AAPL,MSFT] [--every-sec N] [--timeout-sec N]\n"
+            "  daemon chronos2 BTC-USD [--horizon 15m] [--every-sec 900]\n"
+            "  daemon chronos2-equity AAPL [--horizon 1d] [--every-sec 86400]\n"
+            "  daemon jobs add chronos2 BTC-USD [--horizon 15m] [--every-sec 900]\n"
             "  daemon install [--replace] [--start] [--dry-run]\n"
             "  daemon start\n"
             "  daemon stop\n"
@@ -499,6 +504,7 @@ static int command_help(const QString& topic) {
             "  edge long-short-strategy [BTC-USD] [--venue kalshi_perps] [--leverage N] [--margin-usd N]\n"
             "  edge crypto-universe [--symbols BTC,ETH,SOL] [--venue coinbase] [--horizon-sec N]\n"
             "  edge decision-cockpit [--symbols BTC,ETH,SOL] [--max-age-hours N]\n"
+            "  edge equity-cockpit [--symbols AAPL,NVDA,SPY] [--max-age-hours N]\n"
             "  edge context <symbol> [--asset-class equity|crypto] [--days N] [--limit N]\n"
             "  edge kalshi-scan [--category C] [--family F] [--limit N]\n"
             "  edge research <kalshi-ticker> [--model-prob P] [--confidence P]\n"
@@ -530,6 +536,8 @@ static int command_help(const QString& topic) {
             "  edge backfill --source coinbase|binance --symbol BTC [--days 30] [--train]\n"
             "  edge collect [BTC] [--sources coinbase,kraken,bitcointicker] [--watch]\n"
             "  edge cockpit [--symbol BTC] [--horizon 15m] [--market-prob P] [--watch] [--collect]\n"
+            "  edge chronos2 forecast [BTC-USD] [--horizon 5m|15m|1h|1d] [--publish] [--journal]\n"
+            "  edge chronos2 equity [AAPL] [--horizon 1d|1h] [--period 2y] [--journal]\n"
             "  edge selftest-leakage\n"
             "  edge add|list|show|update|close|remove\n"
             "Probabilities accept 0-1 or 0-100. Cost flags are percent points.\n"
@@ -550,6 +558,9 @@ static int command_help(const QString& topic) {
             "crypto candles into the local profile DB. collect writes fresh public ticks from\n"
             "exchange feeds and advisory Bitcointicker into that same local store. cockpit gives\n"
             "one organized terminal view of data readiness, horizon models, edge signals, and next actions.\n"
+            "chronos2 runs the local Chronos-2 forecasting book from stored ticks/candles. It is paper-only;\n"
+            "use --publish for model-output snapshots, or --journal to feed the sandbox/audit trail\n"
+            "as source=chronos2-forecast or chronos2-equity-forecast without placing orders.\n"
             "why-no-trade explains daemon/data/model blockers. gate applies the timestamp-safe\n"
             "meta decision layer, and selftest-leakage verifies future model outputs\n"
             "are excluded.\n");
@@ -16946,29 +16957,50 @@ static std::optional<EdgeDecisionLane> edge_latest_kalshi_lane(const QString& ba
                             {min_ts, pattern1, pattern1, pattern1, pattern1, pattern2, pattern2});
 }
 
+static std::optional<EdgeDecisionLane> edge_latest_chronos_lane(const QString& symbol, qint64 min_ts) {
+    return edge_latest_lane(QStringLiteral("source='chronos2-forecast' AND symbol=? AND created_at>=?"),
+                            {services::crypto_latency::CryptoLatencyService::normalize_symbol(symbol), min_ts});
+}
+
 static QString edge_decision_cockpit_action(const EdgeDecisionLane& spot,
                                             const EdgeDecisionLane& perp,
                                             const EdgeDecisionLane& btc5m,
-                                            const EdgeDecisionLane& kalshi) {
+                                            const EdgeDecisionLane& kalshi,
+                                            const EdgeDecisionLane& chronos) {
     const bool spot_buy = spot.found && edge_call_is_positive(spot);
     const bool perp_trade = perp.found && edge_call_is_positive(perp);
     const bool pm_buy = (btc5m.found && edge_call_is_positive(btc5m)) ||
                         (kalshi.found && edge_call_is_positive(kalshi));
     const bool pm_watch = (btc5m.found && edge_call_is_watch(btc5m)) ||
                           (kalshi.found && edge_call_is_watch(kalshi));
+    const bool chronos_buy = chronos.found && chronos.side == QLatin1String("buy") && edge_call_is_positive(chronos);
+    const bool chronos_down = chronos.found && chronos.side == QLatin1String("sell") &&
+                              chronos.gate == QLatin1String("pass");
+    const bool chronos_conflict = chronos.found && edge_call_is_stand_down(chronos) &&
+                                  (spot_buy || perp_trade || pm_buy);
     const bool any_prediction = btc5m.found || kalshi.found;
+    if ((spot_buy || perp_trade || pm_buy) && chronos_buy)
+        return QStringLiteral("CONFLUENCE");
+    if (chronos_conflict)
+        return QStringLiteral("WATCH CONFLICT");
     if ((spot_buy || perp_trade) && pm_buy)
         return QStringLiteral("CONFLUENCE");
     if (perp_trade && !spot_buy && !pm_buy)
         return perp.side == QLatin1String("short") ? QStringLiteral("PERP-SHORT") : QStringLiteral("PERP-LONG");
     if (!spot_buy && pm_buy)
         return QStringLiteral("PREDICTION-ONLY");
+    if (!spot_buy && !pm_buy && chronos_buy)
+        return QStringLiteral("MODEL-ONLY");
+    if (!spot_buy && !pm_buy && chronos_down)
+        return QStringLiteral("MODEL-DOWN");
     if (spot.found && edge_call_is_stand_down(spot) && !any_prediction)
         return QStringLiteral("STAND DOWN");
     if (spot_buy && !pm_buy)
         return QStringLiteral("SPOT-ONLY");
     if (!spot_buy && pm_watch)
         return QStringLiteral("WATCH PREDICTION");
+    if (!spot_buy && !pm_buy && chronos.found)
+        return QStringLiteral("WATCH MODEL");
     if (spot.found && edge_call_is_stand_down(spot) && any_prediction)
         return QStringLiteral("STAND DOWN");
     if (spot.found)
@@ -17022,9 +17054,10 @@ static int edge_decision_cockpit_command(const GlobalOpts& opts, QStringList arg
     QJsonArray rows;
     if (!opts.json) {
         std::printf("COMBINED DECISION COCKPIT\n");
-        std::printf("Spot, perp long/short, and prediction-market lanes are separate; action marks where edge may exist.\n\n");
-        std::printf("%-9s %-13s %-9s %-13s %-9s %-13s %-9s %-13s %-9s %s\n",
-                    "SYMBOL", "SPOT", "S_NET", "PERP", "P_NET", "BTC5M", "B_NET", "KALSHI", "K_NET", "ACTION");
+        std::printf("Spot, perp long/short, prediction-market, and Chronos lanes are separate; action marks where edge may exist.\n\n");
+        std::printf("%-9s %-13s %-9s %-13s %-9s %-13s %-9s %-13s %-9s %-13s %-9s %s\n",
+                    "SYMBOL", "SPOT", "S_NET", "PERP", "P_NET", "BTC5M", "B_NET", "KALSHI", "K_NET",
+                    "CHRONOS", "C_NET", "ACTION");
     }
     for (const QString& symbol : symbols) {
         const QString base = edge_cockpit_base_symbol(symbol);
@@ -17033,7 +17066,8 @@ static int edge_decision_cockpit_command(const GlobalOpts& opts, QStringList arg
         const EdgeDecisionLane btc5m = base == QLatin1String("BTC") ? latest_btc5m.value_or(EdgeDecisionLane{})
                                                                     : EdgeDecisionLane{};
         const auto kalshi = edge_latest_kalshi_lane(base, min_ts).value_or(EdgeDecisionLane{});
-        const QString action = edge_decision_cockpit_action(spot, perp, btc5m, kalshi);
+        const auto chronos = edge_latest_chronos_lane(symbol, min_ts).value_or(EdgeDecisionLane{});
+        const QString action = edge_decision_cockpit_action(spot, perp, btc5m, kalshi, chronos);
         if (opts.json) {
             rows.append(QJsonObject{{"symbol", symbol},
                                     {"base", base},
@@ -17041,9 +17075,10 @@ static int edge_decision_cockpit_command(const GlobalOpts& opts, QStringList arg
                                     {"perp_long_short", edge_decision_lane_json(perp)},
                                     {"btc5m_prediction", edge_decision_lane_json(btc5m)},
                                     {"kalshi_prediction", edge_decision_lane_json(kalshi)},
+                                    {"chronos_forecast", edge_decision_lane_json(chronos)},
                                     {"action", action}});
         } else {
-            std::printf("%-9s %-13s %-9s %-13s %-9s %-13s %-9s %-13s %-9s %s\n",
+            std::printf("%-9s %-13s %-9s %-13s %-9s %-13s %-9s %-13s %-9s %-13s %-9s %s\n",
                         qUtf8Printable(symbol),
                         qUtf8Printable(elide_text(edge_lane_label(spot), 13)),
                         qUtf8Printable(spot.found ? edge_pct(spot.edge_after_cost) : QStringLiteral("-")),
@@ -17053,6 +17088,8 @@ static int edge_decision_cockpit_command(const GlobalOpts& opts, QStringList arg
                         qUtf8Printable(btc5m.found ? edge_pct(btc5m.edge_after_cost) : QStringLiteral("-")),
                         qUtf8Printable(elide_text(edge_lane_label(kalshi), 13)),
                         qUtf8Printable(kalshi.found ? edge_pct(kalshi.edge_after_cost) : QStringLiteral("-")),
+                        qUtf8Printable(elide_text(edge_lane_label(chronos), 13)),
+                        qUtf8Printable(chronos.found ? edge_pct(chronos.edge_after_cost) : QStringLiteral("-")),
                         qUtf8Printable(action));
         }
     }
@@ -17062,7 +17099,90 @@ static int edge_decision_cockpit_command(const GlobalOpts& opts, QStringList arg
                                 .toJson(QJsonDocument::Compact).constData());
         return 0;
     }
-    std::printf("\nLegend       CONFLUENCE=spot/perp and prediction agree; PERP-LONG/SHORT=directional derivative lane only; PREDICTION-ONLY=spot stands down but contract may be mispriced; STAND DOWN=no actionable lane.\n");
+    std::printf("\nLegend       CONFLUENCE=independent lanes agree; WATCH CONFLICT=Chronos conflicts with an actionable lane; MODEL-ONLY/MODEL-DOWN=forecast context only; STAND DOWN=no actionable lane.\n");
+    return 0;
+}
+
+static QStringList edge_parse_equity_symbols(QString symbols_raw) {
+    if (symbols_raw.trimmed().isEmpty())
+        symbols_raw = QStringLiteral("AAPL,NVDA,MSFT,SPY,QQQ");
+    QStringList out;
+    for (const QString& part : symbols_raw.split(',', Qt::SkipEmptyParts)) {
+        const QString sym = part.trimmed().toUpper();
+        if (!sym.isEmpty() && !out.contains(sym))
+            out << sym;
+    }
+    return out.isEmpty() ? QStringList{QStringLiteral("AAPL")} : out;
+}
+
+static std::optional<EdgeDecisionLane> edge_latest_chronos_equity_lane(const QString& symbol, qint64 min_ts) {
+    return edge_latest_lane(QStringLiteral("source='chronos2-equity-forecast' AND symbol=? AND created_at>=?"),
+                            {symbol.trimmed().toUpper(), min_ts});
+}
+
+static QString edge_equity_cockpit_action(const EdgeDecisionLane& chronos) {
+    if (!chronos.found)
+        return QStringLiteral("NEED DATA");
+    if (chronos.gate == QLatin1String("pass") && chronos.side == QLatin1String("buy"))
+        return QStringLiteral("MODEL-UP");
+    if (chronos.gate == QLatin1String("pass") && chronos.side == QLatin1String("sell"))
+        return QStringLiteral("MODEL-DOWN");
+    if (edge_call_is_watch(chronos) || edge_call_is_stand_down(chronos))
+        return QStringLiteral("WATCH");
+    return QStringLiteral("REVIEW");
+}
+
+static int edge_equity_cockpit_command(const GlobalOpts& opts, QStringList args) {
+    QString symbols_raw;
+    QString max_age_raw;
+    if (!take_string_option(args, QStringLiteral("--symbols"), symbols_raw) ||
+        !take_string_option(args, QStringLiteral("--max-age-hours"), max_age_raw))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: edge equity-cockpit [--symbols AAPL,NVDA,SPY] [--max-age-hours N]\n");
+        return 2;
+    }
+    int max_age_hours = max_age_raw.isEmpty() ? 24 * 7 : max_age_raw.toInt();
+    if (max_age_hours < 1 || max_age_hours > 24 * 90) {
+        std::fprintf(stderr, "--max-age-hours must be 1..2160\n");
+        return 2;
+    }
+    const qint64 min_ts = QDateTime::currentMSecsSinceEpoch() -
+                          static_cast<qint64>(max_age_hours) * 3600000LL;
+    const QStringList symbols = edge_parse_equity_symbols(symbols_raw);
+    QJsonArray rows;
+    if (!opts.json) {
+        std::printf("EQUITY DECISION COCKPIT\n");
+        std::printf("Chronos equity is a paper forecast lane; trade execution still requires separate fee/risk approval.\n\n");
+        std::printf("%-8s %-18s %-9s %-9s %-9s %-19s %s\n",
+                    "SYMBOL", "CHRONOS", "NET", "CONF", "HORIZON", "AGE", "ACTION");
+    }
+    for (const QString& symbol : symbols) {
+        const EdgeDecisionLane chronos = edge_latest_chronos_equity_lane(symbol, min_ts).value_or(EdgeDecisionLane{});
+        const QString action = edge_equity_cockpit_action(chronos);
+        if (opts.json) {
+            rows.append(QJsonObject{{"symbol", symbol},
+                                    {"chronos_forecast", edge_decision_lane_json(chronos)},
+                                    {"action", action}});
+        } else {
+            const QString age = chronos.found ? edge_time_text(chronos.created_at) : QStringLiteral("-");
+            std::printf("%-8s %-18s %-9s %-9s %-9s %-19s %s\n",
+                        qUtf8Printable(symbol),
+                        qUtf8Printable(elide_text(edge_lane_label(chronos), 18)),
+                        qUtf8Printable(chronos.found ? edge_pct(chronos.edge_after_cost) : QStringLiteral("-")),
+                        qUtf8Printable(chronos.found ? edge_pct(chronos.confidence) : QStringLiteral("-")),
+                        qUtf8Printable(chronos.found ? chronos.horizon : QStringLiteral("-")),
+                        qUtf8Printable(age.left(19)),
+                        qUtf8Printable(action));
+        }
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{"rows", rows},
+                                                       {"max_age_hours", max_age_hours}})
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("\nLegend       MODEL-UP/DOWN means the forecast cleared its journal threshold only; use sandbox scorekeeping before live equity orders.\n");
     return 0;
 }
 
@@ -17563,6 +17683,778 @@ static int edge_model_command(const GlobalOpts& opts, QStringList args) {
         std::printf("%s\n", QJsonDocument(QJsonObject{{"models", arr}})
                                 .toJson(QJsonDocument::Compact).constData());
     return 0;
+}
+
+static QString edge_normalize_chronos_horizon(QString raw) {
+    raw = raw.trimmed().toLower();
+    if (raw.isEmpty())
+        return QStringLiteral("15m");
+    raw.replace('_', '-');
+    if (raw == QStringLiteral("5") || raw == QStringLiteral("5m") ||
+        raw == QStringLiteral("5-min") || raw == QStringLiteral("5min"))
+        return QStringLiteral("5m");
+    if (raw == QStringLiteral("15") || raw == QStringLiteral("15m") ||
+        raw == QStringLiteral("15-min") || raw == QStringLiteral("15min"))
+        return QStringLiteral("15m");
+    if (raw == QStringLiteral("60") || raw == QStringLiteral("60m") ||
+        raw == QStringLiteral("1h") || raw == QStringLiteral("hour") ||
+        raw == QStringLiteral("hourly"))
+        return QStringLiteral("1h");
+    if (raw == QStringLiteral("1d") || raw == QStringLiteral("d") ||
+        raw == QStringLiteral("day") || raw == QStringLiteral("daily") ||
+        raw == QStringLiteral("24h"))
+        return QStringLiteral("1d");
+    return {};
+}
+
+static QString edge_find_chronos_python() {
+    const QString override = qEnvironmentVariable("OPENTERMINAL_CHRONOS_PYTHON").trimmed();
+    if (!override.isEmpty() && QFileInfo::exists(override))
+        return override;
+
+    const QString app_dir = QCoreApplication::applicationDirPath();
+    const QString cwd = QDir::currentPath();
+    const QStringList candidates{
+        QDir(cwd).filePath(QStringLiteral(".venv-chronos/bin/python")),
+        QDir(cwd).filePath(QStringLiteral("../.venv-chronos/bin/python")),
+        QDir(app_dir).filePath(QStringLiteral(".venv-chronos/bin/python")),
+        QDir(app_dir).filePath(QStringLiteral("../.venv-chronos/bin/python")),
+        QDir(app_dir).filePath(QStringLiteral("../../.venv-chronos/bin/python")),
+        QStringLiteral("/opt/homebrew/bin/python3.11"),
+        QStringLiteral("/usr/local/bin/python3.11"),
+        QStringLiteral("python3.11")
+    };
+    for (const QString& candidate : candidates) {
+        if (candidate == QStringLiteral("python3.11"))
+            return candidate;
+        if (QFileInfo::exists(candidate))
+            return QFileInfo(candidate).absoluteFilePath();
+    }
+    return {};
+}
+
+static QString edge_find_chronos_script() {
+    const QString override = qEnvironmentVariable("OPENTERMINAL_CHRONOS_SCRIPT").trimmed();
+    if (!override.isEmpty() && QFileInfo::exists(override))
+        return override;
+    const QString app_dir = QCoreApplication::applicationDirPath();
+    const QString cwd = QDir::currentPath();
+    const QString rel = QStringLiteral("scripts/edge/chronos2_forecast.py");
+    const QStringList candidates{
+        QDir(cwd).filePath(rel),
+        QDir(cwd).filePath(QStringLiteral("openmarketterminal-qt/") + rel),
+        QDir(app_dir).filePath(rel),
+        QDir(app_dir).filePath(QStringLiteral("../") + rel),
+        QDir(app_dir).filePath(QStringLiteral("../../") + rel)
+    };
+    for (const QString& candidate : candidates) {
+        if (QFileInfo::exists(candidate))
+            return QFileInfo(candidate).canonicalFilePath();
+    }
+    return {};
+}
+
+static bool edge_write_chronos_tick_csv(const QString& path,
+                                        QVector<EdgePredictionRawTick> ticks,
+                                        QString* error) {
+    std::sort(ticks.begin(), ticks.end(), [](const auto& a, const auto& b) {
+        return a.received_ts < b.received_ts;
+    });
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        if (error)
+            *error = QStringLiteral("failed to create Chronos input CSV: %1").arg(path);
+        return false;
+    }
+    f.write("timestamp_ms,price,source\n");
+    for (const auto& tick : ticks) {
+        if (tick.price <= 0.0 || tick.received_ts <= 0)
+            continue;
+        const QString line = QStringLiteral("%1,%2,%3\n")
+                                 .arg(tick.received_ts)
+                                 .arg(tick.price, 0, 'f', 12)
+                                 .arg(tick.source);
+        f.write(line.toUtf8());
+    }
+    return true;
+}
+
+static bool edge_write_chronos_candle_csv(const QString& path,
+                                          QJsonArray candles,
+                                          QString* error) {
+    struct Row {
+        qint64 timestamp_ms = 0;
+        double close = 0.0;
+    };
+    QVector<Row> rows;
+    rows.reserve(candles.size());
+    for (const auto& v : candles) {
+        const QJsonObject o = v.toObject();
+        double close = o.value(QStringLiteral("close")).toDouble();
+        if (close <= 0.0)
+            close = o.value(QStringLiteral("Close")).toDouble();
+        qint64 ts = static_cast<qint64>(o.value(QStringLiteral("timestamp")).toDouble());
+        if (ts <= 0)
+            ts = static_cast<qint64>(o.value(QStringLiteral("timestamp_ms")).toDouble());
+        if (ts > 0 && ts < 1000000000000LL)
+            ts *= 1000;
+        if (ts <= 0 || close <= 0.0)
+            continue;
+        rows.append(Row{ts, close});
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+        return a.timestamp_ms < b.timestamp_ms;
+    });
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        if (error)
+            *error = QStringLiteral("failed to create Chronos equity input CSV: %1").arg(path);
+        return false;
+    }
+    f.write("timestamp_ms,close,source\n");
+    for (const auto& row : rows) {
+        const QString line = QStringLiteral("%1,%2,equity-history\n")
+                                 .arg(row.timestamp_ms)
+                                 .arg(row.close, 0, 'f', 8);
+        f.write(line.toUtf8());
+    }
+    if (rows.size() < 50) {
+        if (error)
+            *error = QStringLiteral("not enough valid equity candles for Chronos: have %1, need at least 50")
+                         .arg(rows.size());
+        return false;
+    }
+    return true;
+}
+
+static QJsonArray edge_equity_candles_from_historify(const QString& symbol,
+                                                     const QString& requested_exchange,
+                                                     const QString& interval,
+                                                     int limit,
+                                                     QString* source_label) {
+    using openmarketterminal::storage::HistoricalDataStore;
+    const QString wanted_symbol = symbol.trimmed().toUpper();
+    HistoricalDataStore::CatalogEntry selected;
+    bool found = false;
+    for (const auto& entry : HistoricalDataStore::instance().catalog()) {
+        if (entry.symbol.trimmed().toUpper() != wanted_symbol)
+            continue;
+        if (entry.interval != interval)
+            continue;
+        if (!requested_exchange.trimmed().isEmpty() &&
+            entry.exchange.compare(requested_exchange.trimmed(), Qt::CaseInsensitive) != 0)
+            continue;
+        if (!found || entry.record_count > selected.record_count ||
+            (entry.record_count == selected.record_count && entry.last_ts > selected.last_ts)) {
+            selected = entry;
+            found = true;
+        }
+    }
+    if (!found)
+        return {};
+    auto candles = HistoricalDataStore::instance().get_candles(selected.symbol, selected.exchange, selected.interval, 0, 0);
+    if (candles.size() > limit)
+        candles = candles.mid(candles.size() - limit);
+    QJsonArray out;
+    for (const auto& c : candles) {
+        if (c.timestamp <= 0 || c.close <= 0.0)
+            continue;
+        out.append(QJsonObject{{"timestamp", static_cast<double>(c.timestamp)},
+                               {"close", c.close},
+                               {"open", c.open},
+                               {"high", c.high},
+                               {"low", c.low},
+                               {"volume", c.volume}});
+    }
+    if (source_label)
+        *source_label = QStringLiteral("historify:%1:%2").arg(selected.exchange, selected.interval);
+    return out;
+}
+
+static QJsonArray edge_fetch_equity_yfinance_candles(const QString& symbol,
+                                                     const QString& period,
+                                                     const QString& interval,
+                                                     int timeout_ms,
+                                                     QString* error) {
+    const QString py = cli_python_for_scripts();
+    const QString script = cli_script_path(QStringLiteral("yfinance_data.py"));
+    if (py.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("python3 not found; run OpenTerminal Python setup first");
+        return {};
+    }
+    if (script.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("scripts/yfinance_data.py not found");
+        return {};
+    }
+    const CommandCapture result = run_capture(py, {script, QStringLiteral("historical_period"), symbol, period, interval}, timeout_ms);
+    if (!result.ok) {
+        if (error)
+            *error = result.error.isEmpty() ? QStringLiteral("yfinance historical fetch failed") : result.error;
+        return {};
+    }
+    QJsonParseError parse_error{};
+    QJsonDocument doc = QJsonDocument::fromJson(result.stdout_text.trimmed().toUtf8(), &parse_error);
+    if (parse_error.error != QJsonParseError::NoError) {
+        if (error)
+            *error = QStringLiteral("yfinance returned invalid JSON: %1").arg(parse_error.errorString());
+        return {};
+    }
+    if (doc.isObject() && doc.object().contains(QStringLiteral("error"))) {
+        if (error)
+            *error = doc.object().value(QStringLiteral("error")).toString(QStringLiteral("yfinance error"));
+        return {};
+    }
+    if (!doc.isArray()) {
+        if (error)
+            *error = QStringLiteral("yfinance returned no candle array");
+        return {};
+    }
+    return doc.array();
+}
+
+static QJsonObject edge_chronos_error_json(const QString& error) {
+    return QJsonObject{{"success", false},
+                       {"paper_only", true},
+                       {"error", error},
+                       {"install", "cd openmarketterminal-qt && /opt/homebrew/bin/python3.11 -m venv .venv-chronos && .venv-chronos/bin/pip install chronos-forecasting pandas"}};
+}
+
+static Result<QString> edge_journal_insert_chronos_forecast(
+    const QJsonObject& forecast,
+    const QString& source,
+    double min_edge_bps,
+    const QString& venue = QStringLiteral("chronos2"),
+    const QString& symbol_override = QString(),
+    const QString& asset_class = QStringLiteral("crypto")) {
+    const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QString symbol = symbol_override.trimmed().isEmpty()
+                               ? services::crypto_latency::CryptoLatencyService::normalize_symbol(
+                                     forecast.value(QStringLiteral("symbol")).toString(QStringLiteral("BTC-USD")))
+                               : symbol_override.trimmed().toUpper();
+    const QString horizon = forecast.value(QStringLiteral("horizon")).toString(QStringLiteral("15m"));
+    const QString direction = forecast.value(QStringLiteral("direction")).toString(QStringLiteral("flat")).toLower();
+    const double expected_move_bps = forecast.value(QStringLiteral("predicted_return_bps"))
+                                         .toDouble(forecast.value(QStringLiteral("q50_return_bps")).toDouble(0.0));
+    const double q50_bps = forecast.value(QStringLiteral("q50_return_bps")).toDouble(expected_move_bps);
+    const double probability_up = forecast.value(QStringLiteral("probability_up")).toDouble(0.5);
+    const double confidence = forecast.value(QStringLiteral("confidence_score")).toDouble(0.0);
+    const bool up = direction == QStringLiteral("up") || q50_bps > 0.0;
+    const bool down = direction == QStringLiteral("down") || q50_bps < 0.0;
+    const bool clears_gate = std::abs(expected_move_bps) >= min_edge_bps && (up || down);
+    const QString side = clears_gate ? (up ? QStringLiteral("buy") : QStringLiteral("sell")) : QStringLiteral("none");
+    const QString call = clears_gate ? (up ? QStringLiteral("BUY CANDIDATE")
+                                           : QStringLiteral("SELL CANDIDATE"))
+                                     : QStringLiteral("NO TRADE");
+    const QString gate = clears_gate ? QStringLiteral("pass") : QStringLiteral("watch");
+    const int seconds_left = services::edge_radar::EdgePredictionModel::horizon_seconds(horizon);
+    const QString market_id = QStringLiteral("%1:%2:%3:%4")
+                                  .arg(venue, symbol, horizon, QString::number(now));
+    const QString question = asset_class == QLatin1String("equity")
+                                 ? QStringLiteral("Chronos-2 equity %1 %2 forecast").arg(symbol, horizon)
+                                 : QStringLiteral("Chronos-2 %1 %2 forecast").arg(symbol, horizon);
+
+    const QJsonObject freshness{{"decision_ts", edge_time_text(now)},
+                                {"last_observation", forecast.value(QStringLiteral("last_timestamp")).toString()},
+                                {"horizon", horizon},
+                                {"sample_count", forecast.value(QStringLiteral("sample_count")).toInt()}};
+    const QJsonObject features{{"reference_price", forecast.value(QStringLiteral("last_price")).toDouble()},
+                               {"expected_move_bps", expected_move_bps},
+                               {"q10_return_bps", forecast.value(QStringLiteral("q10_return_bps")).toDouble()},
+                               {"q50_return_bps", q50_bps},
+                               {"q90_return_bps", forecast.value(QStringLiteral("q90_return_bps")).toDouble()},
+                               {"interval_width_bps", forecast.value(QStringLiteral("interval_width_bps")).toDouble()},
+                               {"probability_up", probability_up},
+                               {"confidence_label", forecast.value(QStringLiteral("confidence")).toString()},
+                               {"model_id", forecast.value(QStringLiteral("model_id")).toString()},
+                               {"device", forecast.value(QStringLiteral("device")).toString()},
+                               {"asset_class", asset_class},
+                               {"paper_only", true},
+                               {"edge_semantics", QStringLiteral("expected price return bps; no fees/spread/slippage deducted here")},
+                               {"forecast", forecast}};
+    const QString reasons = clears_gate
+                                ? QStringLiteral("Chronos-2 expected move %1bps cleared %2bps journal gate; still requires sandbox/risk approval before any order.")
+                                      .arg(expected_move_bps, 0, 'f', 2)
+                                      .arg(min_edge_bps, 0, 'f', 2)
+                                : QStringLiteral("Chronos-2 expected move %1bps did not clear %2bps journal gate; stored as no-trade evidence.")
+                                      .arg(expected_move_bps, 0, 'f', 2)
+                                      .arg(min_edge_bps, 0, 'f', 2);
+    auto r = Database::instance().execute(
+        "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+        " market_id, question, direction, side, call, gate, market_probability, model_probability,"
+        " raw_edge, edge_after_cost, gate_edge, spread_cost, fee_cost, liquidity_score, confidence,"
+        " seconds_left, data_status, freshness_json, features_json, reasons, outcome, resolved_at,"
+        " source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        {id, now, now, venue, symbol, horizon, market_id, question,
+         direction, side, call, gate, 0.5, probability_up, probability_up - 0.5,
+         expected_move_bps / 10000.0, min_edge_bps / 10000.0, 0.0, 0.0, 0.0,
+         confidence, seconds_left, QStringLiteral("paper_forecast"),
+         QString::fromUtf8(QJsonDocument(freshness).toJson(QJsonDocument::Compact)),
+         QString::fromUtf8(QJsonDocument(features).toJson(QJsonDocument::Compact)),
+         reasons, -1, 0, source});
+    if (r.is_err())
+        return Result<QString>::err(r.error());
+    QString lake_error;
+    if (!edge_append_decision_journal_to_lake(id, &lake_error))
+        return Result<QString>::err(QStringLiteral("decision lake append failed: %1").arg(lake_error).toStdString());
+    return Result<QString>::ok(id);
+}
+
+static int edge_emit_chronos_forecast(const GlobalOpts& opts, QJsonObject result) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Compact).constData());
+        return result.value(QStringLiteral("success")).toBool() ? 0 : 5;
+    }
+    if (!result.value(QStringLiteral("success")).toBool()) {
+        std::fprintf(stderr, "%s\n", qUtf8Printable(result.value(QStringLiteral("error")).toString(QStringLiteral("Chronos forecast failed"))));
+        const QString install = result.value(QStringLiteral("install")).toString();
+        if (!install.isEmpty())
+            std::fprintf(stderr, "install      %s\n", qUtf8Printable(install));
+        return 5;
+    }
+
+    std::printf("CHRONOS-2 FORECAST BOOK\n");
+    std::printf("symbol       %s      horizon=%s      paper_only=yes\n",
+                qUtf8Printable(result.value(QStringLiteral("symbol")).toString()),
+                qUtf8Printable(result.value(QStringLiteral("horizon")).toString()));
+    std::printf("model        %s      device=%s      samples=%d\n",
+                qUtf8Printable(result.value(QStringLiteral("model_id")).toString()),
+                qUtf8Printable(result.value(QStringLiteral("device")).toString()),
+                result.value(QStringLiteral("sample_count")).toInt());
+    std::printf("last         %.8f at %s\n",
+                result.value(QStringLiteral("last_price")).toDouble(),
+                qUtf8Printable(result.value(QStringLiteral("last_timestamp")).toString()));
+    std::printf("forecast     q10=%+.2fbps  q50=%+.2fbps  q90=%+.2fbps  width=%.2fbps\n",
+                result.value(QStringLiteral("q10_return_bps")).toDouble(),
+                result.value(QStringLiteral("q50_return_bps")).toDouble(),
+                result.value(QStringLiteral("q90_return_bps")).toDouble(),
+                result.value(QStringLiteral("interval_width_bps")).toDouble());
+    std::printf("direction    %s      probability_up=%s      confidence=%s %.2f\n",
+                qUtf8Printable(result.value(QStringLiteral("direction")).toString()),
+                qUtf8Printable(edge_pct(result.value(QStringLiteral("probability_up")).toDouble())),
+                qUtf8Printable(result.value(QStringLiteral("confidence")).toString()),
+                result.value(QStringLiteral("confidence_score")).toDouble());
+    std::printf("decision     no direct order; feed this through fee/spread/risk gate\n");
+    if (result.value(QStringLiteral("published")).toBool())
+        std::printf("published    model output saved for meta gate/audit trail\n");
+    if (result.value(QStringLiteral("journaled")).toBool())
+        std::printf("journal      %s source=%s\n",
+                    qUtf8Printable(result.value(QStringLiteral("journal_id")).toString()),
+                    qUtf8Printable(result.value(QStringLiteral("journal_source")).toString()));
+    return 0;
+}
+
+static int edge_chronos2_equity_command(const GlobalOpts& opts, QStringList args);
+
+static int edge_chronos2_command(const GlobalOpts& opts, QStringList args) {
+    QString mode = QStringLiteral("forecast");
+    if (!args.isEmpty()) {
+        const QString maybe = args.first().trimmed().toLower();
+        if (maybe == QStringLiteral("equity") || maybe == QStringLiteral("stock") ||
+            maybe == QStringLiteral("stocks")) {
+            return edge_chronos2_equity_command(opts, args.mid(1));
+        }
+        if (maybe == QStringLiteral("forecast") || maybe == QStringLiteral("predict")) {
+            mode = args.takeFirst().trimmed().toLower();
+        } else if (maybe == QStringLiteral("install") || maybe == QStringLiteral("setup")) {
+            const QJsonObject out = edge_chronos_error_json(QStringLiteral("Chronos install helper"));
+            if (opts.json) {
+                std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+            } else {
+                std::printf("install      %s\n", qUtf8Printable(out.value(QStringLiteral("install")).toString()));
+            }
+            return 0;
+        }
+    }
+
+    QString horizon_raw;
+    QString limit_raw;
+    QString timeout_raw;
+    QString model;
+    QString device;
+    QString journal_source;
+    QString journal_edge_raw;
+    const bool publish = take_bool_flag(args, QStringLiteral("--publish"));
+    const bool journal = take_bool_flag(args, QStringLiteral("--journal"));
+    const bool mock = take_bool_flag(args, QStringLiteral("--mock"));
+    if (!take_string_option(args, QStringLiteral("--horizon"), horizon_raw) ||
+        !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--context-limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw) ||
+        !take_string_option(args, QStringLiteral("--model"), model) ||
+        !take_string_option(args, QStringLiteral("--device"), device) ||
+        !take_string_option(args, QStringLiteral("--journal-source"), journal_source) ||
+        !take_string_option(args, QStringLiteral("--min-journal-edge-bps"), journal_edge_raw))
+        return 2;
+    if (mode != QStringLiteral("forecast")) {
+        std::fprintf(stderr, "usage: edge chronos2 forecast [BTC-USD] [--horizon 5m|15m|1h|1d] [--publish] [--journal] [--mock]\n");
+        return 2;
+    }
+    if (args.size() > 1) {
+        std::fprintf(stderr, "usage: edge chronos2 forecast [BTC-USD] [--horizon 5m|15m|1h|1d] [--publish] [--journal] [--mock]\n");
+        return 2;
+    }
+
+    const QString display_symbol = args.isEmpty()
+                                       ? QStringLiteral("BTC-USD")
+                                       : services::crypto_latency::CryptoLatencyService::normalize_symbol(args.takeFirst());
+    const QString raw_symbol = edge_crypto_raw_tick_symbol(display_symbol);
+    const QString horizon = edge_normalize_chronos_horizon(horizon_raw);
+    if (horizon.isEmpty()) {
+        std::fprintf(stderr, "--horizon must be 5m, 15m, 1h, or 1d\n");
+        return 2;
+    }
+    int limit = 20000;
+    if (!limit_raw.isEmpty()) {
+        bool ok = false;
+        limit = limit_raw.toInt(&ok);
+        if (!ok || limit < 50 || limit > 100000) {
+            std::fprintf(stderr, "--context-limit must be 50..100000\n");
+            return 2;
+        }
+    }
+    int timeout_ms = mock ? 15000 : 180000;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 600000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..600000\n");
+            return 2;
+        }
+    }
+    if (model.trimmed().isEmpty())
+        model = QStringLiteral("amazon/chronos-2");
+    if (device.trimmed().isEmpty())
+        device = QStringLiteral("auto");
+    if (journal_source.trimmed().isEmpty())
+        journal_source = QStringLiteral("chronos2-forecast");
+    double min_journal_edge_bps = 15.0;
+    if (!edge_parse_bps_text(journal_edge_raw, min_journal_edge_bps, "--min-journal-edge-bps"))
+        return 2;
+
+    auto ticks_result = EdgePredictionModelRepository::instance().list_raw_ticks(raw_symbol, limit);
+    if (ticks_result.is_err()) {
+        std::fprintf(stderr, "%s\n", ticks_result.error().c_str());
+        return 5;
+    }
+    auto ticks = ticks_result.value();
+    if (ticks.size() < 50) {
+        const QString error = QStringLiteral("not enough local ticks for %1: have %2. Run `edge backfill --source coinbase --symbol %3 --days 30 --train` or `edge collect %3 --watch`.")
+                                  .arg(raw_symbol)
+                                  .arg(ticks.size())
+                                  .arg(raw_symbol);
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(error));
+    }
+
+    QTemporaryDir dir;
+    if (!dir.isValid()) {
+        std::fprintf(stderr, "failed to create temporary Chronos workspace\n");
+        return 5;
+    }
+    const QString csv_path = QDir(dir.path()).filePath(QStringLiteral("ticks.csv"));
+    QString csv_error;
+    if (!edge_write_chronos_tick_csv(csv_path, ticks, &csv_error))
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(csv_error));
+
+    const QString python = edge_find_chronos_python();
+    const QString script = edge_find_chronos_script();
+    if (python.isEmpty())
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(QStringLiteral("Chronos Python not found")));
+    if (script.isEmpty())
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(QStringLiteral("scripts/edge/chronos2_forecast.py not found")));
+
+    QStringList proc_args{script,
+                          QStringLiteral("--input"), csv_path,
+                          QStringLiteral("--symbol"), display_symbol,
+                          QStringLiteral("--horizon"), horizon,
+                          QStringLiteral("--model"), model,
+                          QStringLiteral("--device"), device,
+                          QStringLiteral("--context-limit"), QString::number(std::min(limit, 8192))};
+    if (mock)
+        proc_args << QStringLiteral("--mock");
+
+    QProcess p;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
+    p.setProcessEnvironment(env);
+    p.setWorkingDirectory(QFileInfo(script).absolutePath());
+    p.start(python, proc_args);
+    if (!p.waitForFinished(timeout_ms)) {
+        p.kill();
+        p.waitForFinished(1000);
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(QStringLiteral("Chronos forecast timed out")));
+    }
+
+    const QString stdout_text = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    const QString stderr_text = QString::fromUtf8(p.readAllStandardError()).trimmed();
+    QJsonParseError parse_error{};
+    QJsonDocument doc = QJsonDocument::fromJson(stdout_text.toUtf8(), &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !doc.isObject()) {
+        QString err = QStringLiteral("Chronos returned invalid JSON");
+        if (!stderr_text.isEmpty())
+            err += QStringLiteral(": ") + stderr_text.left(500);
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(err));
+    }
+    QJsonObject result = doc.object();
+    result.insert(QStringLiteral("raw_symbol"), raw_symbol);
+    result.insert(QStringLiteral("profile"), opts.profile.isEmpty() ? QStringLiteral("default") : opts.profile);
+    result.insert(QStringLiteral("python"), python);
+    result.insert(QStringLiteral("script"), script);
+    if (!stderr_text.isEmpty())
+        result.insert(QStringLiteral("stderr"), stderr_text.right(1000));
+
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0 || !result.value(QStringLiteral("success")).toBool()) {
+        if (!result.contains(QStringLiteral("error")) && !stderr_text.isEmpty())
+            result.insert(QStringLiteral("error"), stderr_text);
+        return edge_emit_chronos_forecast(opts, result);
+    }
+
+    if (publish) {
+        EdgePredictionModelOutput out;
+        out.symbol = raw_symbol;
+        out.horizon = horizon;
+        out.direction = result.value(QStringLiteral("direction")).toString(QStringLiteral("flat"));
+        out.readiness = result.value(QStringLiteral("readiness")).toString(QStringLiteral("paper_forecast"));
+        out.source = QStringLiteral("chronos2");
+        out.probability = result.value(QStringLiteral("probability_up")).toDouble(0.5);
+        out.confidence = result.value(QStringLiteral("confidence_score")).toDouble(0.0);
+        out.calibration_score = 0.0;
+        out.sample_count = result.value(QStringLiteral("sample_count")).toInt(ticks.size());
+        out.as_of = QDateTime::currentMSecsSinceEpoch();
+        out.trained_at = out.as_of;
+        auto published = EdgePredictionModelRepository::instance().publish_model_output(out);
+        if (published.is_err()) {
+            result.insert(QStringLiteral("publish_error"), QString::fromStdString(published.error()));
+        } else {
+            result.insert(QStringLiteral("published"), true);
+            result.insert(QStringLiteral("model_output"), edge_prediction_model_output_to_json(published.value()));
+        }
+    }
+    if (journal) {
+        auto inserted = edge_journal_insert_chronos_forecast(result, journal_source, min_journal_edge_bps);
+        if (inserted.is_err()) {
+            result.insert(QStringLiteral("journal_error"), QString::fromStdString(inserted.error()));
+        } else {
+            result.insert(QStringLiteral("journaled"), true);
+            result.insert(QStringLiteral("journal_id"), inserted.value());
+            result.insert(QStringLiteral("journal_source"), journal_source);
+            result.insert(QStringLiteral("min_journal_edge_bps"), min_journal_edge_bps);
+        }
+    }
+    return edge_emit_chronos_forecast(opts, result);
+}
+
+static int edge_chronos2_equity_command(const GlobalOpts& opts, QStringList args) {
+    QString mode = QStringLiteral("forecast");
+    if (!args.isEmpty()) {
+        const QString maybe = args.first().trimmed().toLower();
+        if (maybe == QStringLiteral("forecast") || maybe == QStringLiteral("predict"))
+            mode = args.takeFirst().trimmed().toLower();
+    }
+
+    QString horizon_raw;
+    QString limit_raw;
+    QString timeout_raw;
+    QString model;
+    QString device;
+    QString journal_source;
+    QString journal_edge_raw;
+    QString period;
+    QString interval;
+    QString exchange;
+    const bool publish = take_bool_flag(args, QStringLiteral("--publish"));
+    const bool journal = take_bool_flag(args, QStringLiteral("--journal"));
+    const bool mock = take_bool_flag(args, QStringLiteral("--mock"));
+    const bool no_fetch = take_bool_flag(args, QStringLiteral("--no-fetch"));
+    if (!take_string_option(args, QStringLiteral("--horizon"), horizon_raw) ||
+        !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--context-limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--timeout-ms"), timeout_raw) ||
+        !take_string_option(args, QStringLiteral("--model"), model) ||
+        !take_string_option(args, QStringLiteral("--device"), device) ||
+        !take_string_option(args, QStringLiteral("--journal-source"), journal_source) ||
+        !take_string_option(args, QStringLiteral("--min-journal-edge-bps"), journal_edge_raw) ||
+        !take_string_option(args, QStringLiteral("--period"), period) ||
+        !take_string_option(args, QStringLiteral("--interval"), interval) ||
+        !take_string_option(args, QStringLiteral("--exchange"), exchange))
+        return 2;
+    if (mode != QStringLiteral("forecast") || args.size() > 1) {
+        std::fprintf(stderr, "usage: edge chronos2 equity [AAPL] [--horizon 1d|1h] [--period 2y] [--journal] [--publish] [--mock]\n");
+        return 2;
+    }
+
+    const QString symbol = args.isEmpty() ? QStringLiteral("AAPL") : args.takeFirst().trimmed().toUpper();
+    if (symbol.isEmpty()) {
+        std::fprintf(stderr, "usage: edge chronos2 equity [AAPL] [--horizon 1d|1h] [--period 2y] [--journal]\n");
+        return 2;
+    }
+    if (horizon_raw.trimmed().isEmpty())
+        horizon_raw = QStringLiteral("1d");
+    const QString horizon = edge_normalize_chronos_horizon(horizon_raw);
+    if (horizon.isEmpty() || (horizon != QLatin1String("1d") && horizon != QLatin1String("1h"))) {
+        std::fprintf(stderr, "--horizon for equities must be 1d or 1h for this pass\n");
+        return 2;
+    }
+    if (period.trimmed().isEmpty())
+        period = horizon == QLatin1String("1d") ? QStringLiteral("2y") : QStringLiteral("60d");
+    if (interval.trimmed().isEmpty())
+        interval = horizon == QLatin1String("1d") ? QStringLiteral("1d") : QStringLiteral("1h");
+    if (horizon == QLatin1String("1h") && (interval == QLatin1String("1d") || interval == QLatin1String("1wk"))) {
+        std::fprintf(stderr, "1h equity Chronos needs intraday --interval 1h/60m data, not daily candles\n");
+        return 2;
+    }
+    int limit = 4096;
+    if (!limit_raw.isEmpty()) {
+        bool ok = false;
+        limit = limit_raw.toInt(&ok);
+        if (!ok || limit < 50 || limit > 100000) {
+            std::fprintf(stderr, "--context-limit must be 50..100000\n");
+            return 2;
+        }
+    }
+    int timeout_ms = mock ? 15000 : 180000;
+    if (!timeout_raw.isEmpty()) {
+        bool ok = false;
+        timeout_ms = timeout_raw.toInt(&ok);
+        if (!ok || timeout_ms < 1000 || timeout_ms > 600000) {
+            std::fprintf(stderr, "--timeout-ms must be 1000..600000\n");
+            return 2;
+        }
+    }
+    if (model.trimmed().isEmpty())
+        model = QStringLiteral("amazon/chronos-2");
+    if (device.trimmed().isEmpty())
+        device = QStringLiteral("auto");
+    if (journal_source.trimmed().isEmpty())
+        journal_source = QStringLiteral("chronos2-equity-forecast");
+    double min_journal_edge_bps = horizon == QLatin1String("1d") ? 50.0 : 25.0;
+    if (!edge_parse_bps_text(journal_edge_raw, min_journal_edge_bps, "--min-journal-edge-bps"))
+        return 2;
+
+    QString data_source;
+    QJsonArray candles = edge_equity_candles_from_historify(symbol, exchange, interval, limit, &data_source);
+    QString fetch_error;
+    if (candles.size() < 50 && !no_fetch) {
+        candles = edge_fetch_equity_yfinance_candles(symbol, period, interval, timeout_ms, &fetch_error);
+        if (!candles.isEmpty())
+            data_source = QStringLiteral("yfinance:%1:%2").arg(period, interval);
+    }
+    if (candles.size() < 50) {
+        QString error = QStringLiteral("not enough local/fetched equity candles for %1: have %2. Try `research history %1 --period 2y` or remove --no-fetch.")
+                            .arg(symbol)
+                            .arg(candles.size());
+        if (!fetch_error.isEmpty())
+            error += QStringLiteral(" Last fetch error: ") + fetch_error;
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(error));
+    }
+
+    QTemporaryDir dir;
+    if (!dir.isValid()) {
+        std::fprintf(stderr, "failed to create temporary Chronos workspace\n");
+        return 5;
+    }
+    const QString csv_path = QDir(dir.path()).filePath(QStringLiteral("equity_candles.csv"));
+    QString csv_error;
+    if (!edge_write_chronos_candle_csv(csv_path, candles, &csv_error))
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(csv_error));
+
+    const QString python = edge_find_chronos_python();
+    const QString script = edge_find_chronos_script();
+    if (python.isEmpty())
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(QStringLiteral("Chronos Python not found")));
+    if (script.isEmpty())
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(QStringLiteral("scripts/edge/chronos2_forecast.py not found")));
+
+    QStringList proc_args{script,
+                          QStringLiteral("--input"), csv_path,
+                          QStringLiteral("--symbol"), symbol,
+                          QStringLiteral("--horizon"), horizon,
+                          QStringLiteral("--model"), model,
+                          QStringLiteral("--device"), device,
+                          QStringLiteral("--context-limit"), QString::number(std::min(limit, 8192))};
+    if (mock)
+        proc_args << QStringLiteral("--mock");
+
+    QProcess p;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
+    p.setProcessEnvironment(env);
+    p.setWorkingDirectory(QFileInfo(script).absolutePath());
+    p.start(python, proc_args);
+    if (!p.waitForFinished(timeout_ms)) {
+        p.kill();
+        p.waitForFinished(1000);
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(QStringLiteral("Chronos equity forecast timed out")));
+    }
+
+    const QString stdout_text = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    const QString stderr_text = QString::fromUtf8(p.readAllStandardError()).trimmed();
+    QJsonParseError parse_error{};
+    QJsonDocument doc = QJsonDocument::fromJson(stdout_text.toUtf8(), &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !doc.isObject()) {
+        QString err = QStringLiteral("Chronos returned invalid JSON");
+        if (!stderr_text.isEmpty())
+            err += QStringLiteral(": ") + stderr_text.left(500);
+        return edge_emit_chronos_forecast(opts, edge_chronos_error_json(err));
+    }
+    QJsonObject result = doc.object();
+    result.insert(QStringLiteral("asset_class"), QStringLiteral("equity"));
+    result.insert(QStringLiteral("data_source"), data_source);
+    result.insert(QStringLiteral("period"), period);
+    result.insert(QStringLiteral("interval"), interval);
+    result.insert(QStringLiteral("profile"), opts.profile.isEmpty() ? QStringLiteral("default") : opts.profile);
+    result.insert(QStringLiteral("python"), python);
+    result.insert(QStringLiteral("script"), script);
+    if (!stderr_text.isEmpty())
+        result.insert(QStringLiteral("stderr"), stderr_text.right(1000));
+
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0 || !result.value(QStringLiteral("success")).toBool()) {
+        if (!result.contains(QStringLiteral("error")) && !stderr_text.isEmpty())
+            result.insert(QStringLiteral("error"), stderr_text);
+        return edge_emit_chronos_forecast(opts, result);
+    }
+
+    if (publish) {
+        EdgePredictionModelOutput out;
+        out.symbol = symbol;
+        out.horizon = horizon;
+        out.direction = result.value(QStringLiteral("direction")).toString(QStringLiteral("flat"));
+        out.readiness = result.value(QStringLiteral("readiness")).toString(QStringLiteral("paper_forecast"));
+        out.source = QStringLiteral("chronos2-equity");
+        out.probability = result.value(QStringLiteral("probability_up")).toDouble(0.5);
+        out.confidence = result.value(QStringLiteral("confidence_score")).toDouble(0.0);
+        out.calibration_score = 0.0;
+        out.sample_count = result.value(QStringLiteral("sample_count")).toInt(candles.size());
+        out.as_of = QDateTime::currentMSecsSinceEpoch();
+        out.trained_at = out.as_of;
+        auto published = EdgePredictionModelRepository::instance().publish_model_output(out);
+        if (published.is_err()) {
+            result.insert(QStringLiteral("publish_error"), QString::fromStdString(published.error()));
+        } else {
+            result.insert(QStringLiteral("published"), true);
+            result.insert(QStringLiteral("model_output"), edge_prediction_model_output_to_json(published.value()));
+        }
+    }
+    if (journal) {
+        auto inserted = edge_journal_insert_chronos_forecast(
+            result,
+            journal_source,
+            min_journal_edge_bps,
+            QStringLiteral("chronos2_equity"),
+            symbol,
+            QStringLiteral("equity"));
+        if (inserted.is_err()) {
+            result.insert(QStringLiteral("journal_error"), QString::fromStdString(inserted.error()));
+        } else {
+            result.insert(QStringLiteral("journaled"), true);
+            result.insert(QStringLiteral("journal_id"), inserted.value());
+            result.insert(QStringLiteral("journal_source"), journal_source);
+            result.insert(QStringLiteral("min_journal_edge_bps"), min_journal_edge_bps);
+        }
+    }
+    return edge_emit_chronos_forecast(opts, result);
 }
 
 static int edge_probability_command(const GlobalOpts& opts, QStringList args) {
@@ -19890,6 +20782,16 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
         return edge_model_command(opts, args);
     }
 
+    if (sub == "chronos2-equity" || sub == "chronos-equity" ||
+        sub == "equity-chronos" || sub == "stock-chronos") {
+        return edge_chronos2_equity_command(opts, args);
+    }
+
+    if (sub == "chronos2" || sub == "chronos-2" || sub == "chronos" ||
+        sub == "forecast-book") {
+        return edge_chronos2_command(opts, args);
+    }
+
     if (sub == "probability" || sub == "prob" || sub == "predict") {
         return edge_probability_command(opts, args);
     }
@@ -19919,6 +20821,11 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
     if (sub == "decision-cockpit" || sub == "trade-cockpit" ||
         sub == "combined-cockpit" || sub == "signal-cockpit") {
         return edge_decision_cockpit_command(opts, args);
+    }
+
+    if (sub == "equity-cockpit" || sub == "stock-cockpit" ||
+        sub == "equity-decision-cockpit") {
+        return edge_equity_cockpit_command(opts, args);
     }
 
     if (sub == "context" || sub == "public-context" || sub == "evidence-context" ||
@@ -20066,7 +20973,7 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
         return emit_mutation_body(opts, mutation_body(QStringLiteral("Edge idea removed"), QJsonObject{{"id", id}}));
     }
 
-    std::fprintf(stderr, "usage: edge evaluate|microstructure|crypto-hourly|add|list|show|update|close|remove\n");
+    std::fprintf(stderr, "usage: edge evaluate|microstructure|crypto-hourly|chronos2|chronos2-equity|equity-cockpit|add|list|show|update|close|remove\n");
     return 2;
 }
 

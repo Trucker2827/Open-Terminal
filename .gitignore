@@ -47,6 +47,7 @@ __pycache__/
 *.pyd
 *.egg-info/
 .venv/
+openmarketterminal-qt/.venv-chronos/
 venv/
 .pdm-python
 .pdm-build
@@ -94,6 +95,7 @@ logs/
 *.pickle
 *.model
 *.weights
+*.safetensors
 
 # ── Archives ─────────────────────────────────────────────────
 *.zip
