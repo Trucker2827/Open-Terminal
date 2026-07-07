@@ -4581,12 +4581,11 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
               QStringLiteral("--target-bps"), QStringLiteral("100"),
               QStringLiteral("--stop-bps"), QStringLiteral("45")},
              300, 60},
-            {QStringLiteral("kalshi-decisions"), QStringLiteral("Strategy sandbox Kalshi decisions"),
-             QStringLiteral("Produce Kalshi scan decision rows for the prediction strategy book."),
-             {QStringLiteral("edge"), QStringLiteral("journal-kalshi-scan"),
-              QStringLiteral("--limit"), QStringLiteral("50"),
-              QStringLiteral("--timeout-ms"), QStringLiteral("20000")},
-             300, 120},
+            // kalshi-decisions producer removed 2026-07-07 alongside the kalshi
+            // books' retirement: the journal-kalshi-scan producer is a classifier
+            // with no pricing model (gate rejects 100%), so it only journals dead
+            // reject rows no book consumes. install-jobs' reconcile disables the
+            // already-running copy.
             // Real-horizon reshape (task 3): the chronos2_5m book is retired
             // (no venue / no edge, SandboxRegistry.cpp's seed no longer
             // registers it) -- its forecast producer job is removed too, so

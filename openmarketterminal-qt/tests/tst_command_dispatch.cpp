@@ -679,7 +679,7 @@ private slots:
             QStringList{"--json", "sandbox", "install-jobs"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray jobs = out.value("jobs").toArray();
-        QVERIFY2(jobs.size() >= 12, "install-jobs must create the full sandbox proof stack");
+        QVERIFY2(jobs.size() >= 11, "install-jobs must create the full sandbox proof stack");
         bool has_tick = false;
         bool has_score = false;
         bool has_btc_ticks = false;
