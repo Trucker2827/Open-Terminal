@@ -379,6 +379,34 @@ private slots:
         });
         QVERIFY(out2.contains(QStringLiteral("\"order\"")));
     }
+    void automation_stop_disarms_live_guard() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        using namespace openmarketterminal::cli::automation;
+        QVERIFY(write_json_object(live_guard_path("default"),
+                                  QJsonObject{{"enabled", true},
+                                              {"expires_at", QDateTime::currentDateTimeUtc().addSecs(3600).toString(Qt::ISODateWithMs)}},
+                                  nullptr));
+        int rc = -1;
+        const QString out = capture_stdout([&]() {
+            rc = dispatch({QStringLiteral("--json"), QStringLiteral("automation"), QStringLiteral("stop")});
+            return rc;
+        });
+        QCOMPARE(rc, 0);
+        QVERIFY(out.contains(QStringLiteral("\"live_guard_disarmed\":true")));
+        QCOMPARE(read_json_object(live_guard_path("default")).value("enabled").toBool(), false);
+    }
+    void automation_status_shows_guard() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        using namespace openmarketterminal::cli::automation;
+        QVERIFY(write_json_object(live_guard_path("default"),
+                                  QJsonObject{{"enabled", true}}, nullptr));
+        const QString out = capture_stdout([&]() {
+            return dispatch({QStringLiteral("--json"), QStringLiteral("automation"), QStringLiteral("status")});
+        });
+        QVERIFY2(out.contains(QStringLiteral("\"live_guard\"")), "status must surface the live guard");
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

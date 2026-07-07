@@ -4081,11 +4081,13 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
         const QJsonObject cfg = read_json_object_file(daemon_scalp_config_path(profile));
         const QJsonObject state = read_json_object_file(daemon_scalp_state_path(profile));
         const QJsonObject daemon = daemon_status_object(profile);
+        const QJsonObject guard = automation::read_json_object(automation::live_guard_path(profile));
         if (json) {
             std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile},
                                                           {"config", cfg},
                                                           {"state", state},
-                                                          {"daemon", daemon}})
+                                                          {"daemon", daemon},
+                                                          {"live_guard", guard}})
                                     .toJson(QJsonDocument::Compact)
                                     .constData());
         } else {
@@ -4097,6 +4099,7 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
                         effective_cfg.value("enabled").toBool() ? "enabled" : "disabled",
                         daemon.value("running").toBool() ? "running" : "not running",
                         qUtf8Printable(daemon.value("mode").toString()));
+            std::printf("live guard    %s\n", guard.value("enabled").toBool() ? "ARMED" : "off");
             std::printf("cadence       %dms paper=yes heartbeat=%s\n",
                         effective_cfg.value("cadence_ms").toInt(),
                         qUtf8Printable(state.value("heartbeat_at").toString("-")));
@@ -4308,16 +4311,34 @@ int daemon_automation_stop_command(const QString& profile, bool json) {
     const int jobs_rc = disable_automation_247_jobs(profile, &disabled_jobs);
     if (jobs_rc != 0)
         return jobs_rc;
+
+    QJsonObject guard = automation::read_json_object(automation::live_guard_path(profile));
+    const bool was_armed = guard.value(QStringLiteral("enabled")).toBool();
+    if (was_armed) {
+        guard[QStringLiteral("enabled")] = false;
+        guard[QStringLiteral("disarmed_at")] = now_utc();
+        guard[QStringLiteral("disarmed_by")] = QStringLiteral("automation stop");
+        QString guard_error;
+        if (!automation::write_json_object(automation::live_guard_path(profile), guard, &guard_error)) {
+            std::fprintf(stderr, "guard disarm failed: %s\n", qUtf8Printable(guard_error));
+            return 7;
+        }
+    }
+
     const QJsonObject out{{"profile", profile},
                           {"config", cfg},
                           {"forever_jobs_disabled", disabled_jobs},
-                          {"jobs", automation_247_jobs_for_profile(profile)}};
+                          {"jobs", automation_247_jobs_for_profile(profile)},
+                          {"live_guard_disarmed", was_armed},
+                          {"live_guard", guard}};
     if (json) {
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
     } else {
         std::printf("automation    stopped\n");
         std::printf("scanner       disabled\n");
         std::printf("forever jobs  disabled=%d\n", disabled_jobs);
+        if (was_armed)
+            std::printf("live guard    disarmed\n");
     }
     return 0;
 }
