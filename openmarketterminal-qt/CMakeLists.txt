@@ -1366,6 +1366,9 @@ set(SERVICE_SOURCES
     src/services/notifications/providers/PagerDutyProvider.cpp
     src/services/notifications/providers/OpsgenieProvider.cpp
     src/services/notifications/providers/SMSProvider.cpp
+
+    # Strategy Sandbox — immutable, param-hashed strategy books (Task 2).
+    src/services/sandbox/SandboxRegistry.cpp
 )
 
 # UI framework
