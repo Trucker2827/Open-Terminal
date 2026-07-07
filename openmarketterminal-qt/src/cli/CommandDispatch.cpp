@@ -18007,12 +18007,31 @@ static Result<QString> edge_journal_insert_chronos_forecast(
     return Result<QString>::ok(id);
 }
 
+// Insufficient price history is a benign "waiting for data" condition, not a
+// producer failure — the daemon should not count it against a job's fail_count.
+static bool edge_chronos_waiting_for_data(const QString& error) {
+    const QString e = error.toLower();
+    return e.contains(QStringLiteral("not enough")) &&
+           (e.contains(QStringLiteral("history")) || e.contains(QStringLiteral("ticks")) ||
+            e.contains(QStringLiteral("regular")));
+}
+
 static int edge_emit_chronos_forecast(const GlobalOpts& opts, QJsonObject result) {
+    const bool success = result.value(QStringLiteral("success")).toBool();
+    const bool waiting = !success && edge_chronos_waiting_for_data(
+                                         result.value(QStringLiteral("error")).toString());
+    if (waiting)
+        result.insert(QStringLiteral("status"), QStringLiteral("waiting_for_data"));
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(result).toJson(QJsonDocument::Compact).constData());
-        return result.value(QStringLiteral("success")).toBool() ? 0 : 5;
+        return success || waiting ? 0 : 5;
     }
-    if (!result.value(QStringLiteral("success")).toBool()) {
+    if (!success) {
+        if (waiting) {
+            std::fprintf(stderr, "waiting for data  %s\n",
+                         qUtf8Printable(result.value(QStringLiteral("error")).toString()));
+            return 0;
+        }
         std::fprintf(stderr, "%s\n", qUtf8Printable(result.value(QStringLiteral("error")).toString(QStringLiteral("Chronos forecast failed"))));
         const QString install = result.value(QStringLiteral("install")).toString();
         if (!install.isEmpty())
