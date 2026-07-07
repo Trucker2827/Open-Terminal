@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -101,6 +102,58 @@ class TstAutomationState : public QObject {
         QVERIFY(append_jsonl(orders_path("default"), QJsonObject{{"a", 1}}, &err));
         const QByteArray whole = read_tail(orders_path("default"), 512 * 1024);
         QCOMPARE(whole.count('\n'), 1);
+    }
+    void consumed_candidate_is_skipped() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        const QString ts = QString::number(QDateTime::currentMSecsSinceEpoch());
+        const QJsonObject cand{{"symbol", "BTC-USD"},
+                               {"verdict", "PAPER TRADE CANDIDATE"},
+                               {"action", "PAPER_LIMIT_BUY_ONLY"},
+                               {"reference_price", 60000.0},
+                               {"ts_ms", ts}};
+        QString err;
+        QVERIFY(append_jsonl(decisions_path("default"), cand, &err));
+        QCOMPARE(candidate_key(cand), QStringLiteral("BTC-USD|") + ts);
+        QVERIFY(!latest_candidate("default", "BTC-USD", 60, &err).isEmpty());
+        QVERIFY(mark_consumed("default", candidate_key(cand), &err));
+        QVERIFY(is_consumed("default", candidate_key(cand)));
+        QVERIFY2(latest_candidate("default", "BTC-USD", 60, &err).isEmpty(),
+                 "consumed candidate must not be returned again");
+    }
+    void spot_key_prefers_journal_id() {
+        const QJsonObject spot{{"id", "abc-123"}, {"symbol", "BTC-USD"}, {"ts_ms", "1"}};
+        QCOMPARE(candidate_key(spot), QStringLiteral("abc-123"));
+    }
+    void record_live_attempt_is_authoritative_over_scan() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        // Explicitly empty orders jsonl -- a tail-scan-only implementation
+        // would report 0 here no matter how chatty (or empty) the journal is.
+        QFile orders(orders_path("default"));
+        QVERIFY(orders.open(QIODevice::WriteOnly));
+        orders.close();
+        QVERIFY(record_live_attempt("default", &err));
+        QVERIFY(record_live_attempt("default", &err));
+        QCOMPARE(submitted_today_count("default"), 2);
+    }
+    void record_live_attempt_resets_on_new_day_and_scan_falls_back_when_stale() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        const QString yesterday = QDateTime::currentDateTimeUtc().addDays(-1).date().toString(Qt::ISODate);
+        QVERIFY(write_json_object(daily_orders_path("default"),
+                                  QJsonObject{{"date", yesterday}, {"count", 5}}, &err));
+        const QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        QVERIFY(append_jsonl(orders_path("default"), QJsonObject{{"ts", ts}, {"submitted", true}}, &err));
+        QCOMPARE(submitted_today_count("default"), 1);  // counter is stale (yesterday) -> falls back to tail scan
+        QVERIFY(record_live_attempt("default", &err));
+        const QJsonObject counter = read_json_object(daily_orders_path("default"));
+        QCOMPARE(counter.value("count").toInt(), 1);
+        QCOMPARE(counter.value("date").toString(),
+                 QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate));
+        QCOMPARE(submitted_today_count("default"), 1);  // now authoritative via the fresh counter
     }
 };
 QTEST_GUILESS_MAIN(TstAutomationState)

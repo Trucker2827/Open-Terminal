@@ -30,6 +30,9 @@ QString orders_path(const QString& profile) {
 QString consumed_path(const QString& profile) {
     return state_dir(profile) + QStringLiteral("/automation_consumed.json");
 }
+QString daily_orders_path(const QString& profile) {
+    return state_dir(profile) + QStringLiteral("/automation_daily_orders.json");
+}
 
 QJsonObject read_json_object(const QString& path) {
     QFile f(path);
@@ -82,6 +85,34 @@ QByteArray read_tail(const QString& path, qint64 max_bytes) {
     return f.readAll();
 }
 
+QString candidate_key(const QJsonObject& decision) {
+    const QString id = decision.value(QStringLiteral("id")).toString();
+    if (!id.isEmpty())
+        return id;
+    return decision.value(QStringLiteral("symbol")).toString().trimmed().toUpper() +
+           QLatin1Char('|') + decision.value(QStringLiteral("ts_ms")).toString();
+}
+
+bool is_consumed(const QString& profile, const QString& key) {
+    return read_json_object(consumed_path(profile))
+        .value(QStringLiteral("keys")).toObject().contains(key);
+}
+
+bool mark_consumed(const QString& profile, const QString& key, QString* error) {
+    QJsonObject doc = read_json_object(consumed_path(profile));
+    QJsonObject keys = doc.value(QStringLiteral("keys")).toObject();
+    const QDateTime cutoff = QDateTime::currentDateTimeUtc().addSecs(-48 * 3600);
+    QJsonObject pruned;
+    for (auto it = keys.begin(); it != keys.end(); ++it) {
+        const QDateTime ts = QDateTime::fromString(it.value().toString(), Qt::ISODateWithMs);
+        if (ts.isValid() && ts >= cutoff)
+            pruned.insert(it.key(), it.value());
+    }
+    pruned.insert(key, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    doc[QStringLiteral("keys")] = pruned;
+    return write_json_object(consumed_path(profile), doc, error);
+}
+
 QJsonObject latest_candidate(const QString& profile, const QString& symbol_filter,
                              int max_age_sec, QString* error) {
     const QString path = decisions_path(profile);
@@ -116,6 +147,8 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
         const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
         if (!ok || ts_ms <= 0 || now_ms - ts_ms > static_cast<qint64>(max_age_sec) * 1000)
             continue;
+        if (is_consumed(profile, candidate_key(d)))
+            continue;
         return d;
     }
     if (error) *error = QStringLiteral("no fresh approved paper candidate found");
@@ -124,6 +157,17 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
 
 int submitted_today_count(const QString& profile) {
     const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
+    // The dedicated daily counter is authoritative when it exists and is
+    // fresh (dated today): unlike the tail scan below, it is never blind to
+    // entries that scrolled out of the 512 KB window on a chatty journal.
+    // Absent or stale (previous day's) counters fall back to the legacy
+    // tail scan so behavior is unchanged for profiles that predate Task 4.
+    const QString counter_path = daily_orders_path(profile);
+    if (QFile::exists(counter_path)) {
+        const QJsonObject counter = read_json_object(counter_path);
+        if (counter.value(QStringLiteral("date")).toString() == today)
+            return counter.value(QStringLiteral("count")).toInt();
+    }
     int count = 0;
     for (const QByteArray& raw : read_tail(orders_path(profile), kTailBytes).split('\n')) {
         const QByteArray line = raw.trimmed();
@@ -140,6 +184,18 @@ int submitted_today_count(const QString& profile) {
             ++count;
     }
     return count;
+}
+
+bool record_live_attempt(const QString& profile, QString* error) {
+    const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
+    const QString path = daily_orders_path(profile);
+    QJsonObject doc = read_json_object(path);
+    int count = doc.value(QStringLiteral("date")).toString() == today
+                    ? doc.value(QStringLiteral("count")).toInt()
+                    : 0;
+    doc[QStringLiteral("date")] = today;
+    doc[QStringLiteral("count")] = ++count;
+    return write_json_object(path, doc, error);
 }
 
 }  // namespace openmarketterminal::cli::automation

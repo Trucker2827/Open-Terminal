@@ -12,6 +12,7 @@ QString live_guard_path(const QString& profile);
 QString decisions_path(const QString& profile);
 QString orders_path(const QString& profile);
 QString consumed_path(const QString& profile);
+QString daily_orders_path(const QString& profile);
 
 QJsonObject read_json_object(const QString& path);
 bool write_json_object(const QString& path, const QJsonObject& o, QString* error = nullptr);
@@ -23,8 +24,19 @@ bool append_jsonl(const QString& path, const QJsonObject& o, QString* error = nu
 inline constexpr qint64 kTailBytes = 512 * 1024;
 QByteArray read_tail(const QString& path, qint64 max_bytes = kTailBytes);
 
+// Candidate dedup: key is the spot journal row's "id" if present, else
+// "<SYMBOL>|<ts_ms>" (scalp candidates are journaled at most once per
+// second per symbol, so the pair is unique).
+QString candidate_key(const QJsonObject& decision);
+bool is_consumed(const QString& profile, const QString& key);
+bool mark_consumed(const QString& profile, const QString& key, QString* error = nullptr);
+
 QJsonObject latest_candidate(const QString& profile, const QString& symbol_filter,
                              int max_age_sec, QString* error = nullptr);
 int submitted_today_count(const QString& profile);
+// Dedicated daily live-order counter (authoritative over the orders jsonl
+// tail scan, which can undercount when the journal is chatty). Records a
+// live submission *attempt*, matching mark_consumed's conservative timing.
+bool record_live_attempt(const QString& profile, QString* error = nullptr);
 
 }  // namespace openmarketterminal::cli::automation

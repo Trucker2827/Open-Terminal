@@ -348,6 +348,37 @@ private slots:
         QVERIFY2(QFile::exists(botlab_guard), "guard must land in the armed profile");
         QVERIFY2(!QFile::exists(default_guard), "guard must NOT leak into the default profile");
     }
+    void automation_dry_run_does_not_consume() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        using namespace openmarketterminal::cli::automation;
+        const QJsonObject cand{{"symbol", "BTC-USD"},
+                               {"verdict", "PAPER TRADE CANDIDATE"},
+                               {"action", "PAPER_LIMIT_BUY_ONLY"},
+                               {"reference_price", 60000.0},
+                               {"ts_ms", QString::number(QDateTime::currentMSecsSinceEpoch())}};
+        QString err;
+        QVERIFY(append_jsonl(decisions_path("default"), cand, &err));
+        int rc = -1;
+        const QString out = capture_stdout([&]() {
+            rc = dispatch({QStringLiteral("--json"), QStringLiteral("automation"),
+                           QStringLiteral("execute-next"), QStringLiteral("--symbol"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("--dry-run")});
+            return rc;
+        });
+        QCOMPARE(rc, 0);
+        QVERIFY(out.contains(QStringLiteral("\"dry_run\":true")));
+        QVERIFY2(!QFile::exists(consumed_path("default")), "dry-run must not consume");
+        QVERIFY2(!QFile::exists(daily_orders_path("default")),
+                 "dry-run must not create the daily live-order counter");
+        // second dry-run still finds the candidate
+        const QString out2 = capture_stdout([&]() {
+            return dispatch({QStringLiteral("--json"), QStringLiteral("automation"),
+                             QStringLiteral("execute-next"), QStringLiteral("--symbol"),
+                             QStringLiteral("BTC-USD"), QStringLiteral("--dry-run")});
+        });
+        QVERIFY(out2.contains(QStringLiteral("\"order\"")));
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"
