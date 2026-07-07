@@ -17,12 +17,13 @@ namespace openmarketterminal::screens {
 
 class StrategyBuilderPanel;
 class StrategyListPanel;
+class SandboxBooksPanel;
 class ScannerPanel;
 class DeploymentDashboard;
 class UniverseScannerPanel;
 
-/// Algo Trading screen — 6-tab trading system builder.
-/// Tabs: Builder, My Strategies, Scanner, Alerts, Dashboard, Universe
+/// Algo Trading screen — strategy library plus paper proof books.
+/// Tabs: Builder, Library, Proof Books, Scanner, Alerts, Dashboard, Universe
 class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     Q_OBJECT
   public:
@@ -51,6 +52,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     QStackedWidget* content_stack_ = nullptr;
     StrategyBuilderPanel* builder_ = nullptr;
     StrategyListPanel* strategies_ = nullptr;
+    SandboxBooksPanel* proof_books_ = nullptr;
     ScannerPanel* scanner_ = nullptr;
     AlertsPanel* alerts_ = nullptr;
     DeploymentDashboard* dashboard_ = nullptr;

@@ -7,6 +7,7 @@
 #include "screens/algo_trading/AlertsPanel.h"
 #include "screens/algo_trading/DeploymentDashboard.h"
 #include "screens/algo_trading/ScannerPanel.h"
+#include "screens/algo_trading/SandboxBooksPanel.h"
 #include "screens/algo_trading/StrategyBuilderPanel.h"
 #include "screens/algo_trading/StrategyListPanel.h"
 #include "screens/algo_trading/UniverseScannerPanel.h"
@@ -27,7 +28,7 @@ AlgoTradingScreen::AlgoTradingScreen(QWidget* parent) : QWidget(parent) {
     poll_timer_ = new QTimer(this);
     poll_timer_->setInterval(5000);
     connect(poll_timer_, &QTimer::timeout, this, [this]() {
-        if (active_tab_ == 4)
+        if (active_tab_ == 5)
             openmarketterminal::algo::AlgoEngine::instance().list_deployments();
     });
 
@@ -69,6 +70,7 @@ void AlgoTradingScreen::build_ui() {
     content_stack_ = new QStackedWidget(this);
     builder_ = new StrategyBuilderPanel(this);
     strategies_ = new StrategyListPanel(this);
+    proof_books_ = new SandboxBooksPanel(this);
     scanner_ = new ScannerPanel(this);
     alerts_ = new AlertsPanel(this);
     dashboard_ = new DeploymentDashboard(this);
@@ -76,10 +78,11 @@ void AlgoTradingScreen::build_ui() {
 
     content_stack_->addWidget(builder_);     // 0
     content_stack_->addWidget(strategies_);  // 1
-    content_stack_->addWidget(scanner_);     // 2
-    content_stack_->addWidget(alerts_);      // 3
-    content_stack_->addWidget(dashboard_);   // 4
-    content_stack_->addWidget(universe_);    // 5
+    content_stack_->addWidget(proof_books_); // 2
+    content_stack_->addWidget(scanner_);     // 3
+    content_stack_->addWidget(alerts_);      // 4
+    content_stack_->addWidget(dashboard_);   // 5
+    content_stack_->addWidget(universe_);    // 6
     root->addWidget(content_stack_, 1);
 
     // "Edit" in My Strategies opens the Builder (tab 0) pre-filled with that strategy.
@@ -101,13 +104,13 @@ void AlgoTradingScreen::build_ui() {
     connect(scanner_, &ScannerPanel::create_alert_requested, this,
             [this](const QJsonArray& conds, const QString& logic, const QStringList& syms,
                    const QString& tf, const QString& ds, const QString& acct) {
-                on_tab_changed(3); // ALERTS
+                on_tab_changed(4); // ALERTS
                 alerts_->prefill(conds, logic, syms, tf, ds, acct);
             });
 
-    // Deploying from the Builder jumps to the Dashboard (tab 4); on_tab_changed(4)
+    // Deploying from the Builder jumps to the Dashboard (tab 5); on_tab_changed(5)
     // refreshes list_deployments() so the just-persisted row shows immediately.
-    connect(builder_, &StrategyBuilderPanel::deployed, this, [this]() { on_tab_changed(4); });
+    connect(builder_, &StrategyBuilderPanel::deployed, this, [this]() { on_tab_changed(5); });
 
     root->addWidget(build_status_bar());
     setStyleSheet(QString("background:%1;").arg(ui::colors::BG_BASE()));
@@ -136,8 +139,8 @@ QWidget* AlgoTradingScreen::build_top_bar() {
     hl->addWidget(div);
 
     // Tab buttons
-    QStringList tabs   = {tr("BUILDER"), tr("MY STRATEGIES"), tr("SCANNER"), tr("ALERTS"), tr("DASHBOARD"), tr("UNIVERSE")};
-    QStringList colors = {"#FF6B35", "#00E5FF", "#FFC400", "#FF4081", "#00D66F", "#A78BFA"};
+    QStringList tabs   = {tr("BUILDER"), tr("LIBRARY"), tr("PROOF BOOKS"), tr("SCANNER"), tr("ALERTS"), tr("DASHBOARD"), tr("UNIVERSE")};
+    QStringList colors = {"#FF6B35", "#00E5FF", "#14B8A6", "#FFC400", "#FF4081", "#00D66F", "#A78BFA"};
 
     for (int i = 0; i < tabs.size(); ++i) {
         auto* btn = new QPushButton(tabs[i], bar);
@@ -206,12 +209,14 @@ void AlgoTradingScreen::on_tab_changed(int index) {
     // Refresh data when switching tabs
     if (index == 1)
         AlgoTradingService::instance().list_strategies();
-    if (index == 4)
+    if (index == 2 && proof_books_)
+        proof_books_->refresh();
+    if (index == 5)
         openmarketterminal::algo::AlgoEngine::instance().list_deployments();
 }
 
 void AlgoTradingScreen::update_tab_buttons() {
-    QStringList colors = {"#FF6B35", "#00E5FF", "#FFC400", "#FF4081", "#00D66F", "#A78BFA"};
+    QStringList colors = {"#FF6B35", "#00E5FF", "#14B8A6", "#FFC400", "#FF4081", "#00D66F", "#A78BFA"};
     for (int i = 0; i < tab_buttons_.size(); ++i) {
         bool active = (i == active_tab_);
         tab_buttons_[i]->setStyleSheet(
@@ -244,13 +249,14 @@ void AlgoTradingScreen::retranslateUi() {
     if (deploy_count_label_) deploy_count_label_->setText(tr("%1 LIVE").arg(active_deployments_));
 
     // Tab button labels — fixed order matches build_top_bar().
-    if (tab_buttons_.size() == 6) {
+    if (tab_buttons_.size() == 7) {
         tab_buttons_[0]->setText(tr("BUILDER"));
-        tab_buttons_[1]->setText(tr("MY STRATEGIES"));
-        tab_buttons_[2]->setText(tr("SCANNER"));
-        tab_buttons_[3]->setText(tr("ALERTS"));
-        tab_buttons_[4]->setText(tr("DASHBOARD"));
-        tab_buttons_[5]->setText(tr("UNIVERSE"));
+        tab_buttons_[1]->setText(tr("LIBRARY"));
+        tab_buttons_[2]->setText(tr("PROOF BOOKS"));
+        tab_buttons_[3]->setText(tr("SCANNER"));
+        tab_buttons_[4]->setText(tr("ALERTS"));
+        tab_buttons_[5]->setText(tr("DASHBOARD"));
+        tab_buttons_[6]->setText(tr("UNIVERSE"));
     }
 }
 

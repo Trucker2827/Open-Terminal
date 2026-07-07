@@ -1734,6 +1734,7 @@ set(SCREEN_SOURCES
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyBuilderPanel.cpp
     src/screens/algo_trading/StrategyListPanel.cpp
+    src/screens/algo_trading/SandboxBooksPanel.cpp
     src/screens/algo_trading/ScannerPanel.cpp
     src/screens/algo_trading/UniverseScannerPanel.cpp
     src/screens/algo_trading/AlertsPanel.cpp
@@ -1987,6 +1988,7 @@ set_source_files_properties(
     src/screens/algo_trading/AlertsPanel.cpp
     src/screens/algo_trading/StrategyBuilderPanel.cpp
     src/screens/algo_trading/StrategyListPanel.cpp
+    src/screens/algo_trading/SandboxBooksPanel.cpp
     src/screens/algo_trading/AlgoDeployDialog.cpp
     src/screens/alpha_arena/AlphaArenaScreen.cpp
     src/screens/alpha_arena/panels/LeaderboardPanel.cpp
