@@ -7648,9 +7648,17 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
         return sandbox_tick_command(opts);
     if (sub == "positions")
         return sandbox_positions_command(opts, args);
+    if (sub == "install-jobs" || sub == "remove-jobs") {
+        // Job manipulation is owned by the daemon's job store (ServeCommand.cpp),
+        // same as automation_command's fallback to daemon_command for its own
+        // daemon-managed subcommands.
+        QStringList daemon_args{QStringLiteral("sandbox"), sub};
+        daemon_args += args;
+        return daemon_command(opts.profile, opts.json, daemon_args);
+    }
     std::fprintf(stderr,
                  "usage: sandbox seed|list [--status S]|pause <id>|resume <id>|retire <id>|tick|"
-                 "positions [--open|--closed] [--limit N]\n");
+                 "positions [--open|--closed] [--limit N]|install-jobs|remove-jobs\n");
     return 2;
 }
 

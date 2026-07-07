@@ -59,6 +59,20 @@ bool write_json_object(const QString& path, const QJsonObject& o, QString* error
     return true;
 }
 
+StateLock::StateLock(const QString& profile, int timeout_ms)
+    : lock_(state_dir(profile) + QStringLiteral("/automation.lock")) {
+    locked_ = lock_.tryLock(timeout_ms);
+}
+
+StateLock::~StateLock() {
+    if (locked_)
+        lock_.unlock();
+}
+
+bool StateLock::locked() const {
+    return locked_;
+}
+
 bool append_jsonl(const QString& path, const QJsonObject& o, QString* error) {
     QDir().mkpath(QFileInfo(path).absolutePath());
     QFile f(path);
@@ -97,6 +111,24 @@ QByteArray read_tail(const QString& path, qint64 max_bytes) {
     return f.readAll();
 }
 
+// Reads the active file's last tail_bytes; when the active file is smaller
+// than tail_bytes (e.g. right after a rotation, Task 5), the remaining
+// budget is filled from the previous generation's tail (path + ".1") so a
+// row that rotated out just before the active file caught up does not fall
+// into the blind spot. The previous generation's lines are placed FIRST in
+// the returned buffer and the active file's LAST, so a newest-first
+// reverse scan of the result still visits the active file's rows before
+// the previous generation's -- the active file wins on ties. Shared by
+// latest_candidate (decisions jsonl) and submitted_today_scan (orders
+// jsonl) so the "just rotated" blind spot is closed identically for both.
+static QByteArray scan_buffer_with_prev(const QString& path, qint64 tail_bytes) {
+    const qint64 active_size = QFileInfo(path).size();
+    const QByteArray active_tail = read_tail(path, tail_bytes);
+    if (active_size < tail_bytes)
+        return read_tail(path + QStringLiteral(".1"), tail_bytes - active_size) + active_tail;
+    return active_tail;
+}
+
 QString candidate_key(const QJsonObject& decision) {
     const QString id = decision.value(QStringLiteral("id")).toString();
     if (!id.isEmpty())
@@ -110,7 +142,12 @@ bool is_consumed(const QString& profile, const QString& key) {
         .value(QStringLiteral("keys")).toObject().contains(key);
 }
 
-bool mark_consumed(const QString& profile, const QString& key, QString* error) {
+bool mark_consumed(const QString& profile, const QString& key, QString* error, int lock_timeout_ms) {
+    StateLock lock(profile, lock_timeout_ms);
+    if (!lock.locked()) {
+        if (error) *error = QStringLiteral("state lock busy");
+        return false;
+    }
     QJsonObject doc = read_json_object(consumed_path(profile));
     QJsonObject keys = doc.value(QStringLiteral("keys")).toObject();
     const QDateTime cutoff = QDateTime::currentDateTimeUtc().addSecs(-48 * 3600);
@@ -146,11 +183,7 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
     // window (active + one prior generation) remain invisible, but since
     // candidates expire after <= max_age_sec (<= 3600s) anyway, that bound
     // is acceptable.
-    const qint64 active_size = QFileInfo(path).size();
-    const QByteArray active_tail = read_tail(path, kTailBytes);
-    QByteArray scan_buffer = active_tail;
-    if (active_size < kTailBytes)
-        scan_buffer = read_tail(prev_path, kTailBytes - active_size) + active_tail;
+    const QByteArray scan_buffer = scan_buffer_with_prev(path, kTailBytes);
     const QList<QByteArray> lines = scan_buffer.split('\n');
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
     const QString filter = symbol_filter.trimmed().toUpper();
@@ -187,11 +220,11 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
 
 // Legacy tail scan of the orders jsonl: counts submitted orders whose "ts"
 // falls on the given UTC day. Blind to lines that scrolled out of the
-// kTailBytes window, so it only serves as a fallback/seed for the dedicated
-// daily counter file.
+// combined active + previous-generation window, so it only serves as a
+// fallback/seed for the dedicated daily counter file.
 static int submitted_today_scan(const QString& profile, const QString& today) {
     int count = 0;
-    for (const QByteArray& raw : read_tail(orders_path(profile), kTailBytes).split('\n')) {
+    for (const QByteArray& raw : scan_buffer_with_prev(orders_path(profile), kTailBytes).split('\n')) {
         const QByteArray line = raw.trimmed();
         if (line.isEmpty())
             continue;
@@ -248,7 +281,12 @@ int submitted_today_count(const QString& profile) {
     return submitted_today_scan(profile, today);
 }
 
-bool record_live_attempt(const QString& profile, QString* error) {
+bool record_live_attempt(const QString& profile, QString* error, int lock_timeout_ms) {
+    StateLock lock(profile, lock_timeout_ms);
+    if (!lock.locked()) {
+        if (error) *error = QStringLiteral("state lock busy");
+        return false;
+    }
     const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
     const QString path = daily_orders_path(profile);
     QJsonObject doc = read_json_object(path);

@@ -1,6 +1,7 @@
 #pragma once
 #include <QByteArray>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QString>
 
 namespace openmarketterminal::cli::automation {
@@ -17,6 +18,26 @@ QString daily_orders_path(const QString& profile);
 QJsonObject read_json_object(const QString& path);
 bool write_json_object(const QString& path, const QJsonObject& o, QString* error = nullptr);
 bool append_jsonl(const QString& path, const QJsonObject& o, QString* error = nullptr);
+
+// Cross-process mutual exclusion for the shared automation state files (the
+// consumed-keys map and the daily order counter both do read-modify-write on
+// a single JSON file; the daemon's jobs file does the same). Wraps a
+// QLockFile at state_dir(profile) + "/automation.lock" with a bounded
+// tryLock so a stuck holder cannot wedge writers forever. locked() reports
+// whether the constructor's tryLock succeeded; callers must check it before
+// trusting the critical section is exclusive.
+class StateLock {
+  public:
+    explicit StateLock(const QString& profile, int timeout_ms = 5000);
+    ~StateLock();
+    StateLock(const StateLock&) = delete;
+    StateLock& operator=(const StateLock&) = delete;
+    bool locked() const;
+
+  private:
+    QLockFile lock_;
+    bool locked_ = false;
+};
 
 // Rotating jsonl append: when the file reaches max_bytes, the previous
 // generation (path + ".1") is dropped and the current file is renamed into
@@ -38,7 +59,11 @@ QByteArray read_tail(const QString& path, qint64 max_bytes = kTailBytes);
 // second per symbol, so the pair is unique).
 QString candidate_key(const QJsonObject& decision);
 bool is_consumed(const QString& profile, const QString& key);
-bool mark_consumed(const QString& profile, const QString& key, QString* error = nullptr);
+// Takes StateLock before the read-modify-write; on lock contention returns
+// false with error "state lock busy" and leaves the file untouched.
+// lock_timeout_ms is a test seam (production callers use the 5s default).
+bool mark_consumed(const QString& profile, const QString& key, QString* error = nullptr,
+                   int lock_timeout_ms = 5000);
 
 QJsonObject latest_candidate(const QString& profile, const QString& symbol_filter,
                              int max_age_sec, QString* error = nullptr);
@@ -59,6 +84,7 @@ int submitted_today_count(const QString& profile);
 // Dedicated daily live-order counter (authoritative over the orders jsonl
 // tail scan, which can undercount when the journal is chatty). Records a
 // live submission *attempt*, matching mark_consumed's conservative timing.
-bool record_live_attempt(const QString& profile, QString* error = nullptr);
+// Same StateLock/fail-closed contract as mark_consumed.
+bool record_live_attempt(const QString& profile, QString* error = nullptr, int lock_timeout_ms = 5000);
 
 }  // namespace openmarketterminal::cli::automation

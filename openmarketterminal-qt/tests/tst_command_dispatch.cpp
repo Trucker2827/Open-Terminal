@@ -646,6 +646,60 @@ private slots:
         }
         QVERIFY2(found, "the closed null-pnl fixture row must be returned by --closed");
     }
+
+    // --- Task 7: `sandbox install-jobs` / `remove-jobs` ---------------------
+    void sandbox_install_jobs_creates_managed_jobs() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "install-jobs"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonArray jobs = out.value("jobs").toArray();
+        QCOMPARE(jobs.size(), 2);
+        bool has_tick = false, has_score = false;
+        for (const QJsonValue& v : jobs) {
+            const QJsonObject job = v.toObject();
+            QCOMPARE(job.value("managed_by").toString(), QStringLiteral("strategy-sandbox"));
+            QVERIFY(job.value("enabled").toBool());
+            const QStringList command = json_strings(job.value("command").toArray());
+            if (command == QStringList{"sandbox", "tick"}) {
+                has_tick = true;
+                QCOMPARE(job.value("interval_sec").toInt(), 30);
+                QCOMPARE(job.value("timeout_sec").toInt(), 25);
+            } else if (command == QStringList{"sandbox", "score-now"}) {
+                has_score = true;
+                QCOMPARE(job.value("interval_sec").toInt(), 21600);
+                QCOMPARE(job.value("timeout_sec").toInt(), 120);
+            }
+        }
+        QVERIFY2(has_tick, "install-jobs must create the sandbox tick job");
+        QVERIFY2(has_score, "install-jobs must create the sandbox score-now job");
+    }
+
+    void sandbox_remove_jobs_disables_but_does_not_delete() {
+        sandbox_test_home();
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "sandbox", "install-jobs"}, &rc);
+        QCOMPARE(rc, 0);
+
+        const QJsonObject removed = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "remove-jobs"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(removed.value("disabled").toInt(), 2);
+
+        const QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "daemon", "jobs", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        int sandbox_jobs_seen = 0;
+        for (const QJsonValue& v : listed.value("jobs").toArray()) {
+            const QJsonObject job = v.toObject();
+            if (job.value("managed_by").toString() != QStringLiteral("strategy-sandbox"))
+                continue;
+            ++sandbox_jobs_seen;
+            QVERIFY2(!job.value("enabled").toBool(), "remove-jobs must disable, not just report, the job");
+        }
+        QCOMPARE(sandbox_jobs_seen, 2);  // disabled, not deleted -- both rows must still be present
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

@@ -247,6 +247,54 @@ class TstAutomationState : public QObject {
         QVERIFY2(after.contains(QStringLiteral("NEW-KEY")), "newly marked key must be recorded");
         QCOMPARE(after.size(), 2);
     }
+    void mark_consumed_fails_when_lock_held_by_another_holder() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        // Seed a baseline so we can assert the file is byte-for-byte
+        // untouched by the blocked call.
+        QVERIFY(mark_consumed("default", "SEED-KEY", &err));
+        const QJsonObject before = read_json_object(consumed_path("default"));
+        StateLock held("default");
+        QVERIFY2(held.locked(), "test setup: must be able to take the lock before contending it");
+        QString lock_err;
+        QVERIFY2(!mark_consumed("default", "NEW-KEY", &lock_err, /*lock_timeout_ms=*/100),
+                 "mark_consumed must fail closed while the lock is held elsewhere");
+        QCOMPARE(lock_err, QStringLiteral("state lock busy"));
+        const QJsonObject after = read_json_object(consumed_path("default"));
+        QCOMPARE(after, before);
+        QVERIFY2(!after.value("keys").toObject().contains(QStringLiteral("NEW-KEY")),
+                 "blocked write must not have landed");
+    }
+    void record_live_attempt_fails_when_lock_held_by_another_holder() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        QVERIFY(record_live_attempt("default", &err));
+        const QJsonObject before = read_json_object(daily_orders_path("default"));
+        StateLock held("default");
+        QVERIFY(held.locked());
+        QString lock_err;
+        QVERIFY2(!record_live_attempt("default", &lock_err, /*lock_timeout_ms=*/100),
+                 "record_live_attempt must fail closed while the lock is held elsewhere");
+        QCOMPARE(lock_err, QStringLiteral("state lock busy"));
+        const QJsonObject after = read_json_object(daily_orders_path("default"));
+        QCOMPARE(after, before);
+    }
+    void submitted_today_count_falls_back_to_previous_generation() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        const QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        // The submitted row lives ONLY in the rotated-out previous
+        // generation (orders_path + ".1"); the active file has just a
+        // non-submitted row. An active-file-only scan resolves to 0.
+        QVERIFY(append_jsonl(orders_path("default") + QStringLiteral(".1"),
+                             QJsonObject{{"ts", ts}, {"submitted", true}}, &err));
+        QVERIFY(append_jsonl(orders_path("default"), QJsonObject{{"ts", ts}, {"dry_run", true}}, &err));
+        QVERIFY(!QFile::exists(daily_orders_path("default")));
+        QCOMPARE(submitted_today_count("default"), 1);
+    }
     void rotation_caps_file_and_keeps_one_generation() {
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());

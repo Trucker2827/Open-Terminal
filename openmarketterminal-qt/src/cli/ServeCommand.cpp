@@ -2118,7 +2118,11 @@ int emit_jobs_stats(const QString& profile, bool json, QStringList args) {
     return 0;
 }
 
-int jobs_save_update(const QString& profile, const QJsonArray& jobs) {
+// Internal, lock-free load->mutate->save cycle. Only called with the shared
+// automation StateLock already held (by jobs_save_update or
+// update_job_by_id) so the two entry points never try to re-enter the same
+// QLockFile from one call stack.
+int jobs_save_update_locked(const QString& profile, const QJsonArray& jobs) {
     QJsonObject doc = load_jobs_doc(profile);
     doc["jobs"] = jobs;
     doc["updated_at"] = now_utc();
@@ -2128,6 +2132,15 @@ int jobs_save_update(const QString& profile, const QJsonArray& jobs) {
         return 7;
     }
     return 0;
+}
+
+int jobs_save_update(const QString& profile, const QJsonArray& jobs) {
+    automation::StateLock lock(profile);
+    if (!lock.locked()) {
+        std::fprintf(stderr, "state lock busy\n");
+        return 7;
+    }
+    return jobs_save_update_locked(profile, jobs);
 }
 
 bool consume_value(QStringList& args, int& i, const QString& flag, QString* out) {
@@ -3018,6 +3031,11 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
 }
 
 void update_job_by_id(const QString& profile, const QString& id, const std::function<void(QJsonObject&)>& fn) {
+    automation::StateLock lock(profile);
+    if (!lock.locked()) {
+        append_job_log(profile, QStringLiteral("update_job_by_id lock busy id=%1 (scheduler retries next scan)").arg(id));
+        return;
+    }
     QJsonObject doc = load_jobs_doc(profile);
     QJsonArray jobs = doc.value("jobs").toArray();
     for (int i = 0; i < jobs.size(); ++i) {
@@ -3027,7 +3045,7 @@ void update_job_by_id(const QString& profile, const QString& id, const std::func
         fn(job);
         job["updated_at"] = now_utc();
         jobs.replace(i, job);
-        jobs_save_update(profile, jobs);
+        jobs_save_update_locked(profile, jobs);
         return;
     }
 }
@@ -4298,6 +4316,160 @@ int disable_automation_247_jobs(const QString& profile, int* disabled_out) {
     return jobs_save_update(profile, jobs);
 }
 
+// --- Strategy Sandbox daemon jobs (Task 7) ----------------------------------
+// Two jobs, both tagged managed_by:"strategy-sandbox" and matched for
+// idempotent re-install by the "sandbox_job" key (mirrors how
+// make_automation_247_job matches on automation_symbol):
+//   - "tick": runs `sandbox tick` (fills/expires paper positions off the
+//     latest tick tail) every 30s, timeout 25s.
+//   - "score-now": runs `sandbox score-now` every 6h (21600s), timeout 120s.
+//     `sandbox score-now` does not exist yet (lands in Task 9); until then
+//     the scheduled subprocess exits non-zero and the job accrues
+//     fail_count like any other missing-command job -- the spec still
+//     installs and schedules correctly.
+QJsonObject make_sandbox_job(const QString& sandbox_job_key,
+                             const QString& name,
+                             const QString& description,
+                             const QStringList& command,
+                             int every_sec,
+                             int timeout_sec,
+                             const QJsonObject& existing = {}) {
+    QJsonObject job = existing.isEmpty()
+                          ? make_job(QStringLiteral("command"), name,
+                                     QJsonObject{{"command", strings_to_json_array(command)}},
+                                     every_sec, timeout_sec, true)
+                          : existing;
+    const QString now = now_utc();
+    job["name"] = name;
+    job["kind"] = QStringLiteral("command");
+    job["enabled"] = true;
+    job["schedule"] = QStringLiteral("interval");
+    job["interval_sec"] = every_sec;
+    job["timeout_sec"] = timeout_sec;
+    job["spec"] = QJsonObject{{"command", strings_to_json_array(command)}};
+    job["command"] = strings_to_json_array(command);
+    job["managed_by"] = QStringLiteral("strategy-sandbox");
+    job["sandbox_job"] = sandbox_job_key;
+    job["description"] = description;
+    job["updated_at"] = now;
+    if (job.value(QStringLiteral("created_at")).toString().isEmpty())
+        job["created_at"] = now;
+    if (job.value(QStringLiteral("id")).toString().isEmpty())
+        job["id"] = QStringLiteral("job_%1").arg(QUuid::createUuid().toString(QUuid::Id128).left(12));
+    if (job.value(QStringLiteral("next_run_at")).toString().isEmpty())
+        job["next_run_at"] = now;
+    job["running"] = false;
+    job["current_run_id"] = QString();
+    return job;
+}
+
+struct SandboxJobSpec {
+    QString key;
+    QString name;
+    QString description;
+    QStringList command;
+    int every_sec;
+    int timeout_sec;
+};
+
+QVector<SandboxJobSpec> sandbox_job_specs() {
+    return {{QStringLiteral("tick"), QStringLiteral("Strategy sandbox tick"),
+             QStringLiteral("Fills/expires hypothetical sandbox positions off the latest tick tail."),
+             {QStringLiteral("sandbox"), QStringLiteral("tick")}, 30, 25},
+            {QStringLiteral("score-now"), QStringLiteral("Strategy sandbox score"),
+             QStringLiteral("Scores resolved sandbox outcomes and refreshes the strategy leaderboard."),
+             {QStringLiteral("sandbox"), QStringLiteral("score-now")}, 21600, 120}};
+}
+
+int install_sandbox_jobs(const QString& profile, QJsonArray* managed_out) {
+    QJsonObject doc = load_jobs_doc(profile);
+    QJsonArray jobs = doc.value(QStringLiteral("jobs")).toArray();
+    QJsonArray managed;
+    for (const SandboxJobSpec& spec : sandbox_job_specs()) {
+        int idx = -1;
+        for (int i = 0; i < jobs.size(); ++i) {
+            const QJsonObject job = jobs.at(i).toObject();
+            if (job.value(QStringLiteral("managed_by")).toString() == QStringLiteral("strategy-sandbox") &&
+                job.value(QStringLiteral("sandbox_job")).toString() == spec.key) {
+                idx = i;
+                break;
+            }
+        }
+        const QJsonObject job = make_sandbox_job(spec.key, spec.name, spec.description, spec.command,
+                                                 spec.every_sec, spec.timeout_sec,
+                                                 idx >= 0 ? jobs.at(idx).toObject() : QJsonObject{});
+        if (idx >= 0)
+            jobs.replace(idx, job);
+        else
+            jobs.append(job);
+        managed.append(job);
+    }
+    if (managed_out)
+        *managed_out = managed;
+    return jobs_save_update(profile, jobs);
+}
+
+int disable_sandbox_jobs(const QString& profile, int* disabled_out) {
+    QJsonObject doc = load_jobs_doc(profile);
+    QJsonArray jobs = doc.value(QStringLiteral("jobs")).toArray();
+    int disabled = 0;
+    for (int i = 0; i < jobs.size(); ++i) {
+        QJsonObject job = jobs.at(i).toObject();
+        if (job.value(QStringLiteral("managed_by")).toString() != QStringLiteral("strategy-sandbox"))
+            continue;
+        if (job.value(QStringLiteral("enabled")).toBool()) {
+            job["enabled"] = false;
+            ++disabled;
+        }
+        job["running"] = false;
+        job["current_run_id"] = QString();
+        job["updated_at"] = now_utc();
+        jobs.replace(i, job);
+    }
+    if (disabled_out)
+        *disabled_out = disabled;
+    return jobs_save_update(profile, jobs);
+}
+
+int daemon_sandbox_jobs_command(const QString& profile, bool json, QStringList args) {
+    const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    if (sub == QStringLiteral("install-jobs")) {
+        QJsonArray managed;
+        const int rc = install_sandbox_jobs(profile, &managed);
+        if (rc != 0)
+            return rc;
+        if (json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile}, {"jobs", managed}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("installed sandbox daemon jobs:\n");
+            for (const QJsonValue& v : managed) {
+                const QJsonObject job = v.toObject();
+                std::printf("  %-12s every %6ds timeout %4ds  %s\n",
+                            qUtf8Printable(job.value("sandbox_job").toString()),
+                            job.value("interval_sec").toInt(), job.value("timeout_sec").toInt(),
+                            qUtf8Printable(job.value("id").toString()));
+            }
+        }
+        return 0;
+    }
+    if (sub == QStringLiteral("remove-jobs")) {
+        int disabled = 0;
+        const int rc = disable_sandbox_jobs(profile, &disabled);
+        if (rc != 0)
+            return rc;
+        if (json) {
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile}, {"disabled", disabled}})
+                                    .toJson(QJsonDocument::Compact).constData());
+        } else {
+            std::printf("disabled %d sandbox daemon job%s\n", disabled, disabled == 1 ? "" : "s");
+        }
+        return 0;
+    }
+    std::fprintf(stderr, "usage: daemon sandbox install-jobs|remove-jobs\n");
+    return 2;
+}
+
 int daemon_automation_stop_command(const QString& profile, bool json) {
     QJsonObject cfg = read_json_object_file(daemon_scalp_config_path(profile));
     cfg["enabled"] = false;
@@ -5162,6 +5334,8 @@ int daemon_command(const QString& profile, bool json, QStringList args) {
         return daemon_automation_command(profile, json, args);
     if (sub == "collectors" || sub == "collector" || sub == "feeds")
         return daemon_collectors_command(profile, json, args);
+    if (sub == "sandbox" || sub == "strategy-sandbox")
+        return daemon_sandbox_jobs_command(profile, json, args);
     if (sub == "notify" || sub == "notification")
         return daemon_notify_command(profile, json, args);
     if (sub == "ai") {
