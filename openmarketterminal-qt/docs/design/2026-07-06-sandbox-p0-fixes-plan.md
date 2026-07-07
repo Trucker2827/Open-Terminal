@@ -553,7 +553,9 @@ git add openmarketterminal-qt/src/cli/automation openmarketterminal-qt/tests/tst
 git commit -m "Tail-read automation jsonl scans instead of loading whole files"
 ```
 
----### Task 4: Candidate dedup — consumed set (audit fix #1)
+---
+
+### Task 4: Candidate dedup — consumed set (audit fix #1)
 
 `execute-next` must never act twice on the same candidate. Key: scalp candidates → `"<SYMBOL>|<ts_ms>"` (the engine journals a symbol at most once per second, so the pair is unique); spot candidates → the journal row's UUID `id`. Consumption is recorded when a live submission is **attempted** (not on dry-run), before the broker call, so a retry storm on one candidate is impossible even across crashes.
 
