@@ -122,7 +122,8 @@ add_test(NAME tst_data_services COMMAND tst_data_services)
 add_executable(tst_serve_command
     tst_serve_command.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
-    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp)
 target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_serve_command PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_serve_command COMMAND tst_serve_command)

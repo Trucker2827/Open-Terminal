@@ -1,7 +1,9 @@
 #include <QtTest>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QTemporaryDir>
 #include "cli/automation/AutomationState.h"
 
@@ -175,6 +177,26 @@ class TstAutomationState : public QObject {
         QCOMPARE(counter.value("date").toString(),
                  QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate));
         QCOMPARE(submitted_today_count("default"), 2);  // now authoritative via the fresh counter
+    }
+    void rotation_caps_file_and_keeps_one_generation() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        const QString path = decisions_path("default");
+        const QJsonObject row{{"pad", QString(100, QChar('x'))}};
+        QString err;
+        for (int i = 0; i < 50; ++i)
+            QVERIFY(append_jsonl_rotating(path, row, 2048, &err));  // tiny cap for the test
+        QVERIFY(QFile::exists(path));
+        QVERIFY(QFile::exists(path + ".1"));
+        QVERIFY2(QFileInfo(path).size() <= 2048 + 256, "active file must stay near the cap");
+        // every line in the active file is complete JSON
+        const QByteArray data = read_tail(path, 1 << 20);
+        for (const QByteArray& line : data.split('\n')) {
+            if (line.trimmed().isEmpty()) continue;
+            QJsonParseError pe;
+            QJsonDocument::fromJson(line, &pe);
+            QCOMPARE(pe.error, QJsonParseError::NoError);
+        }
     }
 };
 QTEST_GUILESS_MAIN(TstAutomationState)

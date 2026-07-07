@@ -1,5 +1,6 @@
 #include "cli/ServeCommand.h"
 #include "cli/BridgeDiscoveryFile.h"
+#include "cli/automation/AutomationState.h"
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/TerminalMcpBridge.h"
 #include "mcp/McpProvider.h"
@@ -294,15 +295,6 @@ bool write_json_object_file(const QString& path, const QJsonObject& obj, QString
     }
     QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
     return true;
-}
-
-void append_jsonl(const QString& path, const QJsonObject& obj) {
-    QDir().mkpath(QFileInfo(path).absolutePath());
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
-        return;
-    f.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
-    f.write("\n");
 }
 
 struct DaemonHistoryDb {
@@ -1188,7 +1180,7 @@ class DaemonScalpEngine {
         while (rows.size() > 5000)
             rows.removeFirst();
         radars_[symbol].add_tick(tick);
-        append_jsonl(ticks_path_, CryptoLatencyService::tick_to_json(tick));
+        automation::append_jsonl_rotating(ticks_path_, CryptoLatencyService::tick_to_json(tick));
     }
 
     QJsonObject evaluate_symbol(const QString& symbol, CryptoLatencyService* svc) {
@@ -1306,7 +1298,7 @@ class DaemonScalpEngine {
         const bool should_journal = last_decision_hash_.value(symbol) != hash ||
                                     now - last_journal_ms_.value(symbol, 0) >= 1000;
         if (should_journal) {
-            append_jsonl(decisions_path_, decision);
+            automation::append_jsonl_rotating(decisions_path_, decision);
             last_decision_hash_[symbol] = hash;
             last_journal_ms_[symbol] = now;
         }

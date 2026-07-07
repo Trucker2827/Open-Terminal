@@ -18,6 +18,15 @@ QJsonObject read_json_object(const QString& path);
 bool write_json_object(const QString& path, const QJsonObject& o, QString* error = nullptr);
 bool append_jsonl(const QString& path, const QJsonObject& o, QString* error = nullptr);
 
+// Rotating jsonl append: when the file reaches max_bytes, the previous
+// generation (path + ".1") is dropped and the current file is renamed into
+// its place before the new row starts a fresh file. Caps the active file's
+// growth; only one prior generation is retained (older data is dropped by
+// design -- archival, if ever needed, is a separate concern).
+inline constexpr qint64 kRotateBytes = 64LL * 1024 * 1024;
+bool append_jsonl_rotating(const QString& path, const QJsonObject& o,
+                           qint64 max_bytes = kRotateBytes, QString* error = nullptr);
+
 // Read only the last max_bytes of a jsonl file. When the file exceeds
 // max_bytes, the result starts at the first complete line (a leading
 // partial line, if any, is dropped).

@@ -71,6 +71,18 @@ bool append_jsonl(const QString& path, const QJsonObject& o, QString* error) {
     return true;
 }
 
+bool append_jsonl_rotating(const QString& path, const QJsonObject& o,
+                           qint64 max_bytes, QString* error) {
+    if (QFileInfo::exists(path) && QFileInfo(path).size() >= max_bytes) {
+        QFile::remove(path + QStringLiteral(".1"));
+        if (!QFile::rename(path, path + QStringLiteral(".1"))) {
+            if (error) *error = QStringLiteral("could not rotate %1").arg(path);
+            return false;
+        }
+    }
+    return append_jsonl(path, o, error);
+}
+
 QByteArray read_tail(const QString& path, qint64 max_bytes) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly))
