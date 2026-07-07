@@ -127,6 +127,20 @@ class TstAutomationState : public QObject {
         const QJsonObject spot{{"id", "abc-123"}, {"symbol", "BTC-USD"}, {"ts_ms", "1"}};
         QCOMPARE(candidate_key(spot), QStringLiteral("abc-123"));
     }
+    void spot_row_filter_rejects_short_horizons_and_weak_edges() {
+        QCOMPARE(horizon_seconds(QStringLiteral("15s")), 15);
+        QCOMPARE(horizon_seconds(QStringLiteral("60s")), 60);
+        QCOMPARE(horizon_seconds(QStringLiteral("1h")), 3600);
+        QCOMPARE(horizon_seconds(QStringLiteral("4h")), 14400);
+        QCOMPARE(horizon_seconds(QStringLiteral("1d")), 86400);
+        QCOMPARE(horizon_seconds(QStringLiteral("garbage")), 0);
+        // 15s scalp-gate row must NEVER feed the spot lane, however good it looks
+        QVERIFY(!spot_row_passes("15s", 0.20, 0.95, 0.005, 0.80));
+        QVERIFY(spot_row_passes("60s", 0.20, 0.95, 0.005, 0.80));
+        QVERIFY(!spot_row_passes("60s", 0.004, 0.95, 0.005, 0.80));  // edge below gate
+        QVERIFY(!spot_row_passes("60s", 0.20, 0.79, 0.005, 0.80));   // confidence below gate
+        QVERIFY(!spot_row_passes(QString(), 0.20, 0.95, 0.005, 0.80));
+    }
     void record_live_attempt_is_authoritative_over_scan() {
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());

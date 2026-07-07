@@ -42,6 +42,19 @@ bool mark_consumed(const QString& profile, const QString& key, QString* error = 
 
 QJsonObject latest_candidate(const QString& profile, const QString& symbol_filter,
                              int max_age_sec, QString* error = nullptr);
+
+// Parses horizon strings like "15s", "60s", "1h", "4h", "1d" into seconds.
+// Unparseable input (including empty) returns 0.
+int horizon_seconds(const QString& horizon);
+
+// Pure spot-candidate row filter: rejects horizons under 60s (e.g. the
+// 15-second scalp-gate rows that share source='edge crypto-recommend')
+// and applies the edge/confidence gate. edge_after_cost_fraction and
+// min_edge_fraction are probability-edge fractions (model_prob - 0.5),
+// not price-return bps.
+bool spot_row_passes(const QString& horizon, double edge_after_cost_fraction,
+                     double confidence, double min_edge_fraction, double min_confidence);
+
 int submitted_today_count(const QString& profile);
 // Dedicated daily live-order counter (authoritative over the orders jsonl
 // tail scan, which can undercount when the journal is chatty). Records a

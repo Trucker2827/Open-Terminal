@@ -193,6 +193,30 @@ static int submitted_today_scan(const QString& profile, const QString& today) {
     return count;
 }
 
+int horizon_seconds(const QString& horizon) {
+    const QString h = horizon.trimmed().toLower();
+    if (h.isEmpty())
+        return 0;
+    bool ok = false;
+    const double n = h.left(h.size() - 1).toDouble(&ok);
+    if (!ok || n <= 0)
+        return 0;
+    switch (h.back().toLatin1()) {
+        case 's': return static_cast<int>(n);
+        case 'm': return static_cast<int>(n * 60);
+        case 'h': return static_cast<int>(n * 3600);
+        case 'd': return static_cast<int>(n * 86400);
+        default: return 0;
+    }
+}
+
+bool spot_row_passes(const QString& horizon, double edge_after_cost_fraction,
+                     double confidence, double min_edge_fraction, double min_confidence) {
+    if (horizon_seconds(horizon) < 60)
+        return false;
+    return edge_after_cost_fraction >= min_edge_fraction && confidence >= min_confidence;
+}
+
 int submitted_today_count(const QString& profile) {
     const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
     // The dedicated daily counter is authoritative when it exists and is

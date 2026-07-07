@@ -6930,9 +6930,10 @@ static QJsonObject automation_latest_spot_candidate(const GlobalOpts& opts,
         automation::read_json_object(automation::consumed_path(opts.profile))
             .value(QStringLiteral("keys")).toObject();
     while (q.next()) {
-        const double edge_after_cost_bps = q.value(10).toDouble() * 10000.0;
+        const double edge_fraction = q.value(10).toDouble();
         const double confidence = q.value(12).toDouble();
-        if (edge_after_cost_bps < min_edge_after_cost_bps || confidence < min_confidence)
+        if (!automation::spot_row_passes(q.value(4).toString(), edge_fraction, confidence,
+                                         min_edge_after_cost_bps / 10000.0, min_confidence))
             continue;
         if (consumed_keys.contains(q.value(0).toString()))
             continue;
@@ -6951,7 +6952,9 @@ static QJsonObject automation_latest_spot_candidate(const GlobalOpts& opts,
                            {"call", q.value(7).toString()},
                            {"gate", q.value(8).toString()},
                            {"model_probability", q.value(9).toDouble()},
-                           {"edge_after_cost_bps", edge_after_cost_bps},
+                           {"edge_after_cost_bps", edge_fraction * 10000.0},
+                           {"probability_edge_after_cost_bps", edge_fraction * 10000.0},
+                           {"edge_semantics", "probability edge (model_prob - 0.5) after costs; NOT expected price return"},
                            {"gate_edge_bps", q.value(11).toDouble() * 10000.0},
                            {"confidence", confidence},
                            {"reference_price", features.value(QStringLiteral("reference_price")).toDouble()},
