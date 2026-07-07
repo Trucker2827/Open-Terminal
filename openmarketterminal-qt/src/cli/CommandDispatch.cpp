@@ -17762,8 +17762,14 @@ static QString edge_find_chronos_script() {
 static bool edge_write_chronos_tick_csv(const QString& path,
                                         QVector<EdgePredictionRawTick> ticks,
                                         QString* error) {
-    std::sort(ticks.begin(), ticks.end(), [](const auto& a, const auto& b) {
-        return a.received_ts < b.received_ts;
+    // Order and timestamp by market time (exchange_ts). Backfilled history all
+    // shares one received_ts (the import moment), so received_ts collapses the
+    // whole 200-day series into a single bucket; exchange_ts is the real bar time.
+    const auto market_ts = [](const EdgePredictionRawTick& t) {
+        return t.exchange_ts > 0 ? t.exchange_ts : t.received_ts;
+    };
+    std::sort(ticks.begin(), ticks.end(), [&](const auto& a, const auto& b) {
+        return market_ts(a) < market_ts(b);
     });
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
@@ -17773,10 +17779,11 @@ static bool edge_write_chronos_tick_csv(const QString& path,
     }
     f.write("timestamp_ms,price,source\n");
     for (const auto& tick : ticks) {
-        if (tick.price <= 0.0 || tick.received_ts <= 0)
+        const qint64 ts = market_ts(tick);
+        if (tick.price <= 0.0 || ts <= 0)
             continue;
         const QString line = QStringLiteral("%1,%2,%3\n")
-                                 .arg(tick.received_ts)
+                                 .arg(ts)
                                  .arg(tick.price, 0, 'f', 12)
                                  .arg(tick.source);
         f.write(line.toUtf8());
@@ -18130,12 +18137,15 @@ static int edge_chronos2_command(const GlobalOpts& opts, QStringList args) {
         std::fprintf(stderr, "--horizon must be 5m, 15m, 1h, or 1d\n");
         return 2;
     }
-    int limit = 20000;
+    // Live ticks are dense (~2-3k/hr), so 100k ticks only spans ~35h — one bar
+    // short of the 1h context. Read deep enough (by exchange_ts) to reach the
+    // sparser backfilled history that gives long-horizon context.
+    int limit = 250000;
     if (!limit_raw.isEmpty()) {
         bool ok = false;
         limit = limit_raw.toInt(&ok);
-        if (!ok || limit < 50 || limit > 100000) {
-            std::fprintf(stderr, "--context-limit must be 50..100000\n");
+        if (!ok || limit < 50 || limit > 1000000) {
+            std::fprintf(stderr, "--context-limit must be 50..1000000\n");
             return 2;
         }
     }
@@ -18158,7 +18168,7 @@ static int edge_chronos2_command(const GlobalOpts& opts, QStringList args) {
     if (!edge_parse_bps_text(journal_edge_raw, min_journal_edge_bps, "--min-journal-edge-bps"))
         return 2;
 
-    auto ticks_result = EdgePredictionModelRepository::instance().list_raw_ticks(raw_symbol, limit);
+    auto ticks_result = EdgePredictionModelRepository::instance().list_raw_ticks_by_exchange_time(raw_symbol, limit);
     if (ticks_result.is_err()) {
         std::fprintf(stderr, "%s\n", ticks_result.error().c_str());
         return 5;

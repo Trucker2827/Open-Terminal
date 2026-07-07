@@ -131,6 +131,23 @@ EdgePredictionModelRepository::list_raw_ticks(const QString& symbol, int limit) 
     return query_list_as<EdgePredictionRawTick>(sql, params, map_raw_tick);
 }
 
+Result<QVector<EdgePredictionRawTick>>
+EdgePredictionModelRepository::list_raw_ticks_by_exchange_time(const QString& symbol, int limit) {
+    QString sql =
+        QStringLiteral("SELECT %1 FROM edge_prediction_raw_ticks WHERE exchange_ts > 0").arg(kRawTickCols);
+    QVariantList params;
+    if (!symbol.trimmed().isEmpty()) {
+        sql += QStringLiteral(" AND symbol=?");
+        params << symbol.trimmed().toUpper();
+    }
+    sql += QStringLiteral(" ORDER BY exchange_ts DESC");
+    if (limit > 0) {
+        sql += QStringLiteral(" LIMIT ?");
+        params << limit;
+    }
+    return query_list_as<EdgePredictionRawTick>(sql, params, map_raw_tick);
+}
+
 Result<int> EdgePredictionModelRepository::count_raw_ticks(const QString& symbol, qint64 since_ms) {
     QString sql = QStringLiteral("SELECT COUNT(*) FROM edge_prediction_raw_ticks WHERE 1=1");
     QVariantList params;
