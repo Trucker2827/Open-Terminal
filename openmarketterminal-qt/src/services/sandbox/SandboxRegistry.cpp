@@ -18,14 +18,15 @@ QString params_json_compact(const QJsonObject& params) {
 
 // Retires (status='retired') any ACTIVE book whose kind is no longer part of
 // the season-1 seed set: scalp/btc5m (no venue / no edge; fee-dead sub-minute
-// or unlisted 5m book) and chronos2_5m (dropped alongside scalp/btc5m in the
-// horizon reshape). This runs at the end of every seed_default_strategies()
-// call so a reseed durably kills a pre-existing row of a removed kind even
-// though register_strategy() itself only ever inserts, never mutates.
+// or unlisted 5m book), chronos2_5m (dropped in the horizon reshape), and
+// kalshi (the kalshi-scan producer has no pricing model, so its books can never
+// be fed). This runs at the end of every seed_default_strategies() call so a
+// reseed durably kills a pre-existing row of a removed kind even though
+// register_strategy() itself only ever inserts, never mutates.
 Result<void> retire_removed_kinds() {
     auto r = Database::instance().execute(
         "UPDATE sandbox_strategy SET status = 'retired' "
-        "WHERE status = 'active' AND kind IN ('scalp', 'btc5m', 'chronos2_5m')",
+        "WHERE status = 'active' AND kind IN ('scalp', 'btc5m', 'chronos2_5m', 'kalshi')",
         {});
     if (r.is_err())
         return Result<void>::err(r.error());
@@ -172,27 +173,12 @@ Result<QList<QString>> seed_default_strategies() {
         // a book would backfill positions from arbitrarily old gate-pass
         // journal history. Changing these params changes the strategy_ids
         // (content-addressed) -- acceptable pre-season.
-        {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
-         QJsonObject{{"notional_usd", 50.0},
-                     {"source", "edge_journal"},
-                     {"journal_source", "edge journal-kalshi-scan"},
-                     {"max_age_sec", 900},
-                     {"prediction", true},
-                     {"horizon_sec", 900}}},
-        {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
-         QJsonObject{{"notional_usd", 50.0},
-                     {"source", "edge_journal"},
-                     {"journal_source", "edge journal-kalshi-scan"},
-                     {"max_age_sec", 3600},
-                     {"prediction", true},
-                     {"horizon_sec", 3600}}},
-        {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
-         QJsonObject{{"notional_usd", 50.0},
-                     {"source", "edge_journal"},
-                     {"journal_source", "edge journal-kalshi-scan"},
-                     {"max_age_sec", 86400},
-                     {"prediction", true},
-                     {"horizon_sec", 86400}}},
+        // kalshi (15m/1h/1d) removed 2026-07-07: the edge journal-kalshi-scan
+        // producer is a market classifier with NO pricing model -- every row is
+        // call='research'/data_status='research_needed' with model_probability
+        // echoing market_probability, so the gate rejects 100% (0 passes over
+        // 27k rows) and the books can never be fed. Retired via retire_removed_kinds()
+        // below. Re-add when a real Kalshi edge model exists.
         {QStringLiteral("long_short"), QStringLiteral("BTC-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},

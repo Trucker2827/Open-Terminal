@@ -119,9 +119,9 @@ SEED_JSON="$(wd 30 "$CLI" --json sandbox seed)" || fail "sandbox seed exited non
 printf '%s' "$SEED_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 11, d
-" || fail "sandbox seed did not report 11 seeded strategy ids: $SEED_JSON"
-echo "PASS: sandbox seed -> 11 strategies"
+assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 8, d
+" || fail "sandbox seed did not report 8 seeded strategy ids: $SEED_JSON"
+echo "PASS: sandbox seed -> 8 strategies"
 
 CHRONOS_ID="$(printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json
