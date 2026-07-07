@@ -9,7 +9,9 @@
 #include "cli/CommandDispatch.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/automation/AutomationState.h"
+#include "storage/sqlite/Database.h"
 using namespace openmarketterminal::cli;
+using openmarketterminal::Database;
 
 static QString capture_stdout(const std::function<int()>& fn, int* rc_out = nullptr) {
     fflush(stdout);
@@ -74,6 +76,18 @@ static QStringList json_strings(const QJsonArray& arr) {
     for (const QJsonValue& v : arr)
         out << v.toString();
     return out;
+}
+
+// Points HOME at ONE process-lifetime temp dir (never at a fresh one per
+// call) -- see the Task 6 sandbox-suite comment below for why: headless_
+// runtime()'s DB is opened exactly once per binary, at whatever HOME is live
+// the first time any sandbox command runs, and stays open at that path for
+// the rest of the run. A per-slot QTemporaryDir would rm -rf that path out
+// from under the still-open sqlite connection the moment the slot returns.
+static QString sandbox_test_home() {
+    static QTemporaryDir dir;
+    qputenv("HOME", dir.path().toUtf8());
+    return dir.path();
 }
 
 class TstCommandDispatch : public QObject {
@@ -406,6 +420,203 @@ private slots:
             return dispatch({QStringLiteral("--json"), QStringLiteral("automation"), QStringLiteral("status")});
         });
         QVERIFY2(out.contains(QStringLiteral("\"live_guard\"")), "status must surface the live guard");
+    }
+
+    // --- Task 6: `sandbox` CLI group ---------------------------------------
+    //
+    // headless_runtime() (CommandDispatch.cpp) is a process-lifetime
+    // singleton -- its very first init() call (triggered below by the first
+    // sandbox dispatch, since coverage_command never actually touches the
+    // DB despite taking --headless) wins the profile/DB for the rest of
+    // THIS test binary's run, and every later init() call (any --profile,
+    // any HOME) is a no-op. That means sandbox_strategy/sandbox_position
+    // live in one shared DB across every slot below -- exactly like
+    // tst_sandbox_executor.cpp's shared-DB model -- AND that whatever HOME
+    // was live at that first init is where the sqlite file physically
+    // lives for good: a later slot's QTemporaryDir going out of scope would
+    // rm -rf that directory out from under the open connection (observed as
+    // "disk I/O error"), so sandbox_test_home() hands out one static,
+    // process-lifetime temp dir instead of a fresh one per slot. These
+    // slots are declared (and must stay) in this order so the counts below
+    // are exact: this is the very first code anywhere in the process to
+    // touch sandbox_strategy, so seeding starts from a genuinely empty
+    // table.
+    void sandbox_seed_list_pause_resume_retire() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject seeded = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "seed"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonArray seeded_ids = seeded.value("seeded").toArray();
+        QCOMPARE(seeded_ids.size(), 5);
+        QCOMPARE(seeded.value("retired_stale").toInt(-1), 0);
+
+        QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonArray rows = listed.value("strategies").toArray();
+        QCOMPARE(rows.size(), 5);
+
+        QString spot_id;
+        QString btc5m_id;
+        for (const QJsonValue& v : rows) {
+            const QJsonObject row = v.toObject();
+            QCOMPARE(row.value("status").toString(), QString("active"));
+            if (row.value("kind").toString() == QLatin1String("spot"))
+                spot_id = row.value("strategy_id").toString();
+            if (row.value("kind").toString() == QLatin1String("btc5m"))
+                btc5m_id = row.value("strategy_id").toString();
+        }
+        QVERIFY(!spot_id.isEmpty());
+        QVERIFY(!btc5m_id.isEmpty());
+
+        // pause prints the updated row and flips it out of the active count.
+        const QJsonObject paused = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "pause", spot_id}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(paused.value("strategy_id").toString(), spot_id);
+        QCOMPARE(paused.value("status").toString(), QString("paused"));
+
+        QJsonObject active_after_pause = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 4);
+
+        // resume flips it back.
+        const QJsonObject resumed = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "resume", spot_id}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(resumed.value("status").toString(), QString("active"));
+        QJsonObject active_after_resume = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 5);
+
+        // retire is permanent-by-convention here but still just a status flip.
+        const QJsonObject retired = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "retire", btc5m_id}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(retired.value("status").toString(), QString("retired"));
+        QJsonObject active_after_retire = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 4);
+
+        // put it back so later slots in this file see the full season-1 set.
+        rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch({QStringLiteral("sandbox"), QStringLiteral("resume"), btc5m_id});
+            return rc;
+        });
+        QCOMPARE(rc, 0);
+
+        // invalid id -> non-zero exit + stderr message, no crash.
+        for (const QString& sub : {QStringLiteral("pause"), QStringLiteral("resume"), QStringLiteral("retire")}) {
+            int bad_rc = -1;
+            capture_stdout([&]() {
+                bad_rc = dispatch({QStringLiteral("--json"), QStringLiteral("sandbox"), sub,
+                                   QStringLiteral("no-such-strategy-id")});
+                return bad_rc;
+            });
+            QVERIFY2(bad_rc != 0, qUtf8Printable(sub));
+        }
+    }
+
+    void sandbox_positions_empty_before_any_position_rows() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "positions"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(out.value("positions").toArray().isEmpty());
+    }
+
+    void sandbox_tick_on_empty_journal_is_all_zero() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "tick"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("opened").toInt(-1), 0);
+        QCOMPARE(out.value("filled").toInt(-1), 0);
+        QCOMPARE(out.value("unfilled").toInt(-1), 0);
+        QCOMPARE(out.value("closed").toInt(-1), 0);
+        QCOMPARE(out.value("skipped").toInt(-1), 0);
+    }
+
+    void sandbox_seed_retires_stale_row() {
+        // A hand-inserted 'active' row sharing a seed kind ('spot') but NOT
+        // one of seed_default_strategies' current ids is exactly the
+        // old-param-book-left-behind scenario the T5 review flagged: without
+        // the retire pass, `sandbox seed` would leave it active forever and
+        // PaperExecutor::run_cycle would keep trading a stale param set.
+        const QString bogus_id = QStringLiteral("bogus_stale_spot_task6");
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_strategy (strategy_id, kind, symbols, params_json, status, created_at, notes) "
+            "VALUES (?,?,?,?,?,?,?)",
+            {bogus_id, QStringLiteral("spot"), QStringLiteral("BTC-USD"), QStringLiteral("{}"),
+             QStringLiteral("active"), QDateTime::currentMSecsSinceEpoch(), QStringLiteral("")});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+
+        int rc = -1;
+        const QJsonObject seeded = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "seed"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(seeded.value("retired_stale").toInt(0) >= 1);
+
+        const QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        bool found = false;
+        for (const QJsonValue& v : listed.value("strategies").toArray()) {
+            const QJsonObject row = v.toObject();
+            if (row.value("strategy_id").toString() == bogus_id) {
+                found = true;
+                QCOMPARE(row.value("status").toString(), QString("retired"));
+            }
+        }
+        QVERIFY2(found, "the bogus stale row must still be listed (just retired), not deleted");
+    }
+
+    void sandbox_positions_null_realized_pnl_is_json_null_not_zero() {
+        // Data-gap contract (PaperExecutor.h): a position closed with no
+        // pre-expiry tick to close against gets realized_pnl = NULL, and
+        // that MUST serialize as JSON null, never a coalesced 0 -- 0 would
+        // read as "closed flat" instead of "no data to score."
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const QString decision_id = QStringLiteral("task6_nullpnl_decision");
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, hypothetical,"
+            " qty, limit_price, target_price, stop_price, expires_at, state, opened_at, closed_at,"
+            " entry_fee, exit_fee, realized_pnl, close_reason, data_quality, notional_usd, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("task6_nullpnl_position"), QStringLiteral("task6_nullpnl_strategy"), decision_id,
+             QStringLiteral("BTC-USD"), QStringLiteral("buy"), 0, 1.0, 100.0, QVariant(), QVariant(), now,
+             QStringLiteral("closed"), now, now, 0.0, 0.0, QVariant(), QStringLiteral("expiry"),
+             QStringLiteral("degraded"), 50.0, now});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+
+        int rc = -1;
+        const QString raw = capture_stdout([&]() {
+            rc = dispatch({QStringLiteral("--json"), QStringLiteral("sandbox"), QStringLiteral("positions"),
+                           QStringLiteral("--closed")});
+            return rc;
+        });
+        QCOMPARE(rc, 0);
+        QVERIFY2(raw.contains(QStringLiteral("\"realized_pnl\":null")),
+                 qUtf8Printable(raw));
+
+        const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8());
+        bool found = false;
+        for (const QJsonValue& v : doc.object().value("positions").toArray()) {
+            const QJsonObject row = v.toObject();
+            if (row.value("decision_id").toString() == decision_id) {
+                found = true;
+                QVERIFY(row.contains("realized_pnl"));
+                QVERIFY(row.value("realized_pnl").isNull());
+            }
+        }
+        QVERIFY2(found, "the closed null-pnl fixture row must be returned by --closed");
     }
 };
 QTEST_MAIN(TstCommandDispatch)

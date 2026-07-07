@@ -39,6 +39,8 @@
 #include "services/python_cli/PythonCliService.h"
 #include "services/report_builder/ReportBuilderService.h"
 #include "services/data_normalization/DataNormalizationService.h"
+#include "services/sandbox/PaperExecutor.h"
+#include "services/sandbox/SandboxRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/polymarket/PolymarketTypeMap.h"
 #include "services/polymarket/PolymarketTypes.h"
@@ -385,6 +387,22 @@ static int command_help(const QString& topic) {
             "The default mode is paper-only. Live execution requires BOTH GUI security gates\n"
             "and a short-lived bot arm with dollar/symbol limits. The bot executes only a\n"
             "fresh stored candidate from the local paper engine; LLM text is never the trigger.\n");
+        return 0;
+    }
+    if (topic == "sandbox") {
+        std::printf(
+            "Strategy Sandbox commands:\n"
+            "  sandbox seed\n"
+            "  sandbox list [--status active|paused|retired]\n"
+            "  sandbox pause <id>\n"
+            "  sandbox resume <id>\n"
+            "  sandbox retire <id>\n"
+            "  sandbox tick\n"
+            "  sandbox positions [--open|--closed] [--limit N]\n"
+            "\n"
+            "Registers/lists the five season-1 paper strategy books (scalp, spot, btc5m,\n"
+            "kalshi, long_short), advances one PaperExecutor cycle for the profile, and\n"
+            "inspects sandbox_position rows. Entirely local paper trading — no live orders.\n");
         return 0;
     }
     if (topic == "data" || topic == "datasources" || topic == "ds") {
@@ -7408,6 +7426,232 @@ static int automation_command(const GlobalOpts& opts, QStringList args) {
     }
     args.prepend(QStringLiteral("automation"));
     return daemon_command(opts.profile, opts.json, args);
+}
+
+namespace sandboxsvc = openmarketterminal::services::sandbox;
+
+// One sandbox_strategy row (see SandboxRegistry.h) as JSON: params_json is
+// stored compact-text in the DB, re-parsed here so CLI JSON output nests it
+// as a real object rather than a doubly-escaped string.
+static QJsonObject sandbox_strategy_row_json(const sandboxsvc::StrategyRow& row) {
+    return QJsonObject{{"strategy_id", row.strategy_id},
+                       {"kind", row.kind},
+                       {"symbols", row.symbols},
+                       {"params", QJsonDocument::fromJson(row.params_json.toUtf8()).object()},
+                       {"status", row.status},
+                       {"notes", row.notes},
+                       {"created_at", row.created_at}};
+}
+
+static int sandbox_seed_command(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto seeded = sandboxsvc::seed_default_strategies();
+    if (seeded.is_err()) {
+        std::fprintf(stderr, "sandbox seed failed: %s\n", seeded.error().c_str());
+        return 5;
+    }
+    const QStringList ids = seeded.value();
+    const QSet<QString> current_ids(ids.begin(), ids.end());
+
+    // T5-review residual: any 'active' row whose kind is one of the five seed
+    // kinds but whose id is not among the ids seed_default_strategies just
+    // returned is a stale book from an earlier param set (content-addressed
+    // ids mean changed params mint a brand-new id rather than updating the
+    // old row) -- retire it so it stops being picked up by run_cycle.
+    static const QSet<QString> kSeedKinds = {QStringLiteral("scalp"), QStringLiteral("spot"),
+                                             QStringLiteral("btc5m"), QStringLiteral("kalshi"),
+                                             QStringLiteral("long_short")};
+    auto active = sandboxsvc::list_strategies(QStringLiteral("active"));
+    if (active.is_err()) {
+        std::fprintf(stderr, "sandbox seed failed: %s\n", active.error().c_str());
+        return 5;
+    }
+    int retired_stale = 0;
+    for (const auto& row : active.value()) {
+        if (kSeedKinds.contains(row.kind) && !current_ids.contains(row.strategy_id)) {
+            auto st = sandboxsvc::set_status(row.strategy_id, QStringLiteral("retired"));
+            if (st.is_err()) {
+                std::fprintf(stderr, "sandbox seed failed: %s\n", st.error().c_str());
+                return 5;
+            }
+            ++retired_stale;
+        }
+    }
+    return automation_emit_object(opts, QJsonObject{{"seeded", QJsonArray::fromStringList(ids)},
+                                                    {"retired_stale", retired_stale}});
+}
+
+static int sandbox_list_command(const GlobalOpts& opts, QStringList args) {
+    QString status;
+    if (!take_string_option(args, QStringLiteral("--status"), status))
+        return 2;
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox list [--status active|paused|retired]\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto rows = sandboxsvc::list_strategies(status);
+    if (rows.is_err()) {
+        std::fprintf(stderr, "sandbox list failed: %s\n", rows.error().c_str());
+        return 5;
+    }
+    QJsonArray arr;
+    for (const auto& row : rows.value())
+        arr.append(sandbox_strategy_row_json(row));
+    return automation_emit_object(opts, QJsonObject{{"strategies", arr}});
+}
+
+static int sandbox_set_status_command(const GlobalOpts& opts, QStringList args, const QString& sub,
+                                      const QString& status) {
+    if (args.size() != 1) {
+        std::fprintf(stderr, "usage: sandbox %s <id>\n", qUtf8Printable(sub));
+        return 2;
+    }
+    const QString id = args.first();
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto rows = sandboxsvc::list_strategies();
+    if (rows.is_err()) {
+        std::fprintf(stderr, "sandbox %s failed: %s\n", qUtf8Printable(sub), rows.error().c_str());
+        return 5;
+    }
+    bool found = false;
+    for (const auto& row : rows.value()) {
+        if (row.strategy_id == id) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        std::fprintf(stderr, "sandbox: unknown strategy id: %s\n", qUtf8Printable(id));
+        return 4;
+    }
+    auto st = sandboxsvc::set_status(id, status);
+    if (st.is_err()) {
+        std::fprintf(stderr, "sandbox %s failed: %s\n", qUtf8Printable(sub), st.error().c_str());
+        return 5;
+    }
+    auto rows2 = sandboxsvc::list_strategies();
+    if (rows2.is_ok()) {
+        for (const auto& row : rows2.value()) {
+            if (row.strategy_id == id)
+                return automation_emit_object(opts, sandbox_strategy_row_json(row));
+        }
+    }
+    std::fprintf(stderr, "sandbox: strategy id vanished after status update: %s\n", qUtf8Printable(id));
+    return 5;
+}
+
+static int sandbox_tick_command(const GlobalOpts& opts) {
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    const QString daemon_dir = profile_root_for(opts.profile) + QStringLiteral("/daemon");
+    auto rep = sandboxsvc::run_cycle(opts.profile, daemon_dir, QDateTime::currentMSecsSinceEpoch());
+    if (rep.is_err()) {
+        std::fprintf(stderr, "sandbox tick failed: %s\n", rep.error().c_str());
+        return 5;
+    }
+    const auto& r = rep.value();
+    return automation_emit_object(opts, QJsonObject{{"opened", r.opened},
+                                                    {"filled", r.filled},
+                                                    {"unfilled", r.unfilled},
+                                                    {"closed", r.closed},
+                                                    {"skipped", r.skipped},
+                                                    {"notes", QJsonArray::fromStringList(r.notes)}});
+}
+
+static int sandbox_positions_command(const GlobalOpts& opts, QStringList args) {
+    const bool open_only = take_bool_flag(args, QStringLiteral("--open"));
+    const bool closed_only = take_bool_flag(args, QStringLiteral("--closed"));
+    QString limit_raw;
+    if (!take_string_option(args, QStringLiteral("--limit"), limit_raw))
+        return 2;
+    if (!args.isEmpty() || (open_only && closed_only)) {
+        std::fprintf(stderr, "usage: sandbox positions [--open|--closed] [--limit N]\n");
+        return 2;
+    }
+    bool ok = true;
+    const int limit = limit_raw.isEmpty() ? 50 : limit_raw.toInt(&ok);
+    if (!ok || limit <= 0) {
+        std::fprintf(stderr, "--limit must be a positive integer\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    QString sql = QStringLiteral(
+        "SELECT position_id, strategy_id, decision_id, symbol, side, hypothetical, qty, limit_price,"
+        " target_price, stop_price, expires_at, state, opened_at, closed_at, entry_fee, exit_fee,"
+        " realized_pnl, close_reason, data_quality, notional_usd, created_at FROM sandbox_position");
+    if (open_only)
+        sql += QStringLiteral(" WHERE state IN ('open','pending_fill')");
+    else if (closed_only)
+        sql += QStringLiteral(" WHERE state IN ('closed','unfilled')");
+    sql += QStringLiteral(" ORDER BY created_at DESC LIMIT ?");
+    auto r = Database::instance().execute(sql, {limit});
+    if (r.is_err()) {
+        std::fprintf(stderr, "sandbox positions failed: %s\n", r.error().c_str());
+        return 5;
+    }
+    QJsonArray arr;
+    auto& q = r.value();
+    while (q.next()) {
+        // realized_pnl (and other nullable columns) is a data-gap signal, not a
+        // zero: PaperExecutor.h's contract requires NULL to serialize as JSON
+        // null so downstream (scorer, this CLI's consumers) never mistakes a
+        // data-gap close for a real breakeven round trip via a coalesced 0.
+        QJsonObject o{{"position_id", q.value(0).toString()},
+                     {"strategy_id", q.value(1).toString()},
+                     {"decision_id", q.value(2).toString()},
+                     {"symbol", q.value(3).toString()},
+                     {"side", q.value(4).toString()},
+                     {"hypothetical", q.value(5).toInt() != 0},
+                     {"qty", q.value(6).toDouble()},
+                     {"limit_price", q.value(7).toDouble()},
+                     {"target_price", q.value(8).isNull() ? QJsonValue() : QJsonValue(q.value(8).toDouble())},
+                     {"stop_price", q.value(9).isNull() ? QJsonValue() : QJsonValue(q.value(9).toDouble())},
+                     {"expires_at", q.value(10).toLongLong()},
+                     {"state", q.value(11).toString()},
+                     {"opened_at", q.value(12).isNull() ? QJsonValue() : QJsonValue(q.value(12).toLongLong())},
+                     {"closed_at", q.value(13).isNull() ? QJsonValue() : QJsonValue(q.value(13).toLongLong())},
+                     {"entry_fee", q.value(14).toDouble()},
+                     {"exit_fee", q.value(15).toDouble()},
+                     {"realized_pnl", q.value(16).isNull() ? QJsonValue() : QJsonValue(q.value(16).toDouble())},
+                     {"close_reason", q.value(17).isNull() ? QJsonValue() : QJsonValue(q.value(17).toString())},
+                     {"data_quality", q.value(18).toString()},
+                     {"notional_usd", q.value(19).toDouble()},
+                     {"created_at", q.value(20).toLongLong()}};
+        arr.append(o);
+    }
+    return automation_emit_object(opts, QJsonObject{{"positions", arr}});
+}
+
+static int sandbox_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    if (sub == "seed")
+        return sandbox_seed_command(opts);
+    if (sub == "list")
+        return sandbox_list_command(opts, args);
+    if (sub == "pause")
+        return sandbox_set_status_command(opts, args, sub, QStringLiteral("paused"));
+    if (sub == "resume")
+        return sandbox_set_status_command(opts, args, sub, QStringLiteral("active"));
+    if (sub == "retire")
+        return sandbox_set_status_command(opts, args, sub, QStringLiteral("retired"));
+    if (sub == "tick")
+        return sandbox_tick_command(opts);
+    if (sub == "positions")
+        return sandbox_positions_command(opts, args);
+    std::fprintf(stderr,
+                 "usage: sandbox seed|list [--status S]|pause <id>|resume <id>|retire <id>|tick|"
+                 "positions [--open|--closed] [--limit N]\n");
+    return 2;
 }
 
 static int crypto_command(const GlobalOpts& opts, QStringList args) {
@@ -22173,6 +22417,10 @@ int dispatch(QStringList args) {
     if (group == "automation" || group == "auto" || group == "bot" || group == "trade-bot") {
         if (opts.help) return command_help("automation");
         return automation_command(opts, args);
+    }
+    if (group == "sandbox") {
+        if (opts.help) return command_help("sandbox");
+        return sandbox_command(opts, args);
     }
 
     if (group == "demo" || group == "demos") {
