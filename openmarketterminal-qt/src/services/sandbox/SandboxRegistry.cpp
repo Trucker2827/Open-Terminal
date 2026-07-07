@@ -141,7 +141,7 @@ Result<QList<QString>> seed_default_strategies() {
         {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
-                     {"journal_source", "kalshi"},
+                     {"journal_source", "edge journal-kalshi-scan"},
                      {"max_age_sec", 3600},
                      {"prediction", true}}},
         {QStringLiteral("long_short"), QStringLiteral("BTC-USD"),

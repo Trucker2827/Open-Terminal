@@ -746,6 +746,52 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(row.found);
         QCOMPARE(row.data_quality, QStringLiteral("degraded"));
     }
+
+    // Regression (task-11 follow-up): the REAL season-1 kalshi seed book,
+    // registered exactly as SandboxRegistry.cpp's seed_default_strategies()
+    // ships it -- not a hand-rolled test strategy -- must actually open a
+    // position against a genuine 'edge journal-kalshi-scan' journal row.
+    // Before the fix, the seed's journal_source was the bare string
+    // "kalshi", which no producer ever writes (the real kalshi journal
+    // producer writes source='edge journal-kalshi-scan',
+    // CommandDispatch.cpp:19481) -- the executor's exact `WHERE source = ?`
+    // match then matched nothing, forever, and the kalshi book opened zero
+    // positions no matter how much matching journal history existed.
+    void kalshi_seed_book_opens_on_real_producer_source() {
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+
+        const qint64 t0 = 14000000;
+        // gate='pass', a market_probability, created_at well within the
+        // seed's max_age_sec (3600s) window -- same shape as a real
+        // journal-kalshi-scan row (no side/call/horizon/freshness).
+        insert_journal_row(QStringLiteral("dec-kalshi-seed-1"), QStringLiteral("edge journal-kalshi-scan"),
+                           QStringLiteral("BTC-USD"), QStringLiteral(""), QStringLiteral(""),
+                           QStringLiteral("pass"), 0.0, t0, QStringLiteral(""), QJsonObject{}, QJsonObject{},
+                           /*market_probability=*/0.42);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 1);
+
+        const PositionRow row = fetch_position(QStringLiteral("dec-kalshi-seed-1"));
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("open"));
+        QCOMPARE(row.side, QStringLiteral("yes"));
+        QVERIFY(!row.hypothetical);
+        QVERIFY(qAbs(row.limit_price - 0.42) < 1e-9);
+
+        // Confirm the opened position actually belongs to the seed's own
+        // 'kalshi'-kind strategy row, not some other active book.
+        auto rows = list_strategies();
+        QVERIFY(rows.is_ok());
+        QString opened_kind;
+        for (const auto& r : rows.value())
+            if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
+        QCOMPARE(opened_kind, QStringLiteral("kalshi"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxExecutor)

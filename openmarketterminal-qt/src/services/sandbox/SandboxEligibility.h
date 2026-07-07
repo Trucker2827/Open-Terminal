@@ -42,9 +42,13 @@
 //     as a book with many 'unknown' positions and zero 'degraded' ones
 //     passes this bar cleanly.
 //   - hypothetical books are ALWAYS blocked ("hypothetical instrument"),
-//     unconditionally and before any other bar is even checked -- a
-//     hypothetical/prediction book has no live-tradable instrument behind
-//     it, full stop.
+//     unconditionally and before any other bar is even checked. Only
+//     `params.hypothetical` triggers this -- `params.prediction` books
+//     (e.g. btc5m/kalshi) are NOT hard-blocked here and can become eligible
+//     if they clear every other bar below. Whether a prediction book (which
+//     trades a real market, unlike a hypothetical one) should ever be
+//     promotion-eligible is an open policy question left to a future review,
+//     not something this file has decided.
 //   - eligible iff the blockers list ends up empty; every failed bar adds
 //     its own named blocker (blockers is not first-failure-wins -- a book
 //     can be blocked for several reasons at once and the caller should see

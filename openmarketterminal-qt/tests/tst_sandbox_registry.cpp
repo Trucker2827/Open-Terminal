@@ -8,6 +8,8 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QDir>
+#include <QHash>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
 
@@ -196,6 +198,46 @@ class TstSandboxRegistry : public QObject {
             if (seed_ids.contains(row.strategy_id))
                 ++seed_row_count;
         QCOMPARE(seed_row_count, 5);
+    }
+
+    // Contract test (task-11 follow-up): the kalshi season-1 seed shipped
+    // with journal_source "kalshi", but the ONLY kalshi journal producer
+    // writes source='edge journal-kalshi-scan' (CommandDispatch.cpp:19481) --
+    // a string mismatch the executor's exact `WHERE source = ?` match never
+    // surfaces as an error, it just silently opens nothing, forever. Both the
+    // seed and the (now-corrected) plan doc agreed on the wrong string, so no
+    // single-file review caught it. Pin every non-scalp seed's journal_source
+    // against its producer's actual source string so a future seed/producer
+    // drift fails loudly here instead of shipping a dead book.
+    //
+    // scalp is intentionally excluded: it reads scalp_decisions.jsonl, not
+    // edge_decision_journal, so it has no journal_source/producer pair.
+    void seed_journal_sources_match_their_journal_producers() {
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+
+        auto rows = list_strategies();
+        QVERIFY(rows.is_ok());
+
+        QHash<QString, QString> journal_source_by_kind;
+        for (const auto& row : rows.value()) {
+            QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+            if (params.contains(QStringLiteral("journal_source")))
+                journal_source_by_kind[row.kind] = params.value(QStringLiteral("journal_source")).toString();
+        }
+
+        // Expected producer source strings, one per non-scalp seed kind --
+        // hardcoded here (rather than derived) so this test can only pass if
+        // the seed's journal_source is byte-identical to what the producer
+        // actually writes on the CommandDispatch side.
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("spot")),
+                 QStringLiteral("edge crypto-recommend")); // producer @ CommandDispatch.cpp ~13595
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("btc5m")),
+                 QStringLiteral("edge journal-evaluate-btc5m-live")); // producer @ CommandDispatch.cpp ~14512
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("kalshi")),
+                 QStringLiteral("edge journal-kalshi-scan")); // producer @ CommandDispatch.cpp ~19481
+        QCOMPARE(journal_source_by_kind.value(QStringLiteral("long_short")),
+                 QStringLiteral("edge long-short-strategy")); // producer @ CommandDispatch.cpp ~13824
     }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)
