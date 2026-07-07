@@ -2,10 +2,16 @@
 # e2e_sandbox_smoke.sh — Strategy Sandbox Task 11 end-to-end smoke, offline,
 # NO GUI, NO daemon process. Drives the built openterminalcli against a
 # fully isolated $HOME (a fresh temp dir, not a throwaway profile under the
-# real HOME — the sandbox's "default" profile writes straight to
-# $HOME/Library/Application Support/org.openterminal.OpenTerminal with no
-# --profile flag needed, so isolating HOME is simpler and leak-proof than
-# the profile-name-in-real-HOME trick the other e2e_*.sh scripts use).
+# real HOME — the sandbox's "default" profile writes straight under $HOME
+# with no --profile flag needed, so isolating HOME is simpler and leak-proof
+# than the profile-name-in-real-HOME trick the other e2e_*.sh scripts use).
+# The app root under $HOME (Library/Application Support/... on macOS,
+# .local/share/... on Linux/Windows — see cli/BridgeDiscoveryFile.cpp's
+# app_root()) is located AFTER `sandbox seed` by finding the profile DB it
+# just created, rather than hardcoding a platform path, so this test passes
+# under both the local macOS dev build and the Linux ctest regression gate
+# (.github/workflows/regression.yml) — same approach as
+# tests/e2e_paper_trade.sh.
 #
 # Flow (mirrors the scalp lane's real daemon-tick contract — see
 # PaperExecutor.cpp's open_scalp_candidates/advance_pending_fills/
@@ -42,10 +48,10 @@
 # the brief allows.)
 #
 # Timestamp note: the brief's `date +%s%3N` does NOT work on BSD/macOS date
-# (no %N support — it prints a literal "N"), which is where this suite
-# actually runs; ctest's `ctest --output-on-failure` requires this test to
-# pass there. python3 (already a hard dependency of every other e2e_*.sh
-# script's JSON assertions) gives a portable millisecond clock instead.
+# (no %N support — it prints a literal "N"), and this suite must pass on both
+# the local macOS dev build and the Linux ctest regression gate. python3
+# (already a hard dependency of every other e2e_*.sh script's JSON
+# assertions) gives a portable millisecond clock instead.
 #
 # Assertions use python3 -c over captured JSON stdout (matching this repo's
 # other e2e_*.sh convention), never bare grep on floating-point output.
@@ -75,9 +81,6 @@ fail() { echo "FAIL: $1"; cleanup_all; exit 1; }
 trap cleanup_all EXIT
 
 export HOME="$TMPHOME"
-APP_ROOT="$HOME/Library/Application Support/org.openterminal.OpenTerminal"
-DAEMON_DIR="$APP_ROOT/daemon"
-mkdir -p "$DAEMON_DIR" || fail "could not create $DAEMON_DIR"
 
 now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
 
@@ -104,6 +107,22 @@ print(ids[0] if ids else '')
 ")"
 [ -n "$SCALP_ID" ] || fail "no active scalp strategy after seed"
 echo "PASS: scalp strategy id = $SCALP_ID"
+
+# ============================================================================
+# Locate the app root the CLI actually bootstrapped `sandbox seed` into, by
+# finding the profile DB it just created, rather than hardcoding a
+# platform-specific path (AppPaths::root()'s mirror in
+# cli/BridgeDiscoveryFile.cpp's app_root() differs across macOS/Linux/
+# Windows, and this suite must pass under Linux ctest too — see
+# .github/workflows/regression.yml). This is the same "derive from the DB
+# location" approach tests/e2e_paper_trade.sh uses.
+# ============================================================================
+PROFILE_DB="$(find "$HOME" -type f -name 'openmarketterminal.db' 2>/dev/null | head -1)"
+[ -n "$PROFILE_DB" ] && [ -f "$PROFILE_DB" ] || fail "could not locate openmarketterminal.db under $HOME after sandbox seed"
+APP_ROOT="$(dirname "$(dirname "$PROFILE_DB")")" # <app_root>/data/openmarketterminal.db
+DAEMON_DIR="$APP_ROOT/daemon"
+mkdir -p "$DAEMON_DIR" || fail "could not create $DAEMON_DIR"
+echo "PASS: app root = $APP_ROOT"
 
 # ============================================================================
 # Step 2 — fixture decision + fill-qualifying tick, BEFORE cycle 1.
