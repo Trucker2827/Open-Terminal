@@ -35,6 +35,7 @@ class CryptoOrderEntry : public QWidget {
     // normal BUY/SELL label.
     void set_submit_busy(bool busy);
     bool submit_busy() const { return submit_busy_; }
+    void show_order_result(bool ok, const QString& message);
 
   signals:
     void order_submitted(const QString& side, const QString& order_type, double quantity, double price,
@@ -47,10 +48,12 @@ class CryptoOrderEntry : public QWidget {
 
   private slots:
     void on_submit();
+    void on_maker_submit();
     void on_pct_clicked(int pct);
 
   private:
     void update_cost_preview();
+    void update_maker_preview();
     QString quote_label() const;
     void set_buy_side(bool is_buy);
     void set_order_type(int idx);
@@ -88,6 +91,18 @@ class CryptoOrderEntry : public QWidget {
     QLabel* market_price_label_ = nullptr;
     QLabel* avail_label_ = nullptr;
     QLabel* mode_label_ = nullptr;
+
+    // Idiot-proof maker-only quick ticket.
+    QLabel* maker_title_ = nullptr;
+    QLabel* maker_help_label_ = nullptr;
+    QLabel* maker_usd_title_ = nullptr;
+    QLabel* maker_limit_title_ = nullptr;
+    QLineEdit* maker_usd_edit_ = nullptr;
+    QLineEdit* maker_limit_edit_ = nullptr;
+    QPushButton* maker_use_bid_btn_ = nullptr;
+    QPushButton* maker_submit_btn_ = nullptr;
+    QLabel* maker_preview_label_ = nullptr;
+    QLabel* maker_status_label_ = nullptr;
 
     // Static field/section titles (cached for retranslateUi)
     QLabel* balance_title_ = nullptr;

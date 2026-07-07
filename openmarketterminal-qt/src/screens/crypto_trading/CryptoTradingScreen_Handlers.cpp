@@ -30,7 +30,9 @@
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QMessageBox>
 #include <QPointer>
 #include <QSplitter>
 #include <QStringListModel>
@@ -53,6 +55,40 @@ QString exchange_display_name(const QString& exchange_id) {
     if (exchange_id.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0)
         return QStringLiteral("COINBASE ADVANCED");
     return exchange_id.toUpper();
+}
+
+QString coinbase_order_symbol(QString symbol) {
+    symbol = symbol.trimmed().toUpper();
+    if (symbol.endsWith(QStringLiteral("/USDT")) || symbol.endsWith(QStringLiteral("/USDC")) ||
+        symbol.endsWith(QStringLiteral("/USD"))) {
+        return symbol.section(QLatin1Char('/'), 0, 0) + QStringLiteral("/USD");
+    }
+    return symbol;
+}
+
+QString order_symbol_for_exchange(const QString& exchange_id, const QString& display_symbol) {
+    if (exchange_id.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0)
+        return coinbase_order_symbol(display_symbol);
+    return display_symbol.trimmed().toUpper();
+}
+
+QString order_response_message(const QJsonObject& response) {
+    const QString error = response.value(QStringLiteral("error")).toString().trimmed();
+    if (!error.isEmpty())
+        return error;
+
+    const QString message = response.value(QStringLiteral("message")).toString().trimmed();
+    if (!message.isEmpty())
+        return message;
+
+    const QString id = response.value(QStringLiteral("id")).toString().trimmed();
+    if (!id.isEmpty())
+        return QStringLiteral("Submitted order %1").arg(id);
+
+    if (!response.isEmpty())
+        return QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact));
+
+    return {};
 }
 } // namespace
 
@@ -314,22 +350,38 @@ void CryptoTradingScreen::on_order_submitted(const QString& side, const QString&
 
             // Read the reduce-only flag on the UI thread before dispatching.
             const bool reduce_only = order_entry_->reduce_only();
+            const QString execution_symbol = order_symbol_for_exchange(exchange_id_, selected_symbol_);
+            LOG_INFO(TAG, QString("Live execution symbol: display=%1 exchange=%2 execution=%3")
+                              .arg(selected_symbol_, exchange_id_, execution_symbol));
             QPointer<CryptoTradingScreen> self = this;
             QPointer<crypto::CryptoOrderEntry> oe = order_entry_;
-            (void)QtConcurrent::run([self, oe, side, order_type, qty, price, stop_price, sl, tp, reduce_only, post_only]() {
+            (void)QtConcurrent::run([self, oe, execution_symbol, side, order_type, qty, price, stop_price, sl, tp,
+                                     reduce_only, post_only]() {
                 // stop_price drives Stop / Stop-Limit triggers; sl/tp attach native
                 // bracket legs; reduce_only is honoured on perps. The daemon maps
                 // these to ccxt unified params (triggerPrice / stopLoss / takeProfit).
                 // Re-enable the button on completion regardless of success/throw so
                 // the user is never stuck on a permanently disabled SENDING… button.
+                QJsonObject response;
+                bool ok = false;
+                QString message;
                 try {
                     if (self) {
-                        ExchangeService::instance().place_exchange_order(self->selected_symbol_, side, order_type, qty,
-                                                                         price, stop_price, sl, tp, reduce_only, post_only);
+                        response = ExchangeService::instance().place_exchange_order(execution_symbol, side, order_type,
+                                                                                   qty, price, stop_price, sl, tp,
+                                                                                   reduce_only, post_only);
+                        ok = !response.contains(QStringLiteral("error")) &&
+                             response.value(QStringLiteral("success")).toBool(true);
+                        message = order_response_message(response);
+                        if (message.isEmpty())
+                            message = ok ? QStringLiteral("Submitted %1 order").arg(execution_symbol)
+                                         : QStringLiteral("Order rejected");
                     }
                 } catch (const std::exception& e) {
-                    LOG_ERROR(TAG, QString("Live order failed: %1").arg(e.what()));
+                    message = QString::fromUtf8(e.what());
+                    LOG_ERROR(TAG, QString("Live order failed: %1").arg(message));
                 } catch (...) {
+                    message = QStringLiteral("Unknown live order failure");
                     LOG_ERROR(TAG, "Live order failed: unknown exception");
                 }
                 // order_entry_ is a child of the screen, so if self is alive the
@@ -338,9 +390,20 @@ void CryptoTradingScreen::on_order_submitted(const QString& side, const QString&
                     return;
                 QMetaObject::invokeMethod(
                     self,
-                    [self, oe]() {
-                        if (oe)
+                    [self, oe, ok, message, execution_symbol]() {
+                        if (oe) {
                             oe->set_submit_busy(false);
+                            oe->show_order_result(ok, message);
+                        }
+                        if (ok) {
+                            QMessageBox::information(self, CryptoTradingScreen::tr("Coinbase Order Submitted"),
+                                                     CryptoTradingScreen::tr("%1\n\nSymbol: %2")
+                                                         .arg(message, execution_symbol));
+                        } else {
+                            QMessageBox::warning(self, CryptoTradingScreen::tr("Coinbase Order Rejected"),
+                                                 CryptoTradingScreen::tr("%1\n\nSymbol sent: %2")
+                                                     .arg(message, execution_symbol));
+                        }
                         if (self)
                             self->refresh_live_data();
                     },

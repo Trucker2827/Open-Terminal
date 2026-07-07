@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <utility>
 
 namespace openmarketterminal::screens {
 
@@ -107,6 +108,40 @@ static QString money_m(double value) {
 
 static bool has_yoy(double value) {
     return !std::isnan(value) && std::isfinite(value);
+}
+
+static QString iso3_to_iso2(const QString& iso3) {
+    const QString key = iso3.trimmed().toUpper();
+    static const std::pair<const char*, const char*> kIsoMap[] = {
+        {"ARG", "AR"}, {"AUS", "AU"}, {"AUT", "AT"}, {"BEL", "BE"}, {"BRA", "BR"}, {"CAN", "CA"},
+        {"CHE", "CH"}, {"CHL", "CL"}, {"CHN", "CN"}, {"COL", "CO"}, {"DEU", "DE"}, {"DNK", "DK"},
+        {"ECU", "EC"}, {"ESP", "ES"}, {"FIN", "FI"}, {"FRA", "FR"}, {"GBR", "GB"}, {"HKG", "HK"},
+        {"IDN", "ID"}, {"IND", "IN"}, {"IRL", "IE"}, {"ISR", "IL"}, {"ITA", "IT"}, {"JPN", "JP"},
+        {"KOR", "KR"}, {"MEX", "MX"}, {"MYS", "MY"}, {"NGA", "NG"}, {"NLD", "NL"}, {"NOR", "NO"},
+        {"NZL", "NZ"}, {"PHL", "PH"}, {"POL", "PL"}, {"PRT", "PT"}, {"SAU", "SA"}, {"SGP", "SG"},
+        {"SWE", "SE"}, {"THA", "TH"}, {"TUR", "TR"}, {"USA", "US"}, {"VNM", "VN"}, {"ZAF", "ZA"},
+    };
+    for (const auto& row : kIsoMap) {
+        if (key == QLatin1String(row.first))
+            return QString::fromLatin1(row.second);
+    }
+    return {};
+}
+
+static QString flag_emoji_for_iso3(const QString& iso3) {
+    const QString iso2 = iso3_to_iso2(iso3);
+    if (iso2.size() != 2)
+        return {};
+    QString flag;
+    flag.reserve(4);
+    for (const QChar ch : iso2) {
+        const ushort letter = ch.toUpper().unicode();
+        if (letter < 'A' || letter > 'Z')
+            return {};
+        const char32_t indicator[] = {static_cast<char32_t>(0x1F1E6u + static_cast<uint>(letter - 'A')), 0};
+        flag.append(QString::fromUcs4(indicator));
+    }
+    return flag;
 }
 
 class TradeFlowChordWidget : public QWidget {
@@ -273,7 +308,7 @@ class TradeFlowChordWidget : public QWidget {
         for (int i = 0; i < n; ++i) {
             const QPointF node = point_at(i);
             const double strength = std::clamp(partners_[i].total_m / std::max(1.0, partners_.first().total_m), 0.2, 1.0);
-            const int size = 12 + static_cast<int>(10 * strength);
+            const int size = 14 + static_cast<int>(11 * strength);
             const bool active = partners_[i].iso3 == selected_iso_ || partners_[i].iso3 == hovered_iso_;
             QRectF halo(node.x() - size * 1.7, node.y() - size * 1.7, size * 3.4, size * 3.4);
             QColor halo_color = partners_[i].balance_m >= 0 ? QColor(0, 210, 170, 34) : QColor(234, 88, 12, 38);
@@ -283,11 +318,29 @@ class TradeFlowChordWidget : public QWidget {
             p.setPen(Qt::NoPen);
             p.drawEllipse(halo);
 
-            QRectF box(node.x() - size, node.y() - size * 0.7, size * 2, size * 1.4);
+            QRectF box(node.x() - size * 1.15, node.y() - size * 0.78, size * 2.3, size * 1.56);
             node_hitboxes_.append({partners_[i].iso3, halo.adjusted(-8, -8, 8, 8)});
             p.setBrush(QColor(25, 30, 30));
             p.setPen(QPen(partners_[i].balance_m >= 0 ? QColor(0, 210, 170) : QColor(234, 88, 12), active ? 2.2 : 1.0));
             p.drawRoundedRect(box, 3, 3);
+
+            const QString flag = flag_emoji_for_iso3(partners_[i].iso3);
+            if (!flag.isEmpty()) {
+                p.save();
+                QFont flag_font(QStringLiteral("Apple Color Emoji"), std::max(11, static_cast<int>(size * 0.86)));
+                p.setFont(flag_font);
+                p.setPen(Qt::white);
+                p.drawText(box.adjusted(1, -1, -1, 1), Qt::AlignCenter, flag);
+                p.restore();
+            } else {
+                p.save();
+                QFont iso_font(FONT, std::max(7, static_cast<int>(size * 0.42)));
+                iso_font.setBold(true);
+                p.setFont(iso_font);
+                p.setPen(QColor(ui::colors::TEXT_SECONDARY()));
+                p.drawText(box, Qt::AlignCenter, partners_[i].iso3.left(3));
+                p.restore();
+            }
 
             const QPointF label_pt = point_at(i, 42);
             QRectF label(label_pt.x() - 42, label_pt.y() - 10, 84, 20);
@@ -303,7 +356,14 @@ class TradeFlowChordWidget : public QWidget {
         center_font.setBold(true);
         p.setFont(center_font);
         p.setPen(QColor(ui::colors::AMBER()));
-        p.drawText(center.adjusted(0, 5, 0, -15), Qt::AlignCenter, reporter_);
+        const QString reporter_flag = flag_emoji_for_iso3(reporter_);
+        if (!reporter_flag.isEmpty()) {
+            p.save();
+            p.setFont(QFont(QStringLiteral("Apple Color Emoji"), 13));
+            p.drawText(center.adjusted(0, 2, 0, -22), Qt::AlignCenter, reporter_flag);
+            p.restore();
+        }
+        p.drawText(center.adjusted(0, reporter_flag.isEmpty() ? 5 : 16, 0, -15), Qt::AlignCenter, reporter_);
         p.setFont(QFont(FONT, 7));
         p.setPen(QColor(ui::colors::TEXT_SECONDARY()));
         p.drawText(center.adjusted(0, 26, 0, 0), Qt::AlignCenter, "IMPORT / EXPORT");

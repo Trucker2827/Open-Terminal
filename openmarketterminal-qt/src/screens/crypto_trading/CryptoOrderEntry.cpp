@@ -30,6 +30,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QMessageBox>
 #include <QSpinBox>
 #include <QStyle>
 #include <QVBoxLayout>
@@ -74,6 +75,12 @@ QString base_of(const QString& pair) {
 QString quote_of(const QString& pair) {
     const int slash = pair.indexOf('/');
     return slash > 0 ? pair.mid(slash + 1) : QStringLiteral("USD");
+}
+
+double text_to_double(const QLineEdit* edit) {
+    if (!edit)
+        return 0.0;
+    return edit->text().trimmed().toDouble();
 }
 
 // Numeric-only validator that allows decimals; reused by every numeric input.
@@ -219,8 +226,8 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
     // ── Scrollable content ──────────────────────────────────────────────────
     auto* content = new QWidget(this);
     auto* form = new QVBoxLayout(content);
-    form->setContentsMargins(10, 10, 10, 10);
-    form->setSpacing(10);
+    form->setContentsMargins(8, 6, 8, 6);
+    form->setSpacing(6);
 
     // ── 1. Account card (Balance / Mark / Avail) ────────────────────────────
     {
@@ -242,6 +249,111 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
         balance_label_->setText(QStringLiteral("$0.00"));
         market_price_label_->setText(QStringLiteral("--"));
         avail_label_->setText(QStringLiteral("--"));
+
+        form->addWidget(card);
+    }
+
+    // ── 1b. Maker-only quick buy ───────────────────────────────────────────
+    // This deliberately exposes fewer controls than the full ticket below:
+    // cash amount + limit price only, with post-only forced in code.
+    {
+        auto* card = make_card("cryptoOeBreakdown");
+        auto* v = new QVBoxLayout(card);
+        v->setContentsMargins(8, 6, 8, 6);
+        v->setSpacing(4);
+
+        auto* title_row = new QHBoxLayout;
+        title_row->setContentsMargins(0, 0, 0, 0);
+        title_row->setSpacing(6);
+        maker_title_ = new QLabel(tr("MAKER BUY"));
+        maker_title_->setObjectName("cryptoOeTitle");
+        title_row->addWidget(maker_title_);
+        title_row->addStretch();
+        auto* locked = new QLabel(tr("POST ONLY"));
+        locked->setObjectName("cryptoOeMode");
+        locked->setProperty("mode", "paper");
+        locked->setToolTip(tr("Forced maker protection: this ticket only submits post-only limit buys."));
+        title_row->addWidget(locked);
+        v->addLayout(title_row);
+
+        maker_help_label_ = new QLabel(tr("Cash + limit below ask. Market orders disabled."));
+        maker_help_label_->setObjectName("cryptoOeSubmitSubtitle");
+        maker_help_label_->setWordWrap(false);
+        v->addWidget(maker_help_label_);
+
+        maker_usd_title_ = new QLabel(tr("AMOUNT"));
+        maker_usd_title_->setObjectName("cryptoOeLabel");
+        v->addWidget(maker_usd_title_);
+
+        auto* amount_wrap = new QWidget;
+        amount_wrap->setObjectName("cryptoOeInputWrap");
+        auto* amount_h = new QHBoxLayout(amount_wrap);
+        amount_h->setContentsMargins(0, 0, 0, 0);
+        amount_h->setSpacing(0);
+        maker_usd_edit_ = new QLineEdit;
+        maker_usd_edit_->setObjectName("cryptoOeInput");
+        maker_usd_edit_->setPlaceholderText(QStringLiteral("200.00"));
+        maker_usd_edit_->setValidator(make_decimal_validator(this));
+        maker_usd_edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        amount_h->addWidget(maker_usd_edit_, 1);
+        auto* cash_unit = new QLabel(quote_label());
+        cash_unit->setObjectName("cryptoOeUnit");
+        cash_unit->setMinimumWidth(40);
+        cash_unit->setAlignment(Qt::AlignCenter);
+        cash_unit->setProperty("ftRoleUnit", "quote");
+        amount_h->addWidget(cash_unit);
+        v->addWidget(amount_wrap);
+
+        maker_limit_title_ = new QLabel(tr("LIMIT"));
+        maker_limit_title_->setObjectName("cryptoOeLabel");
+        v->addWidget(maker_limit_title_);
+
+        auto* limit_wrap = new QWidget;
+        limit_wrap->setObjectName("cryptoOeInputWrap");
+        auto* limit_h = new QHBoxLayout(limit_wrap);
+        limit_h->setContentsMargins(0, 0, 0, 0);
+        limit_h->setSpacing(4);
+        maker_limit_edit_ = new QLineEdit;
+        maker_limit_edit_->setObjectName("cryptoOeInput");
+        maker_limit_edit_->setPlaceholderText(QStringLiteral("59294.01"));
+        maker_limit_edit_->setValidator(make_decimal_validator(this));
+        maker_limit_edit_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        limit_h->addWidget(maker_limit_edit_, 1);
+        maker_use_bid_btn_ = new QPushButton(tr("BID"));
+        maker_use_bid_btn_->setObjectName("cryptoOePctBtn");
+        maker_use_bid_btn_->setCursor(Qt::PointingHandCursor);
+        maker_use_bid_btn_->setFocusPolicy(Qt::NoFocus);
+        maker_use_bid_btn_->setToolTip(tr("Use current best bid as the maker limit price."));
+        limit_h->addWidget(maker_use_bid_btn_);
+        v->addWidget(limit_wrap);
+
+        maker_preview_label_ = new QLabel(tr("Enter amount and limit price to preview."));
+        maker_preview_label_->setObjectName("cryptoOeSubmitSubtitle");
+        maker_preview_label_->setWordWrap(false);
+        maker_preview_label_->setAlignment(Qt::AlignCenter);
+        v->addWidget(maker_preview_label_);
+
+        maker_submit_btn_ = new QPushButton(tr("BUY MAKER"));
+        maker_submit_btn_->setObjectName("cryptoBuySubmit");
+        maker_submit_btn_->setCursor(Qt::PointingHandCursor);
+        maker_submit_btn_->setEnabled(false);
+        v->addWidget(maker_submit_btn_);
+
+        maker_status_label_ = new QLabel;
+        maker_status_label_->setObjectName("cryptoOeStatus");
+        maker_status_label_->setProperty("severity", "info");
+        maker_status_label_->setWordWrap(false);
+        maker_status_label_->setVisible(false);
+        v->addWidget(maker_status_label_);
+
+        connect(maker_usd_edit_, &QLineEdit::textChanged, this, [this]() { update_maker_preview(); });
+        connect(maker_limit_edit_, &QLineEdit::textChanged, this, [this]() { update_maker_preview(); });
+        connect(maker_use_bid_btn_, &QPushButton::clicked, this, [this]() {
+            const double px = best_bid_ > 0 ? best_bid_ : current_price_;
+            if (px > 0)
+                maker_limit_edit_->setText(QString::number(px, 'f', 2));
+        });
+        connect(maker_submit_btn_, &QPushButton::clicked, this, &CryptoOrderEntry::on_maker_submit);
 
         form->addWidget(card);
     }
@@ -550,6 +662,7 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
     root->addWidget(content, 1);
 
     update_cost_preview();
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_buy_side(bool is_buy) {
@@ -609,24 +722,34 @@ void CryptoOrderEntry::set_balance(double balance, const QString& currency) {
     balance_currency_ = currency.trimmed().toUpper();
     balance_ = balance;
     balance_label_->setText(QString("$%1").arg(balance, 0, 'f', 2));
+    const QString quote = quote_label();
+    for (auto* lbl : findChildren<QLabel*>()) {
+        const auto role = lbl->property("ftRoleUnit");
+        if (role.isValid() && role.toString() == QLatin1String("quote"))
+            lbl->setText(quote);
+    }
     update_cost_preview();
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_current_price(double price) {
     current_price_ = price;
     market_price_label_->setText(QString("$%1").arg(price, 0, 'f', 2));
     update_cost_preview();
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_exchange_id(const QString& exchange_id) {
     exchange_id_ = exchange_id.trimmed().toLower();
     update_cost_preview();
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_orderbook_quote(double bid, double ask) {
     best_bid_ = bid > 0 ? bid : 0;
     best_ask_ = ask > 0 ? ask : 0;
     update_cost_preview();
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_mode(bool is_paper) {
@@ -634,6 +757,7 @@ void CryptoOrderEntry::set_mode(bool is_paper) {
     mode_label_->setText(is_paper ? tr("PAPER") : tr("LIVE"));
     mode_label_->setProperty("mode", is_paper ? "paper" : "live");
     repolish(mode_label_);
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_symbol(const QString& symbol) {
@@ -656,6 +780,7 @@ void CryptoOrderEntry::set_symbol(const QString& symbol) {
             lbl->setText(base);
     }
     update_cost_preview();
+    update_maker_preview();
 }
 
 void CryptoOrderEntry::set_submit_busy(bool busy) {
@@ -669,6 +794,121 @@ void CryptoOrderEntry::set_submit_busy(bool busy) {
         submit_btn_->setText(is_buy_side_ ? tr("BUY  %1").arg(current_symbol_)
                                           : tr("SELL  %1").arg(current_symbol_));
     }
+    update_maker_preview();
+}
+
+void CryptoOrderEntry::show_order_result(bool ok, const QString& message) {
+    const QString clean = message.trimmed();
+    const QString text = clean.isEmpty() ? (ok ? tr("Order submitted") : tr("Order failed")) : clean;
+
+    if (maker_status_label_) {
+        maker_status_label_->setText(text);
+        maker_status_label_->setProperty("severity", ok ? "info" : "error");
+        maker_status_label_->setVisible(true);
+        repolish(maker_status_label_);
+    }
+    if (status_label_) {
+        status_label_->setText(text);
+        status_label_->setProperty("severity", ok ? "info" : "error");
+        status_label_->setVisible(true);
+        repolish(status_label_);
+    }
+}
+
+void CryptoOrderEntry::update_maker_preview() {
+    if (!maker_submit_btn_ || !maker_preview_label_)
+        return;
+
+    const double cash = text_to_double(maker_usd_edit_);
+    const double limit = text_to_double(maker_limit_edit_);
+    const QString quote = quote_label();
+    const QString base = base_of(current_symbol_);
+    const bool have_quote = best_bid_ > 0 && best_ask_ > best_bid_;
+    const bool crosses = have_quote && limit > 0 && limit >= best_ask_;
+    const bool enough_cash = balance_ <= 0 || cash <= balance_ + 0.000001 || is_paper_;
+    const bool valid = cash > 0 && limit > 0 && !crosses && enough_cash && !submit_busy_;
+    const double qty = (cash > 0 && limit > 0) ? cash / limit : 0.0;
+
+    if (cash > 0 && limit > 0) {
+        maker_preview_label_->setText(tr("%1 %2 -> %3 %4")
+                                          .arg(cash, 0, 'f', 2)
+                                          .arg(quote)
+                                          .arg(qty, 0, 'f', 8)
+                                          .arg(base));
+        QString tip = tr("%1 %2 at limit %3 %4. Maker/post-only forced.")
+                          .arg(cash, 0, 'f', 2)
+                          .arg(quote)
+                          .arg(limit, 0, 'f', 2)
+                          .arg(quote);
+        if (have_quote)
+            tip += tr("\nBest bid %1 · best ask %2").arg(best_bid_, 0, 'f', 2).arg(best_ask_, 0, 'f', 2);
+        maker_preview_label_->setToolTip(tip);
+    } else {
+        maker_preview_label_->setText(tr("Enter amount and limit price to preview."));
+        maker_preview_label_->setToolTip({});
+    }
+
+    if (maker_status_label_) {
+        if (crosses) {
+            maker_status_label_->setText(tr("Blocked: limit must be below ask %1").arg(best_ask_, 0, 'f', 2));
+            maker_status_label_->setProperty("severity", "error");
+            maker_status_label_->setVisible(true);
+        } else if (!enough_cash) {
+            maker_status_label_->setText(tr("Blocked: above available balance"));
+            maker_status_label_->setProperty("severity", "error");
+            maker_status_label_->setVisible(true);
+        } else {
+            maker_status_label_->setVisible(false);
+        }
+        repolish(maker_status_label_);
+    }
+
+    maker_submit_btn_->setEnabled(valid);
+    maker_submit_btn_->setText(submit_busy_ ? tr("SENDING…")
+                                            : (is_paper_ ? tr("PAPER BUY") : tr("LIVE BUY")));
+}
+
+void CryptoOrderEntry::on_maker_submit() {
+    if (submit_busy_)
+        return;
+    update_maker_preview();
+    if (!maker_submit_btn_ || !maker_submit_btn_->isEnabled())
+        return;
+
+    const double cash = text_to_double(maker_usd_edit_);
+    const double limit = text_to_double(maker_limit_edit_);
+    const double qty = (cash > 0 && limit > 0) ? cash / limit : 0.0;
+    if (cash <= 0 || limit <= 0 || qty <= 0)
+        return;
+
+    if (best_ask_ > best_bid_ && best_ask_ > 0 && limit >= best_ask_) {
+        if (maker_status_label_) {
+            maker_status_label_->setText(tr("Blocked: lower the limit below best ask for maker-only buy."));
+            maker_status_label_->setProperty("severity", "error");
+            maker_status_label_->setVisible(true);
+            repolish(maker_status_label_);
+        }
+        return;
+    }
+
+    const QString quote = quote_label();
+    const QString base = base_of(current_symbol_);
+    const QString mode_word = is_paper_ ? tr("paper") : tr("LIVE");
+    const QString detail = tr("Submit %1 maker-only buy?\n\n%2 %3 at limit %4 %5\nQuantity: %6 %7\n\nThis sends a post-only limit order. If it would fill immediately, the exchange should reject or cancel it.")
+                               .arg(mode_word)
+                               .arg(cash, 0, 'f', 2)
+                               .arg(quote)
+                               .arg(limit, 0, 'f', 2)
+                               .arg(quote)
+                               .arg(qty, 0, 'f', 8)
+                               .arg(base);
+
+    const auto choice = QMessageBox::question(this, tr("Confirm Maker-Only Buy"), detail,
+                                              QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);
+    if (choice != QMessageBox::Yes)
+        return;
+
+    emit order_submitted(QStringLiteral("buy"), QStringLiteral("limit"), qty, limit, 0.0, 0.0, 0.0, true);
 }
 
 void CryptoOrderEntry::on_submit() {
@@ -913,6 +1153,17 @@ void CryptoOrderEntry::retranslateUi() {
     if (mark_title_)    mark_title_->setText(tr("MARK"));
     if (avail_title_)   avail_title_->setText(tr("AVAIL"));
 
+    // Maker-only quick ticket
+    if (maker_title_) maker_title_->setText(tr("MAKER BUY"));
+    if (maker_help_label_)
+        maker_help_label_->setText(tr("Cash + limit below ask. Market orders disabled."));
+    if (maker_usd_title_) maker_usd_title_->setText(tr("AMOUNT"));
+    if (maker_limit_title_) maker_limit_title_->setText(tr("LIMIT"));
+    if (maker_use_bid_btn_) {
+        maker_use_bid_btn_->setText(tr("BID"));
+        maker_use_bid_btn_->setToolTip(tr("Use current best bid as the maker limit price."));
+    }
+
     // Side tabs
     if (buy_tab_)  buy_tab_->setText(tr("BUY"));
     if (sell_tab_) sell_tab_->setText(tr("SELL"));
@@ -966,6 +1217,7 @@ void CryptoOrderEntry::retranslateUi() {
     // Recompute the live cost preview so the subtitle / breakdown values pick
     // up the new language; covers both the populated and the placeholder state.
     update_cost_preview();
+    update_maker_preview();
 }
 
 } // namespace openmarketterminal::screens::crypto
