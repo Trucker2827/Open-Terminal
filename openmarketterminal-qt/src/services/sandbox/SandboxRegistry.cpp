@@ -16,6 +16,22 @@ QString params_json_compact(const QJsonObject& params) {
     return QString::fromUtf8(QJsonDocument(params).toJson(QJsonDocument::Compact));
 }
 
+// Retires (status='retired') any ACTIVE book whose kind is no longer part of
+// the season-1 seed set: scalp/btc5m (no venue / no edge; fee-dead sub-minute
+// or unlisted 5m book) and chronos2_5m (dropped alongside scalp/btc5m in the
+// horizon reshape). This runs at the end of every seed_default_strategies()
+// call so a reseed durably kills a pre-existing row of a removed kind even
+// though register_strategy() itself only ever inserts, never mutates.
+Result<void> retire_removed_kinds() {
+    auto r = Database::instance().execute(
+        "UPDATE sandbox_strategy SET status = 'retired' "
+        "WHERE status = 'active' AND kind IN ('scalp', 'btc5m', 'chronos2_5m')",
+        {});
+    if (r.is_err())
+        return Result<void>::err(r.error());
+    return Result<void>::ok();
+}
+
 } // namespace
 
 QString strategy_id_for(const QString& kind, const QString& symbols_csv, const QJsonObject& params) {
@@ -108,23 +124,45 @@ Result<QList<QString>> seed_default_strategies() {
 
     // Season-1 defaults — params objects are binding per the sandbox core plan
     // (task 2 brief); do not tweak field values without updating the brief.
+    //
+    // Real-horizon reshape (2026-07-07 plan): scalp, btc5m, and chronos2_5m
+    // have no venue / no edge (sub-minute or unlisted horizons) and are
+    // retired outright -- see retire_removed_kinds() below. spot and kalshi
+    // are each three horizon variants of the SAME kind ('spot'/'kalshi'):
+    // params differ (horizon_sec/target_move_pct/stop_move_pct for spot,
+    // horizon_sec/max_age_sec for kalshi), so each variant content-hashes to
+    // a distinct strategy_id and all three coexist under one journal feed
+    // (migration v058's per-strategy dedup makes that safe).
     const QList<Seed> seeds = {
-        {QStringLiteral("scalp"), QStringLiteral("BTC-USD"),
-         QJsonObject{{"notional_usd", 50.0},
-                     {"source", "scalp_decisions"},
-                     {"venue", "coinbase"},
-                     {"max_age_sec", 15},
-                     {"entry_offset_bps", 1.0},
-                     {"target_bps", 25.0},
-                     {"stop_bps", 15.0},
-                     {"horizon_sec", 900}}},
         {QStringLiteral("spot"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
                      {"journal_source", "edge crypto-recommend"},
                      {"venue", "coinbase"},
                      {"min_confidence", 0.8},
-                     {"min_horizon_sec", 60},
+                     {"min_horizon_sec", 3600},
+                     {"max_age_sec", 900},
+                     {"target_move_pct", 2.0},
+                     {"stop_move_pct", 1.0},
+                     {"horizon_sec", 3600}}},
+        {QStringLiteral("spot"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
+         QJsonObject{{"notional_usd", 50.0},
+                     {"source", "edge_journal"},
+                     {"journal_source", "edge crypto-recommend"},
+                     {"venue", "coinbase"},
+                     {"min_confidence", 0.8},
+                     {"min_horizon_sec", 3600},
+                     {"max_age_sec", 900},
+                     {"target_move_pct", 3.0},
+                     {"stop_move_pct", 1.5},
+                     {"horizon_sec", 14400}}},
+        {QStringLiteral("spot"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
+         QJsonObject{{"notional_usd", 50.0},
+                     {"source", "edge_journal"},
+                     {"journal_source", "edge crypto-recommend"},
+                     {"venue", "coinbase"},
+                     {"min_confidence", 0.8},
+                     {"min_horizon_sec", 3600},
                      {"max_age_sec", 900},
                      {"target_move_pct", 5.0},
                      {"stop_move_pct", 2.5},
@@ -134,18 +172,27 @@ Result<QList<QString>> seed_default_strategies() {
         // a book would backfill positions from arbitrarily old gate-pass
         // journal history. Changing these params changes the strategy_ids
         // (content-addressed) -- acceptable pre-season.
-        {QStringLiteral("btc5m"), QStringLiteral("BTC-USD"),
+        {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
-                     {"journal_source", "edge journal-evaluate-btc5m-live"},
+                     {"journal_source", "edge journal-kalshi-scan"},
                      {"max_age_sec", 900},
-                     {"prediction", true}}},
+                     {"prediction", true},
+                     {"horizon_sec", 900}}},
         {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
                      {"journal_source", "edge journal-kalshi-scan"},
                      {"max_age_sec", 3600},
-                     {"prediction", true}}},
+                     {"prediction", true},
+                     {"horizon_sec", 3600}}},
+        {QStringLiteral("kalshi"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
+         QJsonObject{{"notional_usd", 50.0},
+                     {"source", "edge_journal"},
+                     {"journal_source", "edge journal-kalshi-scan"},
+                     {"max_age_sec", 86400},
+                     {"prediction", true},
+                     {"horizon_sec", 86400}}},
         {QStringLiteral("long_short"), QStringLiteral("BTC-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
@@ -156,20 +203,6 @@ Result<QList<QString>> seed_default_strategies() {
                      {"max_age_sec", 600},
                      {"target_bps", 100.0},
                      {"stop_bps", 45.0},
-                     {"horizon_sec", 300}}},
-        {QStringLiteral("chronos2_5m"), QStringLiteral("BTC-USD"),
-         QJsonObject{{"notional_usd", 50.0},
-                     {"source", "edge_journal"},
-                     {"journal_source", "chronos2-forecast"},
-                     {"venue", "coinbase"},
-                     {"model_id", "amazon/chronos-2"},
-                     {"horizon", "5m"},
-                     {"min_expected_move_bps", 8.0},
-                     {"price_forecast", true},
-                     {"paper_only", true},
-                     {"max_age_sec", 600},
-                     {"target_bps", 25.0},
-                     {"stop_bps", 15.0},
                      {"horizon_sec", 300}}},
         {QStringLiteral("chronos2"), QStringLiteral("BTC-USD"),
          QJsonObject{{"notional_usd", 50.0},
@@ -236,6 +269,11 @@ Result<QList<QString>> seed_default_strategies() {
             return Result<QList<QString>>::err(r.error());
         ids.append(r.value());
     }
+
+    auto retired = retire_removed_kinds();
+    if (retired.is_err())
+        return Result<QList<QString>>::err(retired.error());
+
     return Result<QList<QString>>::ok(ids);
 }
 

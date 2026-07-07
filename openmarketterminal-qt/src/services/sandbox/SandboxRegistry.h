@@ -56,10 +56,15 @@ Result<QList<StrategyRow>> list_strategies(const QString& status_filter = {});
 // without touching the row.
 Result<void> set_status(const QString& strategy_id, const QString& status);
 
-// Registers the season-1 default strategy books (scalp, spot, btc5m, kalshi,
-// long_short, chronos2_5m, chronos2, chronos2_1h, chronos2_1d, chronos2_equity)
-// via register_strategy — idempotent, safe to call on
-// every startup. Returns the strategy_ids in registration order.
+// Registers the season-1 default strategy books: three 'spot' horizon
+// variants (1h/4h/1d), three 'kalshi' horizon variants (15m/1h/1d),
+// long_short, and chronos2/chronos2_1h/chronos2_1d/chronos2_equity — via
+// register_strategy — idempotent, safe to call on every startup. Also
+// retires (status='retired') any ACTIVE book of a removed kind (scalp,
+// btc5m, chronos2_5m — no venue / no edge) so a reseed durably kills a
+// pre-existing row even though register_strategy itself never mutates.
+// Returns the newly-registered/looked-up strategy_ids in seed-list order
+// (retired removed-kind ids are not included).
 Result<QList<QString>> seed_default_strategies();
 
 } // namespace openmarketterminal::services::sandbox

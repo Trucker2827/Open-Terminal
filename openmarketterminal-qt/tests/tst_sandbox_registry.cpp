@@ -172,34 +172,112 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(status, QStringLiteral("paused"));
     }
 
-    // (e) seed_default_strategies is idempotent -> 10 rows both times, with
-    // separate Chronos BTC books for 5m/15m/1h/1d plus the equity book.
+    // (e) seed_default_strategies is idempotent -> 11 rows both times: 3
+    // spot horizon variants, 3 kalshi horizon variants, long_short, and the
+    // Chronos BTC 15m/1h/1d books plus the equity book (5m variants dropped).
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 10);
+        QCOMPARE(first.value().size(), 11);
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 10);
+        QCOMPARE(second.value().size(), 11);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
         QVERIFY(rows.is_ok());
         QSet<QString> seed_ids(first.value().begin(), first.value().end());
         QSet<QString> kinds;
-        for (const auto& row : rows.value())
-            if (seed_ids.contains(row.strategy_id))
-                kinds.insert(row.kind);
-        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "btc5m", "kalshi", "long_short",
-                                       "chronos2_5m", "chronos2", "chronos2_1h",
-                                       "chronos2_1d", "chronos2_equity"}));
-
         int seed_row_count = 0;
-        for (const auto& row : rows.value())
-            if (seed_ids.contains(row.strategy_id))
-                ++seed_row_count;
-        QCOMPARE(seed_row_count, 10);
+        QSet<int> spot_horizons;
+        QSet<int> kalshi_horizons;
+        int spot_count = 0;
+        int kalshi_count = 0;
+        int long_short_count = 0;
+        for (const auto& row : rows.value()) {
+            if (!seed_ids.contains(row.strategy_id))
+                continue;
+            ++seed_row_count;
+            kinds.insert(row.kind);
+            const QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+            const int horizon_sec = params.value(QStringLiteral("horizon_sec")).toInt();
+            if (row.kind == QStringLiteral("spot")) {
+                ++spot_count;
+                spot_horizons.insert(horizon_sec);
+            } else if (row.kind == QStringLiteral("kalshi")) {
+                ++kalshi_count;
+                kalshi_horizons.insert(horizon_sec);
+            } else if (row.kind == QStringLiteral("long_short")) {
+                ++long_short_count;
+            }
+        }
+        QCOMPARE(seed_row_count, 11);
+        QCOMPARE(kinds, QSet<QString>({"spot", "kalshi", "long_short", "chronos2", "chronos2_1h",
+                                       "chronos2_1d", "chronos2_equity"}));
+        QCOMPARE(spot_count, 3);
+        QCOMPARE(kalshi_count, 3);
+        QCOMPARE(long_short_count, 1);
+        QCOMPARE(spot_horizons, QSet<int>({3600, 14400, 86400}));
+        QCOMPARE(kalshi_horizons, QSet<int>({900, 3600, 86400}));
+
+        // No book of a removed kind is ever seeded.
+        for (const auto& row : rows.value()) {
+            if (!seed_ids.contains(row.strategy_id))
+                continue;
+            QVERIFY2(row.kind != QStringLiteral("scalp"), "scalp must not be seeded");
+            QVERIFY2(row.kind != QStringLiteral("btc5m"), "btc5m must not be seeded");
+            QVERIFY2(row.kind != QStringLiteral("chronos2_5m"), "chronos2_5m must not be seeded");
+        }
+    }
+
+    // (e2) seeding retires any pre-existing ACTIVE scalp/btc5m/chronos2_5m
+    // book (removed kinds) -- so a reseed durably kills them even if they
+    // were registered by an older binary before this reshape.
+    void seed_default_strategies_retires_removed_kinds() {
+        auto pre_scalp = register_strategy(QStringLiteral("scalp"), QStringLiteral("BTC-USD"),
+                                           QJsonObject{{"notional_usd", 50.0}, {"horizon_sec", 900}},
+                                           QStringLiteral("pre-existing scalp book"));
+        QVERIFY(pre_scalp.is_ok());
+        auto pre_btc5m = register_strategy(QStringLiteral("btc5m"), QStringLiteral("BTC-USD"),
+                                           QJsonObject{{"notional_usd", 50.0}, {"max_age_sec", 900}},
+                                           QStringLiteral("pre-existing btc5m book"));
+        QVERIFY(pre_btc5m.is_ok());
+        auto pre_chronos5m = register_strategy(QStringLiteral("chronos2_5m"), QStringLiteral("BTC-USD"),
+                                               QJsonObject{{"horizon", "5m"}, {"horizon_sec", 300}},
+                                               QStringLiteral("pre-existing chronos2_5m book"));
+        QVERIFY(pre_chronos5m.is_ok());
+
+        // Confirm they start ACTIVE (register_strategy's default status).
+        auto before = list_strategies(QStringLiteral("active"));
+        QVERIFY(before.is_ok());
+        QSet<QString> active_ids_before;
+        for (const auto& row : before.value())
+            active_ids_before.insert(row.strategy_id);
+        QVERIFY(active_ids_before.contains(pre_scalp.value()));
+        QVERIFY(active_ids_before.contains(pre_btc5m.value()));
+        QVERIFY(active_ids_before.contains(pre_chronos5m.value()));
+
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+
+        auto after = list_strategies();
+        QVERIFY(after.is_ok());
+        for (const auto& row : after.value()) {
+            if (row.strategy_id == pre_scalp.value() || row.strategy_id == pre_btc5m.value() ||
+                row.strategy_id == pre_chronos5m.value()) {
+                QCOMPARE(row.status, QStringLiteral("retired"));
+            }
+        }
+
+        auto active_after = list_strategies(QStringLiteral("active"));
+        QVERIFY(active_after.is_ok());
+        for (const auto& row : active_after.value()) {
+            QVERIFY2(row.kind != QStringLiteral("scalp"), "no ACTIVE scalp book may remain after reseed");
+            QVERIFY2(row.kind != QStringLiteral("btc5m"), "no ACTIVE btc5m book may remain after reseed");
+            QVERIFY2(row.kind != QStringLiteral("chronos2_5m"),
+                     "no ACTIVE chronos2_5m book may remain after reseed");
+        }
     }
 
     // Contract test (task-11 follow-up): the kalshi season-1 seed shipped
@@ -214,6 +292,9 @@ class TstSandboxRegistry : public QObject {
     //
     // scalp is intentionally excluded: it reads scalp_decisions.jsonl, not
     // edge_decision_journal, so it has no journal_source/producer pair.
+    // Since 'spot' and 'kalshi' are now each 3 rows (horizon variants, same
+    // kind, distinct params/strategy_id), this asserts EVERY row of a kind
+    // matches the producer's source, not just one representative per kind.
     void seed_journal_sources_match_their_journal_producers() {
         auto seeded = seed_default_strategies();
         QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
@@ -221,35 +302,40 @@ class TstSandboxRegistry : public QObject {
         auto rows = list_strategies();
         QVERIFY(rows.is_ok());
 
-        QHash<QString, QString> journal_source_by_kind;
-        for (const auto& row : rows.value()) {
-            QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
-            if (params.contains(QStringLiteral("journal_source")))
-                journal_source_by_kind[row.kind] = params.value(QStringLiteral("journal_source")).toString();
-        }
+        // Expected producer source strings, one per seed kind -- hardcoded
+        // here (rather than derived) so this test can only pass if every
+        // seeded row's journal_source is byte-identical to what the
+        // producer actually writes on the CommandDispatch side.
+        QHash<QString, QString> expected{
+            {QStringLiteral("spot"), QStringLiteral("edge crypto-recommend")},        // CommandDispatch.cpp ~13611
+            {QStringLiteral("kalshi"), QStringLiteral("edge journal-kalshi-scan")},   // CommandDispatch.cpp ~19481
+            {QStringLiteral("long_short"), QStringLiteral("edge long-short-strategy")}, // CommandDispatch.cpp ~13824
+            {QStringLiteral("chronos2"), QStringLiteral("chronos2-forecast")},
+            {QStringLiteral("chronos2_1h"), QStringLiteral("chronos2-forecast")},
+            {QStringLiteral("chronos2_1d"), QStringLiteral("chronos2-forecast")},
+            {QStringLiteral("chronos2_equity"), QStringLiteral("chronos2-equity-forecast")},
+        };
 
-        // Expected producer source strings, one per non-scalp seed kind --
-        // hardcoded here (rather than derived) so this test can only pass if
-        // the seed's journal_source is byte-identical to what the producer
-        // actually writes on the CommandDispatch side.
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("spot")),
-                 QStringLiteral("edge crypto-recommend")); // producer @ CommandDispatch.cpp ~13595
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("btc5m")),
-                 QStringLiteral("edge journal-evaluate-btc5m-live")); // producer @ CommandDispatch.cpp ~14512
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("kalshi")),
-                 QStringLiteral("edge journal-kalshi-scan")); // producer @ CommandDispatch.cpp ~19481
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("long_short")),
-                 QStringLiteral("edge long-short-strategy")); // producer @ CommandDispatch.cpp ~13824
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_5m")),
-                 QStringLiteral("chronos2-forecast"));
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2")),
-                 QStringLiteral("chronos2-forecast"));
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_1h")),
-                 QStringLiteral("chronos2-forecast"));
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_1d")),
-                 QStringLiteral("chronos2-forecast"));
-        QCOMPARE(journal_source_by_kind.value(QStringLiteral("chronos2_equity")),
-                 QStringLiteral("chronos2-equity-forecast"));
+        QSet<QString> seed_ids(seeded.value().begin(), seeded.value().end());
+        QHash<QString, int> checked_count;
+        for (const auto& row : rows.value()) {
+            if (!seed_ids.contains(row.strategy_id))
+                continue;
+            if (!expected.contains(row.kind))
+                continue; // scalp/btc5m/chronos2_5m are not seeded anymore
+            QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+            QCOMPARE(params.value(QStringLiteral("journal_source")).toString(), expected.value(row.kind));
+            ++checked_count[row.kind];
+        }
+        // Every expected kind must actually have been present and checked --
+        // 3 rows for spot/kalshi (horizon variants), 1 row for the rest.
+        QCOMPARE(checked_count.value(QStringLiteral("spot")), 3);
+        QCOMPARE(checked_count.value(QStringLiteral("kalshi")), 3);
+        QCOMPARE(checked_count.value(QStringLiteral("long_short")), 1);
+        QCOMPARE(checked_count.value(QStringLiteral("chronos2")), 1);
+        QCOMPARE(checked_count.value(QStringLiteral("chronos2_1h")), 1);
+        QCOMPARE(checked_count.value(QStringLiteral("chronos2_1d")), 1);
+        QCOMPARE(checked_count.value(QStringLiteral("chronos2_equity")), 1);
     }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)

@@ -17,6 +17,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 
 #include "core/config/AppPaths.h"
 #include "core/config/ProfileManager.h"
@@ -747,24 +748,35 @@ class TstSandboxExecutor : public QObject {
         QCOMPARE(row.data_quality, QStringLiteral("degraded"));
     }
 
-    // Regression (task-11 follow-up): the REAL season-1 kalshi seed book,
-    // registered exactly as SandboxRegistry.cpp's seed_default_strategies()
-    // ships it -- not a hand-rolled test strategy -- must actually open a
-    // position against a genuine 'edge journal-kalshi-scan' journal row.
-    // Before the fix, the seed's journal_source was the bare string
-    // "kalshi", which no producer ever writes (the real kalshi journal
-    // producer writes source='edge journal-kalshi-scan',
-    // CommandDispatch.cpp:19481) -- the executor's exact `WHERE source = ?`
-    // match then matched nothing, forever, and the kalshi book opened zero
-    // positions no matter how much matching journal history existed.
+    // Regression (task-11 follow-up, extended by the horizon reshape): the
+    // REAL season-1 kalshi seed books, registered exactly as
+    // SandboxRegistry.cpp's seed_default_strategies() ships them -- not a
+    // hand-rolled test strategy -- must actually open positions against a
+    // genuine 'edge journal-kalshi-scan' journal row. Before the task-11 fix,
+    // the seed's journal_source was the bare string "kalshi", which no
+    // producer ever writes (the real kalshi journal producer writes
+    // source='edge journal-kalshi-scan', CommandDispatch.cpp:19481) -- the
+    // executor's exact `WHERE source = ?` match then matched nothing,
+    // forever, and the kalshi book opened zero positions no matter how much
+    // matching journal history existed.
+    //
+    // Since the horizon reshape, the seed registers THREE kalshi books
+    // (15m/1h/1d), all reading the SAME 'edge journal-kalshi-scan' source and
+    // none of them horizon-gating a gate-pass row by content (the prediction
+    // lane only filters on source + max_age_sec + gate, not the journal
+    // row's own horizon text) -- migration v058's per-strategy dedup means
+    // ALL THREE independently open their own position from a single
+    // matching row, none starving the others. opened must be 3, one per
+    // kalshi strategy_id, not 1.
     void kalshi_seed_book_opens_on_real_producer_source() {
         auto seeded = seed_default_strategies();
         QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
 
         const qint64 t0 = 14000000;
-        // gate='pass', a market_probability, created_at well within the
-        // seed's max_age_sec (3600s) window -- same shape as a real
-        // journal-kalshi-scan row (no side/call/horizon/freshness).
+        // gate='pass', a market_probability, created_at well within every
+        // seeded kalshi variant's max_age_sec window (smallest is 900s) --
+        // same shape as a real journal-kalshi-scan row (no
+        // side/call/horizon/freshness).
         insert_journal_row(QStringLiteral("dec-kalshi-seed-1"), QStringLiteral("edge journal-kalshi-scan"),
                            QStringLiteral("BTC-USD"), QStringLiteral(""), QStringLiteral(""),
                            QStringLiteral("pass"), 0.0, t0, QStringLiteral(""), QJsonObject{}, QJsonObject{},
@@ -774,23 +786,36 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(daemon.isValid());
         auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
         QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
-        QCOMPARE(cycle.value().opened, 1);
+        QCOMPARE(cycle.value().opened, 3);
 
-        const PositionRow row = fetch_position(QStringLiteral("dec-kalshi-seed-1"));
-        QVERIFY(row.found);
-        QCOMPARE(row.state, QStringLiteral("open"));
-        QCOMPARE(row.side, QStringLiteral("yes"));
-        QVERIFY(!row.hypothetical);
-        QVERIFY(qAbs(row.limit_price - 0.42) < 1e-9);
-
-        // Confirm the opened position actually belongs to the seed's own
-        // 'kalshi'-kind strategy row, not some other active book.
-        auto rows = list_strategies();
+        // Every active kalshi-kind strategy_id must have exactly one open
+        // position against this decision id, and it must be a 'yes' side at
+        // the journal row's market_probability.
+        auto rows = list_strategies(QStringLiteral("active"));
         QVERIFY(rows.is_ok());
-        QString opened_kind;
+        QSet<QString> kalshi_ids;
         for (const auto& r : rows.value())
-            if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
-        QCOMPARE(opened_kind, QStringLiteral("kalshi"));
+            if (r.kind == QStringLiteral("kalshi"))
+                kalshi_ids.insert(r.strategy_id);
+        QCOMPARE(kalshi_ids.size(), 3);
+
+        auto pr = Database::instance().execute(
+            "SELECT strategy_id, side, hypothetical, limit_price, state FROM sandbox_position"
+            " WHERE decision_id = ? ORDER BY strategy_id",
+            {QStringLiteral("dec-kalshi-seed-1")});
+        QVERIFY(pr.is_ok());
+        auto& pq = pr.value();
+        QSet<QString> opened_strategy_ids;
+        while (pq.next()) {
+            const QString sid = pq.value(0).toString();
+            QVERIFY2(kalshi_ids.contains(sid), "every opened position must belong to a seeded kalshi book");
+            opened_strategy_ids.insert(sid);
+            QCOMPARE(pq.value(1).toString(), QStringLiteral("yes"));
+            QCOMPARE(pq.value(2).toInt() != 0, false);
+            QVERIFY(qAbs(pq.value(3).toDouble() - 0.42) < 1e-9);
+            QCOMPARE(pq.value(4).toString(), QStringLiteral("open"));
+        }
+        QCOMPARE(opened_strategy_ids, kalshi_ids);
     }
 
     // Chronos-2 journal rows are price forecasts, not binary yes/no
