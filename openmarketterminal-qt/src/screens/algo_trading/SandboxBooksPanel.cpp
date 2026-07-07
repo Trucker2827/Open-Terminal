@@ -613,7 +613,7 @@ void SandboxBooksPanel::populate_pipeline_health() {
                         pipeline_table_->resizeColumnsToContents();
                         pipeline_table_->horizontalHeader()->setStretchLastSection(true);
                         if (failed > 0) {
-                            set_status(tr("Sandbox is ticking, but %1 producer job(s) need attention. Chronos can fail until its Python/model environment is ready.")
+                            set_status(tr("Sandbox is ticking, but %1 producer job(s) reported a recent failure — usually a transient data/network timeout that clears on the next run.")
                                            .arg(failed),
                                        ui::colors::AMBER());
                         } else if (running > 0) {
