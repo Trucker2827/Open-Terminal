@@ -1,10 +1,12 @@
-// tst_sandbox_schema.cpp — Strategy Sandbox migration v056.
+// tst_sandbox_schema.cpp — Strategy Sandbox migrations v056 + v058.
 //
 // Proves the four sandbox tables (sandbox_strategy, sandbox_position,
 // sandbox_fill, sandbox_score) exist with every load-bearing column verbatim,
-// and that sandbox_position.decision_id is UNIQUE (structural dedup — later
-// tasks rely on a duplicate decision_id insert failing rather than silently
-// creating a second paper position for the same journal decision).
+// and that sandbox_position has a composite UNIQUE(strategy_id, decision_id)
+// (v058 — structural per-strategy dedup: a duplicate decision_id insert
+// under the SAME strategy_id fails, but the same decision_id under a
+// DIFFERENT strategy_id succeeds, so two active books sharing a journal
+// source don't starve each other).
 //
 // DB bring-up mirrors tst_data_services.cpp's initTestCase(): select the
 // "default" profile, create its datadir tree, register migrations, then open
@@ -59,13 +61,19 @@ class TstSandboxSchema : public QObject {
         QVERIFY(db.execute("SELECT fill_id, position_id, ts, kind, price, fee, note FROM sandbox_fill", {}).is_ok());
         QVERIFY(db.execute("SELECT strategy_id, score_date, resolved_count, open_count, unfilled_count, net_pnl,"
                            " hit_rate, avg_win, avg_loss, max_drawdown, degraded_count, gross_notional FROM sandbox_score", {}).is_ok());
-        // structural dedup
+        // structural dedup: same decision_id under the SAME strategy_id fails
+        // (composite UNIQUE(strategy_id, decision_id) from v058), but the
+        // same decision_id under a DIFFERENT strategy_id succeeds -- two
+        // active books sharing a journal source must not starve each other.
         auto dup = db.execute("INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, qty,"
                               " limit_price, expires_at, state, notional_usd) VALUES ('p1','s','d1','BTC-USD','buy',1,1,1,'open',50)", {});
         QVERIFY(dup.is_ok());
         auto dup2 = db.execute("INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, qty,"
                                " limit_price, expires_at, state, notional_usd) VALUES ('p2','s','d1','BTC-USD','buy',1,1,1,'open',50)", {});
-        QVERIFY2(dup2.is_err(), "decision_id must be UNIQUE");
+        QVERIFY2(dup2.is_err(), "decision_id must be UNIQUE per strategy_id");
+        auto dup3 = db.execute("INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, qty,"
+                               " limit_price, expires_at, state, notional_usd) VALUES ('p3','s2','d1','BTC-USD','buy',1,1,1,'open',50)", {});
+        QVERIFY2(dup3.is_ok(), "same decision_id under a DIFFERENT strategy_id must succeed");
     }
 };
 QTEST_GUILESS_MAIN(TstSandboxSchema)

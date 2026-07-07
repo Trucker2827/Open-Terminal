@@ -252,7 +252,8 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
         // rare race), so check-then-skip here rather than let it hit the
         // decision_id UNIQUE constraint on every subsequent cycle.
         auto existing = Database::instance().execute(
-            "SELECT 1 FROM sandbox_position WHERE decision_id = ?", {decision_id});
+            "SELECT 1 FROM sandbox_position WHERE decision_id = ? AND strategy_id = ?",
+            {decision_id, strategy.strategy_id});
         if (existing.is_err())
             return Result<void>::err(existing.error());
         if (existing.value().next()) {
@@ -307,10 +308,12 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
 // applied in C++ (parsing "15s"-style horizon strings isn't natural SQL,
 // same precedent as automation_latest_spot_candidate + automation::
 // spot_row_passes), plus a SQL-level anti-join against sandbox_position.
-// decision_id. That anti-join clause is the ONE piece of dedup logic this
-// file's test suite neuter-verifies: do not "harden" this with an extra
-// pre-check the way scalp's routine-duplicate path does above, or removing
-// it stops producing an observable failure.
+// decision_id, SCOPED to this strategy_id (migration v058 -- two active
+// books sharing a journal source must each open their own position from the
+// same decision, not starve each other). That anti-join clause is the ONE
+// piece of dedup logic this file's test suite neuter-verifies: do not
+// "harden" this with an extra pre-check the way scalp's routine-duplicate
+// path does above, or removing it stops producing an observable failure.
 Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonObject& params, qint64 now_ms,
                                         CycleReport& report) {
     const QString journal_source = params.value(QStringLiteral("journal_source")).toString();
@@ -333,9 +336,9 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
             " FROM edge_decision_journal"
             " WHERE source = ? AND symbol = ? AND created_at >= ? AND side = 'buy'"
             " AND call = 'BUY CANDIDATE' AND gate = 'pass'"
-            " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
+            " AND id NOT IN (SELECT decision_id FROM sandbox_position WHERE strategy_id = ?)"
             " ORDER BY created_at DESC LIMIT 20",
-            {journal_source, symbol, cutoff});
+            {journal_source, symbol, cutoff, strategy.strategy_id});
         if (sel.is_err())
             return Result<void>::err(sel.error());
 
@@ -433,9 +436,9 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
         "SELECT id, created_at, symbol, market_probability, freshness_json"
         " FROM edge_decision_journal"
         " WHERE source = ? AND gate = 'pass' AND created_at >= ?"
-        " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
+        " AND id NOT IN (SELECT decision_id FROM sandbox_position WHERE strategy_id = ?)"
         " ORDER BY created_at DESC LIMIT 50",
-        {journal_source, cutoff});
+        {journal_source, cutoff, strategy.strategy_id});
     if (sel.is_err())
         return Result<void>::err(sel.error());
 
@@ -505,9 +508,9 @@ Result<void> open_price_forecast_candidates(const StrategyRow& strategy, const Q
             " FROM edge_decision_journal"
             " WHERE source = ? AND symbol = ? AND gate = 'pass' AND created_at >= ?"
             " AND side IN ('buy','sell','long','short')"
-            " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
+            " AND id NOT IN (SELECT decision_id FROM sandbox_position WHERE strategy_id = ?)"
             " ORDER BY created_at DESC LIMIT 20",
-            {journal_source, symbol, cutoff});
+            {journal_source, symbol, cutoff, strategy.strategy_id});
         if (sel.is_err())
             return Result<void>::err(sel.error());
 
@@ -601,9 +604,9 @@ Result<void> open_hypothetical_candidates(const StrategyRow& strategy, const QJs
         "SELECT id, created_at, symbol, side, features_json, freshness_json"
         " FROM edge_decision_journal"
         " WHERE source = ? AND gate = 'pass' AND created_at >= ?"
-        " AND id NOT IN (SELECT decision_id FROM sandbox_position)"
+        " AND id NOT IN (SELECT decision_id FROM sandbox_position WHERE strategy_id = ?)"
         " ORDER BY created_at DESC LIMIT 50",
-        {journal_source, cutoff});
+        {journal_source, cutoff, strategy.strategy_id});
     if (sel.is_err())
         return Result<void>::err(sel.error());
 

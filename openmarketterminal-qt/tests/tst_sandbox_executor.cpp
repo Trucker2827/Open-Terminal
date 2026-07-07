@@ -834,6 +834,60 @@ class TstSandboxExecutor : public QObject {
         QCOMPARE(opened_kind, QStringLiteral("chronos2"));
     }
 
+    // Task 1 (v058): two active spot books with DISTINCT strategy_ids that
+    // share the same journal source (e.g. spot_1h + spot_4h both reading
+    // 'edge crypto-recommend') must NOT starve each other -- each opens its
+    // own position from the same gate-pass journal row (per-strategy dedup,
+    // migration v058's UNIQUE(strategy_id, decision_id) + the executor's
+    // anti-join scoped by strategy_id). A second cycle must not double-open
+    // either book's position.
+    void two_books_same_source_both_open_without_starving() {
+        auto strat_n = register_strategy(
+            QStringLiteral("test_two_n"), QStringLiteral("XNN-USD"),
+            QJsonObject{{"notional_usd", 100.0}, {"journal_source", "journal-n"}, {"min_confidence", 0.0},
+                        {"min_horizon_sec", 0}, {"max_age_sec", 3600}, {"target_move_pct", 5.0},
+                        {"stop_move_pct", 2.0}, {"horizon_sec", kFarHorizonSec}});
+        QVERIFY(strat_n.is_ok());
+        auto strat_o = register_strategy(
+            QStringLiteral("test_two_o"), QStringLiteral("XNN-USD"),
+            QJsonObject{{"notional_usd", 200.0}, {"journal_source", "journal-n"}, {"min_confidence", 0.0},
+                        {"min_horizon_sec", 0}, {"max_age_sec", 3600}, {"target_move_pct", 3.0},
+                        {"stop_move_pct", 1.0}, {"horizon_sec", kFarHorizonSec}});
+        QVERIFY(strat_o.is_ok());
+        QVERIFY2(strat_n.value() != strat_o.value(), "the two books must be distinct strategy_ids");
+
+        const qint64 t0 = 17000000;
+        insert_journal_row(QStringLiteral("dec-n1"), QStringLiteral("journal-n"), QStringLiteral("XNN-USD"),
+                           QStringLiteral("buy"), QStringLiteral("BUY CANDIDATE"), QStringLiteral("pass"), 0.9, t0,
+                           QStringLiteral("5m"), QJsonObject{{"reference_price", 100.0}},
+                           QJsonObject{{"freshest_age_ms", 100}, {"live_sources", 3}});
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 2);
+
+        auto r = Database::instance().execute(
+            "SELECT strategy_id, notional_usd FROM sandbox_position WHERE decision_id = ? ORDER BY strategy_id",
+            {QStringLiteral("dec-n1")});
+        QVERIFY(r.is_ok());
+        auto& q = r.value();
+        int count = 0;
+        while (q.next()) {
+            ++count;
+            const QString sid = q.value(0).toString();
+            QVERIFY(sid == strat_n.value() || sid == strat_o.value());
+        }
+        QCOMPARE(count, 2);
+
+        // Second cycle: no double-open for either book.
+        auto second = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 2000);
+        QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
+        QCOMPARE(second.value().opened, 0);
+        QCOMPARE(count_positions(QStringLiteral("dec-n1")), 2);
+    }
+
     void chronos_horizon_books_do_not_cross_feed() {
         auto seeded = seed_default_strategies();
         QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
