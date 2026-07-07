@@ -3,6 +3,7 @@
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/sandbox/PaperFillModel.h"
 #include "services/sandbox/SandboxRegistry.h"
+#include "services/sandbox/SandboxResolver.h"
 #include "services/sandbox/TickTail.h"
 #include "storage/sqlite/Database.h"
 
@@ -787,7 +788,10 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
 } // namespace
 
 Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir, qint64 now_ms) {
-    Q_UNUSED(profile); // daemon_dir is resolved by the caller (Task 6 CLI); the DB is a process-wide singleton.
+    // daemon_dir is resolved by the caller (Task 6 CLI); the DB is a
+    // process-wide singleton. profile is threaded through to
+    // resolve_pending below (Task 8) purely for symmetry with the rest of
+    // this function's signature -- it does not scope any query either.
     CycleReport report;
 
     auto strategies = list_strategies(QStringLiteral("active"));
@@ -822,6 +826,14 @@ Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir,
     auto step3 = advance_open_positions(ticks_path, now_ms, report);
     if (step3.is_err())
         return Result<CycleReport>::err(step3.error());
+
+    // Step 4 (Task 8): settle prediction/hypothetical books steps 1-3 above
+    // deliberately never advance to 'closed' -- see this file's header.
+    auto resolve = resolve_pending(profile, ticks_path, now_ms);
+    if (resolve.is_err())
+        return Result<CycleReport>::err(resolve.error());
+    report.resolved += resolve.value().resolved;
+    report.resolve_pending_count += resolve.value().pending;
 
     return Result<CycleReport>::ok(report);
 }

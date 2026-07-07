@@ -1376,6 +1376,8 @@ set(SERVICE_SOURCES
     src/services/sandbox/PaperFillModel.cpp
     # Strategy Sandbox — PaperExecutor: run_cycle candidate open/fill/exit (Task 5).
     src/services/sandbox/PaperExecutor.cpp
+    # Strategy Sandbox — Outcome Resolver: settle prediction/hypothetical books (Task 8).
+    src/services/sandbox/SandboxResolver.cpp
 )
 
 # UI framework

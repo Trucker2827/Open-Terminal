@@ -19,9 +19,15 @@
 // `hypothetical`:true) books are OPENED directly into state 'open' here (no
 // pending_fill phase -- there is no resting order, the "fill" is immediate
 // at the journal row's reference price / market_probability) but are never
-// advanced to 'closed' by run_cycle: that is the Outcome Resolver's job
-// (Task 8), which is why sandbox_position.close_reason includes 'resolved'
-// as a value run_cycle itself never writes.
+// advanced to 'closed' by run_cycle -- step 3's query is hard-filtered to
+// `hypothetical = 0`, and predictions (side 'yes') aren't in its side
+// allowlist either: that is the Outcome Resolver's job (Task 8,
+// SandboxResolver.h), which run_cycle invokes at its own tail, and which is
+// why sandbox_position.close_reason includes 'resolved' as a value run_cycle
+// itself never writes. This applies to BOTH kinds equally: hypothetical
+// (long_short) positions still get real tick-based target/stop/expiry exits
+// -- just from the Resolver's own reuse of PaperFillModel::check_exit, not
+// from this file's step 3.
 //
 // Candidate selection per kind:
 //   - scalp: reimplements automation::latest_candidate's jsonl-scan contract
@@ -68,6 +74,11 @@ struct CycleReport {
     int unfilled = 0;
     int closed = 0;
     int skipped = 0;
+    // Additive (Task 8): folded in from SandboxResolver::resolve_pending,
+    // which run_cycle calls at its tail to settle prediction/hypothetical
+    // books that steps 1-3 above deliberately never advance to 'closed'.
+    int resolved = 0;
+    int resolve_pending_count = 0;
     QStringList notes;
 };
 
