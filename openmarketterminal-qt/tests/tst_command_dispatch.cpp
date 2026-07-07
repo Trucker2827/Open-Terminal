@@ -84,9 +84,27 @@ static QStringList json_strings(const QJsonArray& arr) {
 // the first time any sandbox command runs, and stays open at that path for
 // the rest of the run. A per-slot QTemporaryDir would rm -rf that path out
 // from under the still-open sqlite connection the moment the slot returns.
+//
+// It ALSO brings the headless runtime (and thus Database::instance()) up via
+// one read-only `sandbox list` dispatch, exactly once. That is what makes
+// slots that hit Database::instance().execute() directly (fixture inserts)
+// work when run STANDALONE via QTest's function filter (e.g.
+// `./tst_command_dispatch sandbox_seed_retires_stale_row`): under a filter
+// no earlier slot has dispatched anything, so without this bring-up the
+// direct insert fails with "DB connection unavailable on this thread".
+// `sandbox list` is safe to use for the bring-up because it only SELECTs --
+// it inserts no strategy or position rows, so the seed-count exactness in
+// the first sandbox slot still holds.
 static QString sandbox_test_home() {
     static QTemporaryDir dir;
     qputenv("HOME", dir.path().toUtf8());
+    static bool runtime_ready = false;
+    if (!runtime_ready) {
+        capture_stdout([] {
+            return dispatch({QStringLiteral("--json"), QStringLiteral("sandbox"), QStringLiteral("list")});
+        });
+        runtime_ready = true;
+    }
     return dir.path();
 }
 
@@ -441,6 +459,14 @@ private slots:
     // are exact: this is the very first code anywhere in the process to
     // touch sandbox_strategy, so seeding starts from a genuinely empty
     // table.
+    //
+    // Self-isolation rule: EVERY slot below that touches the DB -- whether
+    // through dispatch() or via Database::instance().execute() directly --
+    // must call sandbox_test_home() as its FIRST line (it is idempotent).
+    // QTest's function filter (`./tst_command_dispatch <slot_name>`) runs a
+    // slot with no predecessors, so a slot may not lean on an earlier slot
+    // having set HOME or brought the runtime/DB up; sandbox_test_home()
+    // does both.
     void sandbox_seed_list_pause_resume_retire() {
         sandbox_test_home();
         int rc = -1;
@@ -545,6 +571,7 @@ private slots:
     }
 
     void sandbox_seed_retires_stale_row() {
+        sandbox_test_home();
         // A hand-inserted 'active' row sharing a seed kind ('spot') but NOT
         // one of seed_default_strategies' current ids is exactly the
         // old-param-book-left-behind scenario the T5 review flagged: without
@@ -579,6 +606,7 @@ private slots:
     }
 
     void sandbox_positions_null_realized_pnl_is_json_null_not_zero() {
+        sandbox_test_home();
         // Data-gap contract (PaperExecutor.h): a position closed with no
         // pre-expiry tick to close against gets realized_pnl = NULL, and
         // that MUST serialize as JSON null, never a coalesced 0 -- 0 would
