@@ -965,6 +965,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v054_edge_prediction_feature_store.cpp
     src/storage/sqlite/migrations/v055_edge_decision_journal.cpp
     src/storage/sqlite/migrations/v056_strategy_sandbox.cpp
+    src/storage/sqlite/migrations/v057_drop_legacy_fii_dii.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -2357,6 +2358,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v054_edge_prediction_feature_store.cpp
     src/storage/sqlite/migrations/v055_edge_decision_journal.cpp
     src/storage/sqlite/migrations/v056_strategy_sandbox.cpp
+    src/storage/sqlite/migrations/v057_drop_legacy_fii_dii.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp

@@ -1,4 +1,5 @@
-// v027_fii_dii — Daily FII / DII institutional flows (Phase 8 of F&O).
+// v027_fii_dii — Daily FII / DII institutional flows (Phase 8 of legacy India F&O).
+// Table dropped by v057_drop_legacy_fii_dii (service/scraper never shipped).
 //
 // One row per trading day. PRIMARY KEY on date_iso so re-fetching the same
 // day is an idempotent UPSERT. Values stored as REAL (₹ Crore) — losing

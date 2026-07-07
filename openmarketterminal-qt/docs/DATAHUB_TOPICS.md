@@ -197,9 +197,13 @@ Reserved topic family for the `OpenMarketTerminalInternalAdapter` matching engin
 | `prediction:openmarketterminal:orderbook:<asset_id>` | `OpenMarketTerminalInternalAdapter` (planned) | 5 s | 1 s | Per-asset order book. Shape: `PredictionOrderBook{asset_id, bids[], asks[]}` matching the Polymarket/Kalshi shape. WebSocket-driven once live. |
 | `prediction:openmarketterminal:price:<asset_id>` | `OpenMarketTerminalInternalAdapter` (planned) | 5 s | 1 s | Last-trade price scalar. Same shape as `prediction:polymarket:price:*`. |
 
-## F&O / Options (Phase 11 — Sensibull-style tab)
+## F&O / Options (Phase 11 — archived / not in current build)
 
-The F&O screen owns its own producer family. `OptionChainService` is the sole hub registrant for `option:*` and the derived `fno:pcr:*` / `fno:max_pain:*` topics. Phase 1 shipped polled REST refresh; **Phase 3** added Greeks/IV via the `option_greeks_daemon.py` worker, ATM IV publishing, per-leg `option:tick:*` fan-out, and the `OISnapshotter` history producer. WebSocket OI push (broker-driven) is still pending and will replace the chain-derived `option:tick` source without changing subscribers.
+> **Build status:** The F&O screen and its DataHub producers (`OptionChainService`, `OISnapshotter`, etc.) are **not registered** in the current build (`main.cpp`). The topics below describe the planned architecture only.
+>
+> **Removed (v057):** `fno:fii_dii:daily` / `FiiDiiService` / `fii_dii_daily` — legacy India NSE foreign/domestic institutional flow storage (migration v027). The scraper was never shipped; the table is dropped on upgrade.
+
+The F&O screen was designed to own its own producer family. `OptionChainService` would be the sole hub registrant for `option:*` and the derived `fno:pcr:*` / `fno:max_pain:*` topics. Phase 1 shipped polled REST refresh; **Phase 3** added Greeks/IV via the `option_greeks_daemon.py` worker, ATM IV publishing, per-leg `option:tick:*` fan-out, and the `OISnapshotter` history producer. WebSocket OI push (broker-driven) was planned to replace the chain-derived `option:tick` source without changing subscribers.
 
 ### Chain & per-leg streams
 
@@ -215,7 +219,6 @@ The F&O screen owns its own producer family. `OptionChainService` is the sole hu
 |---|---|---|---|---|
 | `fno:pcr:<broker>:<underlying>:<expiry>` | `OptionChainService` | push-only | — | Put/Call Ratio = sum(PE OI) / sum(CE OI). Republished on every chain publish (coalesce 250 ms). Payload: `double`. |
 | `fno:max_pain:<broker>:<underlying>:<expiry>` | `OptionChainService` | push-only | — | Strike minimising total option-writer pain at expiry. Payload: `double`. |
-| `fno:fii_dii:daily` | `FiiDiiService` | 1 h | 30 min | Daily institutional flows scraped from NSE via `scripts/fii_dii_scraper.py` (session-cookie auth, browser User-Agent). Refreshed at most once per 30 min — NSE only updates the source numbers once per trading day post 6 PM IST. Payload: `QVector<FiiDiiDay>` ascending by date — rolling last 30 days served from `fii_dii_daily` SQLite table. Empty payload before market close on a fresh DB. |
 | `oi:history:<broker>:<token>:<window>` | `OISnapshotter` | 60 s | 30 s | Intraday OI series for the OI Analytics sub-tab. `<window>` = `1d` / `5d` / `7d`. Snapshotter subscribes to `option:chain:*`, buffers the latest CE/PE quote per token, and flushes minute-aligned rows to SQLite (`oi_snapshots`, schema v025) every 60 s. Payload: `QVector<OISample>` ordered ascending by `ts_minute`. Retention 7 days rolling — older rows are pruned hourly. |
 
 > **Greeks worker:** `OptionGreeksWorker` is a sibling daemon to `PythonWorker`, running `scripts/option_greeks_daemon.py --daemon` against `venv-numpy2` (where `py_vollib` lives). Sole supported action: `option_greeks_batch`. Inputs are per-contract (`token, S, K, t, r, q, flag, market_price, model="bsm"`); outputs are per-contract IV (decimal) + Greeks. Scaling: vega and rho are returned per 1.00 σ / 1.00 r (multiply py_vollib's per-1% values by 100); theta is per calendar day. Risk-free rate `r` is read once per session from `settings.fno.risk_free_rate` (default 0.067, RBI 91-day T-bill ballpark). Per-strike Greeks recompute is throttled to 500 ms.
