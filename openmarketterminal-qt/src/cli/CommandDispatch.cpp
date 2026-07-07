@@ -7345,7 +7345,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
                                       ? QStringLiteral("fresh local spot candidate passed edge/confidence gate; submitting post-only limit buy under reference")
                                       : QStringLiteral("fresh local paper candidate passed cost gate; submitting post-only limit buy under reference")}};
     if (dry_run) {
-        automation::append_jsonl(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        automation::append_jsonl_rotating(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                                                                       {"dry_run", true},
                                                                       {"order", order},
                                                                       {"decision", decision}});
@@ -7369,7 +7369,7 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
     const int rc = call_headless_tool_json(opts, QStringLiteral("crypto_submit_order"), order, body);
     out["submitted"] = rc == 0;
     out["broker_response"] = body;
-    automation::append_jsonl(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+    automation::append_jsonl_rotating(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                                                                   {"submitted", rc == 0},
                                                                   {"order", order},
                                                                   {"decision", decision},

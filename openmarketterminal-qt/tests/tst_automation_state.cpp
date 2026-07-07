@@ -192,6 +192,61 @@ class TstAutomationState : public QObject {
                  QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate));
         QCOMPARE(submitted_today_count("default"), 2);  // now authoritative via the fresh counter
     }
+    void latest_candidate_falls_back_to_previous_generation_after_rotation() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        // Simulate the state right after a 64 MB rotation: the fresh
+        // candidate rotated into decisions_path + ".1" a moment before the
+        // active file started over with only filler no-trade rows.
+        const QJsonObject good{{"symbol", "BTC-USD"},
+                               {"verdict", "PAPER TRADE CANDIDATE"},
+                               {"action", "PAPER_LIMIT_BUY_ONLY"},
+                               {"reference_price", 61000.0},
+                               {"ts_ms", QString::number(QDateTime::currentMSecsSinceEpoch())}};
+        QVERIFY(append_jsonl(decisions_path("default") + QStringLiteral(".1"), good, &err));
+        const QJsonObject filler{{"symbol", "BTC-USD"}, {"verdict", "NO TRADE"}, {"action", "NO_ORDER"}};
+        QVERIFY(append_jsonl(decisions_path("default"), filler, &err));
+        const QJsonObject c = latest_candidate("default", "BTC-USD", 60, &err);
+        QVERIFY2(!c.isEmpty(), "candidate sitting in the rotated-out previous generation must still be found");
+        QCOMPARE(c.value("reference_price").toDouble(), 61000.0);
+    }
+    void latest_candidate_prefers_active_file_over_previous_generation() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        const QJsonObject prev_candidate{{"symbol", "BTC-USD"},
+                                         {"verdict", "PAPER TRADE CANDIDATE"},
+                                         {"action", "PAPER_LIMIT_BUY_ONLY"},
+                                         {"reference_price", 55000.0},
+                                         {"ts_ms", QString::number(now_ms)}};
+        const QJsonObject active_candidate{{"symbol", "BTC-USD"},
+                                           {"verdict", "PAPER TRADE CANDIDATE"},
+                                           {"action", "PAPER_LIMIT_BUY_ONLY"},
+                                           {"reference_price", 62000.0},
+                                           {"ts_ms", QString::number(now_ms)}};
+        QVERIFY(append_jsonl(decisions_path("default") + QStringLiteral(".1"), prev_candidate, &err));
+        QVERIFY(append_jsonl(decisions_path("default"), active_candidate, &err));
+        const QJsonObject c = latest_candidate("default", "BTC-USD", 60, &err);
+        QVERIFY(!c.isEmpty());
+        QCOMPARE(c.value("reference_price").toDouble(), 62000.0);
+    }
+    void mark_consumed_prunes_entries_older_than_48h() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QString err;
+        const QString old_ts = QDateTime::currentDateTimeUtc().addSecs(-49 * 3600).toString(Qt::ISODateWithMs);
+        const QString recent_ts = QDateTime::currentDateTimeUtc().addSecs(-1 * 3600).toString(Qt::ISODateWithMs);
+        const QJsonObject seeded_keys{{"OLD-KEY", old_ts}, {"RECENT-KEY", recent_ts}};
+        QVERIFY(write_json_object(consumed_path("default"), QJsonObject{{"keys", seeded_keys}}, &err));
+        QVERIFY(mark_consumed("default", "NEW-KEY", &err));
+        const QJsonObject after = read_json_object(consumed_path("default")).value("keys").toObject();
+        QVERIFY2(!after.contains(QStringLiteral("OLD-KEY")), "entry older than 48h must be pruned");
+        QVERIFY2(after.contains(QStringLiteral("RECENT-KEY")), "entry within 48h must survive");
+        QVERIFY2(after.contains(QStringLiteral("NEW-KEY")), "newly marked key must be recorded");
+        QCOMPARE(after.size(), 2);
+    }
     void rotation_caps_file_and_keeps_one_generation() {
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());

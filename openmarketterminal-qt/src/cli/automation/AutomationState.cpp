@@ -128,15 +128,30 @@ bool mark_consumed(const QString& profile, const QString& key, QString* error) {
 QJsonObject latest_candidate(const QString& profile, const QString& symbol_filter,
                              int max_age_sec, QString* error) {
     const QString path = decisions_path(profile);
-    if (!QFile::exists(path)) {
+    const QString prev_path = path + QStringLiteral(".1");
+    if (!QFile::exists(path) && !QFile::exists(prev_path)) {
         if (error) *error = QStringLiteral("no paper decisions yet; start automation and daemon first");
         return {};
     }
-    // Only the last kTailBytes of the file are scanned, so candidates older
-    // than that window are invisible here. Acceptable because candidates
-    // expire in <= max_age_sec (<= 3600s) anyway, and Task 5 caps file size
-    // via rotation so the window always covers recent activity.
-    const QList<QByteArray> lines = read_tail(path, kTailBytes).split('\n');
+    // The active file's last kTailBytes are scanned for candidates. Right
+    // after a rotation (Task 5) the active file can be much smaller than
+    // kTailBytes, and a still-fresh candidate can be sitting in the
+    // just-rotated previous generation (path + ".1"). When that happens,
+    // the remaining budget is filled from that previous generation's tail
+    // so the blind spot closes. The previous generation's lines are placed
+    // FIRST in the scan buffer and the active file's LAST, so the
+    // newest-first reverse scan below still visits the active file's rows
+    // before the previous generation's -- the active file wins whenever
+    // both contain a fresh match. Candidates older than this combined
+    // window (active + one prior generation) remain invisible, but since
+    // candidates expire after <= max_age_sec (<= 3600s) anyway, that bound
+    // is acceptable.
+    const qint64 active_size = QFileInfo(path).size();
+    const QByteArray active_tail = read_tail(path, kTailBytes);
+    QByteArray scan_buffer = active_tail;
+    if (active_size < kTailBytes)
+        scan_buffer = read_tail(prev_path, kTailBytes - active_size) + active_tail;
+    const QList<QByteArray> lines = scan_buffer.split('\n');
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
     const QString filter = symbol_filter.trimmed().toUpper();
     // Read the consumed set once instead of re-reading the file per row.
