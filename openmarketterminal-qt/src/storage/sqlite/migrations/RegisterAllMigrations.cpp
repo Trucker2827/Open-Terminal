@@ -67,6 +67,7 @@ void register_all_migrations() {
     register_migration_v053();
     register_migration_v054();
     register_migration_v055();
+    register_migration_v056();
 }
 
 } // namespace openmarketterminal

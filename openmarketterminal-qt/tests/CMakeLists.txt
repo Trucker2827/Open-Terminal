@@ -333,3 +333,13 @@ add_executable(tst_candle_aggregation tst_candle_aggregation.cpp)
 target_include_directories(tst_candle_aggregation PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_candle_aggregation PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_candle_aggregation COMMAND tst_candle_aggregation)
+
+# Strategy Sandbox Task 1 — migration v056 schema (sandbox_strategy,
+# sandbox_position, sandbox_fill, sandbox_score). Opens a real profile DB
+# through the normal migration path under a temp $HOME (pattern of
+# tst_data_services.cpp) and proves every load-bearing column plus the
+# structural UNIQUE dedup on sandbox_position.decision_id.
+add_executable(tst_sandbox_schema tst_sandbox_schema.cpp)
+target_include_directories(tst_sandbox_schema PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_sandbox_schema PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_sandbox_schema COMMAND tst_sandbox_schema)
