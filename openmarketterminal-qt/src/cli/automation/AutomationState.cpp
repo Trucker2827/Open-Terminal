@@ -68,14 +68,32 @@ bool append_jsonl(const QString& path, const QJsonObject& o, QString* error) {
     return true;
 }
 
+QByteArray read_tail(const QString& path, qint64 max_bytes) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const qint64 size = f.size();
+    if (size > max_bytes) {
+        f.seek(size - max_bytes);
+        QByteArray data = f.readAll();
+        const int nl = data.indexOf('\n');
+        return nl >= 0 ? data.mid(nl + 1) : QByteArray{};  // drop leading partial line
+    }
+    return f.readAll();
+}
+
 QJsonObject latest_candidate(const QString& profile, const QString& symbol_filter,
                              int max_age_sec, QString* error) {
-    QFile f(decisions_path(profile));
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    const QString path = decisions_path(profile);
+    if (!QFile::exists(path)) {
         if (error) *error = QStringLiteral("no paper decisions yet; start automation and daemon first");
         return {};
     }
-    const QList<QByteArray> lines = f.readAll().split('\n');  // tail-read lands in Task 3
+    // Only the last kTailBytes of the file are scanned, so candidates older
+    // than that window are invisible here. Acceptable because candidates
+    // expire in <= max_age_sec (<= 3600s) anyway, and Task 5 caps file size
+    // via rotation so the window always covers recent activity.
+    const QList<QByteArray> lines = read_tail(path, kTailBytes).split('\n');
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
     const QString filter = symbol_filter.trimmed().toUpper();
     for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
@@ -105,12 +123,9 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
 }
 
 int submitted_today_count(const QString& profile) {
-    QFile f(orders_path(profile));
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return 0;
     const QString today = QDateTime::currentDateTimeUtc().date().toString(Qt::ISODate);
     int count = 0;
-    for (const QByteArray& raw : f.readAll().split('\n')) {
+    for (const QByteArray& raw : read_tail(orders_path(profile), kTailBytes).split('\n')) {
         const QByteArray line = raw.trimmed();
         if (line.isEmpty())
             continue;
