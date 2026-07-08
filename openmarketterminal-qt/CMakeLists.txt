@@ -1268,6 +1268,7 @@ set(SERVICE_SOURCES
     src/services/portfolio/PortfolioService_Metrics.cpp
     src/services/portfolio/PortfolioService_ImportExport.cpp
     src/services/portfolio/PortfolioAnalyticsService.cpp
+    src/services/portfolio/EquityAccountSource.cpp
     src/services/quantlib/QuantLibClient.cpp
     src/services/quantlib/QuantLibLocalServer.cpp
     src/services/economics/EconomicsService.cpp

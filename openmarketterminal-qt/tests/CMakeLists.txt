@@ -265,6 +265,16 @@ target_include_directories(tst_account_sync_reconcile PRIVATE ${CMAKE_SOURCE_DIR
 target_link_libraries(tst_account_sync_reconcile PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_account_sync_reconcile COMMAND tst_account_sync_reconcile)
 
+# Portfolio Account Sync Task 6 — EquityAccountSource::fetch() over a fake
+# IBroker injected via the broker-resolver callback (get_holdings/get_funds ->
+# SyncedHolding list + "$CASH:<ccy>" line; get_holdings error -> ok=false, no
+# partial mirror). Links the core lib for trading::IBroker/AccountManager/
+# BrokerRegistry types, same link set as tst_live_trading.
+add_executable(tst_equity_account_source tst_equity_account_source.cpp)
+target_include_directories(tst_equity_account_source PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_equity_account_source PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_equity_account_source COMMAND tst_equity_account_source)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
