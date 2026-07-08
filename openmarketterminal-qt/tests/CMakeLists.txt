@@ -275,6 +275,17 @@ target_include_directories(tst_equity_account_source PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(tst_equity_account_source PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_equity_account_source COMMAND tst_equity_account_source)
 
+# Portfolio Account Sync Task 7 — AccountSyncService::sync_account() over a
+# scriptable FakeSource: initial sync creates a synced portfolio mirroring
+# the fetch, a re-sync mirrors exactly (add/update/remove), and a failed
+# fetch records sync_error WITHOUT touching portfolio_assets (never-wipe
+# invariant). Bring-up mirrors tst_portfolio_account_sync_migration.cpp
+# (HeadlessRuntime DB under a QTemporaryDir HOME).
+add_executable(tst_account_sync_service tst_account_sync_service.cpp)
+target_include_directories(tst_account_sync_service PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_account_sync_service PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_account_sync_service COMMAND tst_account_sync_service)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.

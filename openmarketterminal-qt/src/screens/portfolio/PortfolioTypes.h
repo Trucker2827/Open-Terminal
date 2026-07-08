@@ -23,6 +23,15 @@ struct Portfolio {
     /// PortfolioService can route live quote fetches through the broker
     /// instead of yfinance. See migration v022.
     QString broker_account_id;
+    /// Identifies the connected account this portfolio mirrors (e.g.
+    /// "broker:<account_id>"). Empty for manually-created / JSON-imported
+    /// portfolios — AccountSyncService only ever touches portfolios with a
+    /// non-empty sync_source. See migration v060.
+    QString sync_source;
+    /// ISO-8601 timestamp of the last successful sync. Empty = never synced.
+    QString synced_at;
+    /// Last sync error message, if any. Cleared on the next successful sync.
+    QString sync_error;
 };
 
 struct PortfolioAsset {

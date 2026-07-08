@@ -25,6 +25,9 @@ portfolio::Portfolio PortfolioRepository::map_portfolio(QSqlQuery& q) {
         q.value(5).toString(), // created_at
         q.value(6).toString(), // updated_at
         q.value(7).toString(), // broker_account_id (v022)
+        q.value(8).toString(), // sync_source (v060)
+        q.value(9).toString(), // synced_at (v060)
+        q.value(10).toString(), // sync_error (v060)
     };
 }
 
@@ -73,18 +76,19 @@ portfolio::PortfolioSnapshot PortfolioRepository::map_snapshot(QSqlQuery& q) {
 
 // ── Portfolios CRUD ──────────────────────────────────────────────────────────
 
+namespace {
+const char* kPortfolioColumns =
+    "id, name, owner, currency, description, created_at, updated_at, "
+    "COALESCE(broker_account_id, ''), COALESCE(sync_source, ''), "
+    "COALESCE(synced_at, ''), COALESCE(sync_error, '')";
+}
+
 Result<QVector<portfolio::Portfolio>> PortfolioRepository::list_portfolios() {
-    return query_list("SELECT id, name, owner, currency, description, created_at, updated_at, "
-                      "COALESCE(broker_account_id, '') "
-                      "FROM portfolios ORDER BY name",
-                      {}, map_portfolio);
+    return query_list(QString("SELECT %1 FROM portfolios ORDER BY name").arg(kPortfolioColumns), {}, map_portfolio);
 }
 
 Result<portfolio::Portfolio> PortfolioRepository::get_portfolio(const QString& id) {
-    return query_one("SELECT id, name, owner, currency, description, created_at, updated_at, "
-                     "COALESCE(broker_account_id, '') "
-                     "FROM portfolios WHERE id = ?",
-                     {id}, map_portfolio);
+    return query_one(QString("SELECT %1 FROM portfolios WHERE id = ?").arg(kPortfolioColumns), {id}, map_portfolio);
 }
 
 Result<QString> PortfolioRepository::create_portfolio(const QString& name, const QString& owner,
@@ -116,6 +120,29 @@ Result<void> PortfolioRepository::delete_portfolio(const QString& id) {
     LOG_INFO("PortfolioRepo", QString("Deleting portfolio %1").arg(id));
     auto r = exec_write("DELETE FROM portfolios WHERE id = ?", {id});
     return r;
+}
+
+// ── Account sync (v060) ───────────────────────────────────────────────────────
+
+Result<void> PortfolioRepository::set_sync_meta(const QString& portfolio_id, const QString& sync_source,
+                                                const QString& synced_at, const QString& sync_error) {
+    auto r = exec_write("UPDATE portfolios SET sync_source = ?, synced_at = ?, sync_error = ? WHERE id = ?",
+                        {sync_source, synced_at, sync_error, portfolio_id});
+    return r;
+}
+
+std::optional<portfolio::Portfolio> PortfolioRepository::find_by_sync_source(const QString& sync_source) {
+    if (sync_source.isEmpty())
+        return std::nullopt;
+    return query_optional(QString("SELECT %1 FROM portfolios WHERE sync_source = ?").arg(kPortfolioColumns),
+                          {sync_source}, map_portfolio);
+}
+
+QVector<portfolio::Portfolio> PortfolioRepository::list_synced() {
+    auto r = query_list(QString("SELECT %1 FROM portfolios WHERE sync_source != '' ORDER BY name")
+                            .arg(kPortfolioColumns),
+                        {}, map_portfolio);
+    return r.is_ok() ? r.value() : QVector<portfolio::Portfolio>{};
 }
 
 // ── Assets CRUD ──────────────────────────────────────────────────────────────
@@ -183,10 +210,10 @@ Result<void> PortfolioRepository::set_asset_sector(const QString& portfolio_id, 
 }
 
 Result<void> PortfolioRepository::update_asset(const QString& portfolio_id, const QString& symbol, double qty,
-                                               double avg_price) {
-    auto r = exec_write("UPDATE portfolio_assets SET quantity = ?, avg_buy_price = ?, "
+                                               double avg_price, bool has_cost_basis) {
+    auto r = exec_write("UPDATE portfolio_assets SET quantity = ?, avg_buy_price = ?, has_cost_basis = ?, "
                         "last_updated = datetime('now') WHERE portfolio_id = ? AND symbol = ?",
-                        {qty, avg_price, portfolio_id, symbol.toUpper()});
+                        {qty, avg_price, has_cost_basis ? 1 : 0, portfolio_id, symbol.toUpper()});
     return r;
 }
 
