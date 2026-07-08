@@ -46,6 +46,7 @@ class TerminalToolkit:
         token: Optional[str] = None,
         destructive_token: Optional[str] = None,
         dry_run: bool = False,
+        audit_run_id: Optional[str] = None,
         **kwargs,
     ):
         self.endpoint = endpoint.rstrip("/")
@@ -60,6 +61,7 @@ class TerminalToolkit:
         # tools tagged `is_destructive=true` (e.g. order placement,
         # file deletion, settings mutation).
         self.destructive_token = destructive_token
+        self.audit_run_id = audit_run_id
         # Dry-run: when true, _call_tool returns a synthetic result instead
         # of crossing the HTTP bridge. Lets agents be exercised without
         # mutating real state (paper orders, file ops, settings, etc.).
@@ -181,6 +183,8 @@ class TerminalToolkit:
                 headers["X-MCP-Token"] = self.token
             if self.destructive_token:
                 headers["X-MCP-Allow-Destructive"] = self.destructive_token
+            if self.audit_run_id:
+                headers["X-Agent-Run-Id"] = self.audit_run_id
             req = urllib.request.Request(
                 f"{self.endpoint}/tool",
                 data=data,

@@ -42,9 +42,12 @@ QString AgentService::run_agent(const QString& query, const QJsonObject& config)
 
     QJsonObject params;
     params["query"] = query;
+    QJsonObject run_config = config;
+    run_config["_agent_run_id"] = req_id;
+    begin_agent_audit(req_id, QStringLiteral("run"), query, build_payload("run", params, run_config));
 
     QPointer<AgentService> self = this;
-    run_python_stdin("run", params, config, [self, req_id](bool ok, QJsonObject result) {
+    run_python_stdin("run", params, run_config, [self, req_id](bool ok, QJsonObject result) {
         if (!self)
             return;
         AgentExecutionResult r;
@@ -65,6 +68,7 @@ QString AgentService::run_agent(const QString& query, const QJsonObject& config)
             r.error = result["error"].toString("Agent execution failed");
         }
 
+        r.audit = self->finish_agent_audit(req_id, r);
         emit self->agent_result(r);
         self->publish_agent_result(r, /*final=*/true);
     });
@@ -92,7 +96,10 @@ QString AgentService::run_agent_streaming(const QString& query, const QJsonObjec
     QJsonObject params;
     params["query"] = query;
 
-    QJsonObject payload = build_payload("run", params, config);
+    QJsonObject run_config = config;
+    run_config["_agent_run_id"] = req_id;
+    QJsonObject payload = build_payload("run", params, run_config);
+    begin_agent_audit(req_id, QStringLiteral("run_streaming"), query, payload);
     QByteArray payload_bytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 
     QString python_path = py.python_path();
@@ -169,6 +176,7 @@ QString AgentService::run_agent_streaming(const QString& query, const QJsonObjec
                             r.request_id = req_id;
                             r.success = false;
                             r.error = extract(line, "ERROR:");
+                            r.audit = self->finish_agent_audit(req_id, r);
                             emit self->agent_stream_done(r);
                             self->publish_agent_result(r, /*final=*/true);
                         }
@@ -215,6 +223,7 @@ QString AgentService::run_agent_streaming(const QString& query, const QJsonObjec
             }
 
             LOG_INFO("AgentService", QString("Streaming completed in %1ms").arg(elapsed));
+            r.audit = self->finish_agent_audit(req_id, r);
             emit self->agent_stream_done(r);
             self->publish_agent_result(r, /*final=*/true);
         });
@@ -230,6 +239,7 @@ QString AgentService::run_agent_streaming(const QString& query, const QJsonObjec
                 r.request_id = req_id;
                 r.success = false;
                 r.error = "Process error: " + err;
+                r.audit = self->finish_agent_audit(req_id, r);
                 emit self->agent_stream_done(r);
                 self->publish_agent_result(r, /*final=*/true);
             });
@@ -292,14 +302,36 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
 
     QJsonObject params;
     params["query"] = query;
-    params["team_config"] = team_config;
+    QJsonObject run_team_config = team_config;
+    run_team_config["_agent_run_id"] = req_id;
+    if (run_team_config.contains("members")) {
+        QJsonArray members = run_team_config["members"].toArray();
+        for (int i = 0; i < members.size(); ++i) {
+            QJsonObject member = members.at(i).toObject();
+            member["_agent_run_id"] = req_id;
+            members[i] = member;
+        }
+        run_team_config["members"] = members;
+    }
+    if (run_team_config.contains("agents")) {
+        QJsonArray agents = run_team_config["agents"].toArray();
+        for (int i = 0; i < agents.size(); ++i) {
+            QJsonObject agent = agents.at(i).toObject();
+            agent["_agent_run_id"] = req_id;
+            agents[i] = agent;
+        }
+        run_team_config["agents"] = agents;
+    }
+    params["team_config"] = run_team_config;
 
     // Promote coordinator model to active_llm so Python resolves it correctly
     QJsonObject coord_config;
-    if (team_config.contains("model"))
-        coord_config["model"] = team_config["model"];
+    if (run_team_config.contains("model"))
+        coord_config["model"] = run_team_config["model"];
+    coord_config["_agent_run_id"] = req_id;
 
     QJsonObject payload = build_payload("run_team", params, coord_config);
+    begin_agent_audit(req_id, QStringLiteral("run_team"), query, payload);
     QByteArray payload_bytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 
     QString python_path = py.python_path();
@@ -372,6 +404,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
                             r.request_id = req_id;
                             r.success = false;
                             r.error = extract(line, "ERROR:");
+                            r.audit = self->finish_agent_audit(req_id, r);
                             emit self->agent_result(r);
                             emit self->agent_stream_done(r);
                             self->publish_agent_result(r, /*final=*/true);
@@ -415,6 +448,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
                 }
 
                 LOG_INFO("AgentService", QString("Team completed in %1ms").arg(elapsed));
+                r.audit = self->finish_agent_audit(req_id, r);
                 emit self->agent_result(r);
                 emit self->agent_stream_done(r);
                 self->publish_agent_result(r, /*final=*/true);
@@ -431,6 +465,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
         r.success = false;
         r.error = "Process error: " + err;
         r.execution_time_ms = timer ? timer->elapsed() : 0;
+        r.audit = self->finish_agent_audit(req_id, r);
         emit self->agent_result(r);
         emit self->agent_stream_done(r);
         self->publish_agent_result(r, /*final=*/true);
@@ -448,6 +483,7 @@ QString AgentService::run_team(const QString& query, const QJsonObject& team_con
                            r.error = QString("Team run timed out after %1 seconds. Try fewer members, a faster local model, "
                                              "or a more focused query.")
                                          .arg(timeout_ms / 1000);
+                           r.audit = self->finish_agent_audit(req_id, r);
                            emit self->agent_stream_thinking(req_id, "Team timeout reached; stopping run");
                            self->publish_agent_status(req_id, "Team timeout reached; stopping run");
                            emit self->agent_result(r);

@@ -157,19 +157,25 @@ QString AgentService::execute_plan(const QJsonObject& plan, const QJsonObject& c
 
 void AgentService::run_stock_analysis(const QString& symbol, const QJsonObject& config) {
     LOG_INFO("AgentService", QString("Stock analysis: %1").arg(symbol));
+    const QString req_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QJsonObject params;
     params["symbol"] = symbol;
+    QJsonObject run_config = config;
+    run_config["_agent_run_id"] = req_id;
+    begin_agent_audit(req_id, QStringLiteral("stock_analysis"), symbol, build_payload("stock_analysis", params, run_config));
 
     QPointer<AgentService> self = this;
-    run_python_stdin("stock_analysis", params, config, [self](bool ok, QJsonObject result) {
+    run_python_stdin("stock_analysis", params, run_config, [self, req_id](bool ok, QJsonObject result) {
         if (!self)
             return;
         AgentExecutionResult r;
+        r.request_id = req_id;
         r.success = ok && result["success"].toBool(ok);
         r.execution_time_ms = result["execution_time_ms"].toInt();
         r.response = result.contains("response") ? result["response"].toString()
                                                  : QJsonDocument(result).toJson(QJsonDocument::Indented);
         r.error = result["error"].toString();
+        r.audit = self->finish_agent_audit(req_id, r);
         emit self->agent_result(r);
         self->publish_agent_result(r, /*final=*/true);
     });
@@ -177,20 +183,26 @@ void AgentService::run_stock_analysis(const QString& symbol, const QJsonObject& 
 
 void AgentService::run_portfolio_rebalancing(const QJsonObject& portfolio_data) {
     LOG_INFO("AgentService", "Portfolio rebalancing");
+    const QString req_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QJsonObject params;
     if (!portfolio_data.isEmpty())
         params["portfolio_data"] = portfolio_data;
+    QJsonObject run_config{{"_agent_run_id", req_id}};
+    begin_agent_audit(req_id, QStringLiteral("portfolio_rebal"), QStringLiteral("portfolio_rebalancing"),
+                      build_payload("portfolio_rebal", params, run_config));
 
     QPointer<AgentService> self = this;
-    run_python_stdin("portfolio_rebal", params, {}, [self](bool ok, QJsonObject result) {
+    run_python_stdin("portfolio_rebal", params, run_config, [self, req_id](bool ok, QJsonObject result) {
         if (!self)
             return;
         AgentExecutionResult r;
+        r.request_id = req_id;
         r.success = ok && result["success"].toBool(ok);
         r.execution_time_ms = result["execution_time_ms"].toInt();
         r.response = result.contains("response") ? result["response"].toString()
                                                  : QJsonDocument(result).toJson(QJsonDocument::Indented);
         r.error = result["error"].toString();
+        r.audit = self->finish_agent_audit(req_id, r);
         emit self->agent_result(r);
         self->publish_agent_result(r, /*final=*/true);
     });
@@ -198,20 +210,26 @@ void AgentService::run_portfolio_rebalancing(const QJsonObject& portfolio_data) 
 
 void AgentService::run_risk_assessment(const QJsonObject& portfolio_data) {
     LOG_INFO("AgentService", "Risk assessment");
+    const QString req_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QJsonObject params;
     if (!portfolio_data.isEmpty())
         params["portfolio_data"] = portfolio_data;
+    QJsonObject run_config{{"_agent_run_id", req_id}};
+    begin_agent_audit(req_id, QStringLiteral("risk_assessment"), QStringLiteral("risk_assessment"),
+                      build_payload("risk_assessment", params, run_config));
 
     QPointer<AgentService> self = this;
-    run_python_stdin("risk_assessment", params, {}, [self](bool ok, QJsonObject result) {
+    run_python_stdin("risk_assessment", params, run_config, [self, req_id](bool ok, QJsonObject result) {
         if (!self)
             return;
         AgentExecutionResult r;
+        r.request_id = req_id;
         r.success = ok && result["success"].toBool(ok);
         r.execution_time_ms = result["execution_time_ms"].toInt();
         r.response = result.contains("response") ? result["response"].toString()
                                                  : QJsonDocument(result).toJson(QJsonDocument::Indented);
         r.error = result["error"].toString();
+        r.audit = self->finish_agent_audit(req_id, r);
         emit self->agent_result(r);
         self->publish_agent_result(r, /*final=*/true);
     });
@@ -219,6 +237,7 @@ void AgentService::run_risk_assessment(const QJsonObject& portfolio_data) {
 
 void AgentService::run_portfolio_analysis(const QString& analysis_type, const QJsonObject& portfolio_summary) {
     LOG_INFO("AgentService", QString("Portfolio analysis: %1").arg(analysis_type));
+    const QString req_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QJsonObject params;
     params["analysis_type"] = analysis_type;
     if (!portfolio_summary.isEmpty())
@@ -245,12 +264,16 @@ void AgentService::run_portfolio_analysis(const QString& analysis_type, const QJ
     if (!ctx.isEmpty())
         query = ctx + "\n\nTask: " + query;
     params["query"] = query;
+    QJsonObject run_config{{"_agent_run_id", req_id}};
+    begin_agent_audit(req_id, QStringLiteral("portfolio_analysis"), query,
+                      build_payload("run", params, run_config));
 
     QPointer<AgentService> self = this;
-    run_python_stdin("run", params, {}, [self](bool ok, QJsonObject result) {
+    run_python_stdin("run", params, run_config, [self, req_id](bool ok, QJsonObject result) {
         if (!self)
             return;
         AgentExecutionResult r;
+        r.request_id = req_id;
         r.success = ok && result["success"].toBool(ok);
         r.execution_time_ms = result["execution_time_ms"].toInt();
         // finagent_core emits the response under one of several keys depending
@@ -265,6 +288,7 @@ void AgentService::run_portfolio_analysis(const QString& analysis_type, const QJ
         else
             r.response = QJsonDocument(result).toJson(QJsonDocument::Indented);
         r.error = result["error"].toString();
+        r.audit = self->finish_agent_audit(req_id, r);
         emit self->agent_result(r);
         self->publish_agent_result(r, /*final=*/true);
     });

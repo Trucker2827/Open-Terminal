@@ -88,7 +88,8 @@ class TerminalMcpBridge : public QObject {
     TerminalMcpBridge& operator=(const TerminalMcpBridge&) = delete;
 
   signals:
-    void tool_called(const QString& tool_name, bool success);
+    void tool_called(const QString& run_id, const QString& tool_name, bool success,
+                     const QJsonObject& args, const QJsonObject& result);
     void bridge_error(const QString& message);
 
   private slots:

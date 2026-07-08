@@ -54,7 +54,8 @@ def _load_workflow_tools(api_keys: Dict[str, str],
                           terminal_tool_defs: Optional[List] = None,
                           terminal_token: Optional[str] = None,
                           terminal_destructive_token: Optional[str] = None,
-                          terminal_dry_run: bool = False) -> List[Any]:
+                          terminal_dry_run: bool = False,
+                          audit_run_id: Optional[str] = None) -> List[Any]:
     """
     Load tools for workflow agents:
     - yfinance (real-time market data, prices, financials)
@@ -86,6 +87,7 @@ def _load_workflow_tools(api_keys: Dict[str, str],
                 token=terminal_token,
                 destructive_token=terminal_destructive_token,
                 dry_run=terminal_dry_run,
+                audit_run_id=audit_run_id,
             )
             tools.extend(toolkit.get_tools())
             logger.debug(f"WorkflowTools: loaded {len(toolkit.functions)} terminal MCP tools")
@@ -387,10 +389,12 @@ class FinancialWorkflowTemplates:
                                  terminal_token: Optional[str] = None,
                                  terminal_destructive_token: Optional[str] = None,
                                  terminal_dry_run: bool = False,
+                                 _agent_run_id: Optional[str] = None,
                                  **_) -> "StockAnalysisWorkflow":
         _keys = api_keys or {}
         _tools = tools or _load_workflow_tools(_keys, terminal_endpoint, terminal_tool_defs,
-                                               terminal_token, terminal_destructive_token, terminal_dry_run)
+                                               terminal_token, terminal_destructive_token, terminal_dry_run,
+                                               _agent_run_id)
         return StockAnalysisWorkflow(_keys, model_config, tools=_tools)
 
     @staticmethod
@@ -401,10 +405,13 @@ class FinancialWorkflowTemplates:
                                terminal_tool_defs: Optional[List] = None,
                                terminal_token: Optional[str] = None,
                                terminal_destructive_token: Optional[str] = None,
+                               terminal_dry_run: bool = False,
+                               _agent_run_id: Optional[str] = None,
                                **_) -> "PortfolioRebalancingWorkflow":
         _keys = api_keys or {}
         _tools = tools or _load_workflow_tools(_keys, terminal_endpoint, terminal_tool_defs,
-                                               terminal_token, terminal_destructive_token, terminal_dry_run)
+                                               terminal_token, terminal_destructive_token, terminal_dry_run,
+                                               _agent_run_id)
         return PortfolioRebalancingWorkflow(_keys, model_config, tools=_tools)
 
     @staticmethod
@@ -415,10 +422,13 @@ class FinancialWorkflowTemplates:
                         terminal_tool_defs: Optional[List] = None,
                         terminal_token: Optional[str] = None,
                         terminal_destructive_token: Optional[str] = None,
+                        terminal_dry_run: bool = False,
+                        _agent_run_id: Optional[str] = None,
                         **_) -> "RiskAssessmentWorkflow":
         _keys = api_keys or {}
         _tools = tools or _load_workflow_tools(_keys, terminal_endpoint, terminal_tool_defs,
-                                               terminal_token, terminal_destructive_token, terminal_dry_run)
+                                               terminal_token, terminal_destructive_token, terminal_dry_run,
+                                               _agent_run_id)
         return RiskAssessmentWorkflow(_keys, model_config, tools=_tools)
 
 

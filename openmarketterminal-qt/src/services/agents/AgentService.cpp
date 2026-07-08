@@ -27,6 +27,7 @@
 #    include "datahub/TopicPolicy.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -176,6 +177,8 @@ AgentService::AgentService(QObject* parent) : QObject(parent) {
             return true;
         });
     }  // gui_mode
+    connect(&mcp::TerminalMcpBridge::instance(), &mcp::TerminalMcpBridge::tool_called, this,
+            &AgentService::record_agent_tool_call, Qt::UniqueConnection);
 }
 
 // ── Cache helpers ────────────────────────────────────────────────────────────
@@ -643,6 +646,8 @@ void AgentService::publish_agent_result(const AgentExecutionResult& r, bool fina
         {"execution_time_ms", r.execution_time_ms},
         {"final", final},
     };
+    if (!r.audit.isEmpty())
+        obj["audit"] = r.audit;
     const QString topic = QStringLiteral("agent:output:") + r.request_id;
     openmarketterminal::datahub::DataHub::instance().publish(topic, QVariant(obj));
     if (final) {
@@ -650,6 +655,125 @@ void AgentService::publish_agent_result(const AgentExecutionResult& r, bool fina
         // Subscribers still pinned via owner remain attached.
         openmarketterminal::datahub::DataHub::instance().retire_topic(topic);
     }
+}
+
+static bool agent_sensitive_key(const QString& key) {
+    const QString lower = key.toLower();
+    return lower.contains("key") || lower.contains("token") || lower.contains("secret") ||
+           lower.contains("password") || lower.contains("credential");
+}
+
+static QJsonValue agent_redact_json(const QJsonValue& value) {
+    if (value.isObject()) {
+        QJsonObject out;
+        const QJsonObject obj = value.toObject();
+        for (auto it = obj.begin(); it != obj.end(); ++it)
+            out.insert(it.key(), agent_sensitive_key(it.key()) ? QJsonValue(QStringLiteral("[redacted]"))
+                                                               : agent_redact_json(it.value()));
+        return out;
+    }
+    if (value.isArray()) {
+        QJsonArray out;
+        const QJsonArray arr = value.toArray();
+        for (const auto& item : arr)
+            out.append(agent_redact_json(item));
+        return out;
+    }
+    return value;
+}
+
+static QString agent_preview_json(const QJsonObject& obj, int max_chars = 700) {
+    QString text = QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    if (text.size() > max_chars)
+        text = text.left(max_chars) + QStringLiteral("...");
+    return text;
+}
+
+void AgentService::begin_agent_audit(const QString& run_id, const QString& action, const QString& query,
+                                     const QJsonObject& payload) {
+    if (run_id.isEmpty())
+        return;
+
+    const QJsonObject active = payload.value("active_llm").toObject();
+    const QJsonObject cfg = payload.value("config").toObject();
+    const QJsonArray terminal_tools = cfg.value("terminal_tools").toArray();
+    const QString provider = active.value("provider").toString();
+    const QString model = active.value("model_id").toString();
+    const QString base_url = active.value("base_url").toString();
+    const bool is_local = provider == QStringLiteral("ollama") ||
+                          base_url.startsWith(QStringLiteral("http://127.0.0.1")) ||
+                          base_url.startsWith(QStringLiteral("http://localhost"));
+
+    QJsonArray exposed_names;
+    for (const auto& v : terminal_tools) {
+        const QString name = v.toObject().value("name").toString();
+        if (!name.isEmpty())
+            exposed_names.append(name);
+    }
+
+    QJsonObject audit{
+        {"run_id", run_id},
+        {"action", action},
+        {"started_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {"model_provider", provider},
+        {"model_id", model},
+        {"model_scope", is_local ? QStringLiteral("local") : QStringLiteral("cloud_or_remote")},
+        {"terminal_tools_enabled", !terminal_tools.isEmpty()},
+        {"tools_exposed_count", terminal_tools.size()},
+        {"tools_exposed", exposed_names},
+        {"tools_executed_count", 0},
+        {"tools_executed", QJsonArray()},
+        {"data_sources", QJsonArray()},
+        {"query_preview", query.left(700)},
+    };
+    if (!base_url.isEmpty())
+        audit["model_base_url"] = is_local ? base_url : QStringLiteral("[remote endpoint configured]");
+
+    run_audits_.insert(run_id, audit);
+}
+
+void AgentService::record_agent_tool_call(const QString& run_id, const QString& tool_name, bool success,
+                                          const QJsonObject& args, const QJsonObject& result) {
+    if (run_id.isEmpty() || !run_audits_.contains(run_id))
+        return;
+
+    QJsonObject audit = run_audits_.value(run_id);
+    QJsonArray calls = audit.value("tools_executed").toArray();
+    QJsonArray sources = audit.value("data_sources").toArray();
+
+    const QJsonObject safe_args = agent_redact_json(args).toObject();
+    const QJsonObject safe_result = agent_redact_json(result).toObject();
+
+    calls.append(QJsonObject{
+        {"tool", tool_name},
+        {"success", success},
+        {"called_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {"args", safe_args},
+        {"result_preview", agent_preview_json(safe_result)},
+    });
+    sources.append(tool_name);
+
+    audit["tools_executed"] = calls;
+    audit["tools_executed_count"] = calls.size();
+    audit["data_sources"] = sources;
+    run_audits_.insert(run_id, audit);
+}
+
+QJsonObject AgentService::finish_agent_audit(const QString& run_id, const AgentExecutionResult& result) {
+    QJsonObject audit = run_audits_.take(run_id);
+    if (audit.isEmpty())
+        return {};
+
+    audit["finished_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    audit["success"] = result.success;
+    audit["execution_time_ms"] = result.execution_time_ms;
+    audit["final_answer_preview"] = result.response.left(900);
+    if (!result.error.isEmpty())
+        audit["error"] = result.error.left(500);
+    audit["verdict"] = audit.value("tools_executed_count").toInt() > 0
+                           ? QStringLiteral("verified_tool_run")
+                           : QStringLiteral("draft_only_no_tools_executed");
+    return audit;
 }
 
 void AgentService::publish_agent_token(const QString& run_id, const QString& token) {

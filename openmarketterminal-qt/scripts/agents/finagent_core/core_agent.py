@@ -657,6 +657,7 @@ class CoreAgent:
                     token=terminal_token,
                     destructive_token=terminal_destructive_token,
                     dry_run=terminal_dry_run,
+                    audit_run_id=config.get("_agent_run_id"),
                 )
                 all_tools.extend(terminal_toolkit.get_tools())
                 logger.info(f"TerminalToolkit: {len(terminal_toolkit.functions)} tools from MCP")

@@ -41,6 +41,7 @@ struct AgentExecutionResult {
     QString error;
     int execution_time_ms = 0;
     QString request_id; // set by AgentService; panels guard on this to avoid cross-contamination
+    QJsonObject audit;  // model/tools/data-source trail for this run; never includes API keys
 };
 
 // ── Routing ─────────────────────────────────────────────────────────────────

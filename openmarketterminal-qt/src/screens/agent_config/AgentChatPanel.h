@@ -46,6 +46,8 @@ class AgentChatPanel : public QWidget {
     void add_user_bubble(const QString& text);
     void add_assistant_bubble(const QString& text, const QString& agent_name = {});
     void add_system_bubble(const QString& text);
+    void add_audit_bubble(const QJsonObject& audit);
+    QString format_agent_audit(const QJsonObject& audit) const;
     QTextEdit* add_streaming_bubble(const QString& agent_name = {}); // returns live QTextEdit*
     void scroll_to_bottom();
     void clear_chat();

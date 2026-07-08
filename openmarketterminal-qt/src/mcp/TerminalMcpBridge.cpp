@@ -352,6 +352,9 @@ void TerminalMcpBridge::handle_post_tool(QTcpSocket* sock, const QJsonObject& bo
     const QString destructive_hdr = (it_state != states_.end())
                                         ? it_state.value().headers.value("x-mcp-allow-destructive")
                                         : QString();
+    const QString audit_run_id = (it_state != states_.end())
+                                     ? it_state.value().headers.value("x-agent-run-id")
+                                     : QString();
     const bool destructive_ok =
         !destructive_token_.isEmpty() && destructive_hdr == destructive_token_;
 
@@ -382,7 +385,7 @@ void TerminalMcpBridge::handle_post_tool(QTcpSocket* sock, const QJsonObject& bo
 
     auto* watcher = new QFutureWatcher<ToolResult>(this);
     connect(watcher, &QFutureWatcher<ToolResult>::finished, this,
-            [self, sock_guard, tool_name, call_id, watcher]() {
+            [self, sock_guard, tool_name, call_id, audit_run_id, args, watcher]() {
                 const auto fut = watcher->future();
                 ToolResult result = (fut.resultCount() > 0)
                                         ? fut.result()
@@ -397,7 +400,7 @@ void TerminalMcpBridge::handle_post_tool(QTcpSocket* sock, const QJsonObject& bo
                 if (!call_id.isEmpty())
                     payload["id"] = call_id;
                 self->write_json_response(sock_guard, 200, payload);
-                emit self->tool_called(tool_name, result.success);
+                emit self->tool_called(audit_run_id, tool_name, result.success, args, payload);
             });
     watcher->setFuture(future);
 }

@@ -19,6 +19,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QKeyEvent>
 #include <QResizeEvent>
 #include <QScrollBar>
@@ -579,6 +580,7 @@ void AgentChatPanel::setup_connections() {
             hdr_status_lbl_->setText(tr("Error"));
             hdr_status_lbl_->setStyleSheet(QString("color:%1;font-size:9px;font-weight:700;").arg(col::NEGATIVE()));
         }
+        add_audit_bubble(r.audit);
         scroll_to_bottom();
     });
 
@@ -933,6 +935,54 @@ void AgentChatPanel::add_system_bubble(const QString& text) {
     rl->addStretch();
     messages_layout_->insertWidget(messages_layout_->count() - 1, row);
     scroll_to_bottom();
+}
+
+QString AgentChatPanel::format_agent_audit(const QJsonObject& audit) const {
+    if (audit.isEmpty())
+        return tr("AGENT RUN AUDIT\nNo audit metadata was attached to this run.");
+
+    const QString provider = audit.value("model_provider").toString("-");
+    const QString model = audit.value("model_id").toString("-");
+    const QString scope = audit.value("model_scope").toString("-");
+    const int exposed = audit.value("tools_exposed_count").toInt();
+    const int executed = audit.value("tools_executed_count").toInt();
+    const QString verdict = audit.value("verdict").toString();
+
+    QString out;
+    out += tr("AGENT RUN AUDIT\n");
+    out += tr("Model: %1 / %2 (%3)\n").arg(provider, model, scope);
+    out += tr("Terminal tools exposed: %1\n").arg(exposed);
+    out += tr("Tools actually executed: %1\n").arg(executed);
+    if (verdict == "verified_tool_run")
+        out += tr("Verdict: VERIFIED TOOL RUN\n");
+    else if (verdict == "draft_only_no_tools_executed")
+        out += tr("Verdict: DRAFT ONLY - no tools executed\n");
+    else if (!verdict.isEmpty())
+        out += tr("Verdict: %1\n").arg(verdict);
+
+    const QJsonArray calls = audit.value("tools_executed").toArray();
+    if (!calls.isEmpty()) {
+        out += tr("\nTool calls:\n");
+        const int max = qMin(calls.size(), 5);
+        for (int i = 0; i < max; ++i) {
+            const QJsonObject c = calls.at(i).toObject();
+            out += QString("  %1. %2 - %3\n")
+                       .arg(i + 1)
+                       .arg(c.value("tool").toString("-"),
+                            c.value("success").toBool() ? tr("ok") : tr("failed"));
+            const QString preview = c.value("result_preview").toString();
+            if (!preview.isEmpty())
+                out += QString("     %1\n").arg(preview.left(260));
+        }
+        if (calls.size() > max)
+            out += tr("  ... %1 more\n").arg(calls.size() - max);
+    }
+
+    return out.trimmed();
+}
+
+void AgentChatPanel::add_audit_bubble(const QJsonObject& audit) {
+    add_system_bubble(format_agent_audit(audit));
 }
 
 QTextEdit* AgentChatPanel::add_streaming_bubble(const QString& agent_name) {

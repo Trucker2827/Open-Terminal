@@ -6,6 +6,7 @@
 #    include "datahub/Producer.h"
 
 #include <QJsonObject>
+#include <QHash>
 #include <QObject>
 
 namespace openmarketterminal::services {
@@ -219,6 +220,11 @@ class AgentService : public QObject
     void publish_agent_status(const QString& run_id, const QString& status);
     void publish_routing_result(const RoutingResult& r);
     void publish_agent_error(const QString& context, const QString& message);
+    void begin_agent_audit(const QString& run_id, const QString& action, const QString& query,
+                           const QJsonObject& payload);
+    QJsonObject finish_agent_audit(const QString& run_id, const AgentExecutionResult& result);
+    void record_agent_tool_call(const QString& run_id, const QString& tool_name, bool success,
+                                const QJsonObject& args, const QJsonObject& result);
     /// Publishes a parsed AGENTIC_EVENT to task:event:<task_id> and emits task_event().
     /// Retires the topic when the event is terminal (done/error/cancelled).
     void publish_task_event(const QString& task_id, const QJsonObject& event);
@@ -234,6 +240,7 @@ class AgentService : public QObject
     void ensure_schedule_timer();
     QObject* schedule_timer_ = nullptr;
     bool hub_registered_ = false;
+    QHash<QString, QJsonObject> run_audits_;
 };
 
 } // namespace openmarketterminal::services
