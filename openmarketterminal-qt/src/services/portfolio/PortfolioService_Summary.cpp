@@ -105,8 +105,13 @@ QVector<portfolio::PortfolioAsset> PortfolioService::aggregate_all_accounts_asse
     // "All Accounts" is a REAL-MONEY total, so paper (fake-money) broker
     // accounts are excluded — otherwise a paper account's balance would inflate
     // the aggregate alongside real holdings. Crypto exchanges are always live.
-    const auto broker_mode = [](const QString& account_id) {
-        return trading::AccountManager::instance().get_account(account_id).trading_mode;
+    const auto broker_mode = [](const QString& account_id) -> QString {
+        // BrokerAccount.trading_mode defaults to "paper", so an account
+        // AccountManager can't find would read as paper and be wrongly excluded.
+        // Treat an unknown account as live (empty string) — never silently drop a
+        // real account we simply can't classify.
+        const auto acct = trading::AccountManager::instance().get_account(account_id);
+        return acct.account_id.isEmpty() ? QString() : acct.trading_mode;
     };
 
     QVector<QVector<portfolio::PortfolioAsset>> per_portfolio;
