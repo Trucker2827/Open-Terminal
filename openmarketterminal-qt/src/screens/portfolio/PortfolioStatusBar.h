@@ -29,7 +29,6 @@ class PortfolioStatusBar : public QWidget {
     void retranslateUi();
 
     QLabel* brand_label_ = nullptr;
-    QLabel* version_label_ = nullptr;
     QLabel* portfolio_label_ = nullptr;
     QLabel* live_label_ = nullptr;
     QLabel* positions_label_ = nullptr;

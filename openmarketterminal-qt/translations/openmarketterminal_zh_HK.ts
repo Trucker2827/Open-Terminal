@@ -19459,10 +19459,6 @@ Expected format:
 <context>
     <name>openmarketterminal::screens::PortfolioStatusBar</name>
     <message>
-        <source>PORTFOLIO TERMINAL v4.0</source>
-        <translation>投資組合終端 v4.0</translation>
-    </message>
-    <message>
         <source>LIVE</source>
         <translation>即時</translation>
     </message>
