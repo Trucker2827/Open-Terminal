@@ -1505,6 +1505,7 @@ set(SCREEN_SOURCES
     src/screens/common/ComingSoonScreen.cpp
     src/screens/setup/SetupScreen.cpp
     src/screens/setup/EnableTierBanner.cpp
+    src/screens/setup/TierGate.cpp
     src/screens/launchpad/LaunchpadScreen.cpp
     src/screens/launchpad/OnboardingTour.cpp
     src/screens/recovery/CrashRecoveryDialog.cpp
@@ -2269,6 +2270,7 @@ set_source_files_properties(
     src/screens/settings/StorageSection.cpp
     src/screens/setup/SetupScreen.cpp
     src/screens/setup/EnableTierBanner.cpp
+    src/screens/setup/TierGate.cpp
     src/screens/launchpad/LaunchpadScreen.cpp
     src/screens/launchpad/OnboardingTour.cpp
     src/screens/recovery/CrashRecoveryDialog.cpp
