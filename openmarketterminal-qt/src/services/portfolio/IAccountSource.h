@@ -36,6 +36,22 @@ class IAccountSource {
     /// error, returns FetchResult{ok=false, error, holdings={}} — callers must
     /// NOT mirror a failed fetch (see FetchResult doc in AccountSyncTypes.h).
     virtual portfolio::FetchResult fetch(const AccountRef& ref) = 0;
+
+    /// Read-only fetch of one account's fill/trade history, normalized to
+    /// SyncedTransaction. `holdings` is the just-fetched FetchResult::holdings
+    /// from a successful fetch() call — sources that need the account's
+    /// currently-held symbols (e.g. to enumerate ccxt pairs to query) can use
+    /// it; sources that don't (e.g. a broker's get_orders(), which already
+    /// returns every order) may ignore it. Default returns {} — sources that
+    /// don't support transaction history opt out for free. On any underlying
+    /// error, returns {} rather than throwing (never blocks the holdings
+    /// mirror, which is the primary sync path).
+    virtual QVector<portfolio::SyncedTransaction> fetch_transactions(const AccountRef& ref,
+                                                                      const QVector<portfolio::SyncedHolding>& holdings) {
+        Q_UNUSED(ref);
+        Q_UNUSED(holdings);
+        return {};
+    }
 };
 
 } // namespace openmarketterminal::services

@@ -5,8 +5,11 @@
 #include "trading/ExchangeSession.h"
 #include "trading/ExchangeSessionManager.h"
 
+#include <QDateTime>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
+#include <QTimeZone>
 
 namespace openmarketterminal::services {
 
@@ -61,8 +64,18 @@ CryptoAccountSource::BalanceFetcher CryptoAccountSource::default_fetcher() {
     };
 }
 
-CryptoAccountSource::CryptoAccountSource(BalanceFetcher fetcher)
-    : fetch_balance_(fetcher ? std::move(fetcher) : default_fetcher()) {}
+CryptoAccountSource::TradesFetcher CryptoAccountSource::default_trades_fetcher() {
+    return [](const QString& exchange_id, const QString& symbol) -> QJsonObject {
+        auto* session = trading::ExchangeSessionManager::instance().session(exchange_id);
+        if (!session)
+            return QJsonObject{};
+        return session->fetch_my_trades(symbol);
+    };
+}
+
+CryptoAccountSource::CryptoAccountSource(BalanceFetcher fetcher, TradesFetcher trades_fetcher)
+    : fetch_balance_(fetcher ? std::move(fetcher) : default_fetcher()),
+      fetch_trades_(trades_fetcher ? std::move(trades_fetcher) : default_trades_fetcher()) {}
 
 QVector<AccountRef> CryptoAccountSource::list_accounts() {
     QVector<AccountRef> out;
@@ -133,6 +146,53 @@ portfolio::FetchResult CryptoAccountSource::fetch(const AccountRef& ref) {
     result.ok = true;
     result.holdings = holdings;
     return result;
+}
+
+QVector<portfolio::SyncedTransaction> CryptoAccountSource::fetch_transactions(
+    const AccountRef& ref, const QVector<portfolio::SyncedHolding>& holdings) {
+    QVector<portfolio::SyncedTransaction> out;
+
+    const QString exchange_id =
+        ref.sync_source.startsWith(kSourcePrefix) ? ref.sync_source.mid(kSourcePrefix.size()) : ref.sync_source;
+
+    for (const auto& h : holdings) {
+        // "$CASH:*" holdings have no ccxt pair to query — skip them. A coin
+        // holding always carries a non-empty broker_symbol (see fetch()).
+        if (h.canonical_symbol.startsWith(QStringLiteral("$CASH:")) || h.broker_symbol.isEmpty())
+            continue;
+
+        const QJsonObject resp = fetch_trades_ ? fetch_trades_(exchange_id, h.broker_symbol) : QJsonObject{};
+        if (!resp.contains("trades"))
+            continue;
+
+        for (const auto& v : resp.value("trades").toArray()) {
+            const QJsonObject t = v.toObject();
+            const QString side = t.value("side").toString();
+            const QString id = t.value("id").toVariant().toString();
+            if (id.isEmpty())
+                continue;
+
+            portfolio::SyncedTransaction tx;
+            tx.external_id = exchange_id + QLatin1Char(':') + id;
+            tx.symbol = h.canonical_symbol;
+            tx.type = side.compare(QStringLiteral("buy"), Qt::CaseInsensitive) == 0 ? QStringLiteral("BUY")
+                                                                                     : QStringLiteral("SELL");
+            tx.quantity = t.value("amount").toDouble();
+            tx.price = t.value("price").toDouble();
+
+            const QString datetime = t.value("datetime").toString();
+            if (!datetime.isEmpty()) {
+                tx.date = datetime;
+            } else {
+                const qint64 ms = static_cast<qint64>(t.value("timestamp").toDouble());
+                tx.date = ms > 0 ? QDateTime::fromMSecsSinceEpoch(ms, QTimeZone::UTC).toString(Qt::ISODate) : QString();
+            }
+
+            out.append(tx);
+        }
+    }
+
+    return out;
 }
 
 } // namespace openmarketterminal::services
