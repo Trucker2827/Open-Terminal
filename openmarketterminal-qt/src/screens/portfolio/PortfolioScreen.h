@@ -75,9 +75,16 @@ class PortfolioScreen : public QWidget, public IStatefulScreen, public IGroupLin
     void on_buy_requested();
     void on_sell_requested();
     void on_order_panel_close();
+    /// The command bar's "Sync accounts" button. Marks this sweep as
+    /// user-initiated so sync_finished can jump the view to All Accounts.
+    void on_sync_accounts_clicked();
 
   private:
     void build_ui();
+    /// Core of on_portfolio_selected. @p trigger_sync auto-syncs synced / All
+    /// Accounts views on open; the post-sync auto-switch passes false so it does
+    /// not kick off a second overlapping sweep.
+    void select_portfolio(const QString& id, bool trigger_sync);
     void refresh_theme();
     void retranslateUi();
     QWidget* build_empty_state();
@@ -124,6 +131,9 @@ class PortfolioScreen : public QWidget, public IStatefulScreen, public IGroupLin
     // State
     QVector<portfolio::Portfolio> portfolios_;
     QString selected_id_;
+    /// Set when the user clicks "Sync accounts"; consumed by sync_finished to
+    /// jump the view to All Accounts so the freshly-synced accounts are visible.
+    bool switch_to_all_on_sync_ = false;
     QString selected_symbol_;
     portfolio::PortfolioSummary current_summary_;
     portfolio::ComputedMetrics current_metrics_;

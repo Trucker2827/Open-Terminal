@@ -102,7 +102,7 @@ void PortfolioScreen::build_ui() {
         update_content_state();
     });
     connect(command_bar_, &PortfolioCommandBar::sync_accounts_requested, this,
-            []() { services::AccountSyncService::instance().sync_all(); });
+            &PortfolioScreen::on_sync_accounts_clicked);
     connect(command_bar_, &PortfolioCommandBar::backtest_requested, this, [this]() {
         if (current_summary_.holdings.isEmpty())
             return;

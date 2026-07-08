@@ -72,6 +72,10 @@ void PortfolioScreen::on_portfolios_loaded(QVector<portfolio::Portfolio> portfol
 }
 
 void PortfolioScreen::on_portfolio_selected(const QString& id) {
+    select_portfolio(id, /*trigger_sync=*/true);
+}
+
+void PortfolioScreen::select_portfolio(const QString& id, bool trigger_sync) {
     if (id == selected_id_ && summary_loaded_)
         return;
 
@@ -112,7 +116,7 @@ void PortfolioScreen::on_portfolio_selected(const QString& id) {
     // point AccountSyncService exposes — there's no sync-by-portfolio-id —
     // so both cases route through it; sync_finished (wired in the ctor)
     // reloads the portfolio list and refreshes whatever's active.
-    if (is_all_accounts || is_synced_portfolio)
+    if (trigger_sync && (is_all_accounts || is_synced_portfolio))
         services::AccountSyncService::instance().sync_all();
 }
 
