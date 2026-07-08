@@ -238,6 +238,14 @@ target_include_directories(tst_portfolio_summary PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_portfolio_summary PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_summary COMMAND tst_portfolio_summary)
 
+# Portfolio holding display helper (screens/portfolio/PortfolioHoldingDisplay)
+# extracted from PortfolioBlotter — the unpriced-holding badge (em-dashes +
+# muted row instead of a fabricated "+0.00%"). Header-only, Qt6::Core only.
+add_executable(tst_portfolio_display tst_portfolio_display.cpp)
+target_include_directories(tst_portfolio_display PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_display PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_portfolio_display COMMAND tst_portfolio_display)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
