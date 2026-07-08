@@ -49,16 +49,6 @@ DashboardToolBar::DashboardToolBar(QWidget* parent) : QWidget(parent) {
         layout->addWidget(s);
     };
 
-    auto* brand = new QLabel("OPENMARKETTERMINAL");
-    brand->setObjectName("dtBrand");
-    ll->addWidget(brand);
-
-    auto* sub = new QLabel("TERMINAL");
-    sub->setObjectName("dtSub");
-    ll->addWidget(sub);
-
-    make_sep(ll);
-
     // Honest status: starts IDLE, flips to LIVE only when DataHub actually
     // delivers data. Not a hardcoded "LIVE" — this app fetches on demand.
     status_text_ = new QLabel(tr("IDLE"));
@@ -78,12 +68,6 @@ DashboardToolBar::DashboardToolBar(QWidget* parent) : QWidget(parent) {
     });
     ll->addWidget(clock_btn_);
     update_clock();
-
-    make_sep(ll);
-
-    widget_count_ = new QLabel(tr("%1 WIDGETS").arg(0));
-    widget_count_->setObjectName("dtWidgetCount");
-    ll->addWidget(widget_count_);
 
     hl->addWidget(left);
     hl->addStretch();
@@ -172,31 +156,26 @@ void DashboardToolBar::refresh_theme() {
         QString("#dashToolBar { background:%1; border-bottom:1px solid %2; }"
                 "#dtLeftContainer, #dtRightContainer { background:%1; }"
                 "#dtSep { color:%3; background:transparent; }"
-                "#dtBrand { color:%4; font-weight:bold; letter-spacing:1px; background:transparent; }"
-                "#dtSub { color:%5; font-weight:bold; background:transparent; }"
-                "#dtStatus { color:%6; font-weight:bold; background:transparent; }"
-                "#dtClock { color:%7; background:transparent; }"
-                "#dtWidgetCount { color:%8; font-weight:bold; background:transparent; }"
-                "#dtBtn { background:%9; border:1px solid %3; color:%7; padding:0 10px; font-weight:bold; }"
-                "#dtBtn:hover { background:%10; color:%11; border-color:%12; }"
-                "#dtAddBtn { background:%9; border:1px solid %13; color:%4; padding:0 10px; font-weight:bold; }"
-                "#dtAddBtn:hover { background:%10; color:%11; border-color:%12; }"
-                "#dtResetBtn { background:%9; border:1px solid %14; color:%14; padding:0 10px; font-weight:bold; }"
-                "#dtResetBtn:hover { background:%10; color:%11; border-color:%12; }")
+                "#dtStatus { color:%4; font-weight:bold; background:transparent; }"
+                "#dtClock { color:%5; background:transparent; }"
+                "#dtBtn { background:%6; border:1px solid %3; color:%5; padding:0 10px; font-weight:bold; }"
+                "#dtBtn:hover { background:%7; color:%8; border-color:%9; }"
+                "#dtAddBtn { background:%6; border:1px solid %10; color:%11; padding:0 10px; font-weight:bold; }"
+                "#dtAddBtn:hover { background:%7; color:%8; border-color:%9; }"
+                "#dtResetBtn { background:%6; border:1px solid %12; color:%12; padding:0 10px; font-weight:bold; }"
+                "#dtResetBtn:hover { background:%7; color:%8; border-color:%9; }")
             .arg(ui::colors::BG_SURFACE())     // %1
             .arg(ui::colors::BORDER_DIM())     // %2
             .arg(ui::colors::BORDER_MED())     // %3
-            .arg(ui::colors::AMBER())          // %4
-            .arg(ui::colors::TEXT_TERTIARY())  // %5
-            .arg(ui::colors::POSITIVE())       // %6
-            .arg(ui::colors::TEXT_SECONDARY()) // %7
-            .arg(ui::colors::CYAN())           // %8
-            .arg(ui::colors::BG_RAISED())      // %9
-            .arg(ui::colors::BG_HOVER())       // %10
-            .arg(ui::colors::TEXT_PRIMARY())   // %11
-            .arg(ui::colors::BORDER_BRIGHT())  // %12
-            .arg(ui::colors::AMBER_DIM())      // %13
-            .arg(ui::colors::NEGATIVE()));     // %14
+            .arg(ui::colors::POSITIVE())       // %4
+            .arg(ui::colors::TEXT_SECONDARY()) // %5
+            .arg(ui::colors::BG_RAISED())      // %6
+            .arg(ui::colors::BG_HOVER())       // %7
+            .arg(ui::colors::TEXT_PRIMARY())   // %8
+            .arg(ui::colors::BORDER_BRIGHT())  // %9
+            .arg(ui::colors::AMBER_DIM())      // %10
+            .arg(ui::colors::AMBER())          // %11
+            .arg(ui::colors::NEGATIVE()));     // %12
 
     // Force child containers to re-evaluate their background after stylesheet change.
     // Without this, Qt may repaint them with the default palette grey on show events.
@@ -231,8 +210,7 @@ void DashboardToolBar::update_clock() {
 }
 
 void DashboardToolBar::set_widget_count(int count) {
-    widget_count_value_ = count;
-    widget_count_->setText(tr("%1 WIDGETS").arg(count));
+    Q_UNUSED(count);
 }
 
 void DashboardToolBar::set_connected(bool connected) {
@@ -252,7 +230,6 @@ void DashboardToolBar::changeEvent(QEvent* event) {
 void DashboardToolBar::retranslateUi() {
     if (status_text_)   status_text_->setText(connected_ ? tr("LIVE") : tr("IDLE"));
     if (clock_btn_)     clock_btn_->setToolTip(tr("Click to toggle UTC / local time"));
-    if (widget_count_)  widget_count_->setText(tr("%1 WIDGETS").arg(widget_count_value_));
     if (compact_btn_)   compact_btn_->setText(tr("COMPACT"));
     if (pulse_btn_)     pulse_btn_->setText(tr("PULSE"));
     if (refresh_btn_) {

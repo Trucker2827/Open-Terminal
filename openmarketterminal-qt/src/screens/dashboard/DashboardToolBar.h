@@ -9,7 +9,7 @@
 
 namespace openmarketterminal::screens {
 
-/// Top toolbar for dashboard — terminal identity, clock, connection status, widget count, actions.
+/// Top toolbar for dashboard status and actions.
 class DashboardToolBar : public QWidget {
     Q_OBJECT
   public:
@@ -42,9 +42,7 @@ class DashboardToolBar : public QWidget {
     bool clock_is_utc_ = true;
     bool connected_ = false;             // true once DataHub delivers data
     qint64 last_data_ms_ = 0;            // epoch-ms of last DataHub topic_updated
-    int  widget_count_value_ = 0;
     QLabel* status_text_ = nullptr;
-    QLabel* widget_count_ = nullptr;
     QPushButton* pulse_btn_ = nullptr;
     QPushButton* compact_btn_ = nullptr;
     QPushButton* refresh_btn_ = nullptr;
