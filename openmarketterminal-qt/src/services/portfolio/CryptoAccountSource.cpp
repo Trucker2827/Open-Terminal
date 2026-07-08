@@ -15,13 +15,24 @@ const QString kSourcePrefix = QStringLiteral("crypto:");
 
 // Mirrors ExchangeSession's private `creds_key` convention
 // ("crypto:<exchange>:<field>") — see trading/ExchangeSession.cpp.
-QString creds_key(const QString& exchange_id) {
-    return QStringLiteral("crypto:") + exchange_id + QStringLiteral(":api_key");
+QString creds_key(const QString& exchange_id, const QString& field) {
+    return QStringLiteral("crypto:") + exchange_id + QLatin1Char(':') + field;
 }
 
+// Must agree with ExchangeSession::load_stored_credentials()'s definition of
+// "credentials are stored" — ANY of these five fields counts, not just
+// api_key. Wallet-authenticated exchanges (e.g. Hyperliquid) only ever set
+// wallet_address/private_key and have no api_key, so checking api_key alone
+// silently drops them from list_accounts().
 bool has_stored_credentials(const QString& exchange_id) {
-    const auto r = SecureStorage::instance().retrieve(creds_key(exchange_id));
-    return r.is_ok() && !r.value().isEmpty();
+    auto& ss = SecureStorage::instance();
+    static const QStringList fields = {"api_key", "secret", "password", "wallet_address", "private_key"};
+    for (const auto& field : fields) {
+        const auto r = ss.retrieve(creds_key(exchange_id, field));
+        if (r.is_ok() && !r.value().isEmpty())
+            return true;
+    }
+    return false;
 }
 
 QString title_case(const QString& id) {
