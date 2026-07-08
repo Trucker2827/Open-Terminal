@@ -162,7 +162,7 @@ void PortfolioService::sell_asset(const QString& portfolio_id, const QString& sy
         repo.remove_asset(portfolio_id, symbol);
     } else {
         // Partial sell — keep same avg price
-        repo.update_asset(portfolio_id, symbol, remaining, found->avg_buy_price);
+        repo.update_asset(portfolio_id, symbol, remaining, found->avg_buy_price, found->has_cost_basis);
     }
 
     // Record transaction

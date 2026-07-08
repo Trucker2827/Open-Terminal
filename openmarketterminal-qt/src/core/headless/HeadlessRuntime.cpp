@@ -10,6 +10,9 @@
 #include "screens/data_sources/ConnectorRegistry.h"
 #include "services/DataServices.h"
 #include "services/markets/MarketDataService.h"
+#include "services/portfolio/AccountSyncService.h"
+#include "services/portfolio/CryptoAccountSource.h"
+#include "services/portfolio/EquityAccountSource.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/polymarket/PolymarketAdapter.h"
@@ -82,6 +85,17 @@ InitResult HeadlessRuntime::init(const QString& profile) {
             reg.register_adapter(std::make_unique<services::prediction::polymarket_ns::PolymarketAdapter>());
         if (!reg.adapter("kalshi"))
             reg.register_adapter(std::make_unique<services::prediction::kalshi_ns::KalshiAdapter>());
+    }
+
+    // Portfolio Account Sync sources (the GUI does the same in main.cpp).
+    // register_source() is pointer-idempotent, so re-running init() (guarded by
+    // initialized_ above, but defensive) can't double-register these statics.
+    {
+        static services::EquityAccountSource equity_account_source;
+        static services::CryptoAccountSource crypto_account_source;
+        auto& sync = services::AccountSyncService::instance();
+        sync.register_source(&equity_account_source);
+        sync.register_source(&crypto_account_source);
     }
 
     screens::datasources::register_all_connectors();

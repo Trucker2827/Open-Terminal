@@ -9,6 +9,7 @@
 #include "services/portfolio/PortfolioService.h"
 
 #include "core/logging/Logger.h"
+#include "services/portfolio/AccountSyncTypes.h"
 #include "python/PythonRunner.h"
 #include "services/portfolio/PortfolioSummaryBuild.h"
 #include "services/sectors/SectorResolver.h"
@@ -48,6 +49,31 @@ void PortfolioService::load_summary(const QString& portfolio_id) {
         }
     }
 
+    // ── Virtual "All Accounts" aggregate — no DB row; synthesize a Portfolio
+    // whose assets are the union of every synced portfolio's holdings, then
+    // run the SAME quote+FX+build path as a real portfolio (no pricing
+    // special-casing).
+    if (portfolio_id == QLatin1String(kAllAccountsId)) {
+        const auto synced = PortfolioRepository::instance().list_synced();
+
+        portfolio::Portfolio synthetic;
+        synthetic.id = QString::fromLatin1(kAllAccountsId);
+        synthetic.name = QStringLiteral("All Accounts");
+        synthetic.currency = synced.isEmpty() ? QStringLiteral("USD") : synced.first().currency;
+
+        const auto assets = synced.isEmpty() ? QVector<portfolio::PortfolioAsset>{} : aggregate_all_accounts_assets();
+        if (assets.isEmpty()) {
+            portfolio::PortfolioSummary empty;
+            empty.portfolio = synthetic;
+            empty.last_updated = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+            emit summary_loaded(empty);
+            return;
+        }
+
+        build_summary(portfolio_id, assets, synthetic);
+        return;
+    }
+
     auto portfolio_r = PortfolioRepository::instance().get_portfolio(portfolio_id);
     if (portfolio_r.is_err()) {
         emit summary_error(portfolio_id, QString::fromStdString(portfolio_r.error()));
@@ -72,6 +98,20 @@ void PortfolioService::load_summary(const QString& portfolio_id) {
     build_summary(portfolio_id, assets_r.value(), portfolio_r.value());
 }
 
+QVector<portfolio::PortfolioAsset> PortfolioService::aggregate_all_accounts_assets() {
+    const auto synced = PortfolioRepository::instance().list_synced();
+
+    QVector<QVector<portfolio::PortfolioAsset>> per_portfolio;
+    per_portfolio.reserve(synced.size());
+    for (const auto& pf : synced) {
+        auto assets_r = PortfolioRepository::instance().get_assets(pf.id);
+        if (assets_r.is_ok())
+            per_portfolio.append(assets_r.value());
+    }
+
+    return portfolio::aggregate_holdings(per_portfolio);
+}
+
 void PortfolioService::refresh_summary(const QString& portfolio_id) {
     invalidate_cache(portfolio_id);
     load_summary(portfolio_id);
@@ -89,10 +129,15 @@ void PortfolioService::build_summary(const QString& portfolio_id, const QVector<
     auto& mds = MarketDataService::instance();
     const QString base_ccy = portfolio.currency.isEmpty() ? QStringLiteral("USD") : portfolio.currency;
 
+    // `$CASH:<CCY>` pseudo-holdings are not real tickers — never send them to
+    // resolve_names/fetch_quotes (yfinance has no such symbol). Only real
+    // holdings go into the quote-fetch symbol list.
     QStringList symbols;
     symbols.reserve(assets.size());
-    for (const auto& a : assets)
-        symbols.append(a.symbol);
+    for (const auto& a : assets) {
+        if (!a.symbol.startsWith(QLatin1String("$CASH:")))
+            symbols.append(a.symbol);
+    }
 
     // Ensure each holding's listing currency is resolved (populates the currency
     // cache read below). Fire-and-forget — a first-ever foreign symbol converts
@@ -105,7 +150,13 @@ void PortfolioService::build_summary(const QString& portfolio_id, const QVector<
     QHash<QString, QString> native_ccy;
     QStringList fetch = symbols;
     for (const auto& a : assets) {
-        const QString ccy = mds.currency_code(a.symbol);
+        // A `$CASH:<CCY>` pseudo-holding's "native currency" is the suffix
+        // itself, not a currency_code() lookup (which only knows real
+        // tickers and would return empty -> unresolved FX -> blocks the
+        // snapshot forever for cash rows). The symbol itself is never sent
+        // to the quote fetch above; only its FX pair (if foreign) is.
+        const bool is_cash = a.symbol.startsWith(QLatin1String("$CASH:"));
+        const QString ccy = is_cash ? a.symbol.mid(6) : mds.currency_code(a.symbol);
         native_ccy.insert(a.symbol, ccy);
         if (!ccy.isEmpty() && ccy != base_ccy) {
             const QString pair = ccy + base_ccy + QStringLiteral("=X");
@@ -299,7 +350,12 @@ void PortfolioService::finalize_summary(const QString& portfolio_id,
     // FX rate. A fabricated mark (unpriced fallback) or a guessed FX rate would
     // permanently contaminate the NAV history (the perf chart); snapshots resume
     // next refresh once all symbols quote and their currencies/FX resolve.
-    if (built.snapshot_safe()) {
+    // The virtual "All Accounts" id has no portfolios row (by design — see
+    // kAllAccountsId), so it's excluded here too: portfolio_snapshots.portfolio_id
+    // has a FK to portfolios(id) and the insert would just fail.
+    if (portfolio_id == QLatin1String(kAllAccountsId)) {
+        // no-op: nothing to snapshot the virtual aggregate against.
+    } else if (built.snapshot_safe()) {
         QString today = QDate::currentDate().toString(Qt::ISODate);
         PortfolioRepository::instance().save_snapshot(portfolio_id, summary.total_market_value,
                                                       summary.total_cost_basis, summary.total_unrealized_pnl,

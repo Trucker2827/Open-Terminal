@@ -26,6 +26,10 @@ class PortfolioBlotter : public QWidget {
     void set_filter(const QString& text);
     /// Show only rows whose symbol is in @p symbols. Empty list = show all.
     void set_sector_filter(const QStringList& symbols);
+    /// Read-only guard for synced portfolios / the All Accounts aggregate —
+    /// hides "Edit Transaction" / "Close / Delete Position" from the
+    /// per-row context menu. View/sort/filter stay fully functional.
+    void set_read_only(bool read_only);
     void refresh_theme();
     void hub_resubscribe_broker_quotes(const QString& broker_account_id);
 
@@ -87,6 +91,7 @@ class PortfolioBlotter : public QWidget {
     QVector<portfolio::HoldingWithQuote> sorted_;
     QString selected_symbol_;
     QString filter_text_;
+    bool read_only_ = false;
     QStringList sector_symbols_; // empty = no sector filter
     portfolio::SortColumn sort_col_ = portfolio::SortColumn::Weight;
     portfolio::SortDirection sort_dir_ = portfolio::SortDirection::Desc;

@@ -90,6 +90,13 @@ class PortfolioScreen : public QWidget, public IStatefulScreen, public IGroupLin
     void reposition_order_panel();
     void animate_order_panel_in();
     const portfolio::HoldingWithQuote* find_holding(const QString& symbol) const;
+    /// Recomputes the command bar's "Synced Xm ago" label from the newest
+    /// synced_at across PortfolioRepository::list_synced().
+    void update_last_synced_label();
+    /// Applies the read-only guard (disable Add/Sell/Edit/Delete-asset) for
+    /// the currently selected portfolio: synced portfolios (sync_source !=
+    /// '') and the virtual All Accounts aggregate are both read-only.
+    void apply_read_only_guard();
 
     // Sub-widgets
     PortfolioCommandBar* command_bar_ = nullptr;

@@ -28,6 +28,7 @@
 #include "core/events/EventBus.h"
 #include "services/backtesting/BacktestingService.h"
 #include "services/file_manager/FileManagerService.h"
+#include "services/portfolio/AccountSyncService.h"
 #include "services/portfolio/PortfolioService.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
@@ -100,6 +101,8 @@ void PortfolioScreen::build_ui() {
         }
         update_content_state();
     });
+    connect(command_bar_, &PortfolioCommandBar::sync_accounts_requested, this,
+            []() { services::AccountSyncService::instance().sync_all(); });
     connect(command_bar_, &PortfolioCommandBar::backtest_requested, this, [this]() {
         if (current_summary_.holdings.isEmpty())
             return;
@@ -475,14 +478,16 @@ void PortfolioScreen::update_content_state() {
     bool has_selection = !selected_id_.isEmpty();
 
     if (!has_portfolios || !has_selection) {
-        // No portfolios or nothing selected — clean empty state
+        // No portfolios or nothing selected — clean empty state. The command
+        // bar stays visible even with zero portfolios (rather than the old
+        // fully-hidden behavior) so the Sync accounts button is reachable on
+        // a fresh install with connected accounts but no synced portfolio
+        // rows yet — otherwise there'd be no way to trigger the first sync.
         content_stack_->setCurrentIndex(0);
         stats_ribbon_->setVisible(false);
         status_bar_->setVisible(false);
-        command_bar_->setVisible(!has_portfolios ? false : true);
-        if (has_portfolios) {
-            command_bar_->set_has_selection(false);
-        }
+        command_bar_->setVisible(true);
+        command_bar_->set_has_selection(false);
     } else if (!summary_loaded_) {
         content_stack_->setCurrentIndex(1); // loading
         stats_ribbon_->setVisible(false);

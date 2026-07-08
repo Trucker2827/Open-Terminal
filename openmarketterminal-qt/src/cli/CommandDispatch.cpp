@@ -21981,7 +21981,8 @@ static int portfolio_command(const GlobalOpts& opts, QStringList args) {
         Result<void> update = remaining <= 0.0001
                                   ? PortfolioRepository::instance().remove_asset(p->id, symbol)
                                   : PortfolioRepository::instance().update_asset(p->id, symbol, remaining,
-                                                                                 found->avg_buy_price);
+                                                                                 found->avg_buy_price,
+                                                                                 found->has_cost_basis);
         if (update.is_err()) {
             std::fprintf(stderr, "failed to update asset: %s\n", update.error().c_str());
             return 5;

@@ -21,6 +21,11 @@ class PortfolioService : public QObject {
   public:
     static PortfolioService& instance();
 
+    /// Synthetic portfolio_id for the virtual "All Accounts" aggregate view —
+    /// unions holdings across every synced (sync_source != '') portfolio.
+    /// Never a real row in the portfolios table.
+    static constexpr const char* kAllAccountsId = "__all_accounts__";
+
     // ── Portfolio CRUD ───────────────────────────────────────────────────────
     void load_portfolios();
     /// `broker_account_id` links the new portfolio to a broker account so
@@ -34,6 +39,12 @@ class PortfolioService : public QObject {
     // ── Summary (assets + live quotes) ───────────────────────────────────────
     void load_summary(const QString& portfolio_id);
     void refresh_summary(const QString& portfolio_id); // invalidates cache first
+
+    /// Union of holdings across every synced portfolio (PortfolioRepository::
+    /// list_synced()), merged via portfolio::aggregate_holdings. Backs the
+    /// "All Accounts" virtual summary (kAllAccountsId) — extracted as a public
+    /// method so the wiring is testable without the async quote fetch.
+    QVector<portfolio::PortfolioAsset> aggregate_all_accounts_assets();
 
     // ── Asset operations ─────────────────────────────────────────────────────
     /// `broker_symbol`+`exchange` are stored alongside the canonical

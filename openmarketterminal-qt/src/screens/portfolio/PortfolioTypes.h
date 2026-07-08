@@ -23,6 +23,15 @@ struct Portfolio {
     /// PortfolioService can route live quote fetches through the broker
     /// instead of yfinance. See migration v022.
     QString broker_account_id;
+    /// Identifies the connected account this portfolio mirrors (e.g.
+    /// "broker:<account_id>"). Empty for manually-created / JSON-imported
+    /// portfolios — AccountSyncService only ever touches portfolios with a
+    /// non-empty sync_source. See migration v060.
+    QString sync_source;
+    /// ISO-8601 timestamp of the last successful sync. Empty = never synced.
+    QString synced_at;
+    /// Last sync error message, if any. Cleared on the next successful sync.
+    QString sync_error;
 };
 
 struct PortfolioAsset {
@@ -40,6 +49,11 @@ struct PortfolioAsset {
     QString broker_symbol;
     /// Exchange code. Empty for non-broker imports.
     QString exchange;
+    /// False for holdings whose cost basis is not known (e.g. a crypto
+    /// exchange balance imported with quantity only). market_value still
+    /// counts toward NAV; cost_basis / unrealized_pnl are excluded from
+    /// portfolio totals. See migration v060.
+    bool has_cost_basis = true;
 };
 
 struct Transaction {
@@ -81,6 +95,11 @@ struct HoldingWithQuote {
     // values were converted at 1.0 (shown in the native currency), so they are
     // the wrong scale. Consumers badge it like unpriced; NAV snapshots skip it.
     bool fx_resolved = true;
+    // False when the source asset has no known cost basis (e.g. a crypto
+    // exchange balance): cost_basis / unrealized_pnl are zeroed and excluded
+    // from portfolio totals, but market_value still counts toward NAV.
+    // Consumers badge it for display.
+    bool has_cost_basis = true;
 };
 
 struct PortfolioSummary {

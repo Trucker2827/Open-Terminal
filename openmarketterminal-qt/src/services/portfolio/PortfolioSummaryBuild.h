@@ -69,6 +69,7 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
 
     double total_mv = 0;
     double total_cost = 0;
+    double total_pnl = 0;
     double total_day = 0;
     double total_prev = 0; // previous-close value of PRICED holdings only (day% base)
 
@@ -83,14 +84,30 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
 
         HoldingWithQuote h;
         h.fx_resolved = fx_resolved;
+        h.has_cost_basis = asset.has_cost_basis;
         h.symbol = asset.symbol;
         h.quantity = asset.quantity;
         h.avg_buy_price = asset.avg_buy_price * rate; // base currency
         h.cost_basis = h.quantity * h.avg_buy_price;
         h.sector = asset.sector.isEmpty() ? sector_lookup(asset.symbol) : asset.sector;
 
+        // `$CASH:<CCY>` pseudo-holdings (a portfolio's cash balance, synced
+        // from a broker/exchange) are not a real ticker: there is no quote to
+        // fetch and none should ever be looked up. Their "price" is always
+        // 1.0 unit of their native currency, converted to base via `rate`
+        // like any other holding — so market_value = quantity (the cash
+        // amount) in base currency, with no day change. This must run BEFORE
+        // the quote_map lookup so cash never falls into the unpriced
+        // fallback (which would fabricate a mark and block NAV snapshots).
+        const bool is_cash = asset.symbol.startsWith(QLatin1String("$CASH:"));
         auto it = quote_map.find(asset.symbol);
-        if (it != quote_map.end()) {
+        if (is_cash) {
+            h.current_price = 1.0 * rate;
+            h.day_change = 0;
+            h.day_change_percent = 0;
+            h.priced = true;
+            total_prev += (h.current_price - h.day_change) * h.quantity; // priced holdings only
+        } else if (it != quote_map.end()) {
             h.current_price = it->price * rate;   // base currency
             h.day_change = it->change * rate;     // base currency
             h.day_change_percent = it->change_pct; // ratio — unaffected by FX
@@ -111,13 +128,25 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
         h.unrealized_pnl_percent = (h.cost_basis > 0) ? (h.unrealized_pnl / h.cost_basis) * 100.0 : 0;
 
         total_mv += h.market_value;
-        total_cost += h.cost_basis;
+        if (h.has_cost_basis) {
+            total_cost += h.cost_basis;
+            total_pnl += h.unrealized_pnl;
+        } else {
+            // No cost basis (e.g. crypto exchange balance): market value counts
+            // toward NAV, but P&L is undefined — zero it and exclude from the
+            // cost/P&L totals.
+            h.cost_basis = 0;
+            h.unrealized_pnl = 0;
+            h.unrealized_pnl_percent = 0;
+        }
         total_day += h.day_change * h.quantity;
 
-        if (h.unrealized_pnl >= 0)
-            summary.gainers++;
-        else
-            summary.losers++;
+        if (h.has_cost_basis) {
+            if (h.unrealized_pnl >= 0)
+                summary.gainers++;
+            else
+                summary.losers++;
+        }
 
         summary.holdings.append(h);
     }
@@ -128,8 +157,8 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
 
     summary.total_market_value = total_mv;
     summary.total_cost_basis = total_cost;
-    summary.total_unrealized_pnl = total_mv - total_cost;
-    summary.total_unrealized_pnl_percent = (total_cost > 0) ? ((total_mv - total_cost) / total_cost) * 100.0 : 0;
+    summary.total_unrealized_pnl = total_pnl;
+    summary.total_unrealized_pnl_percent = (total_cost > 0) ? (total_pnl / total_cost) * 100.0 : 0;
     summary.total_day_change = total_day;
     // Percent off the previous-close base of PRICED holdings only. Using
     // (total_mv − total_day) folded unpriced holdings' full stale value into the

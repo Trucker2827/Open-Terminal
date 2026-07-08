@@ -22,6 +22,20 @@ class PortfolioRepository : public BaseRepository<portfolio::Portfolio> {
                                   const QString& description = {});
     Result<void> delete_portfolio(const QString& id);
 
+    // ── Account sync (v060) ──────────────────────────────────────────────────
+    /// Stamps a portfolio's sync bookkeeping columns. Called by
+    /// AccountSyncService::ensure_portfolio (sync_source only, on first
+    /// creation) and after every sync_account attempt (synced_at + sync_error
+    /// on success, sync_error only — synced_at unchanged — on failure).
+    Result<void> set_sync_meta(const QString& portfolio_id, const QString& sync_source, const QString& synced_at,
+                               const QString& sync_error);
+    /// Finds the portfolio mirroring a given connected account, if any.
+    /// sync_source == '' never matches (manual portfolios are never synced).
+    std::optional<portfolio::Portfolio> find_by_sync_source(const QString& sync_source);
+    /// All portfolios with a non-empty sync_source, for Task 8 (sync-all UI /
+    /// scheduler) to enumerate.
+    QVector<portfolio::Portfolio> list_synced();
+
     // ── Assets CRUD ──────────────────────────────────────────────────────────
     Result<QVector<portfolio::PortfolioAsset>> get_assets(const QString& portfolio_id);
     /// `broker_symbol` + `exchange` are the broker-native pair (e.g.
@@ -30,8 +44,15 @@ class PortfolioRepository : public BaseRepository<portfolio::Portfolio> {
     /// regardless — every downstream consumer treats it as such.
     Result<qint64> add_asset(const QString& portfolio_id, const QString& symbol, double qty, double price,
                              const QString& date = {}, const QString& sector = {},
-                             const QString& broker_symbol = {}, const QString& exchange = {});
-    Result<void> update_asset(const QString& portfolio_id, const QString& symbol, double qty, double avg_price);
+                             const QString& broker_symbol = {}, const QString& exchange = {},
+                             bool has_cost_basis = true);
+    /// `has_cost_basis` defaults to true (manual-edit call sites keep the
+    /// asset's existing value by reading it and passing it back explicitly —
+    /// see CommandDispatch/PortfolioService callers). Added so
+    /// AccountSyncService's mirror-write can converge a has_cost_basis-only
+    /// diff (reconcile_mirror's update predicate includes it).
+    Result<void> update_asset(const QString& portfolio_id, const QString& symbol, double qty, double avg_price,
+                              bool has_cost_basis = true);
     Result<void> set_asset_sector(const QString& portfolio_id, const QString& symbol, const QString& sector);
     Result<void> remove_asset(const QString& portfolio_id, const QString& symbol);
 

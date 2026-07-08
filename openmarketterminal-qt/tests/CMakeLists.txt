@@ -147,6 +147,15 @@ target_include_directories(tst_pm_paper PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_pm_paper PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_pm_paper COMMAND tst_pm_paper)
 
+# Portfolio Account Sync Task 1 — the v060 migration (portfolios.sync_source /
+# synced_at / sync_error, portfolio_assets.has_cost_basis). Brings up a real
+# DB under a QTemporaryDir HOME via HeadlessRuntime (same link set as
+# tst_pm_paper).
+add_executable(tst_portfolio_account_sync_migration tst_portfolio_account_sync_migration.cpp)
+target_include_directories(tst_portfolio_account_sync_migration PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_account_sync_migration PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_portfolio_account_sync_migration COMMAND tst_portfolio_account_sync_migration)
+
 # AI-Trading Substrate Phase C Task 1 — kill switch + allowed-account
 # constitution: the SettingsGate readers (cli_kill_switch_engaged /
 # cli_allowed_account), the kill-switch short-circuit in BOTH order-flow
@@ -245,6 +254,50 @@ add_executable(tst_portfolio_display tst_portfolio_display.cpp)
 target_include_directories(tst_portfolio_display PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_portfolio_display PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_display COMMAND tst_portfolio_display)
+
+# Portfolio Account Sync Task 4 — pure mirror-reconcile diff
+# (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
+# assets vs freshly fetched broker/exchange holdings -> add/update/remove
+# plan, keyed by canonical symbol. Header-only, so the test needs only
+# Qt6::Core (no core lib link), same shape as tst_portfolio_summary.
+add_executable(tst_account_sync_reconcile tst_account_sync_reconcile.cpp)
+target_include_directories(tst_account_sync_reconcile PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_account_sync_reconcile PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_account_sync_reconcile COMMAND tst_account_sync_reconcile)
+
+# Portfolio Account Sync Task 6 — EquityAccountSource::fetch() over a fake
+# IBroker injected via the broker-resolver callback (get_holdings/get_funds ->
+# SyncedHolding list + "$CASH:<ccy>" line; get_holdings error -> ok=false, no
+# partial mirror). Links the core lib for trading::IBroker/AccountManager/
+# BrokerRegistry types, same link set as tst_live_trading.
+add_executable(tst_equity_account_source tst_equity_account_source.cpp)
+target_include_directories(tst_equity_account_source PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_equity_account_source PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_equity_account_source COMMAND tst_equity_account_source)
+
+# Portfolio Account Sync Task 7 — AccountSyncService::sync_account() over a
+# scriptable FakeSource: initial sync creates a synced portfolio mirroring
+# the fetch, a re-sync mirrors exactly (add/update/remove), and a failed
+# fetch records sync_error WITHOUT touching portfolio_assets (never-wipe
+# invariant). Bring-up mirrors tst_portfolio_account_sync_migration.cpp
+# (HeadlessRuntime DB under a QTemporaryDir HOME).
+add_executable(tst_account_sync_service tst_account_sync_service.cpp)
+target_include_directories(tst_account_sync_service PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_account_sync_service PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_account_sync_service COMMAND tst_account_sync_service)
+
+# Portfolio Account Sync Task 9 — CryptoAccountSource::fetch() over an
+# injected balance-fetcher callback (no live exchange daemon needed):
+# {"balances":{CCY:{"total":n}}} -> SyncedHolding list (fiat CCY -> "$CASH:
+# <CCY>" line, else "<CCY>-USD" coin holding) + an error/missing-balances
+# response -> ok=false, no partial mirror. Links the core lib for
+# trading::ExchangeSessionManager/ExchangeSession + SecureStorage types used
+# by the default (non-injected) resolver, same link set as
+# tst_equity_account_source.
+add_executable(tst_crypto_account_source tst_crypto_account_source.cpp)
+target_include_directories(tst_crypto_account_source PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_account_source PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_crypto_account_source COMMAND tst_crypto_account_source)
 
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source

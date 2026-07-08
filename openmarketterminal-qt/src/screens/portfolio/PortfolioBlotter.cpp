@@ -613,8 +613,9 @@ void PortfolioBlotter::populate_table() {
         // than a misleading "+0.00%" flat position — see PortfolioHoldingDisplay.
         const auto cells = portfolio::price_dependent_cells(h);
         const char* muted = ui::colors::TEXT_TERTIARY;
-        const char* pnl_color =
-            cells.muted ? muted : (h.unrealized_pnl >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
+        const char* pnl_color = (cells.muted || cells.pnl_muted)
+                                     ? muted
+                                     : (h.unrealized_pnl >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
         const char* chg_color =
             cells.muted ? muted : (h.day_change_percent >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
 
@@ -649,6 +650,14 @@ void PortfolioBlotter::populate_table() {
         // Explain the em-dashes on a muted (unpriced / FX-unresolved) row.
         if (cells.muted) {
             for (auto* it : {sym_item, last_item, mv_item, pnl_item, pnl_pct_item, chg_item})
+                if (it)
+                    it->setToolTip(cells.reason);
+        }
+
+        // Explain the em-dashes on a P&L-only-muted (no cost basis, e.g. crypto)
+        // row: LAST/MKT VAL/CHG% stay real, only the P&L columns are dashed.
+        if (cells.pnl_muted) {
+            for (auto* it : {pnl_item, pnl_pct_item})
                 if (it)
                     it->setToolTip(cells.reason);
         }
@@ -702,6 +711,10 @@ void PortfolioBlotter::set_sector_filter(const QStringList& symbols) {
     apply_filter();
 }
 
+void PortfolioBlotter::set_read_only(bool read_only) {
+    read_only_ = read_only;
+}
+
 void PortfolioBlotter::apply_filter() {
     // With pagination, the table only contains the current page slice — there
     // are no hidden rows to toggle. Filter changes shrink the visible_view, so
@@ -737,19 +750,26 @@ void PortfolioBlotter::on_context_menu(const QPoint& pos) {
     }());
     menu.addSeparator();
 
-    auto* edit_act = menu.addAction(tr("Edit Transaction"));
-    auto* delete_act = menu.addAction(tr("Close / Delete Position"));
+    if (read_only_) {
+        // Synced portfolios / All Accounts are mirror-written by
+        // AccountSyncService — no manual Edit/Delete on a read-only view.
+        auto* ro_label = menu.addAction(tr("Read-only — synced account"));
+        ro_label->setEnabled(false);
+    } else {
+        auto* edit_act = menu.addAction(tr("Edit Transaction"));
+        auto* delete_act = menu.addAction(tr("Close / Delete Position"));
 
-    edit_act->setIcon(QIcon());
-    delete_act->setIcon(QIcon());
+        edit_act->setIcon(QIcon());
+        delete_act->setIcon(QIcon());
 
-    // Style delete action in red
-    delete_act->setData("danger");
-    menu.setStyleSheet(menu.styleSheet() +
-                       QString("QMenu::item[data='danger'] { color:%1; }").arg(ui::colors::NEGATIVE()));
+        // Style delete action in red
+        delete_act->setData("danger");
+        menu.setStyleSheet(menu.styleSheet() +
+                           QString("QMenu::item[data='danger'] { color:%1; }").arg(ui::colors::NEGATIVE()));
 
-    connect(edit_act, &QAction::triggered, this, [this, symbol]() { emit edit_transaction_requested(symbol); });
-    connect(delete_act, &QAction::triggered, this, [this, symbol]() { emit delete_position_requested(symbol); });
+        connect(edit_act, &QAction::triggered, this, [this, symbol]() { emit edit_transaction_requested(symbol); });
+        connect(delete_act, &QAction::triggered, this, [this, symbol]() { emit delete_position_requested(symbol); });
+    }
 
     menu.exec(table_->viewport()->mapToGlobal(pos));
 }

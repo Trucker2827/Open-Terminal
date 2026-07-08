@@ -104,6 +104,7 @@ void register_migration_v056();
 void register_migration_v057();
 void register_migration_v058();
 void register_migration_v059();
+void register_migration_v060();
 
 /// Register every migration above, in version order, in one place. Both the GUI
 /// (main.cpp) and the headless host (HeadlessRuntime) call this before

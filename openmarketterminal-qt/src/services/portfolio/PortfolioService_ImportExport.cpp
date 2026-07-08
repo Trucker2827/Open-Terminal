@@ -248,7 +248,7 @@ void PortfolioService::import_json(const QString& file_path, portfolio::ImportMo
                             if (remaining <= 0.0001)
                                 repo.remove_asset(target_id, sym);
                             else
-                                repo.update_asset(target_id, sym, remaining, a.avg_buy_price);
+                                repo.update_asset(target_id, sym, remaining, a.avg_buy_price, a.has_cost_basis);
                             sell_ok = true;
                         }
                         break;
