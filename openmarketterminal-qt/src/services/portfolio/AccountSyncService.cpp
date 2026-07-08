@@ -121,6 +121,15 @@ void AccountSyncService::sync_account(const AccountRef& ref, IAccountSource* src
 
     const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     repo.set_sync_meta(pid, ref.sync_source, now, QString());
+
+    // Trade-history sync: additive to the holdings mirror above, only on the
+    // SUCCESSFUL path (never after a failed fetch — this function already
+    // returned early in that case). import_transaction's INSERT OR IGNORE
+    // (keyed on v061's idx_ptx_external) makes this idempotent across
+    // repeated syncs.
+    for (const auto& tx : src->fetch_transactions(ref, res.holdings))
+        repo.import_transaction(pid, tx.symbol, tx.type, tx.quantity, tx.price, tx.date, tx.external_id);
+
     emit account_synced(ref.sync_source, true, QString());
 }
 
