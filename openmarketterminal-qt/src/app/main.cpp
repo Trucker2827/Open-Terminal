@@ -932,74 +932,14 @@ int main(int argc, char* argv[]) {
     // itself offloads prefill_completed_steps() to a background thread (P1).
     auto setup_status = openmarketterminal::python::PythonSetupManager::instance().check_status();
 
-    if (setup_status.needs_setup) {
-        LOG_INFO("App", "Python environment not ready — showing setup screen");
-
-        // Use QPointer so the setup_complete lambda is safe against double-fire
-        // (e.g. user somehow triggers it twice before the window is hidden).
-        auto* setup_screen = new openmarketterminal::screens::SetupScreen;
-        QPointer<openmarketterminal::screens::SetupScreen> screen_guard(setup_screen);
-        setup_screen->setWindowTitle("Open Terminal — First-Time Setup");
-        setup_screen->resize(800, 600);
-        setup_screen->show();
-
-        // When setup completes, hide setup screen and launch main window.
-        // The connection uses Qt::SingleShotConnection (Qt 6.0+) so the lambda
-        // fires exactly once even if setup_complete is somehow emitted twice.
-        QObject::connect(setup_screen, &openmarketterminal::screens::SetupScreen::setup_complete,
-                         [&app, &instance_lock, screen_guard]() {
-            if (!screen_guard)
-                return; // already cleaned up — ignore
-            screen_guard->hide();
-            screen_guard->deleteLater();
-
-            openmarketterminal::KeyConfigManager::instance(); // init before WindowFrame registers shortcuts
-
-            // Phase 6 final: if the previous session ended uncleanly and a
-            // workspace snapshot is available, give the user the option to
-            // restore. On accept, WorkspaceShell::apply already constructs
-            // the frames it needs — we skip our own primary-window creation
-            // path. On skip (or no recovery available), fall through.
-            bool recovered = false;
-            if (auto* recovery = openmarketterminal::TerminalShell::instance().crash_recovery();
-                recovery && recovery->needs_recovery()) {
-                openmarketterminal::screens::CrashRecoveryDialog dlg(
-                    recovery, openmarketterminal::TerminalShell::instance().snapshot_ring());
-                dlg.exec();
-                recovered = dlg.was_restored();
-            }
-
-            if (!recovered) {
-                // Single primary window by default — see the matching no-setup
-                // path below for the full rationale. Extra windows stay an
-                // explicit user action ("New Window" / Ctrl+Shift+N / tear-off).
-                const QList<int> saved_ids =
-                    openmarketterminal::SessionManager::instance().load_window_ids();
-                const int primary_id = saved_ids.isEmpty() ? 0 : saved_ids.first();
-                auto* window = new openmarketterminal::WindowFrame(primary_id);
-                window->setAttribute(Qt::WA_DeleteOnClose);
-                window->show();
-            }
-
-            // Wire new-window handler + Launchpad surface now that the
-            // primary window exists. Single source of truth — see
-            // wire_app_lifecycle() at the top of this file.
-            wire_app_lifecycle(app, instance_lock);
-
-            if (!openmarketterminal::ai_chat::LlmService::instance().is_configured())
-                LOG_WARN("App",
-                         "LLM provider not configured — AI chat will prompt user to configure Settings → LLM Config");
-
-            // Warm agent discovery cache (same reason as the main path).
-            QTimer::singleShot(0, &app, []() {
-                openmarketterminal::services::AgentService::instance().discover_agents();
-            });
-
-            LOG_INFO("App", "Application ready (after setup)");
-        });
-
-        return app.exec();
-    }
+    // Tiered install: the app is fully usable with no Python (Tier 0). We do
+    // NOT gate startup on setup or auto-download anything — enabling the AI &
+    // automation tier is an explicit in-app opt-in (see EnableTierBanner /
+    // TierGate). The needs_package_sync branch below still runs ONLY when
+    // Python already exists and a requirements hash changed (never a cold
+    // download), so app-update package syncs keep working.
+    if (setup_status.needs_setup)
+        LOG_INFO("App", "Python not installed — starting in Tier 0 (AI features opt-in)");
 
     // Ensure KeyConfigManager is initialized before WindowFrame registers shortcuts
     openmarketterminal::KeyConfigManager::instance();
