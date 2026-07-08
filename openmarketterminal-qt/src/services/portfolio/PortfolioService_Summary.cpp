@@ -11,6 +11,7 @@
 #include "core/logging/Logger.h"
 #include "services/portfolio/AccountSyncTypes.h"
 #include "python/PythonRunner.h"
+#include "services/portfolio/PortfolioAccountMode.h"
 #include "services/portfolio/PortfolioSummaryBuild.h"
 #include "services/sectors/SectorResolver.h"
 #include "storage/repositories/PortfolioRepository.h"
@@ -101,9 +102,18 @@ void PortfolioService::load_summary(const QString& portfolio_id) {
 QVector<portfolio::PortfolioAsset> PortfolioService::aggregate_all_accounts_assets() {
     const auto synced = PortfolioRepository::instance().list_synced();
 
+    // "All Accounts" is a REAL-MONEY total, so paper (fake-money) broker
+    // accounts are excluded — otherwise a paper account's balance would inflate
+    // the aggregate alongside real holdings. Crypto exchanges are always live.
+    const auto broker_mode = [](const QString& account_id) {
+        return trading::AccountManager::instance().get_account(account_id).trading_mode;
+    };
+
     QVector<QVector<portfolio::PortfolioAsset>> per_portfolio;
     per_portfolio.reserve(synced.size());
     for (const auto& pf : synced) {
+        if (portfolio::sync_source_is_paper(pf.sync_source, broker_mode))
+            continue; // paper account — not real money, keep it out of the total
         auto assets_r = PortfolioRepository::instance().get_assets(pf.id);
         if (assets_r.is_ok())
             per_portfolio.append(assets_r.value());

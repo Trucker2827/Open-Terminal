@@ -127,20 +127,9 @@ PortfolioScreen::PortfolioScreen(QWidget* parent) : QWidget(parent) {
         command_bar_->set_syncing(false);
         services::PortfolioService::instance().load_portfolios();
         update_last_synced_label();
-        // Discoverability: after a USER-initiated sync, jump the view to All
-        // Accounts so the freshly-mirrored accounts are immediately visible
-        // instead of hidden in the selector. Pass trigger_sync=false so this
-        // does NOT kick off a second overlapping sweep. Only when at least one
-        // account actually synced (otherwise the label already reads
-        // "No accounts connected" and we leave the current view alone).
-        if (switch_to_all_on_sync_) {
-            switch_to_all_on_sync_ = false;
-            if (!PortfolioRepository::instance().list_synced().isEmpty()) {
-                select_portfolio(QString::fromLatin1(services::PortfolioService::kAllAccountsId),
-                                 /*trigger_sync=*/false);
-                return;
-            }
-        }
+        // The user-initiated button path jumps to All Accounts itself (see
+        // on_sync_accounts_clicked); here we just refresh whatever's active
+        // (covers auto-sync-on-open).
         if (!selected_id_.isEmpty())
             services::PortfolioService::instance().refresh_summary(selected_id_);
     });
@@ -275,10 +264,18 @@ const portfolio::HoldingWithQuote* PortfolioScreen::find_holding(const QString& 
 }
 
 void PortfolioScreen::on_sync_accounts_clicked() {
-    // Mark this sweep as user-initiated so sync_finished jumps the view to All
-    // Accounts (auto-sync-on-open does NOT set this, so it won't switch).
-    switch_to_all_on_sync_ = true;
+    // sync_all() is synchronous (it blocks through each account's fetch), so by
+    // the time it returns the sweep + sync_finished have fully run and
+    // load_portfolios has refreshed the list. Jump straight to All Accounts so
+    // the freshly-synced accounts are immediately visible instead of hidden in
+    // the selector. trigger_sync=false → don't kick off a second sweep. Done
+    // here (not via a sync_finished flag) so it doesn't depend on signal
+    // ordering, and only on the user's button click — auto-sync-on-open never
+    // routes through here, so it won't hijack the view.
     services::AccountSyncService::instance().sync_all();
+    if (!PortfolioRepository::instance().list_synced().isEmpty())
+        select_portfolio(QString::fromLatin1(services::PortfolioService::kAllAccountsId),
+                         /*trigger_sync=*/false);
 }
 
 void PortfolioScreen::update_last_synced_label() {
