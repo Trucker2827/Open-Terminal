@@ -77,6 +77,10 @@ struct HoldingWithQuote {
     // fallback (avg buy price), so market value / P&L / day change are NOT real.
     // Consumers can badge it as unpriced; NAV snapshots skip such summaries.
     bool priced = true;
+    // False when the FX rate to the portfolio's base currency was not resolved:
+    // values were converted at 1.0 (shown in the native currency), so they are
+    // the wrong scale. Consumers badge it like unpriced; NAV snapshots skip it.
+    bool fx_resolved = true;
 };
 
 struct PortfolioSummary {

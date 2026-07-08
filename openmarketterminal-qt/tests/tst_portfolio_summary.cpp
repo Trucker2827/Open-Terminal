@@ -46,6 +46,9 @@ class TestPortfolioSummary : public QObject {
     void fullyPricedHasZeroUnpriced();
     void unpricedMarkStillContaminatesTotal();
     void sectorFallbackUsedOnlyWhenEmpty();
+    void foreignHoldingConvertsToBase();
+    void unresolvedFxRateBlocksSnapshot();
+    void noRateLookupMeansNoConversion();
 };
 
 // A holding whose symbol is absent from the quote map must be flagged unpriced,
@@ -58,6 +61,7 @@ void TestPortfolioSummary::unpricedHoldingIsFlaggedAndCounted() {
     const auto built = build_summary(assets, {}, quotes, stub_sector);
 
     QCOMPARE(built.unpriced_count, 1);
+    QVERIFY(!built.snapshot_safe()); // an unpriced holding must block the snapshot
     QCOMPARE(built.summary.holdings.size(), qsizetype{2});
 
     const auto& aapl = built.summary.holdings[0];
@@ -83,6 +87,7 @@ void TestPortfolioSummary::fullyPricedHasZeroUnpriced() {
     const auto built = build_summary(assets, {}, quotes, stub_sector);
 
     QCOMPARE(built.unpriced_count, 0);
+    QVERIFY(built.snapshot_safe()); // all priced + no FX conversion -> safe to snapshot
     QVERIFY(built.summary.holdings[0].priced);
     QVERIFY(built.summary.holdings[1].priced);
     // 10*150 + 5*210 = 2550
@@ -116,6 +121,67 @@ void TestPortfolioSummary::sectorFallbackUsedOnlyWhenEmpty() {
 
     QCOMPARE(built.summary.holdings[0].sector, QString("Technology"));
     QCOMPARE(built.summary.holdings[1].sector, QString("SECTOR:XOM"));
+}
+
+// A foreign holding is reported entirely in the portfolio's base currency: every
+// value (avg cost, price, day change, market value, P&L) is multiplied by the
+// native->base FX rate. day_change_percent is a ratio and stays as-is.
+void TestPortfolioSummary::foreignHoldingConvertsToBase() {
+    const QVector<PortfolioAsset> assets{asset("RY.TO", 10, 100.0)}; // avg 100 CAD
+    QHash<QString, QuoteData> quotes;
+    quotes.insert("RY.TO", quote("RY.TO", 150.0, 10.0, 7.14)); // 150 CAD, +10 CAD
+
+    // CAD -> USD at 0.5 (clean numbers).
+    const auto rate = [](const QString&) { return 0.5; };
+    const auto built = build_summary(assets, {}, quotes, stub_sector, rate);
+
+    QCOMPARE(built.fx_unresolved_count, 0);
+    QVERIFY(built.snapshot_safe());
+    const auto& h = built.summary.holdings[0];
+    QVERIFY(h.fx_resolved);
+    QCOMPARE(h.avg_buy_price, 50.0);        // 100 * 0.5
+    QCOMPARE(h.cost_basis, 500.0);          // 10 * 50
+    QCOMPARE(h.current_price, 75.0);        // 150 * 0.5
+    QCOMPARE(h.day_change, 5.0);            // 10 * 0.5
+    QCOMPARE(h.day_change_percent, 7.14);   // ratio unchanged
+    QCOMPARE(h.market_value, 750.0);        // 10 * 75
+    QCOMPARE(h.unrealized_pnl, 250.0);      // 750 - 500
+    QCOMPARE(h.unrealized_pnl_percent, 50.0);
+    QCOMPARE(built.summary.total_market_value, 750.0);
+}
+
+// An unresolved FX rate (rate_lookup returns <= 0) converts at 1.0 for display
+// but MUST block the snapshot — otherwise a guessed base value contaminates NAV
+// history exactly like a fabricated price does.
+void TestPortfolioSummary::unresolvedFxRateBlocksSnapshot() {
+    const QVector<PortfolioAsset> assets{asset("RY.TO", 10, 100.0)};
+    QHash<QString, QuoteData> quotes;
+    quotes.insert("RY.TO", quote("RY.TO", 150.0, 0.0, 0.0));
+
+    const auto unresolved = [](const QString&) { return 0.0; }; // rate not known yet
+    const auto built = build_summary(assets, {}, quotes, stub_sector, unresolved);
+
+    QCOMPARE(built.fx_unresolved_count, 1);
+    QVERIFY(!built.snapshot_safe());
+    QVERIFY(!built.summary.holdings[0].fx_resolved); // flagged for the display badge
+    // Converted at 1.0 for display (unconverted), not zeroed.
+    QCOMPARE(built.summary.holdings[0].current_price, 150.0);
+    QCOMPARE(built.summary.total_market_value, 1500.0);
+}
+
+// An absent rate_lookup (the broker path / legacy callers) means no conversion:
+// every rate is 1.0, nothing is fx-unresolved, and the snapshot proceeds.
+void TestPortfolioSummary::noRateLookupMeansNoConversion() {
+    const QVector<PortfolioAsset> assets{asset("AAPL", 10, 100.0)};
+    QHash<QString, QuoteData> quotes;
+    quotes.insert("AAPL", quote("AAPL", 150.0, 5.0, 3.45));
+
+    const auto built = build_summary(assets, {}, quotes, stub_sector); // no rate_lookup
+
+    QCOMPARE(built.fx_unresolved_count, 0);
+    QVERIFY(built.snapshot_safe());
+    QCOMPARE(built.summary.holdings[0].current_price, 150.0); // unchanged
+    QCOMPARE(built.summary.total_market_value, 1500.0);
 }
 
 QTEST_APPLESS_MAIN(TestPortfolioSummary)

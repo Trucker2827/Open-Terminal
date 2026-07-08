@@ -1,6 +1,7 @@
 // src/screens/portfolio/PortfolioBlotter.cpp
 #include "screens/portfolio/PortfolioBlotter.h"
 
+#include "screens/portfolio/PortfolioHoldingDisplay.h"
 #include "screens/portfolio/PortfolioSparkline.h"
 #include "services/markets/MarketDataService.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -596,7 +597,7 @@ void PortfolioBlotter::populate_table() {
         table_->setRowHeight(r, 28);
 
         auto set_cell = [&](int col, const QString& text, const char* color = nullptr,
-                            Qt::Alignment align = Qt::AlignRight | Qt::AlignVCenter) {
+                            Qt::Alignment align = Qt::AlignRight | Qt::AlignVCenter) -> QTableWidgetItem* {
             auto* item = new QTableWidgetItem(text);
             item->setTextAlignment(align);
             // QTableWidgetItem ignores QTableWidget's stylesheet `color` and
@@ -604,41 +605,53 @@ void PortfolioBlotter::populate_table() {
             // Always set an explicit foreground.
             item->setForeground(QColor(color ? color : ui::colors::TEXT_PRIMARY()));
             table_->setItem(r, col, item);
+            return item;
         };
 
+        // Price-dependent cells (LAST / MKT VAL / P&L / P&L% / CHG%). When the
+        // holding has no live quote these are em-dashes in a muted colour rather
+        // than a misleading "+0.00%" flat position — see PortfolioHoldingDisplay.
+        const auto cells = portfolio::price_dependent_cells(h);
+        const char* muted = ui::colors::TEXT_TERTIARY;
+        const char* pnl_color =
+            cells.muted ? muted : (h.unrealized_pnl >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
+        const char* chg_color =
+            cells.muted ? muted : (h.day_change_percent >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
+
         // SYMBOL
-        set_cell(0, h.symbol, ui::colors::CYAN, Qt::AlignLeft | Qt::AlignVCenter);
+        auto* sym_item = set_cell(0, h.symbol, cells.muted ? muted : ui::colors::CYAN,
+                                  Qt::AlignLeft | Qt::AlignVCenter);
 
         // QTY
         set_cell(1, format_value(h.quantity, h.quantity == std::floor(h.quantity) ? 0 : 2));
 
         // LAST (price)
-        set_cell(2, format_value(h.current_price));
+        auto* last_item = set_cell(2, cells.last, cells.muted ? muted : nullptr);
 
         // AVG COST
         set_cell(3, format_value(h.avg_buy_price));
 
         // MKT VAL
-        set_cell(4, format_value(h.market_value), ui::colors::WARNING);
+        auto* mv_item = set_cell(4, cells.market_value, cells.muted ? muted : ui::colors::WARNING);
 
         // COST BASIS
         set_cell(5, format_value(h.cost_basis));
 
         // P&L
-        const char* pnl_color = h.unrealized_pnl >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE;
-        set_cell(6, QString("%1%2").arg(h.unrealized_pnl >= 0 ? "+" : "").arg(format_value(h.unrealized_pnl)),
-                 pnl_color);
+        auto* pnl_item = set_cell(6, cells.pnl, pnl_color);
 
         // P&L%
-        set_cell(
-            7,
-            QString("%1%2%").arg(h.unrealized_pnl_percent >= 0 ? "+" : "").arg(format_value(h.unrealized_pnl_percent)),
-            pnl_color);
+        auto* pnl_pct_item = set_cell(7, cells.pnl_pct, pnl_color);
 
         // CHG%
-        const char* chg_color = h.day_change_percent >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE;
-        set_cell(8, QString("%1%2%").arg(h.day_change_percent >= 0 ? "+" : "").arg(format_value(h.day_change_percent)),
-                 chg_color);
+        auto* chg_item = set_cell(8, cells.day_change_pct, chg_color);
+
+        // Explain the em-dashes on a muted (unpriced / FX-unresolved) row.
+        if (cells.muted) {
+            for (auto* it : {sym_item, last_item, mv_item, pnl_item, pnl_pct_item, chg_item})
+                if (it)
+                    it->setToolTip(cells.reason);
+        }
 
         // TREND — show loaded data, a pending shimmer, or a failure dash
         auto* sparkline = new PortfolioSparkline(0, 0);
