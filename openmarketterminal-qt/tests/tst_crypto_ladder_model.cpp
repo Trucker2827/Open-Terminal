@@ -7,6 +7,7 @@ class TestCryptoLadderModel : public QObject {
   private slots:
     void bucketsPrices();
     void buildBucketsDepthAroundMid();
+    void buildBucketsFractionalGrouping();
 };
 
 void TestCryptoLadderModel::bucketsPrices() {
@@ -39,6 +40,44 @@ void TestCryptoLadderModel::buildBucketsDepthAroundMid() {
                                [](const LadderRow& r){ return qAbs(r.price-62590.0)<1e-6; });
     QCOMPARE(row590->bid_size, 5.0);
     QCOMPARE(v.max_depth, 5.0);
+}
+
+void TestCryptoLadderModel::buildBucketsFractionalGrouping() {
+    // Fractional grouping (0.1) regression: accumulation key and row-lookup
+    // key must be bit-identical, or a lookup miss silently returns 0 depth.
+    // Two raw bid levels fall in the 2.9 bucket (idx 29); two raw ask
+    // levels fall in the 3.0 bucket (idx 30), so both sums are meaningful
+    // (non-zero, non-trivial) checks on the accumulation+lookup path.
+    QVector<QPair<double,double>> bids{{2.94, 1.0}, {2.98, 2.0}};
+    QVector<QPair<double,double>> asks{{3.02, 3.0}, {3.06, 1.0}};
+
+    // Hand-verify against bucket_index before asserting on build():
+    QCOMPARE(bucket_index(2.94, 0.1), qint64(29));
+    QCOMPARE(bucket_index(2.98, 0.1), qint64(29));
+    QCOMPARE(bucket_index(3.02, 0.1), qint64(30));
+    QCOMPARE(bucket_index(3.06, 0.1), qint64(30));
+
+    CryptoLadderModel m;
+    const auto v = m.build(bids, asks, 0.1, 1);
+    // mid = (best_bid 2.98 + best_ask 3.02) / 2 = 3.00 -> bucket idx 30
+    QCOMPARE(bucket_index(v.mid, 0.1), qint64(30));
+    QCOMPARE(v.rows.size(), 3); // idx 31, 30, 29
+
+    auto row29 = std::find_if(v.rows.begin(), v.rows.end(), [](const LadderRow& r) {
+        return qAbs(r.price - bucket_price(2.94, 0.1)) < 1e-9;
+    });
+    QVERIFY(row29 != v.rows.end());
+    QVERIFY(qAbs(row29->price - 2.9) < 1e-9);
+    QCOMPARE(row29->bid_size, 3.0); // 1.0 + 2.0 summed, not 0
+    QCOMPARE(row29->ask_size, 0.0);
+
+    auto row30 = std::find_if(v.rows.begin(), v.rows.end(), [](const LadderRow& r) {
+        return qAbs(r.price - bucket_price(3.02, 0.1)) < 1e-9;
+    });
+    QVERIFY(row30 != v.rows.end());
+    QVERIFY(qAbs(row30->price - 3.0) < 1e-9);
+    QCOMPARE(row30->ask_size, 4.0); // 3.0 + 1.0 summed, not 0
+    QCOMPARE(row30->bid_size, 0.0);
 }
 
 QTEST_APPLESS_MAIN(TestCryptoLadderModel)
