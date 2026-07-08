@@ -129,10 +129,15 @@ void PortfolioService::build_summary(const QString& portfolio_id, const QVector<
     auto& mds = MarketDataService::instance();
     const QString base_ccy = portfolio.currency.isEmpty() ? QStringLiteral("USD") : portfolio.currency;
 
+    // `$CASH:<CCY>` pseudo-holdings are not real tickers — never send them to
+    // resolve_names/fetch_quotes (yfinance has no such symbol). Only real
+    // holdings go into the quote-fetch symbol list.
     QStringList symbols;
     symbols.reserve(assets.size());
-    for (const auto& a : assets)
-        symbols.append(a.symbol);
+    for (const auto& a : assets) {
+        if (!a.symbol.startsWith(QLatin1String("$CASH:")))
+            symbols.append(a.symbol);
+    }
 
     // Ensure each holding's listing currency is resolved (populates the currency
     // cache read below). Fire-and-forget — a first-ever foreign symbol converts
@@ -145,7 +150,13 @@ void PortfolioService::build_summary(const QString& portfolio_id, const QVector<
     QHash<QString, QString> native_ccy;
     QStringList fetch = symbols;
     for (const auto& a : assets) {
-        const QString ccy = mds.currency_code(a.symbol);
+        // A `$CASH:<CCY>` pseudo-holding's "native currency" is the suffix
+        // itself, not a currency_code() lookup (which only knows real
+        // tickers and would return empty -> unresolved FX -> blocks the
+        // snapshot forever for cash rows). The symbol itself is never sent
+        // to the quote fetch above; only its FX pair (if foreign) is.
+        const bool is_cash = a.symbol.startsWith(QLatin1String("$CASH:"));
+        const QString ccy = is_cash ? a.symbol.mid(6) : mds.currency_code(a.symbol);
         native_ccy.insert(a.symbol, ccy);
         if (!ccy.isEmpty() && ccy != base_ccy) {
             const QString pair = ccy + base_ccy + QStringLiteral("=X");

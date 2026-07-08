@@ -52,6 +52,7 @@ class TestPortfolioSummary : public QObject {
     void unresolvedFxRateBlocksSnapshot();
     void noRateLookupMeansNoConversion();
     void noCostBasisExcludedFromPnlButCountsNav();
+    void cashHoldingIsPricedAtOneInBase();
 };
 
 // A holding whose symbol is absent from the quote map must be flagged unpriced,
@@ -207,6 +208,22 @@ void TestPortfolioSummary::noCostBasisExcludedFromPnlButCountsNav() {
     // The crypto holding carries the flag for the display badge.
     QVERIFY(!built.summary.holdings[1].has_cost_basis);
     QVERIFY(built.snapshot_safe()); // priced + fx-resolved -> still snapshots
+}
+
+// A `$CASH:<CCY>` pseudo-holding (synced cash balance) is not a real ticker:
+// it has no quote in quote_map and must never fall into the unpriced
+// fallback. It prices at 1.0 native unit * FX rate, with no P&L (has_cost_basis
+// false, from the reconcile_mirror cash path).
+void TestPortfolioSummary::cashHoldingIsPricedAtOneInBase() {
+    QVector<PortfolioAsset> assets{asset("$CASH:USD", 2500, 1.0)};
+    assets[0].has_cost_basis = false;
+    QHash<QString, QuoteData> quotes; // NO quote for $CASH:USD
+    const auto built = build_summary(assets, {}, quotes, stub_sector); // base USD, rate 1.0
+    QCOMPARE(built.unpriced_count, 0);              // cash is NOT unpriced
+    QVERIFY(built.snapshot_safe());
+    QVERIFY(built.summary.holdings[0].priced);
+    QCOMPARE(built.summary.total_market_value, 2500.0);
+    QCOMPARE(built.summary.total_unrealized_pnl, 0.0);
 }
 
 QTEST_APPLESS_MAIN(TestPortfolioSummary)

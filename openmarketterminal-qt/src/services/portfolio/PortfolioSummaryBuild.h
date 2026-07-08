@@ -91,8 +91,23 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
         h.cost_basis = h.quantity * h.avg_buy_price;
         h.sector = asset.sector.isEmpty() ? sector_lookup(asset.symbol) : asset.sector;
 
+        // `$CASH:<CCY>` pseudo-holdings (a portfolio's cash balance, synced
+        // from a broker/exchange) are not a real ticker: there is no quote to
+        // fetch and none should ever be looked up. Their "price" is always
+        // 1.0 unit of their native currency, converted to base via `rate`
+        // like any other holding — so market_value = quantity (the cash
+        // amount) in base currency, with no day change. This must run BEFORE
+        // the quote_map lookup so cash never falls into the unpriced
+        // fallback (which would fabricate a mark and block NAV snapshots).
+        const bool is_cash = asset.symbol.startsWith(QLatin1String("$CASH:"));
         auto it = quote_map.find(asset.symbol);
-        if (it != quote_map.end()) {
+        if (is_cash) {
+            h.current_price = 1.0 * rate;
+            h.day_change = 0;
+            h.day_change_percent = 0;
+            h.priced = true;
+            total_prev += (h.current_price - h.day_change) * h.quantity; // priced holdings only
+        } else if (it != quote_map.end()) {
             h.current_price = it->price * rate;   // base currency
             h.day_change = it->change * rate;     // base currency
             h.day_change_percent = it->change_pct; // ratio — unaffected by FX

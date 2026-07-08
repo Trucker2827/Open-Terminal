@@ -61,6 +61,9 @@
 #include "services/news/NewsService.h"
 #include "services/notebooks/NotebookLibraryService.h"
 #include "services/polymarket/PolymarketWebSocket.h"
+#include "services/portfolio/AccountSyncService.h"
+#include "services/portfolio/CryptoAccountSource.h"
+#include "services/portfolio/EquityAccountSource.h"
 #include "services/prediction/PredictionCredentialStore.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/openmarketterminal_internal/OpenMarketTerminalInternalAdapter.h"
@@ -513,6 +516,17 @@ int main(int argc, char* argv[]) {
             if (auto* fi = reg.adapter(QStringLiteral("openmarketterminal"))) {
                 fi->ensure_registered_with_hub();
             }
+        }
+        // Portfolio Account Sync — mirror-writes connected broker/crypto-exchange
+        // holdings into their synced portfolios (read-only; see
+        // AccountSyncService). Sources are process-lifetime statics, matching the
+        // PredictionExchangeRegistry adapter-ownership pattern just above.
+        {
+            static openmarketterminal::services::EquityAccountSource equity_account_source;
+            static openmarketterminal::services::CryptoAccountSource crypto_account_source;
+            auto& sync = openmarketterminal::services::AccountSyncService::instance();
+            sync.register_source(&equity_account_source);
+            sync.register_source(&crypto_account_source);
         }
         // Specialized data sources.
         openmarketterminal::services::DBnomicsService::instance().ensure_registered_with_hub();
