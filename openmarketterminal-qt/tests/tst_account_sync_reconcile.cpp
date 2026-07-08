@@ -50,6 +50,7 @@ class TestAccountSyncReconcile : public QObject {
     void emptyFetchRemovesAll();
     void aggregateMergesDuplicateSymbols();
     void aggregateAndsCostBasis();
+    void aggregateAndsMixedCostBasis();
 };
 
 // new fetched symbol -> add; qty change -> update; vanished -> remove; identical -> no-op.
@@ -98,6 +99,19 @@ void TestAccountSyncReconcile::aggregateAndsCostBasis() {
     a[0].has_cost_basis = false;
     QVector<PortfolioAsset> b{mkAsset("BTC-USD", 2, 0.0)};
     b[0].has_cost_basis = false;
+    auto merged = aggregate_holdings({a, b});
+    QCOMPARE(merged.size(), qsizetype{1});
+    QCOMPARE(merged[0].quantity, 3.0);
+    QVERIFY(!merged[0].has_cost_basis);
+}
+
+// Discriminating case: one contributor has cost basis, the other doesn't.
+// AND semantics require the merged row to be false (any missing cost basis
+// poisons the merge); false||false from the sibling test above can't tell
+// AND from OR apart, but true&&false vs true||false can.
+void TestAccountSyncReconcile::aggregateAndsMixedCostBasis() {
+    QVector<PortfolioAsset> a{mkAsset("BTC-USD", 1, 100.0, /*has_cost_basis=*/true)};
+    QVector<PortfolioAsset> b{mkAsset("BTC-USD", 2, 0.0, /*has_cost_basis=*/false)};
     auto merged = aggregate_holdings({a, b});
     QCOMPARE(merged.size(), qsizetype{1});
     QCOMPARE(merged[0].quantity, 3.0);
