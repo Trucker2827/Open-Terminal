@@ -356,28 +356,23 @@ void PortfolioService::compute_metrics(const portfolio::PortfolioSummary& summar
                 if (self) self->backfill_history(pid, "1y");
             }, Qt::QueuedConnection);
         }
-        // Fallback: derive volatility from cross-sectional day changes only
-        double sum = 0, sum_sq = 0;
-        int n = 0;
-        for (const auto& h : summary.holdings) {
-            if (std::abs(h.day_change_percent) > 0.0001) {
-                sum += h.day_change_percent;
-                sum_sq += h.day_change_percent * h.day_change_percent;
-                ++n;
-            }
-        }
-        if (n >= 2) {
-            const double mean = sum / n;
-            const double var = (sum_sq / n) - (mean * mean);
-            const double daily_vol = std::sqrt(std::max(var, 0.0));
-            const double ann_vol = daily_vol * std::sqrt(252.0);
-            metrics.volatility = ann_vol * 100.0; // store as %
+        // Fallback: derive volatility from cross-sectional day changes only.
+        QVector<double> day_changes;
+        day_changes.reserve(summary.holdings.size());
+        for (const auto& h : summary.holdings)
+            day_changes.append(h.day_change_percent);
+        const auto risk = portfolio::stats::cross_sectional_risk(day_changes, 252.0);
+        if (risk.n >= 2) {
+            // annualized_vol_pct is already percent-scale — assign directly (do
+            // NOT ×100; that inflated vol ~100× and disagreed with the snapshot
+            // path at metrics.volatility = ann_vol below).
+            metrics.volatility = risk.annualized_vol_pct;
             const double rf_daily = rf_rate_ / 252.0;
-            if (daily_vol > 1e-6)
-                metrics.sharpe = ((mean / 100.0 - rf_daily) / (daily_vol / 100.0)) * std::sqrt(252.0);
+            if (risk.daily_vol_pct > 1e-6)
+                metrics.sharpe = ((risk.mean_pct / 100.0 - rf_daily) / (risk.daily_vol_pct / 100.0)) * std::sqrt(252.0);
             if (summary.total_market_value > 0)
-                metrics.var_95 = summary.total_market_value * std::abs(mean / 100.0 - kVar95Z * daily_vol / 100.0);
-            const double vol_score = std::min(ann_vol / kVolCapPct, 1.0) * kWVolDegraded;
+                metrics.var_95 = summary.total_market_value * std::abs(risk.mean_pct / 100.0 - kVar95Z * risk.daily_vol_pct / 100.0);
+            const double vol_score = std::min(risk.annualized_vol_pct / kVolCapPct, 1.0) * kWVolDegraded;
             const double conc_score = std::min(conc / kConcentrationCapPct, 1.0) * kWConcDegraded;
             metrics.risk_score = vol_score + conc_score;
         }

@@ -229,6 +229,15 @@ target_include_directories(tst_portfolio_stats PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_portfolio_stats PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_stats COMMAND tst_portfolio_stats)
 
+# Portfolio summary builder (services/portfolio/PortfolioSummaryBuild) extracted
+# from PortfolioService::finalize_summary — pure per-holding pricing/aggregation
+# plus the unpriced-holding flag/tally that gates NAV snapshot persistence.
+# Header-only, so the test needs only Qt6::Core (no core lib link).
+add_executable(tst_portfolio_summary tst_portfolio_summary.cpp)
+target_include_directories(tst_portfolio_summary PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_summary PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_portfolio_summary COMMAND tst_portfolio_summary)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
