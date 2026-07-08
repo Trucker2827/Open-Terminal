@@ -9,6 +9,7 @@ class TestCryptoLadderModel : public QObject {
     void buildBucketsDepthAroundMid();
     void buildBucketsFractionalGrouping();
     void vapAccumulatesAndReaggregates();
+    void overlaysOrdersAndAvgEntry();
 };
 
 void TestCryptoLadderModel::bucketsPrices() {
@@ -98,6 +99,20 @@ void TestCryptoLadderModel::vapAccumulatesAndReaggregates() {
     row600 = std::find_if(v.rows.begin(), v.rows.end(),
                           [](const LadderRow& r){ return qAbs(r.price-62600.0)<1e-6; });
     QCOMPARE(row600->vap, 0.0);
+}
+
+void TestCryptoLadderModel::overlaysOrdersAndAvgEntry() {
+    CryptoLadderModel m;
+    QVector<QPair<double,double>> bids{{62599,1.0}}, asks{{62601,1.0}};
+    QVector<MyOrder> orders{{62589.0, 0.5, true},   // buy -> 62580 bucket
+                            {62622.0, 0.3, false}};  // sell -> 62620 bucket
+    auto v = m.build(bids, asks, 10.0, 3, orders, 62595.0); // avg entry -> 62590 bucket
+    auto at = [&](double p){ return std::find_if(v.rows.begin(), v.rows.end(),
+                             [p](const LadderRow& r){ return qAbs(r.price-p)<1e-6; }); };
+    QCOMPARE(at(62580.0)->my_bid_qty, 0.5);
+    QCOMPARE(at(62620.0)->my_ask_qty, 0.3);
+    QVERIFY(at(62590.0)->is_avg_entry);
+    QVERIFY(!at(62600.0)->is_avg_entry);
 }
 
 QTEST_APPLESS_MAIN(TestCryptoLadderModel)

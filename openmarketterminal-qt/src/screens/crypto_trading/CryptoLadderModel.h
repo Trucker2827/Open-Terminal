@@ -66,6 +66,20 @@ class CryptoLadderModel {
     LadderView build(const QVector<QPair<double,double>>& bids,
                      const QVector<QPair<double,double>>& asks,
                      double grouping, int rows_each_side) const {
+        return build(bids, asks, grouping, rows_each_side, {}, 0.0);
+    }
+
+    // Overload with resting-order + average-entry overlays. `my_orders` are
+    // folded into their bucket's my_bid_qty (is_buy) / my_ask_qty; the row
+    // whose bucket contains `avg_entry_price` gets is_avg_entry = true.
+    // Overlay maps are keyed by the same INTEGER bucket index as depth/VAP
+    // (no float bucket_price / epsilon compare) so lookup can't miss due to
+    // float last-bit divergence.
+    LadderView build(const QVector<QPair<double,double>>& bids,
+                     const QVector<QPair<double,double>>& asks,
+                     double grouping, int rows_each_side,
+                     const QVector<MyOrder>& my_orders,
+                     double avg_entry_price) const {
         LadderView v;
         if (grouping <= 0 || rows_each_side <= 0)
             return v;
@@ -92,6 +106,15 @@ class CryptoLadderModel {
             vap_by_display[di] += it.value();
         }
 
+        // Resting-order overlay, keyed by integer bucket index.
+        QHash<qint64,double> mybuy, mysell;
+        for (const auto& o : my_orders) {
+            const qint64 oi = bucket_index(o.price, grouping);
+            (o.is_buy ? mybuy : mysell)[oi] += o.qty;
+        }
+        const bool have_avg = avg_entry_price > 0;
+        const qint64 avg_idx = have_avg ? bucket_index(avg_entry_price, grouping) : 0;
+
         // rows_each_side above and below the mid bucket, plus the mid bucket
         for (int i = rows_each_side; i >= -rows_each_side; --i) {
             LadderRow r;
@@ -100,6 +123,9 @@ class CryptoLadderModel {
             r.bid_size = bid_by_bucket.value(idx, 0.0);
             r.ask_size = ask_by_bucket.value(idx, 0.0);
             r.vap = vap_by_display.value(idx, 0.0);
+            r.my_bid_qty = mybuy.value(idx, 0.0);
+            r.my_ask_qty = mysell.value(idx, 0.0);
+            r.is_avg_entry = have_avg && (idx == avg_idx);
             v.max_depth = std::max({v.max_depth, r.bid_size, r.ask_size});
             v.max_vap = std::max(v.max_vap, r.vap);
             v.rows.append(r);
