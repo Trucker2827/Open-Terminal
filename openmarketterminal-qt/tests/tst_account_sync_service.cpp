@@ -75,6 +75,45 @@ class FakeSource : public IAccountSource {
     QString sync_source_;
 };
 
+// Scriptable fake for the sync_all() re-entrancy-guard test (Task 11): on its
+// FIRST invocation, fetch() re-entrantly calls
+// AccountSyncService::instance().sync_all() — guarded by `reentered_` so it
+// only re-enters once (avoids infinite recursion). This mimics the real
+// broker path: EquityAccountSource::fetch() -> BrokerHttp runs a nested
+// QEventLoop::exec() while waiting on the network, which keeps delivering UI
+// events, so a click on the portfolio selector mid-sweep can call
+// sync_all() again before the first sweep finishes.
+//
+// Without the re-entrancy guard, that nested sync_all() call runs a second
+// full sweep and invokes fetch() again for this account -> fetch_count
+// reaches 2 (observed during RED verification: guard removed, recursion is
+// bounded by `reentered_` but still produces a second sweep). With the
+// guard, the nested sync_all() sees syncing_==true and no-ops -> fetch_count
+// stays 1.
+class FakeReentrantSource : public IAccountSource {
+  public:
+    int fetch_count = 0;
+
+    QVector<AccountRef> list_accounts() override {
+        return {AccountRef{"broker:reentrant", "Reentrant Fake", "USD"}};
+    }
+
+    portfolio::FetchResult fetch(const AccountRef&) override {
+        ++fetch_count;
+        if (!reentered_) {
+            reentered_ = true;
+            AccountSyncService::instance().sync_all();
+        }
+        portfolio::FetchResult r;
+        r.ok = true;
+        r.holdings = {hold("REENTRANT_SYM", 1, 1.0, true)};
+        return r;
+    }
+
+  private:
+    bool reentered_ = false;
+};
+
 } // namespace
 
 class TstAccountSyncService : public QObject {
@@ -198,6 +237,29 @@ class TstAccountSyncService : public QObject {
 
         QVERIFY(findBySymbol(assets, "NFLX")); // distinct to acctA
         QVERIFY(findBySymbol(assets, "IBM"));  // distinct to acctB
+    }
+
+    // Task 11: sync_all() must guard against re-entrant/overlapping sweeps.
+    // The live broker fetch path runs a nested QEventLoop::exec() while
+    // waiting on the network, which keeps delivering UI events — a click on
+    // the portfolio selector mid-sweep can re-enter sync_all() before the
+    // first sweep finishes. FakeReentrantSource.fetch() reproduces exactly
+    // that: it calls sync_all() again from inside the first sweep's fetch
+    // call. This slot is placed LAST because it registers a stack-local
+    // source into the process-lifetime AccountSyncService singleton, and
+    // sync_all() is not exercised by any other slot in this file.
+    void sync_all_guards_against_reentrant_overlapping_sweep() {
+        auto& svc = AccountSyncService::instance();
+        FakeReentrantSource fake;
+        svc.register_source(&fake);
+
+        svc.sync_all();
+
+        // GREEN (guard present): the nested sync_all() call sees
+        // syncing_==true and no-ops, so fetch() ran exactly once.
+        // RED (guard removed): the nested sync_all() call runs a second full
+        // sweep, invoking fetch() a second time -> fetch_count == 2.
+        QCOMPARE(fake.fetch_count, 1);
     }
 };
 

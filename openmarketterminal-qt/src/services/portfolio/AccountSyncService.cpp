@@ -21,6 +21,15 @@ void AccountSyncService::register_source(IAccountSource* src) {
 }
 
 void AccountSyncService::sync_all() {
+    // Re-entrancy guard: the live broker fetch path runs a nested
+    // QEventLoop::exec() while waiting on the network, which keeps the UI
+    // responsive — a click on the portfolio selector mid-sweep can re-enter
+    // sync_all(). Without this guard the two sweeps interleave writes
+    // against the same portfolios. A re-entrant call is a silent no-op.
+    if (syncing_)
+        return;
+    syncing_ = true;
+
     emit sync_started();
     for (auto* src : sources_) {
         if (!src)
@@ -28,6 +37,8 @@ void AccountSyncService::sync_all() {
         for (const auto& ref : src->list_accounts())
             sync_account(ref, src);
     }
+
+    syncing_ = false;
     emit sync_finished();
 }
 

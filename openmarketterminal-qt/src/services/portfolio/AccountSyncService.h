@@ -53,6 +53,16 @@ class AccountSyncService : public QObject {
     QString ensure_portfolio(const AccountRef& ref);
 
     QVector<IAccountSource*> sources_;
+
+    /// Re-entrancy guard for sync_all(). The live broker fetch path
+    /// (BrokerHttp) runs a nested QEventLoop::exec() while waiting on the
+    /// network, which keeps delivering UI events — so a click on the
+    /// portfolio selector mid-sweep can re-enter sync_all() before the first
+    /// sweep finishes. A second overlapping sweep would race the first on
+    /// add_asset/update_asset/remove_asset (each reconciling from a
+    /// pre-write snapshot) and emit sync_started/sync_finished out of order.
+    /// A re-entrant call while syncing_ is true is a silent no-op.
+    bool syncing_ = false;
 };
 
 } // namespace openmarketterminal::services
