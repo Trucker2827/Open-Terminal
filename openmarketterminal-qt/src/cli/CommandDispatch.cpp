@@ -15818,6 +15818,15 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
     return 0;
 }
 
+// MSVC's optimizer (/O2, unity release build) hits an internal compiler error
+// (C1001) generating code for this specific function — it has recurred here
+// across releases (v0.3.25 line 13849 and v0.3.26 line 15821, both this
+// function's signature). Disable optimization for THIS function only, on MSVC
+// only: it's a CLI table printer, not a hot path, so the cost is nil, and the
+// #if guard means no effect on Clang/GCC (Linux/macOS) builds.
+#if defined(_MSC_VER)
+#pragma optimize("", off)
+#endif
 static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList args) {
     QString min_edge_raw;
     QString min_conf_raw;
@@ -15915,6 +15924,9 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
     }
     return 0;
 }
+#if defined(_MSC_VER)
+#pragma optimize("", on) // re-enable optimization after the C1001 workaround above
+#endif
 
 static int edge_journal_replay_command(const GlobalOpts& opts, QStringList args) {
     QString symbol;
