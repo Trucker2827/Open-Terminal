@@ -255,6 +255,13 @@ target_include_directories(tst_portfolio_display PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_portfolio_display PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_display COMMAND tst_portfolio_display)
 
+# Portfolio sync-status label text builder (screens/portfolio/PortfolioSyncStatus)
+# — pure wording/empty-state logic for the account-sync toolbar label.
+add_executable(tst_portfolio_sync_status tst_portfolio_sync_status.cpp)
+target_include_directories(tst_portfolio_sync_status PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_sync_status PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_portfolio_sync_status COMMAND tst_portfolio_sync_status)
+
 # Portfolio Account Sync Task 4 — pure mirror-reconcile diff
 # (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
 # assets vs freshly fetched broker/exchange holdings -> add/update/remove

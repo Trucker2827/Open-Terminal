@@ -11,6 +11,7 @@
 #include "core/symbol/SymbolContext.h"
 #include "core/symbol/SymbolRef.h"
 #include "screens/portfolio/PortfolioInsightsPanel.h"
+#include "screens/portfolio/PortfolioSyncStatus.h"
 #include "screens/portfolio/PortfolioBlotter.h"
 #include "screens/portfolio/PortfolioCommandBar.h"
 #include "screens/portfolio/PortfolioDetailWrapper.h"
@@ -124,8 +125,22 @@ PortfolioScreen::PortfolioScreen(QWidget* parent) : QWidget(parent) {
     });
     connect(&sync_svc, &services::AccountSyncService::sync_finished, this, [this]() {
         command_bar_->set_syncing(false);
-        update_last_synced_label();
         services::PortfolioService::instance().load_portfolios();
+        update_last_synced_label();
+        // Discoverability: after a USER-initiated sync, jump the view to All
+        // Accounts so the freshly-mirrored accounts are immediately visible
+        // instead of hidden in the selector. Pass trigger_sync=false so this
+        // does NOT kick off a second overlapping sweep. Only when at least one
+        // account actually synced (otherwise the label already reads
+        // "No accounts connected" and we leave the current view alone).
+        if (switch_to_all_on_sync_) {
+            switch_to_all_on_sync_ = false;
+            if (!PortfolioRepository::instance().list_synced().isEmpty()) {
+                select_portfolio(QString::fromLatin1(services::PortfolioService::kAllAccountsId),
+                                 /*trigger_sync=*/false);
+                return;
+            }
+        }
         if (!selected_id_.isEmpty())
             services::PortfolioService::instance().refresh_summary(selected_id_);
     });
@@ -259,17 +274,19 @@ const portfolio::HoldingWithQuote* PortfolioScreen::find_holding(const QString& 
     return nullptr;
 }
 
+void PortfolioScreen::on_sync_accounts_clicked() {
+    // Mark this sweep as user-initiated so sync_finished jumps the view to All
+    // Accounts (auto-sync-on-open does NOT set this, so it won't switch).
+    switch_to_all_on_sync_ = true;
+    services::AccountSyncService::instance().sync_all();
+}
+
 void PortfolioScreen::update_last_synced_label() {
     // Queried fresh from the repository (not portfolios_) because
     // AccountSyncService mirror-writes synced_at directly to the DB without
     // emitting portfolios_loaded — the cached portfolios_ vector can be
     // stale immediately after a sync.
     const auto synced = PortfolioRepository::instance().list_synced();
-    if (synced.isEmpty()) {
-        command_bar_->set_last_synced_text(QString());
-        return;
-    }
-
     QDateTime newest;
     for (const auto& p : synced) {
         if (p.synced_at.isEmpty())
@@ -278,23 +295,12 @@ void PortfolioScreen::update_last_synced_label() {
         if (t.isValid() && (!newest.isValid() || t > newest))
             newest = t;
     }
-
-    if (!newest.isValid()) {
-        command_bar_->set_last_synced_text(tr("Never synced"));
-        return;
-    }
-
-    const qint64 secs = qMax<qint64>(0, newest.secsTo(QDateTime::currentDateTimeUtc()));
-    QString text;
-    if (secs < 60)
-        text = tr("Synced just now");
-    else if (secs < 3600)
-        text = tr("Synced %1m ago").arg(secs / 60);
-    else if (secs < 86400)
-        text = tr("Synced %1h ago").arg(secs / 3600);
-    else
-        text = tr("Synced %1d ago").arg(secs / 86400);
-    command_bar_->set_last_synced_text(text);
+    // The label reflects the state of the user's CONNECTED ACCOUNTS globally
+    // (says "accounts", never implies the current manual portfolio was synced),
+    // and shows a clear "No accounts connected" empty state instead of a
+    // misleading "synced" message. See PortfolioSyncStatus.
+    command_bar_->set_last_synced_text(portfolio::sync_status_text(
+        static_cast<int>(synced.size()), newest, QDateTime::currentDateTimeUtc()));
 }
 
 void PortfolioScreen::apply_read_only_guard() {
