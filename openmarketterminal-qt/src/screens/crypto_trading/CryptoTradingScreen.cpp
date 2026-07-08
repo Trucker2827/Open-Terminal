@@ -16,6 +16,7 @@
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
+#include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
@@ -302,6 +303,14 @@ void CryptoTradingScreen::setup_ui() {
 
     main_splitter->addWidget(center_splitter);
 
+    // DOM LADDER: hidden for now (user request). The widget is still created
+    // and fed by the existing orderbook/trades wiring (set_book / add_trade in
+    // flush_ws_updates / refresh_orderbook), so re-showing it is a one-line
+    // change: add it back to main_splitter and drop the hide() below. Parented
+    // to `this` so it stays owned/cleaned up while off-screen. Read-only.
+    ladder_ = new CryptoLadder(this);
+    ladder_->hide();
+
     // RIGHT: Order Book (top) + Order Entry (bottom)
     auto* right_splitter = new QSplitter(Qt::Vertical);
     right_splitter->setObjectName("cryptoRightSplitter");
@@ -322,6 +331,7 @@ void CryptoTradingScreen::setup_ui() {
     main_splitter->addWidget(right_splitter);
 
     // Splitter proportions: watchlist 220 | chart stretch | right 290.
+    // (DOM ladder column is hidden for now — see above.)
     // Prediction markets live in the dedicated Predictions screen, not in the
     // crypto/bitcoin trading workspace.
     main_splitter->setSizes({220, 780, 290});

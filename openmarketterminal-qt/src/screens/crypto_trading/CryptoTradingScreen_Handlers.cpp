@@ -13,6 +13,7 @@
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
+#include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
@@ -254,6 +255,14 @@ void CryptoTradingScreen::on_mode_toggled() {
         live_data_timer_->start(5000);
         refresh_live_data();
         async_fetch_trading_fees(); // populate the Fees tab once on entering live
+        // The ladder's ORDERS/avg-entry overlay is only fed from Paper-mode
+        // PtOrder/PtPosition snapshots (update_ladder_overlay) — Live-mode
+        // orders/positions arrive as raw per-exchange JSON that isn't wired
+        // into it (see task-5 report). Without this, the last Paper overlay
+        // would keep painting indefinitely over Live-mode depth, which reads
+        // as "your resting orders" when they're actually stale paper data.
+        ladder_->set_my_orders({});
+        ladder_->set_avg_entry(0);
     } else {
         live_data_timer_->stop();
         // Leaving live mode → the auth indicator is no longer meaningful; reset
