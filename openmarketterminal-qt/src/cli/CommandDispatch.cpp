@@ -15818,12 +15818,13 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
     return 0;
 }
 
-// MSVC's optimizer (/O2, unity release build) hits an internal compiler error
-// (C1001) generating code for this specific function — it has recurred here
-// across releases (v0.3.25 line 13849 and v0.3.26 line 15821, both this
-// function's signature). Disable optimization for THIS function only, on MSVC
-// only: it's a CLI table printer, not a hot path, so the cost is nil, and the
-// #if guard means no effect on Clang/GCC (Linux/macOS) builds.
+// MSVC (/O2, unity release build) hits an internal compiler error (C1001)
+// generating code for this specific function — recurred across releases
+// (v0.3.25 and v0.3.26, always this function's signature). Two independent
+// mitigations, since the ICE is unreproducible off-Windows: (1) disable
+// optimization for this one function on MSVC (harmless — it's a CLI table
+// printer, not a hot path); (2) the printf-arg hoist in the loop body below.
+// The #if guard means zero effect on Clang/GCC (Linux/macOS).
 #if defined(_MSC_VER)
 #pragma optimize("", off)
 #endif
@@ -15913,14 +15914,18 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
     std::printf("%-20s %-9s %-7s %-9s %-8s %-7s %s\n", "TIME", "SYMBOL", "HZN", "EDGE", "CONF", "TRUST", "ID");
     for (const auto& v : alerts) {
         const auto a = v.toObject();
-        std::printf("%-20s %-9s %-7s %8.1fbps %-8s %7.1f %s\n",
-                    qUtf8Printable(a.value("time").toString().left(19)),
-                    qUtf8Printable(a.value("symbol").toString()),
-                    qUtf8Printable(a.value("horizon").toString()),
-                    a.value("edge_bps").toDouble(),
-                    qUtf8Printable(edge_pct(a.value("confidence").toDouble())),
-                    a.value("trust").toDouble(),
-                    qUtf8Printable(a.value("id").toString()));
+        // Hoist the printf args into named locals: this multi-arg std::printf of
+        // interleaved qUtf8Printable temporaries + doubles is the construct MSVC
+        // C1001-ICEs on when generating code for this function.
+        const QByteArray c_time = a.value("time").toString().left(19).toUtf8();
+        const QByteArray c_sym = a.value("symbol").toString().toUtf8();
+        const QByteArray c_hzn = a.value("horizon").toString().toUtf8();
+        const QByteArray c_conf = edge_pct(a.value("confidence").toDouble()).toUtf8();
+        const QByteArray c_id = a.value("id").toString().toUtf8();
+        const double edge_bps = a.value("edge_bps").toDouble();
+        const double trust = a.value("trust").toDouble();
+        std::printf("%-20s %-9s %-7s %8.1fbps %-8s %7.1f %s\n", c_time.constData(), c_sym.constData(),
+                    c_hzn.constData(), edge_bps, c_conf.constData(), trust, c_id.constData());
     }
     return 0;
 }
