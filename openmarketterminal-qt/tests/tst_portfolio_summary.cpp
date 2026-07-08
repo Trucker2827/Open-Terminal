@@ -16,12 +16,14 @@ using openmarketterminal::services::QuoteData;
 
 namespace {
 
-PortfolioAsset asset(const QString& sym, double qty, double avg, const QString& sector = {}) {
+PortfolioAsset asset(const QString& sym, double qty, double avg, const QString& sector = {},
+                     bool has_cost_basis = true) {
     PortfolioAsset a;
     a.symbol = sym;
     a.quantity = qty;
     a.avg_buy_price = avg;
     a.sector = sector;
+    a.has_cost_basis = has_cost_basis;
     return a;
 }
 
@@ -49,6 +51,7 @@ class TestPortfolioSummary : public QObject {
     void foreignHoldingConvertsToBase();
     void unresolvedFxRateBlocksSnapshot();
     void noRateLookupMeansNoConversion();
+    void noCostBasisExcludedFromPnlButCountsNav();
 };
 
 // A holding whose symbol is absent from the quote map must be flagged unpriced,
@@ -182,6 +185,28 @@ void TestPortfolioSummary::noRateLookupMeansNoConversion() {
     QVERIFY(built.snapshot_safe());
     QCOMPARE(built.summary.holdings[0].current_price, 150.0); // unchanged
     QCOMPARE(built.summary.total_market_value, 1500.0);
+}
+
+// A holding with no cost basis (e.g. a crypto exchange balance where only
+// quantity is known) must still count toward NAV via market_value, but must
+// be excluded from cost basis / unrealized P&L totals — folding its market
+// value into P&L would fabricate a gain/loss with no real cost to compare
+// against.
+void TestPortfolioSummary::noCostBasisExcludedFromPnlButCountsNav() {
+    QVector<PortfolioAsset> assets{asset("AAPL", 10, 100.0), asset("BTC-USD", 1, 0.0)};
+    assets[1].has_cost_basis = false; // crypto: qty known, cost basis not
+    QHash<QString, QuoteData> quotes;
+    quotes.insert("AAPL", quote("AAPL", 150.0, 0.0, 0.0));
+    quotes.insert("BTC-USD", quote("BTC-USD", 60000.0, 0.0, 0.0));
+    const auto built = build_summary(assets, {}, quotes, stub_sector);
+    // NAV includes both: 10*150 + 1*60000 = 61500
+    QCOMPARE(built.summary.total_market_value, 61500.0);
+    // Cost basis / P&L exclude the no-cost-basis holding: only AAPL (cost 1000).
+    QCOMPARE(built.summary.total_cost_basis, 1000.0);
+    QCOMPARE(built.summary.total_unrealized_pnl, 500.0); // 1500 - 1000
+    // The crypto holding carries the flag for the display badge.
+    QVERIFY(!built.summary.holdings[1].has_cost_basis);
+    QVERIFY(built.snapshot_safe()); // priced + fx-resolved -> still snapshots
 }
 
 QTEST_APPLESS_MAIN(TestPortfolioSummary)

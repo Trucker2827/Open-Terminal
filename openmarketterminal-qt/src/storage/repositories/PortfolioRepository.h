@@ -30,7 +30,8 @@ class PortfolioRepository : public BaseRepository<portfolio::Portfolio> {
     /// regardless — every downstream consumer treats it as such.
     Result<qint64> add_asset(const QString& portfolio_id, const QString& symbol, double qty, double price,
                              const QString& date = {}, const QString& sector = {},
-                             const QString& broker_symbol = {}, const QString& exchange = {});
+                             const QString& broker_symbol = {}, const QString& exchange = {},
+                             bool has_cost_basis = true);
     Result<void> update_asset(const QString& portfolio_id, const QString& symbol, double qty, double avg_price);
     Result<void> set_asset_sector(const QString& portfolio_id, const QString& symbol, const QString& sector);
     Result<void> remove_asset(const QString& portfolio_id, const QString& symbol);

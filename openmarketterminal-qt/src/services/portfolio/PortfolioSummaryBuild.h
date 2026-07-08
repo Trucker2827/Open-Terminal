@@ -69,6 +69,7 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
 
     double total_mv = 0;
     double total_cost = 0;
+    double total_pnl = 0;
     double total_day = 0;
     double total_prev = 0; // previous-close value of PRICED holdings only (day% base)
 
@@ -83,6 +84,7 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
 
         HoldingWithQuote h;
         h.fx_resolved = fx_resolved;
+        h.has_cost_basis = asset.has_cost_basis;
         h.symbol = asset.symbol;
         h.quantity = asset.quantity;
         h.avg_buy_price = asset.avg_buy_price * rate; // base currency
@@ -111,13 +113,25 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
         h.unrealized_pnl_percent = (h.cost_basis > 0) ? (h.unrealized_pnl / h.cost_basis) * 100.0 : 0;
 
         total_mv += h.market_value;
-        total_cost += h.cost_basis;
+        if (h.has_cost_basis) {
+            total_cost += h.cost_basis;
+            total_pnl += h.unrealized_pnl;
+        } else {
+            // No cost basis (e.g. crypto exchange balance): market value counts
+            // toward NAV, but P&L is undefined — zero it and exclude from the
+            // cost/P&L totals.
+            h.cost_basis = 0;
+            h.unrealized_pnl = 0;
+            h.unrealized_pnl_percent = 0;
+        }
         total_day += h.day_change * h.quantity;
 
-        if (h.unrealized_pnl >= 0)
-            summary.gainers++;
-        else
-            summary.losers++;
+        if (h.has_cost_basis) {
+            if (h.unrealized_pnl >= 0)
+                summary.gainers++;
+            else
+                summary.losers++;
+        }
 
         summary.holdings.append(h);
     }
@@ -128,8 +142,8 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
 
     summary.total_market_value = total_mv;
     summary.total_cost_basis = total_cost;
-    summary.total_unrealized_pnl = total_mv - total_cost;
-    summary.total_unrealized_pnl_percent = (total_cost > 0) ? ((total_mv - total_cost) / total_cost) * 100.0 : 0;
+    summary.total_unrealized_pnl = total_pnl;
+    summary.total_unrealized_pnl_percent = (total_cost > 0) ? (total_pnl / total_cost) * 100.0 : 0;
     summary.total_day_change = total_day;
     // Percent off the previous-close base of PRICED holdings only. Using
     // (total_mv − total_day) folded unpriced holdings' full stale value into the

@@ -40,6 +40,11 @@ struct PortfolioAsset {
     QString broker_symbol;
     /// Exchange code. Empty for non-broker imports.
     QString exchange;
+    /// False for holdings whose cost basis is not known (e.g. a crypto
+    /// exchange balance imported with quantity only). market_value still
+    /// counts toward NAV; cost_basis / unrealized_pnl are excluded from
+    /// portfolio totals. See migration v060.
+    bool has_cost_basis = true;
 };
 
 struct Transaction {
@@ -81,6 +86,11 @@ struct HoldingWithQuote {
     // values were converted at 1.0 (shown in the native currency), so they are
     // the wrong scale. Consumers badge it like unpriced; NAV snapshots skip it.
     bool fx_resolved = true;
+    // False when the source asset has no known cost basis (e.g. a crypto
+    // exchange balance): cost_basis / unrealized_pnl are zeroed and excluded
+    // from portfolio totals, but market_value still counts toward NAV.
+    // Consumers badge it for display.
+    bool has_cost_basis = true;
 };
 
 struct PortfolioSummary {

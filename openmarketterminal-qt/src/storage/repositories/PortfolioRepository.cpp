@@ -40,6 +40,7 @@ portfolio::PortfolioAsset PortfolioRepository::map_asset(QSqlQuery& q) {
         q.value(7).toString(), // sector
         q.value(8).toString(), // broker_symbol (v022)
         q.value(9).toString(), // exchange (v022)
+        q.value(10).toBool(),  // has_cost_basis (v060)
     };
 }
 
@@ -122,14 +123,16 @@ Result<void> PortfolioRepository::delete_portfolio(const QString& id) {
 Result<QVector<portfolio::PortfolioAsset>> PortfolioRepository::get_assets(const QString& portfolio_id) {
     return query_list_as<portfolio::PortfolioAsset>(
         "SELECT id, portfolio_id, symbol, quantity, avg_buy_price, first_purchase_date, last_updated, "
-        "COALESCE(sector, ''), COALESCE(broker_symbol, ''), COALESCE(exchange, '') "
+        "COALESCE(sector, ''), COALESCE(broker_symbol, ''), COALESCE(exchange, ''), "
+        "COALESCE(has_cost_basis, 1) "
         "FROM portfolio_assets WHERE portfolio_id = ? ORDER BY symbol",
         {portfolio_id}, map_asset);
 }
 
 Result<qint64> PortfolioRepository::add_asset(const QString& portfolio_id, const QString& symbol, double qty,
                                               double price, const QString& date, const QString& sector,
-                                              const QString& broker_symbol, const QString& exchange) {
+                                              const QString& broker_symbol, const QString& exchange,
+                                              bool has_cost_basis) {
     QString purchase_date = date.isEmpty() ? QDateTime::currentDateTimeUtc().toString(Qt::ISODate) : date;
 
     // Upsert: if symbol already exists in portfolio, update quantity and avg price.
@@ -138,7 +141,8 @@ Result<qint64> PortfolioRepository::add_asset(const QString& portfolio_id, const
     // preserving prior values keeps a re-imported broker portfolio working).
     auto existing = query_list_as<portfolio::PortfolioAsset>(
         "SELECT id, portfolio_id, symbol, quantity, avg_buy_price, first_purchase_date, last_updated, "
-        "COALESCE(sector, ''), COALESCE(broker_symbol, ''), COALESCE(exchange, '') "
+        "COALESCE(sector, ''), COALESCE(broker_symbol, ''), COALESCE(exchange, ''), "
+        "COALESCE(has_cost_basis, 1) "
         "FROM portfolio_assets WHERE portfolio_id = ? AND symbol = ?",
         {portfolio_id, symbol.toUpper()}, map_asset);
 
@@ -164,8 +168,9 @@ Result<qint64> PortfolioRepository::add_asset(const QString& portfolio_id, const
 
     auto ins = exec_insert(
         "INSERT INTO portfolio_assets (portfolio_id, symbol, quantity, avg_buy_price, first_purchase_date, "
-        "sector, broker_symbol, exchange) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        {portfolio_id, symbol.toUpper(), qty, price, purchase_date, sector, broker_symbol, exchange});
+        "sector, broker_symbol, exchange, has_cost_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        {portfolio_id, symbol.toUpper(), qty, price, purchase_date, sector, broker_symbol, exchange,
+         has_cost_basis ? 1 : 0});
     return ins;
 }
 
