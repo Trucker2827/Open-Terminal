@@ -16,6 +16,7 @@
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
+#include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
@@ -310,14 +311,21 @@ void CryptoTradingScreen::setup_ui() {
     orderbook_ = new CryptoOrderBook;
     right_splitter->addWidget(orderbook_);
 
+    // Read-only DOM ladder — depth + session VAP heatmap, fed from the same
+    // orderbook/trades feeds as orderbook_ (see hub_subscribe_topics /
+    // flush_ws_updates / refresh_orderbook). No order-entry interaction.
+    ladder_ = new CryptoLadder;
+    right_splitter->addWidget(ladder_);
+
     order_entry_ = new CryptoOrderEntry;
     order_entry_->set_exchange_id(exchange_id_);
     right_splitter->addWidget(order_entry_);
 
     right_splitter->setChildrenCollapsible(false);
-    right_splitter->setStretchFactor(0, 5); // order book gets the useful vertical scan space
-    right_splitter->setStretchFactor(1, 3); // order ticket stays usable but no longer dominates
-    right_splitter->setSizes({560, 420});
+    right_splitter->setStretchFactor(0, 4); // order book gets the useful vertical scan space
+    right_splitter->setStretchFactor(1, 4); // DOM ladder gets comparable room
+    right_splitter->setStretchFactor(2, 3); // order ticket stays usable but no longer dominates
+    right_splitter->setSizes({420, 420, 420});
 
     main_splitter->addWidget(right_splitter);
 

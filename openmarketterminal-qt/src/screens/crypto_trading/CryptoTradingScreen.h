@@ -28,6 +28,7 @@ class CryptoChart;
 class CryptoOrderEntry;
 class CryptoOrderBook;
 class CryptoBottomPanel;
+class CryptoLadder;
 } // namespace openmarketterminal::screens::crypto
 
 namespace openmarketterminal::screens {
@@ -143,6 +144,7 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     crypto::CryptoOrderEntry* order_entry_ = nullptr;
     crypto::CryptoOrderBook* orderbook_ = nullptr;
     crypto::CryptoBottomPanel* bottom_panel_ = nullptr;
+    crypto::CryptoLadder* ladder_ = nullptr;  // read-only DOM ladder (depth + VAP), fed alongside orderbook_
 
     // ── Timers ──
     QTimer* ticker_timer_ = nullptr;
@@ -225,6 +227,13 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     QVector<crypto::TradeEntry> pending_trades_;
 
     void flush_ws_updates();
+
+    // Ladder ORDERS/avg-entry overlay — Paper-mode only (typed PtOrder/
+    // PtPosition are cleanly available here; Live-mode orders/positions
+    // arrive as raw per-exchange JSON already parsed by CryptoBottomPanel,
+    // so that path is left unwired — see task-5 report).
+    void update_ladder_overlay(const QVector<trading::PtOrder>& orders,
+                                const QVector<trading::PtPosition>& positions);
 };
 
 } // namespace openmarketterminal::screens

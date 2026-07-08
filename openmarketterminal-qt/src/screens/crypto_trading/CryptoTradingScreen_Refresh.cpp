@@ -14,6 +14,7 @@
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
+#include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
@@ -96,6 +97,8 @@ void CryptoTradingScreen::flush_ws_updates() {
         const auto& ob = pending_orderbook_;
         orderbook_->set_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
         bottom_panel_->set_depth_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
+        ladder_->set_symbol(selected_symbol_, exchange_id_);
+        ladder_->set_book(ob.bids, ob.asks);
         if (!ob.bids.isEmpty() && !ob.asks.isEmpty())
             order_entry_->set_orderbook_quote(ob.bids.first().first, ob.asks.first().first);
         has_pending_orderbook_ = false;
@@ -110,8 +113,10 @@ void CryptoTradingScreen::flush_ws_updates() {
 
     // Flush buffered trade entries — one loop instead of one invokeMethod per trade
     if (!pending_trades_.isEmpty()) {
-        for (const auto& entry : pending_trades_)
+        for (const auto& entry : pending_trades_) {
             bottom_panel_->add_trade_entry(entry);
+            ladder_->add_trade(entry.price, entry.amount); // session VAP accumulator
+        }
         pending_trades_.clear();
     }
 
@@ -197,6 +202,10 @@ void CryptoTradingScreen::flush_ws_updates() {
                             self->bottom_panel_->set_orders(r.orders);
                             self->bottom_panel_->set_trades(r.trades);
                             self->bottom_panel_->set_stats(r.stats);
+                            // r.orders is only populated on this branch (see Result
+                            // above) — feeding the ladder overlay here, not on every
+                            // tick, avoids clearing it with a stale empty order list.
+                            self->update_ladder_overlay(r.orders, r.positions);
                         }
                     }, Qt::QueuedConnection);
                 });
@@ -271,6 +280,8 @@ void CryptoTradingScreen::refresh_orderbook() {
                     return;
                 self->orderbook_->set_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
                 self->bottom_panel_->set_depth_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
+                self->ladder_->set_symbol(self->selected_symbol_, self->exchange_id_);
+                self->ladder_->set_book(ob.bids, ob.asks);
                 if (!ob.bids.isEmpty() && !ob.asks.isEmpty())
                     self->order_entry_->set_orderbook_quote(ob.bids.first().first, ob.asks.first().first);
             },
@@ -320,6 +331,7 @@ void CryptoTradingScreen::refresh_portfolio() {
             self->bottom_panel_->set_orders(s.orders);
             self->bottom_panel_->set_trades(s.trades);
             self->bottom_panel_->set_stats(s.stats);
+            self->update_ladder_overlay(s.orders, s.positions);
             LOG_INFO(TAG, QString("Paper portfolio refreshed: %1 positions, %2 orders, %3 trades, balance=%4")
                               .arg(s.positions.size())
                               .arg(s.orders.size())
@@ -420,6 +432,46 @@ void CryptoTradingScreen::refresh_live_data() {
     async_fetch_live_orders();
     async_fetch_live_balance();
     async_fetch_my_trades();
+}
+
+// ============================================================================
+// Ladder ORDERS/avg-entry overlay (Paper mode only — see header comment).
+// Builds the read-only MyOrder list + avg-entry price the CryptoLadder paints
+// in its ORDERS column from the same PtOrder/PtPosition snapshots already
+// flowing to bottom_panel_. Live-mode orders/positions arrive as raw
+// per-exchange JSON (set_live_orders/set_live_positions) that CryptoBottomPanel
+// parses internally; re-parsing that here for the ladder isn't a clean Phase-1
+// seam, so the overlay stays empty in Live mode (market depth + VAP still render).
+// ============================================================================
+void CryptoTradingScreen::update_ladder_overlay(const QVector<trading::PtOrder>& orders,
+                                                 const QVector<trading::PtPosition>& positions) {
+    QVector<crypto::MyOrder> my_orders;
+    for (const auto& o : orders) {
+        if (o.symbol != selected_symbol_)
+            continue;
+        // PtOrder statuses (see PaperTrading.cpp): "pending" (resting, no fill
+        // yet) and "partial" (resting remainder after a partial fill) are the
+        // only two "still on the book" states — every other terminal status
+        // (filled / rejected / removed) must not paint in the ORDERS column.
+        if (o.status != QLatin1String("pending") && o.status != QLatin1String("partial"))
+            continue;
+        crypto::MyOrder mo;
+        mo.price = o.price.value_or(0.0);
+        mo.qty = o.quantity - o.filled_qty;
+        mo.is_buy = (o.side == QLatin1String("buy"));
+        if (mo.price > 0 && mo.qty > 0)
+            my_orders.append(mo);
+    }
+    ladder_->set_my_orders(my_orders);
+
+    double avg_entry = 0.0;
+    for (const auto& p : positions) {
+        if (p.symbol == selected_symbol_) {
+            avg_entry = p.entry_price;
+            break;
+        }
+    }
+    ladder_->set_avg_entry(avg_entry);
 }
 
 } // namespace openmarketterminal::screens
