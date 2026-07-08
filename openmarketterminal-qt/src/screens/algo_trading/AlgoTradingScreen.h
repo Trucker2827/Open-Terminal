@@ -20,10 +20,11 @@ class StrategyListPanel;
 class SandboxBooksPanel;
 class ScannerPanel;
 class DeploymentDashboard;
+class StrategyOpsMapPanel;
 class UniverseScannerPanel;
 
-/// Strategy workspace: proof books first, classic indicator tools kept behind it.
-/// Tabs: Proof Books, Deployments, Classic Rules, Builder, Scanner, Alerts, Universe.
+/// Strategy workspace: operations map first, proof books and classic tools behind it.
+/// Tabs: Ops Map, Proof Books, Deployments, Classic Rules, Builder, Scanner, Alerts, Universe.
 class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     Q_OBJECT
   public:
@@ -50,6 +51,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     void retranslateUi();
 
     QStackedWidget* content_stack_ = nullptr;
+    StrategyOpsMapPanel* ops_map_ = nullptr;
     StrategyBuilderPanel* builder_ = nullptr;
     StrategyListPanel* strategies_ = nullptr;
     SandboxBooksPanel* proof_books_ = nullptr;

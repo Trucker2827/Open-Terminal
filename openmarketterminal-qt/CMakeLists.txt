@@ -1734,6 +1734,7 @@ set(SCREEN_SOURCES
 
     # Algo Trading
     src/screens/algo_trading/AlgoTradingScreen.cpp
+    src/screens/algo_trading/StrategyOpsMapPanel.cpp
     src/screens/algo_trading/StrategyBuilderPanel.cpp
     src/screens/algo_trading/StrategyListPanel.cpp
     src/screens/algo_trading/SandboxBooksPanel.cpp
@@ -1984,6 +1985,7 @@ set_source_files_properties(
     src/screens/ai_quant_lab/QuantModulePanel_LiveLearning.cpp
     src/screens/akshare/AkShareScreen.cpp
     src/screens/algo_trading/AlgoTradingScreen.cpp
+    src/screens/algo_trading/StrategyOpsMapPanel.cpp
     src/screens/algo_trading/DeploymentDashboard.cpp
     src/screens/algo_trading/ScannerPanel.cpp
     src/screens/algo_trading/UniverseScannerPanel.cpp
