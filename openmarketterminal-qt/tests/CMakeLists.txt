@@ -286,6 +286,19 @@ target_include_directories(tst_account_sync_service PRIVATE ${CMAKE_SOURCE_DIR}/
 target_link_libraries(tst_account_sync_service PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_account_sync_service COMMAND tst_account_sync_service)
 
+# Portfolio Account Sync Task 9 — CryptoAccountSource::fetch() over an
+# injected balance-fetcher callback (no live exchange daemon needed):
+# {"balances":{CCY:{"total":n}}} -> SyncedHolding list (fiat CCY -> "$CASH:
+# <CCY>" line, else "<CCY>-USD" coin holding) + an error/missing-balances
+# response -> ok=false, no partial mirror. Links the core lib for
+# trading::ExchangeSessionManager/ExchangeSession + SecureStorage types used
+# by the default (non-injected) resolver, same link set as
+# tst_equity_account_source.
+add_executable(tst_crypto_account_source tst_crypto_account_source.cpp)
+target_include_directories(tst_crypto_account_source PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_account_source PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_crypto_account_source COMMAND tst_crypto_account_source)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
