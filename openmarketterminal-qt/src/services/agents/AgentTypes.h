@@ -19,6 +19,10 @@ struct AgentInfo {
     QString description;
     QString category;
     QStringList capabilities;
+    /// Asset classes this agent is relevant to ("equity"/"fx"/"crypto"/"*" for
+    /// cross-asset), from finagent_core's loader — used to filter the agent list
+    /// to what a portfolio holds.
+    QStringList asset_classes;
     QString provider;
     QString version;
     QJsonObject config; // full config payload

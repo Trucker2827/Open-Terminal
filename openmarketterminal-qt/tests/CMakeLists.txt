@@ -285,6 +285,13 @@ target_include_directories(tst_portfolio_account_mode PRIVATE ${CMAKE_SOURCE_DIR
 target_link_libraries(tst_portfolio_account_mode PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_account_mode COMMAND tst_portfolio_account_mode)
 
+# Agent Runner relevance filter (screens/portfolio/PortfolioAgentFilter) —
+# filter the agent list to the asset classes a portfolio holds.
+add_executable(tst_portfolio_agent_filter tst_portfolio_agent_filter.cpp)
+target_include_directories(tst_portfolio_agent_filter PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_agent_filter PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_portfolio_agent_filter COMMAND tst_portfolio_agent_filter)
+
 # Portfolio Account Sync Task 4 — pure mirror-reconcile diff
 # (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
 # assets vs freshly fetched broker/exchange holdings -> add/update/remove
