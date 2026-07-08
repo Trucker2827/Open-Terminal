@@ -5427,7 +5427,8 @@ bool wait_for_owner_clear(const QString& profile, qint64 pid, int timeout_ms) {
     return !info || !is_pid_alive(info->pid) || info->pid != pid;
 }
 
-int signal_profile_owner(const QString& profile, const QJsonObject& owner, bool force_kill, QString* error) {
+int signal_profile_owner(const QString& profile, const QJsonObject& owner,
+                         [[maybe_unused]] bool force_kill, QString* error) {
     const qint64 pid = static_cast<qint64>(owner.value(QStringLiteral("active_owner_pid")).toDouble());
     if (pid <= 0) {
         if (error) *error = QStringLiteral("active owner has no usable pid");
