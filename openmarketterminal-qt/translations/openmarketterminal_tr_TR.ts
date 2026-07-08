@@ -19460,10 +19460,6 @@ Beklenen biçim:
 <context>
     <name>openmarketterminal::screens::PortfolioStatusBar</name>
     <message>
-        <source>PORTFOLIO TERMINAL v4.0</source>
-        <translation>PORTFÖY TERMİNALİ v4.0</translation>
-    </message>
-    <message>
         <source>LIVE</source>
         <translation>CANLI</translation>
     </message>

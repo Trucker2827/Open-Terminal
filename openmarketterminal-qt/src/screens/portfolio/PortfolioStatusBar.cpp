@@ -41,11 +41,6 @@ PortfolioStatusBar::PortfolioStatusBar(QWidget* parent) : QWidget(parent) {
 
     add_divider();
 
-    version_label_ = make_label(ui::colors::TEXT_TERTIARY);
-    version_label_->setText(tr("PORTFOLIO TERMINAL v4.0"));
-
-    add_divider();
-
     portfolio_label_ = make_label(ui::colors::CYAN, true);
     portfolio_label_->setText("");
 
@@ -122,7 +117,6 @@ void PortfolioStatusBar::changeEvent(QEvent* event) {
 }
 
 void PortfolioStatusBar::retranslateUi() {
-    if (version_label_)  version_label_->setText(tr("PORTFOLIO TERMINAL v4.0"));
     if (live_label_)     live_label_->setText("● " + tr("LIVE"));
 
     if (last_summary_.has_value()) {

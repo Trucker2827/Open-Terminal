@@ -19468,10 +19468,6 @@ Formato esperado:
 <context>
     <name>openmarketterminal::screens::PortfolioStatusBar</name>
     <message>
-        <source>PORTFOLIO TERMINAL v4.0</source>
-        <translation>TERMINAL DE PORTFÓLIO v4.0</translation>
-    </message>
-    <message>
         <source>LIVE</source>
         <translation>AO VIVO</translation>
     </message>

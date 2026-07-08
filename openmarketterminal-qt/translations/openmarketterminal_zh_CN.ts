@@ -19460,10 +19460,6 @@ Expected format:
 <context>
     <name>openmarketterminal::screens::PortfolioStatusBar</name>
     <message>
-        <source>PORTFOLIO TERMINAL v4.0</source>
-        <translation>投资组合终端 v4.0</translation>
-    </message>
-    <message>
         <source>LIVE</source>
         <translation>实时</translation>
     </message>
