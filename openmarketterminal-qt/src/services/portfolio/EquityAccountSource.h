@@ -33,6 +33,13 @@ class EquityAccountSource : public IAccountSource {
 
     QVector<AccountRef> list_accounts() override;
     portfolio::FetchResult fetch(const AccountRef& ref) override;
+    /// Maps every FILLED order (filled_qty > 0) from IBroker::get_orders to a
+    /// SyncedTransaction. Ignores `holdings` — get_orders already returns
+    /// every order for the account, so there's no need to enumerate held
+    /// symbols first. On a get_orders error, returns {} (never throws,
+    /// mirrors fetch()'s read-only contract).
+    QVector<portfolio::SyncedTransaction> fetch_transactions(const AccountRef& ref,
+                                                              const QVector<portfolio::SyncedHolding>& holdings) override;
 
   private:
     // The real resolution path: trading::AccountManager::get_account() +

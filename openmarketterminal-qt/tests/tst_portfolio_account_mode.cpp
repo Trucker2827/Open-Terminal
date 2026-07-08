@@ -16,6 +16,7 @@ class TestPortfolioAccountMode : public QObject {
     void brokerLiveIsNotPaper();
     void cryptoIsNeverPaper();
     void caseInsensitiveMode();
+    void unknownAccountIsNotPaper();
 };
 
 // A broker account whose trading_mode is "paper" is paper.
@@ -46,6 +47,15 @@ void TestPortfolioAccountMode::cryptoIsNeverPaper() {
 void TestPortfolioAccountMode::caseInsensitiveMode() {
     const auto mode = [](const QString&) { return QStringLiteral("PAPER"); };
     QVERIFY(sync_source_is_paper("broker:x", mode));
+}
+
+// An account AccountManager can't find yields an empty mode (the production
+// callback returns "" for a missing account rather than the "paper" default).
+// It must NOT be treated as paper — otherwise a real account we can't classify
+// would be silently dropped from the All Accounts total.
+void TestPortfolioAccountMode::unknownAccountIsNotPaper() {
+    const auto mode = [](const QString&) { return QString(); }; // not found
+    QVERIFY(!sync_source_is_paper("broker:missing", mode));
 }
 
 QTEST_APPLESS_MAIN(TestPortfolioAccountMode)

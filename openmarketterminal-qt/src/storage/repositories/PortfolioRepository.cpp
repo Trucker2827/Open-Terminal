@@ -258,6 +258,26 @@ Result<QString> PortfolioRepository::add_transaction(const QString& portfolio_id
     return Result<QString>::ok(id);
 }
 
+Result<QString> PortfolioRepository::import_transaction(const QString& portfolio_id, const QString& symbol,
+                                                        const QString& type, double qty, double price,
+                                                        const QString& date, const QString& external_id,
+                                                        const QString& notes) {
+    QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    // INSERT OR IGNORE: idx_ptx_external (v061) is a partial unique index on
+    // (portfolio_id, external_id) WHERE external_id != '' — a repeat
+    // external_id silently no-ops instead of erroring or duplicating, which
+    // is exactly what makes re-syncing the same account idempotent.
+    auto r = exec_write("INSERT OR IGNORE INTO portfolio_transactions "
+                        "(id, portfolio_id, symbol, transaction_type, quantity, price, total_value, "
+                        " transaction_date, notes, external_id) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        {id, portfolio_id, symbol.toUpper(), type, qty, price, qty * price, date, notes,
+                         external_id});
+    if (r.is_err())
+        return Result<QString>::err(r.error());
+    return Result<QString>::ok(id);
+}
+
 Result<void> PortfolioRepository::update_transaction(const QString& id, double qty, double price, const QString& date,
                                                      const QString& notes) {
     auto r = exec_write("UPDATE portfolio_transactions SET quantity = ?, price = ?, total_value = ?, "

@@ -111,4 +111,37 @@ portfolio::FetchResult EquityAccountSource::fetch(const AccountRef& ref) {
     return result;
 }
 
+QVector<portfolio::SyncedTransaction> EquityAccountSource::fetch_transactions(
+    const AccountRef& ref, const QVector<portfolio::SyncedHolding>& holdings) {
+    Q_UNUSED(holdings);
+    QVector<portfolio::SyncedTransaction> out;
+
+    const QString account_id =
+        ref.sync_source.startsWith(kSourcePrefix) ? ref.sync_source.mid(kSourcePrefix.size()) : ref.sync_source;
+
+    trading::BrokerCredentials creds;
+    trading::IBroker* broker = resolve_broker_ ? resolve_broker_(account_id, creds) : nullptr;
+    if (!broker)
+        return out;
+
+    const auto orders_resp = broker->get_orders(creds);
+    if (!orders_resp.success)
+        return out;
+
+    for (const auto& o : orders_resp.data.value_or(QVector<trading::BrokerOrderInfo>{})) {
+        if (o.filled_qty <= 0)
+            continue;
+        portfolio::SyncedTransaction tx;
+        tx.external_id = QStringLiteral("broker:") + o.order_id;
+        tx.symbol = o.symbol.toUpper();
+        tx.type = o.side.compare(QStringLiteral("buy"), Qt::CaseInsensitive) == 0 ? QStringLiteral("BUY")
+                                                                                   : QStringLiteral("SELL");
+        tx.quantity = o.filled_qty;
+        tx.price = o.avg_price;
+        tx.date = o.timestamp;
+        out.append(tx);
+    }
+    return out;
+}
+
 } // namespace openmarketterminal::services

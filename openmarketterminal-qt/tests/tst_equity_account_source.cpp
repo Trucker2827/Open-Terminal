@@ -13,6 +13,8 @@
 #include "services/portfolio/EquityAccountSource.h"
 #include "trading/BrokerInterface.h"
 
+#include <algorithm>
+
 using namespace openmarketterminal;
 using namespace openmarketterminal::services;
 
@@ -25,6 +27,7 @@ class FakeBroker : public trading::IBroker {
   public:
     bool holdings_should_fail = false;
     bool use_lowercase_symbol = false;
+    bool orders_should_fail = false;
 
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
     const char* name() const override { return "FakeBroker"; }
@@ -46,7 +49,38 @@ class FakeBroker : public trading::IBroker {
         return {};
     }
     trading::ApiResponse<QVector<trading::BrokerOrderInfo>> get_orders(const trading::BrokerCredentials&) override {
-        return {};
+        if (orders_should_fail)
+            return {false, std::nullopt, "fixture: get_orders failed"};
+
+        trading::BrokerOrderInfo filled_buy;
+        filled_buy.order_id = "order-1";
+        filled_buy.symbol = "aapl";
+        filled_buy.side = "buy";
+        filled_buy.filled_qty = 10;
+        filled_buy.avg_price = 150.0;
+        filled_buy.status = "FILLED";
+        filled_buy.timestamp = "2026-01-01T10:00:00Z";
+
+        trading::BrokerOrderInfo filled_sell;
+        filled_sell.order_id = "order-2";
+        filled_sell.symbol = "MSFT";
+        filled_sell.side = "sell";
+        filled_sell.filled_qty = 5;
+        filled_sell.avg_price = 300.0;
+        filled_sell.status = "FILLED";
+        filled_sell.timestamp = "2026-01-02T10:00:00Z";
+
+        trading::BrokerOrderInfo unfilled;
+        unfilled.order_id = "order-3";
+        unfilled.symbol = "GOOG";
+        unfilled.side = "buy";
+        unfilled.filled_qty = 0;
+        unfilled.status = "PENDING";
+
+        trading::ApiResponse<QVector<trading::BrokerOrderInfo>> resp;
+        resp.success = true;
+        resp.data = QVector<trading::BrokerOrderInfo>{filled_buy, filled_sell, unfilled};
+        return resp;
     }
     trading::ApiResponse<QJsonObject> get_trade_book(const trading::BrokerCredentials&) override { return {}; }
     trading::ApiResponse<QVector<trading::BrokerPosition>> get_positions(const trading::BrokerCredentials&) override {
@@ -168,6 +202,50 @@ class TstEquityAccountSource : public QObject {
         QVERIFY(!r.ok);
         QVERIFY(r.holdings.isEmpty());
         QVERIFY(!r.error.isEmpty());
+    }
+
+    void fetch_transactions_maps_filled_orders_only() {
+        FakeBroker fake;
+        EquityAccountSource src([&](const QString&, trading::BrokerCredentials&) -> trading::IBroker* {
+            return &fake;
+        });
+
+        const auto txs = src.fetch_transactions(AccountRef{"broker:acct1", "Alpaca", "USD"}, {});
+        // 2 filled orders (order-1 BUY, order-2 SELL) — order-3 (filled_qty=0)
+        // is excluded.
+        QCOMPARE(txs.size(), qsizetype{2});
+
+        const auto buy = std::find_if(txs.begin(), txs.end(), [](const portfolio::SyncedTransaction& t) {
+            return t.external_id == QStringLiteral("broker:order-1");
+        });
+        QVERIFY(buy != txs.end());
+        QCOMPARE(buy->symbol, QStringLiteral("AAPL"));
+        QCOMPARE(buy->type, QStringLiteral("BUY"));
+        QCOMPARE(buy->quantity, 10.0);
+        QCOMPARE(buy->price, 150.0);
+        QCOMPARE(buy->date, QStringLiteral("2026-01-01T10:00:00Z"));
+
+        const auto sell = std::find_if(txs.begin(), txs.end(), [](const portfolio::SyncedTransaction& t) {
+            return t.external_id == QStringLiteral("broker:order-2");
+        });
+        QVERIFY(sell != txs.end());
+        QCOMPARE(sell->symbol, QStringLiteral("MSFT"));
+        QCOMPARE(sell->type, QStringLiteral("SELL"));
+        QCOMPARE(sell->quantity, 5.0);
+
+        for (const auto& t : txs)
+            QVERIFY(t.external_id != QStringLiteral("broker:order-3"));
+    }
+
+    void fetch_transactions_returns_empty_on_get_orders_error() {
+        FakeBroker fake;
+        fake.orders_should_fail = true;
+        EquityAccountSource src([&](const QString&, trading::BrokerCredentials&) -> trading::IBroker* {
+            return &fake;
+        });
+
+        const auto txs = src.fetch_transactions(AccountRef{"broker:acct1", "Alpaca", "USD"}, {});
+        QVERIFY(txs.isEmpty());
     }
 
     void fetch_fails_when_resolver_cannot_find_broker() {

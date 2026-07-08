@@ -61,6 +61,17 @@ class PortfolioRepository : public BaseRepository<portfolio::Portfolio> {
     Result<QVector<portfolio::Transaction>> get_symbol_transactions(const QString& portfolio_id, const QString& symbol);
     Result<QString> add_transaction(const QString& portfolio_id, const QString& symbol, const QString& type, double qty,
                                     double price, const QString& date, const QString& notes = {});
+    /// Dedup insert for trade-history sync (v061): INSERT OR IGNORE keyed on
+    /// idx_ptx_external (portfolio_id, external_id) — a repeat external_id
+    /// (re-syncing the same account) is a silent no-op, so re-sync never
+    /// duplicates. `external_id` MUST be non-empty (e.g. "broker:<order_id>",
+    /// "<exchange_id>:<trade_id>") — an empty external_id falls outside the
+    /// partial unique index and would insert unconstrained, like
+    /// add_transaction. Returns the generated id even when the row was
+    /// ignored (the caller only needs know-it-succeeded, not which case).
+    Result<QString> import_transaction(const QString& portfolio_id, const QString& symbol, const QString& type,
+                                       double qty, double price, const QString& date, const QString& external_id,
+                                       const QString& notes = {});
     Result<void> update_transaction(const QString& id, double qty, double price, const QString& date,
                                     const QString& notes = {});
     Result<void> delete_transaction(const QString& id);

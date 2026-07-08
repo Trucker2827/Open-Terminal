@@ -35,6 +35,20 @@ struct FetchResult {         // an account source returns this
     QVector<SyncedHolding> holdings;
 };
 
+// One normalized fill, returned by IAccountSource::fetch_transactions and
+// imported via PortfolioRepository::import_transaction. external_id is the
+// source's stable id for this fill (e.g. "broker:<order_id>",
+// "<exchange_id>:<trade_id>") — see v061's idx_ptx_external, which dedups a
+// repeat external_id so re-syncing the same account never duplicates rows.
+struct SyncedTransaction {
+    QString external_id;
+    QString symbol;      // canonical (yfinance-format), matching SyncedHolding::canonical_symbol
+    QString type;         // "BUY" | "SELL"
+    double quantity = 0;
+    double price = 0;
+    QString date;
+};
+
 struct MirrorPlan {
     QVector<SyncedHolding> to_add;
     QVector<SyncedHolding> to_update;

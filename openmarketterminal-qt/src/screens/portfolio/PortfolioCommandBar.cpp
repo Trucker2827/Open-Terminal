@@ -501,8 +501,11 @@ void PortfolioCommandBar::set_portfolios(const QVector<portfolio::Portfolio>& po
 
     auto add_item = [this](const portfolio::Portfolio& p) {
         QString label = QString("%1  (%2)").arg(p.name, p.currency);
-        const bool is_paper = portfolio::sync_source_is_paper(p.sync_source, [](const QString& account_id) {
-            return trading::AccountManager::instance().get_account(account_id).trading_mode;
+        const bool is_paper = portfolio::sync_source_is_paper(p.sync_source, [](const QString& account_id) -> QString {
+            // Unknown account (not found) must NOT read as paper (trading_mode
+            // defaults to "paper") — treat as live so it isn't wrongly badged.
+            const auto acct = trading::AccountManager::instance().get_account(account_id);
+            return acct.account_id.isEmpty() ? QString() : acct.trading_mode;
         });
         if (!p.sync_source.isEmpty()) {
             if (is_paper)

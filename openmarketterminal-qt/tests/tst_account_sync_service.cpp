@@ -45,6 +45,18 @@ portfolio::FetchResult ok(const QVector<portfolio::SyncedHolding>& holdings) {
     return r;
 }
 
+portfolio::SyncedTransaction tx(const QString& external_id, const QString& symbol, const QString& type, double qty,
+                                double price, const QString& date) {
+    portfolio::SyncedTransaction t;
+    t.external_id = external_id;
+    t.symbol = symbol;
+    t.type = type;
+    t.quantity = qty;
+    t.price = price;
+    t.date = date;
+    return t;
+}
+
 portfolio::FetchResult err(const QString& message) {
     portfolio::FetchResult r;
     r.ok = false;
@@ -67,9 +79,16 @@ class FakeSource : public IAccountSource {
     explicit FakeSource(QString sync_source = "broker:acct1") : sync_source_(std::move(sync_source)) {}
 
     portfolio::FetchResult result;
+    QVector<portfolio::SyncedTransaction> transactions; // Task: trade-history sync
+    int fetch_transactions_calls = 0;
 
     QVector<AccountRef> list_accounts() override { return {AccountRef{sync_source_, "Fake Broker", "USD"}}; }
     portfolio::FetchResult fetch(const AccountRef&) override { return result; }
+    QVector<portfolio::SyncedTransaction> fetch_transactions(const AccountRef&,
+                                                              const QVector<portfolio::SyncedHolding>&) override {
+        ++fetch_transactions_calls;
+        return transactions;
+    }
 
   private:
     QString sync_source_;
@@ -202,6 +221,49 @@ class TstAccountSyncService : public QObject {
         QVERIFY(sym);
         QCOMPARE(sym->quantity, 10.0);
         QVERIFY(!sym->has_cost_basis);
+    }
+
+    // Trade-history sync: a successful sync_account additionally imports
+    // src->fetch_transactions(ref, res.holdings) via
+    // PortfolioRepository::import_transaction, and re-syncing the same fills
+    // (same external_id) must NOT duplicate — the whole point of v061's
+    // idx_ptx_external + INSERT OR IGNORE.
+    void sync_account_imports_transactions_on_success_and_dedups_on_resync() {
+        auto& svc = AccountSyncService::instance();
+        auto& repo = PortfolioRepository::instance();
+        FakeSource fake("broker:acctTx");
+
+        fake.result = ok({hold("AAPL", 10, 100.0, true)});
+        fake.transactions = {tx("broker:order-1", "AAPL", "BUY", 10, 100.0, "2026-01-01")};
+        svc.sync_account(fake.list_accounts()[0], &fake);
+
+        auto pf = repo.find_by_sync_source("broker:acctTx");
+        QVERIFY(pf.has_value());
+        auto txs = repo.get_transactions(pf->id);
+        QVERIFY(txs.is_ok());
+        QCOMPARE(txs.value().size(), qsizetype{1});
+        QCOMPARE(txs.value().first().symbol, QStringLiteral("AAPL"));
+        QCOMPARE(txs.value().first().quantity, 10.0);
+
+        // Re-sync with the SAME transaction (same external_id) -> dedup, no
+        // second row.
+        svc.sync_account(fake.list_accounts()[0], &fake);
+        txs = repo.get_transactions(pf->id);
+        QVERIFY(txs.is_ok());
+        QCOMPARE(txs.value().size(), qsizetype{1});
+    }
+
+    // A FAILED fetch must never reach fetch_transactions/import_transaction —
+    // trade-history import is strictly additive to the ok path.
+    void sync_account_skips_transactions_on_failed_fetch() {
+        auto& svc = AccountSyncService::instance();
+        FakeSource fake("broker:acctTxFail");
+
+        fake.result = err("rate limited");
+        fake.transactions = {tx("broker:order-9", "AAPL", "BUY", 1, 1.0, "2026-01-01")};
+        svc.sync_account(fake.list_accounts()[0], &fake);
+
+        QCOMPARE(fake.fetch_transactions_calls, 0);
     }
 
     // Task 8: PortfolioService::aggregate_all_accounts_assets() unions holdings

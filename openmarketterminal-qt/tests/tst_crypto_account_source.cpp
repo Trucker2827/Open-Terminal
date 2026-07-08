@@ -12,6 +12,7 @@
 
 #include "services/portfolio/CryptoAccountSource.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
 
 using namespace openmarketterminal;
@@ -100,6 +101,55 @@ class TstCryptoAccountSource : public QObject {
         QVERIFY(!r.ok);
         QVERIFY(r.holdings.isEmpty());
         QVERIFY(!r.error.isEmpty());
+    }
+
+    void fetch_transactions_maps_trades_for_each_held_coin() {
+        // Two coin holdings (BTC, ETH) + one $CASH holding — fetch_transactions
+        // must query trades for the two coins and skip cash.
+        QVector<portfolio::SyncedHolding> holdings;
+        portfolio::SyncedHolding btc;
+        btc.canonical_symbol = "BTC-USD";
+        btc.broker_symbol = "BTC/USD";
+        btc.exchange = "coinbase";
+        holdings.append(btc);
+        portfolio::SyncedHolding eth;
+        eth.canonical_symbol = "ETH-USD";
+        eth.broker_symbol = "ETH/USD";
+        eth.exchange = "coinbase";
+        holdings.append(eth);
+        portfolio::SyncedHolding cash;
+        cash.canonical_symbol = "$CASH:USD";
+        holdings.append(cash);
+
+        QStringList queried_symbols;
+        CryptoAccountSource src(
+            [](const QString&) -> QJsonObject { return {}; },
+            [&](const QString&, const QString& symbol) -> QJsonObject {
+                queried_symbols.append(symbol);
+                QJsonArray trades;
+                if (symbol == "BTC/USD") {
+                    trades.append(QJsonObject{{"id", "t1"},
+                                              {"side", "buy"},
+                                              {"amount", 0.1},
+                                              {"price", 50000.0},
+                                              {"datetime", "2026-01-01T00:00:00Z"}});
+                }
+                return QJsonObject{{"trades", trades}};
+            });
+
+        const auto txs = src.fetch_transactions(AccountRef{"crypto:coinbase", "Coinbase", "USD"}, holdings);
+
+        QCOMPARE(queried_symbols.size(), qsizetype{2});
+        QVERIFY(queried_symbols.contains("BTC/USD"));
+        QVERIFY(queried_symbols.contains("ETH/USD"));
+
+        QCOMPARE(txs.size(), qsizetype{1});
+        QCOMPARE(txs.first().external_id, QStringLiteral("coinbase:t1"));
+        QCOMPARE(txs.first().symbol, QStringLiteral("BTC-USD"));
+        QCOMPARE(txs.first().type, QStringLiteral("BUY"));
+        QCOMPARE(txs.first().quantity, 0.1);
+        QCOMPARE(txs.first().price, 50000.0);
+        QCOMPARE(txs.first().date, QStringLiteral("2026-01-01T00:00:00Z"));
     }
 
     void fetch_fails_when_balances_key_missing() {
