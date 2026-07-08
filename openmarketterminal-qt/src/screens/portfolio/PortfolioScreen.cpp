@@ -25,10 +25,13 @@
 #include "screens/portfolio/PortfolioStatusBar.h"
 #include "screens/portfolio/PortfolioTxnPanel.h"
 #include "services/file_manager/FileManagerService.h"
+#include "services/portfolio/AccountSyncService.h"
 #include "services/portfolio/PortfolioService.h"
+#include "storage/repositories/PortfolioRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
 
+#include <QDateTime>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFrame>
@@ -108,6 +111,24 @@ PortfolioScreen::PortfolioScreen(QWidget* parent) : QWidget(parent) {
                 services::PortfolioService::instance().load_snapshots(portfolio_id);
                 services::PortfolioService::instance().compute_metrics(current_summary_);
             });
+
+    // Account sync (Task 11): the command bar's "Sync accounts" button and
+    // auto-sync-on-open both funnel through AccountSyncService::sync_all() —
+    // it's the only sweep entry point the service exposes (no per-portfolio
+    // sync by id). sync_finished reloads the portfolio list (so newly-synced
+    // accounts / the All Accounts entry appear in the selector) and
+    // refreshes whichever summary is currently on screen.
+    auto& sync_svc = services::AccountSyncService::instance();
+    connect(&sync_svc, &services::AccountSyncService::sync_started, this, [this]() {
+        command_bar_->set_syncing(true);
+    });
+    connect(&sync_svc, &services::AccountSyncService::sync_finished, this, [this]() {
+        command_bar_->set_syncing(false);
+        update_last_synced_label();
+        services::PortfolioService::instance().load_portfolios();
+        if (!selected_id_.isEmpty())
+            services::PortfolioService::instance().refresh_summary(selected_id_);
+    });
 
     // Restore persisted refresh interval (P17)
     {
@@ -236,6 +257,59 @@ const portfolio::HoldingWithQuote* PortfolioScreen::find_holding(const QString& 
             return &h;
     }
     return nullptr;
+}
+
+void PortfolioScreen::update_last_synced_label() {
+    // Queried fresh from the repository (not portfolios_) because
+    // AccountSyncService mirror-writes synced_at directly to the DB without
+    // emitting portfolios_loaded — the cached portfolios_ vector can be
+    // stale immediately after a sync.
+    const auto synced = PortfolioRepository::instance().list_synced();
+    if (synced.isEmpty()) {
+        command_bar_->set_last_synced_text(QString());
+        return;
+    }
+
+    QDateTime newest;
+    for (const auto& p : synced) {
+        if (p.synced_at.isEmpty())
+            continue;
+        const QDateTime t = QDateTime::fromString(p.synced_at, Qt::ISODate);
+        if (t.isValid() && (!newest.isValid() || t > newest))
+            newest = t;
+    }
+
+    if (!newest.isValid()) {
+        command_bar_->set_last_synced_text(tr("Never synced"));
+        return;
+    }
+
+    const qint64 secs = qMax<qint64>(0, newest.secsTo(QDateTime::currentDateTimeUtc()));
+    QString text;
+    if (secs < 60)
+        text = tr("Synced just now");
+    else if (secs < 3600)
+        text = tr("Synced %1m ago").arg(secs / 60);
+    else if (secs < 86400)
+        text = tr("Synced %1h ago").arg(secs / 3600);
+    else
+        text = tr("Synced %1d ago").arg(secs / 86400);
+    command_bar_->set_last_synced_text(text);
+}
+
+void PortfolioScreen::apply_read_only_guard() {
+    const bool is_all_accounts = (selected_id_ == QLatin1String(services::PortfolioService::kAllAccountsId));
+    const bool is_synced = is_all_accounts || !current_summary_.portfolio.sync_source.isEmpty();
+    command_bar_->set_trade_enabled(!is_synced);
+    if (blotter_)
+        blotter_->set_read_only(is_synced);
+    // A BUY/SELL order panel left open from a previous (non-synced)
+    // selection would otherwise still accept a submit — its buy/sell
+    // signals aren't gated by the command bar's disabled buttons.
+    if (is_synced && order_panel_visible_ && order_panel_) {
+        order_panel_visible_ = false;
+        order_panel_->setVisible(false);
+    }
 }
 
 

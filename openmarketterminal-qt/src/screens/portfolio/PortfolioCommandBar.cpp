@@ -1,6 +1,7 @@
 // src/screens/portfolio/PortfolioCommandBar.cpp
 #include "screens/portfolio/PortfolioCommandBar.h"
 
+#include "services/portfolio/PortfolioService.h"
 #include "ui/theme/Theme.h"
 
 #include <QAction>
@@ -92,6 +93,20 @@ void PortfolioCommandBar::build_row1(QHBoxLayout* layout) {
     layout->addWidget(selector_btn_);
 
     layout->addStretch(1);
+
+    // Sync accounts + "last synced" label (left of refresh/interval/overflow).
+    sync_btn_ = new QPushButton(tr("\u27F3 Sync accounts"));
+    sync_btn_->setFixedHeight(22);
+    sync_btn_->setCursor(Qt::PointingHandCursor);
+    sync_btn_->setToolTip(tr("Sync all connected broker/exchange accounts"));
+    sync_btn_->setObjectName("pfSyncBtn");
+    connect(sync_btn_, &QPushButton::clicked, this, &PortfolioCommandBar::sync_accounts_requested);
+    layout->addWidget(sync_btn_);
+
+    last_synced_label_ = new QLabel;
+    last_synced_label_->setObjectName("pfLastSyncedLabel");
+    last_synced_label_->hide(); // shown once a synced portfolio exists
+    layout->addWidget(last_synced_label_);
 
     // Refresh + interval + overflow (right-aligned)
     refresh_btn_ = new QPushButton("\u21BB");
@@ -357,6 +372,17 @@ void PortfolioCommandBar::apply_row1_styles() {
                 "QPushButton:hover { border-color:%4; color:%4; }")
             .arg(ui::colors::BG_RAISED(), ui::colors::TEXT_PRIMARY(), ui::colors::BORDER_MED(), ui::colors::AMBER()));
 
+    sync_btn_->setStyleSheet(
+        QString("QPushButton#pfSyncBtn { background:transparent; color:%1; border:1px solid %2;"
+                "  padding:0 8px; font-size:10px; font-weight:700; letter-spacing:0.4px; }"
+                "QPushButton#pfSyncBtn:hover { border-color:%3; color:%3; }"
+                "QPushButton#pfSyncBtn:disabled { color:%4; border-color:%2; }")
+            .arg(ui::colors::TEXT_SECONDARY(), ui::colors::BORDER_MED(), ui::colors::AMBER(),
+                 ui::colors::TEXT_TERTIARY()));
+
+    last_synced_label_->setStyleSheet(
+        QString("QLabel#pfLastSyncedLabel { color:%1; font-size:10px; }").arg(ui::colors::TEXT_TERTIARY()));
+
     refresh_btn_->setStyleSheet(QString("QPushButton#pfIconBtn { background:transparent; color:%1;"
                                         "  border:1px solid %2; font-size:13px; }"
                                         "QPushButton#pfIconBtn:hover { border-color:%1; color:%1; }"
@@ -429,9 +455,16 @@ void PortfolioCommandBar::toggle_dropdown() {
 }
 
 void PortfolioCommandBar::update_selector_label() {
+    if (selected_id_ == QLatin1String(services::PortfolioService::kAllAccountsId)) {
+        selector_btn_->setText(tr("\u2295 ALL ACCOUNTS  \u25BE"));
+        return;
+    }
     for (const auto& p : portfolios_) {
         if (p.id == selected_id_) {
-            selector_btn_->setText(QString("%1 (%2)  \u25BE").arg(p.name.toUpper(), p.currency));
+            QString label = QString("%1 (%2)").arg(p.name.toUpper(), p.currency);
+            if (!p.sync_source.isEmpty())
+                label += p.sync_error.isEmpty() ? QStringLiteral(" \u21BB") : QStringLiteral(" \u26A0");
+            selector_btn_->setText(label + QStringLiteral("  \u25BE"));
             return;
         }
     }
@@ -443,16 +476,52 @@ void PortfolioCommandBar::update_selector_label() {
 void PortfolioCommandBar::set_portfolios(const QVector<portfolio::Portfolio>& portfolios) {
     portfolios_ = portfolios;
     portfolio_list_->clear();
+
+    // Partition so synced accounts (and the "All Accounts" aggregate they
+    // unlock) surface above manual portfolios, per Task 11 spec ordering.
+    QVector<portfolio::Portfolio> synced, manual;
     for (const auto& p : portfolios) {
-        auto* item = new QListWidgetItem(QString("%1  (%2)").arg(p.name, p.currency));
-        item->setData(Qt::UserRole, p.id);
-        portfolio_list_->addItem(item);
+        if (!p.sync_source.isEmpty())
+            synced.append(p);
+        else
+            manual.append(p);
     }
+
+    if (!synced.isEmpty()) {
+        auto* all_item = new QListWidgetItem(tr("\u2295 All Accounts"));
+        all_item->setData(Qt::UserRole, QString::fromLatin1(services::PortfolioService::kAllAccountsId));
+        QFont f = all_item->font();
+        f.setBold(true);
+        all_item->setFont(f);
+        all_item->setToolTip(tr("Aggregate of every synced account"));
+        portfolio_list_->addItem(all_item);
+    }
+
+    auto add_item = [this](const portfolio::Portfolio& p) {
+        QString label = QString("%1  (%2)").arg(p.name, p.currency);
+        if (!p.sync_source.isEmpty())
+            label += p.sync_error.isEmpty() ? QStringLiteral("  \u21BB") : QStringLiteral("  \u26A0");
+        auto* item = new QListWidgetItem(label);
+        item->setData(Qt::UserRole, p.id);
+        if (!p.sync_source.isEmpty())
+            item->setToolTip(p.sync_error.isEmpty() ? tr("Synced account") : p.sync_error);
+        portfolio_list_->addItem(item);
+    };
+    for (const auto& p : synced)
+        add_item(p);
+    for (const auto& p : manual)
+        add_item(p);
+
     update_selector_label();
 }
 
 void PortfolioCommandBar::set_selected_portfolio(const portfolio::Portfolio& p) {
     selected_id_ = p.id;
+    update_selector_label();
+}
+
+void PortfolioCommandBar::set_selected_all_accounts() {
+    selected_id_ = QString::fromLatin1(services::PortfolioService::kAllAccountsId);
     update_selector_label();
 }
 
@@ -497,6 +566,26 @@ void PortfolioCommandBar::set_refresh_interval(int ms) {
     }
 }
 
+void PortfolioCommandBar::set_syncing(bool syncing) {
+    sync_btn_->setEnabled(!syncing);
+    sync_btn_->setText(syncing ? tr("\u23F3 Syncing\u2026") : tr("\u27F3 Sync accounts"));
+}
+
+void PortfolioCommandBar::set_last_synced_text(const QString& text) {
+    last_synced_label_->setText(text);
+    last_synced_label_->setVisible(!text.isEmpty());
+}
+
+void PortfolioCommandBar::set_trade_enabled(bool enabled) {
+    buy_btn_->setEnabled(enabled);
+    sell_btn_->setEnabled(enabled);
+    div_btn_->setEnabled(enabled);
+    const QString tip = enabled ? QString() : tr("Read-only \u2014 synced account mirror");
+    buy_btn_->setToolTip(tip);
+    sell_btn_->setToolTip(tip);
+    div_btn_->setToolTip(tip);
+}
+
 void PortfolioCommandBar::changeEvent(QEvent* event) {
     if (event->type() == QEvent::LanguageChange)
         retranslateUi();
@@ -516,6 +605,8 @@ void PortfolioCommandBar::retranslateUi() {
     if (search_edit_)   search_edit_->setPlaceholderText(tr("Search portfolios..."));
     if (create_btn_)    create_btn_->setText(tr("+ CREATE NEW"));
     if (delete_btn_)    delete_btn_->setText(tr("DELETE"));
+    if (sync_btn_ && sync_btn_->isEnabled()) sync_btn_->setText(tr("\u27F3 Sync accounts"));
+    if (sync_btn_)       sync_btn_->setToolTip(tr("Sync all connected broker/exchange accounts"));
     if (refresh_btn_)   refresh_btn_->setToolTip(tr("Refresh portfolio data"));
     if (interval_cb_)   interval_cb_->setToolTip(tr("Auto-refresh interval"));
     if (overflow_btn_)  overflow_btn_->setToolTip(tr("More actions"));

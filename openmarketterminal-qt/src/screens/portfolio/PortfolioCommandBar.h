@@ -21,11 +21,26 @@ class PortfolioCommandBar : public QWidget {
 
     void set_portfolios(const QVector<portfolio::Portfolio>& portfolios);
     void set_selected_portfolio(const portfolio::Portfolio& p);
+    /// Selects the virtual "All Accounts" aggregate (PortfolioService::
+    /// kAllAccountsId) — not a real row in @ref portfolios_, so it can't go
+    /// through set_selected_portfolio's by-id lookup.
+    void set_selected_all_accounts();
     void set_refreshing(bool refreshing);
     void set_detail_view(std::optional<portfolio::DetailView> view);
     void set_has_selection(bool has_selection);
     void set_has_portfolios(bool has_portfolios);
     void set_refresh_interval(int ms);
+    /// Toggles the Sync accounts button into a busy state while
+    /// AccountSyncService::sync_all() is running.
+    void set_syncing(bool syncing);
+    /// "Synced Xm ago" / "Never synced" label text; empty hides the label
+    /// (no synced accounts registered yet).
+    void set_last_synced_text(const QString& text);
+    /// Disables BUY/SELL/DIV when the active portfolio is a synced account
+    /// mirror (or the All Accounts aggregate) — read-only guard. DIV is
+    /// included because record_dividend() is a DB write too, and the feature
+    /// is read-only end-to-end. View/analytics actions are unaffected.
+    void set_trade_enabled(bool enabled);
     void refresh_theme();
 
   protected:
@@ -48,6 +63,7 @@ class PortfolioCommandBar : public QWidget {
     void ai_analyze_requested();
     void agent_run_requested();
     void backtest_requested();
+    void sync_accounts_requested();
 
   private:
     void build_ui();
@@ -71,6 +87,10 @@ class PortfolioCommandBar : public QWidget {
     QListWidget* portfolio_list_ = nullptr;
     QPushButton* create_btn_ = nullptr;
     QPushButton* delete_btn_ = nullptr;
+
+    // Account sync
+    QPushButton* sync_btn_ = nullptr;
+    QLabel* last_synced_label_ = nullptr;
 
     // Action buttons
     QPushButton* buy_btn_ = nullptr;

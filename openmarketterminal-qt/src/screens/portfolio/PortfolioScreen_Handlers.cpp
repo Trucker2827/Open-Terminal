@@ -28,6 +28,7 @@
 #include "screens/portfolio/PortfolioStatusBar.h"
 #include "screens/portfolio/PortfolioTxnPanel.h"
 #include "services/file_manager/FileManagerService.h"
+#include "services/portfolio/AccountSyncService.h"
 #include "services/portfolio/PortfolioService.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
@@ -54,6 +55,7 @@ namespace openmarketterminal::screens {
 void PortfolioScreen::on_portfolios_loaded(QVector<portfolio::Portfolio> portfolios) {
     portfolios_ = portfolios;
     command_bar_->set_portfolios(portfolios);
+    update_last_synced_label();
 
     if (portfolios.isEmpty()) {
         command_bar_->set_has_portfolios(false);
@@ -73,6 +75,8 @@ void PortfolioScreen::on_portfolio_selected(const QString& id) {
     if (id == selected_id_ && summary_loaded_)
         return;
 
+    const bool is_all_accounts = (id == QLatin1String(services::PortfolioService::kAllAccountsId));
+
     selected_id_ = id;
     ScreenStateManager::instance().notify_changed(this);
     summary_loaded_ = false;
@@ -83,17 +87,33 @@ void PortfolioScreen::on_portfolio_selected(const QString& id) {
     if (blotter_)
         blotter_->set_sector_filter({});
 
-    // Find portfolio and update UI
-    for (const auto& p : portfolios_) {
-        if (p.id == id) {
-            command_bar_->set_selected_portfolio(p);
-            status_bar_->set_portfolio_name(p.name);
-            break;
+    // Find portfolio and update UI. "All Accounts" is a virtual view with no
+    // row in portfolios_, so it goes through a dedicated selector setter.
+    bool is_synced_portfolio = false;
+    if (is_all_accounts) {
+        command_bar_->set_selected_all_accounts();
+        status_bar_->set_portfolio_name(tr("All Accounts"));
+    } else {
+        for (const auto& p : portfolios_) {
+            if (p.id == id) {
+                command_bar_->set_selected_portfolio(p);
+                status_bar_->set_portfolio_name(p.name);
+                is_synced_portfolio = !p.sync_source.isEmpty();
+                break;
+            }
         }
     }
 
     update_content_state();
     services::PortfolioService::instance().load_summary(id);
+
+    // Auto-sync (Task 11 step 3): opening a synced portfolio or All Accounts
+    // refreshes its mirrored holdings. sync_all() is the only sweep entry
+    // point AccountSyncService exposes — there's no sync-by-portfolio-id —
+    // so both cases route through it; sync_finished (wired in the ctor)
+    // reloads the portfolio list and refreshes whatever's active.
+    if (is_all_accounts || is_synced_portfolio)
+        services::AccountSyncService::instance().sync_all();
 }
 
 void PortfolioScreen::on_summary_loaded(portfolio::PortfolioSummary summary) {
@@ -109,6 +129,7 @@ void PortfolioScreen::on_summary_loaded(portfolio::PortfolioSummary summary) {
 
     update_main_view_data();
     update_content_state();
+    apply_read_only_guard();
 
     // Auto-select highest weighted holding if none selected
     if (selected_symbol_.isEmpty() && !summary.holdings.isEmpty()) {
@@ -258,6 +279,10 @@ void PortfolioScreen::on_refresh_interval_changed(int ms) {
 }
 
 void PortfolioScreen::request_refresh() {
+    // Piggy-back the "Synced Xm ago" label recompute on the existing refresh
+    // tick rather than adding a second timer — it's a cheap DB read and only
+    // needs roughly refresh_interval_ms_ granularity.
+    update_last_synced_label();
     if (!selected_id_.isEmpty()) {
         command_bar_->set_refreshing(true);
         services::PortfolioService::instance().refresh_summary(selected_id_);
