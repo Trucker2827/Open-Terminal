@@ -967,6 +967,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v057_drop_legacy_fii_dii.cpp
     src/storage/sqlite/migrations/v058_sandbox_position_dedup.cpp
     src/storage/sqlite/migrations/v059_sandbox_position_dedup_repair.cpp
+    src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -2366,6 +2367,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v057_drop_legacy_fii_dii.cpp
     src/storage/sqlite/migrations/v058_sandbox_position_dedup.cpp
     src/storage/sqlite/migrations/v059_sandbox_position_dedup_repair.cpp
+    src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp

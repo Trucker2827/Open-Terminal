@@ -147,6 +147,15 @@ target_include_directories(tst_pm_paper PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_pm_paper PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_pm_paper COMMAND tst_pm_paper)
 
+# Portfolio Account Sync Task 1 — the v060 migration (portfolios.sync_source /
+# synced_at / sync_error, portfolio_assets.has_cost_basis). Brings up a real
+# DB under a QTemporaryDir HOME via HeadlessRuntime (same link set as
+# tst_pm_paper).
+add_executable(tst_portfolio_account_sync_migration tst_portfolio_account_sync_migration.cpp)
+target_include_directories(tst_portfolio_account_sync_migration PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_account_sync_migration PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_portfolio_account_sync_migration COMMAND tst_portfolio_account_sync_migration)
+
 # AI-Trading Substrate Phase C Task 1 — kill switch + allowed-account
 # constitution: the SettingsGate readers (cli_kill_switch_engaged /
 # cli_allowed_account), the kill-switch short-circuit in BOTH order-flow
