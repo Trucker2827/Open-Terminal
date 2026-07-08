@@ -95,8 +95,20 @@ void AccountSyncService::sync_account(const AccountRef& ref, IAccountSource* src
     }
 
     const auto current_assets_r = repo.get_assets(pid);
-    const auto current_assets =
-        current_assets_r.is_ok() ? current_assets_r.value() : QVector<portfolio::PortfolioAsset>{};
+    if (current_assets_r.is_err()) {
+        // Same never-wipe-on-failure contract as the fetch-failure branch
+        // above: a read failure here must not be treated as "portfolio is
+        // empty" — that would make every fetched holding look like a new
+        // asset and corrupt the mirror via add_asset's UPSERT-averaging.
+        const auto current = repo.find_by_sync_source(ref.sync_source);
+        const QString synced_at = current.has_value() ? current->synced_at : QString();
+        const QString error = QStringLiteral("failed to read current holdings: ") +
+                               QString::fromStdString(current_assets_r.error());
+        repo.set_sync_meta(pid, ref.sync_source, synced_at, error);
+        emit account_synced(ref.sync_source, false, error);
+        return;
+    }
+    const auto& current_assets = current_assets_r.value();
     const auto plan = portfolio::reconcile_mirror(current_assets, res.holdings);
 
     for (const auto& h : plan.to_add)

@@ -68,6 +68,31 @@ class TstCryptoAccountSource : public QObject {
         QCOMPARE(cash->native_currency, QStringLiteral("USD"));
     }
 
+    void fetch_uppercases_lowercase_ccy_keys_to_canonical_form() {
+        // Guards against reconcile_mirror thrash: PortfolioRepository stores
+        // symbols via .toUpper(), so a lowercase canonical_symbol from the
+        // source would look "new" against the stored uppercase row forever.
+        CryptoAccountSource src([](const QString& exchange_id) -> QJsonObject {
+            Q_UNUSED(exchange_id);
+            QJsonObject balances;
+            balances["btc"] = QJsonObject{{"total", 0.3}};
+            balances["usd"] = QJsonObject{{"total", 100}};
+            return QJsonObject{{"balances", balances}};
+        });
+
+        const auto r = src.fetch(AccountRef{"crypto:coinbase", "Coinbase", "USD"});
+        QVERIFY(r.ok);
+        QCOMPARE(r.holdings.size(), qsizetype{2});
+
+        const auto* btc = find_hold(r.holdings, "BTC-USD");
+        QVERIFY(btc);
+        QCOMPARE(btc->quantity, 0.3);
+
+        const auto* cash = find_hold(r.holdings, "$CASH:USD");
+        QVERIFY(cash);
+        QCOMPARE(cash->quantity, 100.0);
+    }
+
     void fetch_fails_without_partial_mirror_on_error_response() {
         CryptoAccountSource src([](const QString&) -> QJsonObject { return QJsonObject{{"error", "auth failed"}}; });
 

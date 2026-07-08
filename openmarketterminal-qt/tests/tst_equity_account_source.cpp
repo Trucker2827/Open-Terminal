@@ -24,6 +24,7 @@ namespace {
 class FakeBroker : public trading::IBroker {
   public:
     bool holdings_should_fail = false;
+    bool use_lowercase_symbol = false;
 
     trading::BrokerId id() const override { return trading::BrokerId::Alpaca; }
     const char* name() const override { return "FakeBroker"; }
@@ -56,7 +57,7 @@ class FakeBroker : public trading::IBroker {
             return {false, std::nullopt, "fixture: get_holdings failed"};
 
         trading::BrokerHolding aapl;
-        aapl.symbol = "AAPL";
+        aapl.symbol = use_lowercase_symbol ? "aapl" : "AAPL";
         aapl.exchange = "NASDAQ";
         aapl.quantity = 10;
         aapl.avg_price = 150.0;
@@ -136,6 +137,24 @@ class TstEquityAccountSource : public QObject {
         const auto* msft = find_hold(r.holdings, "MSFT");
         QVERIFY(msft);
         QCOMPARE(msft->avg_cost, 300.0);
+    }
+
+    void fetch_uppercases_lowercase_broker_symbol_to_canonical_form() {
+        // Guards against reconcile_mirror thrash: PortfolioRepository stores
+        // symbols via .toUpper(), so a lowercase canonical_symbol from the
+        // source would look "new" against the stored uppercase row forever.
+        FakeBroker fake;
+        fake.use_lowercase_symbol = true;
+        EquityAccountSource src([&](const QString&, trading::BrokerCredentials&) -> trading::IBroker* {
+            return &fake;
+        });
+
+        const auto r = src.fetch(AccountRef{"broker:acct1", "Alpaca", "USD"});
+        QVERIFY(r.ok);
+
+        const auto* aapl = find_hold(r.holdings, "AAPL");
+        QVERIFY(aapl);
+        QCOMPARE(aapl->quantity, 10.0);
     }
 
     void fetch_fails_without_partial_mirror_when_get_holdings_errors() {

@@ -97,21 +97,29 @@ portfolio::FetchResult CryptoAccountSource::fetch(const AccountRef& ref) {
     QVector<portfolio::SyncedHolding> holdings;
     for (auto it = balances.constBegin(); it != balances.constEnd(); ++it) {
         const QString ccy = it.key();
+        // PortfolioRepository::add_asset/remove_asset normalize the stored
+        // symbol via .toUpper() — reconcile_mirror matches canonical_symbol
+        // against that stored form case-sensitively, so canonical_symbol
+        // must be uppercased at the source. fiat_currencies() is also an
+        // uppercase set, so the classification check must compare against
+        // the uppercased currency too, or a lowercase fiat key (e.g. "usd")
+        // would be misclassified as a coin.
+        const QString ccy_upper = ccy.toUpper();
         const double total = it.value().toObject().value("total").toDouble();
         if (total == 0.0)
             continue;
 
-        if (fiat_currencies().contains(ccy)) {
+        if (fiat_currencies().contains(ccy_upper)) {
             portfolio::SyncedHolding cash;
-            cash.canonical_symbol = QStringLiteral("$CASH:") + ccy;
+            cash.canonical_symbol = QStringLiteral("$CASH:") + ccy_upper;
             cash.quantity = total;
             cash.avg_cost = 1.0;
             cash.has_cost_basis = false;
-            cash.native_currency = ccy;
+            cash.native_currency = ccy_upper;
             holdings.append(cash);
         } else {
             portfolio::SyncedHolding sh;
-            sh.canonical_symbol = ccy + QStringLiteral("-USD");
+            sh.canonical_symbol = ccy_upper + QStringLiteral("-USD");
             sh.quantity = total;
             sh.avg_cost = 0.0;
             sh.has_cost_basis = false;

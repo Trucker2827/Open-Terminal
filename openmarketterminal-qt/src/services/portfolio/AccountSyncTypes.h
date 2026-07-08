@@ -35,12 +35,6 @@ struct FetchResult {         // an account source returns this
     QVector<SyncedHolding> holdings;
 };
 
-struct MirrorAction {
-    enum Kind { Add, Update, Remove } kind;
-    SyncedHolding holding;
-    QString symbol;
-};
-
 struct MirrorPlan {
     QVector<SyncedHolding> to_add;
     QVector<SyncedHolding> to_update;

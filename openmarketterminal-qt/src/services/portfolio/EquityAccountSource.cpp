@@ -77,7 +77,11 @@ portfolio::FetchResult EquityAccountSource::fetch(const AccountRef& ref) {
     QVector<portfolio::SyncedHolding> holdings;
     for (const auto& h : holdings_resp.data.value_or(QVector<trading::BrokerHolding>{})) {
         portfolio::SyncedHolding sh;
-        sh.canonical_symbol = h.symbol;
+        // PortfolioRepository::add_asset/remove_asset normalize the stored
+        // symbol via .toUpper() — reconcile_mirror matches canonical_symbol
+        // against that stored form case-sensitively, so canonical_symbol must
+        // be uppercased at the source to avoid spurious add/remove thrash.
+        sh.canonical_symbol = h.symbol.toUpper();
         sh.quantity = h.quantity;
         sh.avg_cost = h.avg_price;
         sh.has_cost_basis = true;
