@@ -140,6 +140,12 @@ class MarketDataService : public QObject
     /// cheap synchronous lookup.
     QString currency_prefix(const QString& symbol);
 
+    /// ISO 4217 currency code for a symbol's listing (e.g. "AAPL" → "USD",
+    /// "RY.TO" → "CAD"), or empty when not yet resolved. Read from the same
+    /// disk-backed cache populated by `resolve_names`, so this is a cheap
+    /// synchronous lookup used for FX conversion in the portfolio.
+    QString currency_code(const QString& symbol);
+
     static QVector<MarketCategory> default_global_markets();
     static QVector<RegionalMarket> default_regional_markets();
 

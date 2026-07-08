@@ -148,10 +148,16 @@ class PortfolioService : public QObject {
     /// Common "I have quotes, build the summary and emit" path used by both
     /// the broker and yfinance routes. quote_map is keyed by the asset's
     /// canonical (yfinance) `symbol` field.
+    /// @p symbol_rates maps an asset symbol to the multiplier converting its
+    /// native listing currency into the portfolio's base currency: 1.0 for
+    /// base-currency holdings, the FX rate for foreign ones, and <= 0 when the
+    /// rate is not yet resolved (blocks the NAV snapshot). Empty (the broker
+    /// path) means no conversion — every rate 1.0.
     void finalize_summary(const QString& portfolio_id,
                           const QVector<portfolio::PortfolioAsset>& assets,
                           const portfolio::Portfolio& portfolio,
-                          const QHash<QString, QuoteData>& quote_map);
+                          const QHash<QString, QuoteData>& quote_map,
+                          const QHash<QString, double>& symbol_rates = {});
 
     /// Try to fetch live quotes via the broker linked to `portfolio.broker_account_id`.
     /// On success, calls finalize_summary with broker-sourced QuoteData.

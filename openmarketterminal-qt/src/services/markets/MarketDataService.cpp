@@ -828,6 +828,11 @@ void MarketDataService::persist_name_cache() {
 
 // ISO 4217 code → display symbol. Falls back to "<CODE> " so an unmapped but
 // valid currency still reads sensibly (e.g. "SEK 142.50").
+QString MarketDataService::currency_code(const QString& symbol) {
+    load_name_cache();
+    return currency_cache_.value(symbol);
+}
+
 QString MarketDataService::currency_prefix(const QString& symbol) {
     load_name_cache();
     const QString code = currency_cache_.value(symbol);

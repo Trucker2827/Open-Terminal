@@ -86,14 +86,37 @@ void PortfolioService::build_summary(const QString& portfolio_id, const QVector<
         return;
 
     // ── yfinance path (legacy / unlinked portfolios) ─────────────────────────
+    auto& mds = MarketDataService::instance();
+    const QString base_ccy = portfolio.currency.isEmpty() ? QStringLiteral("USD") : portfolio.currency;
+
     QStringList symbols;
     symbols.reserve(assets.size());
     for (const auto& a : assets)
         symbols.append(a.symbol);
 
+    // Ensure each holding's listing currency is resolved (populates the currency
+    // cache read below). Fire-and-forget — a first-ever foreign symbol converts
+    // at 1.0 with its snapshot blocked until this lands, then self-corrects.
+    mds.resolve_names(symbols, [](const QHash<QString, QString>&) {});
+
+    // Fetch holdings + any FX pairs needed to convert foreign holdings into the
+    // base currency, in a single batch. native_ccy is captured so the callback
+    // can map each symbol to its resolved rate.
+    QHash<QString, QString> native_ccy;
+    QStringList fetch = symbols;
+    for (const auto& a : assets) {
+        const QString ccy = mds.currency_code(a.symbol);
+        native_ccy.insert(a.symbol, ccy);
+        if (!ccy.isEmpty() && ccy != base_ccy) {
+            const QString pair = ccy + base_ccy + QStringLiteral("=X");
+            if (!fetch.contains(pair))
+                fetch.append(pair);
+        }
+    }
+
     QPointer<PortfolioService> self = this;
-    MarketDataService::instance().fetch_quotes(symbols, [self, portfolio_id, assets,
-                                                         portfolio](bool ok, QVector<QuoteData> quotes) {
+    mds.fetch_quotes(fetch, [self, portfolio_id, assets, portfolio, base_ccy,
+                             native_ccy](bool ok, QVector<QuoteData> quotes) {
         if (!self)
             return;
         QHash<QString, QuoteData> quote_map;
@@ -101,7 +124,22 @@ void PortfolioService::build_summary(const QString& portfolio_id, const QVector<
             for (const auto& q : quotes)
                 quote_map[q.symbol] = q;
         }
-        self->finalize_summary(portfolio_id, assets, portfolio, quote_map);
+        // Resolve each holding's native->base FX rate: 1.0 for base-currency,
+        // the FX pair's price for foreign, 0.0 (blocks the snapshot) when the
+        // currency is unknown or the FX pair didn't load.
+        QHash<QString, double> symbol_rates;
+        for (const auto& a : assets) {
+            const QString ccy = native_ccy.value(a.symbol);
+            if (ccy.isEmpty()) {
+                symbol_rates.insert(a.symbol, 0.0); // currency not resolved yet
+            } else if (ccy == base_ccy) {
+                symbol_rates.insert(a.symbol, 1.0);
+            } else {
+                auto it = quote_map.find(ccy + base_ccy + QStringLiteral("=X"));
+                symbol_rates.insert(a.symbol, (it != quote_map.end() && it->price > 0.0) ? it->price : 0.0);
+            }
+        }
+        self->finalize_summary(portfolio_id, assets, portfolio, quote_map, symbol_rates);
     });
 }
 
@@ -235,14 +273,18 @@ bool PortfolioService::try_broker_quotes(const QString& portfolio_id,
 void PortfolioService::finalize_summary(const QString& portfolio_id,
                                         const QVector<portfolio::PortfolioAsset>& assets,
                                         const portfolio::Portfolio& portfolio,
-                                        const QHash<QString, QuoteData>& quote_map) {
-    // Per-holding pricing + aggregation is a pure function (unit-tested in
-    // tst_portfolio_summary) that also reports how many holdings had no live
-    // quote. Prefer the stored sector; fall back to the resolver cache (which
-    // may populate async — see the sector_resolved handler in the constructor).
+                                        const QHash<QString, QuoteData>& quote_map,
+                                        const QHash<QString, double>& symbol_rates) {
+    // Per-holding pricing + FX conversion + aggregation is a pure function
+    // (unit-tested in tst_portfolio_summary) that reports how many holdings had
+    // no live quote and how many had an unresolved FX rate. Prefer the stored
+    // sector; fall back to the resolver cache (which may populate async — see the
+    // sector_resolved handler in the constructor). symbol_rates converts each
+    // holding into the portfolio's base currency (empty on the broker path → 1.0).
     auto built = portfolio::build_summary(
         assets, portfolio, quote_map,
-        [](const QString& sym) { return SectorResolver::instance().sector_for(sym); });
+        [](const QString& sym) { return SectorResolver::instance().sector_for(sym); },
+        [&symbol_rates](const QString& sym) { return symbol_rates.value(sym, 1.0); });
     portfolio::PortfolioSummary summary = built.summary;
     summary.last_updated = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
@@ -252,22 +294,23 @@ void PortfolioService::finalize_summary(const QString& portfolio_id,
         summary_cache_[portfolio_id] = {summary, QDateTime::currentSecsSinceEpoch()};
     }
 
-    // Save a snapshot for performance history ONLY when every holding was priced
-    // from a live quote. If any fell back to its average buy price, the total
-    // market value contains a fabricated mark; persisting it would permanently
-    // contaminate the NAV history (the perf chart). Snapshots resume next refresh
-    // once all symbols quote.
-    if (built.unpriced_count == 0) {
+    // Save a snapshot for performance history ONLY when the summary is fully
+    // real: every holding priced from a live quote AND converted at a resolved
+    // FX rate. A fabricated mark (unpriced fallback) or a guessed FX rate would
+    // permanently contaminate the NAV history (the perf chart); snapshots resume
+    // next refresh once all symbols quote and their currencies/FX resolve.
+    if (built.snapshot_safe()) {
         QString today = QDate::currentDate().toString(Qt::ISODate);
         PortfolioRepository::instance().save_snapshot(portfolio_id, summary.total_market_value,
                                                       summary.total_cost_basis, summary.total_unrealized_pnl,
                                                       summary.total_unrealized_pnl_percent, today);
     } else {
         LOG_INFO("PortfolioSvc",
-                 QString("Skipping NAV snapshot for %1: %2 of %3 holdings unpriced")
+                 QString("Skipping NAV snapshot for %1: %2/%3 holdings unpriced, %4 with unresolved FX")
                      .arg(portfolio_id)
                      .arg(built.unpriced_count)
-                     .arg(summary.holdings.size()));
+                     .arg(summary.holdings.size())
+                     .arg(built.fx_unresolved_count));
     }
 
     emit summary_loaded(summary);
