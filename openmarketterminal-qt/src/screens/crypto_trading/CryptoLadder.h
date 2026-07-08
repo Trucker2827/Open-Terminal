@@ -1,9 +1,15 @@
 #pragma once
-// Crypto DOM Ladder — custom-painted price ladder (read-only, no order entry).
+// Crypto Ladder — custom-painted order-book ladder (read-only, no order entry).
 //
-// Renders CryptoLadderModel::LadderView as a single price-ordered column with
-// ORDERS | BID | PRICE | ASK | VAP sub-columns. Mirrors CryptoOrderBook's
-// structure: custom paintEvent, timer-throttled update(), theme-change repaint.
+// Renders a side-by-side book from CryptoLadderModel::book_side(): best bids
+// (green) on the left, best asks (red) on the right, each best-first from the
+// top with depth bars growing outward from the center divider —
+// SIZE | BID  ||  ASK | SIZE. Mirrors CryptoOrderBook's structure: custom
+// paintEvent, timer-throttled update(), theme-change repaint.
+//
+// The model also retains a price-axis build() (asks-above/bids-below single
+// column with VAP + orders/avg-entry overlay) that this widget no longer
+// paints, so the DOM view can be restored without rewriting the model.
 
 #include "screens/crypto_trading/CryptoLadderModel.h"
 

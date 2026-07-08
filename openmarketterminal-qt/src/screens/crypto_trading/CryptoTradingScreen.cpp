@@ -325,8 +325,8 @@ void CryptoTradingScreen::setup_ui() {
 
     right_splitter->setChildrenCollapsible(false);
     right_splitter->setStretchFactor(0, 5); // order book gets the useful vertical scan space
-    right_splitter->setStretchFactor(1, 3); // order ticket stays usable but doesn't dominate
-    right_splitter->setSizes({640, 380});
+    right_splitter->setStretchFactor(1, 3); // order ticket stays usable but no longer dominates
+    right_splitter->setSizes({560, 420});
 
     main_splitter->addWidget(right_splitter);
 
