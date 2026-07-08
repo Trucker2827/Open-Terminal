@@ -300,6 +300,13 @@ target_include_directories(tst_crypto_ladder_model PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_crypto_ladder_model PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_ladder_model COMMAND tst_crypto_ladder_model)
 
+# Tiered install Phase 1 — pure tier-state mapping (python/FeatureTier.h
+# tier_state_from). Header-inline pure function; only Qt6::Core + Qt6::Test.
+add_executable(tst_feature_tier tst_feature_tier.cpp)
+target_include_directories(tst_feature_tier PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_feature_tier PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_feature_tier COMMAND tst_feature_tier)
+
 # Portfolio Account Sync Task 4 — pure mirror-reconcile diff
 # (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
 # assets vs freshly fetched broker/exchange holdings -> add/update/remove

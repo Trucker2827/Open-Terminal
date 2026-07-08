@@ -979,6 +979,7 @@ set(PYTHON_SOURCES
     src/python/NotebookKernel.cpp
     src/python/PythonRunner.cpp
     src/python/PythonSetupManager.cpp
+    src/python/FeatureTier.cpp
     src/python/PythonWorker.cpp
     src/python/OptionGreeksWorker.cpp
 )
