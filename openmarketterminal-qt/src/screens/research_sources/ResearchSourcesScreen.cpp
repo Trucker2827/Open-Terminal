@@ -43,7 +43,7 @@ QString status_color(const QString& status) {
 QTableWidgetItem* item(const QString& text, const QString& color = {}) {
     auto* it = new QTableWidgetItem(text);
     it->setFlags(it->flags() & ~Qt::ItemIsEditable);
-    it->setForeground(QColor(color.isEmpty() ? QString(ui::colors::TEXT_PRIMARY) : color));
+    it->setForeground(color.isEmpty() ? QColor(ui::colors::TEXT_PRIMARY()) : QColor(color));
     return it;
 }
 

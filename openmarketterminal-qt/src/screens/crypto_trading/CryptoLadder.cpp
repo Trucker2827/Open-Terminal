@@ -16,15 +16,15 @@ namespace openmarketterminal::screens::crypto {
 
 namespace {
 // Live color accessors — reflect active theme at call time.
-inline QColor kBgBase() { return QColor(ui::colors::BG_BASE); }
-inline QColor kBorderDim() { return QColor(ui::colors::BORDER_DIM); }
-inline QColor kTextSecondary() { return QColor(ui::colors::TEXT_SECONDARY); }
-inline QColor kTextTertiary() { return QColor(ui::colors::TEXT_TERTIARY); }
-inline QColor kTextDim() { return QColor(ui::colors::TEXT_DIM); }
-inline QColor kBid() { return QColor(ui::colors::POSITIVE); }
-inline QColor kAsk() { return QColor(ui::colors::NEGATIVE); }
-inline QColor kRowEven() { return QColor(ui::colors::BG_BASE); }
-inline QColor kRowOdd() { return QColor(ui::colors::ROW_ALT); }
+inline QColor kBgBase() { return QColor(ui::colors::BG_BASE()); }
+inline QColor kBorderDim() { return QColor(ui::colors::BORDER_DIM()); }
+inline QColor kTextSecondary() { return QColor(ui::colors::TEXT_SECONDARY()); }
+inline QColor kTextTertiary() { return QColor(ui::colors::TEXT_TERTIARY()); }
+inline QColor kTextDim() { return QColor(ui::colors::TEXT_DIM()); }
+inline QColor kBid() { return QColor(ui::colors::POSITIVE()); }
+inline QColor kAsk() { return QColor(ui::colors::NEGATIVE()); }
+inline QColor kRowEven() { return QColor(ui::colors::BG_BASE()); }
+inline QColor kRowOdd() { return QColor(ui::colors::ROW_ALT()); }
 inline QColor kBidBar() {
     auto c = kBid();
     c.setAlpha(40);

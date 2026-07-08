@@ -782,7 +782,7 @@ QJsonObject daemon_status_object(const QString& profile) {
     return o;
 }
 
-bool wait_for_daemon_running(const QString& profile, int timeout_ms) {
+[[maybe_unused]] bool wait_for_daemon_running(const QString& profile, int timeout_ms) {
     const int sleep_ms = 250;
     const int tries = std::max(1, timeout_ms / sleep_ms);
     for (int i = 0; i < tries; ++i) {

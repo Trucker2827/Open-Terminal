@@ -15800,13 +15800,17 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
         if (opts.json) {
             rows.append(edge_journal_row_to_json(q));
         } else {
-            std::printf("%-20s %-9s %-14s %-8s %-8s %s\n",
-                        qUtf8Printable(edge_time_text(q.value(1).toLongLong()).left(19)),
-                        qUtf8Printable(q.value(4).toString()),
-                        qUtf8Printable(elide_text(q.value(10).toString(), 14)),
-                        qUtf8Printable(edge_pct(q.value(20).toDouble())),
-                        qUtf8Printable(edge_pct(q.value(15).toDouble())),
-                        qUtf8Printable(elide_text(q.value(25).toString(), 110)));
+            // Hoist qUtf8Printable temporaries into named QByteArrays: MSVC C1001
+            // ICEs on this multi-arg printf-of-nested-temporaries in the release
+            // (/O2 unity) build; naming the temporaries dodges the optimizer bug.
+            const QByteArray c_time = edge_time_text(q.value(1).toLongLong()).left(19).toUtf8();
+            const QByteArray c_sym = q.value(4).toString().toUtf8();
+            const QByteArray c_call = elide_text(q.value(10).toString(), 14).toUtf8();
+            const QByteArray c_conf = edge_pct(q.value(20).toDouble()).toUtf8();
+            const QByteArray c_net = edge_pct(q.value(15).toDouble()).toUtf8();
+            const QByteArray c_reason = elide_text(q.value(25).toString(), 110).toUtf8();
+            std::printf("%-20s %-9s %-14s %-8s %-8s %s\n", c_time.constData(), c_sym.constData(),
+                        c_call.constData(), c_conf.constData(), c_net.constData(), c_reason.constData());
         }
     }
     if (opts.json)
@@ -15975,14 +15979,15 @@ static int edge_journal_replay_command(const GlobalOpts& opts, QStringList args)
                                      {"symbol", o.symbol}, {"call", o.call}, {"outcome", edge_outcome_text(o.outcome)},
                                      {"move", o.move}, {"pnl", step_pnl}, {"cumulative_pnl", pnl}});
         } else {
-            std::printf("%-20s %-9s %-14s %-8s %-8s %10.4f %10.4f\n",
-                        qUtf8Printable(edge_time_text(q.value(1).toLongLong()).left(19)),
-                        qUtf8Printable(o.symbol),
-                        qUtf8Printable(elide_text(o.call, 14)),
-                        qUtf8Printable(edge_outcome_text(o.outcome)),
-                        qUtf8Printable(edge_pct(o.move)),
-                        step_pnl,
-                        pnl);
+            // Hoist qUtf8Printable temporaries into named QByteArrays (MSVC C1001
+            // ICE workaround — same as the other edge_journal row printers).
+            const QByteArray c_time = edge_time_text(q.value(1).toLongLong()).left(19).toUtf8();
+            const QByteArray c_sym = o.symbol.toUtf8();
+            const QByteArray c_call = elide_text(o.call, 14).toUtf8();
+            const QByteArray c_out = edge_outcome_text(o.outcome).toUtf8();
+            const QByteArray c_move = edge_pct(o.move).toUtf8();
+            std::printf("%-20s %-9s %-14s %-8s %-8s %10.4f %10.4f\n", c_time.constData(), c_sym.constData(),
+                        c_call.constData(), c_out.constData(), c_move.constData(), step_pnl, pnl);
         }
     }
     if (opts.json) {
@@ -16354,15 +16359,18 @@ static int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList a
                                     {"matched_order", order.has_value()},
                                     {"order_decision", order_label}});
         } else {
-            std::printf("%-20s %-9s %-14s %-8s %-8s %10.4f %-11s %s\n",
-                        qUtf8Printable(edge_time_text(decision_ts).left(19)),
-                        qUtf8Printable(row_symbol),
-                        qUtf8Printable(elide_text(call, 14)),
-                        qUtf8Printable(result),
-                        qUtf8Printable(scored.is_ok() ? edge_pct(move) : QStringLiteral("-")),
-                        pnl,
-                        qUtf8Printable(elide_text(order_label, 11)),
-                        qUtf8Printable(id.left(8)));
+            // Hoist qUtf8Printable temporaries into named QByteArrays (MSVC C1001
+            // ICE workaround — same as the other edge_journal row printers).
+            const QByteArray c_time = edge_time_text(decision_ts).left(19).toUtf8();
+            const QByteArray c_sym = row_symbol.toUtf8();
+            const QByteArray c_call = elide_text(call, 14).toUtf8();
+            const QByteArray c_result = result.toUtf8();
+            const QByteArray c_move = (scored.is_ok() ? edge_pct(move) : QStringLiteral("-")).toUtf8();
+            const QByteArray c_order = elide_text(order_label, 11).toUtf8();
+            const QByteArray c_id = id.left(8).toUtf8();
+            std::printf("%-20s %-9s %-14s %-8s %-8s %10.4f %-11s %s\n", c_time.constData(), c_sym.constData(),
+                        c_call.constData(), c_result.constData(), c_move.constData(), pnl, c_order.constData(),
+                        c_id.constData());
         }
     }
 
