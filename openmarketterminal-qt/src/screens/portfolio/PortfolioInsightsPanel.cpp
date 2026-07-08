@@ -1,5 +1,6 @@
 // src/screens/portfolio/PortfolioInsightsPanel.cpp
 #include "screens/portfolio/PortfolioInsightsPanel.h"
+#include "screens/portfolio/PortfolioAgentFilter.h"
 
 #include "services/llm/LlmService.h"
 #include "core/logging/Logger.h"
@@ -8,6 +9,7 @@
 #include "ui/markdown/MarkdownRenderer.h"
 #include "ui/theme/Theme.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QEvent>
@@ -393,6 +395,17 @@ QWidget* PortfolioInsightsPanel::build_agent_page() {
     });
     cl->addWidget(agent_cb_);
 
+    // Filter toggle: the list is filtered to the portfolio's asset classes by
+    // default; this reveals the hidden (equity/fx-only) agents.
+    agent_show_all_ = new QCheckBox(tr("Show all agents"));
+    agent_show_all_->setStyleSheet(QString("QCheckBox { color:%1; font-size:9px; }").arg(text3));
+    agent_show_all_->hide(); // shown by reload_agents when something is hidden
+    connect(agent_show_all_, &QCheckBox::toggled, this, [this](bool on) {
+        show_all_agents_ = on;
+        reload_agents();
+    });
+    cl->addWidget(agent_show_all_);
+
     agent_desc_ = new QLabel;
     agent_desc_->setWordWrap(true);
     agent_desc_->setStyleSheet(QString("color:%1; font-size:10px; line-height:1.5;").arg(text2));
@@ -438,6 +451,8 @@ void PortfolioInsightsPanel::set_summary(const portfolio::PortfolioSummary& summ
         // away and back (or restarting the app) shows the saved results.
         set_ai_type(ai_type_);
         restore_agent_view();
+        // Re-filter the agent list to the new portfolio's asset classes.
+        reload_agents();
     }
 }
 
@@ -589,12 +604,33 @@ void PortfolioInsightsPanel::reload_agents() {
     // into thinking only those agents are available.
     const auto cached = services::AgentService::instance().cached_agents();
     if (!cached.isEmpty()) {
+        // Filter the (large) agent list to the asset classes this portfolio
+        // actually holds — a crypto book shouldn't be offered equity
+        // value-investor or FX agents. "Show all" bypasses it.
+        QStringList symbols;
+        for (const auto& h : summary_.holdings)
+            symbols << h.symbol;
+        const QSet<QString> held = portfolio::portfolio_asset_classes(symbols);
+
+        int hidden = 0;
         for (const auto& a : cached) {
+            if (!show_all_agents_ && !portfolio::agent_matches_holdings(a.asset_classes, held)) {
+                ++hidden;
+                continue;
+            }
             const QString label = a.category.isEmpty()
                                       ? a.name
                                       : QString("[%1] %2").arg(a.category, a.name);
             agent_cb_->addItem(label, a.id);
             agent_cb_->setItemData(agent_cb_->count() - 1, a.description, Qt::UserRole + 1);
+        }
+        if (agent_show_all_) {
+            agent_show_all_->blockSignals(true);
+            agent_show_all_->setChecked(show_all_agents_);
+            agent_show_all_->setText(hidden > 0 ? tr("Show all agents (%1 hidden)").arg(hidden)
+                                                : tr("Show all agents"));
+            agent_show_all_->setVisible(hidden > 0 || show_all_agents_);
+            agent_show_all_->blockSignals(false);
         }
     } else {
         // Cache cold — show a disabled "discovering" placeholder and kick

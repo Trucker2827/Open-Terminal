@@ -203,6 +203,8 @@ QVector<AgentInfo> AgentService::cached_agents() const {
         info.config = o["config"].toObject();
         for (const auto& c : o["capabilities"].toArray())
             info.capabilities.append(c.toString());
+        for (const auto& ac : o["asset_classes"].toArray())
+            info.asset_classes.append(ac.toString());
         agents.append(info);
     }
     return agents;

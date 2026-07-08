@@ -58,6 +58,8 @@ void AgentService::discover_agents() {
                 info.config = o["config"].toObject();
                 for (const auto& c : o["capabilities"].toArray())
                     info.capabilities.append(c.toString());
+                for (const auto& ac : o["asset_classes"].toArray())
+                    info.asset_classes.append(ac.toString());
                 agents.append(info);
             }
             QVector<AgentCategory> categories;
@@ -105,6 +107,8 @@ void AgentService::discover_agents() {
             QJsonArray caps = o["capabilities"].toArray();
             for (const auto& c : caps)
                 info.capabilities.append(c.toString());
+            for (const auto& ac : o["asset_classes"].toArray())
+                info.asset_classes.append(ac.toString());
 
             agents.append(info);
             cat_counts[info.category]++;
@@ -161,6 +165,10 @@ void AgentService::discover_agents() {
             for (const auto& c : a.capabilities)
                 caps.append(c);
             o["capabilities"] = caps;
+            QJsonArray acs;
+            for (const auto& ac : a.asset_classes)
+                acs.append(ac);
+            o["asset_classes"] = acs;
             agents_arr.append(o);
         }
         QJsonArray cats_arr;

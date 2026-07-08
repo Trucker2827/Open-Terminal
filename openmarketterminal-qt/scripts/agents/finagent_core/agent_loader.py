@@ -100,6 +100,28 @@ class AgentCard:
             class_name=data.get("class_name")
         )
 
+    def asset_classes(self) -> List[str]:
+        """Which asset classes this agent is relevant to, so the UI can filter
+        the (large) agent list to what a portfolio actually holds. "*" = general
+        / cross-asset (always shown). Classified from category + id/name keywords
+        in one place. Values: "equity", "fx", "crypto", "*"."""
+        cid = (self.id or "").lower()
+        nm = (self.name or "").lower()
+        cat = (self.category or "").lower()
+        text = cid + " " + nm + " " + " ".join(c.lower() for c in (self.capabilities or []))
+        # FX / currency specialists
+        if "currency" in text or "fx_pairs" in text or "central_bank" in cid or "central bank" in nm:
+            return ["fx"]
+        # Equity-specific: value-investor personas + equity analysts + equity-only lenses
+        if cat in ("traderinvestorsagent", "analysis"):
+            return ["equity"]
+        if any(k in cid for k in ("supply_chain", "innovation_disruption",
+                                  "institutional_flow", "renaissance")):
+            return ["equity"]
+        # Everything else (portfolio, macro, geopolitical, sentiment, behavioral,
+        # regulatory, economic, trading/polymarket, ...) is cross-asset.
+        return ["*"]
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -109,6 +131,7 @@ class AgentCard:
             "version": self.version,
             "provider": self.provider,
             "capabilities": self.capabilities,
+            "asset_classes": self.asset_classes(),
             "config": self.config,
             "module_path": self.module_path,
             "class_name": self.class_name

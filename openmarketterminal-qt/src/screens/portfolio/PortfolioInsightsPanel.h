@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QWidget>
 
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -84,6 +85,8 @@ class PortfolioInsightsPanel : public QWidget {
 
     // Agent page
     QComboBox* agent_cb_ = nullptr;
+    QCheckBox* agent_show_all_ = nullptr;
+    bool show_all_agents_ = false; // when false, filter agents to held asset classes
     QLabel* agent_desc_ = nullptr;
     QPushButton* agent_run_ = nullptr;
     QLabel* agent_meta_ = nullptr;
