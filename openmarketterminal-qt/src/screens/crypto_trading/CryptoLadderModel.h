@@ -46,8 +46,23 @@ inline double bucket_price(double price, double grouping) {
 
 class CryptoLadderModel {
   public:
+    // fine resolution used to key the session VAP accumulator; independent
+    // of the display grouping passed to build().
+    explicit CryptoLadderModel(double vap_base = 0.1) : vap_base_(vap_base) {}
+
+    // Accumulate traded volume at `price` into the fine-base bucket. Amounts
+    // <= 0 are ignored (no-op trades / defensive against bad ticks).
+    void accumulate_vap(double price, double amount) {
+        if (amount <= 0) return;
+        vap_[bucket_index(price, vap_base_)] += amount;
+    }
+
+    // Clear the session VAP accumulator (e.g. on session/day rollover).
+    void reset_vap() { vap_.clear(); }
+
     // depth: raw {price,size} levels; grouping: display increment; rows_each_side:
-    // rows above and below mid. VAP/orders/avg default-empty until Tasks 2-3.
+    // rows above and below mid. VAP is re-aggregated from the fine-base
+    // accumulator into the display grouping on every build().
     LadderView build(const QVector<QPair<double,double>>& bids,
                      const QVector<QPair<double,double>>& asks,
                      double grouping, int rows_each_side) const {
@@ -66,6 +81,17 @@ class CryptoLadderModel {
         for (const auto& b : bids) bid_by_bucket[bucket_index(b.first, grouping)] += b.second;
         for (const auto& a : asks) ask_by_bucket[bucket_index(a.first, grouping)] += a.second;
 
+        // Re-aggregate the fine-base VAP accumulator into display buckets:
+        // fine index `fi` at vap_base_ maps to fine price fi*vap_base_, whose
+        // display index is bucket_index(fi*vap_base_, grouping). Both sides
+        // stay keyed by integer index, matching the depth keying above.
+        QHash<qint64,double> vap_by_display;
+        for (auto it = vap_.constBegin(); it != vap_.constEnd(); ++it) {
+            const double fine_price = it.key() * vap_base_;
+            const qint64 di = bucket_index(fine_price, grouping);
+            vap_by_display[di] += it.value();
+        }
+
         // rows_each_side above and below the mid bucket, plus the mid bucket
         for (int i = rows_each_side; i >= -rows_each_side; --i) {
             LadderRow r;
@@ -73,11 +99,17 @@ class CryptoLadderModel {
             r.price = idx * grouping;
             r.bid_size = bid_by_bucket.value(idx, 0.0);
             r.ask_size = ask_by_bucket.value(idx, 0.0);
+            r.vap = vap_by_display.value(idx, 0.0);
             v.max_depth = std::max({v.max_depth, r.bid_size, r.ask_size});
+            v.max_vap = std::max(v.max_vap, r.vap);
             v.rows.append(r);
         }
         return v;
     }
+
+  private:
+    double vap_base_ = 0.1;
+    QHash<qint64,double> vap_; // fine-base bucket index -> summed volume
 };
 
 } // namespace openmarketterminal::crypto

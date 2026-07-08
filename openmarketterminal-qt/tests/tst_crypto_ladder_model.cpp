@@ -8,6 +8,7 @@ class TestCryptoLadderModel : public QObject {
     void bucketsPrices();
     void buildBucketsDepthAroundMid();
     void buildBucketsFractionalGrouping();
+    void vapAccumulatesAndReaggregates();
 };
 
 void TestCryptoLadderModel::bucketsPrices() {
@@ -78,6 +79,25 @@ void TestCryptoLadderModel::buildBucketsFractionalGrouping() {
     QVERIFY(qAbs(row30->price - 3.0) < 1e-9);
     QCOMPARE(row30->ask_size, 4.0); // 3.0 + 1.0 summed, not 0
     QCOMPARE(row30->bid_size, 0.0);
+}
+
+void TestCryptoLadderModel::vapAccumulatesAndReaggregates() {
+    CryptoLadderModel m(0.1);
+    m.accumulate_vap(62601.0, 1.5);  // fine bucket 62601.0
+    m.accumulate_vap(62603.0, 2.0);  // fine bucket 62603.0
+    m.accumulate_vap(62601.0, 0.5);  // same fine bucket -> 2.0 total
+    QVector<QPair<double,double>> bids{{62599,1.0}}, asks{{62601,1.0}};
+    auto v = m.build(bids, asks, 10.0, 1); // grouping 10 -> both fine buckets fold into 62600
+    auto row600 = std::find_if(v.rows.begin(), v.rows.end(),
+                               [](const LadderRow& r){ return qAbs(r.price-62600.0)<1e-6; });
+    QVERIFY(row600 != v.rows.end());
+    QCOMPARE(row600->vap, 4.0);        // 2.0 + 2.0 re-aggregated into the 62600 bucket
+    QCOMPARE(v.max_vap, 4.0);
+    m.reset_vap();
+    v = m.build(bids, asks, 10.0, 1);
+    row600 = std::find_if(v.rows.begin(), v.rows.end(),
+                          [](const LadderRow& r){ return qAbs(r.price-62600.0)<1e-6; });
+    QCOMPARE(row600->vap, 0.0);
 }
 
 QTEST_APPLESS_MAIN(TestCryptoLadderModel)
