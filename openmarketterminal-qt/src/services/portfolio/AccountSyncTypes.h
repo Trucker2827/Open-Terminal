@@ -77,4 +77,27 @@ inline MirrorPlan reconcile_mirror(const QVector<PortfolioAsset>& current,
     return plan;
 }
 
+// Pure: union holdings across multiple synced portfolios for the "All
+// Accounts" aggregate view. Duplicate symbols (including per-currency
+// "$CASH:<CCY>" rows) merge by symbol: summed quantity, quantity-weighted
+// average avg_buy_price, has_cost_basis = AND across all contributors,
+// sector/broker_symbol/exchange taken from the first contributor. First-seen
+// order is preserved.
+inline QVector<PortfolioAsset> aggregate_holdings(const QVector<QVector<PortfolioAsset>>& per_portfolio) {
+    QVector<PortfolioAsset> out;
+    QHash<QString, int> idx; // symbol -> index in out
+    for (const auto& pf : per_portfolio) {
+        for (const auto& a : pf) {
+            auto it = idx.find(a.symbol);
+            if (it == idx.end()) { idx.insert(a.symbol, out.size()); out.append(a); continue; }
+            auto& m = out[it.value()];
+            const double q = m.quantity + a.quantity;
+            m.avg_buy_price = (q > 1e-12) ? (m.avg_buy_price * m.quantity + a.avg_buy_price * a.quantity) / q : 0.0;
+            m.quantity = q;
+            m.has_cost_basis = m.has_cost_basis && a.has_cost_basis;
+        }
+    }
+    return out;
+}
+
 } // namespace openmarketterminal::portfolio

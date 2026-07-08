@@ -34,6 +34,12 @@ SyncedHolding mkHold(const QString& canonical_symbol, double quantity, double av
     return h;
 }
 
+const PortfolioAsset* findBySymbol(const QVector<PortfolioAsset>& v, const QString& symbol) {
+    for (const auto& a : v)
+        if (a.symbol == symbol) return &a;
+    return nullptr;
+}
+
 } // namespace
 
 class TestAccountSyncReconcile : public QObject {
@@ -42,6 +48,8 @@ class TestAccountSyncReconcile : public QObject {
     void addsUpdatesRemoves();
     void identicalIsNoop();
     void emptyFetchRemovesAll();
+    void aggregateMergesDuplicateSymbols();
+    void aggregateAndsCostBasis();
 };
 
 // new fetched symbol -> add; qty change -> update; vanished -> remove; identical -> no-op.
@@ -69,6 +77,31 @@ void TestAccountSyncReconcile::emptyFetchRemovesAll() { // successful empty fetc
     QVector<PortfolioAsset> current{mkAsset("AAPL", 10, 100.0)};
     auto plan = reconcile_mirror(current, {});
     QCOMPARE(plan.to_remove, QStringList{"AAPL"});
+}
+
+// duplicate symbol across portfolios -> summed qty, quantity-weighted avg price
+void TestAccountSyncReconcile::aggregateMergesDuplicateSymbols() {
+    QVector<PortfolioAsset> alpaca{mkAsset("AAPL", 10, 100.0)};
+    QVector<PortfolioAsset> ibkr{mkAsset("AAPL", 5, 130.0), mkAsset("BND", 4, 70.0)};
+    auto merged = aggregate_holdings({alpaca, ibkr});
+    // AAPL merged: qty 15, weighted avg = (10*100 + 5*130)/15 = 110
+    auto aapl = findBySymbol(merged, "AAPL");
+    QVERIFY(aapl);
+    QCOMPARE(aapl->quantity, 15.0);
+    QCOMPARE(aapl->avg_buy_price, 110.0);
+    QCOMPARE(merged.size(), qsizetype{2}); // AAPL + BND
+}
+
+// has_cost_basis on the merged row is the AND of all contributors
+void TestAccountSyncReconcile::aggregateAndsCostBasis() {
+    QVector<PortfolioAsset> a{mkAsset("BTC-USD", 1, 0.0)};
+    a[0].has_cost_basis = false;
+    QVector<PortfolioAsset> b{mkAsset("BTC-USD", 2, 0.0)};
+    b[0].has_cost_basis = false;
+    auto merged = aggregate_holdings({a, b});
+    QCOMPARE(merged.size(), qsizetype{1});
+    QCOMPARE(merged[0].quantity, 3.0);
+    QVERIFY(!merged[0].has_cost_basis);
 }
 
 QTEST_APPLESS_MAIN(TestAccountSyncReconcile)
