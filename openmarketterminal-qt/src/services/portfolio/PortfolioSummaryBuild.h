@@ -77,10 +77,12 @@ inline BuiltSummary build_summary(const QVector<PortfolioAsset>& assets,
         // "not resolved yet" — convert at 1.0 for display but block the snapshot.
         const double raw_rate = rate_lookup ? rate_lookup(asset.symbol) : 1.0;
         const double rate = raw_rate > 0.0 ? raw_rate : 1.0;
-        if (raw_rate <= 0.0)
+        const bool fx_resolved = raw_rate > 0.0;
+        if (!fx_resolved)
             ++out.fx_unresolved_count;
 
         HoldingWithQuote h;
+        h.fx_resolved = fx_resolved;
         h.symbol = asset.symbol;
         h.quantity = asset.quantity;
         h.avg_buy_price = asset.avg_buy_price * rate; // base currency

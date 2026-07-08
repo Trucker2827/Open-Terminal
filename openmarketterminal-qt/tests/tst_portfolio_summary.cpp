@@ -138,6 +138,7 @@ void TestPortfolioSummary::foreignHoldingConvertsToBase() {
     QCOMPARE(built.fx_unresolved_count, 0);
     QVERIFY(built.snapshot_safe());
     const auto& h = built.summary.holdings[0];
+    QVERIFY(h.fx_resolved);
     QCOMPARE(h.avg_buy_price, 50.0);        // 100 * 0.5
     QCOMPARE(h.cost_basis, 500.0);          // 10 * 50
     QCOMPARE(h.current_price, 75.0);        // 150 * 0.5
@@ -162,6 +163,7 @@ void TestPortfolioSummary::unresolvedFxRateBlocksSnapshot() {
 
     QCOMPARE(built.fx_unresolved_count, 1);
     QVERIFY(!built.snapshot_safe());
+    QVERIFY(!built.summary.holdings[0].fx_resolved); // flagged for the display badge
     // Converted at 1.0 for display (unconverted), not zeroed.
     QCOMPARE(built.summary.holdings[0].current_price, 150.0);
     QCOMPARE(built.summary.total_market_value, 1500.0);

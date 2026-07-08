@@ -646,12 +646,11 @@ void PortfolioBlotter::populate_table() {
         // CHG%
         auto* chg_item = set_cell(8, cells.day_change_pct, chg_color);
 
-        // Explain the em-dashes on an unpriced row via a hover tooltip.
+        // Explain the em-dashes on a muted (unpriced / FX-unresolved) row.
         if (cells.muted) {
-            const QString tip = portfolio::unpriced_reason();
             for (auto* it : {sym_item, last_item, mv_item, pnl_item, pnl_pct_item, chg_item})
                 if (it)
-                    it->setToolTip(tip);
+                    it->setToolTip(cells.reason);
         }
 
         // TREND — show loaded data, a pending shimmer, or a failure dash

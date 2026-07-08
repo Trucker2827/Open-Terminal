@@ -12,7 +12,8 @@
 using namespace openmarketterminal::portfolio;
 
 namespace {
-HoldingWithQuote holding(double price, double mv, double pnl, double pnl_pct, double chg_pct, bool priced) {
+HoldingWithQuote holding(double price, double mv, double pnl, double pnl_pct, double chg_pct, bool priced,
+                         bool fx_resolved = true) {
     HoldingWithQuote h;
     h.current_price = price;
     h.market_value = mv;
@@ -20,6 +21,7 @@ HoldingWithQuote holding(double price, double mv, double pnl, double pnl_pct, do
     h.unrealized_pnl_percent = pnl_pct;
     h.day_change_percent = chg_pct;
     h.priced = priced;
+    h.fx_resolved = fx_resolved;
     return h;
 }
 } // namespace
@@ -30,6 +32,7 @@ class TestPortfolioDisplay : public QObject {
     void pricedHoldingFormatsNumbers();
     void pricedHoldingSignsNegatives();
     void unpricedHoldingShowsDashes();
+    void fxUnresolvedHoldingShowsDashes();
 };
 
 void TestPortfolioDisplay::pricedHoldingFormatsNumbers() {
@@ -59,6 +62,23 @@ void TestPortfolioDisplay::unpricedHoldingShowsDashes() {
     const auto c = price_dependent_cells(holding(200.0, 1000.0, 0.0, 0.0, 0.0, /*priced=*/false));
     const QString dash = unpriced_cell_placeholder();
     QVERIFY(c.muted);
+    QCOMPARE(c.reason, unpriced_reason());
+    QCOMPARE(c.last, dash);
+    QCOMPARE(c.market_value, dash);
+    QCOMPARE(c.pnl, dash);
+    QCOMPARE(c.pnl_pct, dash);
+    QCOMPARE(c.day_change_pct, dash);
+}
+
+// A priced holding whose FX rate didn't resolve is shown at the native scale
+// (wrong for the base currency), so it must also dash + mute — with a distinct
+// tooltip so the user knows it's an FX gap, not a missing quote.
+void TestPortfolioDisplay::fxUnresolvedHoldingShowsDashes() {
+    const auto c = price_dependent_cells(
+        holding(150.0, 1500.0, 500.0, 50.0, 3.45, /*priced=*/true, /*fx_resolved=*/false));
+    const QString dash = unpriced_cell_placeholder();
+    QVERIFY(c.muted);
+    QCOMPARE(c.reason, fx_unresolved_reason());
     QCOMPARE(c.last, dash);
     QCOMPARE(c.market_value, dash);
     QCOMPARE(c.pnl, dash);
