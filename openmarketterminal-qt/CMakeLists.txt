@@ -2410,6 +2410,16 @@ set_source_files_properties(
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
 )
 
+# CommandDispatch.cpp (~24k lines) triggers an MSVC code-gen internal compiler
+# error (C1001) when compiled inside a unity batch — it recurred across releases
+# and survived a #pragma optimize + printf-arg hoist, confirming it's the giant
+# concatenated TU that trips MSVC, not any single expression. Compile it as its
+# own translation unit so MSVC can generate code for it in isolation.
+set_source_files_properties(
+    src/cli/CommandDispatch.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
+)
+
 # ADS files use anonymous namespaces and heavy Qt meta-object includes —
 # exclude from unity to avoid ODR / symbol clashes in large batches
 set_source_files_properties(

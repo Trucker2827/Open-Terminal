@@ -15818,16 +15818,9 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
     return 0;
 }
 
-// MSVC (/O2, unity release build) hits an internal compiler error (C1001)
-// generating code for this specific function — recurred across releases
-// (v0.3.25 and v0.3.26, always this function's signature). Two independent
-// mitigations, since the ICE is unreproducible off-Windows: (1) disable
-// optimization for this one function on MSVC (harmless — it's a CLI table
-// printer, not a hot path); (2) the printf-arg hoist in the loop body below.
-// The #if guard means zero effect on Clang/GCC (Linux/macOS).
-#if defined(_MSC_VER)
-#pragma optimize("", off)
-#endif
+// NOTE: MSVC C1001-ICEs generating code for this function inside a unity batch
+// (recurred across v0.3.25/v0.3.26). The real fix is compiling CommandDispatch.cpp
+// as its own TU — see SKIP_UNITY_BUILD_INCLUSION for this file in CMakeLists.txt.
 static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList args) {
     QString min_edge_raw;
     QString min_conf_raw;
@@ -15914,9 +15907,8 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
     std::printf("%-20s %-9s %-7s %-9s %-8s %-7s %s\n", "TIME", "SYMBOL", "HZN", "EDGE", "CONF", "TRUST", "ID");
     for (const auto& v : alerts) {
         const auto a = v.toObject();
-        // Hoist the printf args into named locals: this multi-arg std::printf of
-        // interleaved qUtf8Printable temporaries + doubles is the construct MSVC
-        // C1001-ICEs on when generating code for this function.
+        // printf args hoisted into named locals (clearer than interleaving
+        // qUtf8Printable temporaries and doubles directly in the varargs call).
         const QByteArray c_time = a.value("time").toString().left(19).toUtf8();
         const QByteArray c_sym = a.value("symbol").toString().toUtf8();
         const QByteArray c_hzn = a.value("horizon").toString().toUtf8();
@@ -15929,9 +15921,6 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
     }
     return 0;
 }
-#if defined(_MSC_VER)
-#pragma optimize("", on) // re-enable optimization after the C1001 workaround above
-#endif
 
 static int edge_journal_replay_command(const GlobalOpts& opts, QStringList args) {
     QString symbol;
