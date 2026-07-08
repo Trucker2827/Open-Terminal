@@ -13,6 +13,8 @@
 #include "screens/agent_config/TeamsViewPanel.h"
 #include "screens/agent_config/ToolsViewPanel.h"
 #include "screens/agent_config/WorkflowsViewPanel.h"
+#include "screens/setup/TierGate.h"
+#include "python/FeatureTier.h"
 #include "services/agents/AgentService.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "ui/theme/Theme.h"
@@ -91,6 +93,19 @@ void AgentConfigScreen::build_ui() {
     // ensure_panel_built() appends them and sets currentWidget directly.
 
     build_status_bar(root);
+
+    // Graceful degradation: when the AI tier isn't installed, show a TierGate as
+    // the initial view (an "Enable AI & automation" affordance) instead of empty
+    // agent panels. On enable, swap it out and return to normal navigation.
+    if (python::FeatureTier::instance().state(python::Tier::Ai) != python::TierState::Ready) {
+        auto* gate = new TierGate(tr("AI agents"), this);
+        const int idx = view_stack_->addWidget(gate);
+        view_stack_->setCurrentIndex(idx);
+        connect(gate, &TierGate::becameReady, this, [this, gate]() {
+            view_stack_->removeWidget(gate);
+            gate->deleteLater();
+        });
+    }
 }
 
 void AgentConfigScreen::build_nav_bar(QVBoxLayout* root) {
