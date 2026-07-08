@@ -1,7 +1,9 @@
 // src/screens/portfolio/PortfolioCommandBar.cpp
 #include "screens/portfolio/PortfolioCommandBar.h"
 
+#include "services/portfolio/PortfolioAccountMode.h"
 #include "services/portfolio/PortfolioService.h"
+#include "trading/AccountManager.h"
 #include "ui/theme/Theme.h"
 
 #include <QAction>
@@ -499,12 +501,23 @@ void PortfolioCommandBar::set_portfolios(const QVector<portfolio::Portfolio>& po
 
     auto add_item = [this](const portfolio::Portfolio& p) {
         QString label = QString("%1  (%2)").arg(p.name, p.currency);
-        if (!p.sync_source.isEmpty())
-            label += p.sync_error.isEmpty() ? QStringLiteral("  \u21BB") : QStringLiteral("  \u26A0");
+        const bool is_paper = portfolio::sync_source_is_paper(p.sync_source, [](const QString& account_id) {
+            return trading::AccountManager::instance().get_account(account_id).trading_mode;
+        });
+        if (!p.sync_source.isEmpty()) {
+            if (is_paper)
+                label += QStringLiteral("  \u21BB (paper)"); // excluded from All Accounts
+            else
+                label += p.sync_error.isEmpty() ? QStringLiteral("  \u21BB") : QStringLiteral("  \u26A0");
+        }
         auto* item = new QListWidgetItem(label);
         item->setData(Qt::UserRole, p.id);
-        if (!p.sync_source.isEmpty())
-            item->setToolTip(p.sync_error.isEmpty() ? tr("Synced account") : p.sync_error);
+        if (!p.sync_source.isEmpty()) {
+            QString tip = p.sync_error.isEmpty() ? tr("Synced account") : p.sync_error;
+            if (is_paper)
+                tip = tr("Paper (fake-money) account \u2014 excluded from the All Accounts total");
+            item->setToolTip(tip);
+        }
         portfolio_list_->addItem(item);
     };
     for (const auto& p : synced)

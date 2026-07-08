@@ -262,6 +262,13 @@ target_include_directories(tst_portfolio_sync_status PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(tst_portfolio_sync_status PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_sync_status COMMAND tst_portfolio_sync_status)
 
+# Paper/live source classifier (services/portfolio/PortfolioAccountMode) —
+# excludes paper (fake-money) accounts from the All Accounts real-money total.
+add_executable(tst_portfolio_account_mode tst_portfolio_account_mode.cpp)
+target_include_directories(tst_portfolio_account_mode PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_account_mode PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_portfolio_account_mode COMMAND tst_portfolio_account_mode)
+
 # Portfolio Account Sync Task 4 — pure mirror-reconcile diff
 # (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
 # assets vs freshly fetched broker/exchange holdings -> add/update/remove
