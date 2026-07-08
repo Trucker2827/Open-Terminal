@@ -223,7 +223,14 @@ void CryptoLadder::paintEvent(QPaintEvent* /*event*/) {
     if (w <= 0 || h <= 0)
         return;
 
-    const auto v = model_.build(bids_, asks_, grouping_, rows_each_side_, my_orders_, avg_entry_);
+    // Size the row window to the visible panel height and CENTER it on mid, so
+    // the mid + bid/ask depth are always on screen. A fixed row count would let
+    // a short panel show only the topmost rows (all far above mid → all asks,
+    // no depth). rows_each_side each way + the mid row must fit in `avail_h`.
+    const int avail_h = h - COL_HEADER_H;
+    const int visible_rows = std::max(1, avail_h / ROW_H);
+    const int each_side = std::max(1, (visible_rows - 1) / 2);
+    const auto v = model_.build(bids_, asks_, grouping_, each_side, my_orders_, avg_entry_);
 
     // Column widths: ORDERS | BID | PRICE | ASK | VAP
     const int orders_w = static_cast<int>(w * 0.16);

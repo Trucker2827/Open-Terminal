@@ -61,7 +61,6 @@ class CryptoLadder : public QWidget {
     QVector<QPair<double, double>> asks_;
     double grouping_ = 0.1;
     bool grouping_auto_ = true; // true until the user manually picks a grouping
-    int rows_each_side_ = 12;
     QVector<MyOrder> my_orders_;
     double avg_entry_ = 0;
 
