@@ -303,6 +303,15 @@ void CryptoTradingScreen::setup_ui() {
 
     main_splitter->addWidget(center_splitter);
 
+    // DOM LADDER: its own full-height column (Kraken-style), between the chart
+    // and the order book/entry. A depth-of-market ladder needs the whole column
+    // height to show enough price levels each side of mid; stacking it in the
+    // right splitter left it too short. Read-only — depth + session VAP heatmap,
+    // fed from the same orderbook/trades feeds as orderbook_ (see
+    // hub_subscribe_topics / flush_ws_updates / refresh_orderbook). No order entry.
+    ladder_ = new CryptoLadder;
+    main_splitter->addWidget(ladder_);
+
     // RIGHT: Order Book (top) + Order Entry (bottom)
     auto* right_splitter = new QSplitter(Qt::Vertical);
     right_splitter->setObjectName("cryptoRightSplitter");
@@ -311,31 +320,25 @@ void CryptoTradingScreen::setup_ui() {
     orderbook_ = new CryptoOrderBook;
     right_splitter->addWidget(orderbook_);
 
-    // Read-only DOM ladder — depth + session VAP heatmap, fed from the same
-    // orderbook/trades feeds as orderbook_ (see hub_subscribe_topics /
-    // flush_ws_updates / refresh_orderbook). No order-entry interaction.
-    ladder_ = new CryptoLadder;
-    right_splitter->addWidget(ladder_);
-
     order_entry_ = new CryptoOrderEntry;
     order_entry_->set_exchange_id(exchange_id_);
     right_splitter->addWidget(order_entry_);
 
     right_splitter->setChildrenCollapsible(false);
-    right_splitter->setStretchFactor(0, 4); // order book gets the useful vertical scan space
-    right_splitter->setStretchFactor(1, 4); // DOM ladder gets comparable room
-    right_splitter->setStretchFactor(2, 3); // order ticket stays usable but no longer dominates
-    right_splitter->setSizes({420, 420, 420});
+    right_splitter->setStretchFactor(0, 5); // order book gets the useful vertical scan space
+    right_splitter->setStretchFactor(1, 3); // order ticket stays usable but doesn't dominate
+    right_splitter->setSizes({640, 380});
 
     main_splitter->addWidget(right_splitter);
 
-    // Splitter proportions: watchlist 220 | chart stretch | right 290.
+    // Splitter proportions: watchlist 220 | chart stretch | DOM 200 | right 290.
     // Prediction markets live in the dedicated Predictions screen, not in the
     // crypto/bitcoin trading workspace.
-    main_splitter->setSizes({220, 780, 290});
+    main_splitter->setSizes({220, 620, 200, 290});
     main_splitter->setStretchFactor(0, 0);
     main_splitter->setStretchFactor(1, 1);  // chart column absorbs extra width
-    main_splitter->setStretchFactor(2, 0);
+    main_splitter->setStretchFactor(2, 0);  // DOM ladder keeps its fixed width
+    main_splitter->setStretchFactor(3, 0);
 
     main_layout->addWidget(main_splitter, 1);
 
