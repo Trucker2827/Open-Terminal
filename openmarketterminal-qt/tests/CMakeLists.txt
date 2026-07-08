@@ -156,6 +156,14 @@ target_include_directories(tst_portfolio_account_sync_migration PRIVATE ${CMAKE_
 target_link_libraries(tst_portfolio_account_sync_migration PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_portfolio_account_sync_migration COMMAND tst_portfolio_account_sync_migration)
 
+# Trade-history sync (Portfolio Account Sync) Task 1 — the v061 migration
+# (portfolio_transactions.external_id + idx_ptx_external partial unique
+# index). Same bring-up as tst_portfolio_account_sync_migration.
+add_executable(tst_portfolio_trade_history_migration tst_portfolio_trade_history_migration.cpp)
+target_include_directories(tst_portfolio_trade_history_migration PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_portfolio_trade_history_migration PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_portfolio_trade_history_migration COMMAND tst_portfolio_trade_history_migration)
+
 # AI-Trading Substrate Phase C Task 1 — kill switch + allowed-account
 # constitution: the SettingsGate readers (cli_kill_switch_engaged /
 # cli_allowed_account), the kill-switch short-circuit in BOTH order-flow
