@@ -73,6 +73,10 @@ struct HoldingWithQuote {
     double day_change = 0;
     double day_change_percent = 0;
     double weight = 0; // % of total portfolio
+    // False when no live quote was found for this symbol: current_price is a
+    // fallback (avg buy price), so market value / P&L / day change are NOT real.
+    // Consumers can badge it as unpriced; NAV snapshots skip such summaries.
+    bool priced = true;
 };
 
 struct PortfolioSummary {
