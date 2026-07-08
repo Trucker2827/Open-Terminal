@@ -21,6 +21,7 @@
 #include "core/session/SessionManager.h"
 #include "screens/common/ComingSoonScreen.h"
 #include "screens/about/AboutScreen.h"
+#include "screens/setup/EnableTierBanner.h"
 #include "screens/observer/ObserverJournalPanel.h"
 #include "screens/ownership/InsiderTradesScreen.h"
 #include "screens/ownership/InstitutionHoldingsScreen.h"
@@ -184,6 +185,10 @@ void WindowFrame::setup_docking_mode() {
     auto* dock_layout = new QVBoxLayout(dock_wrapper);
     dock_layout->setContentsMargins(0, 0, 0, 0);
     dock_layout->setSpacing(0);
+
+    // Tier-0 opt-in strip: offers to enable AI & automation. Self-hides when
+    // Tier::Ai is already Ready, so it costs nothing once installed.
+    dock_layout->addWidget(new screens::EnableTierBanner(dock_wrapper));
 
     tab_bar_ = new ui::TabBar(dock_wrapper);
     dock_layout->addWidget(tab_bar_);
