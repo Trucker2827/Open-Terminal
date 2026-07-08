@@ -10,6 +10,8 @@ class TestCryptoLadderModel : public QObject {
     void buildBucketsFractionalGrouping();
     void vapAccumulatesAndReaggregates();
     void overlaysOrdersAndAvgEntry();
+    void bookSideRanksAggregatesAndCums();
+    void bookSideRespectsCount();
 };
 
 void TestCryptoLadderModel::bucketsPrices() {
@@ -113,6 +115,45 @@ void TestCryptoLadderModel::overlaysOrdersAndAvgEntry() {
     QCOMPARE(at(62620.0)->my_ask_qty, 0.3);
     QVERIFY(at(62590.0)->is_avg_entry);
     QVERIFY(!at(62600.0)->is_avg_entry);
+}
+
+void TestCryptoLadderModel::bookSideRanksAggregatesAndCums() {
+    CryptoLadderModel m;
+    // Raw bids: two levels fold into the 62,600 bucket (2+1=3); 62,590 has 4.
+    QVector<QPair<double,double>> bids{{62605, 2.0}, {62601, 1.0}, {62592, 4.0}, {62580, 5.0}};
+    const auto b = m.book_side(bids, 10.0, 10, /*is_bid=*/true);
+    // Best-first = descending price: 62600, 62590, 62580.
+    QCOMPARE(b.size(), 3);
+    QCOMPARE(b[0].price, 62600.0);
+    QCOMPARE(b[0].size, 3.0);       // 2.0 + 1.0 aggregated
+    QCOMPARE(b[0].cum, 3.0);        // cumulative from best
+    QCOMPARE(b[1].price, 62590.0);
+    QCOMPARE(b[1].size, 4.0);
+    QCOMPARE(b[1].cum, 7.0);        // 3 + 4
+    QCOMPARE(b[2].price, 62580.0);
+    QCOMPARE(b[2].cum, 12.0);       // 3 + 4 + 5
+
+    // Asks best-first = ascending price.
+    QVector<QPair<double,double>> asks{{62611, 1.0}, {62622, 2.0}, {62615, 3.0}};
+    const auto a = m.book_side(asks, 10.0, 10, /*is_bid=*/false);
+    QCOMPARE(a.size(), 2);          // 62610 (1+3) and 62620 (2)
+    QCOMPARE(a[0].price, 62610.0);
+    QCOMPARE(a[0].size, 4.0);       // 1.0 + 3.0 aggregated
+    QCOMPARE(a[0].cum, 4.0);
+    QCOMPARE(a[1].price, 62620.0);
+    QCOMPARE(a[1].cum, 6.0);
+}
+
+void TestCryptoLadderModel::bookSideRespectsCount() {
+    CryptoLadderModel m;
+    QVector<QPair<double,double>> bids{{62600, 1.0}, {62590, 1.0}, {62580, 1.0}, {62570, 1.0}};
+    const auto b = m.book_side(bids, 10.0, 2, /*is_bid=*/true);
+    QCOMPARE(b.size(), 2);          // only the best 2 buckets
+    QCOMPARE(b[0].price, 62600.0);  // best kept
+    QCOMPARE(b[1].price, 62590.0);
+    // count <= 0 -> empty; empty input -> empty.
+    QVERIFY(m.book_side(bids, 10.0, 0, true).isEmpty());
+    QVERIFY(m.book_side({}, 10.0, 5, true).isEmpty());
 }
 
 QTEST_APPLESS_MAIN(TestCryptoLadderModel)

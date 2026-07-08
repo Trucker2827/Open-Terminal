@@ -30,6 +30,13 @@ struct LadderView {
 
 struct MyOrder { double price = 0; double qty = 0; bool is_buy = false; };
 
+// One aggregated level of a single book side, for the side-by-side book view.
+struct BookLevel {
+    double price = 0; // bucket price (multiple of grouping)
+    double size  = 0; // summed size in this bucket
+    double cum   = 0; // running cumulative size from best -> this level
+};
+
 /// Integer bucket index for `price` at increment `grouping` (grouping > 0).
 /// Used as the sole hash key for accumulation and row lookup so both sides
 /// use an identical integer key — no float last-bit divergence risk.
@@ -131,6 +138,39 @@ class CryptoLadderModel {
             v.rows.append(r);
         }
         return v;
+    }
+
+    // Side-by-side book view: aggregate one side's raw {price,size} levels into
+    // `grouping` price buckets, return the best `count` buckets ordered
+    // best-first (descending price for bids, ascending for asks) with a running
+    // cumulative size. Pure; keyed by the same integer bucket index as build().
+    QVector<BookLevel> book_side(const QVector<QPair<double,double>>& levels,
+                                 double grouping, int count, bool is_bid) const {
+        QVector<BookLevel> out;
+        if (grouping <= 0 || count <= 0)
+            return out;
+        QHash<qint64,double> by_bucket;
+        for (const auto& l : levels) {
+            if (l.first <= 0 || l.second <= 0) continue;
+            by_bucket[bucket_index(l.first, grouping)] += l.second;
+        }
+        QVector<qint64> keys;
+        keys.reserve(by_bucket.size());
+        for (auto it = by_bucket.constBegin(); it != by_bucket.constEnd(); ++it)
+            keys.append(it.key());
+        std::sort(keys.begin(), keys.end(),
+                  [is_bid](qint64 a, qint64 b) { return is_bid ? a > b : a < b; });
+        const int n = std::min<int>(count, keys.size());
+        double cum = 0;
+        for (int i = 0; i < n; ++i) {
+            BookLevel bl;
+            bl.price = keys[i] * grouping;
+            bl.size  = by_bucket.value(keys[i], 0.0);
+            cum += bl.size;
+            bl.cum = cum;
+            out.append(bl);
+        }
+        return out;
     }
 
   private:

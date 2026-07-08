@@ -23,8 +23,6 @@ inline QColor kTextTertiary() { return QColor(ui::colors::TEXT_TERTIARY); }
 inline QColor kTextDim() { return QColor(ui::colors::TEXT_DIM); }
 inline QColor kBid() { return QColor(ui::colors::POSITIVE); }
 inline QColor kAsk() { return QColor(ui::colors::NEGATIVE); }
-inline QColor kAccent() { return QColor(ui::colors::AMBER); }
-inline QColor kCyan() { return QColor(ui::colors::CYAN); }
 inline QColor kRowEven() { return QColor(ui::colors::BG_BASE); }
 inline QColor kRowOdd() { return QColor(ui::colors::ROW_ALT); }
 inline QColor kBidBar() {
@@ -35,16 +33,6 @@ inline QColor kBidBar() {
 inline QColor kAskBar() {
     auto c = kAsk();
     c.setAlpha(40);
-    return c;
-}
-inline QColor kVapBar() {
-    auto c = kCyan();
-    c.setAlpha(55);
-    return c;
-}
-inline QColor kAvgEntryBg() {
-    auto c = kAccent();
-    c.setAlpha(45);
     return c;
 }
 
@@ -223,146 +211,89 @@ void CryptoLadder::paintEvent(QPaintEvent* /*event*/) {
     if (w <= 0 || h <= 0)
         return;
 
-    // Size the row window to the visible panel height and CENTER it on mid, so
-    // the mid + bid/ask depth are always on screen. A fixed row count would let
-    // a short panel show only the topmost rows (all far above mid → all asks,
-    // no depth). rows_each_side each way + the mid row must fit in `avail_h`.
+    // Side-by-side book: best bids (green) on the left, best asks (red) on the
+    // right, each ranked best-first from the top so the tightest quotes sit at
+    // the top of the panel. Raw levels are aggregated into the selected grouping.
     const int avail_h = h - COL_HEADER_H;
-    const int visible_rows = std::max(1, avail_h / ROW_H);
-    const int each_side = std::max(1, (visible_rows - 1) / 2);
-    const auto v = model_.build(bids_, asks_, grouping_, each_side, my_orders_, avg_entry_);
+    const int rows = std::max(1, avail_h / ROW_H);
+    const auto bid_levels = model_.book_side(bids_, grouping_, rows, /*is_bid=*/true);
+    const auto ask_levels = model_.book_side(asks_, grouping_, rows, /*is_bid=*/false);
 
-    // Column widths: ORDERS | BID | PRICE | ASK | VAP
-    const int orders_w = static_cast<int>(w * 0.16);
-    const int bid_w = static_cast<int>(w * 0.24);
-    const int price_w = static_cast<int>(w * 0.20);
-    const int ask_w = static_cast<int>(w * 0.24);
-    const int vap_w = w - orders_w - bid_w - price_w - ask_w;
-    const int x_orders = 0;
-    const int x_bid = x_orders + orders_w;
-    const int x_price = x_bid + bid_w;
-    const int x_ask = x_price + price_w;
-    const int x_vap = x_ask + ask_w;
+    // Columns: [bid size][bid price] | [ask price][ask size]. Prices meet at the
+    // center divider; sizes sit on the outer edges; depth bars grow outward.
+    const int half = w / 2;
+    const int bid_size_w = half / 2;
+    const int bid_price_w = half - bid_size_w;
+    const int ask_price_w = (w - half) / 2;
+    const int ask_size_w = (w - half) - ask_price_w;
+    const int x_bid_size = 0;
+    const int x_bid_price = x_bid_size + bid_size_w;
+    const int x_ask_price = half;
+    const int x_ask_size = x_ask_price + ask_price_w;
 
-    // Column header row
+    // Column header row: SIZE | BID  ||  ASK | SIZE
     p.setPen(kTextDim());
-    p.drawText(QRect(x_orders + 4, y_top, orders_w - 4, COL_HEADER_H), Qt::AlignLeft | Qt::AlignVCenter,
-               tr("ORDERS"));
-    p.drawText(QRect(x_bid, y_top, bid_w - 4, COL_HEADER_H), Qt::AlignRight | Qt::AlignVCenter, tr("BID"));
-    p.drawText(QRect(x_price, y_top, price_w, COL_HEADER_H), Qt::AlignCenter, tr("PRICE"));
-    p.drawText(QRect(x_ask + 4, y_top, ask_w - 4, COL_HEADER_H), Qt::AlignLeft | Qt::AlignVCenter, tr("ASK"));
-    p.drawText(QRect(x_vap, y_top, vap_w - 4, COL_HEADER_H), Qt::AlignRight | Qt::AlignVCenter, tr("VAP"));
+    p.drawText(QRect(x_bid_size + 4, y_top, bid_size_w - 4, COL_HEADER_H), Qt::AlignLeft | Qt::AlignVCenter,
+               tr("SIZE"));
+    p.drawText(QRect(x_bid_price, y_top, bid_price_w - 6, COL_HEADER_H), Qt::AlignRight | Qt::AlignVCenter,
+               tr("BID"));
+    p.drawText(QRect(x_ask_price + 6, y_top, ask_price_w - 6, COL_HEADER_H), Qt::AlignLeft | Qt::AlignVCenter,
+               tr("ASK"));
+    p.drawText(QRect(x_ask_size, y_top, ask_size_w - 4, COL_HEADER_H), Qt::AlignRight | Qt::AlignVCenter,
+               tr("SIZE"));
     p.setPen(kBorderDim());
     p.drawLine(0, y_top + COL_HEADER_H, w, y_top + COL_HEADER_H);
 
     const int rows_y = y_top + COL_HEADER_H;
 
-    if (v.rows.isEmpty()) {
+    if (bid_levels.isEmpty() && ask_levels.isEmpty()) {
         p.setPen(kTextTertiary());
         p.drawText(QRect(0, rows_y, w, h - COL_HEADER_H), Qt::AlignCenter, tr("Waiting for book data..."));
         return;
     }
 
-    const double max_depth = v.max_depth > 0 ? v.max_depth : 1.0;
-    const double max_vap = v.max_vap > 0 ? v.max_vap : 1.0;
+    // Depth bars scale to the largest single-level size across both sides.
+    double max_size = 1.0;
+    for (const auto& l : bid_levels) max_size = std::max(max_size, l.size);
+    for (const auto& l : ask_levels) max_size = std::max(max_size, l.size);
 
-    for (int i = 0; i < v.rows.size(); ++i) {
+    const int n_rows = std::max(bid_levels.size(), ask_levels.size());
+    for (int i = 0; i < n_rows; ++i) {
         const int y = rows_y + i * ROW_H;
         if (y + ROW_H > height())
             break;
-        const auto& row = v.rows[i];
-        const bool is_ask_side = row.price > v.mid;
+        p.fillRect(0, y, w, ROW_H, (i % 2 == 0) ? kRowEven() : kRowOdd());
 
-        const QColor row_bg = row.is_avg_entry ? kAvgEntryBg() : ((i % 2 == 0) ? kRowEven() : kRowOdd());
-        p.fillRect(0, y, w, ROW_H, row_bg);
-
-        // Depth bars, scaled to max_depth: bid grows leftward from the
-        // BID/PRICE boundary, ask grows rightward from the PRICE/ASK boundary.
-        if (row.bid_size > 0) {
-            const int bar_w = static_cast<int>(bid_w * std::min(1.0, row.bid_size / max_depth));
-            p.fillRect(x_bid + bid_w - bar_w, y, bar_w, ROW_H, kBidBar());
-        }
-        if (row.ask_size > 0) {
-            const int bar_w = static_cast<int>(ask_w * std::min(1.0, row.ask_size / max_depth));
-            p.fillRect(x_ask, y, bar_w, ROW_H, kAskBar());
-        }
-
-        // VAP bar, right-aligned, scaled to max_vap.
-        if (row.vap > 0) {
-            const int bar_w = static_cast<int>(vap_w * std::min(1.0, row.vap / max_vap));
-            p.fillRect(x_vap + vap_w - bar_w, y, bar_w, ROW_H, kVapBar());
-        }
-
-        // ORDERS column — resting my_bid_qty / my_ask_qty.
-        if (row.my_bid_qty > 0 || row.my_ask_qty > 0) {
-            QString txt;
-            if (row.my_bid_qty > 0)
-                txt += QString("B %1").arg(row.my_bid_qty, 0, 'f', 3);
-            if (row.my_ask_qty > 0) {
-                if (!txt.isEmpty())
-                    txt += " ";
-                txt += QString("S %1").arg(row.my_ask_qty, 0, 'f', 3);
-            }
-            p.setPen(row.my_bid_qty > 0 ? kBid() : kAsk());
-            p.drawText(QRect(x_orders + 4, y, orders_w - 4, ROW_H), Qt::AlignLeft | Qt::AlignVCenter, txt);
-        }
-
-        // BID size text.
-        if (row.bid_size > 0) {
-            p.setPen(kBid());
-            p.drawText(QRect(x_bid, y, bid_w - 6, ROW_H), Qt::AlignRight | Qt::AlignVCenter,
-                       QString::number(row.bid_size, 'f', 4));
-        }
-
-        // PRICE — bid-side green, ask-side red.
-        p.setPen(row.is_avg_entry ? kAccent() : (is_ask_side ? kAsk() : kBid()));
-        p.drawText(QRect(x_price, y, price_w, ROW_H), Qt::AlignCenter, QString::number(row.price, 'f', 2));
-
-        // ASK size text.
-        if (row.ask_size > 0) {
-            p.setPen(kAsk());
-            p.drawText(QRect(x_ask + 6, y, ask_w - 6, ROW_H), Qt::AlignLeft | Qt::AlignVCenter,
-                       QString::number(row.ask_size, 'f', 4));
-        }
-
-        // VAP value text (drawn over the bar, right-aligned).
-        if (row.vap > 0) {
+        // Bid side (left half): depth bar grows leftward from the center divider.
+        if (i < bid_levels.size()) {
+            const auto& b = bid_levels[i];
+            const int bar_w = static_cast<int>(half * std::min(1.0, b.size / max_size));
+            p.fillRect(half - bar_w, y, bar_w, ROW_H, kBidBar());
             p.setPen(kTextSecondary());
-            p.drawText(QRect(x_vap, y, vap_w - 4, ROW_H), Qt::AlignRight | Qt::AlignVCenter,
-                       QString::number(row.vap, 'f', 2));
+            p.drawText(QRect(x_bid_size + 4, y, bid_size_w - 6, ROW_H), Qt::AlignRight | Qt::AlignVCenter,
+                       QString::number(b.size, 'f', 4));
+            p.setPen(kBid());
+            p.drawText(QRect(x_bid_price, y, bid_price_w - 6, ROW_H), Qt::AlignRight | Qt::AlignVCenter,
+                       QString::number(b.price, 'f', 2));
         }
 
-        if (row.is_avg_entry) {
-            p.setPen(kAccent());
-            p.drawLine(0, y, w, y);
-            p.drawLine(0, y + ROW_H, w, y + ROW_H);
+        // Ask side (right half): depth bar grows rightward from the center divider.
+        if (i < ask_levels.size()) {
+            const auto& a = ask_levels[i];
+            const int bar_w = static_cast<int>((w - half) * std::min(1.0, a.size / max_size));
+            p.fillRect(half, y, bar_w, ROW_H, kAskBar());
+            p.setPen(kAsk());
+            p.drawText(QRect(x_ask_price + 6, y, ask_price_w - 6, ROW_H), Qt::AlignLeft | Qt::AlignVCenter,
+                       QString::number(a.price, 'f', 2));
+            p.setPen(kTextSecondary());
+            p.drawText(QRect(x_ask_size, y, ask_size_w - 4, ROW_H), Qt::AlignRight | Qt::AlignVCenter,
+                       QString::number(a.size, 'f', 4));
         }
     }
 
-    // Column separators.
+    // Center divider between bid and ask sides.
     p.setPen(kBorderDim());
-    p.drawLine(x_bid, y_top, x_bid, height());
-    p.drawLine(x_price, y_top, x_price, height());
-    p.drawLine(x_ask, y_top, x_ask, height());
-    p.drawLine(x_vap, y_top, x_vap, height());
-
-    // Recenter affordance — shown only when the ladder has scrolled away
-    // from the live mid price. Phase 1 keeps attached_ always true (no
-    // scroll/detach interaction is wired up), so this is dormant for now
-    // but the paint path exists for the follow-up task that adds it.
-    if (!attached_) {
-        const QString label = tr("▼ RECENTER");
-        QFontMetrics fm(p.font());
-        const int pad = 8;
-        const int badge_w = fm.horizontalAdvance(label) + pad * 2;
-        const int badge_h = 20;
-        const QRect badge(w - badge_w - 8, y_top + 4, badge_w, badge_h);
-        p.setBrush(kAccent());
-        p.setPen(Qt::NoPen);
-        p.drawRoundedRect(badge, 4, 4);
-        p.setPen(Qt::black);
-        p.drawText(badge, Qt::AlignCenter, label);
-    }
+    p.drawLine(half, y_top, half, height());
 }
 
 } // namespace openmarketterminal::screens::crypto
