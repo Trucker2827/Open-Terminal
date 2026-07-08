@@ -255,6 +255,16 @@ target_include_directories(tst_portfolio_display PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_portfolio_display PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_portfolio_display COMMAND tst_portfolio_display)
 
+# Portfolio Account Sync Task 4 — pure mirror-reconcile diff
+# (services/portfolio/AccountSyncTypes::reconcile_mirror): current portfolio
+# assets vs freshly fetched broker/exchange holdings -> add/update/remove
+# plan, keyed by canonical symbol. Header-only, so the test needs only
+# Qt6::Core (no core lib link), same shape as tst_portfolio_summary.
+add_executable(tst_account_sync_reconcile tst_account_sync_reconcile.cpp)
+target_include_directories(tst_account_sync_reconcile PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_account_sync_reconcile PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_account_sync_reconcile COMMAND tst_account_sync_reconcile)
+
 # Observer journal reader — pure read-only parser of the headless observer's
 # trade-journal.md / observe_history.jsonl. Compiles just the service source
 # (needs only Qt6::Core) against a QTemporaryDir fixture; no core lib bring-up.
