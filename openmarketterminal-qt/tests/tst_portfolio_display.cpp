@@ -13,7 +13,7 @@ using namespace openmarketterminal::portfolio;
 
 namespace {
 HoldingWithQuote holding(double price, double mv, double pnl, double pnl_pct, double chg_pct, bool priced,
-                         bool fx_resolved = true) {
+                         bool fx_resolved = true, bool has_cost_basis = true) {
     HoldingWithQuote h;
     h.current_price = price;
     h.market_value = mv;
@@ -22,6 +22,7 @@ HoldingWithQuote holding(double price, double mv, double pnl, double pnl_pct, do
     h.day_change_percent = chg_pct;
     h.priced = priced;
     h.fx_resolved = fx_resolved;
+    h.has_cost_basis = has_cost_basis;
     return h;
 }
 } // namespace
@@ -33,6 +34,7 @@ class TestPortfolioDisplay : public QObject {
     void pricedHoldingSignsNegatives();
     void unpricedHoldingShowsDashes();
     void fxUnresolvedHoldingShowsDashes();
+    void noCostBasisDashesPnlOnly();
 };
 
 void TestPortfolioDisplay::pricedHoldingFormatsNumbers() {
@@ -84,6 +86,25 @@ void TestPortfolioDisplay::fxUnresolvedHoldingShowsDashes() {
     QCOMPARE(c.pnl, dash);
     QCOMPARE(c.pnl_pct, dash);
     QCOMPARE(c.day_change_pct, dash);
+}
+
+// A holding with no cost basis (e.g. crypto synced from an exchange with no
+// cost-basis data) must still show real LAST/MKT VAL/CHG% — only the P&L
+// columns (which would be fabricated without a cost basis) are dashed, and the
+// row is NOT fully muted since the price/market-value marks are trustworthy.
+void TestPortfolioDisplay::noCostBasisDashesPnlOnly() {
+    auto h = holding(60000.0, 60000.0, 0.0, 0.0, 1.5, /*priced=*/true, /*fx_resolved=*/true);
+    h.has_cost_basis = false;
+    const auto c = price_dependent_cells(h);
+    const QString dash = unpriced_cell_placeholder();
+    QVERIFY(!c.muted);                 // price/market value are real
+    QVERIFY(c.pnl_muted);
+    QCOMPARE(c.last, QString("60000.00"));
+    QCOMPARE(c.market_value, QString("60000.00"));
+    QCOMPARE(c.day_change_pct, QString("+1.50%"));
+    QCOMPARE(c.pnl, dash);
+    QCOMPARE(c.pnl_pct, dash);
+    QCOMPARE(c.reason, no_cost_basis_reason());
 }
 
 QTEST_APPLESS_MAIN(TestPortfolioDisplay)

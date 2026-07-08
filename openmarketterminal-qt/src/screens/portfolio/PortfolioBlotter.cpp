@@ -613,8 +613,9 @@ void PortfolioBlotter::populate_table() {
         // than a misleading "+0.00%" flat position — see PortfolioHoldingDisplay.
         const auto cells = portfolio::price_dependent_cells(h);
         const char* muted = ui::colors::TEXT_TERTIARY;
-        const char* pnl_color =
-            cells.muted ? muted : (h.unrealized_pnl >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
+        const char* pnl_color = (cells.muted || cells.pnl_muted)
+                                     ? muted
+                                     : (h.unrealized_pnl >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
         const char* chg_color =
             cells.muted ? muted : (h.day_change_percent >= 0 ? ui::colors::POSITIVE : ui::colors::NEGATIVE);
 
@@ -649,6 +650,14 @@ void PortfolioBlotter::populate_table() {
         // Explain the em-dashes on a muted (unpriced / FX-unresolved) row.
         if (cells.muted) {
             for (auto* it : {sym_item, last_item, mv_item, pnl_item, pnl_pct_item, chg_item})
+                if (it)
+                    it->setToolTip(cells.reason);
+        }
+
+        // Explain the em-dashes on a P&L-only-muted (no cost basis, e.g. crypto)
+        // row: LAST/MKT VAL/CHG% stay real, only the P&L columns are dashed.
+        if (cells.pnl_muted) {
+            for (auto* it : {pnl_item, pnl_pct_item})
                 if (it)
                     it->setToolTip(cells.reason);
         }

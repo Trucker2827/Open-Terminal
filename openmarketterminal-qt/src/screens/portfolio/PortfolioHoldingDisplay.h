@@ -28,6 +28,9 @@ inline QString unpriced_reason() {
 inline QString fx_unresolved_reason() {
     return QStringLiteral("FX rate not resolved — shown in native currency, not the portfolio base");
 }
+inline QString no_cost_basis_reason() {
+    return QStringLiteral("No cost basis from exchange — P&L unavailable");
+}
 
 /// The price-dependent display strings for one holding row. When `muted` is true
 /// the caller should render these (and ideally the symbol) in a muted colour and
@@ -39,6 +42,7 @@ struct HoldingDisplayCells {
     QString pnl_pct;         ///< P&L% column
     QString day_change_pct;  ///< CHG% column
     bool muted = false;      ///< true when the holding's marks are not trustworthy
+    bool pnl_muted = false;  ///< true when only the P&L columns are dashed (no cost basis)
     QString reason;          ///< tooltip explaining the muting (empty when not muted)
 };
 
@@ -67,6 +71,13 @@ inline HoldingDisplayCells price_dependent_cells(const HoldingWithQuote& h, int 
     c.pnl = signed_num(h.unrealized_pnl);
     c.pnl_pct = signed_num(h.unrealized_pnl_percent) + QStringLiteral("%");
     c.day_change_pct = signed_num(h.day_change_percent) + QStringLiteral("%");
+    if (!h.has_cost_basis) {
+        const QString dash = unpriced_cell_placeholder();
+        c.pnl = dash;
+        c.pnl_pct = dash;
+        c.pnl_muted = true;
+        c.reason = no_cost_basis_reason();
+    }
     return c;
 }
 
