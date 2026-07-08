@@ -18,6 +18,7 @@
 
 #include "core/headless/HeadlessRuntime.h"
 #include "services/portfolio/AccountSyncService.h"
+#include "services/portfolio/PortfolioService.h"
 #include "storage/repositories/PortfolioRepository.h"
 
 using namespace openmarketterminal;
@@ -162,6 +163,41 @@ class TstAccountSyncService : public QObject {
         QVERIFY(sym);
         QCOMPARE(sym->quantity, 10.0);
         QVERIFY(!sym->has_cost_basis);
+    }
+
+    // Task 8: PortfolioService::aggregate_all_accounts_assets() unions holdings
+    // across every synced portfolio (via list_synced() + get_assets() +
+    // aggregate_holdings) — wiring only, the merge math itself is covered by
+    // Task 5's pure aggregate_holdings tests. Two synced portfolios with an
+    // overlapping symbol (AAPL) and one distinct symbol each.
+    void all_accounts_aggregate_unions_synced_portfolios() {
+        auto& svc = AccountSyncService::instance();
+        auto& repo = PortfolioRepository::instance();
+        FakeSource fakeA("broker:acctA");
+        FakeSource fakeB("broker:acctB");
+
+        // Symbols distinct from every other slot's fixtures in this shared-DB
+        // test class (AAPL/MSFT/SYM/$CASH:USD are already used elsewhere and
+        // would silently accumulate into this aggregate across test runs).
+        fakeA.result = ok({hold("GOOG", 10, 100.0, true), hold("NFLX", 3, 200.0, true)});
+        svc.sync_account(fakeA.list_accounts()[0], &fakeA);
+
+        fakeB.result = ok({hold("GOOG", 5, 120.0, true), hold("IBM", 8, 50.0, true)});
+        svc.sync_account(fakeB.list_accounts()[0], &fakeB);
+
+        QVERIFY(repo.find_by_sync_source("broker:acctA").has_value());
+        QVERIFY(repo.find_by_sync_source("broker:acctB").has_value());
+
+        auto& psvc = PortfolioService::instance();
+        auto assets = psvc.aggregate_all_accounts_assets();
+
+        auto* goog = findBySymbol(assets, "GOOG");
+        QVERIFY(goog);
+        QCOMPARE(goog->quantity, 15.0); // 10 (acctA) + 5 (acctB) summed
+        QVERIFY(qAbs(goog->avg_buy_price - (1600.0 / 15.0)) < 1e-6); // qty-weighted avg cost
+
+        QVERIFY(findBySymbol(assets, "NFLX")); // distinct to acctA
+        QVERIFY(findBySymbol(assets, "IBM"));  // distinct to acctB
     }
 };
 
