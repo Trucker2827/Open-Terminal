@@ -34,8 +34,12 @@
 #include <QSplitter>
 #include <QStringListModel>
 #include <QStyle>
+#include <QTimeZone>
 #include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrent>
+
+#include <algorithm>
+#include <cmath>
 
 namespace openmarketterminal::screens {
 
@@ -43,6 +47,109 @@ using namespace openmarketterminal::trading;
 using namespace openmarketterminal::screens::crypto;
 
 static const QString TAG = "CryptoTrading";
+
+namespace {
+QString impulse_format_delta(double price, double ref_price) {
+    if (price <= 0.0 || ref_price <= 0.0)
+        return QStringLiteral("--");
+    const double usd = price - ref_price;
+    const double bps = (usd / ref_price) * 10000.0;
+    const QChar sign = usd >= 0.0 ? QLatin1Char('+') : QLatin1Char('-');
+    return QStringLiteral("%1$%2 %3%4bp")
+        .arg(sign)
+        .arg(QString::number(std::abs(usd), 'f', 2))
+        .arg(sign)
+        .arg(QString::number(std::abs(bps), 'f', 1));
+}
+} // namespace
+
+void CryptoTradingScreen::record_impulse_tick(double price, double bid, double ask) {
+    if (price <= 0.0)
+        return;
+
+    const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    if (!impulse_points_.empty()) {
+        const auto& prev = impulse_points_.back();
+        if (std::abs(prev.price - price) < 0.00000001 && (now - prev.ts_ms) < 100)
+            return;
+    }
+
+    impulse_points_.push_back({now, price, bid, ask});
+    const qint64 cutoff = now - 130000;
+    while (!impulse_points_.empty() && impulse_points_.front().ts_ms < cutoff)
+        impulse_points_.pop_front();
+
+    update_impulse_label();
+}
+
+void CryptoTradingScreen::update_impulse_label() {
+    if (!impulse_label_)
+        return;
+
+    if (impulse_points_.empty()) {
+        impulse_label_->setText(tr("IMPULSE --"));
+        return;
+    }
+
+    const auto& latest = impulse_points_.back();
+    const double price = latest.price;
+    const qint64 now = latest.ts_ms;
+
+    auto reference_price = [&](int seconds) {
+        const qint64 cutoff = now - (seconds * 1000);
+        double ref = impulse_points_.front().price;
+        for (const auto& p : impulse_points_) {
+            if (p.ts_ms > cutoff)
+                break;
+            ref = p.price;
+        }
+        return ref;
+    };
+
+    const double ref10 = reference_price(10);
+    const double ref30 = reference_price(30);
+    const double ref120 = reference_price(120);
+    const double bps10 = ref10 > 0.0 ? ((price - ref10) / ref10) * 10000.0 : 0.0;
+    const double bps30 = ref30 > 0.0 ? ((price - ref30) / ref30) * 10000.0 : 0.0;
+    const double bps120 = ref120 > 0.0 ? ((price - ref120) / ref120) * 10000.0 : 0.0;
+    const double max_bps = std::max({std::abs(bps10), std::abs(bps30), std::abs(bps120)});
+
+    QString state = QStringLiteral("QUIET");
+    QString property = QStringLiteral("quiet");
+    if (max_bps >= 40.0) {
+        state = QStringLiteral("EXTREME");
+        property = QStringLiteral("extreme");
+    } else if (max_bps >= 15.0) {
+        state = QStringLiteral("FAST");
+        property = QStringLiteral("fast");
+    } else if (max_bps >= 5.0) {
+        state = QStringLiteral("WATCH");
+        property = QStringLiteral("watch");
+    }
+
+    const double mid = (latest.bid > 0.0 && latest.ask > 0.0) ? (latest.bid + latest.ask) / 2.0 : price;
+    const double spread_bps = (latest.bid > 0.0 && latest.ask > 0.0 && mid > 0.0)
+                                  ? ((latest.ask - latest.bid) / mid) * 10000.0
+                                  : 0.0;
+    const QString symbol = selected_symbol_.section(QLatin1Char('/'), 0, 0);
+    impulse_label_->setText(QStringLiteral("%1 %2 10s %3 | 30s %4 | 2m %5 | spr %6bp")
+                                .arg(state,
+                                     symbol,
+                                     impulse_format_delta(price, ref10),
+                                     impulse_format_delta(price, ref30),
+                                     impulse_format_delta(price, ref120),
+                                     QString::number(spread_bps, 'f', 1)));
+    impulse_label_->setToolTip(QStringLiteral("%1 live points kept over the last 2 minutes. Latest %2 at %3 UTC.")
+                                   .arg(impulse_points_.size())
+                                   .arg(QString::number(price, 'f', price >= 100 ? 2 : 6))
+                                   .arg(QDateTime::fromMSecsSinceEpoch(now, QTimeZone::UTC)
+                                            .toString(Qt::ISODateWithMs)));
+    if (impulse_label_->property("impulse").toString() != property) {
+        impulse_label_->setProperty("impulse", property);
+        impulse_label_->style()->unpolish(impulse_label_);
+        impulse_label_->style()->polish(impulse_label_);
+    }
+}
 
 
 void CryptoTradingScreen::apply_feed_mode(bool ws_connected) {
@@ -88,6 +195,7 @@ void CryptoTradingScreen::flush_ws_updates() {
             ticker_bar_->update_bid_ask(t.bid, t.ask, std::abs(t.ask - t.bid));
         if (t.bid > 0 && t.ask > 0)
             order_entry_->set_orderbook_quote(t.bid, t.ask);
+        record_impulse_tick(t.last, t.bid, t.ask);
         order_entry_->set_current_price(t.last);
         has_pending_primary_ = false;
     }
@@ -99,8 +207,12 @@ void CryptoTradingScreen::flush_ws_updates() {
         bottom_panel_->set_depth_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
         ladder_->set_symbol(selected_symbol_, exchange_id_);
         ladder_->set_book(ob.bids, ob.asks);
-        if (!ob.bids.isEmpty() && !ob.asks.isEmpty())
-            order_entry_->set_orderbook_quote(ob.bids.first().first, ob.asks.first().first);
+        if (!ob.bids.isEmpty() && !ob.asks.isEmpty()) {
+            const double bid = ob.bids.first().first;
+            const double ask = ob.asks.first().first;
+            order_entry_->set_orderbook_quote(bid, ask);
+            record_impulse_tick((bid + ask) / 2.0, bid, ask);
+        }
         has_pending_orderbook_ = false;
     }
 

@@ -65,6 +65,9 @@ class PolymarketCommandBar : public QWidget {
     void rebuild_view_pills();
     void apply_accent();
     void rebuild_categories();  // called when presentation or tag set changes
+    void rebuild_kalshi_categories(QHBoxLayout* layout);
+    void sync_kalshi_controls_from_category(const QString& category);
+    void emit_kalshi_category_changed();
     void retranslateUi();
 
     QComboBox* exchange_combo_ = nullptr;
@@ -73,6 +76,8 @@ class PolymarketCommandBar : public QWidget {
     QList<QPushButton*> view_btns_;
     QWidget* category_container_ = nullptr;
     QComboBox* category_combo_ = nullptr;  // used in CategoryMode::ComboBox
+    QComboBox* kalshi_asset_combo_ = nullptr;
+    QComboBox* kalshi_cadence_combo_ = nullptr;
     QLineEdit* search_input_ = nullptr;
     QComboBox* sort_combo_ = nullptr;
     QPushButton* refresh_btn_ = nullptr;

@@ -271,6 +271,13 @@ QString crypto_trading_styles() {
                "#cryptoAsk { color: %11; font-size: 11px; font-weight: 600; background: transparent; border: none; }"
                "#cryptoSpreadInline { color: %6; font-size: 11px; background: transparent; border: none; }"
                "#cryptoStatLabel { color: %6; font-size: 11px; background: transparent; border: none; }"
+               "#cryptoImpulseLabel { color: %6; font-size: 10px; font-weight: 700; "
+               "  letter-spacing: 0.4px; background: %2; border: 1px solid %3; "
+               "  padding: 2px 8px; }"
+               "#cryptoImpulseLabel[impulse=\"quiet\"] { color: %6; border-color: %3; }"
+               "#cryptoImpulseLabel[impulse=\"watch\"] { color: %12; border-color: %10; }"
+               "#cryptoImpulseLabel[impulse=\"fast\"] { color: %15; border-color: %19; }"
+               "#cryptoImpulseLabel[impulse=\"extreme\"] { color: %11; border-color: %20; }"
 
                "#cryptoModeBtn { padding: 2px 10px; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; }"
                "#cryptoModeBtn[mode=\"paper\"] { background: %17; color: %15; border: 1px solid "

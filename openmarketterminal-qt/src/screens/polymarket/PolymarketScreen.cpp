@@ -10,6 +10,7 @@
 #include "screens/polymarket/PolymarketOrderBlotter.h"
 #include "screens/polymarket/PolymarketPriceChart.h"
 #include "screens/polymarket/PolymarketStatusBar.h"
+#include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/polymarket/PredictionAccountDialog.h"
 #include "services/polymarket/PolymarketService.h"
 #include "services/prediction/PredictionCredentialStore.h"
@@ -17,10 +18,16 @@
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/polymarket/PolymarketAdapter.h"
+#include "trading/ExchangeService.h"
 #include "ui/theme/Theme.h"
 
+#include <QFrame>
+#include <QLabel>
+#include <QPointer>
+#include <QRegularExpression>
 #include <QSplitter>
 #include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrent>
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +39,231 @@ namespace pmx = openmarketterminal::services::polymarket;
 using namespace openmarketterminal::screens::polymarket;
 
 static QString kPolymarketId() { return QStringLiteral("polymarket"); }
+
+struct KalshiScreenFilter {
+    QString base;
+    QString asset;
+    QString cadence;
+    QStringList keywords;
+};
+
+static QStringList kalshi_asset_keywords(const QString& asset) {
+    const QString a = asset.trimmed().toUpper();
+    if (a == QLatin1String("BTC"))
+        return {QStringLiteral("btc"), QStringLiteral("xbt"), QStringLiteral("bitcoin"),
+                QStringLiteral("kxbtc"), QStringLiteral("kxbtcd")};
+    if (a == QLatin1String("ETH"))
+        return {QStringLiteral("eth"), QStringLiteral("ethereum"), QStringLiteral("kxeth")};
+    if (a == QLatin1String("SOL"))
+        return {QStringLiteral("sol"), QStringLiteral("solana"), QStringLiteral("kxsol")};
+    if (a == QLatin1String("DOGE"))
+        return {QStringLiteral("doge"), QStringLiteral("dogecoin"), QStringLiteral("kxdoge")};
+    if (a == QLatin1String("XRP"))
+        return {QStringLiteral("xrp"), QStringLiteral("ripple"), QStringLiteral("kxxrp")};
+    return {};
+}
+
+static KalshiScreenFilter parse_kalshi_screen_filter(QString slug) {
+    KalshiScreenFilter filter;
+    if (slug.isEmpty() || slug == QStringLiteral("ALL")) return filter;
+
+    const int at = slug.indexOf(QLatin1Char('@'));
+    if (at >= 0) {
+        filter.cadence = slug.mid(at + 1).trimmed().toLower();
+        slug = slug.left(at);
+    }
+
+    const int hash = slug.indexOf(QLatin1Char('#'));
+    if (hash >= 0) {
+        filter.asset = slug.mid(hash + 1);
+        slug = slug.left(hash);
+    }
+    filter.base = slug;
+    if (filter.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0)
+        filter.keywords = kalshi_asset_keywords(filter.asset);
+    return filter;
+}
+
+static bool text_has_any(const QString& haystack, const QStringList& keywords) {
+    const QString h = haystack.toLower();
+    for (const QString& kw : keywords) {
+        const QString needle = kw.trimmed().toLower();
+        if (!needle.isEmpty() && h.contains(needle)) return true;
+    }
+    return false;
+}
+
+static QString market_filter_text(const pred::PredictionMarket& m) {
+    QStringList parts;
+    parts << m.question << m.description << m.category << m.key.market_id << m.key.event_id
+          << m.extras.value(QStringLiteral("series_ticker")).toString()
+          << m.extras.value(QStringLiteral("yes_sub_title")).toString()
+          << m.extras.value(QStringLiteral("no_sub_title")).toString();
+    return parts.join(QLatin1Char(' '));
+}
+
+static bool kalshi_text_matches_cadence(QString text, const QString& cadence) {
+    const QString c = cadence.trimmed().toLower();
+    if (c.isEmpty()) return true;
+    text = text.toLower();
+    if (c == QStringLiteral("live"))
+        return text.contains(QStringLiteral("15 min")) || text.contains(QStringLiteral("15-minute")) ||
+               text.contains(QStringLiteral("15m")) || text.contains(QStringLiteral("hourly")) ||
+               text.contains(QStringLiteral("range"));
+    if (c == QStringLiteral("fifteen_min"))
+        return text.contains(QStringLiteral("15 min")) || text.contains(QStringLiteral("15-minute")) ||
+               text.contains(QStringLiteral("15m"));
+    if (c == QStringLiteral("hourly")) {
+        static const QRegularExpression hour_re(QStringLiteral("\\b(1[0-2]|0?[1-9])\\s*(am|pm)\\b"),
+                                                QRegularExpression::CaseInsensitiveOption);
+        return text.contains(QStringLiteral("hourly")) || text.contains(QStringLiteral("1 hour")) ||
+               text.contains(QStringLiteral(" range")) ||
+               (hour_re.match(text).hasMatch() && !text.contains(QStringLiteral(" at 5pm")));
+    }
+    if (c == QStringLiteral("daily"))
+        return text.contains(QStringLiteral("daily")) || text.contains(QStringLiteral(" at 5pm")) ||
+               text.contains(QStringLiteral("tomorrow")) || text.contains(QStringLiteral("today"));
+    if (c == QStringLiteral("weekly"))
+        return text.contains(QStringLiteral("weekly")) || text.contains(QStringLiteral("week"));
+    return true;
+}
+
+static bool market_matches_kalshi_filter(const pred::PredictionMarket& m,
+                                         const KalshiScreenFilter& filter,
+                                         bool include_cadence = true) {
+    if (filter.base.isEmpty()) return true;
+    const QString text = market_filter_text(m);
+    if (include_cadence && !kalshi_text_matches_cadence(text, filter.cadence)) return false;
+    if (filter.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0) {
+        return filter.keywords.isEmpty() || text_has_any(text, filter.keywords);
+    }
+    return m.category.compare(filter.base, Qt::CaseInsensitive) == 0 ||
+           text.contains(filter.base, Qt::CaseInsensitive);
+}
+
+static bool event_matches_kalshi_filter(const pred::PredictionEvent& e,
+                                        const KalshiScreenFilter& filter,
+                                        bool include_cadence = true) {
+    if (filter.base.isEmpty()) return true;
+    QStringList parts;
+    parts << e.title << e.description << e.category << e.key.event_id
+          << e.extras.value(QStringLiteral("series_ticker")).toString();
+    for (const auto& m : e.markets) parts << market_filter_text(m);
+    const QString text = parts.join(QLatin1Char(' '));
+    if (include_cadence && !kalshi_text_matches_cadence(text, filter.cadence)) return false;
+    if (filter.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0) {
+        return filter.keywords.isEmpty() || text_has_any(text, filter.keywords);
+    }
+    return e.category.compare(filter.base, Qt::CaseInsensitive) == 0 ||
+           text.contains(filter.base, Qt::CaseInsensitive);
+}
+
+static int best_event_market_index(const QVector<pred::PredictionMarket>& markets) {
+    int best = -1;
+    double best_score = -1.0;
+    for (int i = 0; i < markets.size(); ++i) {
+        const auto& m = markets[i];
+        if (m.outcomes.isEmpty())
+            continue;
+        const double yes = qBound(0.0, m.outcomes.first().price, 1.0);
+        const double no = m.outcomes.size() > 1 ? qBound(0.0, m.outcomes[1].price, 1.0) : 0.0;
+        const double implied = yes > 0.0 ? yes : (no > 0.0 ? 1.0 - no : 0.0);
+        const double near_money = 1.0 - qMin(1.0, std::abs(implied - 0.5) * 2.0);
+        const double book_score = m.volume + m.open_interest + (m.liquidity / 1000.0);
+        const double live_score = (m.active && !m.closed) ? 100000.0 : 0.0;
+        const double priced_score = (yes > 0.0 || no > 0.0) ? 1000.0 : 0.0;
+        const double score = live_score + priced_score + book_score + near_money;
+        if (score > best_score) {
+            best_score = score;
+            best = i;
+        }
+    }
+    return best >= 0 ? best : (markets.isEmpty() ? -1 : 0);
+}
+
+static double kalshi_market_tradability_score(const pred::PredictionMarket& m) {
+    if (m.outcomes.isEmpty()) return -1.0;
+    const double yes = qBound(0.0, m.outcomes.first().price, 1.0);
+    const double no = m.outcomes.size() > 1 ? qBound(0.0, m.outcomes[1].price, 1.0) : 0.0;
+    const double implied = yes > 0.0 ? yes : (no > 0.0 ? 1.0 - no : 0.0);
+    const double near_money = 1.0 - qMin(1.0, std::abs(implied - 0.5) * 2.0);
+    const double book_score = m.volume + m.open_interest + (m.liquidity / 1000.0);
+    const double live_score = (m.active && !m.closed) ? 100000.0 : 0.0;
+    const double priced_score = (yes > 0.0 || no > 0.0) ? 1000.0 : 0.0;
+    return live_score + priced_score + book_score + near_money;
+}
+
+static pred::PredictionMarket decorate_kalshi_nested_market(pred::PredictionMarket market,
+                                                            const pred::PredictionEvent& event) {
+    const QString yes_label =
+        market.extras.value(QStringLiteral("yes_sub_title")).toString().trimmed();
+    const QString no_label =
+        market.extras.value(QStringLiteral("no_sub_title")).toString().trimmed();
+    const QString event_title = event.title.trimmed();
+
+    QString contract_label = yes_label;
+    if (contract_label.isEmpty()) contract_label = no_label;
+    if (!contract_label.isEmpty() && !event_title.isEmpty()) {
+        market.question = contract_label + QStringLiteral(" · ") + event_title;
+    } else if (!event_title.isEmpty() && market.question.trimmed() != event_title) {
+        market.question = market.question.trimmed() + QStringLiteral(" · ") + event_title;
+    }
+
+    market.extras.insert(QStringLiteral("event_title"), event.title);
+    market.extras.insert(QStringLiteral("event_description"), event.description);
+    return market;
+}
+
+static QVector<pred::PredictionMarket> flatten_kalshi_crypto_events(
+    const QVector<pred::PredictionEvent>& events,
+    const KalshiScreenFilter& filter) {
+    QVector<pred::PredictionMarket> out;
+    for (const auto& event : events) {
+        QVector<pred::PredictionMarket> markets;
+        markets.reserve(event.markets.size());
+        for (const auto& market : event.markets) {
+            if (market_matches_kalshi_filter(market, filter, false))
+                markets.push_back(decorate_kalshi_nested_market(market, event));
+        }
+        std::stable_sort(markets.begin(), markets.end(),
+                         [](const pred::PredictionMarket& a, const pred::PredictionMarket& b) {
+                             const double sa = kalshi_market_tradability_score(a);
+                             const double sb = kalshi_market_tradability_score(b);
+                             return sa != sb ? sa > sb : a.volume > b.volume;
+                         });
+        out += markets;
+    }
+    return out;
+}
+
+static QString crypto_symbol_from_prediction_text(QString text) {
+    text = text.toUpper();
+    const QVector<QPair<QString, QString>> symbols = {
+        {QStringLiteral("BTC"), QStringLiteral("BTC/USD")},
+        {QStringLiteral("XBT"), QStringLiteral("BTC/USD")},
+        {QStringLiteral("BITCOIN"), QStringLiteral("BTC/USD")},
+        {QStringLiteral("ETH"), QStringLiteral("ETH/USD")},
+        {QStringLiteral("ETHEREUM"), QStringLiteral("ETH/USD")},
+        {QStringLiteral("SOL"), QStringLiteral("SOL/USD")},
+        {QStringLiteral("SOLANA"), QStringLiteral("SOL/USD")},
+        {QStringLiteral("DOGE"), QStringLiteral("DOGE/USD")},
+        {QStringLiteral("XRP"), QStringLiteral("XRP/USD")},
+        {QStringLiteral("BNB"), QStringLiteral("BNB/USD")},
+        {QStringLiteral("ZEC"), QStringLiteral("ZEC/USD")},
+        {QStringLiteral("ZCASH"), QStringLiteral("ZEC/USD")},
+        {QStringLiteral("HYPE"), QStringLiteral("HYPE/USD")},
+        {QStringLiteral("ADA"), QStringLiteral("ADA/USD")},
+        {QStringLiteral("AVAX"), QStringLiteral("AVAX/USD")},
+        {QStringLiteral("LINK"), QStringLiteral("LINK/USD")},
+        {QStringLiteral("LTC"), QStringLiteral("LTC/USD")},
+    };
+    for (const auto& s : symbols) {
+        static const QString boundary = QStringLiteral("(^|[^A-Z0-9])%1([^A-Z0-9]|$)");
+        const QRegularExpression re(boundary.arg(QRegularExpression::escape(s.first)));
+        if (re.match(text).hasMatch()) return s.second;
+    }
+    return QStringLiteral("BTC/USD");
+}
 
 // ── Constructor / Destructor ────────────────────────────────────────────────
 
@@ -50,6 +282,10 @@ PolymarketScreen::PolymarketScreen(QWidget* parent) : QWidget(parent) {
     refresh_timer_->setInterval(60000);
     connect(refresh_timer_, &QTimer::timeout, this, &PolymarketScreen::on_refresh);
 
+    crypto_dom_timer_ = new QTimer(this);
+    crypto_dom_timer_->setInterval(1500);
+    connect(crypto_dom_timer_, &QTimer::timeout, this, &PolymarketScreen::refresh_crypto_dom);
+
     LOG_INFO("PredictionMarkets", "Screen constructed");
 }
 
@@ -65,6 +301,8 @@ PolymarketScreen::~PolymarketScreen() {
 void PolymarketScreen::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
     refresh_timer_->start();
+    if (crypto_dom_timer_) crypto_dom_timer_->start();
+    refresh_crypto_dom();
     if (first_show_) {
         first_show_ = false;
 
@@ -84,12 +322,7 @@ void PolymarketScreen::showEvent(QShowEvent* e) {
 
         // Reflect any previously-saved credentials in the account chip.
         const bool has_pm = pred::PredictionCredentialStore::load_polymarket().has_value();
-        const bool has_ks = pred::PredictionCredentialStore::load_kalshi().has_value();
-        QString acct_label;
-        if (has_pm && has_ks) acct_label = tr("Polymarket + Kalshi");
-        else if (has_pm) acct_label = tr("Polymarket");
-        else if (has_ks) acct_label = tr("Kalshi");
-        command_bar_->set_account_status(has_pm || has_ks, acct_label);
+        command_bar_->set_account_status(has_pm, has_pm ? tr("Polymarket") : QString());
 
         // Listen for adapter-side credential / error events across every
         // registered adapter so the status bar + account chip stay in sync
@@ -98,12 +331,7 @@ void PolymarketScreen::showEvent(QShowEvent* e) {
             if (auto* a = reg.adapter(id)) {
                 connect(a, &pred::PredictionExchangeAdapter::credentials_changed, this, [this]() {
                     const bool pm = pred::PredictionCredentialStore::load_polymarket().has_value();
-                    const bool ks = pred::PredictionCredentialStore::load_kalshi().has_value();
-                    QString l;
-                    if (pm && ks) l = tr("Polymarket + Kalshi");
-                    else if (pm) l = tr("Polymarket");
-                    else if (ks) l = tr("Kalshi");
-                    command_bar_->set_account_status(pm || ks, l);
+                    command_bar_->set_account_status(pm, pm ? tr("Polymarket") : QString());
                 });
             }
         }
@@ -121,6 +349,7 @@ void PolymarketScreen::showEvent(QShowEvent* e) {
 void PolymarketScreen::hideEvent(QHideEvent* e) {
     QWidget::hideEvent(e);
     refresh_timer_->stop();
+    if (crypto_dom_timer_) crypto_dom_timer_->stop();
 }
 
 // ── UI Build ────────────────────────────────────────────────────────────────
@@ -167,13 +396,33 @@ void PolymarketScreen::build_ui() {
     leaderboard_->setMaximumWidth(320);
     leaderboard_->setVisible(false);
 
+    crypto_dom_panel_ = new QFrame;
+    crypto_dom_panel_->setObjectName("predictionCryptoDomPanel");
+    crypto_dom_panel_->setMinimumWidth(270);
+    crypto_dom_panel_->setMaximumWidth(350);
+    crypto_dom_panel_->setStyleSheet(QString(
+        "QFrame#predictionCryptoDomPanel { background:%1; border-left:1px solid %2; }")
+        .arg(ui::colors::BG_BASE(), ui::colors::BORDER_MED()));
+    auto* dom_layout = new QVBoxLayout(crypto_dom_panel_);
+    dom_layout->setContentsMargins(8, 8, 8, 8);
+    dom_layout->setSpacing(6);
+    crypto_dom_title_ = new QLabel(tr("SPOT DOM · BTC/USD"));
+    crypto_dom_title_->setStyleSheet(QString("color:%1; font-size:12px; font-weight:900;")
+                                         .arg(ui::colors::CYAN()));
+    dom_layout->addWidget(crypto_dom_title_);
+    crypto_dom_ = new crypto::CryptoOrderBook;
+    crypto_dom_->setMinimumHeight(360);
+    dom_layout->addWidget(crypto_dom_, 1);
+
     splitter->addWidget(browse_panel_);
     splitter->addWidget(detail_splitter);
+    splitter->addWidget(crypto_dom_panel_);
     splitter->addWidget(leaderboard_);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setStretchFactor(2, 0);
-    splitter->setSizes({380, 800, 0});
+    splitter->setStretchFactor(3, 0);
+    splitter->setSizes({360, 760, 300, 0});
 
     root->addWidget(splitter, 1);
 
@@ -213,13 +462,7 @@ void PolymarketScreen::build_ui() {
                 }
             }
             const bool has_pm = pred::PredictionCredentialStore::load_polymarket().has_value();
-            const bool has_ks = pred::PredictionCredentialStore::load_kalshi().has_value();
-            const bool any = has_pm || has_ks;
-            QString label;
-            if (has_pm && has_ks) label = tr("Polymarket + Kalshi");
-            else if (has_pm) label = tr("Polymarket");
-            else if (has_ks) label = tr("Kalshi");
-            command_bar_->set_account_status(any, label);
+            command_bar_->set_account_status(has_pm, has_pm ? tr("Polymarket") : QString());
             LOG_INFO("PredictionMarkets", "Credentials saved for " + id);
         });
         connect(dlg, &PredictionAccountDialog::test_requested, this, [dlg](const QString& id) {
@@ -342,6 +585,8 @@ void PolymarketScreen::connect_active_adapter() {
                                          if (r.ok) {
                                              a->fetch_balance();
                                              a->fetch_open_orders();
+                                             if (!selected_order_book_asset_id_.isEmpty())
+                                                 a->fetch_order_book(selected_order_book_asset_id_);
                                          }
                                      });
     adapter_connections_ << connect(a, &pred::PredictionExchangeAdapter::ws_price_updated,
@@ -507,6 +752,11 @@ void PolymarketScreen::connect_polymarket_extras() {
 
 void PolymarketScreen::on_view_changed(const QString& view) {
     active_view_ = view;
+    unsubscribe_current();
+    has_selection_ = false;
+    selected_market_ = {};
+    selected_order_book_asset_id_.clear();
+    if (detail_panel_) detail_panel_->clear();
     if (command_bar_) command_bar_->set_active_view(view);
     if (status_bar_) status_bar_->set_view(view);
     load_current_view();
@@ -515,6 +765,11 @@ void PolymarketScreen::on_view_changed(const QString& view) {
 
 void PolymarketScreen::on_category_changed(const QString& category) {
     active_category_ = category;
+    unsubscribe_current();
+    has_selection_ = false;
+    selected_market_ = {};
+    selected_order_book_asset_id_.clear();
+    if (detail_panel_) detail_panel_->clear();
     if (command_bar_) command_bar_->set_active_category(category);
     ScreenStateManager::instance().notify_changed(this);
     load_current_view();
@@ -541,6 +796,13 @@ void PolymarketScreen::on_sort_changed(const QString& sort_by) {
 void PolymarketScreen::on_refresh() { load_current_view(); }
 
 void PolymarketScreen::on_exchange_changed(const QString& exchange_id) {
+    if (exchange_id == QStringLiteral("kalshi")) {
+        emit venue_switch_requested(exchange_id);
+        command_bar_->set_exchanges({QStringLiteral("polymarket"), QStringLiteral("kalshi")},
+                                    {QStringLiteral("Polymarket"), QStringLiteral("Kalshi")},
+                                    QStringLiteral("polymarket"));
+        return;
+    }
     auto& reg = pred::PredictionExchangeRegistry::instance();
     if (reg.active_id() == exchange_id) return;
 
@@ -549,6 +811,7 @@ void PolymarketScreen::on_exchange_changed(const QString& exchange_id) {
     unsubscribe_current();
     has_selection_ = false;
     selected_market_ = {};
+    selected_order_book_asset_id_.clear();
 
     // Clear search state and per-adapter caches so the new exchange starts clean.
     command_bar_->set_search_text(QString());
@@ -556,6 +819,10 @@ void PolymarketScreen::on_exchange_changed(const QString& exchange_id) {
 
     reg.set_active(exchange_id);
     LOG_INFO("PredictionMarkets", "Active exchange -> " + exchange_id);
+
+    const auto next_p = polymarket::ExchangePresentation::for_id(exchange_id);
+    active_view_ = next_p.default_view.isEmpty() ? QStringLiteral("MARKETS") : next_p.default_view;
+    active_category_ = QStringLiteral("ALL");
 
     // Clear the rendered surface so stale markets from the previous
     // exchange don't sit under the new one.
@@ -569,6 +836,10 @@ void PolymarketScreen::on_exchange_changed(const QString& exchange_id) {
     }
 
     connect_active_adapter();
+    if (command_bar_) {
+        command_bar_->set_active_view(active_view_);
+        command_bar_->set_active_category(active_category_);
+    }
     load_current_view();
 }
 
@@ -579,7 +850,7 @@ void PolymarketScreen::on_market_selected(const pred::PredictionMarket& market) 
 }
 
 void PolymarketScreen::on_event_selected(const pred::PredictionEvent& event) {
-    if (!event.markets.isEmpty()) select_market(event.markets.first());
+    select_event_market(event, !active_is_polymarket());
     // Polymarket-only: event-level related markets.
     if (active_is_polymarket()) {
         bool ok = false;
@@ -605,8 +876,12 @@ void PolymarketScreen::on_interval_changed(const QString& interval) {
 
 void PolymarketScreen::on_outcome_changed(int index) {
     if (!has_selection_ || index < 0 || index >= selected_market_.outcomes.size()) return;
-    if (auto* a = active_adapter())
-        a->fetch_price_history(selected_market_.outcomes[index].asset_id, "1d", 5);
+    if (auto* a = active_adapter()) {
+        const QString asset_id = selected_market_.outcomes[index].asset_id;
+        selected_order_book_asset_id_ = asset_id;
+        a->fetch_order_book(asset_id);
+        a->fetch_price_history(asset_id, "1d", 5);
+    }
 }
 
 void PolymarketScreen::on_related_market_clicked(const pred::PredictionMarket& market) {
@@ -654,12 +929,40 @@ void PolymarketScreen::load_current_view() {
     }
 }
 
+void PolymarketScreen::select_event_market(const pred::PredictionEvent& event, bool drilldown) {
+    if (event.markets.isEmpty()) {
+        if (status_bar_) {
+            status_bar_->set_selected(
+                tr("%1: no nested Kalshi markets loaded").arg(event.title));
+        }
+        return;
+    }
+
+    if (detail_panel_) detail_panel_->set_edge_market_context(event.markets);
+
+    const int market_index = best_event_market_index(event.markets);
+    if (market_index < 0) return;
+    const auto market = event.markets[market_index];
+
+    if (drilldown && browse_panel_) {
+        browse_panel_->set_markets(event.markets);
+        browse_panel_->select_market_row(market.key.market_id);
+        command_bar_->set_market_count(event.markets.size());
+        if (status_bar_) status_bar_->set_count(event.markets.size(), tr("markets"));
+    } else if (browse_panel_) {
+        browse_panel_->select_event_row(event.key.event_id);
+    }
+
+    select_market(market);
+}
+
 void PolymarketScreen::select_market(const pred::PredictionMarket& market) {
     unsubscribe_current();
     selected_market_ = market;
     has_selection_ = true;
 
     detail_panel_->set_market(market);
+    update_crypto_dom_for_market(market);
     if (status_bar_) status_bar_->set_selected(market.question);
 
     auto* a = active_adapter();
@@ -667,8 +970,11 @@ void PolymarketScreen::select_market(const pred::PredictionMarket& market) {
 
     if (!market.outcomes.isEmpty()) {
         const QString primary = market.outcomes.first().asset_id;
+        selected_order_book_asset_id_ = primary;
         a->fetch_order_book(primary);
         a->fetch_price_history(primary, "1d", 5);
+    } else {
+        selected_order_book_asset_id_.clear();
     }
     a->fetch_recent_trades(market.key, 100);
 
@@ -721,15 +1027,81 @@ void PolymarketScreen::unsubscribe_current() {
     subscribed_asset_ids_.clear();
 }
 
+void PolymarketScreen::update_crypto_dom_for_market(const pred::PredictionMarket& market) {
+    QStringList parts;
+    parts << market.question << market.description << market.category << market.key.market_id << market.key.event_id
+          << market.extras.value(QStringLiteral("series_ticker")).toString()
+          << market.extras.value(QStringLiteral("yes_sub_title")).toString()
+          << market.extras.value(QStringLiteral("no_sub_title")).toString();
+    set_crypto_dom_symbol(crypto_symbol_from_prediction_text(parts.join(QLatin1Char(' '))));
+}
+
+void PolymarketScreen::set_crypto_dom_symbol(const QString& symbol) {
+    const QString clean = symbol.trimmed().isEmpty() ? QStringLiteral("BTC/USD") : symbol.trimmed().toUpper();
+    if (crypto_dom_symbol_ == clean) {
+        if (crypto_dom_title_) crypto_dom_title_->setText(tr("SPOT DOM · %1").arg(clean));
+        return;
+    }
+    crypto_dom_symbol_ = clean;
+    if (crypto_dom_title_) crypto_dom_title_->setText(tr("SPOT DOM · %1").arg(clean));
+    refresh_crypto_dom();
+}
+
+void PolymarketScreen::refresh_crypto_dom() {
+    if (!crypto_dom_ || crypto_dom_fetching_.exchange(true)) return;
+    QPointer<PolymarketScreen> self = this;
+    const QString symbol = crypto_dom_symbol_.isEmpty() ? QStringLiteral("BTC/USD") : crypto_dom_symbol_;
+    (void)QtConcurrent::run([self, symbol]() {
+        openmarketterminal::trading::OrderBookData ob;
+        try {
+            ob = openmarketterminal::trading::ExchangeService::instance().fetch_orderbook(symbol, 20);
+        } catch (...) {
+            if (self) {
+                QMetaObject::invokeMethod(self, [self]() {
+                    if (self) self->crypto_dom_fetching_ = false;
+                }, Qt::QueuedConnection);
+            }
+            return;
+        }
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, symbol, ob]() {
+            if (!self) return;
+            self->crypto_dom_fetching_ = false;
+            if (symbol != self->crypto_dom_symbol_) return;
+            if (self->crypto_dom_) self->crypto_dom_->set_data(ob.bids, ob.asks, ob.spread, ob.spread_pct);
+        }, Qt::QueuedConnection);
+    });
+}
+
 // ── Adapter response handlers ───────────────────────────────────────────────
 
 void PolymarketScreen::on_markets_ready(const QVector<pred::PredictionMarket>& markets) {
     command_bar_->set_loading(false);
     browse_panel_->set_loading(false);
-    browse_panel_->set_markets(markets);
-    if (detail_panel_) detail_panel_->set_edge_market_context(markets);
-    command_bar_->set_market_count(markets.size());
-    status_bar_->set_count(markets.size(), tr("markets"));
+
+    QVector<pred::PredictionMarket> visible = markets;
+    if (!active_is_polymarket() && active_category_ != QStringLiteral("ALL")) {
+        const KalshiScreenFilter filter = parse_kalshi_screen_filter(active_category_);
+        QVector<pred::PredictionMarket> loose;
+        QVector<pred::PredictionMarket> filtered;
+        filtered.reserve(visible.size());
+        loose.reserve(visible.size());
+        for (const auto& m : visible) {
+            if (market_matches_kalshi_filter(m, filter)) filtered.push_back(m);
+            else if (!filter.cadence.isEmpty() && market_matches_kalshi_filter(m, filter, false))
+                loose.push_back(m);
+        }
+        visible = !filtered.isEmpty() || loose.isEmpty() ? filtered : loose;
+    }
+
+    browse_panel_->set_markets(visible);
+    if (detail_panel_) detail_panel_->set_edge_market_context(visible);
+    command_bar_->set_market_count(visible.size());
+    status_bar_->set_count(visible.size(), tr("markets"));
+    if (!has_selection_ && !visible.isEmpty() && !active_is_polymarket()) {
+        select_market(visible.first());
+        browse_panel_->select_market_row(visible.first().key.market_id);
+    }
 
     // NOTE: the per-page batch /markets/candlesticks fetch that used to live
     // here was removed. Its results (card sparklines) were never wired into the
@@ -746,9 +1118,24 @@ void PolymarketScreen::on_events_ready(const QVector<pred::PredictionEvent>& eve
     browse_panel_->set_loading(false);
 
     QVector<pred::PredictionEvent> ordered = events;
+    KalshiScreenFilter filter;
+    if (!active_is_polymarket() && active_category_ != QStringLiteral("ALL")) {
+        filter = parse_kalshi_screen_filter(active_category_);
+        QVector<pred::PredictionEvent> loose;
+        QVector<pred::PredictionEvent> filtered;
+        filtered.reserve(ordered.size());
+        loose.reserve(ordered.size());
+        for (const auto& e : ordered) {
+            if (event_matches_kalshi_filter(e, filter)) filtered.push_back(e);
+            else if (!filter.cadence.isEmpty() && event_matches_kalshi_filter(e, filter, false))
+                loose.push_back(e);
+        }
+        ordered = !filtered.isEmpty() || loose.isEmpty() ? filtered : loose;
+    }
+
     // For the crypto category, surface majors (BTC/ETH/SOL/…) first rather than
     // raw Kalshi order, which often leads with one token's price ladder.
-    if (active_category_.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0) {
+    if (active_category_.startsWith(QStringLiteral("Crypto"), Qt::CaseInsensitive)) {
         std::stable_sort(ordered.begin(), ordered.end(),
                          [](const pred::PredictionEvent& a, const pred::PredictionEvent& b) {
                              const int pa = pred::crypto_event_priority(a.title);
@@ -757,9 +1144,29 @@ void PolymarketScreen::on_events_ready(const QVector<pred::PredictionEvent>& eve
                          });
     }
 
+    if (!active_is_polymarket() &&
+        filter.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0 &&
+        !filter.cadence.isEmpty()) {
+        const QVector<pred::PredictionMarket> flattened =
+            flatten_kalshi_crypto_events(ordered, filter);
+        if (!flattened.isEmpty()) {
+            browse_panel_->set_markets(flattened);
+            if (detail_panel_) detail_panel_->set_edge_market_context(flattened);
+            command_bar_->set_market_count(flattened.size());
+            status_bar_->set_count(flattened.size(), tr("markets"));
+            if (!has_selection_) {
+                select_market(flattened.first());
+                browse_panel_->select_market_row(flattened.first().key.market_id);
+            }
+            return;
+        }
+    }
+
     browse_panel_->set_events(ordered);
     command_bar_->set_market_count(ordered.size());
     status_bar_->set_count(ordered.size(), tr("events"));
+    if (!has_selection_ && !ordered.isEmpty() && !active_is_polymarket())
+        select_event_market(ordered.first(), /*drilldown=*/false);
 }
 
 void PolymarketScreen::on_search_results_ready(const QVector<pred::PredictionMarket>& markets,
@@ -790,6 +1197,11 @@ void PolymarketScreen::on_tags_ready(const QStringList& tags) {
 }
 
 void PolymarketScreen::on_order_book_ready(const pred::PredictionOrderBook& book) {
+    if (!selected_order_book_asset_id_.isEmpty() &&
+        !book.asset_id.isEmpty() &&
+        book.asset_id != selected_order_book_asset_id_) {
+        return;
+    }
     if (detail_panel_) detail_panel_->set_order_book(book);
 }
 
@@ -813,6 +1225,17 @@ void PolymarketScreen::on_adapter_error(const QString& ctx, const QString& msg) 
     command_bar_->set_loading(false);
     browse_panel_->set_loading(false);
     LOG_WARN("PredictionMarkets", ctx + ": " + msg);
+    if ((ctx == QStringLiteral("place_order") || ctx == QStringLiteral("preflight_order")) && detail_panel_) {
+        pred::OrderResult failed;
+        failed.ok = false;
+        failed.error_code = ctx;
+        failed.error_message = msg;
+        detail_panel_->on_order_result(failed);
+    }
+    if (!active_is_polymarket() && ctx.startsWith(QStringLiteral("Kalshi.fetch_category")) &&
+        browse_panel_ && browse_panel_->item_count() > 0) {
+        return;
+    }
     if (status_bar_) status_bar_->set_selected(QString("%1: %2").arg(ctx, msg));
 }
 
@@ -829,7 +1252,13 @@ void PolymarketScreen::on_ws_price_updated(const QString& asset_id, double price
     }
 }
 
-void PolymarketScreen::on_ws_orderbook_updated(const QString& /*asset_id*/, const pred::PredictionOrderBook& book) {
+void PolymarketScreen::on_ws_orderbook_updated(const QString& asset_id, const pred::PredictionOrderBook& book) {
+    const QString incoming = !book.asset_id.isEmpty() ? book.asset_id : asset_id;
+    if (!selected_order_book_asset_id_.isEmpty() &&
+        !incoming.isEmpty() &&
+        incoming != selected_order_book_asset_id_) {
+        return;
+    }
     if (detail_panel_) detail_panel_->set_order_book(book);
 }
 
@@ -969,6 +1398,7 @@ void PolymarketScreen::on_kalshi_market_detail(const pred::PredictionMarket& mar
     if (has_selection_ && selected_market_.key.market_id == market.key.market_id) {
         selected_market_ = market;
         if (detail_panel_) detail_panel_->set_market(market);
+        update_crypto_dom_for_market(market);
     }
 }
 

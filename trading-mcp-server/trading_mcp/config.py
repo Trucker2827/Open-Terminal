@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # Fail-closed: empty = nothing may execute (NOT "allow everything").
     coinbase_allowed_symbols: str = ""
 
+    enable_kraken: bool = False
+    kraken_api_key: str | None = None
+    kraken_api_secret: str | None = None
+    # Kraken spot account is real money. Reads + dry-run previews work; a REAL
+    # order requires DRY_RUN=false AND KRAKEN_ALLOW_TRADING=true. Kraken orders
+    # are forced to spot limit post-only in KrakenService.
+    kraken_allow_trading: bool = False
+    # Accepts Kraken pairs or common product ids: XBTUSD, BTC-USD, ETH-USD, ...
+    # Normalized to exchange pair form and fail-closed when empty.
+    kraken_allowed_symbols: str = ""
+
     @field_validator("coinbase_api_secret")
     @classmethod
     def normalize_multiline_secret(cls, value: str | None) -> str | None:
@@ -51,6 +62,30 @@ class Settings(BaseSettings):
         """Normalized (uppercase, stripped) set of symbols allowed for live
         Coinbase execution. Empty set => nothing allowed (fail-closed)."""
         return {s.strip().upper() for s in self.coinbase_allowed_symbols.split(",") if s.strip()}
+
+    def kraken_symbol_allowlist(self) -> set[str]:
+        """Normalized Kraken pair allowlist. Empty set => nothing can execute."""
+        aliases = {
+            "BTCUSD": "XBTUSD",
+            "BTC-USD": "XBTUSD",
+            "BTC/USD": "XBTUSD",
+            "XBT-USD": "XBTUSD",
+            "XBT/USD": "XBTUSD",
+            "ETH-USD": "ETHUSD",
+            "ETH/USD": "ETHUSD",
+            "SOL-USD": "SOLUSD",
+            "SOL/USD": "SOLUSD",
+            "DOGE-USD": "DOGEUSD",
+            "DOGE/USD": "DOGEUSD",
+        }
+        out = set()
+        for symbol in self.kraken_allowed_symbols.split(","):
+            key = symbol.strip().upper()
+            if not key:
+                continue
+            compact = key.replace("-", "").replace("/", "")
+            out.add(aliases.get(key, aliases.get(compact, compact)))
+        return out
 
 
 @lru_cache(maxsize=1)

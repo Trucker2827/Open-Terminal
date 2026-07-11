@@ -12,6 +12,76 @@ using namespace openmarketterminal::ui;
 
 static const QStringList SORT_KEYS = {"volume", "liquidity", "startDate"};
 
+namespace {
+struct KalshiCategoryParts {
+    QString family = QStringLiteral("ALL");
+    QString asset;
+    QString cadence;
+};
+
+KalshiCategoryParts parse_kalshi_category_slug(QString slug) {
+    slug = slug.trimmed();
+    KalshiCategoryParts out;
+    if (slug.isEmpty() || slug == QLatin1String("ALL"))
+        return out;
+
+    const int at = slug.indexOf(QLatin1Char('@'));
+    if (at >= 0) {
+        out.cadence = slug.mid(at + 1);
+        slug = slug.left(at);
+    }
+
+    const int hash = slug.indexOf(QLatin1Char('#'));
+    if (hash >= 0) {
+        out.asset = slug.mid(hash + 1).toUpper();
+        slug = slug.left(hash);
+    }
+
+    out.family = slug.isEmpty() ? QStringLiteral("ALL") : slug;
+    return out;
+}
+
+QString build_kalshi_category_slug(const QString& family, const QString& asset, const QString& cadence) {
+    const QString f = family.trimmed();
+    if (f.isEmpty() || f == QLatin1String("ALL"))
+        return QStringLiteral("ALL");
+
+    QString slug = f;
+    if (f.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0) {
+        const QString a = asset.trimmed().toUpper();
+        const QString c = cadence.trimmed();
+        if (!a.isEmpty()) slug += QStringLiteral("#") + a;
+        if (!c.isEmpty()) slug += QStringLiteral("@") + c;
+    }
+    return slug;
+}
+
+QString combo_data(const QComboBox* combo) {
+    return combo ? combo->currentData().toString() : QString();
+}
+
+void set_combo_data(QComboBox* combo, const QString& value) {
+    if (!combo)
+        return;
+    const int idx = combo->findData(value);
+    combo->setCurrentIndex(idx >= 0 ? idx : 0);
+}
+
+QString kalshi_combo_css(const ExchangePresentation& p) {
+    return QString("QComboBox { background: %1; color: %2; border: 1px solid %3; "
+                   "padding: 3px 8px; font-size: 9px; font-weight: 700; }"
+                   "QComboBox:disabled { color: %4; border-color: %5; }"
+                   "QComboBox::drop-down { border: none; width: 14px; }"
+                   "QComboBox QAbstractItemView { background: %1; color: %2; border: 1px solid %3; "
+                   "selection-background-color: rgba(%6,%7,%8,0.2); }")
+        .arg(colors::BG_BASE(), colors::TEXT_PRIMARY(), colors::BORDER_MED(),
+             colors::TEXT_DIM(), colors::BORDER_DIM())
+        .arg(p.accent.red())
+        .arg(p.accent.green())
+        .arg(p.accent.blue());
+}
+} // namespace
+
 PolymarketCommandBar::PolymarketCommandBar(QWidget* parent) : QWidget(parent) {
     setObjectName("polyCommandBar");
     setFixedHeight(48);
@@ -256,6 +326,7 @@ void PolymarketCommandBar::build_ui() {
 // ── Presentation ────────────────────────────────────────────────────────────
 
 void PolymarketCommandBar::set_presentation(const ExchangePresentation& p) {
+    const bool exchange_changed = p.exchange_id != presentation_.exchange_id;
     const bool accent_changed = p.accent != presentation_.accent;
     const bool views_changed = p.view_names != presentation_.view_names;
     const bool category_mode_changed = p.category_mode != presentation_.category_mode;
@@ -268,7 +339,7 @@ void PolymarketCommandBar::set_presentation(const ExchangePresentation& p) {
             active_view_ = presentation_.default_view;
         rebuild_view_pills();
     }
-    if (category_mode_changed) rebuild_categories();
+    if (exchange_changed || category_mode_changed) rebuild_categories();
 }
 
 void PolymarketCommandBar::rebuild_view_pills() {
@@ -311,8 +382,15 @@ void PolymarketCommandBar::rebuild_categories() {
         delete item;
     }
     category_combo_ = nullptr;
+    kalshi_asset_combo_ = nullptr;
+    kalshi_cadence_combo_ = nullptr;
 
     if (presentation_.category_mode == ExchangePresentation::CategoryMode::ComboBox) {
+        if (presentation_.exchange_id == QStringLiteral("kalshi")) {
+            rebuild_kalshi_categories(layout);
+            return;
+        }
+
         category_combo_ = new QComboBox;
         category_combo_->setEditable(true);
         category_combo_->setInsertPolicy(QComboBox::NoInsert);
@@ -341,28 +419,6 @@ void PolymarketCommandBar::rebuild_categories() {
         });
         layout->addWidget(category_combo_);
 
-        // Kalshi crypto quick-filters: one-click access to the short-term crypto
-        // up/down markets, which are otherwise buried among 250+ crypto series.
-        // The cadence rides inside the category slug ("Crypto@…") so it reuses
-        // the whole category load + refresh path.
-        if (presentation_.exchange_id == QStringLiteral("kalshi")) {
-            struct Preset { const char* label; const char* slug; };
-            static const Preset presets[] = {{"CRYPTO LIVE", "Crypto@live"},
-                                             {"15 MIN", "Crypto@fifteen_min"},
-                                             {"1 HOUR", "Crypto@hourly"}};
-            for (const auto& p : presets) {
-                auto* btn = new QPushButton(tr(p.label));
-                btn->setObjectName("polyCatBtn");
-                btn->setFixedHeight(26);
-                btn->setCursor(Qt::PointingHandCursor);
-                const QString slug = QString::fromLatin1(p.slug);
-                btn->setProperty("catSlug", slug);
-                btn->setProperty("active", active_category_ == slug);
-                connect(btn, &QPushButton::clicked, this,
-                        [this, slug]() { emit category_changed(slug); });
-                layout->addWidget(btn);
-            }
-        }
         layout->addStretch(1);
         return;
     }
@@ -390,6 +446,119 @@ void PolymarketCommandBar::rebuild_categories() {
     layout->addStretch(1);
 }
 
+void PolymarketCommandBar::rebuild_kalshi_categories(QHBoxLayout* layout) {
+    const QString css = kalshi_combo_css(presentation_);
+
+    category_combo_ = new QComboBox;
+    category_combo_->setObjectName("polyKalshiFamilyCombo");
+    category_combo_->setFixedSize(150, 26);
+    category_combo_->setStyleSheet(css);
+    category_combo_->addItem(tr("ALL KALSHI"), QStringLiteral("ALL"));
+
+    static const QStringList priority = {QStringLiteral("Crypto"),        QStringLiteral("Sports"),
+                                         QStringLiteral("Politics"),      QStringLiteral("Economics"),
+                                         QStringLiteral("Financials"),    QStringLiteral("Weather"),
+                                         QStringLiteral("Entertainment"), QStringLiteral("Science/Tech")};
+    QStringList tags = priority;
+    for (const QString& tag : current_tags_) {
+        bool exists = false;
+        for (const QString& known : tags) {
+            if (known.compare(tag, Qt::CaseInsensitive) == 0) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) tags.push_back(tag);
+    }
+    tags.removeDuplicates();
+    std::sort(tags.begin(), tags.end(), [](const QString& a, const QString& b) {
+        const int ia = priority.indexOf(a);
+        const int ib = priority.indexOf(b);
+        if (ia != ib) return (ia < 0 ? 999 : ia) < (ib < 0 ? 999 : ib);
+        return a.localeAwareCompare(b) < 0;
+    });
+    for (const QString& t : tags)
+        category_combo_->addItem(t, t);
+    layout->addWidget(category_combo_);
+
+    kalshi_asset_combo_ = new QComboBox;
+    kalshi_asset_combo_->setObjectName("polyKalshiAssetCombo");
+    kalshi_asset_combo_->setFixedSize(112, 26);
+    kalshi_asset_combo_->setStyleSheet(css);
+    kalshi_asset_combo_->addItem(tr("ALL CRYPTO"), QString());
+    kalshi_asset_combo_->addItem(QStringLiteral("BTC"), QStringLiteral("BTC"));
+    kalshi_asset_combo_->addItem(QStringLiteral("ETH"), QStringLiteral("ETH"));
+    kalshi_asset_combo_->addItem(QStringLiteral("SOL"), QStringLiteral("SOL"));
+    kalshi_asset_combo_->addItem(QStringLiteral("DOGE"), QStringLiteral("DOGE"));
+    kalshi_asset_combo_->addItem(QStringLiteral("XRP"), QStringLiteral("XRP"));
+    layout->addWidget(kalshi_asset_combo_);
+
+    kalshi_cadence_combo_ = new QComboBox;
+    kalshi_cadence_combo_->setObjectName("polyKalshiCadenceCombo");
+    kalshi_cadence_combo_->setFixedSize(128, 26);
+    kalshi_cadence_combo_->setStyleSheet(css);
+    kalshi_cadence_combo_->addItem(tr("ALL TIMES"), QString());
+    kalshi_cadence_combo_->addItem(tr("LIVE"), QStringLiteral("live"));
+    kalshi_cadence_combo_->addItem(tr("15 MIN"), QStringLiteral("fifteen_min"));
+    kalshi_cadence_combo_->addItem(tr("1 HOUR"), QStringLiteral("hourly"));
+    kalshi_cadence_combo_->addItem(tr("DAILY"), QStringLiteral("daily"));
+    kalshi_cadence_combo_->addItem(tr("WEEKLY"), QStringLiteral("weekly"));
+    layout->addWidget(kalshi_cadence_combo_);
+
+    sync_kalshi_controls_from_category(active_category_);
+
+    connect(category_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) {
+                const QString family = combo_data(category_combo_);
+                if (family.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) != 0) {
+                    {
+                        QSignalBlocker asset_block(kalshi_asset_combo_);
+                        QSignalBlocker cadence_block(kalshi_cadence_combo_);
+                        set_combo_data(kalshi_asset_combo_, QString());
+                        set_combo_data(kalshi_cadence_combo_, QString());
+                    }
+                    if (kalshi_asset_combo_) kalshi_asset_combo_->setEnabled(false);
+                    if (kalshi_cadence_combo_) kalshi_cadence_combo_->setEnabled(false);
+                } else {
+                    if (kalshi_asset_combo_) kalshi_asset_combo_->setEnabled(true);
+                    if (kalshi_cadence_combo_) kalshi_cadence_combo_->setEnabled(true);
+                }
+                emit_kalshi_category_changed();
+            });
+    connect(kalshi_asset_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { emit_kalshi_category_changed(); });
+    connect(kalshi_cadence_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { emit_kalshi_category_changed(); });
+
+    layout->addStretch(1);
+}
+
+void PolymarketCommandBar::sync_kalshi_controls_from_category(const QString& category) {
+    if (!category_combo_ || !kalshi_asset_combo_ || !kalshi_cadence_combo_)
+        return;
+
+    const KalshiCategoryParts parts = parse_kalshi_category_slug(category);
+    {
+        QSignalBlocker family_block(category_combo_);
+        QSignalBlocker asset_block(kalshi_asset_combo_);
+        QSignalBlocker cadence_block(kalshi_cadence_combo_);
+        set_combo_data(category_combo_, parts.family);
+        set_combo_data(kalshi_asset_combo_, parts.asset);
+        set_combo_data(kalshi_cadence_combo_, parts.cadence);
+    }
+
+    const bool crypto = parts.family.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0;
+    kalshi_asset_combo_->setEnabled(crypto);
+    kalshi_cadence_combo_->setEnabled(crypto);
+}
+
+void PolymarketCommandBar::emit_kalshi_category_changed() {
+    const QString family = combo_data(category_combo_);
+    const QString asset = combo_data(kalshi_asset_combo_);
+    const QString cadence = combo_data(kalshi_cadence_combo_);
+    emit category_changed(build_kalshi_category_slug(family, asset, cadence));
+}
+
 // ── Active-state tracking ───────────────────────────────────────────────────
 
 void PolymarketCommandBar::set_active_view(const QString& view) {
@@ -403,6 +572,10 @@ void PolymarketCommandBar::set_active_view(const QString& view) {
 
 void PolymarketCommandBar::set_active_category(const QString& cat) {
     active_category_ = cat;
+    if (kalshi_asset_combo_ || kalshi_cadence_combo_) {
+        sync_kalshi_controls_from_category(cat);
+        return;
+    }
     if (category_combo_) {
         const int idx = qMax(0, category_combo_->findData(cat));
         QSignalBlocker b(category_combo_);

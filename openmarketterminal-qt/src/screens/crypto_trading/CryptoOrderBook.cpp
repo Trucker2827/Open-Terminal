@@ -190,6 +190,22 @@ void CryptoOrderBook::set_data(const QVector<QPair<double, double>>& bids, const
         repaint_timer_->start();
 }
 
+void CryptoOrderBook::clear() {
+    {
+        QMutexLocker lock(&mutex_);
+        bids_.clear();
+        asks_.clear();
+        tick_history_.clear();
+        spread_ = 0.0;
+        spread_pct_ = 0.0;
+    }
+    has_spread_data_ = false;
+    spread_label_->setText(tr("Spread: --"));
+    cache_dirty_ = true;
+    if (repaint_timer_ && !repaint_timer_->isActive())
+        repaint_timer_->start();
+}
+
 void CryptoOrderBook::add_tick_snapshot(const TickSnapshot& snap) {
     QMutexLocker lock(&mutex_);
     tick_history_.append(snap);

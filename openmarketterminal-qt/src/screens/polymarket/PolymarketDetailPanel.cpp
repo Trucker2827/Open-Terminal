@@ -88,6 +88,26 @@ QString fmt_impulse_pct(double v) {
     return QStringLiteral("%1%2%").arg(sign).arg(v, 0, 'f', 3);
 }
 
+double parse_ticket_number(QString text, bool* ok) {
+    text = text.trimmed();
+    text.remove(QLatin1Char('$'));
+    text.remove(QLatin1Char(','));
+    text.remove(QLatin1Char('%'));
+    text.remove(QStringLiteral("¢"));
+    if (text.endsWith(QLatin1Char('c'), Qt::CaseInsensitive))
+        text.chop(1);
+    return text.trimmed().toDouble(ok);
+}
+
+double parse_ticket_price(QString text, bool* ok) {
+    double price = parse_ticket_number(std::move(text), ok);
+    if (!*ok) return 0.0;
+    // Let humans enter either "0.59" or "59" / "59c" for a 59 cent contract.
+    if (price > 1.0 && price <= 99.0)
+        price /= 100.0;
+    return price;
+}
+
 } // namespace
 
 PolymarketDetailPanel::PolymarketDetailPanel(QWidget* parent) : QWidget(parent) {
@@ -392,10 +412,12 @@ QWidget* PolymarketDetailPanel::create_trade_page() {
     connect(ticket_buy_btn_,  &QPushButton::clicked, this, [this]() {
         ticket_side_ = "BUY";
         refresh_ticket_side_style();
+        update_ticket_estimate();
     });
     connect(ticket_sell_btn_, &QPushButton::clicked, this, [this]() {
         ticket_side_ = "SELL";
         refresh_ticket_side_style();
+        update_ticket_estimate();
     });
     srl->addWidget(ticket_buy_btn_);
     srl->addWidget(ticket_sell_btn_);
@@ -425,9 +447,21 @@ QWidget* PolymarketDetailPanel::create_trade_page() {
     fl->addWidget(make_label(tr("OUTCOME")));
     ticket_outcome_cb_ = new QComboBox;
     ticket_outcome_cb_->setStyleSheet(input_ss);
+    connect(ticket_outcome_cb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this]() {
+                prefill_ticket_price_from_outcome(true);
+                update_ticket_estimate();
+            });
     fl->addWidget(ticket_outcome_cb_);
 
-    // Price + Size row
+    fl->addWidget(make_label(tr("DOLLAR AMOUNT")));
+    ticket_cash_edit_ = new QLineEdit;
+    ticket_cash_edit_->setPlaceholderText(tr("25.00"));
+    ticket_cash_edit_->setStyleSheet(input_ss);
+    connect(ticket_cash_edit_, &QLineEdit::textChanged, this, &PolymarketDetailPanel::update_ticket_estimate);
+    fl->addWidget(ticket_cash_edit_);
+
+    // Price + calculated contracts row
     auto* ps_row = new QWidget;
     ps_row->setStyleSheet("background: transparent;");
     auto* psl = new QHBoxLayout(ps_row);
@@ -436,18 +470,20 @@ QWidget* PolymarketDetailPanel::create_trade_page() {
 
     auto* price_col = new QVBoxLayout;
     price_col->setSpacing(4);
-    price_col->addWidget(make_label(tr("PRICE (0–1)")));
+    price_col->addWidget(make_label(tr("LIMIT PRICE")));
     ticket_price_edit_ = new QLineEdit;
     ticket_price_edit_->setPlaceholderText("0.50");
     ticket_price_edit_->setStyleSheet(input_ss);
+    connect(ticket_price_edit_, &QLineEdit::textChanged, this, &PolymarketDetailPanel::update_ticket_estimate);
     price_col->addWidget(ticket_price_edit_);
 
     auto* size_col = new QVBoxLayout;
     size_col->setSpacing(4);
-    size_col->addWidget(make_label(tr("SIZE")));
+    size_col->addWidget(make_label(tr("CONTRACTS")));
     ticket_size_edit_ = new QLineEdit;
-    ticket_size_edit_->setPlaceholderText("10");
+    ticket_size_edit_->setPlaceholderText(tr("auto"));
     ticket_size_edit_->setStyleSheet(input_ss);
+    connect(ticket_size_edit_, &QLineEdit::textChanged, this, &PolymarketDetailPanel::update_ticket_estimate);
     size_col->addWidget(ticket_size_edit_);
 
     psl->addLayout(price_col);
@@ -455,13 +491,17 @@ QWidget* PolymarketDetailPanel::create_trade_page() {
     fl->addWidget(ps_row);
 
     // Order type
-    fl->addWidget(make_label(tr("ORDER TYPE")));
+    fl->addWidget(make_label(tr("ORDER DURATION")));
     ticket_type_cb_ = new QComboBox;
-    // GTC/FOK/FAK are protocol order-type codes sent in the order request —
-    // not translated.
-    ticket_type_cb_->addItems({"GTC", "FOK", "FAK"});
     ticket_type_cb_->setStyleSheet(input_ss);
+    configure_ticket_order_types();
     fl->addWidget(ticket_type_cb_);
+
+    ticket_estimate_lbl_ = new QLabel(tr("Enter a dollar amount and limit price."));
+    ticket_estimate_lbl_->setWordWrap(true);
+    ticket_estimate_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_SECONDARY()));
+    fl->addWidget(ticket_estimate_lbl_);
 
     // Submit button
     ticket_submit_btn_ = new QPushButton(tr("PLACE ORDER"));
@@ -515,21 +555,112 @@ void PolymarketDetailPanel::refresh_ticket_side_style() {
                  colors::BG_RAISED(), colors::TEXT_DIM()));
 }
 
+void PolymarketDetailPanel::prefill_ticket_price_from_outcome(bool force) {
+    if (!ticket_price_edit_ || !ticket_outcome_cb_ || !has_last_market_)
+        return;
+    const int outcome_idx = ticket_outcome_cb_->currentIndex();
+    if (outcome_idx < 0 || outcome_idx >= last_market_.outcomes.size())
+        return;
+    if (!force && !ticket_price_edit_->text().trimmed().isEmpty())
+        return;
+
+    const double price = qBound(0.01, last_market_.outcomes[outcome_idx].price, 0.99);
+    const QSignalBlocker block(ticket_price_edit_);
+    ticket_price_edit_->setText(QString::number(price, 'f', 2));
+}
+
+void PolymarketDetailPanel::configure_ticket_order_types() {
+    if (!ticket_type_cb_)
+        return;
+
+    const QString exchange_id = has_last_market_ ? last_market_.key.exchange_id : QString{};
+    const QString current_code = ticket_type_cb_->currentData().toString();
+    const QSignalBlocker block(ticket_type_cb_);
+    ticket_type_cb_->clear();
+
+    if (exchange_id == QStringLiteral("kalshi")) {
+        ticket_type_cb_->addItem(tr("Keep open until canceled"), QStringLiteral("limit"));
+        ticket_type_cb_->setToolTip(tr("Kalshi limit order: stays open until it fills, expires, or you cancel it."));
+        return;
+    }
+
+    // Polymarket CLOB order-type codes. Visible text is plain English; the
+    // hidden data is the exact protocol value sent to the adapter.
+    ticket_type_cb_->addItem(tr("Good till canceled"), QStringLiteral("GTC"));
+    ticket_type_cb_->addItem(tr("All or nothing now"), QStringLiteral("FOK"));
+    ticket_type_cb_->addItem(tr("Fill what can now"), QStringLiteral("FAK"));
+    ticket_type_cb_->setToolTip(tr("Good till canceled: order stays open. "
+                                   "All or nothing now: fill the whole order immediately or cancel. "
+                                   "Fill what can now: fill any available contracts immediately and cancel the rest."));
+    if (!current_code.isEmpty()) {
+        const int idx = ticket_type_cb_->findData(current_code);
+        if (idx >= 0) ticket_type_cb_->setCurrentIndex(idx);
+    }
+}
+
+void PolymarketDetailPanel::update_ticket_estimate() {
+    if (!ticket_estimate_lbl_ || !ticket_price_edit_)
+        return;
+
+    bool price_ok = false;
+    const double price = parse_ticket_price(ticket_price_edit_->text(), &price_ok);
+    if (!price_ok || price <= 0.0 || price >= 1.0) {
+        ticket_estimate_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_SECONDARY()));
+        ticket_estimate_lbl_->setText(tr("Enter a limit price from 1c to 99c."));
+        return;
+    }
+
+    bool cash_ok = false;
+    const double cash = ticket_cash_edit_ ? parse_ticket_number(ticket_cash_edit_->text(), &cash_ok) : 0.0;
+    bool size_ok = false;
+    double contracts = ticket_size_edit_ ? parse_ticket_number(ticket_size_edit_->text(), &size_ok) : 0.0;
+
+    if (cash_ok && cash > 0.0) {
+        contracts = std::floor(cash / price);
+        const QSignalBlocker size_block(ticket_size_edit_);
+        ticket_size_edit_->setText(contracts > 0.0 ? QString::number(contracts, 'f', 0) : QString{});
+    }
+
+    if (contracts <= 0.0) {
+        ticket_estimate_lbl_->setStyleSheet(
+            QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_SECONDARY()));
+        ticket_estimate_lbl_->setText(tr("Enter dollars to calculate contracts."));
+        return;
+    }
+
+    const double notional = contracts * price;
+    const QString action_word = (ticket_side_ == QStringLiteral("SELL")) ? tr("proceeds") : tr("cost");
+    ticket_estimate_lbl_->setStyleSheet(
+        QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_PRIMARY()));
+    ticket_estimate_lbl_->setText(
+        tr("%1 contracts at %2c = est. %3 $%4. Whole contracts only.")
+            .arg(contracts, 0, 'f', 0)
+            .arg(price * 100.0, 0, 'f', 0)
+            .arg(action_word)
+            .arg(notional, 0, 'f', 2));
+}
+
 void PolymarketDetailPanel::on_submit_clicked() {
     if (!has_last_market_) return;
-    bool price_ok = false, size_ok = false;
-    const double price = ticket_price_edit_->text().toDouble(&price_ok);
-    const double size  = ticket_size_edit_->text().toDouble(&size_ok);
+    bool price_ok = false, size_ok = false, cash_ok = false;
+    const double price = parse_ticket_price(ticket_price_edit_->text(), &price_ok);
+    const double cash = ticket_cash_edit_ ? parse_ticket_number(ticket_cash_edit_->text(), &cash_ok) : 0.0;
+    double size  = ticket_size_edit_ ? parse_ticket_number(ticket_size_edit_->text(), &size_ok) : 0.0;
+    if (cash_ok && cash > 0.0) {
+        size = std::floor(cash / price);
+        size_ok = size > 0.0;
+    }
     if (!price_ok || price <= 0.0 || price >= 1.0) {
         ticket_status_lbl_->setStyleSheet(
             QString("color: %1; font-size: 10px; background: transparent;").arg(colors::NEGATIVE()));
-        ticket_status_lbl_->setText(tr("Invalid price — enter a value between 0 and 1"));
+        ticket_status_lbl_->setText(tr("Invalid price — enter 1c to 99c"));
         return;
     }
     if (!size_ok || size <= 0.0) {
         ticket_status_lbl_->setStyleSheet(
             QString("color: %1; font-size: 10px; background: transparent;").arg(colors::NEGATIVE()));
-        ticket_status_lbl_->setText(tr("Invalid size — must be > 0"));
+        ticket_status_lbl_->setText(tr("Enter enough dollars for at least 1 contract"));
         return;
     }
 
@@ -542,9 +673,11 @@ void PolymarketDetailPanel::on_submit_clicked() {
     req.key        = last_market_.key;
     req.asset_id   = asset_id;
     req.side       = ticket_side_;
-    req.order_type = ticket_type_cb_->currentText();
+    req.order_type = ticket_type_cb_->currentData().toString();
+    if (req.order_type.isEmpty())
+        req.order_type = ticket_type_cb_->currentText();
     req.price      = price;
-    req.size       = size;
+    req.size       = std::floor(size);
 
     ticket_status_lbl_->setStyleSheet(
         QString("color: %1; font-size: 10px; background: transparent;").arg(colors::TEXT_DIM()));
@@ -581,7 +714,9 @@ void PolymarketDetailPanel::on_order_result(const OrderResult& result) {
         ticket_status_lbl_->setText(
             tr("Order placed ✓  ID: %1").arg(result.order_id.left(12)));
         ticket_price_edit_->clear();
+        if (ticket_cash_edit_) ticket_cash_edit_->clear();
         ticket_size_edit_->clear();
+        if (ticket_estimate_lbl_) ticket_estimate_lbl_->setText(tr("Enter a dollar amount and limit price."));
     } else {
         ticket_status_lbl_->setStyleSheet(
             QString("color: %1; font-size: 10px; background: transparent;").arg(colors::NEGATIVE()));
@@ -1494,6 +1629,11 @@ void PolymarketDetailPanel::set_active_tab(int tab) {
 
 void PolymarketDetailPanel::set_market(const PredictionMarket& market) {
     const int previous_tab = stack_ ? stack_->currentIndex() : 0;
+    // A live price tick re-calls set_market for the SAME market ~1x/sec. Detect
+    // that (vs a genuinely new selection) so a live update doesn't yank the user
+    // off the tab they're on (TRADE/ORDER BOOK/CHART) back to OVERVIEW.
+    const bool same_market = has_last_market_ &&
+                             last_market_.key.market_id == market.key.market_id;
     last_market_ = market;
     has_last_market_ = true;
 
@@ -1517,6 +1657,9 @@ void PolymarketDetailPanel::set_market(const PredictionMarket& market) {
     if (ticket_status_lbl_) ticket_status_lbl_->clear();
     if (ticket_submit_btn_) ticket_submit_btn_->setEnabled(true);
     if (ticket_position_lbl_) ticket_position_lbl_->setText("—");
+    configure_ticket_order_types();
+    prefill_ticket_price_from_outcome(!same_market);
+    update_ticket_estimate();
 
     // ── Rebuild outcome probability bars ──────────────────────────────────
     auto* layout = qobject_cast<QVBoxLayout*>(outcome_container_->layout());
@@ -1606,7 +1749,10 @@ void PolymarketDetailPanel::set_market(const PredictionMarket& market) {
     price_chart_->set_outcome_labels(labels);
     update_edge_prefill_from_market();
 
-    set_active_tab(previous_tab == kTabEdge ? kTabEdge : 0);
+    // Same market updating -> keep the user's current tab; a genuinely new
+    // market -> reset to OVERVIEW (EDGE stays sticky in both cases).
+    set_active_tab(same_market ? previous_tab
+                               : (previous_tab == kTabEdge ? kTabEdge : 0));
 }
 
 void PolymarketDetailPanel::set_price_summary(const pmx::PriceSummary& summary) {
@@ -1923,12 +2069,19 @@ void PolymarketDetailPanel::retranslateUi() {
     if (no_acct_msg_lbl_) no_acct_msg_lbl_->setText(tr("Connect an account\nto place orders"));
     if (bal_caption_lbl_) bal_caption_lbl_->setText(tr("AVAILABLE"));
     if (pos_caption_lbl_) pos_caption_lbl_->setText(tr("POSITION"));
-    const QStringList form_caps = {tr("OUTCOME"), tr("PRICE (0–1)"), tr("SIZE"), tr("ORDER TYPE")};
+    const QStringList form_caps = {
+        tr("OUTCOME"),
+        tr("DOLLAR AMOUNT"),
+        tr("LIMIT PRICE"),
+        tr("CONTRACTS"),
+        tr("ORDER DURATION")
+    };
     for (int i = 0; i < trade_form_caption_lbls_.size() && i < form_caps.size(); ++i)
         if (trade_form_caption_lbls_[i]) trade_form_caption_lbls_[i]->setText(form_caps[i]);
     if (ticket_buy_btn_)    ticket_buy_btn_->setText(tr("BUY"));
     if (ticket_sell_btn_)   ticket_sell_btn_->setText(tr("SELL"));
     if (ticket_submit_btn_) ticket_submit_btn_->setText(tr("PLACE ORDER"));
+    configure_ticket_order_types();
 
     // Holders table headers.
     if (holders_table_)

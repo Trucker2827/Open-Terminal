@@ -4,6 +4,7 @@
 #include "services/prediction/kalshi/KalshiCredentials.h"
 
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -74,9 +75,11 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     /// exchange_* signals below.
     void fetch_exchange_status();
     void fetch_exchange_schedule();
+    void fetch_series_fee_changes();
     /// GET /markets/candlesticks (batch). Results arrive on batch_candles_ready.
     void fetch_batch_candles(const QStringList& tickers, int period_interval_min,
                              qint64 start_ts, qint64 end_ts);
+    void fetch_batch_order_books(const QStringList& tickers);
     /// GET /series/{series_ticker}. Result arrives on series_detail_ready.
     /// Cached per ticker — repeat calls are free.
     void fetch_series_detail(const QString& series_ticker);
@@ -92,6 +95,8 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void fetch_historical_trades(const QString& ticker = QString(),
                                  int limit = 100,
                                  const QString& cursor = QString());
+    /// GET /portfolio/settlements through the authenticated bridge.
+    void fetch_settlements(int limit = 100, const QString& cursor = QString());
 
     // ── Kalshi-specific trading (pass through to Python bridge) ─────────
 
@@ -110,12 +115,22 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     // Kalshi-specific extensions (not on the base adapter interface).
     // Consumers cast to KalshiAdapter* to connect.
     void ws_trade_received(const openmarketterminal::services::prediction::PredictionTrade& trade);
+    void ws_trade_event(const QString& ticker, const QJsonObject& payload);
     void ws_market_lifecycle_changed(const QString& ticker, const QString& status);
+    void ws_market_lifecycle_event(const QString& ticker, const QString& status,
+                                   const QJsonObject& payload);
+    void ws_ticker_event(const QString& ticker, const QJsonObject& payload);
+    void ws_orderbook_event(const QString& type, const QString& ticker, qint64 sequence,
+                            const QJsonObject& payload);
+    void ws_account_event(const QString& type, const QJsonObject& payload);
 
     void exchange_status_ready(const QJsonObject& status);
     void exchange_schedule_ready(const QJsonObject& schedule);
+    void series_fee_changes_ready(const QJsonArray& changes);
     void batch_candles_ready(
         const QHash<QString, openmarketterminal::services::prediction::PriceHistory>& histories);
+    void batch_order_books_ready(
+        const QHash<QString, openmarketterminal::services::prediction::PredictionOrderBook>& books);
     void series_detail_ready(const QString& series_ticker, const QJsonObject& series);
 
     void historical_markets_ready(
@@ -126,6 +141,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void historical_trades_ready(
         const QVector<openmarketterminal::services::prediction::PredictionTrade>& trades,
         const QString& next_cursor);
+    void settlements_ready(const QJsonArray& settlements);
 
     void order_amended(const QString& order_id, bool ok, const QString& error);
     void single_order_ready(const QJsonObject& order);

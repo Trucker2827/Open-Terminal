@@ -154,12 +154,11 @@ FeeSchedule fee_schedule_for(QString exchange_id) {
     exchange_id = exchange_id.trimmed().toLower();
     FeeSchedule schedule;
     if (exchange_id == QLatin1String("coinbase")) {
-        // Conservative Coinbase Advanced base-tier estimate for small accounts.
-        // The account-specific tier can be lower; keep this pessimistic until
-        // we read live fee tier data from the authenticated account.
-        schedule = {0.0060, 0.0120, 0.0, 0.0, false, 0.0,
-                    QStringLiteral("Coinbase Advanced est"),
-                    QStringLiteral("Coinbase One simple-trade fee perks are not assumed for Advanced/API orders.")};
+        // Coinbase order-book low-tier estimate. Account-specific tiers can be
+        // lower; keep editable via crypto.fee.coinbase.* settings.
+        schedule = {0.0040, 0.0060, 0.0, 0.0, false, 0.0,
+                    QStringLiteral("Coinbase low tier"),
+                    QStringLiteral("Simple-trade subscription perks are not assumed for API/order-book orders.")};
     } else if (exchange_id == QLatin1String("alpaca")) {
         schedule = {0.0015, 0.0025, 0.0, 0.0, false, 0.0, QStringLiteral("Alpaca tier 1"), QString()};
     } else if (exchange_id == QLatin1String("kraken")) {
@@ -192,6 +191,48 @@ FeeSchedule fee_schedule_for(QString exchange_id) {
     if (!profile.isEmpty())
         schedule.label = profile + QStringLiteral(" local");
     return schedule;
+}
+
+struct MakerFeeEstimate {
+    double notional = 0.0;
+    double gross_fee = 0.0;
+    double rebate = 0.0;
+    double free_allowance = 0.0;
+    double fee = 0.0;
+    double required_cash = 0.0;
+};
+
+MakerFeeEstimate estimate_maker_fee_for_notional(double notional, const FeeSchedule& schedule) {
+    MakerFeeEstimate est;
+    est.notional = std::max(0.0, notional);
+    est.gross_fee = est.notional * std::max(0.0, schedule.maker);
+    est.rebate = est.gross_fee * (std::clamp(schedule.rebate_pct, 0.0, 100.0) / 100.0);
+    const double fee_after_rebate = std::max(0.0, est.gross_fee - est.rebate);
+    est.free_allowance = schedule.free_applies_to_advanced
+                             ? std::min(fee_after_rebate, std::max(0.0, schedule.free_remaining_usd))
+                             : 0.0;
+    est.fee = std::max(0.0, fee_after_rebate - est.free_allowance);
+    est.required_cash = est.notional + est.fee;
+    return est;
+}
+
+MakerFeeEstimate maker_budget_from_cash(double cash_budget, const FeeSchedule& schedule) {
+    cash_budget = std::max(0.0, cash_budget);
+    double lo = 0.0;
+    double hi = cash_budget;
+
+    // Solve notional + estimated maker fee <= cash budget. A small binary
+    // search keeps local fee settings such as rebates/free allowance correct.
+    for (int i = 0; i < 48; ++i) {
+        const double mid = (lo + hi) / 2.0;
+        const MakerFeeEstimate est = estimate_maker_fee_for_notional(mid, schedule);
+        if (est.required_cash <= cash_budget)
+            lo = mid;
+        else
+            hi = mid;
+    }
+
+    return estimate_maker_fee_for_notional(lo, schedule);
 }
 
 } // namespace
@@ -329,7 +370,7 @@ CryptoOrderEntry::CryptoOrderEntry(QWidget* parent) : QWidget(parent) {
 
         maker_preview_label_ = new QLabel(tr("Enter amount and limit price to preview."));
         maker_preview_label_->setObjectName("cryptoOeSubmitSubtitle");
-        maker_preview_label_->setWordWrap(false);
+        maker_preview_label_->setWordWrap(true);
         maker_preview_label_->setAlignment(Qt::AlignCenter);
         v->addWidget(maker_preview_label_);
 
@@ -718,6 +759,10 @@ QString CryptoOrderEntry::quote_label() const {
     return balance_currency_.isEmpty() ? quote_of(current_symbol_) : balance_currency_;
 }
 
+QString CryptoOrderEntry::funding_currency() const {
+    return quote_label();
+}
+
 void CryptoOrderEntry::set_balance(double balance, const QString& currency) {
     balance_currency_ = currency.trimmed().toUpper();
     balance_ = balance;
@@ -825,23 +870,39 @@ void CryptoOrderEntry::update_maker_preview() {
     const QString base = base_of(current_symbol_);
     const bool have_quote = best_bid_ > 0 && best_ask_ > best_bid_;
     const bool crosses = have_quote && limit > 0 && limit >= best_ask_;
+    const FeeSchedule schedule = fee_schedule_for(exchange_id_);
+    const MakerFeeEstimate est = maker_budget_from_cash(cash, schedule);
     const bool enough_cash = balance_ <= 0 || cash <= balance_ + 0.000001 || is_paper_;
     const bool valid = cash > 0 && limit > 0 && !crosses && enough_cash && !submit_busy_;
-    const double qty = (cash > 0 && limit > 0) ? cash / limit : 0.0;
+    const double qty = (est.notional > 0 && limit > 0) ? est.notional / limit : 0.0;
 
     if (cash > 0 && limit > 0) {
-        maker_preview_label_->setText(tr("%1 %2 -> %3 %4")
+        maker_preview_label_->setText(tr("%1 %2 budget -> %3 %4\nBuy ~%5 %2 · fee ~%6 %2 · need ~%7 %2")
                                           .arg(cash, 0, 'f', 2)
                                           .arg(quote)
                                           .arg(qty, 0, 'f', 8)
-                                          .arg(base));
-        QString tip = tr("%1 %2 at limit %3 %4. Maker/post-only forced.")
+                                          .arg(base)
+                                          .arg(est.notional, 0, 'f', 2)
+                                          .arg(est.fee, 0, 'f', 2)
+                                          .arg(est.required_cash, 0, 'f', 2));
+        QString tip = tr("%1 %2 cash budget at limit %3 %4. Maker/post-only forced.")
                           .arg(cash, 0, 'f', 2)
                           .arg(quote)
                           .arg(limit, 0, 'f', 2)
                           .arg(quote);
+        tip += tr("\nQuantity is fee-adjusted so the estimated maker fee fits inside the budget.");
+        tip += tr("\nEstimated maker fee: %1 %2 (%3)")
+                   .arg(est.fee, 0, 'f', 2)
+                   .arg(quote)
+                   .arg(schedule.label);
+        if (est.rebate > 0 || est.free_allowance > 0)
+            tip += tr("\nGross fee %1 · rebate/free -%2 / -%3")
+                       .arg(est.gross_fee, 0, 'f', 2)
+                       .arg(est.rebate, 0, 'f', 2)
+                       .arg(est.free_allowance, 0, 'f', 2);
         if (have_quote)
             tip += tr("\nBest bid %1 · best ask %2").arg(best_bid_, 0, 'f', 2).arg(best_ask_, 0, 'f', 2);
+        tip += tr("\nActual fee is reported by the exchange after fill.");
         maker_preview_label_->setToolTip(tip);
     } else {
         maker_preview_label_->setText(tr("Enter amount and limit price to preview."));
@@ -854,7 +915,7 @@ void CryptoOrderEntry::update_maker_preview() {
             maker_status_label_->setProperty("severity", "error");
             maker_status_label_->setVisible(true);
         } else if (!enough_cash) {
-            maker_status_label_->setText(tr("Blocked: above available balance"));
+            maker_status_label_->setText(tr("Blocked: amount above available balance"));
             maker_status_label_->setProperty("severity", "error");
             maker_status_label_->setVisible(true);
         } else {
@@ -877,7 +938,9 @@ void CryptoOrderEntry::on_maker_submit() {
 
     const double cash = text_to_double(maker_usd_edit_);
     const double limit = text_to_double(maker_limit_edit_);
-    const double qty = (cash > 0 && limit > 0) ? cash / limit : 0.0;
+    const FeeSchedule schedule = fee_schedule_for(exchange_id_);
+    const MakerFeeEstimate est = maker_budget_from_cash(cash, schedule);
+    const double qty = (est.notional > 0 && limit > 0) ? est.notional / limit : 0.0;
     if (cash <= 0 || limit <= 0 || qty <= 0)
         return;
 
@@ -894,14 +957,20 @@ void CryptoOrderEntry::on_maker_submit() {
     const QString quote = quote_label();
     const QString base = base_of(current_symbol_);
     const QString mode_word = is_paper_ ? tr("paper") : tr("LIVE");
-    const QString detail = tr("Submit %1 maker-only buy?\n\n%2 %3 at limit %4 %5\nQuantity: %6 %7\n\nThis sends a post-only limit order. If it would fill immediately, the exchange should reject or cancel it.")
+    const QString detail = tr("Submit %1 maker-only buy?\n\n%2 %3 cash budget at limit %4 %5\nBuy notional: ~%6 %7\nQuantity: %8 %9\nEst. maker fee: %10 %11\nEst. cash needed: %12 %13\n\nQuantity is reduced so the estimated maker fee fits inside the cash budget. This sends a post-only limit order. If it would fill immediately, the exchange should reject or cancel it. Actual fee is final only after fill.")
                                .arg(mode_word)
                                .arg(cash, 0, 'f', 2)
                                .arg(quote)
                                .arg(limit, 0, 'f', 2)
                                .arg(quote)
+                               .arg(est.notional, 0, 'f', 2)
+                               .arg(quote)
                                .arg(qty, 0, 'f', 8)
-                               .arg(base);
+                               .arg(base)
+                               .arg(est.fee, 0, 'f', 2)
+                               .arg(quote)
+                               .arg(est.required_cash, 0, 'f', 2)
+                               .arg(quote);
 
     const auto choice = QMessageBox::question(this, tr("Confirm Maker-Only Buy"), detail,
                                               QMessageBox::Cancel | QMessageBox::Yes, QMessageBox::Cancel);

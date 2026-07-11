@@ -76,7 +76,9 @@ static pr::PredictionMarket parse_market(const QJsonObject& obj) {
     // case-insensitively since casing has varied across API versions.
     const QString status = obj.value("status").toString().toLower();
     m.active = (status == QStringLiteral("open") || status == QStringLiteral("active"));
-    m.closed = (status == QStringLiteral("closed") || status == QStringLiteral("settled"));
+    m.closed = (status == QStringLiteral("closed") || status == QStringLiteral("determined") ||
+                status == QStringLiteral("disputed") || status == QStringLiteral("amended") ||
+                status == QStringLiteral("settled") || status == QStringLiteral("finalized"));
 
     pr::Outcome yes;
     yes.name = QStringLiteral("Yes");
@@ -105,6 +107,45 @@ static pr::PredictionMarket parse_market(const QJsonObject& obj) {
                     str_or_num(obj.value("settlement_value_dollars")));
     m.extras.insert(QStringLiteral("settlement_timer_seconds"),
                     qint64(obj.value("settlement_timer_seconds").toDouble()));
+    m.extras.insert(QStringLiteral("result"), obj.value("result").toString());
+    m.extras.insert(QStringLiteral("expiration_value"), obj.value("expiration_value").toString());
+    m.extras.insert(QStringLiteral("settlement_ts"), obj.value("settlement_ts").toString());
+    m.extras.insert(QStringLiteral("expected_expiration_time"),
+                    obj.value("expected_expiration_time").toString());
+    m.extras.insert(QStringLiteral("expiration_time"), obj.value("expiration_time").toString());
+    m.extras.insert(QStringLiteral("latest_expiration_time"),
+                    obj.value("latest_expiration_time").toString());
+    m.extras.insert(QStringLiteral("rules_secondary"), obj.value("rules_secondary").toString());
+    m.extras.insert(QStringLiteral("strike_type"), obj.value("strike_type").toString());
+    m.extras.insert(QStringLiteral("floor_strike"), str_or_num(obj.value("floor_strike")));
+    m.extras.insert(QStringLiteral("cap_strike"), str_or_num(obj.value("cap_strike")));
+    m.extras.insert(QStringLiteral("functional_strike"), obj.value("functional_strike").toString());
+    m.extras.insert(QStringLiteral("custom_strike"), obj.value("custom_strike").toObject().toVariantMap());
+    m.extras.insert(QStringLiteral("price_ranges"), obj.value("price_ranges").toArray().toVariantList());
+    m.extras.insert(QStringLiteral("fee_waiver_expiration_time"),
+                    obj.value("fee_waiver_expiration_time").toString());
+    m.extras.insert(QStringLiteral("early_close_condition"),
+                    obj.value("early_close_condition").toString());
+    m.extras.insert(QStringLiteral("is_provisional"), obj.value("is_provisional").toBool());
+    m.extras.insert(QStringLiteral("yes_bid_size_fp"), fp_to_double(obj.value("yes_bid_size_fp")));
+    m.extras.insert(QStringLiteral("yes_ask_size_fp"), fp_to_double(obj.value("yes_ask_size_fp")));
+    m.extras.insert(QStringLiteral("open_time"), obj.value("open_time").toString());
+    m.extras.insert(QStringLiteral("created_time"), obj.value("created_time").toString());
+    m.extras.insert(QStringLiteral("updated_time"), obj.value("updated_time").toString());
+    m.extras.insert(QStringLiteral("notional_value_dollars"),
+                    str_or_num(obj.value("notional_value_dollars")));
+    m.extras.insert(QStringLiteral("previous_price_dollars"),
+                    str_or_num(obj.value("previous_price_dollars")));
+    m.extras.insert(QStringLiteral("previous_yes_bid_dollars"),
+                    str_or_num(obj.value("previous_yes_bid_dollars")));
+    m.extras.insert(QStringLiteral("previous_yes_ask_dollars"),
+                    str_or_num(obj.value("previous_yes_ask_dollars")));
+    m.extras.insert(QStringLiteral("price_level_structure"),
+                    obj.value("price_level_structure").toString());
+    m.extras.insert(QStringLiteral("mve_collection_ticker"),
+                    obj.value("mve_collection_ticker").toString());
+    m.extras.insert(QStringLiteral("mve_selected_legs"),
+                    obj.value("mve_selected_legs").toArray().toVariantList());
     return m;
 }
 
@@ -127,6 +168,16 @@ static pr::PredictionEvent parse_event(const QJsonObject& obj) {
     e.closed = (status == QStringLiteral("closed") || status == QStringLiteral("settled"));
 
     const QString series = obj.value("series_ticker").toString();
+    e.extras.insert(QStringLiteral("series_ticker"), series);
+    e.extras.insert(QStringLiteral("mutually_exclusive"), obj.value("mutually_exclusive").toBool());
+    e.extras.insert(QStringLiteral("collateral_return_type"),
+                    obj.value("collateral_return_type").toString());
+    e.extras.insert(QStringLiteral("strike_period"), obj.value("strike_period").toString());
+    e.extras.insert(QStringLiteral("last_updated_ts"), obj.value("last_updated_ts").toString());
+    e.extras.insert(QStringLiteral("available_on_brokers"),
+                    obj.value("available_on_brokers").toBool());
+    e.extras.insert(QStringLiteral("settlement_sources"),
+                    obj.value("settlement_sources").toArray().toVariantList());
     const auto mk_arr = obj.value("markets").toArray();
     e.markets.reserve(mk_arr.size());
     for (const auto& v : mk_arr) {
@@ -321,14 +372,32 @@ void KalshiRestClient::fetch_series(const QString& status) {
 
 // ── fetch_category (category browse) ────────────────────────────────────────
 
+static bool series_matches_keywords(const QJsonObject& obj, const QStringList& keywords) {
+    if (keywords.isEmpty())
+        return true;
+
+    QStringList parts;
+    parts << obj.value(QStringLiteral("ticker")).toString()
+          << obj.value(QStringLiteral("title")).toString()
+          << obj.value(QStringLiteral("sub_title")).toString()
+          << obj.value(QStringLiteral("name")).toString();
+    const QString haystack = parts.join(QLatin1Char(' ')).toLower();
+    for (const QString& kw : keywords) {
+        const QString needle = kw.trimmed().toLower();
+        if (!needle.isEmpty() && haystack.contains(needle))
+            return true;
+    }
+    return false;
+}
+
 void KalshiRestClient::fetch_category(const QString& category, const QStringList& frequencies,
+                                      const QStringList& series_keywords,
                                       bool as_events, int limit) {
-    // Kalshi's /markets and /events list endpoints silently ignore any
+    // Kalshi's broad /markets and /events list endpoints silently ignore any
     // category/tag filter, and category-relevant rows are buried far past the
     // first page (a 1000-market page is 100% "Exotics"). The only category-aware
     // endpoint is /series?category=…, so we resolve the category to its series,
-    // then fan out per-series event fetches (events carry nested markets) and
-    // aggregate. See fan_out_series_events().
+    // then fan out per-series requests and aggregate.
     if (category.isEmpty()) {
         if (as_events) emit events_ready({}, QString());
         else emit markets_ready({}, QString());
@@ -342,7 +411,7 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
     const int cap = qBound(1, limit, 500);
     QPointer<KalshiRestClient> self = this;
     get_json(u.toString(),
-             [self, frequencies, as_events, cap](const QJsonDocument& doc) {
+             [self, category, frequencies, series_keywords, as_events, cap](const QJsonDocument& doc) {
                  if (!self) return;
                  const auto arr = doc.object().value("series").toArray();
                  // Sort series by recency (last_updated_ts, ISO-8601 sorts
@@ -360,6 +429,8 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
                      if (!frequencies.isEmpty() &&
                          !frequencies.contains(o.value("frequency").toString()))
                          continue;
+                     if (!series_matches_keywords(o, series_keywords))
+                         continue;
                      by_recency.push_back({o.value("last_updated_ts").toString(), t});
                  }
                  std::sort(by_recency.begin(), by_recency.end(),
@@ -367,9 +438,111 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
                  QStringList series;
                  series.reserve(by_recency.size());
                  for (const auto& p : by_recency) series.push_back(p.second);
-                 self->fan_out_series_events(series, as_events, cap);
+                 if (as_events) {
+                     self->fan_out_series_events(series, as_events, cap);
+                 } else {
+                     self->fan_out_series_markets(series, category, cap);
+                 }
              },
              QStringLiteral("Kalshi.fetch_category.series"));
+}
+
+void KalshiRestClient::fan_out_series_markets(const QStringList& series,
+                                              const QString& category, int limit) {
+    if (series.isEmpty()) {
+        emit markets_ready({}, QString());
+        return;
+    }
+
+    constexpr int kConcurrency = 5;
+    struct State {
+        QStringList series;
+        int next = 0;
+        int in_flight = 0;
+        bool emitted = false;
+        int limit = 0;
+        int error_count = 0;
+        QString last_error;
+        QVector<pr::PredictionMarket> markets;
+    };
+    auto st = std::make_shared<State>();
+    st->series = series;
+    st->limit = limit;
+    QPointer<KalshiRestClient> self = this;
+
+    auto pump = std::make_shared<std::function<void()>>();
+    *pump = [self, st, pump, category]() {
+        if (!self || st->emitted) return;
+
+        const bool enough = st->markets.size() >= st->limit;
+        const bool exhausted = st->next >= st->series.size() && st->in_flight == 0;
+        if (enough || exhausted) {
+            st->emitted = true;
+            LOG_INFO(QStringLiteral("Kalshi.fetch_category.markets"),
+                     QStringLiteral("fan-out done: %1 markets from %2 series probed "
+                                    "(cap %3, errors %4)")
+                         .arg(st->markets.size())
+                         .arg(st->next)
+                         .arg(st->limit)
+                         .arg(st->error_count));
+            QVector<pr::PredictionMarket> out = st->markets;
+            if (out.size() > st->limit) out.resize(st->limit);
+            emit self->markets_ready(out, QString());
+            if (out.isEmpty() && st->error_count > 0) {
+                emit self->request_error(QStringLiteral("Kalshi.fetch_category.markets"),
+                                         st->last_error);
+            }
+            return;
+        }
+
+        while (st->in_flight < kConcurrency && st->next < st->series.size() &&
+               st->markets.size() < st->limit) {
+            const QString s = st->series[st->next++];
+            ++st->in_flight;
+
+            QUrl u(self->base_url() + QStringLiteral("/markets"));
+            QUrlQuery q;
+            q.addQueryItem(QStringLiteral("status"), QStringLiteral("open"));
+            q.addQueryItem(QStringLiteral("series_ticker"), s);
+            q.addQueryItem(QStringLiteral("limit"), QStringLiteral("100"));
+            u.setQuery(q);
+
+            QNetworkRequest req{QUrl(u.toString())};
+            req.setHeader(QNetworkRequest::UserAgentHeader,
+                          QStringLiteral("OpenMarketTerminal/0.1.0"));
+            auto* reply = self->nam_->get(req);
+            self->connect(reply, &QNetworkReply::finished, self,
+                          [self, reply, st, pump, s, category]() {
+                              reply->deleteLater();
+                              --st->in_flight;
+                              if (self && !st->emitted &&
+                                  reply->error() == QNetworkReply::NoError) {
+                                  const auto mkts = QJsonDocument::fromJson(reply->readAll())
+                                                        .object()
+                                                        .value("markets")
+                                                        .toArray();
+                                  for (const auto& v : mkts) {
+                                      auto m = parse_market(v.toObject());
+                                      m.extras.insert(QStringLiteral("series_ticker"), s);
+                                      if (!category.isEmpty()) m.category = category;
+                                      st->markets.push_back(std::move(m));
+                                      if (st->markets.size() >= st->limit) break;
+                                  }
+                              } else if (self && !st->emitted) {
+                                  ++st->error_count;
+                                  const QString msg =
+                                      QStringLiteral("%1: %2")
+                                          .arg(reply->errorString(),
+                                               QString::fromUtf8(reply->readAll().left(200)));
+                                  st->last_error = msg;
+                                  LOG_WARN(QStringLiteral("Kalshi.fetch_category.markets"),
+                                           QStringLiteral("%1: %2").arg(s, msg));
+                              }
+                              (*pump)();
+                          });
+        }
+    };
+    (*pump)();
 }
 
 void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_events,
@@ -394,6 +567,8 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
         bool emitted = false;
         bool as_events = false;
         int limit = 0;
+        int error_count = 0;
+        QString last_error;
         QVector<pr::PredictionEvent> events;
         int market_count = 0;
     };
@@ -428,12 +603,20 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
                 QVector<pr::PredictionEvent> out = st->events;
                 if (out.size() > st->limit) out.resize(st->limit);
                 emit self->events_ready(out, QString());
+                if (out.isEmpty() && st->error_count > 0) {
+                    emit self->request_error(QStringLiteral("Kalshi.fetch_category.events"),
+                                             st->last_error);
+                }
             } else {
                 QVector<pr::PredictionMarket> mkts;
                 for (const auto& e : st->events)
                     for (const auto& m : e.markets) mkts.push_back(m);
                 if (mkts.size() > st->limit) mkts.resize(st->limit);
                 emit self->markets_ready(mkts, QString());
+                if (mkts.isEmpty() && st->error_count > 0) {
+                    emit self->request_error(QStringLiteral("Kalshi.fetch_category.events"),
+                                             st->last_error);
+                }
             }
             return;
         }
@@ -471,6 +654,14 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
                                       st->market_count += ev.markets.size();
                                       st->events.push_back(std::move(ev));
                                   }
+                              } else if (self && !st->emitted) {
+                                  ++st->error_count;
+                                  const QString msg =
+                                      QStringLiteral("%1: %2")
+                                          .arg(reply->errorString(),
+                                               QString::fromUtf8(reply->readAll().left(200)));
+                                  st->last_error = msg;
+                                  LOG_WARN(QStringLiteral("Kalshi.fetch_category.events"), msg);
                               }
                               (*pump)();
                           });
@@ -497,9 +688,10 @@ static void fill_book_from_levels(pr::PredictionOrderBook& book, const QJsonArra
         const double opp_price = str_or_num(arr[0]);
         book.asks.push_back({1.0 - opp_price, fp_to_double(arr[1])});
     }
-    // Asks naturally come out ascending after this inversion, because
-    // Kalshi returns NO bids best-first (highest NO price), which maps
-    // to the lowest YES ask first.
+    std::sort(book.bids.begin(), book.bids.end(),
+              [](const auto& a, const auto& b) { return a.price > b.price; });
+    std::sort(book.asks.begin(), book.asks.end(),
+              [](const auto& a, const auto& b) { return a.price < b.price; });
 }
 
 void KalshiRestClient::fetch_order_book(const QString& ticker, int depth) {
@@ -530,6 +722,41 @@ void KalshiRestClient::fetch_order_book(const QString& ticker, int depth) {
              QStringLiteral("Kalshi.fetch_order_book"));
 }
 
+void KalshiRestClient::fetch_batch_order_books(const QStringList& tickers) {
+    if (tickers.isEmpty()) {
+        emit batch_order_books_ready({});
+        return;
+    }
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("tickers"), tickers.mid(0, 100).join(QLatin1Char(',')));
+    QUrl url(base_url() + QStringLiteral("/markets/orderbooks"));
+    url.setQuery(query);
+    QPointer<KalshiRestClient> self = this;
+    get_json(url.toString(), [self](const QJsonDocument& doc) {
+        if (!self) return;
+        QHash<QString, pr::PredictionOrderBook> books;
+        for (const auto& value : doc.object().value(QStringLiteral("orderbooks")).toArray()) {
+            const QJsonObject row = value.toObject();
+            const QString ticker = row.value(QStringLiteral("ticker")).toString();
+            const QJsonObject book = row.value(QStringLiteral("orderbook_fp")).toObject();
+            if (ticker.isEmpty()) continue;
+            const QJsonArray yes_bids = book.value(QStringLiteral("yes_dollars")).toArray();
+            const QJsonArray no_bids = book.value(QStringLiteral("no_dollars")).toArray();
+            pr::PredictionOrderBook yes;
+            yes.asset_id = ticker + QStringLiteral(":yes");
+            yes.last_update_ms = QDateTime::currentMSecsSinceEpoch();
+            fill_book_from_levels(yes, yes_bids, no_bids);
+            pr::PredictionOrderBook no;
+            no.asset_id = ticker + QStringLiteral(":no");
+            no.last_update_ms = yes.last_update_ms;
+            fill_book_from_levels(no, no_bids, yes_bids);
+            books.insert(yes.asset_id, yes);
+            books.insert(no.asset_id, no);
+        }
+        emit self->batch_order_books_ready(books);
+    }, QStringLiteral("Kalshi.fetch_batch_order_books"));
+}
+
 // ── fetch_candlesticks ──────────────────────────────────────────────────────
 
 void KalshiRestClient::fetch_candlesticks(const QString& series_ticker, const QString& ticker,
@@ -558,7 +785,14 @@ void KalshiRestClient::fetch_candlesticks(const QString& series_ticker, const QS
                      // Fall back to yes_bid close if no trades happened.
                      QJsonValue close = price.value("close_dollars");
                      if (close.isNull() || close.isUndefined()) {
-                         close = o.value("yes_bid").toObject().value("close_dollars");
+                         const double bid = str_or_num(
+                             o.value("yes_bid").toObject().value("close_dollars"));
+                         const double ask = str_or_num(
+                             o.value("yes_ask").toObject().value("close_dollars"));
+                         const double midpoint = bid > 0.0 && ask > 0.0
+                             ? (bid + ask) / 2.0 : qMax(bid, ask);
+                         if (ts > 0 && midpoint > 0.0) h.points.push_back({ts, midpoint});
+                         continue;
                      }
                      const double p = str_or_num(close);
                      if (ts > 0 && p > 0) h.points.push_back({ts, p});

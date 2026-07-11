@@ -12,7 +12,7 @@ Commands:
     positions         — GET /portfolio/positions
     open_orders       — GET /portfolio/orders?status=resting
     fills             — GET /portfolio/fills
-    place_order       — POST /portfolio/orders
+    place_order       — POST /portfolio/events/orders
     cancel_order      — DELETE /portfolio/orders/{order_id}
     decrease_order    — POST /portfolio/orders/{order_id}/decrease
     settlements       — GET /portfolio/settlements
@@ -39,6 +39,13 @@ place_order fields:
         "no_price_cents":  48,                   // alternative — limit sell NO side
         "expiration_ts":   1735689600,            // 0/omitted = GTC
         "client_order_id": "uuid-…"
+
+The public UI/CLI still speaks in YES/NO terms. Kalshi's current event-order
+endpoint only accepts bid/ask on the YES leg, so this bridge translates:
+    buy YES  -> bid YES at yes_price
+    sell YES -> ask YES at yes_price
+    buy NO   -> ask YES at 1 - no_price
+    sell NO  -> bid YES at 1 - no_price
 
 All responses are a single JSON line on stdout.
 """
@@ -482,44 +489,111 @@ def cmd_fills(payload: dict) -> None:
 
 
 def cmd_settlements(payload: dict) -> None:
+    params = {"limit": int(payload.get("limit", 100))}
+    if payload.get("cursor"):
+        params["cursor"] = str(payload["cursor"])
     ok, code, data = _request(payload, "GET", "/portfolio/settlements",
-                              params={"limit": int(payload.get("limit", 100))})
+                              params=params)
     if not ok:
         _fail(f"HTTP {code}", detail=data)
         return
-    _emit({"ok": True, "settlements": data.get("settlements", []) or []})
+    _emit({"ok": True, "settlements": data.get("settlements", []) or [],
+           "cursor": data.get("cursor", "")})
+
+
+def _event_order_time_in_force(order_type: str, expiration_ts=None) -> str:
+    order_type = (order_type or "limit").lower()
+    if order_type in ("fok", "fill_or_kill"):
+        return "fill_or_kill"
+    if order_type in ("fak", "ioc", "immediate_or_cancel"):
+        return "immediate_or_cancel"
+    if expiration_ts:
+        return "good_till_date"
+    return "good_till_canceled"
+
+
+def _event_order_body(order_payload: dict) -> dict:
+    """Translate OpenTerminal's YES/NO order shape to Kalshi Event Orders V2."""
+    ticker = str(order_payload.get("ticker", "")).strip()
+    if not ticker:
+        raise ValueError("place_order requires ticker")
+    count = _to_float(order_payload.get("count", order_payload.get("contracts", 0)))
+    if count <= 0:
+        raise ValueError("place_order requires positive count/contracts")
+
+    action = str(order_payload.get("action", "buy")).lower()
+    if action not in ("buy", "sell"):
+        raise ValueError("action must be buy or sell")
+    outcome_side = str(order_payload.get("side", "yes")).lower()
+    if outcome_side not in ("yes", "no"):
+        raise ValueError("side must be yes or no")
+
+    outcome_price = _price_from_payload(order_payload, outcome_side)
+    if outcome_price <= 0:
+        raise ValueError("limit order requires price, yes_price_dollars, "
+                         "yes_price_cents, no_price_dollars, or no_price_cents")
+
+    # Event Orders V2 expresses every order as bid/ask on the YES leg.
+    if outcome_side == "yes":
+        event_side = "bid" if action == "buy" else "ask"
+        event_price = outcome_price
+    else:
+        event_side = "ask" if action == "buy" else "bid"
+        event_price = 1.0 - outcome_price
+
+    event_price = min(max(event_price, 0.01), 0.99)
+    expiration_ts = order_payload.get("expiration_ts")
+    order_type = str(order_payload.get("order_type", "limit")).lower()
+    body = {
+        "ticker": ticker,
+        "client_order_id": order_payload.get("client_order_id") or str(uuid.uuid4()),
+        "side": event_side,
+        "count": f"{count:.2f}",
+        "price": f"{event_price:.4f}",
+        "time_in_force": _event_order_time_in_force(order_type, expiration_ts),
+        "self_trade_prevention_type": str(order_payload.get(
+            "self_trade_prevention_type", "taker_at_cross")),
+        "post_only": bool(order_payload.get("post_only", False)),
+        "cancel_order_on_pause": bool(order_payload.get("cancel_order_on_pause", False)),
+        "reduce_only": bool(order_payload.get("reduce_only", False)),
+        "subaccount": int(order_payload.get("subaccount", 0)),
+        "exchange_index": int(order_payload.get("exchange_index", -1)),
+    }
+    if expiration_ts:
+        body["expiration_time"] = int(expiration_ts)
+    return body
+
+
+def _order_status_from_event_order(data: dict) -> str:
+    status = str(data.get("status") or data.get("order_status") or "").upper()
+    if status:
+        return status
+    remaining = _to_float(data.get("remaining_count", data.get("remaining_count_fp")))
+    filled = _to_float(data.get("fill_count", data.get("filled_count_fp")))
+    if remaining > 0:
+        return "RESTING"
+    if filled > 0:
+        return "FILLED"
+    return "SUBMITTED"
 
 
 def cmd_place_order(payload: dict) -> None:
-    body = {
-        "ticker": payload["ticker"],
-        "action": str(payload.get("action", "buy")).lower(),
-        "side": str(payload.get("side", "yes")).lower(),
-        "count": int(payload["count"]),
-        "type": str(payload.get("order_type", "limit")).lower(),
-        "client_order_id": payload.get("client_order_id") or str(uuid.uuid4()),
-    }
-    if body["type"] == "limit":
-        if "yes_price_cents" in payload:
-            body["yes_price"] = int(payload["yes_price_cents"])
-        elif "no_price_cents" in payload:
-            body["no_price"] = int(payload["no_price_cents"])
-        else:
-            _fail("limit order requires yes_price_cents or no_price_cents")
-            return
-    if payload.get("expiration_ts"):
-        body["expiration_ts"] = int(payload["expiration_ts"])
+    try:
+        body = _event_order_body(payload)
+    except ValueError as exc:
+        _fail(str(exc))
+        return
 
-    ok, code, data = _request(payload, "POST", "/portfolio/orders", body=body)
+    ok, code, data = _request(payload, "POST", "/portfolio/events/orders", body=body)
     if not ok:
         _fail(f"HTTP {code}", detail=data)
         return
-    order = data.get("order", {}) or {}
+    order = data.get("order", data) or {}
     _emit({
         "ok": True,
-        "order_id": order.get("order_id", ""),
-        "status": (order.get("status") or "").upper(),
-        "client_order_id": body["client_order_id"],
+        "order_id": order.get("order_id", data.get("order_id", "")),
+        "status": _order_status_from_event_order(order),
+        "client_order_id": order.get("client_order_id", body["client_order_id"]),
         "raw": data,
     })
 
@@ -585,7 +659,7 @@ def cmd_amend_order(payload: dict) -> None:
 
 
 def cmd_place_orders_batch(payload: dict) -> None:
-    """POST /portfolio/orders/batched
+    """POST /portfolio/events/orders/batched
 
     `orders` is a list of order dicts with the same shape accepted by
     `cmd_place_order`. Kalshi returns {orders: [...]} with per-order
@@ -598,24 +672,15 @@ def cmd_place_orders_batch(payload: dict) -> None:
 
     body = {"orders": []}
     for o in orders_in:
-        entry = {
-            "ticker": o["ticker"],
-            "action": str(o.get("action", "buy")).lower(),
-            "side": str(o.get("side", "yes")).lower(),
-            "count": int(o["count"]),
-            "type": str(o.get("order_type", "limit")).lower(),
-            "client_order_id": o.get("client_order_id") or str(uuid.uuid4()),
-        }
-        if entry["type"] == "limit":
-            if "yes_price_cents" in o:
-                entry["yes_price"] = int(o["yes_price_cents"])
-            elif "no_price_cents" in o:
-                entry["no_price"] = int(o["no_price_cents"])
-        if o.get("expiration_ts"):
-            entry["expiration_ts"] = int(o["expiration_ts"])
-        body["orders"].append(entry)
+        merged = dict(payload)
+        merged.update(o)
+        try:
+            body["orders"].append(_event_order_body(merged))
+        except ValueError as exc:
+            _fail(str(exc))
+            return
 
-    ok, code, data = _request(payload, "POST", "/portfolio/orders/batched",
+    ok, code, data = _request(payload, "POST", "/portfolio/events/orders/batched",
                               body=body)
     if not ok:
         _fail(f"HTTP {code}", detail=data)

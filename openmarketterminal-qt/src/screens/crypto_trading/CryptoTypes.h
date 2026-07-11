@@ -69,7 +69,7 @@ inline constexpr float PORTFOLIO_REFRESH_INTERVAL = 1.5f;
 inline constexpr float MARKET_INFO_INTERVAL = 30.0f;
 inline constexpr int MAX_CANDLE_BUFFER = 500;
 inline constexpr int MAX_TRADES = 200;
-inline constexpr int OB_MAX_DISPLAY_LEVELS = 12;
+inline constexpr int OB_MAX_DISPLAY_LEVELS = 24;
 
 // OB analytics thresholds
 inline constexpr double OB_IMBALANCE_BUY_THRESHOLD = 0.30;

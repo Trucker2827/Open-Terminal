@@ -30,6 +30,9 @@ class PolymarketBrowsePanel : public QWidget {
     /// Replace a single market row in place (e.g. after a Kalshi lifecycle
     /// event refetched one market). No-op if the ticker isn't in the list.
     void update_market_row(const openmarketterminal::services::prediction::PredictionMarket& market);
+    void select_market_row(const QString& market_id);
+    void select_event_row(const QString& event_id);
+    int item_count() const;
 
     /// Forwarded to the model so the delegate paints with the active
     /// exchange's accent and price formatter.

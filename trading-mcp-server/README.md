@@ -1,12 +1,13 @@
-# Secure Trading MCP Server: Alpaca + Coinbase
+# Secure Trading MCP Server: Alpaca + Coinbase + Kraken
 
-A paper-default MCP server exposing high-level tools for Alpaca Trading API and Coinbase Advanced Trade. It is intentionally conservative: dry-run is enabled by default, live trading requires explicit environment opt-in plus per-call confirmation, risk limits are enforced before any order call, and crypto withdrawals are disabled unless explicitly enabled.
+A paper-default MCP server exposing high-level tools for Alpaca Trading API, Coinbase Advanced Trade, and Kraken Spot. It is intentionally conservative: dry-run is enabled by default, live trading requires explicit environment opt-in plus per-call confirmation, risk limits are enforced before any order call, and crypto withdrawals are disabled unless explicitly enabled.
 
 ## Features
 
 - MCP server using the official Python MCP SDK `FastMCP`.
 - Alpaca tools: account, portfolio, market data, historical data, orders, cancel, open orders, simple position analysis, simple backtest.
 - Coinbase tools: accounts, product/market data, orders, cancel, open orders, simple crypto market data, guarded `coinbase_send_crypto` stub.
+- Kraken tools: balances, ticker/market data, open orders, cancel, and spot limit post-only orders.
 - Paper/live mode via environment variables.
 - API keys loaded from `.env`; never hardcoded.
 - Rate limiting, structured errors, audit logging, and notional/risk limits.
@@ -78,6 +79,12 @@ To place any real order:
 5. Order must pass max notional, max daily count, and asset-specific gates.
 
 Options trading additionally requires `ALLOW_OPTIONS_TRADING=true`. Crypto withdrawals require `ALLOW_CRYPTO_WITHDRAWALS=true`, but this project leaves withdrawal implementation disabled by default because Advanced Trade trading keys and withdrawal/payment permissions have very different risk profiles.
+
+Coinbase and Kraken each have their own execution arm in addition to global live mode:
+
+- Coinbase live orders require `COINBASE_ALLOW_TRADING=true` and `COINBASE_ALLOWED_SYMBOLS`.
+- Kraken live orders require `KRAKEN_ALLOW_TRADING=true` and `KRAKEN_ALLOWED_SYMBOLS`.
+- Kraken orders are forced to spot `limit` + `post-only`; market/margin/leverage orders are not sent.
 
 ## Test
 

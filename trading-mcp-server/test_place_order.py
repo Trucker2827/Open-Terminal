@@ -12,6 +12,7 @@ from trading_mcp.config import Settings
 from trading_mcp.safety import RiskManager, TradingBlocked
 from trading_mcp.alpaca_tools import AlpacaService
 from trading_mcp.coinbase_tools import CoinbaseService
+from trading_mcp.kraken_tools import KrakenService
 
 
 def _alpaca(order_cap=500.0, pos_cap=2500.0, position=None, price=None):
@@ -31,6 +32,15 @@ def _coinbase(order_cap=500.0, pos_cap=2500.0, position=None, price=None):
     svc = CoinbaseService(s, RiskManager(s))
     svc._estimate_price = lambda product_id: price
     svc._current_position_notional = lambda product_id, p: position
+    return svc
+
+
+def _kraken(order_cap=500.0, pos_cap=2500.0, position=None):
+    s = Settings(trading_mode="paper", dry_run=True,
+                 max_order_notional_usd=order_cap, max_position_notional_usd=pos_cap,
+                 enable_kraken=True, kraken_api_key=None, kraken_api_secret=None)
+    svc = KrakenService(s, RiskManager(s))
+    svc._current_position_notional = lambda pair, p: position
     return svc
 
 
@@ -90,6 +100,28 @@ class TestCoinbasePlaceOrder(unittest.TestCase):
             _coinbase(price=100.0).place_order("BTC-USD", "buy", 10, "market")  # 1000 > 500
 
 
+class TestKrakenPlaceOrder(unittest.TestCase):
+    def test_within_cap_limit_preview_post_only(self):
+        r = _kraken().place_order("BTC-USD", "buy", 0.002, "limit", limit_price=100000)
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["dry_run"])
+        self.assertEqual(r["would_submit"]["risk"]["estimated_notional_usd"], 200)
+        self.assertEqual(r["would_submit"]["oflags"], "post")
+        self.assertEqual(r["would_submit"]["pair"], "XBTUSD")
+
+    def test_order_cap_block(self):
+        with self.assertRaises(TradingBlocked):
+            _kraken().place_order("BTC-USD", "buy", 0.01, "limit", limit_price=100000)
+
+    def test_market_orders_blocked(self):
+        with self.assertRaises(TradingBlocked):
+            _kraken().place_order("BTC-USD", "buy", 0.001, "market")
+
+    def test_position_cap_blocks_buy(self):
+        with self.assertRaises(TradingBlocked):
+            _kraken(position=2400.0).place_order("BTC-USD", "buy", 0.002, "limit", limit_price=100000)
+
+
 class _FakeResp:
     def __init__(self, d): self._d = d
     def to_dict(self): return self._d
@@ -97,6 +129,10 @@ class _FakeResp:
 class _FakeClient:
     def __init__(self, resp): self._resp = resp
     def create_order(self, **kw): return self._resp
+
+class _FakeKrakenClient:
+    def __init__(self, resp=None): self.resp = resp or {"txid": ["KRAKEN-1"]}
+    def add_post_only_limit(self, **kw): self.kw = kw; return self.resp
 
 def _coinbase_live(resp_dict, price=50000.0):
     # dry_run=False + ARMED so place_order reaches create_order; stub client + lookups (no network).
@@ -139,6 +175,15 @@ def _coinbase_arm(armed, client, price=50000.0, allowlist="BTC-USD"):
     svc = CoinbaseService(s, RiskManager(s))
     svc._estimate_price = lambda product_id: price
     svc._current_position_notional = lambda product_id, p: None
+    svc._client = client
+    return svc
+
+def _kraken_arm(armed, client, allowlist="XBTUSD"):
+    s = Settings(trading_mode="paper", dry_run=False, max_order_notional_usd=100000.0,
+                 enable_kraken=True, kraken_allow_trading=armed, kraken_allowed_symbols=allowlist,
+                 kraken_api_key="x", kraken_api_secret="eA==")
+    svc = KrakenService(s, RiskManager(s))
+    svc._current_position_notional = lambda pair, p: None
     svc._client = client
     return svc
 
@@ -192,6 +237,32 @@ class TestCoinbaseSymbolAllowlist(unittest.TestCase):
         r = _coinbase_arm(True, _FakeClient(resp), allowlist="BTC-USD").place_order(
             "btc-usd", "buy", 0.001, "limit", limit_price=50000)
         self.assertEqual(r["order_id"], "OK-LC")
+
+
+class TestKrakenExecutionArm(unittest.TestCase):
+    def test_disarmed_returns_preview_and_never_submits(self):
+        client = _FakeKrakenClient()
+        r = _kraken_arm(False, client).place_order("BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["dry_run"])
+        self.assertTrue(r.get("disarmed"))
+        self.assertFalse(hasattr(client, "kw"))
+
+    def test_armed_allowlisted_submits_post_only(self):
+        client = _FakeKrakenClient({"txid": ["ARMED-KRAKEN-1"]})
+        r = _kraken_arm(True, client, allowlist="BTC-USD").place_order(
+            "BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+        self.assertEqual(r["order_id"], "ARMED-KRAKEN-1")
+        self.assertEqual(client.kw["pair"], "XBTUSD")
+        self.assertEqual(client.kw["side"], "buy")
+        self.assertEqual(client.kw["price"], 50000)
+
+    def test_armed_nonallowlisted_blocked_no_submit(self):
+        client = _FakeKrakenClient()
+        with self.assertRaises(TradingBlocked):
+            _kraken_arm(True, client, allowlist="ETHUSD").place_order(
+                "BTC-USD", "buy", 0.001, "limit", limit_price=50000)
+        self.assertFalse(hasattr(client, "kw"))
 
 
 class TestMcpToolSchemas(unittest.TestCase):

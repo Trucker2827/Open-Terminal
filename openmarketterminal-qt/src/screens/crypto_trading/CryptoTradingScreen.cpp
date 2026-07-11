@@ -133,6 +133,8 @@ void CryptoTradingScreen::hideEvent(QHideEvent* event) {
     has_pending_orderbook_ = false;
     pending_candles_.clear();
     pending_trades_.clear();
+    impulse_points_.clear();
+    update_impulse_label();
 
     // Reset async-fetch guards — if a fetch was in-flight when we hid, its
     // reply will still fire (widget isn't destroyed, just hidden) and will
@@ -227,6 +229,12 @@ void CryptoTradingScreen::setup_ui() {
     // Price ribbon (embedded ticker bar)
     ticker_bar_ = new CryptoTickerBar;
     cmd_layout->addWidget(ticker_bar_, 1);
+
+    impulse_label_ = new QLabel(tr("IMPULSE --"));
+    impulse_label_->setObjectName("cryptoImpulseLabel");
+    impulse_label_->setMinimumWidth(360);
+    impulse_label_->setToolTip(tr("Rolling move from live order-book/ticker updates: 10s, 30s, 2m and current spread"));
+    cmd_layout->addWidget(impulse_label_);
 
     // WS status pill — three states (live / connecting / offline) driven by
     // a Qt property so the global stylesheet handles colors. Tooltip explains

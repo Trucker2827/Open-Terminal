@@ -216,6 +216,9 @@ void KalshiWsClient::send_subscribe(const QStringList& tickers) {
     QJsonArray tarr;
     for (const auto& t : tickers) tarr.append(t);
     params.insert("market_tickers", tarr);
+    // Keep each side on its native contract-price scale. We then construct
+    // the complementary asks locally, matching the REST orderbook parser.
+    params.insert("use_yes_price", false);
 
     QJsonObject msg;
     msg.insert("id", next_msg_id_++);
@@ -224,6 +227,56 @@ void KalshiWsClient::send_subscribe(const QStringList& tickers) {
 
     ws_->send(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
     LOG_INFO("KalshiWS", "Subscribed to " + QString::number(tickers.size()) + " tickers");
+}
+
+void KalshiWsClient::request_orderbook_snapshot(const QString& ticker) {
+    if (!connected_ || ticker.isEmpty() || orderbook_subscription_sid_ <= 0) return;
+    QJsonObject params{{QStringLiteral("sids"), QJsonArray{orderbook_subscription_sid_}},
+                       {QStringLiteral("action"), QStringLiteral("get_snapshot")},
+                       {QStringLiteral("market_tickers"), QJsonArray{ticker}}};
+    QJsonObject msg{{QStringLiteral("id"), next_msg_id_++},
+                    {QStringLiteral("cmd"), QStringLiteral("update_subscription")},
+                    {QStringLiteral("params"), params}};
+    ws_->send(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+}
+
+void KalshiWsClient::send_account_subscribe() {
+    QJsonObject params;
+    params.insert(QStringLiteral("channels"),
+                  QJsonArray{QStringLiteral("fill"), QStringLiteral("user_orders"),
+                             QStringLiteral("market_positions")});
+    QJsonObject msg{{QStringLiteral("id"), next_msg_id_++},
+                    {QStringLiteral("cmd"), QStringLiteral("subscribe")},
+                    {QStringLiteral("params"), params}};
+    ws_->send(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+}
+
+void KalshiWsClient::publish_books(const QString& ticker, qint64 ts_ms) {
+    const auto it = books_.constFind(ticker);
+    if (it == books_.cend() || !it->has_snapshot) return;
+
+    auto make_book = [ts_ms](const QString& asset_id, const QMap<int, double>& own,
+                             const QMap<int, double>& opposite) {
+        pr::PredictionOrderBook book;
+        book.asset_id = asset_id;
+        book.last_update_ms = ts_ms;
+        for (auto level = own.constEnd(); level != own.constBegin();) {
+            --level;
+            if (level.value() > 0.0)
+                book.bids.push_back({level.key() / 10000.0, level.value()});
+        }
+        for (auto level = opposite.constEnd(); level != opposite.constBegin();) {
+            --level;
+            if (level.value() > 0.0)
+                book.asks.push_back({1.0 - level.key() / 10000.0, level.value()});
+        }
+        return book;
+    };
+
+    publish_orderbook(ticker + QStringLiteral(":yes"),
+                      make_book(ticker + QStringLiteral(":yes"), it->yes_bids, it->no_bids));
+    publish_orderbook(ticker + QStringLiteral(":no"),
+                      make_book(ticker + QStringLiteral(":no"), it->no_bids, it->yes_bids));
 }
 
 void KalshiWsClient::send_ping() {
@@ -238,12 +291,16 @@ void KalshiWsClient::send_ping() {
 
 void KalshiWsClient::on_connected() {
     connected_ = true;
+    books_.clear();
+    orderbook_sequence_ = 0;
+    orderbook_subscription_sid_ = 0;
     ping_timer_->start();
     LOG_INFO("KalshiWS", "Connected");
     emit connection_status_changed(true);
     if (!subscribed_tickers_.isEmpty()) {
         send_subscribe(QStringList(subscribed_tickers_.begin(), subscribed_tickers_.end()));
     }
+    send_account_subscribe();
 }
 
 void KalshiWsClient::on_disconnected() {
@@ -267,28 +324,42 @@ void KalshiWsClient::on_message(const QString& msg) {
     const auto payload = obj.value("msg").toObject();
     const QString ticker = payload.value("market_ticker").toString();
 
+    if (type == QStringLiteral("subscribed")) {
+        if (payload.value("channel").toString() == QStringLiteral("orderbook_delta"))
+            orderbook_subscription_sid_ = payload.value("sid").toInt();
+        return;
+    }
+
     if (type == QStringLiteral("ticker")) {
         if (ticker.isEmpty()) return;
+        emit ticker_event(ticker, payload);
         const double yes_price = kalshi_fp_to_double(payload.value("yes_bid_dollars"));
         if (yes_price > 0) publish_price(ticker + QStringLiteral(":yes"), yes_price);
-        const double no_price = kalshi_fp_to_double(payload.value("no_bid_dollars"));
+        double no_price = kalshi_fp_to_double(payload.value("no_bid_dollars"));
+        if (no_price <= 0.0) {
+            const double yes_ask = kalshi_fp_to_double(payload.value("yes_ask_dollars"));
+            if (yes_ask > 0.0) no_price = 1.0 - yes_ask;
+        }
         if (no_price > 0) publish_price(ticker + QStringLiteral(":no"), no_price);
         return;
     }
 
     if (type == QStringLiteral("trade")) {
         if (ticker.isEmpty()) return;
+        emit trade_event(ticker, payload);
         pr::PredictionTrade t;
         t.asset_id = ticker + QStringLiteral(":yes");
-        const QString ts_side = payload.value("taker_side").toString().toLower();
+        QString ts_side = payload.value("taker_outcome_side").toString().toLower();
+        if (ts_side.isEmpty()) ts_side = payload.value("taker_side").toString().toLower();
         t.side = (ts_side == QStringLiteral("no")) ? QStringLiteral("SELL")
                                                    : QStringLiteral("BUY");
         t.price = kalshi_fp_to_double(payload.value("yes_price_dollars"));
         t.size = kalshi_fp_to_double(payload.value("count_fp"));
         const QString iso = payload.value("created_time").toString();
-        t.ts_ms = iso.isEmpty()
-            ? qint64(payload.value("ts").toVariant().toLongLong()) * 1000
-            : QDateTime::fromString(iso, Qt::ISODate).toMSecsSinceEpoch();
+        t.ts_ms = qint64(payload.value("ts_ms").toDouble());
+        if (t.ts_ms <= 0)
+            t.ts_ms = iso.isEmpty() ? qint64(payload.value("ts").toVariant().toLongLong()) * 1000
+                                    : QDateTime::fromString(iso, Qt::ISODate).toMSecsSinceEpoch();
         emit trade_received(t);
         openmarketterminal::datahub::DataHub::instance().publish(
             QStringLiteral("prediction:kalshi:trade:") + ticker,
@@ -299,8 +370,18 @@ void KalshiWsClient::on_message(const QString& msg) {
     if (type == QStringLiteral("market_lifecycle_v2") ||
         type == QStringLiteral("market_lifecycle")) {
         if (ticker.isEmpty()) return;
-        const QString status = payload.value("status").toString();
+        QString status = payload.value("status").toString();
+        if (status.isEmpty()) status = payload.value("market_status").toString();
+        if (status.isEmpty()) status = payload.value("event_type").toString();
+        if (status.isEmpty()) status = payload.value("type").toString();
         emit market_lifecycle_changed(ticker, status);
+        emit market_lifecycle_event(ticker, status, payload);
+        return;
+    }
+
+    if (type == QStringLiteral("fill") || type == QStringLiteral("user_orders") ||
+        type == QStringLiteral("market_positions")) {
+        emit account_event(type, payload);
         return;
     }
 
@@ -310,15 +391,59 @@ void KalshiWsClient::on_message(const QString& msg) {
     }
     if (ticker.isEmpty()) return;
 
-    // Snapshot / delta path — callers should rebuild their local book from
-    // the snapshot then apply deltas. Phase 4 ships only the transport;
-    // full reconciliation (seq gap detection, REST resnapshot) lands with
-    // Phase 7 trading work when live streaming is genuinely exercised.
-    pr::PredictionOrderBook book;
-    const QString side = payload.value("side").toString();
-    book.asset_id = ticker + QStringLiteral(":") + (side.isEmpty() ? "yes" : side);
-    book.last_update_ms = payload.value("ts").toVariant().toLongLong() * 1000;
-    publish_orderbook(book.asset_id, book);
+    const qint64 seq = qint64(obj.value("seq").toDouble());
+    emit orderbook_event(type, ticker, seq, payload);
+    qint64 ts_ms = qint64(payload.value("ts_ms").toDouble());
+    if (ts_ms <= 0) ts_ms = qint64(payload.value("ts").toVariant().toLongLong()) * 1000;
+    if (ts_ms <= 0) ts_ms = QDateTime::currentMSecsSinceEpoch();
+    auto& state = books_[ticker];
+
+    const auto parse_levels = [](const QJsonArray& levels, QMap<int, double>* out) {
+        out->clear();
+        for (const auto& value : levels) {
+            const auto level = value.toArray();
+            if (level.size() < 2) continue;
+            const int price = qRound(kalshi_fp_to_double(level[0]) * 10000.0);
+            const double size = kalshi_fp_to_double(level[1]);
+            if (price > 0 && size > 0.0) out->insert(price, size);
+        }
+    };
+
+    if (type == QStringLiteral("orderbook_snapshot")) {
+        QJsonArray yes = payload.value("yes_dollars_fp").toArray();
+        QJsonArray no = payload.value("no_dollars_fp").toArray();
+        if (yes.isEmpty()) yes = payload.value("yes_dollars").toArray();
+        if (no.isEmpty()) no = payload.value("no_dollars").toArray();
+        parse_levels(yes, &state.yes_bids);
+        parse_levels(no, &state.no_bids);
+        if (seq > 0) orderbook_sequence_ = seq;
+        state.has_snapshot = true;
+        publish_books(ticker, ts_ms);
+        return;
+    }
+
+    if (!state.has_snapshot || (seq > 0 && orderbook_sequence_ > 0 && seq != orderbook_sequence_ + 1)) {
+        for (auto it = books_.begin(); it != books_.end(); ++it) {
+            it->has_snapshot = false;
+            it->yes_bids.clear();
+            it->no_bids.clear();
+        }
+        orderbook_sequence_ = 0;
+        for (const auto& subscribed : subscribed_tickers_) request_orderbook_snapshot(subscribed);
+        return;
+    }
+
+    const QString side = payload.value("side").toString().toLower();
+    const int price = qRound(kalshi_fp_to_double(payload.value("price_dollars")) * 10000.0);
+    const double delta = kalshi_fp_to_double(payload.value("delta_fp"));
+    QMap<int, double>& levels = side == QStringLiteral("no") ? state.no_bids : state.yes_bids;
+    const double next = levels.value(price) + delta;
+    if (price > 0) {
+        if (next <= 1e-9) levels.remove(price);
+        else levels.insert(price, next);
+    }
+    orderbook_sequence_ = seq > 0 ? seq : orderbook_sequence_ + 1;
+    publish_books(ticker, ts_ms);
 }
 
 // ── Hub publish helpers ─────────────────────────────────────────────────────

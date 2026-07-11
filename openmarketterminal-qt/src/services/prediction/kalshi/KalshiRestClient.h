@@ -59,15 +59,19 @@ class KalshiRestClient : public QObject {
     void fetch_event(const QString& event_ticker);
     /// GET /series — emits the ~18 distinct human categories via tags_ready.
     void fetch_series(const QString& status = QStringLiteral("open"));
-    /// Browse one human category. Kalshi's list endpoints ignore category, so
-    /// this resolves /series?category=… then fans out per-series event fetches
-    /// and aggregates, emitting events_ready (as_events) or markets_ready.
+    /// Browse one human category. Kalshi's broad list endpoints ignore category,
+    /// so this resolves /series?category=… then fans out per-series requests and
+    /// aggregates, emitting events_ready (as_events) or markets_ready.
     /// `frequencies` (e.g. {"fifteen_min","hourly"}) further restricts to series
-    /// of those cadences; empty = all cadences.
+    /// of those cadences; empty = all cadences. `series_keywords` is used by
+    /// the Kalshi-native crypto browser to narrow Crypto to BTC/ETH/SOL/etc.
     void fetch_category(const QString& category, const QStringList& frequencies,
+                        const QStringList& series_keywords,
                         bool as_events, int limit);
     /// GET /markets/{ticker}/orderbook — depth 0 = all levels.
     void fetch_order_book(const QString& ticker, int depth = 20);
+    /// GET /markets/orderbooks — full REST snapshots for up to 100 tickers.
+    void fetch_batch_order_books(const QStringList& tickers);
     /// GET /markets/{ticker}/candlesticks — period_interval in minutes (1, 60, 1440).
     void fetch_candlesticks(const QString& series_ticker, const QString& ticker,
                             int period_interval_min, qint64 start_ts, qint64 end_ts);
@@ -129,6 +133,8 @@ class KalshiRestClient : public QObject {
     void order_book_ready(const openmarketterminal::services::prediction::PredictionOrderBook& yes_book,
                           const openmarketterminal::services::prediction::PredictionOrderBook& no_book,
                           const QString& ticker);
+    void batch_order_books_ready(
+        const QHash<QString, openmarketterminal::services::prediction::PredictionOrderBook>& books);
     void price_history_ready(const openmarketterminal::services::prediction::PriceHistory& yes_history,
                              const QString& ticker);
     void trades_ready(const QVector<openmarketterminal::services::prediction::PredictionTrade>& trades);
@@ -165,6 +171,10 @@ class KalshiRestClient : public QObject {
     /// Fan out one /events?series_ticker=… request per series, aggregate the
     /// nested markets, and emit once all replies complete (error-tolerant).
     void fan_out_series_events(const QStringList& series, bool as_events, int limit);
+    /// Fan out one /markets?series_ticker=… request per series for the MARKETS
+    /// tab. This avoids depending on nested events when the user asked for
+    /// flat market rows.
+    void fan_out_series_markets(const QStringList& series, const QString& category, int limit);
 
     QNetworkAccessManager* nam_ = nullptr;
     bool demo_ = false;

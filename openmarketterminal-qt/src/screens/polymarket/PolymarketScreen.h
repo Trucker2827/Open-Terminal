@@ -14,6 +14,12 @@
 
 #include <atomic>
 
+class QLabel;
+
+namespace openmarketterminal::screens::crypto {
+class CryptoOrderBook;
+}
+
 namespace openmarketterminal::screens::polymarket {
 class PolymarketCommandBar;
 class PolymarketBrowsePanel;
@@ -51,6 +57,9 @@ class PolymarketScreen : public QWidget, public openmarketterminal::screens::ISt
     QVariantMap save_state() const override;
     QString state_key() const override { return "polymarket"; }
     int state_version() const override { return 1; }
+
+  signals:
+    void venue_switch_requested(const QString& venue);
 
   protected:
     void showEvent(QShowEvent* e) override;
@@ -122,8 +131,14 @@ class PolymarketScreen : public QWidget, public openmarketterminal::screens::ISt
     void install_presentation(const screens::polymarket::ExchangePresentation& p);
     void load_current_view();
     void select_market(const openmarketterminal::services::prediction::PredictionMarket& market);
+    void select_event_market(const openmarketterminal::services::prediction::PredictionEvent& event,
+                             bool drilldown);
     void subscribe_to_market(const openmarketterminal::services::prediction::PredictionMarket& market);
     void unsubscribe_current();
+    void update_crypto_dom_for_market(
+        const openmarketterminal::services::prediction::PredictionMarket& market);
+    void set_crypto_dom_symbol(const QString& symbol);
+    void refresh_crypto_dom();
 
     bool active_is_polymarket() const;
     openmarketterminal::services::prediction::PredictionExchangeAdapter* active_adapter() const;
@@ -135,6 +150,9 @@ class PolymarketScreen : public QWidget, public openmarketterminal::screens::ISt
     polymarket::PolymarketLeaderboard* leaderboard_ = nullptr;
     polymarket::PolymarketOrderBlotter* order_blotter_ = nullptr;
     polymarket::PolymarketStatusBar* status_bar_ = nullptr;
+    QWidget* crypto_dom_panel_ = nullptr;
+    QLabel* crypto_dom_title_ = nullptr;
+    crypto::CryptoOrderBook* crypto_dom_ = nullptr;
 
     // State
     QString active_view_ = "MARKETS";
@@ -142,11 +160,15 @@ class PolymarketScreen : public QWidget, public openmarketterminal::screens::ISt
     QString active_sort_ = "volume";
     openmarketterminal::services::prediction::PredictionMarket selected_market_;
     bool has_selection_ = false;
+    QString selected_order_book_asset_id_;
     bool first_show_ = true;
     std::atomic<int> request_generation_{0};
 
     // Timer
     QTimer* refresh_timer_ = nullptr;
+    QTimer* crypto_dom_timer_ = nullptr;
+    QString crypto_dom_symbol_ = "BTC/USD";
+    std::atomic<bool> crypto_dom_fetching_{false};
 
     // WS tracking
     QStringList subscribed_asset_ids_;

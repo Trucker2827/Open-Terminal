@@ -38,6 +38,8 @@ class CryptoChart : public QWidget {
     void clear();
 
     QString current_timeframe() const;
+    void set_timeframes(const QStringList& labels, int default_index = 0,
+                        const QString& title = QStringLiteral("CHART"));
     openmarketterminal::ui::ChartOverlayManager* overlay_manager() const { return overlay_mgr_; }
 
   signals:
@@ -85,7 +87,7 @@ class CryptoChart : public QWidget {
     // Timeframe toggle buttons
     QPushButton* tf_buttons_[6] = {};
     int active_tf_ = 3; // default "1h"
-    static constexpr const char* TF_LABELS[] = {"1m", "5m", "15m", "1h", "4h", "1d"};
+    QStringList timeframe_labels_;
 
     QVector<trading::Candle> candles_;
     static constexpr int MAX_VISIBLE = 120;

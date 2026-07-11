@@ -68,7 +68,7 @@ class RiskManager:
     def check_trade(
         self,
         *,
-        venue: Literal["alpaca", "coinbase"],
+        venue: Literal["alpaca", "coinbase", "kraken"],
         symbol: str,
         side: str,
         quantity: float,

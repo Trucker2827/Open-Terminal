@@ -1340,6 +1340,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiRestClient.cpp
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
+    src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
     # Phase 4 — internal prediction-market adapter (demo mode until
     # `openmarketterminal.markets_endpoint` is configured and `openmarketterminal_market` lands).
     src/services/prediction/openmarketterminal_internal/OpenMarketTerminalInternalAdapter.cpp
@@ -1792,6 +1793,8 @@ set(SCREEN_SOURCES
     src/screens/economics/panels/OpenMarketTerminalMacroPanel.cpp
 
     # Polymarket / Prediction Markets
+    src/screens/prediction/PredictionMarketsScreen.cpp
+    src/screens/kalshi/KalshiScreen.cpp
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
     src/screens/polymarket/PolymarketMarketCard.cpp
@@ -2376,6 +2379,8 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
+    src/screens/prediction/PredictionMarketsScreen.cpp
+    src/screens/kalshi/KalshiScreen.cpp
     src/screens/polymarket/PolymarketScreen.cpp
     src/screens/polymarket/PolymarketCommandBar.cpp
     src/screens/polymarket/PolymarketMarketCard.cpp

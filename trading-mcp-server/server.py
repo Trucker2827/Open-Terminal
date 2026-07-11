@@ -12,12 +12,14 @@ from trading_mcp.safety import RiskManager
 from trading_mcp.utils import setup_logging, tool_error
 from trading_mcp.alpaca_tools import AlpacaService
 from trading_mcp.coinbase_tools import CoinbaseService
+from trading_mcp.kraken_tools import KrakenService
 
 settings = get_settings()
 setup_logging(settings.log_level)
 risk = RiskManager(settings)
 alpaca = AlpacaService(settings, risk)
 coinbase = CoinbaseService(settings, risk)
+kraken = KrakenService(settings, risk)
 
 mcp = FastMCP("secure-trading-mcp")
 
@@ -34,6 +36,9 @@ Trading MCP safety policy:
 - max_daily_order_count={settings.max_daily_order_count}
 - options_enabled={settings.allow_options_trading}
 - crypto_withdrawals_enabled={settings.allow_crypto_withdrawals}
+- coinbase_armed={settings.coinbase_allow_trading}
+- kraken_enabled={settings.enable_kraken}
+- kraken_armed={settings.kraken_allow_trading}
 """.strip()
 
 
@@ -44,23 +49,35 @@ def trade_review_prompt(symbol: str, side: str, quantity: float, venue: str) -> 
 
 @mcp.tool()
 @tool_error
-def get_account_balance(venue: Literal["alpaca", "coinbase"] = "alpaca") -> dict:
-    """Get account balance/account summary from Alpaca or Coinbase."""
-    return alpaca.get_account_balance() if venue == "alpaca" else coinbase.get_account_balance()
+def get_account_balance(venue: Literal["alpaca", "coinbase", "kraken"] = "alpaca") -> dict:
+    """Get account balance/account summary from Alpaca, Coinbase, or Kraken."""
+    if venue == "alpaca":
+        return alpaca.get_account_balance()
+    if venue == "coinbase":
+        return coinbase.get_account_balance()
+    return kraken.get_account_balance()
 
 
 @mcp.tool()
 @tool_error
-def get_portfolio(venue: Literal["alpaca", "coinbase"] = "alpaca") -> dict:
-    """Get positions/holdings from Alpaca or Coinbase."""
-    return alpaca.get_portfolio() if venue == "alpaca" else coinbase.get_portfolio()
+def get_portfolio(venue: Literal["alpaca", "coinbase", "kraken"] = "alpaca") -> dict:
+    """Get positions/holdings from Alpaca, Coinbase, or Kraken."""
+    if venue == "alpaca":
+        return alpaca.get_portfolio()
+    if venue == "coinbase":
+        return coinbase.get_portfolio()
+    return kraken.get_portfolio()
 
 
 @mcp.tool()
 @tool_error
-def get_market_data(ticker: str, timeframe: str = "1Day", venue: Literal["alpaca", "coinbase"] = "alpaca", asset_class: str = "stock") -> dict:
-    """Get latest/high-level market data. For Coinbase use product ids like BTC-USD."""
-    return alpaca.get_market_data(ticker, timeframe, asset_class) if venue == "alpaca" else coinbase.get_market_data(ticker)
+def get_market_data(ticker: str, timeframe: str = "1Day", venue: Literal["alpaca", "coinbase", "kraken"] = "alpaca", asset_class: str = "stock") -> dict:
+    """Get latest/high-level market data. For crypto use product ids like BTC-USD."""
+    if venue == "alpaca":
+        return alpaca.get_market_data(ticker, timeframe, asset_class)
+    if venue == "coinbase":
+        return coinbase.get_market_data(ticker)
+    return kraken.get_market_data(ticker)
 
 
 @mcp.tool()
@@ -78,7 +95,7 @@ def place_order(
     quantity: float,
     type: Literal["market", "limit"] = "market",
     limit_price: float | None = None,
-    venue: Literal["alpaca", "coinbase"] = "alpaca",
+    venue: Literal["alpaca", "coinbase", "kraken"] = "alpaca",
     asset_class: Literal["stock", "etf", "option", "crypto"] = "stock",
     time_in_force: str = "day",
     confirmation_token: str | None = None,
@@ -86,21 +103,31 @@ def place_order(
     """Place or dry-run a guarded order. Live orders require env opt-in and confirmation_token."""
     if venue == "alpaca":
         return alpaca.place_order(symbol, side, quantity, type, limit_price, time_in_force, asset_class, confirmation_token)
-    return coinbase.place_order(symbol, side, quantity, type, limit_price, confirmation_token)
+    if venue == "coinbase":
+        return coinbase.place_order(symbol, side, quantity, type, limit_price, confirmation_token)
+    return kraken.place_order(symbol, side, quantity, type, limit_price, confirmation_token)
 
 
 @mcp.tool()
 @tool_error
-def cancel_order(order_id: str, venue: Literal["alpaca", "coinbase"] = "alpaca") -> dict:
+def cancel_order(order_id: str, venue: Literal["alpaca", "coinbase", "kraken"] = "alpaca") -> dict:
     """Cancel an order. In DRY_RUN mode, reports what would be canceled."""
-    return alpaca.cancel_order(order_id) if venue == "alpaca" else coinbase.cancel_order(order_id)
+    if venue == "alpaca":
+        return alpaca.cancel_order(order_id)
+    if venue == "coinbase":
+        return coinbase.cancel_order(order_id)
+    return kraken.cancel_order(order_id)
 
 
 @mcp.tool()
 @tool_error
-def get_open_orders(venue: Literal["alpaca", "coinbase"] = "alpaca", product_id: str | None = None) -> dict:
+def get_open_orders(venue: Literal["alpaca", "coinbase", "kraken"] = "alpaca", product_id: str | None = None) -> dict:
     """Get currently open orders."""
-    return alpaca.get_open_orders() if venue == "alpaca" else coinbase.get_open_orders(product_id)
+    if venue == "alpaca":
+        return alpaca.get_open_orders()
+    if venue == "coinbase":
+        return coinbase.get_open_orders(product_id)
+    return kraken.get_open_orders(product_id)
 
 
 @mcp.tool()

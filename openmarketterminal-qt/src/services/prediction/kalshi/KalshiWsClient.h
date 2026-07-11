@@ -5,6 +5,9 @@
 #include "services/prediction/kalshi/KalshiCredentials.h"
 
 #include <QObject>
+#include <QHash>
+#include <QJsonObject>
+#include <QMap>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -38,7 +41,7 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///
 /// Delta reconciliation: Kalshi emits `orderbook_snapshot` once per
 /// subscription, then incremental `orderbook_delta`. Messages include a
-/// monotonic `seq`; on gap we re-request a snapshot via REST.
+/// monotonic `seq`; on gap we request fresh snapshots over the socket.
 class KalshiWsClient : public QObject, public openmarketterminal::datahub::Producer {
     Q_OBJECT
   public:
@@ -68,7 +71,14 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void orderbook_updated(const QString& asset_id,
                            const openmarketterminal::services::prediction::PredictionOrderBook& book);
     void trade_received(const openmarketterminal::services::prediction::PredictionTrade& trade);
+    void trade_event(const QString& ticker, const QJsonObject& payload);
     void market_lifecycle_changed(const QString& ticker, const QString& status);
+    void market_lifecycle_event(const QString& ticker, const QString& status,
+                                const QJsonObject& payload);
+    void ticker_event(const QString& ticker, const QJsonObject& payload);
+    void orderbook_event(const QString& type, const QString& ticker, qint64 sequence,
+                         const QJsonObject& payload);
+    void account_event(const QString& type, const QJsonObject& payload);
     void connection_status_changed(bool connected);
 
   private slots:
@@ -81,6 +91,9 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
   private:
     void ensure_connected();
     void send_subscribe(const QStringList& tickers);
+    void send_account_subscribe();
+    void request_orderbook_snapshot(const QString& ticker);
+    void publish_books(const QString& ticker, qint64 ts_ms);
     void publish_price(const QString& asset_id, double price);
     void publish_orderbook(const QString& asset_id,
                            const openmarketterminal::services::prediction::PredictionOrderBook& book);
@@ -93,6 +106,15 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     bool connected_ = false;
     bool hub_registered_ = false;
     int next_msg_id_ = 1;
+    int orderbook_subscription_sid_ = 0;
+
+    struct BookState {
+        QMap<int, double> yes_bids;
+        QMap<int, double> no_bids;
+        bool has_snapshot = false;
+    };
+    QHash<QString, BookState> books_;
+    qint64 orderbook_sequence_ = 0;
 
     static constexpr const char* kProdWs = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";
     static constexpr const char* kDemoWs = "wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2";

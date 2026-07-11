@@ -104,6 +104,9 @@ class PolymarketDetailPanel : public QWidget {
     void apply_presentation_to_stats();  // show/hide OPEN INT cell, re-label
     void render_status_badge(const openmarketterminal::services::prediction::PredictionMarket& market);
     void refresh_ticket_side_style();
+    void update_ticket_estimate();
+    void prefill_ticket_price_from_outcome(bool force = false);
+    void configure_ticket_order_types();
     void on_submit_clicked();
     void update_edge_prefill_from_market();
     void apply_crypto_hourly_anchor();
@@ -157,8 +160,10 @@ class PolymarketDetailPanel : public QWidget {
     QPushButton*    ticket_buy_btn_     = nullptr;
     QPushButton*    ticket_sell_btn_    = nullptr;
     QLineEdit*      ticket_price_edit_  = nullptr;
+    QLineEdit*      ticket_cash_edit_   = nullptr;
     QLineEdit*      ticket_size_edit_   = nullptr;
     QComboBox*      ticket_type_cb_     = nullptr;
+    QLabel*         ticket_estimate_lbl_= nullptr;
     QPushButton*    ticket_submit_btn_  = nullptr;
     QLabel*         ticket_status_lbl_  = nullptr;
     QString         ticket_side_        = "BUY";

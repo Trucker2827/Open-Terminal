@@ -20,6 +20,7 @@
 #include <QWidget>
 
 #include <atomic>
+#include <deque>
 
 namespace openmarketterminal::screens::crypto {
 class CryptoTickerBar;
@@ -130,6 +131,7 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     QPushButton* accounts_btn_ = nullptr;
     QLabel* ws_status_ = nullptr;
     QLabel* ws_transport_ = nullptr;  // tiny hint: "NATIVE" for Kraken, "DAEMON" for ccxt
+    QLabel* impulse_label_ = nullptr;
     QLabel* clock_label_ = nullptr;
 
     /// Context object that owns all direct connections to the native Kraken
@@ -216,6 +218,16 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     // symbols) collapse to one UI refresh per flush tick (10/sec).
     trading::OrderBookData pending_orderbook_;
     bool has_pending_orderbook_ = false;
+
+    struct ImpulsePoint {
+        qint64 ts_ms = 0;
+        double price = 0.0;
+        double bid = 0.0;
+        double ask = 0.0;
+    };
+    std::deque<ImpulsePoint> impulse_points_;
+    void record_impulse_tick(double price, double bid, double ask);
+    void update_impulse_label();
 
     // Candle coalescing — append closed candles in order, keep the latest
     // in-progress candle separately so we render partial bars without

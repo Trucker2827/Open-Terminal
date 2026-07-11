@@ -22,6 +22,7 @@ class CryptoOrderBook : public QWidget {
 
     void set_data(const QVector<QPair<double, double>>& bids, const QVector<QPair<double, double>>& asks, double spread,
                   double spread_pct);
+    void clear();
 
     void add_tick_snapshot(const TickSnapshot& snap);
 

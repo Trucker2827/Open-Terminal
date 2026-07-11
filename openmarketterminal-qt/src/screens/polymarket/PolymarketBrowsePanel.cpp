@@ -162,6 +162,34 @@ void PolymarketBrowsePanel::update_market_row(const PredictionMarket& market) {
     if (model_) model_->update_market(market);
 }
 
+void PolymarketBrowsePanel::select_market_row(const QString& market_id) {
+    if (!model_ || !list_view_ || market_id.isEmpty()) return;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const auto* mkt = model_->market_at(row);
+        if (!mkt || mkt->key.market_id != market_id) continue;
+        const QModelIndex idx = model_->index(row, 0);
+        list_view_->setCurrentIndex(idx);
+        list_view_->scrollTo(idx, QAbstractItemView::PositionAtCenter);
+        return;
+    }
+}
+
+void PolymarketBrowsePanel::select_event_row(const QString& event_id) {
+    if (!model_ || !list_view_ || event_id.isEmpty()) return;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const auto* evt = model_->event_at(row);
+        if (!evt || evt->key.event_id != event_id) continue;
+        const QModelIndex idx = model_->index(row, 0);
+        list_view_->setCurrentIndex(idx);
+        list_view_->scrollTo(idx, QAbstractItemView::PositionAtCenter);
+        return;
+    }
+}
+
+int PolymarketBrowsePanel::item_count() const {
+    return model_ ? model_->rowCount() : 0;
+}
+
 void PolymarketBrowsePanel::on_item_clicked(const QModelIndex& index) {
     if (!index.isValid())
         return;

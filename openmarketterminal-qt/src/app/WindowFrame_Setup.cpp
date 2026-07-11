@@ -64,7 +64,7 @@
 #include "screens/news/NewsScreen.h"
 #include "screens/node_editor/NodeEditorScreen.h"
 #include "screens/notes/NotesScreen.h"
-#include "screens/polymarket/PolymarketScreen.h"
+#include "screens/prediction/PredictionMarketsScreen.h"
 #include "screens/portfolio/PortfolioScreen.h"
 #include "screens/profile/ProfileScreen.h"
 #include "screens/quantlib/QuantLibScreen.h"
@@ -269,7 +269,7 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("relationship_map", []() { return new screens::RelationshipMapScreen; });
     dock_router_->register_factory("equity_trading", []() { return new screens::EquityTradingScreen; });
     dock_router_->register_factory("alpha_arena", []() { return new screens::AlphaArenaScreen; });
-    dock_router_->register_factory("polymarket", []() { return new screens::PolymarketScreen; });
+    dock_router_->register_factory("polymarket", []() { return new screens::PredictionMarketsScreen; });
     dock_router_->register_factory("edge_radar", []() { return new screens::EdgeRadarScreen; });
     dock_router_->register_factory("derivatives", []() { return new screens::DerivativesScreen; });
     dock_router_->register_factory("equity_research", []() { return new screens::EquityResearchScreen; });

@@ -18,6 +18,43 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 
 namespace pr = openmarketterminal::services::prediction;
 
+static QString compact_json_value(const QJsonValue& value) {
+    if (value.isObject())
+        return QString::fromUtf8(QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact));
+    if (value.isArray())
+        return QString::fromUtf8(QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact));
+    if (value.isString())
+        return value.toString();
+    if (value.isBool())
+        return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    if (value.isDouble())
+        return QString::number(value.toDouble());
+    return {};
+}
+
+static QString bridge_error_message(const QJsonObject& obj) {
+    QString msg = obj.value(QStringLiteral("error")).toString(QStringLiteral("Kalshi command failed"));
+    const QJsonValue detail = obj.value(QStringLiteral("detail"));
+    if (detail.isUndefined() || detail.isNull())
+        return msg;
+
+    if (detail.isObject()) {
+        const auto detail_obj = detail.toObject();
+        const auto err_obj = detail_obj.value(QStringLiteral("error")).toObject();
+        const QString code = err_obj.value(QStringLiteral("code")).toString();
+        const QString detail_msg = err_obj.value(QStringLiteral("message")).toString();
+        if (!detail_msg.isEmpty()) {
+            msg += QStringLiteral(": ");
+            if (!code.isEmpty()) msg += code + QStringLiteral(" — ");
+            msg += detail_msg;
+            return msg;
+        }
+    }
+
+    const QString raw = compact_json_value(detail);
+    return raw.isEmpty() ? msg : msg + QStringLiteral(": ") + raw.left(500);
+}
+
 // ── Construction ────────────────────────────────────────────────────────────
 
 KalshiAdapter::KalshiAdapter(QObject* parent)
@@ -119,19 +156,57 @@ static QVector<pr::PredictionEvent> filter_events(const QVector<pr::PredictionEv
 // ── Read endpoints ──────────────────────────────────────────────────────────
 
 namespace {
-// Category slugs may carry a cadence suffix ("Crypto@fifteen_min",
-// "Crypto@hourly", "Crypto@live") emitted by the crypto quick-filter buttons.
-// Split into (base category, frequency list). "live" = all short-term cadences.
-QString split_category(const QString& slug, QStringList& frequencies) {
+struct CategoryFilter {
+    QString base;
+    QStringList frequencies;
+    QStringList series_keywords;
+};
+
+QStringList crypto_asset_keywords(const QString& asset) {
+    const QString a = asset.trimmed().toUpper();
+    if (a == QLatin1String("BTC"))
+        return {QStringLiteral("btc"), QStringLiteral("xbt"), QStringLiteral("bitcoin"),
+                QStringLiteral("kxbtc"), QStringLiteral("kxbtcd")};
+    if (a == QLatin1String("ETH"))
+        return {QStringLiteral("eth"), QStringLiteral("ethereum"), QStringLiteral("kxeth")};
+    if (a == QLatin1String("SOL"))
+        return {QStringLiteral("sol"), QStringLiteral("solana"), QStringLiteral("kxsol")};
+    if (a == QLatin1String("DOGE"))
+        return {QStringLiteral("doge"), QStringLiteral("dogecoin"), QStringLiteral("kxdoge")};
+    if (a == QLatin1String("XRP"))
+        return {QStringLiteral("xrp"), QStringLiteral("ripple"), QStringLiteral("kxxrp")};
+    return {};
+}
+
+// Category slugs may carry structured Kalshi filters:
+//   Crypto#BTC@hourly, Crypto@live, Sports
+// Split into base category, optional crypto asset keywords, and frequency list.
+// "live" = all short-term cadences.
+CategoryFilter parse_category_filter(QString slug) {
+    CategoryFilter out;
+    QString token;
     const int at = slug.indexOf(QLatin1Char('@'));
-    if (at < 0) return slug;
-    const QString base = slug.left(at);
-    const QString token = slug.mid(at + 1);
+    if (at >= 0) {
+        token = slug.mid(at + 1);
+        slug = slug.left(at);
+    }
+
+    QString asset;
+    const int hash = slug.indexOf(QLatin1Char('#'));
+    if (hash >= 0) {
+        asset = slug.mid(hash + 1);
+        slug = slug.left(hash);
+    }
+
+    out.base = slug;
     if (token == QStringLiteral("live"))
-        frequencies = {QStringLiteral("fifteen_min"), QStringLiteral("hourly")};
+        out.frequencies = {QStringLiteral("fifteen_min"), QStringLiteral("hourly")};
     else if (!token.isEmpty())
-        frequencies = {token};
-    return base;
+        out.frequencies = {token};
+
+    if (out.base.compare(QStringLiteral("Crypto"), Qt::CaseInsensitive) == 0)
+        out.series_keywords = crypto_asset_keywords(asset);
+    return out;
 }
 }  // namespace
 
@@ -143,9 +218,9 @@ void KalshiAdapter::list_markets(const QString& category, const QString& /*sort_
     if (!cat.isEmpty()) {
         // The flat /markets endpoint ignores category filters; resolve the human
         // category to its series via fetch_category and flatten nested markets.
-        QStringList freqs;
-        const QString base = split_category(cat, freqs);
-        rest_->fetch_category(base, freqs, /*as_events=*/false, limit);
+        const CategoryFilter filter = parse_category_filter(cat);
+        rest_->fetch_category(filter.base, filter.frequencies, filter.series_keywords,
+                              /*as_events=*/false, limit);
         return;
     }
     rest_->fetch_markets(QStringLiteral("open"), QString(), QString(), QString(), limit, QString());
@@ -155,9 +230,9 @@ void KalshiAdapter::list_events(const QString& category, const QString& /*sort_b
                                 int limit, int /*offset*/) {
     const QString cat = (category.isEmpty() || category == QStringLiteral("ALL")) ? QString() : category;
     if (!cat.isEmpty()) {
-        QStringList freqs;
-        const QString base = split_category(cat, freqs);
-        rest_->fetch_category(base, freqs, /*as_events=*/true, limit);
+        const CategoryFilter filter = parse_category_filter(cat);
+        rest_->fetch_category(filter.base, filter.frequencies, filter.series_keywords,
+                              /*as_events=*/true, limit);
         return;
     }
     rest_->fetch_events(QStringLiteral("open"), QString(), /*with_nested_markets=*/true, limit, QString());
@@ -218,6 +293,10 @@ void KalshiAdapter::fetch_order_book(const QString& asset_id) {
     rest_->fetch_order_book(ticker, 20);
 }
 
+void KalshiAdapter::fetch_batch_order_books(const QStringList& tickers) {
+    rest_->fetch_batch_order_books(tickers);
+}
+
 void KalshiAdapter::fetch_price_history(const QString& asset_id, const QString& interval, int /*fidelity*/) {
     const auto [ticker, side] = split_asset_id(asset_id);
     if (ticker.isEmpty()) {
@@ -239,6 +318,8 @@ void KalshiAdapter::fetch_price_history(const QString& asset_id, const QString& 
     // Default to last 7 days if the caller didn't give us a range.
     const qint64 end = QDateTime::currentSecsSinceEpoch();
     qint64 start = end - (7 * 24 * 3600);
+    if (interval == QStringLiteral("1min") || interval == QStringLiteral("5min"))
+        start = end - (6 * 3600);
     if (interval == QStringLiteral("1w")) start = end - (7 * 24 * 3600);
     else if (interval == QStringLiteral("1m")) start = end - (30 * 24 * 3600);
     else if (interval == QStringLiteral("6h")) start = end - (6 * 3600);
@@ -306,11 +387,8 @@ void KalshiAdapter::stub_unsupported(const QString& ctx) {
     emit error_occurred(ctx, QStringLiteral("Kalshi adapter: not supported in this call"));
 }
 
-// prediction_kalshi.py also exposes `settlements` and `decrease_order`
-// commands. They're reachable directly via PythonRunner for scripted
-// testing but intentionally not surfaced on the adapter because no UI
-// currently consumes a settlements view or a decrease-order control.
-// Wire an adapter method here when that UI lands.
+// `decrease_order` remains bridge-only because the UI has no corresponding
+// control. Settlements are surfaced for evidence reconciliation below.
 
 QJsonObject KalshiAdapter::creds_to_json() const {
     QJsonObject o;
@@ -358,8 +436,7 @@ void KalshiAdapter::run_py(const QString& command, const QJsonObject& extra,
             }
             const auto obj = doc.object();
             if (!obj.value("ok").toBool()) {
-                emit self->error_occurred(ctx, obj.value("error").toString(
-                    QStringLiteral("Kalshi command failed")));
+                emit self->error_occurred(ctx, bridge_error_message(obj));
                 return;
             }
             on_ok(obj);
@@ -404,6 +481,16 @@ void KalshiAdapter::fetch_positions() {
                emit self->positions_ready(out);
            },
            QStringLiteral("fetch_positions"));
+}
+
+void KalshiAdapter::fetch_settlements(int limit, const QString& cursor) {
+    QPointer<KalshiAdapter> self = this;
+    run_py(QStringLiteral("settlements"),
+           QJsonObject{{QStringLiteral("limit"), qBound(1, limit, 1000)},
+                       {QStringLiteral("cursor"), cursor}},
+           [self](const QJsonObject& response) {
+               if (self) emit self->settlements_ready(response.value(QStringLiteral("settlements")).toArray());
+           }, QStringLiteral("fetch_settlements"));
 }
 
 void KalshiAdapter::fetch_open_orders() {
@@ -555,6 +642,7 @@ void KalshiAdapter::cancel_all_for_market(const pr::MarketKey& key, const QStrin
 
 void KalshiAdapter::fetch_exchange_status() { rest_->fetch_exchange_status(); }
 void KalshiAdapter::fetch_exchange_schedule() { rest_->fetch_exchange_schedule(); }
+void KalshiAdapter::fetch_series_fee_changes() { rest_->fetch_series_fee_changes(); }
 
 void KalshiAdapter::fetch_batch_candles(const QStringList& tickers, int period_interval_min,
                                         qint64 start_ts, qint64 end_ts) {
@@ -731,7 +819,12 @@ void KalshiAdapter::wire() {
             [this](const pr::PriceHistory& hist, const QString& /*ticker*/) {
                 // Retag with the originally-requested asset id (could be :yes or :no).
                 pr::PriceHistory out = hist;
-                if (!last_history_asset_id_.isEmpty()) out.asset_id = last_history_asset_id_;
+                if (!last_history_asset_id_.isEmpty()) {
+                    out.asset_id = last_history_asset_id_;
+                    if (last_history_asset_id_.endsWith(QStringLiteral(":no"))) {
+                        for (auto& point : out.points) point.price = 1.0 - point.price;
+                    }
+                }
                 emit price_history_ready(out);
             });
 
@@ -740,8 +833,12 @@ void KalshiAdapter::wire() {
             this, &KalshiAdapter::exchange_status_ready);
     connect(rest_.get(), &KalshiRestClient::exchange_schedule_ready,
             this, &KalshiAdapter::exchange_schedule_ready);
+    connect(rest_.get(), &KalshiRestClient::series_fee_changes_ready,
+            this, &KalshiAdapter::series_fee_changes_ready);
     connect(rest_.get(), &KalshiRestClient::batch_candlesticks_ready,
             this, &KalshiAdapter::batch_candles_ready);
+    connect(rest_.get(), &KalshiRestClient::batch_order_books_ready,
+            this, &KalshiAdapter::batch_order_books_ready);
     connect(rest_.get(), &KalshiRestClient::historical_markets_ready,
             this, &KalshiAdapter::historical_markets_ready);
     connect(rest_.get(), &KalshiRestClient::historical_trades_ready,
@@ -764,8 +861,18 @@ void KalshiAdapter::wire() {
             this, &KalshiAdapter::ws_orderbook_updated);
     connect(ws_.get(), &KalshiWsClient::trade_received,
             this, &KalshiAdapter::ws_trade_received);
+    connect(ws_.get(), &KalshiWsClient::trade_event,
+            this, &KalshiAdapter::ws_trade_event);
     connect(ws_.get(), &KalshiWsClient::market_lifecycle_changed,
             this, &KalshiAdapter::ws_market_lifecycle_changed);
+    connect(ws_.get(), &KalshiWsClient::market_lifecycle_event,
+            this, &KalshiAdapter::ws_market_lifecycle_event);
+    connect(ws_.get(), &KalshiWsClient::ticker_event,
+            this, &KalshiAdapter::ws_ticker_event);
+    connect(ws_.get(), &KalshiWsClient::orderbook_event,
+            this, &KalshiAdapter::ws_orderbook_event);
+    connect(ws_.get(), &KalshiWsClient::account_event,
+            this, &KalshiAdapter::ws_account_event);
     connect(ws_.get(), &KalshiWsClient::connection_status_changed,
             this, &KalshiAdapter::ws_connection_changed);
 }

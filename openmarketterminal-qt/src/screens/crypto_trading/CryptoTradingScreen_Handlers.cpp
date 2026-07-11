@@ -67,9 +67,42 @@ QString coinbase_order_symbol(QString symbol) {
     return symbol;
 }
 
-QString order_symbol_for_exchange(const QString& exchange_id, const QString& display_symbol) {
+bool is_cash_quote(const QString& currency) {
+    const QString c = currency.trimmed().toUpper();
+    return c == QLatin1String("USD") || c == QLatin1String("USDT") || c == QLatin1String("USDC") ||
+           c == QLatin1String("EUR") || c == QLatin1String("GBP") || c == QLatin1String("CAD") ||
+           c == QLatin1String("AUD") || c == QLatin1String("CHF") || c == QLatin1String("JPY");
+}
+
+QString remap_pair_quote(QString symbol, QString quote) {
+    symbol = symbol.trimmed().toUpper();
+    quote = quote.trimmed().toUpper();
+    if (!symbol.contains(QLatin1Char('/')) || symbol.contains(QLatin1Char(':')) || !is_cash_quote(quote))
+        return symbol;
+    return symbol.section(QLatin1Char('/'), 0, 0) + QStringLiteral("/") + quote;
+}
+
+QString kraken_order_symbol(QString symbol, const QString& funding_currency) {
+    symbol = symbol.trimmed().toUpper();
+    if (!symbol.contains(QLatin1Char('/')) || symbol.contains(QLatin1Char(':')))
+        return symbol;
+
+    const QString display_quote = symbol.section(QLatin1Char('/'), 1, 1);
+    if (!is_cash_quote(display_quote))
+        return symbol;
+
+    // Kraken distinguishes USD and USDT spot books. The UI may display a USDT
+    // pair while the account cash balance is USD; route live orders to the book
+    // that matches the cash currency shown on the ticket.
+    return is_cash_quote(funding_currency) ? remap_pair_quote(symbol, funding_currency) : symbol;
+}
+
+QString order_symbol_for_exchange(const QString& exchange_id, const QString& display_symbol,
+                                  const QString& funding_currency) {
     if (exchange_id.compare(QStringLiteral("coinbase"), Qt::CaseInsensitive) == 0)
         return coinbase_order_symbol(display_symbol);
+    if (exchange_id.compare(QStringLiteral("kraken"), Qt::CaseInsensitive) == 0)
+        return kraken_order_symbol(display_symbol, funding_currency);
     return display_symbol.trimmed().toUpper();
 }
 
@@ -125,6 +158,8 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     has_pending_primary_ = false;
     pending_candles_.clear();
     pending_trades_.clear();
+    impulse_points_.clear();
+    update_impulse_label();
     last_ws_state_ = -1;  // re-evaluate feed mode after new stream connects
 
     // Reset fetch guards — a prior in-flight fetch from the old exchange must
@@ -224,6 +259,8 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     pending_orderbook_ = {};
     pending_candles_.clear();
     pending_trades_.clear();
+    impulse_points_.clear();
+    update_impulse_label();
     market_info_cache_ = {};
 
     es.watch_symbol(selected_symbol_, portfolio_id_);
@@ -359,7 +396,8 @@ void CryptoTradingScreen::on_order_submitted(const QString& side, const QString&
 
             // Read the reduce-only flag on the UI thread before dispatching.
             const bool reduce_only = order_entry_->reduce_only();
-            const QString execution_symbol = order_symbol_for_exchange(exchange_id_, selected_symbol_);
+            const QString funding_currency = order_entry_ ? order_entry_->funding_currency() : QString();
+            const QString execution_symbol = order_symbol_for_exchange(exchange_id_, selected_symbol_, funding_currency);
             LOG_INFO(TAG, QString("Live execution symbol: display=%1 exchange=%2 execution=%3")
                               .arg(selected_symbol_, exchange_id_, execution_symbol));
             QPointer<CryptoTradingScreen> self = this;

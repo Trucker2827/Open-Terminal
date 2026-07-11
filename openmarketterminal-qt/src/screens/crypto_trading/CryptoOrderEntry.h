@@ -35,6 +35,7 @@ class CryptoOrderEntry : public QWidget {
     // normal BUY/SELL label.
     void set_submit_busy(bool busy);
     bool submit_busy() const { return submit_busy_; }
+    QString funding_currency() const;
     void show_order_result(bool ok, const QString& message);
 
   signals:

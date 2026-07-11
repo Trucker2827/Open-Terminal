@@ -71,8 +71,6 @@ using namespace openmarketterminal::ui;
 
 namespace openmarketterminal::screens::crypto {
 
-constexpr const char* CryptoChart::TF_LABELS[];
-
 namespace {
 
 // Maps a timeframe label to its slot duration in milliseconds. Used to
@@ -162,6 +160,8 @@ class HoverChartView : public QChartView {
 // ── CryptoChart ─────────────────────────────────────────────────────────────
 
 CryptoChart::CryptoChart(QWidget* parent) : QWidget(parent) {
+    timeframe_labels_ = {QStringLiteral("1m"), QStringLiteral("5m"), QStringLiteral("15m"),
+                         QStringLiteral("1h"), QStringLiteral("4h"), QStringLiteral("1d")};
     setObjectName("cryptoChart");
 
     auto* layout = new QVBoxLayout(this);
@@ -181,7 +181,7 @@ CryptoChart::CryptoChart(QWidget* parent) : QWidget(parent) {
     h_layout->addSpacing(8);
 
     for (int i = 0; i < 6; ++i) {
-        tf_buttons_[i] = new QPushButton(TF_LABELS[i]);
+        tf_buttons_[i] = new QPushButton(timeframe_labels_[i].toUpper());
         tf_buttons_[i]->setObjectName("cryptoTfBtn");
         tf_buttons_[i]->setCursor(Qt::PointingHandCursor);
         tf_buttons_[i]->setFocusPolicy(Qt::NoFocus);
@@ -364,13 +364,28 @@ void CryptoChart::set_active_tf(int idx) {
             st->polish(tf_buttons_[i]);
         }
     }
-    pending_tf_ = TF_LABELS[idx];
+    pending_tf_ = timeframe_labels_.value(idx);
     active_tf_ = idx;
-    emit timeframe_changed(TF_LABELS[idx]);
+    emit timeframe_changed(timeframe_labels_.value(idx));
 }
 
 QString CryptoChart::current_timeframe() const {
-    return TF_LABELS[active_tf_];
+    return timeframe_labels_.value(active_tf_);
+}
+
+void CryptoChart::set_timeframes(const QStringList& labels, int default_index, const QString& title) {
+    if (labels.size() != 6) return;
+    timeframe_labels_ = labels;
+    active_tf_ = qBound(0, default_index, 5);
+    if (title_label_) title_label_->setText(title);
+    if (indicator_picker_) indicator_picker_->setVisible(!title.startsWith(QStringLiteral("REFERENCE PRICE")));
+    for (int i = 0; i < 6; ++i) {
+        tf_buttons_[i]->setText(timeframe_labels_[i].toUpper());
+        tf_buttons_[i]->setProperty("active", i == active_tf_);
+        tf_buttons_[i]->style()->unpolish(tf_buttons_[i]);
+        tf_buttons_[i]->style()->polish(tf_buttons_[i]);
+    }
+    apply_tf_axis_format();
 }
 
 void CryptoChart::set_candles(const QVector<trading::Candle>& candles) {
@@ -507,11 +522,11 @@ void CryptoChart::update_axes(double min_price, double max_price, qint64 min_tim
 
     qint64 effective_max = max_time;
     if (min_time >= max_time) {
-        effective_max = min_time + tf_slot_ms(TF_LABELS[active_tf_]);
+        effective_max = min_time + tf_slot_ms(current_timeframe());
     } else {
         // Add half-a-slot of right padding so the latest candle isn't pinned
         // to the right edge of the plot — looks more like a real terminal.
-        effective_max = max_time + tf_slot_ms(TF_LABELS[active_tf_]) / 2;
+        effective_max = max_time + tf_slot_ms(current_timeframe()) / 2;
     }
 
     if (min_time != last_min_time_ || effective_max != last_max_time_) {

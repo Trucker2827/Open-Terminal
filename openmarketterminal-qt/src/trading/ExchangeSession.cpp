@@ -13,6 +13,8 @@
 #include <QJsonObject>
 #include <QMutexLocker>
 #include <QPointer>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QTimer>
 
 namespace openmarketterminal::trading {
@@ -32,6 +34,40 @@ QString session_resolve_script_path(const QString& relative) {
     if (dir.isEmpty())
         return {};
     return dir + "/" + relative;
+}
+
+void terminate_orphaned_ws_streams(const QString& script_path, const QString& exchange_id) {
+#ifdef Q_OS_UNIX
+    if (script_path.isEmpty() || exchange_id.isEmpty())
+        return;
+
+    QProcess ps;
+    ps.start(QStringLiteral("/bin/ps"), {QStringLiteral("-axo"), QStringLiteral("pid=,ppid=,command=")});
+    if (!ps.waitForFinished(1500) || ps.exitStatus() != QProcess::NormalExit || ps.exitCode() != 0)
+        return;
+
+    const auto lines = QString::fromUtf8(ps.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    const QRegularExpression ws_re(QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(exchange_id)));
+    for (const QString& raw : lines) {
+        const QString line = raw.trimmed();
+        if (!line.contains(script_path) || !line.contains(QStringLiteral("ws_stream.py")) || !line.contains(ws_re))
+            continue;
+
+        const QStringList parts = line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (parts.size() < 3)
+            continue;
+        const qint64 pid = parts.at(0).toLongLong();
+        const qint64 ppid = parts.at(1).toLongLong();
+        if (pid <= 0 || ppid != 1)
+            continue;
+
+        LOG_WARN(kSessionTag, QString("[%1] terminating orphan ws_stream.py pid=%2").arg(exchange_id).arg(pid));
+        QProcess::execute(QStringLiteral("/bin/kill"), {QStringLiteral("-TERM"), QString::number(pid)});
+    }
+#else
+    Q_UNUSED(script_path);
+    Q_UNUSED(exchange_id);
+#endif
 }
 
 } // namespace
@@ -181,6 +217,7 @@ bool ExchangeSession::start_ws(const QString& primary_symbol, const QStringList&
         LOG_ERROR(kSessionTag, "Python or ws_stream.py not found");
         return false;
     }
+    terminate_orphaned_ws_streams(script_path, exchange_id_);
     args << "-u" << "-B" << script_path << exchange_id_;
     for (const auto& sym : all_symbols)
         args << sym;
