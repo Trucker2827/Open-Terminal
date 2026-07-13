@@ -458,7 +458,8 @@ void PolymarketScreen::build_ui() {
                     pm->reload_credentials();
             } else if (id == QStringLiteral("kalshi")) {
                 if (auto* ks = dynamic_cast<pred::kalshi_ns::KalshiAdapter*>(reg.adapter(QStringLiteral("kalshi")))) {
-                    if (auto creds = pred::PredictionCredentialStore::load_kalshi()) ks->set_credentials(*creds);
+                    ks->set_credentials(pred::PredictionCredentialStore::load_kalshi()
+                                            .value_or(pred::kalshi_ns::KalshiCredentials{}));
                 }
             }
             const bool has_pm = pred::PredictionCredentialStore::load_polymarket().has_value();
@@ -476,7 +477,8 @@ void PolymarketScreen::build_ui() {
                     pm->reload_credentials();
             } else if (id == QStringLiteral("kalshi")) {
                 if (auto* ks = dynamic_cast<pred::kalshi_ns::KalshiAdapter*>(adapter)) {
-                    if (auto creds = pred::PredictionCredentialStore::load_kalshi()) ks->set_credentials(*creds);
+                    ks->set_credentials(pred::PredictionCredentialStore::load_kalshi()
+                                            .value_or(pred::kalshi_ns::KalshiCredentials{}));
                 }
             }
             dlg->show_test_running(id);

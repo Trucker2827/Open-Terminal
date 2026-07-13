@@ -191,7 +191,7 @@ void ProfileScreen::build_tab_nav(QVBoxLayout* root) {
     // Keep English source keys aligned with nav_buttons_ so retranslateUi
     // can reapply tr() without rebuilding the nav bar (preserves the
     // currently-active highlight).
-    nav_source_keys_ = {QStringLiteral("OVERVIEW"), QStringLiteral("SECURITY"), QStringLiteral("AUTOMATION")};
+    nav_source_keys_ = {QStringLiteral("OVERVIEW"), QStringLiteral("SECURITY"), QStringLiteral("LOCAL SERVICES")};
     for (int i = 0; i < nav_source_keys_.size(); i++) {
         auto* btn = new QPushButton(tr(nav_source_keys_[i].toUtf8().constData()));
         btn->setFixedHeight(32);
@@ -544,6 +544,14 @@ QWidget* ProfileScreen::build_automation() {
                             .arg(ui::colors::TEXT_SECONDARY(), MF));
     svl->addWidget(note);
 
+    auto* strategy_ownership_note = new QLabel(
+        tr("Strategy evidence, proof books, and research workflows now live in STRATEGIES > AUTOMATION. "
+           "This page owns the profile's daemon lifecycle, account permissions, collectors, and general scheduled services."));
+    strategy_ownership_note->setWordWrap(true);
+    strategy_ownership_note->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;padding:2px 12px 6px 12px;%2")
+                                               .arg(ui::colors::CYAN(), MF));
+    svl->addWidget(strategy_ownership_note);
+
     auto* grid = new QWidget(this);
     grid->setStyleSheet("background:transparent;");
     auto* gl = new QGridLayout(grid);
@@ -820,7 +828,9 @@ QWidget* ProfileScreen::build_automation() {
 
     lbot->addWidget(live_controls);
     vl->addWidget(live_panel);
-    vl->addWidget(simple_panel);
+    // Paper program controls moved to Strategies > Automation. The existing
+    // widget remains alive because profile refresh still updates its status.
+    simple_panel->setVisible(false);
 
     auto* scenario_panel = make_panel(tr("COINBASE SCENARIO LAB"));
     auto* scvl = qobject_cast<QVBoxLayout*>(scenario_panel->layout());
@@ -1011,7 +1021,10 @@ QWidget* ProfileScreen::build_automation() {
     daemon_sandbox_leaderboard_table_->setMinimumHeight(178);
     daemon_sandbox_leaderboard_table_->setStyleSheet(daemon_sandbox_books_table_->styleSheet());
     sbvl->addWidget(daemon_sandbox_leaderboard_table_);
-    vl->addWidget(sandbox_panel);
+    // Proof books and their controls are presented in the Strategy workspace.
+    // Keep this widget alive for the existing refresh contract, but do not
+    // expose a second, competing copy in Profile.
+    sandbox_panel->setVisible(false);
 
     auto* collectors_panel = make_panel(tr("DATA COLLECTORS"));
     auto* cvl = qobject_cast<QVBoxLayout*>(collectors_panel->layout());

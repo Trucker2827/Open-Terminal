@@ -310,7 +310,6 @@ QMenu* ToolBar::build_trading_menu() {
         menu->addAction(label, this, [this, id]() { emit navigate_to(id); });
     };
     nav(m, tr("Crypto"), "crypto_trading");
-    nav(m, tr("Bitcoin"), "bitcoin");
     nav(m, tr("Equity"), "equity_trading");
     nav(m, tr("Portfolio"), "portfolio");
     nav(m, tr("Prediction Markets"), "polymarket");
@@ -384,7 +383,6 @@ QMenu* ToolBar::build_view_menu() {
     panels->addAction(tr("Portfolio"), this, [this]() { emit action_triggered("panel_portfolio"); });
     panels->addAction(tr("Markets"), this, [this]() { emit action_triggered("panel_markets"); });
     panels->addSeparator();
-    panels->addAction(tr("Bitcoin"), this, [this]() { emit action_triggered("panel_bitcoin"); });
     panels->addAction(tr("Crypto Trading"), this, [this]() { emit action_triggered("panel_crypto"); });
     panels->addAction(tr("Equity Trading"), this, [this]() { emit action_triggered("panel_equity"); });
     panels->addAction(tr("Algo Trading"), this, [this]() { emit action_triggered("panel_algo"); });
@@ -403,7 +401,6 @@ QMenu* ToolBar::build_view_menu() {
     auto* qs_trading = persp->addMenu(tr("Trading"));
     qs_trading->setStyleSheet(popup_ss());
     qs_trading->addAction(tr("Crypto Trading"), this, [this]() { emit action_triggered("perspective_trading"); });
-    qs_trading->addAction(tr("Bitcoin"), this, [this]() { emit action_triggered("perspective_bitcoin"); });
     qs_trading->addAction(tr("Equity Trading"), this, [this]() { emit action_triggered("perspective_equity"); });
     qs_trading->addAction(tr("Algo Trading"), this, [this]() { emit action_triggered("perspective_algo"); });
 

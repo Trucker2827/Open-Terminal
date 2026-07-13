@@ -51,6 +51,7 @@ class SecuritySection : public QWidget {
 
     // AI-trading constitution (Phase C): kill switch + allowed account + daily-loss cap.
     QCheckBox*   cli_kill_switch_toggle_    = nullptr;
+    bool         cli_kill_switch_dirty_     = false;
     QLineEdit*   cli_allowed_account_edit_  = nullptr;
     QLineEdit*   cli_max_daily_loss_edit_   = nullptr;
     QLineEdit*   cli_max_order_value_edit_  = nullptr;

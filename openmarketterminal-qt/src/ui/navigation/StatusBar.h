@@ -3,14 +3,9 @@
 #include <QLabel>
 #include <QWidget>
 
-namespace openmarketterminal {
-struct SymbolRef;
-enum class SymbolGroup : char;
-} // namespace openmarketterminal
-
 namespace openmarketterminal::ui {
 
-/// Bottom status bar: version, feed indicators, ready status, active-symbol indicator.
+/// Bottom status bar: version, feed indicators, and ready status.
 /// Internationalised — READY/BUSY label retranslates on QEvent::LanguageChange.
 class StatusBar : public QWidget {
     Q_OBJECT
@@ -25,12 +20,7 @@ class StatusBar : public QWidget {
     void refresh_theme();
     void retranslateUi();
 
-    /// Subscribes to SymbolContext::active_symbol_changed to mirror the most recent group publish.
-    void wire_link_indicator();
-    void update_link_label(SymbolGroup g, const SymbolRef& ref);
-
     QLabel* ready_label_ = nullptr;
-    QLabel* link_label_ = nullptr;
     /// Tracks the current ready/busy state so retranslateUi() can recompute
     /// the translated label without depending on the existing widget text.
     bool ready_state_ = true;

@@ -347,6 +347,8 @@ void SecuritySection::build_ui() {
     // (cli.* keys the CLI/agent can never write).
     cli_kill_switch_toggle_ = new QCheckBox(tr("Kill switch — halt all AI trading"));
     cli_kill_switch_toggle_->setStyleSheet(check_ss());
+    connect(cli_kill_switch_toggle_, &QCheckBox::toggled, this,
+            [this](bool) { cli_kill_switch_dirty_ = true; });
     auto* row_cli_kill = make_row(
         tr("Kill Switch"), cli_kill_switch_toggle_,
         tr("PANIC button. When on, ALL AI trading is halted immediately — paper AND live, every venue. The CLI/agent can never clear it."));
@@ -436,9 +438,12 @@ void SecuritySection::build_ui() {
         }
         // AI-trading constitution (Phase C): kill switch + allowed account + daily
         // loss cap. Stored under cli.* so the CLI/agent reads them but can never write.
-        if (cli_kill_switch_toggle_) {
-            repo.set("cli.kill_switch",
-                     cli_kill_switch_toggle_->isChecked() ? "true" : "false", "cli");
+        if (cli_kill_switch_toggle_ && cli_kill_switch_dirty_) {
+            const QString value = cli_kill_switch_toggle_->isChecked()
+                ? QStringLiteral("true") : QStringLiteral("false");
+            repo.set("cli.kill_switch", value, "cli");
+            repo.set("cli.kill_switch_latched", value, "cli");
+            cli_kill_switch_dirty_ = false;
         }
         if (cli_allowed_account_edit_) {
             repo.set("cli.allowed_account", cli_allowed_account_edit_->text().trimmed(), "cli");
@@ -695,8 +700,12 @@ void SecuritySection::reload() {
     }
     if (cli_kill_switch_toggle_) {
         const QSignalBlocker b(cli_kill_switch_toggle_);
-        auto r = repo.get("cli.kill_switch", "false");
-        cli_kill_switch_toggle_->setChecked(r.is_ok() && r.value() == "true");
+        auto primary = repo.get("cli.kill_switch", "false");
+        auto latched = repo.get("cli.kill_switch_latched", "false");
+        cli_kill_switch_toggle_->setChecked(
+            (primary.is_ok() && primary.value() == "true") ||
+            (latched.is_ok() && latched.value() == "true"));
+        cli_kill_switch_dirty_ = false;
     }
     if (cli_allowed_account_edit_) {
         const QSignalBlocker b(cli_allowed_account_edit_);
