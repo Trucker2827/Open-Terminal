@@ -1,4 +1,5 @@
 #include "screens/algo_trading/SandboxBooksPanel.h"
+#include "screens/algo_trading/StrategyEvidencePresentation.h"
 
 #include "core/config/ProfileManager.h"
 #include "core/profile/ProfilePaths.h"
@@ -79,75 +80,6 @@ qint64 scalar_query_i64(const QString& sql, const QVariantList& args) {
     return r.value().value(0).toLongLong();
 }
 
-QString relative_time_label(const QString& iso) {
-    if (iso.isEmpty())
-        return QStringLiteral("-");
-    QDateTime ts = QDateTime::fromString(iso, Qt::ISODateWithMs);
-    if (!ts.isValid())
-        ts = QDateTime::fromString(iso, Qt::ISODate);
-    if (!ts.isValid())
-        return iso;
-    ts = ts.toUTC();
-    const qint64 secs = ts.secsTo(QDateTime::currentDateTimeUtc());
-    if (secs < 0) {
-        const qint64 future = -secs;
-        if (future < 90)
-            return QObject::tr("in %1s").arg(future);
-        if (future < 7200)
-            return QObject::tr("in %1m").arg(future / 60);
-        if (future < 172800)
-            return QObject::tr("in %1h").arg(future / 3600);
-        return QObject::tr("in %1d").arg(future / 86400);
-    }
-    if (secs < 90)
-        return QObject::tr("%1s ago").arg(secs);
-    if (secs < 7200)
-        return QObject::tr("%1m ago").arg(secs / 60);
-    if (secs < 172800)
-        return QObject::tr("%1h ago").arg(secs / 3600);
-    return QObject::tr("%1d ago").arg(secs / 86400);
-}
-
-QString command_text(const QJsonValue& value) {
-    if (value.isArray()) {
-        QStringList parts;
-        for (const auto& v : value.toArray())
-            parts << v.toString();
-        return parts.join(QLatin1Char(' '));
-    }
-    return value.toString();
-}
-
-bool is_sandbox_pipeline_job(const QJsonObject& job) {
-    // Authoritative match: jobs the sandbox installs are tagged managed_by.
-    if (job.value(QStringLiteral("managed_by")).toString() == QStringLiteral("strategy-sandbox"))
-        return true;
-    // Fallback name/command heuristics for legacy/unmanaged producer jobs.
-    const QString text = QStringLiteral("%1 %2 %3 %4 %5")
-                             .arg(job.value(QStringLiteral("id")).toString(),
-                                  job.value(QStringLiteral("name")).toString(),
-                                  job.value(QStringLiteral("kind")).toString(),
-                                  command_text(job.value(QStringLiteral("command"))),
-                                  job.value(QStringLiteral("target")).toString())
-                             .toLower();
-    static const QStringList needles = {
-        QStringLiteral("strategy sandbox"),
-        QStringLiteral("sandbox tick"),
-        QStringLiteral("sandbox score"),
-        QStringLiteral("chronos"),
-        QStringLiteral("kalshi decisions"),
-        QStringLiteral("btc 5m decisions"),
-        QStringLiteral("crypto decisions"),
-        QStringLiteral("long/short"),
-        QStringLiteral("scalp gate")
-    };
-    for (const QString& needle : needles) {
-        if (text.contains(needle))
-            return true;
-    }
-    return false;
-}
-
 } // namespace
 
 SandboxBooksPanel::SandboxBooksPanel(QWidget* parent) : QWidget(parent) {
@@ -175,7 +107,7 @@ void SandboxBooksPanel::build_ui() {
     top_l->setContentsMargins(12, 6, 12, 6);
     top_l->setSpacing(8);
 
-    status_label_ = new QLabel(tr("Strategy proof books are paper evidence: seed books, collect decisions, score results."), top);
+    status_label_ = new QLabel(tr("Every row below is an immutable paper experiment. No result can place a live order."), top);
     status_label_->setWordWrap(true);
     status_label_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;%2")
                                      .arg(ui::colors::TEXT_SECONDARY(), MF));
@@ -189,10 +121,12 @@ void SandboxBooksPanel::build_ui() {
         connect(btn, &QPushButton::clicked, this, slot);
         top_l->addWidget(btn);
     };
-    add_btn(tr("SEED BOOKS"), ui::colors::AMBER(), [this]() { seed_books(); });
-    add_btn(tr("INSTALL JOBS"), ui::colors::AMBER(), [this]() { install_jobs(); });
-    add_btn(tr("TICK"), ui::colors::CYAN(), [this]() { run_tick(); });
-    add_btn(tr("SCORE"), ui::colors::POSITIVE(), [this]() { run_score(); });
+    add_btn(tr("PREPARE BOOKS"), ui::colors::AMBER(), [this]() {
+        seed_books();
+        install_jobs();
+    });
+    add_btn(tr("RUN PAPER CYCLE"), ui::colors::CYAN(), [this]() { run_tick(); });
+    add_btn(tr("RECALCULATE"), ui::colors::POSITIVE(), [this]() { run_score(); });
     add_btn(tr("REFRESH"), ui::colors::TEXT_PRIMARY(), [this]() { refresh(); });
     root->addWidget(top);
 
@@ -222,53 +156,43 @@ void SandboxBooksPanel::build_ui() {
         bl->addWidget(cap);
         stats_l->addWidget(box, 1);
     };
-    add_stat(tr("ACTIVE BOOKS"), active_count_);
+    add_stat(tr("EXPERIMENTS"), active_count_);
     add_stat(tr("OPEN PAPER"), open_count_);
-    add_stat(tr("CLOSED PAPER"), closed_count_);
+    add_stat(tr("NO EDGE"), no_edge_count_);
     add_stat(tr("RESOLVED"), resolved_count_);
-    add_stat(tr("NET PAPER PNL"), net_pnl_);
-    add_stat(tr("LIVE ELIGIBLE"), eligible_count_);
+    add_stat(tr("PNL BY BOOK"), net_pnl_);
+    add_stat(tr("PROMOTION READY"), eligible_count_);
     root->addWidget(stats);
 
-    pipeline_table_ = new QTableWidget(this);
-    pipeline_table_->setColumnCount(7);
-    pipeline_table_->setHorizontalHeaderLabels(
-        {tr("Producer"), tr("Status"), tr("Runs"), tr("Fail"), tr("Last"), tr("Next"), tr("Command")});
-    pipeline_table_->verticalHeader()->setVisible(false);
-    pipeline_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    pipeline_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    pipeline_table_->setAlternatingRowColors(true);
-    pipeline_table_->setStyleSheet(table_style());
-    pipeline_table_->horizontalHeader()->setStretchLastSection(true);
-    pipeline_table_->setFixedHeight(154);
-    root->addWidget(pipeline_table_);
-
-    books_table_ = new QTableWidget(this);
-    books_table_->setColumnCount(8);
-    books_table_->setHorizontalHeaderLabels(
-        {tr("Book"), tr("Symbols"), tr("Venue"), tr("Horizon"), tr("Source"), tr("Mode"), tr("Notional"), tr("Status")});
-    books_table_->verticalHeader()->setVisible(false);
-    books_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    books_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    books_table_->setAlternatingRowColors(true);
-    books_table_->setStyleSheet(table_style());
-    books_table_->horizontalHeader()->setStretchLastSection(true);
-    books_table_->setMinimumHeight(150);
-    root->addWidget(books_table_, 1);
-
     leaderboard_table_ = new QTableWidget(this);
-    leaderboard_table_->setColumnCount(10);
+    leaderboard_table_->setColumnCount(12);
     leaderboard_table_->setHorizontalHeaderLabels(
-        {tr("Book"), tr("Resolved"), tr("Open"), tr("Net"), tr("Hit"), tr("Drawdown"),
-         tr("Data"), tr("Ranked"), tr("Eligible"), tr("Blockers")});
+        {tr("Strategy"), tr("Symbols"), tr("Venue"), tr("Horizon"), tr("Source"),
+         tr("Samples"), tr("Open"), tr("Net P&L"), tr("Hit Rate"), tr("Drawdown"),
+         tr("Proof Status"), tr("Next Requirement")});
     leaderboard_table_->verticalHeader()->setVisible(false);
     leaderboard_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     leaderboard_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     leaderboard_table_->setAlternatingRowColors(true);
     leaderboard_table_->setStyleSheet(table_style());
     leaderboard_table_->horizontalHeader()->setStretchLastSection(true);
-    leaderboard_table_->setMinimumHeight(190);
+    leaderboard_table_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    leaderboard_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    leaderboard_table_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    leaderboard_table_->horizontalHeader()->setSectionResizeMode(11, QHeaderView::Stretch);
+    leaderboard_table_->setMinimumHeight(260);
+    connect(leaderboard_table_, &QTableWidget::itemSelectionChanged,
+            this, &SandboxBooksPanel::update_selected_detail);
     root->addWidget(leaderboard_table_, 1);
+
+    detail_label_ = new QLabel(tr("Select a strategy to inspect its immutable configuration, data quality, and all blockers."), this);
+    detail_label_->setWordWrap(true);
+    detail_label_->setMinimumHeight(72);
+    detail_label_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    detail_label_->setStyleSheet(QString("background:%1;color:%2;border-top:1px solid %3;padding:9px;font-size:10px;%4")
+                                     .arg(ui::colors::BG_SURFACE(), ui::colors::TEXT_SECONDARY(),
+                                          ui::colors::BORDER_DIM(), MF));
+    root->addWidget(detail_label_);
 }
 
 void SandboxBooksPanel::set_status(const QString& text, const QString& color) {
@@ -314,7 +238,6 @@ void SandboxBooksPanel::run_tick() {
                    .arg(rep.opened).arg(rep.filled).arg(rep.closed).arg(rep.resolved).arg(rep.skipped),
                ui::colors::POSITIVE());
     populate_leaderboard();
-    populate_pipeline_health();
 }
 
 void SandboxBooksPanel::run_score() {
@@ -383,64 +306,7 @@ void SandboxBooksPanel::run_cli_command(const QStringList& command_args,
 }
 
 void SandboxBooksPanel::refresh() {
-    populate_books();
     populate_leaderboard();
-    populate_pipeline_health();
-}
-
-void SandboxBooksPanel::populate_books() {
-    auto rows = services::sandbox::list_strategies();
-    if (rows.is_err()) {
-        set_status(QString::fromStdString(rows.error()), ui::colors::NEGATIVE());
-        return;
-    }
-    QList<services::sandbox::StrategyRow> visible;
-    for (const auto& row : rows.value()) {
-        if (row.status != QStringLiteral("retired"))
-            visible.append(row);
-    }
-    books_table_->setRowCount(visible.size());
-    int active = 0;
-    auto add = [&](int row, int col, const QString& text, const QString& color = {}) {
-        auto* item = new QTableWidgetItem(text);
-        if (!color.isEmpty())
-            item->setData(Qt::ForegroundRole, QColor(color));
-        books_table_->setItem(row, col, item);
-    };
-    for (int i = 0; i < visible.size(); ++i) {
-        const auto& s = visible.at(i);
-        const QJsonObject params = parse_params(s.params_json);
-        if (s.status == QStringLiteral("active"))
-            ++active;
-        QString mode = tr("paper");
-        if (params.value(QStringLiteral("prediction")).toBool())
-            mode = tr("prediction");
-        else if (params.value(QStringLiteral("price_forecast")).toBool())
-            mode = tr("Chronos forecast");
-        else if (params.value(QStringLiteral("hypothetical")).toBool())
-            mode = tr("long/short paper");
-        const QString horizon = params.value(QStringLiteral("horizon")).toString(
-            params.contains(QStringLiteral("horizon_sec"))
-                ? tr("%1s").arg(params.value(QStringLiteral("horizon_sec")).toInt())
-                : QStringLiteral("-"));
-        const QString source = params.value(QStringLiteral("journal_source")).toString(
-            params.value(QStringLiteral("source")).toString(QStringLiteral("-")));
-        add(i, 0, s.kind, s.status == QStringLiteral("active") ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY());
-        add(i, 1, s.symbols);
-        add(i, 2, params.value(QStringLiteral("venue")).toString(QStringLiteral("-")));
-        add(i, 3, horizon);
-        add(i, 4, source);
-        add(i, 5, mode);
-        add(i, 6, fmt_money(params.value(QStringLiteral("notional_usd")).toDouble()));
-        add(i, 7, s.status, s.status == QStringLiteral("active") ? ui::colors::POSITIVE() : ui::colors::AMBER());
-    }
-    books_table_->resizeColumnsToContents();
-    books_table_->horizontalHeader()->setStretchLastSection(true);
-    if (active_count_)
-        active_count_->setText(QString::number(active));
-    if (visible.isEmpty())
-        set_status(tr("No proof books found for this profile. Press SEED BOOKS to create the Chronos/Coinbase sandbox books."),
-                   ui::colors::AMBER());
 }
 
 void SandboxBooksPanel::populate_leaderboard() {
@@ -467,9 +333,10 @@ void SandboxBooksPanel::populate_leaderboard() {
         visible.append(r);
     }
     leaderboard_table_->setRowCount(visible.size());
+    int active_total = 0;
     int resolved_total = 0;
     int eligible_total = 0;
-    double net_total = 0.0;
+    int no_edge_total = 0;
     auto add = [&](int row, int col, const QString& text, const QString& color = {}) {
         auto* item = new QTableWidgetItem(text);
         if (!color.isEmpty())
@@ -478,7 +345,12 @@ void SandboxBooksPanel::populate_leaderboard() {
     };
     for (int i = 0; i < visible.size(); ++i) {
         const auto& row = visible.at(i);
-        const bool ranked = !row.hypothetical && row.resolved >= services::sandbox::kMinResolvedSample;
+        const auto strategy_it = strat_by_id.constFind(row.strategy_id);
+        const services::sandbox::StrategyRow strategy = strategy_it == strat_by_id.constEnd()
+            ? services::sandbox::StrategyRow{} : strategy_it.value();
+        const QJsonObject params = parse_params(strategy.params_json);
+        if (strategy.status == QStringLiteral("active"))
+            ++active_total;
         const int total_positions = scalar_query_int(
             QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ?"), {row.strategy_id});
         const qint64 first_created = scalar_query_i64(
@@ -498,137 +370,174 @@ void SandboxBooksPanel::populate_leaderboard() {
         const auto verdict = services::sandbox::evaluate_eligibility(in);
         if (verdict.eligible)
             ++eligible_total;
+        const StrategyProofState proof_state = strategy_proof_state(
+            row.hypothetical, verdict.eligible, row.resolved, row.net_pnl,
+            services::sandbox::kMinResolvedSample);
+        const bool no_edge = proof_state == StrategyProofState::NoEdge;
+        if (no_edge)
+            ++no_edge_total;
         resolved_total += row.resolved;
-        net_total += row.net_pnl;
         const int open_count = scalar_query_int(
             QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE strategy_id = ? AND state IN ('open','pending_fill')"),
             {row.strategy_id});
-        const QString data = tr("deg %1 / unk %2 / gap %3")
-                                 .arg(row.degraded).arg(row.unknown_count).arg(row.data_gap_count);
-        add(i, 0, row.kind);
-        add(i, 1, QString::number(row.resolved));
-        add(i, 2, QString::number(open_count));
-        add(i, 3, fmt_money(row.net_pnl),
+        const QString venue = params.value(QStringLiteral("venue")).toString(QStringLiteral("-"));
+        QString horizon = params.value(QStringLiteral("horizon")).toString();
+        if (horizon.isEmpty() && params.contains(QStringLiteral("horizon_sec")))
+            horizon = tr("%1s").arg(params.value(QStringLiteral("horizon_sec")).toInt());
+        if (horizon.isEmpty()) horizon = QStringLiteral("-");
+        const QString source = params.value(QStringLiteral("journal_source")).toString(
+            params.value(QStringLiteral("source")).toString(QStringLiteral("-")));
+        QString proof_status;
+        QString proof_color;
+        if (proof_state == StrategyProofState::Hypothetical) {
+            proof_status = tr("HYPOTHETICAL");
+            proof_color = ui::colors::TEXT_SECONDARY();
+        } else if (proof_state == StrategyProofState::PromotionReady) {
+            proof_status = tr("PROMOTION READY");
+            proof_color = ui::colors::POSITIVE();
+        } else if (proof_state == StrategyProofState::NoEdge) {
+            proof_status = tr("NO EDGE");
+            proof_color = ui::colors::NEGATIVE();
+        } else if (proof_state == StrategyProofState::Blocked) {
+            proof_status = tr("BLOCKED");
+            proof_color = ui::colors::AMBER();
+        } else {
+            proof_status = tr("COLLECTING");
+            proof_color = ui::colors::CYAN();
+        }
+        QString next_requirement;
+        if (proof_state == StrategyProofState::NoEdge)
+            next_requirement = tr("Negative net after cost; revise or retire");
+        else if (proof_state == StrategyProofState::Hypothetical)
+            next_requirement = tr("Hypothetical instrument; evidence only");
+        else if (proof_state == StrategyProofState::PromotionReady)
+            next_requirement = tr("Manual review; never auto-promoted");
+        else
+            next_requirement = verdict.blockers.isEmpty() ? tr("Continue paper observation") : verdict.blockers.first();
+
+        QString strategy_name = row.kind;
+        if (row.kind == QStringLiteral("kalshi") &&
+            params.value(QStringLiteral("experiment_protocol")).toString() == QStringLiteral("kalshi-v2")) {
+            strategy_name = tr("Kalshi %1 %2 %3")
+                                .arg(params.value(QStringLiteral("horizon")).toString(),
+                                     params.value(QStringLiteral("entry_cohort")).toString(),
+                                     params.value(QStringLiteral("exit_policy")).toString());
+        } else if (row.kind == QStringLiteral("scalp")) {
+            strategy_name = tr("Scalp %1").arg(venue);
+        }
+        add(i, 0, strategy_name);
+        add(i, 1, strategy.symbols.isEmpty() ? QStringLiteral("-") : strategy.symbols);
+        add(i, 2, venue);
+        add(i, 3, horizon);
+        add(i, 4, source);
+        add(i, 5, QString::number(row.resolved));
+        add(i, 6, QString::number(open_count));
+        add(i, 7, fmt_money(row.net_pnl),
             row.net_pnl > 0.0 ? ui::colors::POSITIVE() : (row.net_pnl < 0.0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY()));
-        add(i, 4, fmt_pct(row.hit_rate));
-        add(i, 5, fmt_money(row.max_drawdown), ui::colors::TEXT_SECONDARY());
-        add(i, 6, data, row.degraded > 0 || row.data_gap_count > 0 ? ui::colors::AMBER() : ui::colors::TEXT_SECONDARY());
-        add(i, 7, ranked ? tr("yes") : tr("no"), ranked ? ui::colors::POSITIVE() : ui::colors::TEXT_SECONDARY());
-        add(i, 8, verdict.eligible ? tr("yes") : tr("no"), verdict.eligible ? ui::colors::POSITIVE() : ui::colors::AMBER());
-        add(i, 9, verdict.blockers.isEmpty() ? tr("-") : verdict.blockers.join(QStringLiteral("; ")));
-        Q_UNUSED(strat_by_id);
+        add(i, 8, fmt_pct(row.hit_rate));
+        add(i, 9, fmt_money(row.max_drawdown), row.max_drawdown > 0.0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY());
+        add(i, 10, proof_status, proof_color);
+        add(i, 11, next_requirement, verdict.blockers.isEmpty() ? ui::colors::TEXT_SECONDARY() : ui::colors::AMBER());
+
+        QJsonObject detail{{QStringLiteral("strategy_id"), row.strategy_id},
+                           {QStringLiteral("params"), params},
+                           {QStringLiteral("notes"), strategy.notes},
+                           {QStringLiteral("active_days"), active_days},
+                           {QStringLiteral("total_positions"), total_positions},
+                           {QStringLiteral("degraded"), row.degraded},
+                           {QStringLiteral("unknown"), row.unknown_count},
+                           {QStringLiteral("data_gaps"), row.data_gap_count},
+                           {QStringLiteral("blockers"), QJsonArray::fromStringList(verdict.blockers)}};
+        leaderboard_table_->item(i, 0)->setData(Qt::UserRole, row.strategy_id);
+        leaderboard_table_->item(i, 0)->setData(Qt::UserRole + 1, detail);
     }
-    leaderboard_table_->resizeColumnsToContents();
-    leaderboard_table_->horizontalHeader()->setStretchLastSection(true);
+    if (active_count_)
+        active_count_->setText(QString::number(active_total));
     if (resolved_count_)
         resolved_count_->setText(QString::number(resolved_total));
     if (net_pnl_) {
-        net_pnl_->setText(fmt_money(net_total));
+        net_pnl_->setText(tr("SEPARATE"));
         net_pnl_->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
-                                    .arg(net_total > 0.0 ? ui::colors::POSITIVE()
-                                                         : (net_total < 0.0 ? ui::colors::NEGATIVE()
-                                                                            : ui::colors::TEXT_PRIMARY()), MF));
+                                    .arg(ui::colors::CYAN(), MF));
     }
     if (eligible_count_)
         eligible_count_->setText(QString::number(eligible_total));
+    if (no_edge_count_) {
+        no_edge_count_->setText(QString::number(no_edge_total));
+        no_edge_count_->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
+                                          .arg(no_edge_total > 0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_PRIMARY(), MF));
+    }
     populate_position_counts();
-    if (!board.value().isEmpty())
-        set_status(tr("Proof books reflect sandbox/Chronos/Coinbase evidence. Empty samples mean the daemon still needs to collect decisions and ticks."));
+    update_selected_detail();
+    if (visible.isEmpty())
+        set_status(tr("No proof books exist yet. PREPARE BOOKS creates the default paper experiments."), ui::colors::AMBER());
+    else if (no_edge_total > 0)
+        set_status(tr("%1 experiment(s) have enough samples and currently show no positive net edge after cost.").arg(no_edge_total),
+                   ui::colors::NEGATIVE());
+    else
+        set_status(tr("Paper evidence is accumulating. Promotion remains report-only and requires manual review."));
 }
 
 void SandboxBooksPanel::populate_position_counts() {
-    if (!open_count_ || !closed_count_)
+    if (!open_count_)
         return;
     const int open_positions = scalar_query_int(
         QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE state IN ('open','pending_fill')"), {});
-    const int closed_positions = scalar_query_int(
-        QStringLiteral("SELECT COUNT(*) FROM sandbox_position WHERE state NOT IN ('open','pending_fill')"), {});
     open_count_->setText(QString::number(open_positions));
     open_count_->setStyleSheet(QString("color:%1;font-size:16px;font-weight:800;background:transparent;%2")
                                    .arg(open_positions > 0 ? ui::colors::AMBER() : ui::colors::TEXT_PRIMARY(), MF));
-    closed_count_->setText(QString::number(closed_positions));
 }
 
-void SandboxBooksPanel::populate_pipeline_health() {
-    if (!pipeline_table_)
+void SandboxBooksPanel::update_selected_detail() {
+    if (!detail_label_)
         return;
-    run_cli_command({QStringLiteral("daemon"), QStringLiteral("jobs"), QStringLiteral("list")},
-                    [this](const QJsonObject& doc, const QString&) {
-                        const QJsonArray jobs = doc.value(QStringLiteral("jobs")).toArray();
-                        QList<QJsonObject> rows;
-                        for (const auto& v : jobs) {
-                            const QJsonObject job = v.toObject();
-                            // Health view = the active pipeline; skip disabled/retired
-                            // producer jobs (e.g. feeds the reshape dropped).
-                            if (is_sandbox_pipeline_job(job) && job.value(QStringLiteral("enabled")).toBool())
-                                rows.append(job);
-                        }
-                        std::sort(rows.begin(), rows.end(), [](const QJsonObject& a, const QJsonObject& b) {
-                            const auto rank = [](const QJsonObject& job) {
-                                const QString status = job.value(QStringLiteral("last_status")).toString();
-                                if (status == QStringLiteral("ok"))
-                                    return 0;
-                                if (status == QStringLiteral("running"))
-                                    return 1;
-                                if (job.value(QStringLiteral("enabled")).toBool())
-                                    return 2;
-                                return 3;
-                            };
-                            const int ra = rank(a);
-                            const int rb = rank(b);
-                            if (ra != rb)
-                                return ra < rb;
-                            return a.value(QStringLiteral("name")).toString() < b.value(QStringLiteral("name")).toString();
-                        });
-                        pipeline_table_->setRowCount(rows.size());
-                        auto add = [&](int row, int col, const QString& text, const QString& color = {}) {
-                            auto* item = new QTableWidgetItem(text);
-                            if (!color.isEmpty())
-                                item->setData(Qt::ForegroundRole, QColor(color));
-                            pipeline_table_->setItem(row, col, item);
-                        };
-                        int failed = 0;
-                        int running = 0;
-                        for (int i = 0; i < rows.size(); ++i) {
-                            const auto& job = rows.at(i);
-                            const QString status = job.value(QStringLiteral("last_status")).toString(QStringLiteral("-"));
-                            if (status == QStringLiteral("failed"))
-                                ++failed;
-                            if (job.value(QStringLiteral("running")).toBool() || status == QStringLiteral("running"))
-                                ++running;
-                            const QString status_color =
-                                status == QStringLiteral("ok") ? ui::colors::POSITIVE()
-                                : status == QStringLiteral("running") ? ui::colors::AMBER()
-                                : status == QStringLiteral("failed") ? ui::colors::NEGATIVE()
-                                : ui::colors::TEXT_SECONDARY();
-                            add(i, 0, job.value(QStringLiteral("name")).toString(QStringLiteral("-")));
-                            add(i, 1, status, status_color);
-                            add(i, 2, QString::number(job.value(QStringLiteral("run_count")).toInt()));
-                            add(i, 3, QString::number(job.value(QStringLiteral("fail_count")).toInt()),
-                                job.value(QStringLiteral("fail_count")).toInt() > 0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY());
-                            add(i, 4, relative_time_label(job.value(QStringLiteral("last_run_at")).toString()));
-                            add(i, 5, relative_time_label(job.value(QStringLiteral("next_run_at")).toString()));
-                            add(i, 6, command_text(job.value(QStringLiteral("command"))));
-                        }
-                        pipeline_table_->resizeColumnsToContents();
-                        pipeline_table_->horizontalHeader()->setStretchLastSection(true);
-                        if (failed > 0) {
-                            set_status(tr("Sandbox is ticking, but %1 producer job(s) reported a recent failure — usually a transient data/network timeout that clears on the next run.")
-                                           .arg(failed),
-                                       ui::colors::AMBER());
-                        } else if (running > 0) {
-                            set_status(tr("Sandbox producers are live. %1 job(s) are currently running; books will score once candidates mature.")
-                                           .arg(running),
-                                       ui::colors::POSITIVE());
-                        } else if (!rows.isEmpty()) {
-                            set_status(tr("Sandbox producers are installed and healthy. Waiting for candidates that pass gates."),
-                                       ui::colors::POSITIVE());
-                        }
-                    },
-                    [this](const QString& msg) {
-                        pipeline_table_->setRowCount(0);
-                        set_status(tr("Could not read daemon job health: %1").arg(msg), ui::colors::AMBER());
-                    });
+    const int row = leaderboard_table_->currentRow();
+    if (row < 0 || !leaderboard_table_->item(row, 0)) {
+        detail_label_->setText(tr("Select a strategy to inspect its immutable configuration, data quality, and all blockers."));
+        return;
+    }
+    const QJsonObject detail = leaderboard_table_->item(row, 0)->data(Qt::UserRole + 1).toJsonObject();
+    QStringList blockers;
+    for (const auto& value : detail.value(QStringLiteral("blockers")).toArray())
+        blockers << value.toString();
+    const QString params = QString::fromUtf8(QJsonDocument(detail.value(QStringLiteral("params")).toObject())
+                                                  .toJson(QJsonDocument::Compact));
+    QString evidence_breakdown;
+    const QString strategy_id = detail.value(QStringLiteral("strategy_id")).toString();
+    auto evidence = Database::instance().execute(
+        "SELECT position.side, COUNT(*),"
+        " SUM(CASE WHEN position.realized_pnl IS NOT NULL THEN 1 ELSE 0 END),"
+        " COALESCE(SUM(position.realized_pnl),0), AVG(position.limit_price), AVG(journal.seconds_left)"
+        " FROM sandbox_position position"
+        " JOIN edge_decision_journal journal ON journal.id=position.decision_id"
+        " WHERE position.strategy_id=? GROUP BY position.side ORDER BY position.side",
+        {strategy_id});
+    if (evidence.is_ok()) {
+        QStringList sides;
+        while (evidence.value().next()) {
+            sides << tr("%1: entries %2, resolved/exited %3, net %4, avg entry %5c, avg time left %6s")
+                         .arg(evidence.value().value(0).toString().toUpper())
+                         .arg(evidence.value().value(1).toInt())
+                         .arg(evidence.value().value(2).toInt())
+                         .arg(fmt_money(evidence.value().value(3).toDouble()))
+                         .arg(evidence.value().value(4).toDouble() * 100.0, 0, 'f', 1)
+                         .arg(evidence.value().value(5).toDouble(), 0, 'f', 0);
+        }
+        if (!sides.isEmpty())
+            evidence_breakdown = QStringLiteral("\nSide/time evidence: ") + sides.join(QStringLiteral("  |  "));
+    }
+    detail_label_->setText(
+        tr("Immutable ID: %1  |  Active days: %2  |  Positions: %3  |  Data quality: degraded %4, unknown %5, gaps %6\n"
+           "Configuration: %7%8\nBlockers: %9")
+            .arg(strategy_id)
+            .arg(detail.value(QStringLiteral("active_days")).toInt())
+            .arg(detail.value(QStringLiteral("total_positions")).toInt())
+            .arg(detail.value(QStringLiteral("degraded")).toInt())
+            .arg(detail.value(QStringLiteral("unknown")).toInt())
+            .arg(detail.value(QStringLiteral("data_gaps")).toInt())
+            .arg(params)
+            .arg(evidence_breakdown)
+            .arg(blockers.isEmpty() ? tr("none; manual review still required") : blockers.join(QStringLiteral("; "))));
 }
 
 } // namespace openmarketterminal::screens

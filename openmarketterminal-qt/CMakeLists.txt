@@ -969,6 +969,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v059_sandbox_position_dedup_repair.cpp
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
+    src/storage/sqlite/migrations/v062_decision_envelopes.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -993,6 +994,9 @@ set(LLM_SERVICE_SOURCES
     src/services/edge_radar/CryptoImpulseModel.cpp
     src/services/edge_radar/CryptoMicrostructureRadar.cpp
     src/services/edge_radar/KalshiUniversalEdgeModel.cpp
+    src/services/edge_radar/KalshiAutoEngine.cpp
+    src/services/edge_radar/BitcoinEvidenceEngine.cpp
+    src/services/decision/DecisionOrchestrator.cpp
     src/services/llm/LlmService.cpp
     src/services/llm/AnalysisSkillLoader.cpp
     src/services/llm/LlmContentExtractors.cpp
@@ -1234,6 +1238,7 @@ set(SERVICE_SOURCES
     src/python/ScriptCatalog.cpp
     # NewsService split; see NewsService.cpp header.
     src/services/news/NewsService.cpp
+    src/services/news/BtcNewsPulse.cpp
     src/services/news/NewsService_LiveFeed.cpp
     src/services/news/NewsService_Parsing.cpp
     src/services/news/NewsService_Classification.cpp
@@ -1742,14 +1747,8 @@ set(SCREEN_SOURCES
     # Algo Trading
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
-    src/screens/algo_trading/StrategyBuilderPanel.cpp
-    src/screens/algo_trading/StrategyListPanel.cpp
     src/screens/algo_trading/SandboxBooksPanel.cpp
-    src/screens/algo_trading/ScannerPanel.cpp
-    src/screens/algo_trading/UniverseScannerPanel.cpp
-    src/screens/algo_trading/AlertsPanel.cpp
-    src/screens/algo_trading/DeploymentDashboard.cpp
-    src/screens/algo_trading/AlgoDeployDialog.cpp
+    src/screens/algo_trading/StrategyAutomationPanel.cpp
 
     # Data Mapping (partial-class split; see DataMappingScreen.cpp header).
     src/screens/data_mapping/DataMappingScreen.cpp
@@ -1996,6 +1995,7 @@ set_source_files_properties(
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
     src/screens/algo_trading/DeploymentDashboard.cpp
+    src/screens/algo_trading/StrategyAutomationPanel.cpp
     src/screens/algo_trading/ScannerPanel.cpp
     src/screens/algo_trading/UniverseScannerPanel.cpp
     src/screens/algo_trading/AlertsPanel.cpp
@@ -2378,6 +2378,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v059_sandbox_position_dedup_repair.cpp
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
+    src/storage/sqlite/migrations/v062_decision_envelopes.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp

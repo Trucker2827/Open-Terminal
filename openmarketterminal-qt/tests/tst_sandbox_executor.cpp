@@ -61,12 +61,14 @@ QString journal_json(const QJsonObject& o) {
 void insert_journal_row(const QString& id, const QString& source, const QString& symbol, const QString& side,
                         const QString& call, const QString& gate, double confidence, qint64 created_at,
                         const QString& horizon, const QJsonObject& features, const QJsonObject& freshness,
-                        double market_probability = 0.0) {
+                        double market_probability = 0.0, const QString& market_id = QString(),
+                        int seconds_left = -1, double fee_cost = 0.0, double edge_after_cost = 0.0) {
     auto r = Database::instance().execute(
         "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, horizon, side, call, gate,"
-        " market_probability, confidence, freshness_json, features_json, source)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        {id, created_at, created_at, symbol, horizon, side, call, gate, market_probability, confidence,
+        " market_id, market_probability, confidence, seconds_left, fee_cost, edge_after_cost, freshness_json, features_json, source)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        {id, created_at, created_at, symbol, horizon, side, call, gate,
+         market_id.isEmpty() ? id : market_id, market_probability, confidence, seconds_left, fee_cost, edge_after_cost,
          journal_json(freshness), journal_json(features), source});
     QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
 }
@@ -542,9 +544,16 @@ class TstSandboxExecutor : public QObject {
     void scalp_candidate_from_decisions_jsonl_opens_position() {
         auto strat = register_strategy(
             QStringLiteral("scalp"), QStringLiteral("XSS-USD"),
-            QJsonObject{{"notional_usd", 50.0}, {"max_age_sec", 15}, {"entry_offset_bps", 1.0},
+            QJsonObject{{"notional_usd", 50.0}, {"venue", "kraken_pro"},
+                        {"max_age_sec", 15}, {"entry_offset_bps", 1.0},
                         {"target_bps", 25.0}, {"stop_bps", 15.0}, {"horizon_sec", 900}});
         QVERIFY(strat.is_ok());
+        auto wrong_venue = register_strategy(
+            QStringLiteral("scalp"), QStringLiteral("XSS-USD"),
+            QJsonObject{{"notional_usd", 50.0}, {"venue", "coinbase_advanced"},
+                        {"max_age_sec", 15}, {"entry_offset_bps", 1.0},
+                        {"target_bps", 25.0}, {"stop_bps", 15.0}, {"horizon_sec", 900}});
+        QVERIFY(wrong_venue.is_ok());
 
         QTemporaryDir daemon;
         QVERIFY(daemon.isValid());
@@ -553,7 +562,7 @@ class TstSandboxExecutor : public QObject {
         const QString decision = QStringLiteral(
                                      R"({"symbol":"XSS-USD","verdict":"PAPER TRADE CANDIDATE",)"
                                      R"("action":"PAPER_LIMIT_BUY_ONLY","ts_ms":"%1","reference_price":200.0,)"
-                                     R"("freshest_age_ms":50,"live_sources":3})")
+                                     R"("venue":"kraken_pro","freshest_age_ms":50,"live_sources":3})")
                                      .arg(ts_ms);
         write_lines(daemon.filePath("scalp_decisions.jsonl"), {decision});
 
@@ -568,6 +577,11 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(qAbs(row.limit_price - 200.0 * (1.0 - 1.0 / 10000.0)) < 1e-6);
         QCOMPARE(row.expires_at, ts_ms + 900 * 1000);
         QCOMPARE(row.data_quality, QStringLiteral("ok"));
+        auto wrong_count = Database::instance().execute(
+            "SELECT COUNT(*) FROM sandbox_position WHERE strategy_id=?", {wrong_venue.value()});
+        QVERIFY(wrong_count.is_ok());
+        QVERIFY(wrong_count.value().next());
+        QCOMPARE(wrong_count.value().value(0).toInt(), 0);
 
         // Same fixture, second cycle -> scalp's soft pre-check dedup (not
         // the neuter-verified SQL anti-join, which is spot-only) means no
@@ -805,6 +819,233 @@ class TstSandboxExecutor : public QObject {
             QCOMPARE(pq.value(4).toString(), QStringLiteral("open"));
         }
         QCOMPARE(opened_strategy_ids, QSet<QString>(reg_ids.begin(), reg_ids.end()));
+    }
+
+    void prediction_lane_caps_exposure_and_dedups_market_snapshots() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0},
+                        {"source", "edge_journal"},
+                        {"journal_source", "kalshi-cap-test"},
+                        {"max_age_sec", 3600},
+                        {"prediction", true},
+                        {"horizon", "daily"},
+                        {"horizon_sec", 86400}},
+            QStringLiteral("prediction exposure guard"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 14500000;
+        for (int i = 0; i < 6; ++i) {
+            const QString market_id = i < 3 ? QStringLiteral("DUPLICATE-MARKET")
+                                             : QStringLiteral("DISTINCT-%1").arg(i);
+            insert_journal_row(QStringLiteral("dec-cap-%1").arg(i), QStringLiteral("kalshi-cap-test"),
+                               QStringLiteral("BTC-USD"), QStringLiteral("yes"),
+                               QStringLiteral("candidate"), QStringLiteral("pass"), 0.8,
+                               t0 + i, QStringLiteral("daily"), QJsonObject{}, QJsonObject{},
+                               0.40 + i * 0.01, market_id);
+        }
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 3);
+
+        auto opened = Database::instance().execute(
+            "SELECT COUNT(*), COUNT(DISTINCT journal.market_id)"
+            " FROM sandbox_position position"
+            " JOIN edge_decision_journal journal ON journal.id=position.decision_id"
+            " WHERE position.strategy_id=? AND position.state='open'",
+            {strategy.value()});
+        QVERIFY(opened.is_ok());
+        QVERIFY(opened.value().next());
+        QCOMPARE(opened.value().value(0).toInt(), 3);
+        QCOMPARE(opened.value().value(1).toInt(), 3);
+    }
+
+    void kalshi_parallel_paper_is_uncapped_but_uses_live_micro_evidence_gate() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi_parallel_paper_test"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 2.0}, {"journal_source", "kalshi auto-plan"},
+                        {"max_age_sec", 5}, {"max_open_positions", 0}, {"prediction", true},
+                        {"horizon", "parallel-test"}, {"horizon_sec", 600},
+                        {"allowed_side", "both"}},
+            QStringLiteral("uncapped paper with live-equivalent evidence gate"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 14600000;
+        const auto signal = [](double depth, double confidence, qint64 quote_ts) {
+            return QJsonObject{{"signal", QJsonObject{{"selected_depth", depth},
+                                                       {"model_confidence", confidence},
+                                                       {"quote_observed_at_ms", QString::number(quote_ts)},
+                                                       {"yes_bid", 0.49}, {"no_bid", 0.49}}}};
+        };
+        for (int i = 0; i < 8; ++i) {
+            insert_journal_row(QStringLiteral("parallel-valid-%1").arg(i), QStringLiteral("kalshi auto-plan"),
+                               QStringLiteral("BTC-USD"), i % 2 == 0 ? QStringLiteral("yes") : QStringLiteral("no"),
+                               QStringLiteral("candidate"), QStringLiteral("pass"), 0.9, t0 + i,
+                               QStringLiteral("parallel-test"), signal(20.0, 0.90, t0), QJsonObject{},
+                               0.40, QStringLiteral("PARALLEL-VALID-%1").arg(i), 600, 0.01, 0.10);
+        }
+        insert_journal_row(QStringLiteral("parallel-stale"), QStringLiteral("kalshi auto-plan"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.9, t0 + 20, QStringLiteral("parallel-test"),
+                           signal(20.0, 0.90, t0 - 10'000), QJsonObject{}, 0.40,
+                           QStringLiteral("PARALLEL-STALE"), 600, 0.01, 0.10);
+        insert_journal_row(QStringLiteral("parallel-shallow"), QStringLiteral("kalshi auto-plan"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.9, t0 + 21, QStringLiteral("parallel-test"),
+                           signal(0.5, 0.90, t0), QJsonObject{}, 0.40,
+                           QStringLiteral("PARALLEL-SHALLOW"), 600, 0.01, 0.10);
+        insert_journal_row(QStringLiteral("parallel-low-confidence"), QStringLiteral("kalshi auto-plan"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.9, t0 + 22, QStringLiteral("parallel-test"),
+                           signal(20.0, 0.49, t0), QJsonObject{}, 0.40,
+                           QStringLiteral("PARALLEL-LOW-CONFIDENCE"), 600, 0.01, 0.10);
+        insert_journal_row(QStringLiteral("parallel-low-edge"), QStringLiteral("kalshi auto-plan"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.9, t0 + 23, QStringLiteral("parallel-test"),
+                           signal(20.0, 0.90, t0), QJsonObject{}, 0.40,
+                           QStringLiteral("PARALLEL-LOW-EDGE"), 600, 0.01, 0.049);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+
+        auto opened = Database::instance().execute(
+            "SELECT COUNT(*) FROM sandbox_position WHERE strategy_id=? AND state='open'", {strategy.value()});
+        QVERIFY(opened.is_ok());
+        QVERIFY(opened.value().next());
+        QCOMPARE(opened.value().value(0).toInt(), 8);
+        QVERIFY2(count_positions(QStringLiteral("parallel-stale")) == 0, "stale quote must be rejected");
+        QVERIFY2(count_positions(QStringLiteral("parallel-shallow")) == 0, "shallow quote must be rejected");
+        QVERIFY2(count_positions(QStringLiteral("parallel-low-confidence")) == 0,
+                 "low model confidence must be rejected");
+        QVERIFY2(count_positions(QStringLiteral("parallel-low-edge")) == 0,
+                 "time-conditioned net edge must be rejected");
+    }
+
+    void prediction_lane_early_exits_at_executable_held_side_bid() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0}, {"source", "edge_journal"},
+                        {"journal_source", "kalshi-exit-test"}, {"max_age_sec", 10},
+                        {"prediction", true}, {"horizon", "1h"}, {"horizon_sec", 3600},
+                        {"exit_policy", "managed"},
+                        {"stop_loss_pct", 0.20}, {"take_profit_pct", 0.20}, {"taker_bps", 100.0}},
+            QStringLiteral("prediction early exit"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 14700000;
+        insert_journal_row(QStringLiteral("dec-exit-open"), QStringLiteral("kalshi-exit-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0, QStringLiteral("1h"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.49}, {"no_bid", 0.49}}}},
+                           QJsonObject{}, 0.50, QStringLiteral("EXIT-MARKET"));
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto opened = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY(opened.is_ok());
+        QCOMPARE(opened.value().opened, 1);
+
+        insert_journal_row(QStringLiteral("dec-exit-stop"), QStringLiteral("kalshi-exit-test"),
+                           QStringLiteral("BTC-USD"), QStringLiteral("no"), QStringLiteral("candidate"),
+                           QStringLiteral("pass"), 0.8, t0 + 2000, QStringLiteral("1h"),
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.35}, {"no_bid", 0.63}}}},
+                           QJsonObject{}, 0.36, QStringLiteral("EXIT-MARKET"));
+        auto exited = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 3000);
+        QVERIFY2(exited.is_ok(), exited.is_err() ? exited.error().c_str() : "");
+        QCOMPARE(exited.value().closed, 1);
+
+        auto no_reentry = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 4000);
+        QVERIFY2(no_reentry.is_ok(), no_reentry.is_err() ? no_reentry.error().c_str() : "");
+        QCOMPARE(no_reentry.value().opened, 0);
+        auto same_market_count = Database::instance().execute(
+            "SELECT COUNT(*) FROM sandbox_position position"
+            " JOIN edge_decision_journal journal ON journal.id=position.decision_id"
+            " WHERE position.strategy_id=? AND journal.market_id='EXIT-MARKET'",
+            {strategy.value()});
+        QVERIFY(same_market_count.is_ok());
+        QVERIFY(same_market_count.value().next());
+        QCOMPARE(same_market_count.value().value(0).toInt(), 1);
+
+        const PositionRow position = fetch_position(QStringLiteral("dec-exit-open"));
+        QVERIFY(position.found);
+        QCOMPARE(position.state, QStringLiteral("closed"));
+        QCOMPARE(position.close_reason, QStringLiteral("stop_loss"));
+        QVERIFY(position.has_realized_pnl);
+        QVERIFY(position.realized_pnl < 0.0);
+    }
+
+    void prediction_cohort_filters_time_side_and_extreme_prices() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0}, {"source", "edge_journal"},
+                        {"journal_source", "kalshi-cohort-test"}, {"max_age_sec", 3600},
+                        {"prediction", true}, {"horizon", "15m"}, {"horizon_sec", 900},
+                        {"min_seconds_left", 61}, {"max_seconds_left", 300},
+                        {"allowed_side", "no"}, {"min_entry_probability", 0.05},
+                        {"max_entry_probability", 0.95}, {"exit_policy", "settlement"}},
+            QStringLiteral("cohort boundary test"));
+        QVERIFY(strategy.is_ok());
+
+        const qint64 t0 = 15'500'000;
+        insert_journal_row("cohort-too-late", "kalshi-cohort-test", "BTC-USD", "no",
+                           "candidate", "pass", 0.8, t0, "15m", {}, {}, 0.40, "M-LATE", 30);
+        insert_journal_row("cohort-wrong-side", "kalshi-cohort-test", "BTC-USD", "yes",
+                           "candidate", "pass", 0.8, t0 + 1, "15m", {}, {}, 0.40, "M-YES", 120);
+        insert_journal_row("cohort-longshot", "kalshi-cohort-test", "BTC-USD", "no",
+                           "candidate", "pass", 0.8, t0 + 2, "15m", {}, {}, 0.01, "M-TINY", 180);
+        insert_journal_row("cohort-valid", "kalshi-cohort-test", "BTC-USD", "no",
+                           "candidate", "pass", 0.8, t0 + 3, "15m", {}, {}, 0.40, "M-VALID", 180, 0.01);
+        insert_journal_row("cohort-too-early", "kalshi-cohort-test", "BTC-USD", "no",
+                           "candidate", "pass", 0.8, t0 + 4, "15m", {}, {}, 0.40, "M-EARLY", 400);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+
+        auto selected = Database::instance().execute(
+            "SELECT decision_id, expires_at, entry_fee FROM sandbox_position WHERE strategy_id=?",
+            {strategy.value()});
+        QVERIFY(selected.is_ok());
+        QVERIFY(selected.value().next());
+        QCOMPARE(selected.value().value(0).toString(), QStringLiteral("cohort-valid"));
+        QCOMPARE(selected.value().value(1).toLongLong(), t0 + 3 + 180 * 1000);
+        QVERIFY(qAbs(selected.value().value(2).toDouble() - 0.625) < 1e-9);
+        QVERIFY(!selected.value().next());
+    }
+
+    void settlement_policy_ignores_early_exit_signals() {
+        auto strategy = register_strategy(
+            QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+            QJsonObject{{"notional_usd", 25.0}, {"source", "edge_journal"},
+                        {"journal_source", "kalshi-settlement-test"}, {"max_age_sec", 30},
+                        {"prediction", true}, {"horizon", "15m"}, {"horizon_sec", 900},
+                        {"exit_policy", "settlement"}, {"stop_loss_pct", 0.05}},
+            QStringLiteral("hold to settlement"));
+        QVERIFY(strategy.is_ok());
+        const qint64 t0 = 15'700'000;
+        insert_journal_row("settlement-open", "kalshi-settlement-test", "BTC-USD", "yes",
+                           "candidate", "pass", 0.8, t0, "15m",
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.49}, {"no_bid", 0.49}}}},
+                           {}, 0.50, "SETTLE-MARKET", 300);
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto opened = run_cycle("default", daemon.path(), t0 + 1000);
+        QVERIFY(opened.is_ok());
+        insert_journal_row("settlement-adverse", "kalshi-settlement-test", "BTC-USD", "no",
+                           "snapshot", "watch", 0.8, t0 + 2000, "15m",
+                           QJsonObject{{"signal", QJsonObject{{"yes_bid", 0.10}, {"no_bid", 0.89}}}},
+                           {}, 0.90, "SETTLE-MARKET", 298);
+        auto repriced = run_cycle("default", daemon.path(), t0 + 3000);
+        QVERIFY(repriced.is_ok());
+        const PositionRow position = fetch_position("settlement-open");
+        QCOMPARE(position.state, QStringLiteral("open"));
+        QVERIFY(!position.has_realized_pnl);
     }
 
     // Chronos-2 journal rows are price forecasts, not binary yes/no

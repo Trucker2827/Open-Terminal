@@ -32,21 +32,19 @@ class SandboxBooksPanel : public QWidget {
                          std::function<void(const QString&)> on_error);
     QString cli_path() const;
     void set_status(const QString& text, const QString& color = {});
-    void populate_books();
     void populate_leaderboard();
-    void populate_pipeline_health();
     void populate_position_counts();
+    void update_selected_detail();
 
     QLabel* status_label_ = nullptr;
     QLabel* active_count_ = nullptr;
     QLabel* open_count_ = nullptr;
-    QLabel* closed_count_ = nullptr;
+    QLabel* no_edge_count_ = nullptr;
     QLabel* resolved_count_ = nullptr;
     QLabel* net_pnl_ = nullptr;
     QLabel* eligible_count_ = nullptr;
-    QTableWidget* pipeline_table_ = nullptr;
-    QTableWidget* books_table_ = nullptr;
     QTableWidget* leaderboard_table_ = nullptr;
+    QLabel* detail_label_ = nullptr;
     bool first_show_ = true;
 };
 

@@ -68,6 +68,8 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
 
     // Credential injection (Phase 5 will wire this via the account dialog).
     void set_credentials(const KalshiCredentials& creds);
+    void subscribe_cf_benchmarks(const QStringList& index_ids);
+    void restart_websocket();
 
     // ── Kalshi-specific public reads (pass through to REST client) ──────
 
@@ -97,6 +99,12 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
                                  const QString& cursor = QString());
     /// GET /portfolio/settlements through the authenticated bridge.
     void fetch_settlements(int limit = 100, const QString& cursor = QString());
+    /// Read-only price-time priority for resting orders. With no filters the
+    /// bridge discovers resting tickers first. Result arrives on
+    /// queue_positions_ready and never creates, amends, or cancels an order.
+    void fetch_queue_positions(const QString& market_tickers = QString(),
+                               const QString& event_ticker = QString(),
+                               int subaccount = 0);
 
     // ── Kalshi-specific trading (pass through to Python bridge) ─────────
 
@@ -123,6 +131,8 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void ws_orderbook_event(const QString& type, const QString& ticker, qint64 sequence,
                             const QJsonObject& payload);
     void ws_account_event(const QString& type, const QJsonObject& payload);
+    void ws_cf_benchmark_event(const QString& index_id, double value, qint64 ts_ms,
+                               const QJsonObject& payload);
 
     void exchange_status_ready(const QJsonObject& status);
     void exchange_schedule_ready(const QJsonObject& schedule);
@@ -142,6 +152,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
         const QVector<openmarketterminal::services::prediction::PredictionTrade>& trades,
         const QString& next_cursor);
     void settlements_ready(const QJsonArray& settlements);
+    void queue_positions_ready(const QJsonArray& positions, int resting_orders);
 
     void order_amended(const QString& order_id, bool ok, const QString& error);
     void single_order_ready(const QJsonObject& order);

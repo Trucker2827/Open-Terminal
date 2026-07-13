@@ -167,6 +167,25 @@ EdgePredictionModelRepository::list_price_series_since(const QString& symbol, qi
     return query_list_as<EdgePredictionRawTick>(sql, params, map_raw_tick);
 }
 
+Result<QVector<EdgePredictionRawTick>>
+EdgePredictionModelRepository::list_spot_price_series_since(const QString& symbol, qint64 since_ms,
+                                                             int max_rows) {
+    QString sql = QStringLiteral(
+        "SELECT '' AS id, symbol, 'spot_aggregate' AS source, AVG(price) AS price, "
+        "(exchange_ts/60000)*60000 AS exchange_ts, MAX(received_ts) AS received_ts "
+        "FROM edge_prediction_raw_ticks "
+        "WHERE symbol=? AND exchange_ts>=? AND exchange_ts>0 AND received_ts>0 AND price>0 "
+        "AND (LOWER(source) LIKE '%coinbase%' OR LOWER(source) LIKE '%kraken%') "
+        "GROUP BY exchange_ts/60000 ORDER BY exchange_ts ASC");
+    QVariantList params;
+    params << symbol.trimmed().toUpper() << since_ms;
+    if (max_rows > 0) {
+        sql += QStringLiteral(" LIMIT ?");
+        params << max_rows;
+    }
+    return query_list_as<EdgePredictionRawTick>(sql, params, map_raw_tick);
+}
+
 Result<int> EdgePredictionModelRepository::count_raw_ticks(const QString& symbol, qint64 since_ms) {
     QString sql = QStringLiteral("SELECT COUNT(*) FROM edge_prediction_raw_ticks WHERE 1=1");
     QVariantList params;

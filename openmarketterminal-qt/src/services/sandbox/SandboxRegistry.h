@@ -56,13 +56,11 @@ Result<QList<StrategyRow>> list_strategies(const QString& status_filter = {});
 // without touching the row.
 Result<void> set_status(const QString& strategy_id, const QString& status);
 
-// Registers the season-1 default strategy books: three 'spot' horizon
-// variants (1h/4h/1d), three 'kalshi' horizon variants (15m/1h/1d),
-// long_short, and chronos2/chronos2_1h/chronos2_1d/chronos2_equity — via
-// register_strategy — idempotent, safe to call on every startup. Also
-// retires (status='retired') any ACTIVE book of a removed kind (scalp,
-// btc5m, chronos2_5m — no venue / no edge) so a reseed durably kills a
-// pre-existing row even though register_strategy itself never mutates.
+// Registers the default strategy books: venue-specific Kraken/Coinbase scalp,
+// three spot horizons, eighteen Kalshi v2 horizon/cohort/policy experiments,
+// long_short, and the Chronos crypto/equity books. Idempotent and safe to call on startup. Also retires
+// removed btc5m/chronos2_5m books and legacy scalp rows with no venue, so
+// every active scalp score has an attributable execution-cost model.
 // Returns the newly-registered/looked-up strategy_ids in seed-list order
 // (retired removed-kind ids are not included).
 Result<QList<QString>> seed_default_strategies();

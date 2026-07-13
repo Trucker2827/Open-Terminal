@@ -66,7 +66,12 @@ bool cli_venue_allowed(const QString& venue) {
 }
 
 bool cli_kill_switch_engaged() {
-    return flag_true(QStringLiteral("cli.kill_switch"));
+    // The latched key is written by emergency-stop controls and can only be
+    // cleared by an explicit human interaction in Security settings. Keeping
+    // it separate prevents a stale, already-open settings form from clearing a
+    // panic stop when it later saves unrelated fields.
+    return flag_true(QStringLiteral("cli.kill_switch")) ||
+           flag_true(QStringLiteral("cli.kill_switch_latched"));
 }
 
 QString cli_allowed_account() {

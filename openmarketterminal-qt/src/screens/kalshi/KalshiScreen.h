@@ -1,14 +1,19 @@
 #pragma once
 
+#include "services/edge_radar/KalshiAutoEngine.h"
+
 #include "services/prediction/PredictionTypes.h"
+#include "trading/TradingTypes.h"
 
 #include <QList>
 #include <QHash>
+#include <QJsonObject>
 #include <QMap>
 #include <QSet>
 #include <QWidget>
 
 #include <atomic>
+#include <functional>
 
 class QComboBox;
 class QDoubleSpinBox;
@@ -23,6 +28,7 @@ class QSpinBox;
 class QStackedWidget;
 class QSplitter;
 class QTableWidget;
+class QTableWidgetItem;
 class QTextEdit;
 class QTimer;
 class QWebSocket;
@@ -81,15 +87,35 @@ class KalshiScreen final : public QWidget {
     void set_reference_dom_venue(const QString& venue);
     void refresh_venue_consensus();
     void refresh_reference_chart();
+    void refresh_spot_history();
     void set_chart_timeframe(const QString& timeframe);
     void set_spot_symbol(const QString& asset);
     void update_observation_strip();
     void update_market_health();
     void update_strike_overlay();
     void record_ladder_evidence();
-    void render_ladder_diagnostics(const QJsonArray& diagnostics);
+    void render_ladder_surface(
+        const QVector<services::edge_radar::KalshiSurfacePoint>& surface,
+        const services::edge_radar::KalshiPortfolioPlan& plan,
+        const QJsonArray& diagnostics);
     void record_kalshi_trade(const services::prediction::PredictionTrade& trade);
+    bool record_account_fills(const QVariantList& activities);
     void reconcile_settlement(const services::prediction::PredictionMarket& market);
+    void refresh_account_status();
+    void show_account_dialog();
+    void update_position_panel();
+    void update_live_positions_summary();
+    void render_closed_bets(const QJsonArray& settlements);
+    void show_contract_details(QTableWidgetItem* item);
+    void cash_out_selected_position();
+    void place_live_order();
+    void show_live_automation_dialog();
+    void kill_live_automation();
+    void refresh_live_automation_status();
+    void refresh_daemon_status();
+    void restart_daemon();
+    void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
+    QString cli_path() const;
     QString evidence_path(const QString& filename) const;
     services::prediction::PredictionExchangeAdapter* adapter() const;
 
@@ -115,6 +141,10 @@ class KalshiScreen final : public QWidget {
     QComboBox* family_combo_ = nullptr;
     QLineEdit* search_ = nullptr;
     QLabel* connection_badge_ = nullptr;
+    QPushButton* account_button_ = nullptr;
+    QLabel* account_badge_ = nullptr;
+    QLabel* daemon_badge_ = nullptr;
+    QPushButton* daemon_restart_button_ = nullptr;
     QLabel* count_label_ = nullptr;
     QWidget* asset_bar_ = nullptr;
     QWidget* cadence_bar_ = nullptr;
@@ -125,9 +155,8 @@ class KalshiScreen final : public QWidget {
     QLabel* market_meta_ = nullptr;
     QLabel* yes_quote_ = nullptr;
     QLabel* no_quote_ = nullptr;
-    QLabel* target_pulse_ = nullptr;
-    QLabel* spot_pulse_ = nullptr;
-    QLabel* clock_pulse_ = nullptr;
+    QLabel* close_countdown_ = nullptr;
+    QLabel* contract_strip_ = nullptr;
     QLabel* venue_consensus_ = nullptr;
     QTextEdit* rules_ = nullptr;
     QTableWidget* book_table_ = nullptr;
@@ -145,6 +174,13 @@ class KalshiScreen final : public QWidget {
     QLabel* shadow_status_ = nullptr;
     QLabel* ladder_status_ = nullptr;
     QTableWidget* ladder_table_ = nullptr;
+    QLabel* live_automation_status_ = nullptr;
+    QLabel* live_positions_summary_ = nullptr;
+    QTableWidget* active_positions_table_ = nullptr;
+    QLabel* pnl_summary_ = nullptr;
+    QTableWidget* pnl_table_ = nullptr;
+    QPushButton* live_automation_button_ = nullptr;
+    QPushButton* kill_live_button_ = nullptr;
     QPushButton* shadow_button_ = nullptr;
     QLabel* dom_title_ = nullptr;
     QLabel* dom_status_ = nullptr;
@@ -152,7 +188,21 @@ class KalshiScreen final : public QWidget {
     QPushButton* coinbase_dom_button_ = nullptr;
     crypto::CryptoOrderBook* spot_dom_ = nullptr;
     KalshiSimpleChart* reference_chart_ = nullptr;
+    KalshiSimpleChart* contract_chart_ = nullptr;
     QLabel* chart_status_ = nullptr;
+    QLabel* account_balance_label_ = nullptr;
+    QLabel* position_label_ = nullptr;
+    QLabel* cashout_label_ = nullptr;
+    QPushButton* cashout_button_ = nullptr;
+    QPushButton* live_order_button_ = nullptr;
+    QString pending_order_kind_;
+    QJsonObject pending_manual_order_;
+    QSet<QString> recorded_fill_ids_;
+    QSet<QString> recorded_auto_shadow_keys_;
+    bool position_snapshot_pending_ = false;
+    bool trade_ledger_loaded_ = false;
+    bool daemon_status_fetching_ = false;
+    bool daemon_restarting_ = false;
     QTimer* dom_timer_ = nullptr;
     QTimer* spot_dom_timer_ = nullptr;
     QTimer* reference_dom_reconnect_timer_ = nullptr;
@@ -178,19 +228,29 @@ class KalshiScreen final : public QWidget {
     std::atomic<bool> dom_fetching_{false};
     std::atomic<bool> consensus_fetching_{false};
     std::atomic<bool> chart_fetching_{false};
+    std::atomic<bool> spot_chart_fetching_{false};
     QString chart_timeframe_ = QStringLiteral("live");
     QString chart_asset_id_;
     qint64 last_chart_fetch_ms_ = 0;
     bool live_chart_seeded_ = false;
     double reference_spot_ = 0.0;
+    double official_settlement_reference_ = 0.0;
+    qint64 official_settlement_reference_ms_ = 0;
+    QString official_settlement_index_;
+    QVector<openmarketterminal::trading::Candle> reference_spot_history_;
     double trend_anchor_spot_ = 0.0;
     qint64 trend_anchor_ms_ = 0;
     qint64 last_consensus_snapshot_ms_ = 0;
     qint64 last_ladder_snapshot_ms_ = 0;
     qint64 last_forward_reconcile_ms_ = 0;
+    qint64 last_account_activity_fetch_ms_ = 0;
+    qint64 last_live_status_fetch_ms_ = 0;
+    bool live_status_fetching_ = false;
     bool shadow_enabled_ = true;
+    QVector<services::prediction::PredictionPosition> positions_;
     int shadow_candidates_ = 0;
     int shadow_confirmed_ = 0;
+    int auto_shadow_records_ = 0;
     struct ShadowQuote {
         double price = 0.0;
         double initial_queue = 0.0;

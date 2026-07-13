@@ -14,6 +14,7 @@
 #include "services/portfolio/CryptoAccountSource.h"
 #include "services/portfolio/EquityAccountSource.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
+#include "services/prediction/PredictionCredentialStore.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/polymarket/PolymarketAdapter.h"
 #include "storage/secure/SecureStorage.h"
@@ -83,8 +84,16 @@ InitResult HeadlessRuntime::init(const QString& profile) {
         auto& reg = services::prediction::PredictionExchangeRegistry::instance();
         if (!reg.adapter("polymarket"))
             reg.register_adapter(std::make_unique<services::prediction::polymarket_ns::PolymarketAdapter>());
-        if (!reg.adapter("kalshi"))
-            reg.register_adapter(std::make_unique<services::prediction::kalshi_ns::KalshiAdapter>());
+        if (!reg.adapter("kalshi")) {
+            auto kalshi = std::make_unique<services::prediction::kalshi_ns::KalshiAdapter>();
+            if (const auto credentials = services::prediction::PredictionCredentialStore::load_kalshi())
+                kalshi->set_credentials(*credentials);
+            reg.register_adapter(std::move(kalshi));
+        } else if (auto* kalshi = qobject_cast<services::prediction::kalshi_ns::KalshiAdapter*>(
+                       reg.adapter("kalshi")); kalshi && !kalshi->has_credentials()) {
+            if (const auto credentials = services::prediction::PredictionCredentialStore::load_kalshi())
+                kalshi->set_credentials(*credentials);
+        }
     }
 
     // Portfolio Account Sync sources (the GUI does the same in main.cpp).

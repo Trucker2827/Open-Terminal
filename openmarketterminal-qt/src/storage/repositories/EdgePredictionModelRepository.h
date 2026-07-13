@@ -97,6 +97,11 @@ class EdgePredictionModelRepository : public BaseRepository<EdgePredictionObserv
     // context length from tick density.
     Result<QVector<EdgePredictionRawTick>> list_price_series_since(const QString& symbol, qint64 since_ms,
                                                                   int max_rows = 300000);
+    // Per-minute series restricted to independent spot exchanges. Derivatives,
+    // settlement indices, and synthetic feeds must not contaminate realized
+    // volatility or empirical-return estimates used for Kalshi pricing.
+    Result<QVector<EdgePredictionRawTick>> list_spot_price_series_since(
+        const QString& symbol, qint64 since_ms, int max_rows = 300000);
     Result<int> count_raw_ticks(const QString& symbol = {}, qint64 since_ms = 0);
     Result<void> add_market_snapshot(const EdgePredictionMarketSnapshot& snapshot);
 

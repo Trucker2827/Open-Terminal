@@ -51,6 +51,21 @@ private slots:
         QCOMPARE(serve_status("default", /*json=*/false), 0);
         remove_bridge_file(root);
     }
+
+    void kalshi_watchdog_detects_stale_or_disconnected_stream() {
+        QVERIFY(!kalshi_event_stream_needs_recovery(false, true, 20, 60000, 10000));
+        QVERIFY(!kalshi_event_stream_needs_recovery(true, true, 0, 60000, 10000));
+        QVERIFY(!kalshi_event_stream_needs_recovery(true, true, 20, 9999, 10000));
+        QVERIFY(kalshi_event_stream_needs_recovery(true, false, 20, 1000, 10000));
+        QVERIFY(kalshi_event_stream_needs_recovery(true, true, 20, -1, 10000));
+        QVERIFY(kalshi_event_stream_needs_recovery(true, true, 20, 10001, 10000));
+    }
+
+    void kalshi_watchdog_bounds_market_universe_requests() {
+        QVERIFY(!kalshi_universe_request_timed_out(false, 60000, 15000));
+        QVERIFY(!kalshi_universe_request_timed_out(true, 15000, 15000));
+        QVERIFY(kalshi_universe_request_timed_out(true, 15001, 15000));
+    }
 };
 QTEST_MAIN(TstServeCommand)
 #include "tst_serve_command.moc"

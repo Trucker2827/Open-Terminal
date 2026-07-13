@@ -172,17 +172,16 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(status, QStringLiteral("paused"));
     }
 
-    // (e) seed_default_strategies is idempotent -> 8 rows both times: 3 spot
-    // horizon variants, long_short, and the Chronos BTC 15m/1h/1d books plus
-    // the equity book (scalp/btc5m/chronos2_5m/kalshi removed).
+    // (e) seed_default_strategies is idempotent. Scalp books are separate by
+    // venue so fee-dead Coinbase results cannot suppress Kraken research.
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 8);
+        QCOMPARE(first.value().size(), 28);
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 8);
+        QCOMPARE(second.value().size(), 28);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -192,7 +191,12 @@ class TstSandboxRegistry : public QObject {
         int seed_row_count = 0;
         QSet<int> spot_horizons;
         int spot_count = 0;
+        int scalp_count = 0;
+        int kalshi_count = 0;
         int long_short_count = 0;
+        QSet<QString> scalp_venues;
+        QSet<QString> kalshi_cohorts;
+        QSet<QString> kalshi_exit_policies;
         for (const auto& row : rows.value()) {
             if (!seed_ids.contains(row.strategy_id))
                 continue;
@@ -203,14 +207,29 @@ class TstSandboxRegistry : public QObject {
             if (row.kind == QStringLiteral("spot")) {
                 ++spot_count;
                 spot_horizons.insert(horizon_sec);
+            } else if (row.kind == QStringLiteral("scalp")) {
+                ++scalp_count;
+                scalp_venues.insert(params.value(QStringLiteral("venue")).toString());
+            } else if (row.kind == QStringLiteral("kalshi")) {
+                ++kalshi_count;
+                kalshi_cohorts.insert(params.value(QStringLiteral("horizon")).toString() + QLatin1Char(':') +
+                                      params.value(QStringLiteral("entry_cohort")).toString());
+                kalshi_exit_policies.insert(params.value(QStringLiteral("exit_policy")).toString());
+                QCOMPARE(params.value(QStringLiteral("experiment_protocol")).toString(),
+                         QStringLiteral("kalshi-v2"));
             } else if (row.kind == QStringLiteral("long_short")) {
                 ++long_short_count;
             }
         }
-        QCOMPARE(seed_row_count, 8);
-        QCOMPARE(kinds, QSet<QString>({"spot", "long_short", "chronos2", "chronos2_1h",
+        QCOMPARE(seed_row_count, 28);
+        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "kalshi", "long_short", "chronos2", "chronos2_1h",
                                        "chronos2_1d", "chronos2_equity"}));
+        QCOMPARE(scalp_count, 2);
+        QCOMPARE(scalp_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
         QCOMPARE(spot_count, 3);
+        QCOMPARE(kalshi_count, 18);
+        QCOMPARE(kalshi_cohorts.size(), 9);
+        QCOMPARE(kalshi_exit_policies, QSet<QString>({"settlement", "managed"}));
         QCOMPARE(long_short_count, 1);
         QCOMPARE(spot_horizons, QSet<int>({3600, 14400, 86400}));
 
@@ -218,16 +237,12 @@ class TstSandboxRegistry : public QObject {
         for (const auto& row : rows.value()) {
             if (!seed_ids.contains(row.strategy_id))
                 continue;
-            QVERIFY2(row.kind != QStringLiteral("scalp"), "scalp must not be seeded");
             QVERIFY2(row.kind != QStringLiteral("btc5m"), "btc5m must not be seeded");
             QVERIFY2(row.kind != QStringLiteral("chronos2_5m"), "chronos2_5m must not be seeded");
-            QVERIFY2(row.kind != QStringLiteral("kalshi"), "kalshi must not be seeded");
         }
     }
 
-    // (e2) seeding retires any pre-existing ACTIVE scalp/btc5m/chronos2_5m
-    // book (removed kinds) -- so a reseed durably kills them even if they
-    // were registered by an older binary before this reshape.
+    // (e2) seeding retires legacy venue-less scalp plus removed horizon kinds.
     void seed_default_strategies_retires_removed_kinds() {
         auto pre_scalp = register_strategy(QStringLiteral("scalp"), QStringLiteral("BTC-USD"),
                                            QJsonObject{{"notional_usd", 50.0}, {"horizon_sec", 900}},
@@ -241,10 +256,6 @@ class TstSandboxRegistry : public QObject {
                                                QJsonObject{{"horizon", "5m"}, {"horizon_sec", 300}},
                                                QStringLiteral("pre-existing chronos2_5m book"));
         QVERIFY(pre_chronos5m.is_ok());
-        auto pre_kalshi = register_strategy(QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
-                                            QJsonObject{{"notional_usd", 50.0}, {"horizon_sec", 900}},
-                                            QStringLiteral("pre-existing kalshi book (no pricing model)"));
-        QVERIFY(pre_kalshi.is_ok());
 
         // Confirm they start ACTIVE (register_strategy's default status).
         auto before = list_strategies(QStringLiteral("active"));
@@ -255,7 +266,6 @@ class TstSandboxRegistry : public QObject {
         QVERIFY(active_ids_before.contains(pre_scalp.value()));
         QVERIFY(active_ids_before.contains(pre_btc5m.value()));
         QVERIFY(active_ids_before.contains(pre_chronos5m.value()));
-        QVERIFY(active_ids_before.contains(pre_kalshi.value()));
 
         auto seeded = seed_default_strategies();
         QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
@@ -264,29 +274,29 @@ class TstSandboxRegistry : public QObject {
         QVERIFY(after.is_ok());
         for (const auto& row : after.value()) {
             if (row.strategy_id == pre_scalp.value() || row.strategy_id == pre_btc5m.value() ||
-                row.strategy_id == pre_chronos5m.value() || row.strategy_id == pre_kalshi.value()) {
+                row.strategy_id == pre_chronos5m.value()) {
                 QCOMPARE(row.status, QStringLiteral("retired"));
             }
         }
 
         auto active_after = list_strategies(QStringLiteral("active"));
         QVERIFY(active_after.is_ok());
+        bool found_venue_scalp = false;
         for (const auto& row : active_after.value()) {
-            QVERIFY2(row.kind != QStringLiteral("scalp"), "no ACTIVE scalp book may remain after reseed");
             QVERIFY2(row.kind != QStringLiteral("btc5m"), "no ACTIVE btc5m book may remain after reseed");
             QVERIFY2(row.kind != QStringLiteral("chronos2_5m"),
                      "no ACTIVE chronos2_5m book may remain after reseed");
-            QVERIFY2(row.kind != QStringLiteral("kalshi"), "no ACTIVE kalshi book may remain after reseed");
+            if (row.kind == QStringLiteral("scalp")) {
+                const auto params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+                QVERIFY2(!params.value(QStringLiteral("venue")).toString().isEmpty(),
+                         "every active scalp book must identify its execution venue");
+                found_venue_scalp = true;
+            }
         }
+        QVERIFY(found_venue_scalp);
     }
 
-    // Contract test (task-11 follow-up): the kalshi season-1 seed shipped
-    // with journal_source "kalshi", but the ONLY kalshi journal producer
-    // writes source='edge journal-kalshi-scan' (CommandDispatch.cpp:19481) --
-    // a string mismatch the executor's exact `WHERE source = ?` match never
-    // surfaces as an error, it just silently opens nothing, forever. Both the
-    // seed and the (now-corrected) plan doc agreed on the wrong string, so no
-    // single-file review caught it. Pin every non-scalp seed's journal_source
+    // Contract test: pin every non-scalp seed's journal_source
     // against its producer's actual source string so a future seed/producer
     // drift fails loudly here instead of shipping a dead book.
     //
@@ -308,7 +318,7 @@ class TstSandboxRegistry : public QObject {
         // producer actually writes on the CommandDispatch side.
         QHash<QString, QString> expected{
             {QStringLiteral("spot"), QStringLiteral("edge crypto-recommend")},        // CommandDispatch.cpp ~13611
-            // kalshi retired 2026-07-07 (producer has no pricing model) -- no longer seeded.
+            {QStringLiteral("kalshi"), QStringLiteral("kalshi auto-plan")},
             {QStringLiteral("long_short"), QStringLiteral("edge long-short-strategy")}, // CommandDispatch.cpp ~13824
             {QStringLiteral("chronos2"), QStringLiteral("chronos2-forecast")},
             {QStringLiteral("chronos2_1h"), QStringLiteral("chronos2-forecast")},
@@ -322,7 +332,7 @@ class TstSandboxRegistry : public QObject {
             if (!seed_ids.contains(row.strategy_id))
                 continue;
             if (!expected.contains(row.kind))
-                continue; // scalp/btc5m/chronos2_5m are not seeded anymore
+                continue; // scalp reads JSONL; removed horizon kinds are not seeded
             QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
             QCOMPARE(params.value(QStringLiteral("journal_source")).toString(), expected.value(row.kind));
             ++checked_count[row.kind];
@@ -330,6 +340,7 @@ class TstSandboxRegistry : public QObject {
         // Every expected kind must actually have been present and checked --
         // 3 rows for spot (horizon variants), 1 row for the rest.
         QCOMPARE(checked_count.value(QStringLiteral("spot")), 3);
+        QCOMPARE(checked_count.value(QStringLiteral("kalshi")), 18);
         QCOMPARE(checked_count.value(QStringLiteral("long_short")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_1h")), 1);

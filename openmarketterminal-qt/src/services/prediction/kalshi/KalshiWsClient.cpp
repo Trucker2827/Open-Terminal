@@ -137,9 +137,19 @@ void KalshiWsClient::set_credentials(const KalshiCredentials& creds) {
     if (had && !creds_.is_valid()) {
         disconnect();
     }
-    if (creds_.is_valid() && !subscribed_tickers_.isEmpty()) {
+    if (creds_.is_valid() && (!subscribed_tickers_.isEmpty() || !cf_indices_.isEmpty())) {
         ensure_connected();
     }
+}
+
+void KalshiWsClient::subscribe_cf_indices(const QStringList& index_ids) {
+    for (const auto& id : index_ids) {
+        const QString normalized = id.trimmed().toUpper();
+        if (!normalized.isEmpty()) cf_indices_.insert(normalized);
+    }
+    if (!creds_.is_valid() || cf_indices_.isEmpty()) return;
+    ensure_connected();
+    if (connected_) send_cf_subscribe();
 }
 
 bool KalshiWsClient::has_credentials() const { return creds_.is_valid(); }
@@ -170,6 +180,17 @@ void KalshiWsClient::unsubscribe_all() {
 void KalshiWsClient::disconnect() {
     ping_timer_->stop();
     ws_->disconnect();
+}
+
+void KalshiWsClient::restart() {
+    if (!creds_.is_valid() || (subscribed_tickers_.isEmpty() && cf_indices_.isEmpty())) return;
+    restart_requested_ = true;
+    if (ws_->is_connected()) {
+        disconnect();
+        return;
+    }
+    restart_requested_ = false;
+    ensure_connected();
 }
 
 void KalshiWsClient::ensure_connected() {
@@ -251,6 +272,18 @@ void KalshiWsClient::send_account_subscribe() {
     ws_->send(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
 }
 
+void KalshiWsClient::send_cf_subscribe() {
+    if (cf_indices_.isEmpty()) return;
+    QJsonArray ids;
+    for (const auto& id : cf_indices_) ids.append(id);
+    QJsonObject params{{QStringLiteral("channels"), QJsonArray{QStringLiteral("cfbenchmarks_value")}},
+                       {QStringLiteral("index_ids"), ids}};
+    QJsonObject msg{{QStringLiteral("id"), next_msg_id_++},
+                    {QStringLiteral("cmd"), QStringLiteral("subscribe")},
+                    {QStringLiteral("params"), params}};
+    ws_->send(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+}
+
 void KalshiWsClient::publish_books(const QString& ticker, qint64 ts_ms) {
     const auto it = books_.constFind(ticker);
     if (it == books_.cend() || !it->has_snapshot) return;
@@ -301,6 +334,7 @@ void KalshiWsClient::on_connected() {
         send_subscribe(QStringList(subscribed_tickers_.begin(), subscribed_tickers_.end()));
     }
     send_account_subscribe();
+    send_cf_subscribe();
 }
 
 void KalshiWsClient::on_disconnected() {
@@ -308,6 +342,10 @@ void KalshiWsClient::on_disconnected() {
     ping_timer_->stop();
     LOG_WARN("KalshiWS", "Disconnected");
     emit connection_status_changed(false);
+    if (restart_requested_) {
+        restart_requested_ = false;
+        QTimer::singleShot(0, this, [this]() { ensure_connected(); });
+    }
 }
 
 void KalshiWsClient::on_error(const QString& err) {
@@ -382,6 +420,28 @@ void KalshiWsClient::on_message(const QString& msg) {
     if (type == QStringLiteral("fill") || type == QStringLiteral("user_orders") ||
         type == QStringLiteral("market_positions")) {
         emit account_event(type, payload);
+        return;
+    }
+
+    if (type == QStringLiteral("cfbenchmarks_value")) {
+        QJsonObject data = payload;
+        const QString encoded = payload.value(QStringLiteral("data")).toString();
+        if (!encoded.isEmpty()) {
+            const QJsonDocument nested = QJsonDocument::fromJson(encoded.toUtf8());
+            if (nested.isObject()) {
+                const QJsonObject parsed = nested.object();
+                for (auto it = parsed.constBegin(); it != parsed.constEnd(); ++it)
+                    data.insert(it.key(), it.value());
+            }
+        }
+        const QString index = data.value(QStringLiteral("id")).toString(
+            payload.value(QStringLiteral("index_id")).toString()).toUpper();
+        const double value = kalshi_fp_to_double(data.value(QStringLiteral("value")));
+        qint64 ts_ms = data.value(QStringLiteral("time")).toVariant().toLongLong();
+        if (ts_ms <= 0) ts_ms = data.value(QStringLiteral("ts_ms")).toVariant().toLongLong();
+        if (ts_ms <= 0) ts_ms = QDateTime::currentMSecsSinceEpoch();
+        if (!index.isEmpty() && value > 0.0)
+            emit cf_benchmark_event(index, value, ts_ms, data);
         return;
     }
 

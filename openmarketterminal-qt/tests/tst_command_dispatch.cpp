@@ -10,6 +10,7 @@
 #include "cli/BridgeDiscovery.h"
 #include "cli/automation/AutomationState.h"
 #include "storage/sqlite/Database.h"
+#include "storage/repositories/SettingsRepository.h"
 using namespace openmarketterminal::cli;
 using openmarketterminal::Database;
 
@@ -106,6 +107,9 @@ static QStringList json_strings(const QJsonArray& arr) {
 static QString sandbox_test_home() {
     static QTemporaryDir dir;
     qputenv("HOME", dir.path().toUtf8());
+    const QString kalshi_evidence = dir.path() + QStringLiteral("/kalshi-evidence");
+    QDir().mkpath(kalshi_evidence);
+    qputenv("OPENTERMINAL_KALSHI_EVIDENCE_DIR", kalshi_evidence.toUtf8());
     static bool runtime_ready = false;
     if (!runtime_ready) {
         capture_stdout([] {
@@ -483,10 +487,10 @@ private slots:
     // slot with no predecessors, so a slot may not lean on an earlier slot
     // having set HOME or brought the runtime/DB up; sandbox_test_home()
     // does both.
-    // Real-horizon reshape (task 2) + kalshi retirement (2026-07-07): the
-    // season-1 seed set is now 8 rows (spot 1h/4h/1d, long_short,
-    // chronos2/1h/1d/equity -- scalp/btc5m/chronos2_5m/kalshi retired, not
-    // seeded), and 'spot' is THREE rows of the same kind (distinct
+    // Proof protocol v2: the seed set is 28 rows (Kraken/Coinbase scalp,
+    // spot 1h/4h/1d, 18 Kalshi horizon/cohort/exit-policy books, long_short, and
+    // chronos2/1h/1d/equity -- btc5m/chronos2_5m are retired), and
+    // 'spot' and 'kalshi' are each THREE rows of one kind (distinct
     // strategy_ids). This test picks the LAST-seen row of kind 'spot' for the
     // pause/resume half and the long_short row for the retire half --
     // exercising the pause/resume/retire status-flip contract on two distinct
@@ -498,14 +502,14 @@ private slots:
             QStringList{"--json", "sandbox", "seed"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray seeded_ids = seeded.value("seeded").toArray();
-        QCOMPARE(seeded_ids.size(), 8);
+        QCOMPARE(seeded_ids.size(), 28);
         QCOMPARE(seeded.value("retired_stale").toInt(-1), 0);
 
         QJsonObject listed = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray rows = listed.value("strategies").toArray();
-        QCOMPARE(rows.size(), 8);
+        QCOMPARE(rows.size(), 28);
 
         QString spot_id;
         QString long_short_id;
@@ -530,7 +534,7 @@ private slots:
         QJsonObject active_after_pause = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 7);
+        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 27);
 
         // resume flips it back.
         const QJsonObject resumed = json_object_from_dispatch(
@@ -540,7 +544,7 @@ private slots:
         QJsonObject active_after_resume = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 8);
+        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 28);
 
         // retire is permanent-by-convention here but still just a status flip.
         const QJsonObject retired = json_object_from_dispatch(
@@ -550,7 +554,7 @@ private slots:
         QJsonObject active_after_retire = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 7);
+        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 27);
 
         // put it back so later slots in this file see the full season-1 set.
         rc = -1;
@@ -613,7 +617,10 @@ private slots:
         const QJsonObject seeded = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "seed"}, &rc);
         QCOMPARE(rc, 0);
-        QVERIFY(seeded.value("retired_stale").toInt(0) >= 1);
+        // Retirement now happens inside the registry so GUI and CLI seeding
+        // share the same quarantine behavior. The CLI's follow-up pass may
+        // therefore have nothing left to count.
+        QVERIFY(seeded.value("retired_stale").toInt(0) >= 0);
 
         const QJsonObject listed = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list"}, &rc);
@@ -693,6 +700,13 @@ private slots:
         bool has_spot_swing_1d = false;
         bool has_stale_crypto_universe_60 = false;
         bool has_btc5m_producer = false;
+        bool has_kalshi_auto_15m = false;
+        bool has_kalshi_auto_1h = false;
+        bool has_kalshi_auto_daily = false;
+        bool has_kalshi_recovery_watchdog = false;
+        bool has_kalshi_live_autonomous_pulse = false;
+        bool has_kalshi_live_reconcile = false;
+        bool has_legacy_kalshi_scan = false;
         auto starts_with = [](const QStringList& command, const QStringList& prefix) {
             if (command.size() < prefix.size())
                 return false;
@@ -738,6 +752,29 @@ private slots:
                     has_spot_swing_4h = true;
                 else if (hz == QStringLiteral("1d"))
                     has_spot_swing_1d = true;
+            } else if (starts_with(command, QStringList{"kalshi", "auto", "run"})) {
+                const int cidx = command.indexOf(QStringLiteral("--category"));
+                const QString category = cidx >= 0 && cidx + 1 < command.size()
+                    ? command.at(cidx + 1) : QString();
+                if (category == QStringLiteral("Crypto#BTC@live"))
+                    has_kalshi_auto_15m = has_kalshi_recovery_watchdog = true;
+                else if (category == QStringLiteral("Crypto#BTC@hourly"))
+                    has_kalshi_auto_1h = true;
+                else if (category == QStringLiteral("Crypto#BTC@daily"))
+                    has_kalshi_auto_daily = true;
+                if (category == QStringLiteral("Crypto#BTC@live") ||
+                    category == QStringLiteral("Crypto#BTC@hourly")) {
+                    QCOMPARE(job.value("interval_sec").toInt(), 60);
+                    QCOMPARE(job.value("timeout_sec").toInt(), 30);
+                }
+            } else if (starts_with(command, QStringList{"kalshi", "auto", "live", "execute-next"})) {
+                has_kalshi_live_autonomous_pulse = command.contains(QStringLiteral("--require-session"));
+                QCOMPARE(job.value("interval_sec").toInt(), 2);
+                QCOMPARE(job.value("timeout_sec").toInt(), 10);
+            } else if (command == QStringList{"kalshi", "auto", "positions"}) {
+                has_kalshi_live_reconcile = true;
+            } else if (command.contains(QStringLiteral("journal-kalshi-scan"))) {
+                has_legacy_kalshi_scan = true;
             } else if (command == QStringList{"edge", "crypto-universe", "--venue", "coinbase", "--horizon-sec",
                                              "60", "--duration-ms", "1500", "--min-edge-bps", "25"}) {
                 has_stale_crypto_universe_60 = true;
@@ -773,8 +810,161 @@ private slots:
         QVERIFY2(!has_btc5m_producer,
                  "install-jobs must not install a btc5m producer job -- the btc5m book is retired, so its "
                  "'edge journal-evaluate-btc5m-live' rows have no consumer");
+        QVERIFY2(has_kalshi_auto_15m, "install-jobs must feed Kalshi v2 15m cohorts");
+        QVERIFY2(!has_kalshi_auto_1h,
+                 "the persistent event engine must replace the duplicate hourly polling producer");
+        QVERIFY2(has_kalshi_auto_daily, "install-jobs must feed Kalshi v2 daily cohorts");
+        QVERIFY2(has_kalshi_recovery_watchdog,
+                 "install-jobs must retain one slow WebSocket recovery watchdog");
+        QVERIFY2(!has_kalshi_live_autonomous_pulse,
+                 "install-jobs must retire the two-second autonomous polling pulse");
+        QVERIFY2(has_kalshi_live_reconcile,
+                 "install-jobs must persist authenticated Kalshi positions and fills for scoring");
+        QVERIFY2(!has_legacy_kalshi_scan,
+                 "install-jobs must not recreate the retired polluted Kalshi scan source");
         QVERIFY2(has_tick, "install-jobs must create the sandbox tick job");
         QVERIFY2(has_score, "install-jobs must create the sandbox score-now job");
+    }
+
+    void kalshi_bounded_auto_session_enforces_rolling_hour_limit() {
+        sandbox_test_home();
+        auto& settings = openmarketterminal::SettingsRepository::instance();
+        QVERIFY(settings.set(QStringLiteral("cli.allow_trading"), QStringLiteral("true"),
+                             QStringLiteral("test")).is_ok());
+        QVERIFY(settings.set(QStringLiteral("cli.live_trading_armed"), QStringLiteral("true"),
+                             QStringLiteral("test")).is_ok());
+        QVERIFY(settings.set(QStringLiteral("cli.allowed_venues"), QStringLiteral("kalshi"),
+                             QStringLiteral("test")).is_ok());
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("true"),
+                             QStringLiteral("test")).is_ok());
+
+        int rc = -1;
+        QJsonObject blocked = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("1h")}, &rc);
+        QCOMPARE(rc, 6);
+        QCOMPARE(blocked.value(QStringLiteral("status")).toString(), QStringLiteral("blocked"));
+        QVERIFY(blocked.value(QStringLiteral("reason")).toString().contains(
+            QStringLiteral("Settings > Security")));
+        QCOMPARE(settings.get(QStringLiteral("cli.kill_switch"), QString()).value(),
+                 QStringLiteral("true"));
+        QVERIFY(settings.get(QStringLiteral("kalshi.live_automation.enabled"), QStringLiteral("false"))
+                    .value() != QStringLiteral("true"));
+
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("false"),
+                             QStringLiteral("test")).is_ok());
+        const QString unknown_intent = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {QStringLiteral("asset_class"), QStringLiteral("prediction")},
+            {QStringLiteral("venue"), QStringLiteral("kalshi")},
+            {QStringLiteral("market_id"), QStringLiteral("KXBTC-UNKNOWN")},
+            {QStringLiteral("outcome"), QStringLiteral("Yes")},
+            {QStringLiteral("experiment_id"), QStringLiteral("kalshi-micro-live-v1")}})
+            .toJson(QJsonDocument::Compact));
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO order_drafts (draft_id,intent_json,status,created_at) VALUES (?,?,?,?)",
+            {QStringLiteral("unknown-order"), unknown_intent,
+             QStringLiteral("submission_unknown"),
+             QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}).is_ok());
+        QJsonObject reconciliation_blocked = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("1h")}, &rc);
+        QCOMPARE(rc, 6);
+        QCOMPARE(reconciliation_blocked.value(QStringLiteral("status")).toString(),
+                 QStringLiteral("blocked"));
+        QVERIFY(reconciliation_blocked.value(QStringLiteral("reconciliation_required")).toBool());
+        QCOMPARE(reconciliation_blocked.value(QStringLiteral("submission_unknown_count")).toInt(), 1);
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM order_drafts WHERE draft_id='unknown-order'").is_ok());
+
+        QJsonObject armed = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("1h")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(armed.value(QStringLiteral("session_active")).toBool());
+        QVERIFY(armed.value(QStringLiteral("live_armed")).toBool());
+        QVERIFY(armed.value(QStringLiteral("global_live_gate_armed")).toBool());
+        QVERIFY(armed.value(QStringLiteral("autonomous")).toBool());
+        QVERIFY(armed.value(QStringLiteral("parallel_paper_enabled")).toBool());
+        QCOMPARE(armed.value(QStringLiteral("max_orders_per_hour")).toInt(), 10);
+        QVERIFY(!armed.value(QStringLiteral("submission_requires_human_approval")).toBool());
+        QVERIFY(!armed.value(QStringLiteral("session")).toObject()
+                     .value(QStringLiteral("session_id")).toString().isEmpty());
+        const QJsonObject armed_session = armed.value(QStringLiteral("session")).toObject();
+        QCOMPARE(armed_session.value(QStringLiteral("schedule")).toString(),
+                 QStringLiteral("current_clock_hour"));
+        const QDateTime armed_at = QDateTime::fromString(
+            armed_session.value(QStringLiteral("started_at")).toString(), Qt::ISODateWithMs);
+        const QDateTime ends_at = QDateTime::fromString(
+            armed_session.value(QStringLiteral("ends_at")).toString(), Qt::ISODateWithMs);
+        QVERIFY(armed_at.isValid());
+        QVERIFY(ends_at.isValid());
+        QCOMPARE(ends_at.toUTC().time().minute(), 0);
+        QCOMPARE(ends_at.toUTC().time().second(), 0);
+        QCOMPARE(ends_at.toUTC().time().msec(), 0);
+        QVERIFY(armed_at < ends_at);
+        QVERIFY(armed_at.secsTo(ends_at) <= 3600);
+        QCOMPARE(settings.get(QStringLiteral("kalshi.paper_automation.enabled"), QString()).value(),
+                 QStringLiteral("true"));
+
+        QJsonObject paper_status = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("paper"), QStringLiteral("status")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(paper_status.value(QStringLiteral("enabled")).toBool());
+        QVERIFY(paper_status.value(QStringLiteral("hourly_limit")).isNull());
+        QVERIFY(paper_status.value(QStringLiteral("execution")).toString().contains(
+            QStringLiteral("same timestamped decision gate")));
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM trade_audit WHERE json_extract(intent_json,'$.experiment_id')="
+            "'kalshi-micro-live-v1'").is_ok());
+        const QJsonObject autonomous_intent{
+            {QStringLiteral("asset_class"), QStringLiteral("prediction")},
+            {QStringLiteral("venue"), QStringLiteral("kalshi")},
+            {QStringLiteral("experiment_id"), QStringLiteral("kalshi-micro-live-v1")},
+            {QStringLiteral("autonomous"), true}};
+        for (int i = 0; i < 10; ++i) {
+            QJsonObject row_intent = autonomous_intent;
+            if (i == 0)
+                row_intent.remove(QStringLiteral("autonomous")); // Legacy normalized draft.
+            const QString intent = QString::fromUtf8(
+                QJsonDocument(row_intent).toJson(QJsonDocument::Compact));
+            QVERIFY(Database::instance().execute(
+                "INSERT INTO trade_audit (ts,phase,tool,account,mode,intent_json,decision,reason,risk_snapshot_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                {QDateTime::currentDateTimeUtc().addSecs(-i).toString(Qt::ISODateWithMs),
+                 QStringLiteral("submit"), QStringLiteral("submit_order"), QStringLiteral(""),
+                 QStringLiteral("live"), intent, QStringLiteral("filled"),
+                 QStringLiteral("test fill"), QStringLiteral("{}")}).is_ok());
+        }
+
+        QJsonObject status = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("status")}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(status.value(QStringLiteral("orders_last_hour")).toInt(), 10);
+        QCOMPARE(status.value(QStringLiteral("orders_remaining_this_hour")).toInt(), 0);
+
+        QJsonObject pulse = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("execute-next"),
+             QStringLiteral("--require-session")}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(pulse.value(QStringLiteral("status")).toString(), QStringLiteral("rate_limited"));
+        QVERIFY(pulse.value(QStringLiteral("reason")).toString().contains(QStringLiteral("10")));
+
+        QJsonObject stopped = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("stop")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!stopped.value(QStringLiteral("session_active")).toBool());
+        QVERIFY(!stopped.value(QStringLiteral("live_armed")).toBool());
+        QVERIFY(stopped.value(QStringLiteral("global_live_gate_armed")).toBool());
+        QCOMPARE(settings.get(QStringLiteral("kalshi.live_automation.enabled"), QString()).value(),
+                 QStringLiteral("false"));
+        settings.set(QStringLiteral("cli.allow_trading"), QStringLiteral("false"), QStringLiteral("test"));
+        settings.set(QStringLiteral("cli.live_trading_armed"), QStringLiteral("false"), QStringLiteral("test"));
+        settings.set(QStringLiteral("cli.allowed_venues"), QString(), QStringLiteral("test"));
     }
 
     // Reconcile regression: when a producer drops OUT of sandbox_job_specs()

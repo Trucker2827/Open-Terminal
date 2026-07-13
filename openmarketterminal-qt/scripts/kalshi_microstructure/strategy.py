@@ -123,10 +123,12 @@ def find_edge(
     seconds_to_close = None
     if market.close_time is not None:
         seconds_to_close = max(0.0, (market.close_time - now).total_seconds())
+        if seconds_to_close <= 0:
+            return None
     probability_above = fair_probability_above(
         spot=spot,
         threshold=threshold,
-        seconds_to_close=seconds_to_close or 15 * 60,
+        seconds_to_close=seconds_to_close if seconds_to_close is not None else 15 * 60,
         annual_volatility=annual_volatility,
     )
     fair_yes = probability_above if market_is_above_contract(market.text) else 1.0 - probability_above

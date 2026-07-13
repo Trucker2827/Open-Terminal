@@ -316,6 +316,7 @@ QJsonObject KalshiEvidenceEngine::ladder_snapshot(
                                      {QStringLiteral("status"), market.extras.value(QStringLiteral("status")).toString()}});
     }
     return QJsonObject{{QStringLiteral("event"), QStringLiteral("kalshi_ladder_snapshot")},
+                       {QStringLiteral("schema_version"), 2},
                        {QStringLiteral("ts"), QDateTime::fromMSecsSinceEpoch(ts_ms).toUTC().toString(Qt::ISODateWithMs)},
                        {QStringLiteral("event_ticker"), event_ticker},
                        {QStringLiteral("contracts"), contracts},
@@ -324,6 +325,12 @@ QJsonObject KalshiEvidenceEngine::ladder_snapshot(
 }
 
 bool KalshiEvidenceEngine::append_jsonl(const QString& path, const QJsonObject& row) {
+    constexpr qint64 max_bytes = 64LL * 1024 * 1024;
+    if (QFileInfo::exists(path) && QFileInfo(path).size() >= max_bytes) {
+        QFile::remove(path + QStringLiteral(".1"));
+        if (!QFile::rename(path, path + QStringLiteral(".1")))
+            return false;
+    }
     QFile file(path);
     QDir().mkpath(QFileInfo(file).absolutePath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) return false;

@@ -217,6 +217,28 @@ class TstSandboxResolver : public QObject {
         QVERIFY(qAbs(fill_price(QStringLiteral("pos-pred-b"), QStringLiteral("resolved")) - 0.0) < 1e-9);
     }
 
+    void prediction_no_side_resolves_with_selected_side_outcome() {
+        const qint64 t0 = 2500000;
+        const QString decision = QStringLiteral("dec-p-no-win");
+        const QString position = QStringLiteral("pos-p-no-win");
+        insert_journal_row(decision, QStringLiteral("journal-p"), QStringLiteral("BTC-USD"), t0, 1);
+        insert_position(position, QStringLiteral("strategy-p"), decision, QStringLiteral("BTC-USD"),
+                        QStringLiteral("no"), false, 10.0, 0.40, QVariant(), QVariant(),
+                        t0 + 300000, t0, 0.10, 4.0, t0);
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto result = resolve_pending(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(result.is_ok(), result.is_err() ? result.error().c_str() : "");
+
+        const PositionRow row = fetch_position(position);
+        QVERIFY(row.found);
+        QCOMPARE(row.state, QStringLiteral("closed"));
+        QCOMPARE(row.close_reason, QStringLiteral("resolved"));
+        QVERIFY(row.has_realized_pnl);
+        QVERIFY(qAbs(row.realized_pnl - 5.9) < 1e-9);
+    }
+
     // (c) prediction unresolved (outcome=-1), still within the 24h grace
     // window past expires_at -> stays open, counted pending.
     void prediction_unresolved_before_grace_stays_open() {

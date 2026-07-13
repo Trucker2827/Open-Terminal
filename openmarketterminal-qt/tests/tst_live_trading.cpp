@@ -258,6 +258,17 @@ class TstLiveTrading : public QObject {
         // Anything other than a literal "true" keeps it disengaged.
         set_key("cli.kill_switch", "false");
         QVERIFY2(!mcp::cli_kill_switch_engaged(), "\"false\" must keep the kill switch off");
+
+        // Emergency controls also set a second latch. A stale settings form may
+        // rewrite the legacy key, but must not reopen trading while the latch is
+        // still engaged.
+        set_key("cli.kill_switch_latched", "true");
+        set_key("cli.kill_switch", "false");
+        QVERIFY2(mcp::cli_kill_switch_engaged(),
+                 "the emergency latch must dominate a stale legacy-key reset");
+        set_key("cli.kill_switch_latched", "false");
+        QVERIFY2(!mcp::cli_kill_switch_engaged(),
+                 "an explicit human reset of both keys must reopen the gate");
     }
 
     void allowed_account_reader_default_empty_then_set() {

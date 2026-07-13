@@ -123,6 +123,10 @@ struct PredictionPosition {
     double realized_pnl = 0.0;
     double unrealized_pnl = 0.0;
     double current_value = 0.0;
+    // Venue-provided accounting fields. These are deliberately separate from
+    // current_value: binary venues do not all expose a mark-to-market P&L.
+    double total_traded = 0.0;
+    double fees_paid = 0.0;
 };
 
 struct OpenOrder {

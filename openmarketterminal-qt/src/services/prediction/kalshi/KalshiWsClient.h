@@ -53,9 +53,14 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     bool has_credentials() const;
 
     void subscribe(const QStringList& market_tickers);
+    void subscribe_cf_indices(const QStringList& index_ids);
     void unsubscribe(const QStringList& market_tickers);
     void unsubscribe_all();
     void disconnect();
+    /// Force a fresh authenticated socket while retaining subscriptions.
+    /// Used by the daemon watchdog when the transport still reports connected
+    /// but no market events have arrived within the freshness budget.
+    void restart();
     bool is_connected() const { return connected_; }
 
     /// Register with the hub + install prediction:kalshi:* policies.
@@ -79,6 +84,8 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void orderbook_event(const QString& type, const QString& ticker, qint64 sequence,
                          const QJsonObject& payload);
     void account_event(const QString& type, const QJsonObject& payload);
+    void cf_benchmark_event(const QString& index_id, double value, qint64 ts_ms,
+                            const QJsonObject& payload);
     void connection_status_changed(bool connected);
 
   private slots:
@@ -92,6 +99,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void ensure_connected();
     void send_subscribe(const QStringList& tickers);
     void send_account_subscribe();
+    void send_cf_subscribe();
     void request_orderbook_snapshot(const QString& ticker);
     void publish_books(const QString& ticker, qint64 ts_ms);
     void publish_price(const QString& asset_id, double price);
@@ -103,7 +111,9 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
 
     KalshiCredentials creds_;
     QSet<QString> subscribed_tickers_;
+    QSet<QString> cf_indices_;
     bool connected_ = false;
+    bool restart_requested_ = false;
     bool hub_registered_ = false;
     int next_msg_id_ = 1;
     int orderbook_subscription_sid_ = 0;

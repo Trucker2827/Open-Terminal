@@ -34,6 +34,7 @@ class StrategyOpsMapPanel : public QWidget {
         bool hypothetical = false;
         bool chronos = false;
         bool price_forecast = false;
+        bool no_edge = false;
     };
 
     void animate();
@@ -61,7 +62,12 @@ class StrategyOpsMapPanel : public QWidget {
     int open_positions_ = 0;
     int resolved_total_ = 0;
     int eligible_books_ = 0;
+    int no_edge_books_ = 0;
+    int decision_envelopes_ = 0;
+    int trade_candidates_ = 0;
     double net_pnl_total_ = 0.0;
+    QString latest_decision_verdict_ = QStringLiteral("WAITING");
+    QString latest_decision_blocker_;
     QString status_text_ = QStringLiteral("waiting for sandbox data");
 };
 

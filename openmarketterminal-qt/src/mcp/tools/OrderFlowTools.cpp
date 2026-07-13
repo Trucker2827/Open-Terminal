@@ -17,9 +17,11 @@
 #include "mcp/tools/PredictionTools.h"
 #include "mcp/tools/SettingsGate.h"
 #include "mcp/tools/ThreadHelper.h"
+#include "services/prediction/PredictionCredentialStore.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
+#include "services/prediction/kalshi/KalshiAdapter.h"
 #include "storage/repositories/OrderDraftRepository.h"
 #include "storage/repositories/PmPaperRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -311,6 +313,14 @@ PmResolved pm_resolve(const QString& venue, const QString& market_id, const QStr
             best_ask = lvl.price;
             has_ask = true;
         }
+    // Some Kalshi market payloads omit the aggregate liquidity field even
+    // while the selected outcome book has substantial executable depth.
+    // Fall back to visible contracts instead of turning a live book into a
+    // false zero-liquidity rejection.
+    if (r.liquidity <= 0.0) {
+        for (const auto& lvl : book->bids) r.liquidity += std::max(0.0, lvl.size);
+        for (const auto& lvl : book->asks) r.liquidity += std::max(0.0, lvl.size);
+    }
     r.best_bid = has_bid ? best_bid : 0.0;
     r.best_ask = has_ask ? best_ask : 0.0;
 
@@ -326,7 +336,8 @@ PmResolved pm_resolve(const QString& venue, const QString& market_id, const QStr
 
 RiskVerdict pm_risk_floor_check(const QString& category, const QString& /*side*/, double contracts,
                                 double fill_price, double best_bid, double best_ask,
-                                double liquidity, const QString& end_date_iso) {
+                                double liquidity, const QString& end_date_iso,
+                                double min_hours_override = -1.0) {
     RiskVerdict rv;
     // Caps from the GUI-only cli.risk.* namespace, each with a finite default.
     const double max_order_value = read_cap(QStringLiteral("cli.risk.max_order_value"), 25000.0);
@@ -334,7 +345,9 @@ RiskVerdict pm_risk_floor_check(const QString& category, const QString& /*side*/
     const double max_topic = read_cap(QStringLiteral("cli.risk.max_exposure_per_topic"), 10000.0);
     const double min_liq = read_cap(QStringLiteral("cli.risk.pm_min_liquidity"), 1000.0);
     const double max_spread = read_cap(QStringLiteral("cli.risk.pm_max_spread"), 0.10);
-    const double min_hours = read_cap(QStringLiteral("cli.risk.pm_min_hours_to_resolution"), 1.0);
+    const double min_hours = min_hours_override >= 0.0
+        ? min_hours_override
+        : read_cap(QStringLiteral("cli.risk.pm_min_hours_to_resolution"), 1.0);
 
     const double stake = contracts * fill_price;
     rv.max_order_value = max_order_value;
@@ -443,8 +456,12 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
         return reject(r.reason, empty_rv);
 
     // Deterministic PM risk floor.
+    const QString experiment_id = args.value("experiment_id").toString().trimmed();
+    const double min_hours_override = experiment_id == QLatin1String("kalshi-micro-live-v1")
+        ? 20.0 / 3600.0 : -1.0;
     const RiskVerdict rv = pm_risk_floor_check(r.category, side, contracts, r.price, r.best_bid,
-                                               r.best_ask, r.liquidity, r.end_date_iso);
+                                               r.best_ask, r.liquidity, r.end_date_iso,
+                                               min_hours_override);
     if (!rv.ok) {
         audit_prepare(account, args, "rejected", rv.reason, rv);
         LOG_INFO(TAG, "prepare_order (prediction) rejected: " + rv.reason);
@@ -462,7 +479,11 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
     // PASS → persist a draft carrying the normalized PM intent, audit "prepared".
     const QString draft_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-    const QString expires = QDateTime::currentDateTimeUtc().addSecs(5 * 60).toString(Qt::ISODate);
+    // A human-approved micro-live quote is highly time-sensitive. Keep its
+    // approval window aligned with the 30-second producer cadence; ordinary
+    // order drafts retain the less urgent five-minute lifetime.
+    const int draft_lifetime_sec = experiment_id == QLatin1String("kalshi-micro-live-v1") ? 30 : 5 * 60;
+    const QString expires = QDateTime::currentDateTimeUtc().addSecs(draft_lifetime_sec).toString(Qt::ISODate);
 
     QJsonObject intent{
         {"asset_class", "prediction"}, {"venue", venue},   {"market_id", market_id},
@@ -471,6 +492,23 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
     };
     if (args.contains("limit_price") && args.value("limit_price").isDouble())
         intent["limit_price"] = args.value("limit_price").toDouble();
+    // Live micro-evidence limits are persisted into the immutable draft and
+    // re-checked against the fresh executable book immediately before submit.
+    for (const char* key : {"max_live_stake", "experiment_loss_cap"}) {
+        if (args.contains(key) && args.value(key).isDouble())
+            intent[key] = args.value(key).toDouble();
+    }
+    if (args.value(QStringLiteral("autonomous")).isBool())
+        intent[QStringLiteral("autonomous")] = args.value(QStringLiteral("autonomous")).toBool();
+    if (args.value(QStringLiteral("max_orders_per_hour")).isDouble())
+        intent[QStringLiteral("max_orders_per_hour")] =
+            args.value(QStringLiteral("max_orders_per_hour")).toInt();
+    for (const char* key : {"experiment_id", "evidence_decision_id", "decision_origin",
+                            "decision_rationale", "decision_snapshot_json",
+                            "automation_session_id", "automation_session_ends_at"}) {
+        const QString value = args.value(key).toString().trimmed();
+        if (!value.isEmpty()) intent[key] = value;
+    }
 
     OrderDraft draft;
     draft.draft_id = draft_id;
@@ -510,10 +548,12 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
 // never freed worker stack), `finished` flag taken under the state mutex (first
 // terminal event wins), connections disconnected in finalize(), and a MANDATORY
 // 15s one-shot timeout (with `a` as context) so the single worker can never
-// wedge. OrderResult carries NO client_order_id, so correlation is accept-first
-// — safe on the single-worker host (only one in-flight place_order at a time).
+// wedge. A timeout is NOT a rejection: the exchange may have accepted the
+// client UUID after our local wait ended, so callers must retain an
+// indeterminate lock until authenticated order reconciliation proves the result.
 struct PmPlaceResult {
     bool ok = false;
+    bool indeterminate = false;
     QString reason;    // non-empty: order_id on success, error/timeout on failure
     QString order_id;
 };
@@ -567,7 +607,12 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
                 st->finished = true;
                 finalize();
             }));
-        QTimer::singleShot(15000, a, [st, finalize]() {
+        bool timeout_override_ok = false;
+        const int timeout_override = qEnvironmentVariableIntValue(
+            "OPENTERMINAL_TEST_PM_PLACE_TIMEOUT_MS", &timeout_override_ok);
+        const int timeout_ms = timeout_override_ok
+            ? std::clamp(timeout_override, 10, 15'000) : 15'000;
+        QTimer::singleShot(timeout_ms, a, [st, finalize]() {
             QMutexLocker lk(&st->m);
             if (st->finished)
                 return;
@@ -580,7 +625,9 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
     });
 
     if (st->timed_out) {
-        out.reason = QStringLiteral("place_order timed out after 15s");
+        out.indeterminate = true;
+        out.reason = QStringLiteral(
+            "submission outcome unknown after local timeout; reconciliation required");
         return out;
     }
     if (!st->ok) {
@@ -622,8 +669,25 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
 
     // 2. RE-RUN the deterministic PM risk floor against FRESH caps + book
     //    (revocable — the stored verdict is NOT trusted).
-    const RiskVerdict rv = pm_risk_floor_check(r.category, side, contracts, r.price, r.best_bid,
-                                               r.best_ask, r.liquidity, r.end_date_iso);
+    const QString experiment_id = intent.value("experiment_id").toString().trimmed();
+    const double min_hours_override = experiment_id == QLatin1String("kalshi-micro-live-v1")
+        ? 20.0 / 3600.0 : -1.0;
+    double execution_price = r.price;
+    if (experiment_id == QLatin1String("kalshi-micro-live-v1") &&
+        side == QLatin1String("buy")) {
+        const double approved_limit = intent.value("limit_price").toDouble(0.0);
+        if (approved_limit <= 0.0 || approved_limit > 1.0) {
+            const QString reason =
+                QStringLiteral("micro-live draft is missing a valid approved limit price");
+            audit_submit(draft.account, audit_mode, intent, "rejected", reason, empty_rv);
+            return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                   {"mode", mode}});
+        }
+        execution_price = approved_limit;
+    }
+    const RiskVerdict rv = pm_risk_floor_check(r.category, side, contracts, execution_price, r.best_bid,
+                                               r.best_ask, r.liquidity, r.end_date_iso,
+                                               min_hours_override);
     if (!rv.ok) {
         audit_submit(draft.account, audit_mode, intent, "rejected", rv.reason, rv);
         LOG_INFO(TAG, "submit_order (prediction) risk re-check rejected: " + rv.reason);
@@ -722,12 +786,40 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
                 {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
         }
         auto* adapter = pred::PredictionExchangeRegistry::instance().adapter(venue);
+        // The account screen and the execution runtime share one local secure
+        // store, but adapters can be replaced or registered before credentials
+        // are loaded. Rehydrate Kalshi at the final gate so a valid local
+        // account cannot appear configured in the GUI and unauthenticated here.
+        if (venue == QLatin1String("kalshi") && adapter && !adapter->has_credentials()) {
+            if (auto* kalshi = qobject_cast<pred::kalshi_ns::KalshiAdapter*>(adapter)) {
+                if (const auto credentials = pred::PredictionCredentialStore::load_kalshi())
+                    kalshi->set_credentials(*credentials);
+            }
+        }
         if (!adapter || !adapter->has_credentials()) {
             const QString reason =
                 QStringLiteral("no credentials for venue '%1' — configure in GUI").arg(venue);
             audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
             return ToolResult::ok_data(QJsonObject{
                 {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+
+        // A local timeout is not evidence that the venue rejected an order.
+        // Until authenticated reconciliation resolves that client order id,
+        // freeze the venue so unknown exposure cannot be compounded elsewhere.
+        auto unknown = Database::instance().execute(
+            "SELECT COUNT(*) FROM order_drafts WHERE draft_id<>? "
+            "AND status='submission_unknown' "
+            "AND json_extract(intent_json,'$.venue')=?",
+            {draft_id, venue});
+        if (unknown.is_err() || !unknown.value().next() ||
+            unknown.value().value(0).toInt() > 0) {
+            const QString reason = QStringLiteral(
+                "an earlier submission to this venue has an unknown outcome; reconcile it before any further live order");
+            audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+            return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                   {"mode", "live"},
+                                                   {"reconciliation_required", true}});
         }
 
         // (3) DAILY-LOSS FLOOR — running realized loss + this order's max_loss
@@ -738,6 +830,111 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
             LOG_WARN(TAG, "submit_order (prediction) live denied (daily loss) draft " + draft_id);
             return ToolResult::ok_data(QJsonObject{
                 {"status", "rejected"}, {"reason", reason}, {"mode", "live"}});
+        }
+
+        // Optional experiment limits strengthen the global GUI risk controls.
+        // They can only reduce authority: malformed or missing values fail
+        // closed for an experiment-tagged draft.
+        if (!experiment_id.isEmpty()) {
+            const double max_live_stake = intent.value("max_live_stake").toDouble(0.0);
+            const double experiment_cap = intent.value("experiment_loss_cap").toDouble(0.0);
+            if (max_live_stake <= 0.0 || experiment_cap <= 0.0 ||
+                rv.order_value > max_live_stake + 1e-9) {
+                const QString reason = QStringLiteral("micro-live stake cap exceeded (%1 > %2)")
+                                           .arg(rv.order_value, 0, 'f', 2)
+                                           .arg(max_live_stake, 0, 'f', 2);
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
+            if (intent.value(QStringLiteral("autonomous")).toBool()) {
+                auto setting = [](const QString& key) {
+                    const auto value = SettingsRepository::instance().get(key, QString());
+                    return value.is_ok() ? value.value() : QString();
+                };
+                const QString active_session = setting(QStringLiteral("kalshi.live_automation.session_id"));
+                const QString draft_session = intent.value(QStringLiteral("automation_session_id")).toString();
+                const bool session_enabled =
+                    setting(QStringLiteral("kalshi.live_automation.enabled")).trimmed().toLower()
+                    == QStringLiteral("true");
+                const QString end_text = setting(QStringLiteral("kalshi.live_automation.ends_at"));
+                const QDateTime session_end = QDateTime::fromString(end_text, Qt::ISODateWithMs);
+                if (!session_enabled || active_session.isEmpty() || draft_session != active_session ||
+                    (session_end.isValid() && session_end <= QDateTime::currentDateTimeUtc())) {
+                    const QString reason = QStringLiteral("autonomous Kalshi session is stopped, expired, or replaced");
+                    audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                    return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                           {"mode", "live"}});
+                }
+                bool max_ok = false;
+                const int configured_max =
+                    setting(QStringLiteral("kalshi.live_automation.max_orders_per_hour")).toInt(&max_ok);
+                const int requested_max = intent.value(QStringLiteral("max_orders_per_hour")).toInt(0);
+                if (!max_ok || configured_max < 1 || configured_max > 10 || requested_max < 1 ||
+                    requested_max > configured_max) {
+                    const QString reason = QStringLiteral("invalid autonomous Kalshi rolling-hour limit");
+                    audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                    return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                           {"mode", "live"}});
+                }
+                auto hourly = Database::instance().execute(
+                    "SELECT COUNT(*) FROM trade_audit WHERE mode='live' AND decision='filled' "
+                    "AND ts>=? AND json_extract(intent_json,'$.asset_class')='prediction' "
+                    "AND json_extract(intent_json,'$.venue')='kalshi' "
+                    "AND json_extract(intent_json,'$.experiment_id')=?",
+                    {QDateTime::currentDateTimeUtc().addSecs(-3600).toString(Qt::ISODateWithMs),
+                     experiment_id});
+                if (hourly.is_err() || !hourly.value().next() ||
+                    hourly.value().value(0).toInt() >= requested_max) {
+                    const QString reason = QStringLiteral("rolling limit of %1 autonomous Kalshi orders per hour reached")
+                                               .arg(requested_max);
+                    audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                    return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                           {"mode", "live"}});
+                }
+            }
+            auto spent = Database::instance().execute(
+                "SELECT COALESCE(SUM(CAST(json_extract(risk_snapshot_json,'$.order_value') AS REAL)),0) "
+                "FROM trade_audit WHERE mode='live' AND decision='filled' "
+                "AND json_extract(intent_json,'$.asset_class')='prediction' "
+                "AND json_extract(intent_json,'$.venue')='kalshi' "
+                "AND json_extract(intent_json,'$.experiment_id')=?", {experiment_id});
+            if (spent.is_err() || !spent.value().next()) {
+                const QString reason = QStringLiteral("could not verify micro-live experiment exposure");
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
+            const double used = spent.value().value(0).toDouble();
+            if (used + rv.max_loss > experiment_cap + 1e-9) {
+                const QString reason = QStringLiteral("micro-live experiment cap reached (%1 + %2 > %3)")
+                                           .arg(used, 0, 'f', 2).arg(rv.max_loss, 0, 'f', 2)
+                                           .arg(experiment_cap, 0, 'f', 2);
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
+            // One bot position per contract. A newly journaled signal must not
+            // produce another order while an older micro-live draft for the
+            // same market is being submitted or has already been submitted.
+            auto duplicate = Database::instance().execute(
+                "SELECT COUNT(*) FROM order_drafts WHERE draft_id<>? "
+                "AND status IN ('submitting','submission_unknown','submitted') "
+                "AND json_extract(intent_json,'$.experiment_id')=? "
+                "AND json_extract(intent_json,'$.market_id')=?",
+                {draft_id, experiment_id, market_id});
+            if (duplicate.is_err() || !duplicate.value().next()) {
+                const QString reason = QStringLiteral("could not verify per-contract bot exposure");
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
+            if (duplicate.value().value(0).toInt() > 0) {
+                const QString reason = QStringLiteral("bot already submitted an order for this contract");
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
         }
 
         // (4) RESERVE — atomically claim the draft BEFORE the irreversible adapter
@@ -752,8 +949,9 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         }
 
         // (5) FIRE — every gate passed. Build the OrderRequest from the intent at
-        //     the RESOLVED book price (r.price — NEVER the AI's limit), then route
-        //     through the adapter via the timed async→sync bridge.
+        //     the fresh executable price. Micro-live evidence drafts are the
+        //     exception: their human-approved immutable limit is used so the
+        //     order can rest but can never chase a more expensive ask.
         pred::OrderRequest oreq;
         oreq.key.exchange_id = venue;
         oreq.key.market_id = market_id;
@@ -761,26 +959,34 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         oreq.side = side.toUpper();  // "BUY" / "SELL"
         const QString ot = intent.value("order_type").toString().trimmed();
         oreq.order_type = ot.isEmpty() ? QStringLiteral("limit") : ot;
-        oreq.price = r.price;
+        oreq.price = execution_price;
         oreq.size = contracts;
-        oreq.client_order_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        // The persisted draft UUID is also the exchange client UUID. A late
+        // response can therefore be reconciled without inventing a second
+        // identity or submitting a replacement order.
+        oreq.client_order_id = draft_id;
 
         const PmPlaceResult pr = pm_place_live(venue, oreq);
 
+        const QString draft_status = pr.ok ? QStringLiteral("submitted")
+            : pr.indeterminate ? QStringLiteral("submission_unknown")
+                               : QStringLiteral("submit_failed");
         OrderDraftRepository::instance().update_status(
-            draft_id, pr.ok ? "submitted" : "submit_failed");
+            draft_id, draft_status);
 
         // Record the fill in the LIVE realized-P&L ledger at the RESOLVED price.
         // PM has no AccountManager account → account "" ; venue is the exchange;
         // instrument is the asset_id. BUY opens/adds, SELL closes/reduces.
         if (pr.ok) {
             if (side == QLatin1String("buy"))
-                mcp::tools::record_open(QStringLiteral(""), venue, asset_id, contracts, r.price);
+                mcp::tools::record_open(QStringLiteral(""), venue, asset_id, contracts, execution_price);
             else
-                mcp::tools::record_close(QStringLiteral(""), venue, asset_id, contracts, r.price);
+                mcp::tools::record_close(QStringLiteral(""), venue, asset_id, contracts, execution_price);
         }
 
-        const QString decision = pr.ok ? QStringLiteral("filled") : QStringLiteral("rejected");
+        const QString decision = pr.ok ? QStringLiteral("filled")
+            : pr.indeterminate ? QStringLiteral("submission_unknown")
+                               : QStringLiteral("rejected");
         // trade_audit.reason is NOT NULL — pr.reason is always non-empty (order_id
         // on success, error/timeout on failure).
         audit_submit(QStringLiteral(""), QStringLiteral("live"), intent, decision, pr.reason, rv);
@@ -788,6 +994,9 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         return ToolResult::ok_data(QJsonObject{
             {"status", decision},
             {"order_id", pr.order_id},
+            {"client_order_id", draft_id},
+            {"reconciliation_required", pr.indeterminate},
+            {"reason", pr.reason},
             {"venue", venue},
             {"mode", "live"},
         });
@@ -841,6 +1050,10 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .string("asset_id", "Prediction outcome asset id — prediction only")
                 .string("outcome", "Prediction outcome name — prediction only")
                 .number("contracts", "Prediction contracts (must be > 0) — prediction only").min(0.0)
+                .number("max_live_stake", "Optional hard live stake cap carried into the draft").min(0.0)
+                .number("experiment_loss_cap", "Optional cumulative live experiment exposure cap").min(0.0)
+                .string("experiment_id", "Optional live evidence experiment id").length(1, 128)
+                .string("evidence_decision_id", "Optional source decision journal id").length(1, 128)
                 .build();
         t.handler = [](const QJsonObject& args) -> ToolResult {
             // -1. KILL SWITCH FIRST (Phase C): the human-owned panic button halts

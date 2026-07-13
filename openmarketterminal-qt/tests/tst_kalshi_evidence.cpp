@@ -1,4 +1,5 @@
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
+#include "services/edge_radar/KalshiUniversalEdgeModel.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -70,6 +71,8 @@ class TestKalshiEvidence : public QObject {
     void detectsExecutableRelationships();
     void reconcilesForwardAndSettlementLabels();
     void appliesSeriesFeesAndWaivers();
+    void pricesExecutableCryptoYesAndNo();
+    void rejectsLateOrFutureOnlyCryptoInputs();
 };
 
 void TestKalshiEvidence::detectsExecutableRelationships() {
@@ -147,6 +150,65 @@ void TestKalshiEvidence::reconcilesForwardAndSettlementLabels() {
     const auto settlement = KalshiEvidenceEngine::settlement_label(settled, features);
     QCOMPARE(settlement.value(QStringLiteral("proxy_samples")).toInt(), 2);
     QVERIFY(settlement.contains(QStringLiteral("basis_error_usd")));
+}
+
+void TestKalshiEvidence::pricesExecutableCryptoYesAndNo() {
+    using namespace openmarketterminal::services::edge_radar;
+    const qint64 now = QDateTime::fromString(QStringLiteral("2026-07-12T12:00:00Z"), Qt::ISODate)
+                           .toMSecsSinceEpoch();
+    auto priced = market(QStringLiteral("KXBTC-HOURLY"), QStringLiteral("BTC-HOUR"),
+                         QStringLiteral("above"), 64000.0, 0.0, 0.48, 0.49);
+    priced.question = QStringLiteral("BTC price above $64,000 in one hour?");
+    priced.category = QStringLiteral("Crypto");
+    priced.end_date_iso = QStringLiteral("2026-07-12T13:00:00Z");
+    priced.active = true;
+    priced.extras.insert(QStringLiteral("yes_ask_dollars"), 0.50);
+    priced.extras.insert(QStringLiteral("no_ask_dollars"), 0.52);
+    priced.liquidity = 20000.0;
+
+    KalshiUniversalOptions options;
+    options.minimum_net_edge = 0.01;
+    options.minimum_seconds_left = 20;
+    const auto yes = KalshiUniversalEdgeModel::score_crypto_target(priced, 64500.0, options, now);
+    QCOMPARE(yes.side, QStringLiteral("yes"));
+    QCOMPARE(yes.market_probability, 0.50);
+    QVERIFY(yes.model_probability > 0.50);
+    QVERIFY(yes.seconds_left == 3600);
+    QVERIFY(yes.reference_price == 64500.0);
+    QVERIFY(yes.target_price == 64000.0);
+
+    const auto no = KalshiUniversalEdgeModel::score_crypto_target(priced, 63500.0, options, now);
+    QCOMPARE(no.side, QStringLiteral("no"));
+    QCOMPARE(no.market_probability, 0.52);
+    QVERIFY(no.model_probability > 0.50);
+}
+
+void TestKalshiEvidence::rejectsLateOrFutureOnlyCryptoInputs() {
+    using namespace openmarketterminal::services::edge_radar;
+    const qint64 decision = QDateTime::fromString(QStringLiteral("2026-07-12T12:59:50Z"), Qt::ISODate)
+                                .toMSecsSinceEpoch();
+    auto priced = market(QStringLiteral("KXETH-HOURLY"), QStringLiteral("ETH-HOUR"),
+                         QStringLiteral("above"), 1800.0, 0.0, 0.49, 0.49);
+    priced.question = QStringLiteral("ETH price above $1,800 in one hour?");
+    priced.category = QStringLiteral("Crypto");
+    priced.end_date_iso = QStringLiteral("2026-07-12T13:00:00Z");
+    priced.extras.insert(QStringLiteral("yes_ask_dollars"), 0.50);
+    priced.extras.insert(QStringLiteral("no_ask_dollars"), 0.50);
+    priced.liquidity = 20000.0;
+
+    KalshiUniversalOptions options;
+    options.minimum_net_edge = 0.0;
+    options.minimum_seconds_left = 20;
+    const auto late = KalshiUniversalEdgeModel::score_crypto_target(priced, 1810.0, options, decision);
+    QVERIFY(!late.passes_gate);
+    QVERIFY(late.rejection_reasons.contains(QStringLiteral("too late")));
+
+    // A decision timestamp after close cannot borrow the earlier, favorable
+    // state. It deterministically has zero seconds left and remains rejected.
+    const auto after = KalshiUniversalEdgeModel::score_crypto_target(
+        priced, 1900.0, options, decision + 60'000);
+    QCOMPARE(after.seconds_left, 0);
+    QVERIFY(!after.passes_gate);
 }
 
 QTEST_APPLESS_MAIN(TestKalshiEvidence)

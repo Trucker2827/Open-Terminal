@@ -1,6 +1,7 @@
 #include "services/sandbox/PaperExecutor.h"
 
 #include "services/crypto_latency/CryptoLatencyService.h"
+#include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/sandbox/PaperFillModel.h"
 #include "services/sandbox/SandboxRegistry.h"
 #include "services/sandbox/SandboxResolver.h"
@@ -13,10 +14,12 @@
 #include <QJsonParseError>
 #include <QJsonValue>
 #include <QList>
+#include <QSet>
 #include <QUuid>
 #include <QVariant>
 
 #include <algorithm>
+#include <limits>
 
 namespace openmarketterminal::services::sandbox {
 
@@ -80,6 +83,12 @@ FeeModel fee_model_from_params(const QJsonObject& params) {
                        ? params.value(QStringLiteral("taker_bps")).toDouble()
                        : 60.0;
     return fm;
+}
+
+double kalshi_prediction_fee_per_contract(double price) {
+    if (price <= 0.0 || price >= 1.0)
+        return 0.0;
+    return 0.07 * price * (1.0 - price);
 }
 
 // Field presence for the data_quality rule: a freshness field counts as
@@ -210,6 +219,7 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
         horizon_sec_param = 900;
     const double target_bps = params.value(QStringLiteral("target_bps")).toDouble(0.0);
     const double stop_bps = params.value(QStringLiteral("stop_bps")).toDouble(0.0);
+    const QString strategy_venue = params.value(QStringLiteral("venue")).toString().trimmed().toLower();
 
     const QString decisions_path = daemon_dir + QStringLiteral("/scalp_decisions.jsonl");
     const QByteArray buffer = read_tail_with_prev(decisions_path, kTickTailBytes);
@@ -231,6 +241,9 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
             if (d.value(QStringLiteral("verdict")).toString() != QLatin1String("PAPER TRADE CANDIDATE"))
                 continue;
             if (d.value(QStringLiteral("action")).toString() != QLatin1String("PAPER_LIMIT_BUY_ONLY"))
+                continue;
+            const QString decision_venue = d.value(QStringLiteral("venue")).toString().trimmed().toLower();
+            if (!strategy_venue.isEmpty() && decision_venue != strategy_venue)
                 continue;
             bool ok = false;
             const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
@@ -409,13 +422,14 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
 // prediction (params prediction:true, e.g. btc5m/kalshi): journal rows for
 // journal_source with gate='pass', opened directly at 'open' (no resting
 // order -- the market_probability price IS the immediate synthetic fill),
-// side "yes", entry fee at taker (there is no maker leg). Not filtered by
+// the journal-selected YES/NO side, entry fee at taker (there is no maker leg). Not filtered by
 // strategy.symbols: these journal sources carry their own symbol/market
 // naming (e.g. "BTC", "KALSHI") independent of the registry's placeholder
 // symbols column.
 Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJsonObject& params, qint64 now_ms,
                                          CycleReport& report) {
     const QString journal_source = params.value(QStringLiteral("journal_source")).toString();
+    const QString horizon_filter = params.value(QStringLiteral("horizon")).toString().trimmed().toLower();
     const double notional_usd = params.value(QStringLiteral("notional_usd")).toDouble(0.0);
     int horizon_sec_param = params.value(QStringLiteral("horizon_sec")).toInt(0);
     // No explicit horizon for these books today (season-1 seed params carry
@@ -431,14 +445,51 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
                                  ? params.value(QStringLiteral("max_age_sec")).toInt()
                                  : 3600;
     const qint64 cutoff = now_ms - static_cast<qint64>(std::max(1, max_age_sec)) * 1000;
+    const int default_position_cap = horizon_filter == QStringLiteral("1h") ? 5 : 3;
+    // A non-positive cap means unlimited paper exposure. This does not permit
+    // duplicate samples: the strategy+decision and strategy+market anti-joins
+    // below still allow only one position per immutable book and contract.
+    const int max_open_positions =
+        params.value(QStringLiteral("max_open_positions")).toInt(default_position_cap);
+    auto active_count_result = Database::instance().execute(
+        "SELECT COUNT(*) FROM sandbox_position WHERE strategy_id=? "
+        "AND state IN ('open','pending_fill')",
+        {strategy.strategy_id});
+    if (active_count_result.is_err())
+        return Result<void>::err(active_count_result.error());
+    auto& active_count_query = active_count_result.value();
+    const int active_count = active_count_query.next() ? active_count_query.value(0).toInt() : 0;
+    int remaining_slots = max_open_positions <= 0
+        ? std::numeric_limits<int>::max()
+        : std::max(0, max_open_positions - active_count);
+    if (remaining_slots == 0) {
+        report.notes << QStringLiteral("%1 book at %2-position exposure cap")
+                            .arg(strategy.kind).arg(max_open_positions);
+        return Result<void>::ok();
+    }
+    QSet<QString> active_market_ids;
+    auto active_markets_result = Database::instance().execute(
+        "SELECT DISTINCT journal.market_id FROM sandbox_position position"
+        " JOIN edge_decision_journal journal ON journal.id=position.decision_id"
+        " WHERE position.strategy_id=? AND position.state IN ('open','pending_fill')",
+        {strategy.strategy_id});
+    if (active_markets_result.is_err())
+        return Result<void>::err(active_markets_result.error());
+    auto& active_markets_query = active_markets_result.value();
+    while (active_markets_query.next())
+        active_market_ids.insert(active_markets_query.value(0).toString());
 
     auto sel = Database::instance().execute(
-        "SELECT id, created_at, symbol, market_probability, freshness_json"
+        "SELECT id, created_at, symbol, market_probability, freshness_json, side, horizon, market_id, seconds_left, fee_cost, edge_after_cost, features_json"
         " FROM edge_decision_journal"
         " WHERE source = ? AND gate = 'pass' AND created_at >= ?"
         " AND id NOT IN (SELECT decision_id FROM sandbox_position WHERE strategy_id = ?)"
-        " ORDER BY created_at DESC LIMIT 50",
-        {journal_source, cutoff, strategy.strategy_id});
+        " AND NOT EXISTS (SELECT 1 FROM sandbox_position p"
+        " JOIN edge_decision_journal prior ON prior.id=p.decision_id"
+        " WHERE p.strategy_id=?"
+        " AND prior.market_id=edge_decision_journal.market_id)"
+        " ORDER BY gate_edge DESC, created_at DESC LIMIT 500",
+        {journal_source, cutoff, strategy.strategy_id, strategy.strategy_id});
     if (sel.is_err())
         return Result<void>::err(sel.error());
 
@@ -449,6 +500,35 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
         const QString symbol = q.value(2).toString();
         const double probability = q.value(3).toDouble();
         const QJsonObject freshness = parse_object(q.value(4).toString());
+        const QString side = q.value(5).toString().trimmed().toLower();
+        const QString row_horizon = q.value(6).toString().trimmed().toLower();
+        const QString market_id = q.value(7).toString();
+        const int seconds_left = q.value(8).toInt();
+        const double journal_fee_per_contract = q.value(9).toDouble();
+        const double edge_after_cost = q.value(10).toDouble();
+        const QJsonObject features = parse_object(q.value(11).toString());
+        const QJsonObject signal = features.value(QStringLiteral("signal")).toObject();
+
+        if (!horizon_filter.isEmpty() && row_horizon != horizon_filter) {
+            report.skipped++;
+            continue;
+        }
+        if (market_id.isEmpty() || active_market_ids.contains(market_id)) {
+            report.skipped++;
+            continue;
+        }
+        const int minimum_seconds_left = params.value(QStringLiteral("min_seconds_left")).toInt(-1);
+        const int maximum_seconds_left = params.value(QStringLiteral("max_seconds_left")).toInt(-1);
+        if ((minimum_seconds_left >= 0 && seconds_left < minimum_seconds_left) ||
+            (maximum_seconds_left >= 0 && seconds_left > maximum_seconds_left)) {
+            report.skipped++;
+            continue;
+        }
+        const QString allowed_side = params.value(QStringLiteral("allowed_side")).toString().trimmed().toLower();
+        if (!allowed_side.isEmpty() && allowed_side != QStringLiteral("both") && side != allowed_side) {
+            report.skipped++;
+            continue;
+        }
 
         if (probability <= 0.0) {
             report.skipped++;
@@ -456,21 +536,51 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
                                 .arg(strategy.kind, id);
             continue;
         }
+        const double minimum_entry_probability =
+            params.value(QStringLiteral("min_entry_probability")).toDouble(0.0);
+        const double maximum_entry_probability =
+            params.value(QStringLiteral("max_entry_probability")).toDouble(1.0);
+        if (probability < minimum_entry_probability || probability > maximum_entry_probability) {
+            report.skipped++;
+            continue;
+        }
+
+        // Kalshi parallel-paper uses the same executable micro-evidence gate
+        // as live execute-next. Paper receives no softer or hindsight-friendly
+        // path; the only difference is that it is not subject to a money cap or
+        // the live ten-orders-per-hour rate limit.
+        if (journal_source == QStringLiteral("kalshi auto-plan")) {
+            const double selected_depth = signal.value(QStringLiteral("selected_depth")).toDouble();
+            const double model_confidence = signal.value(QStringLiteral("model_confidence")).toDouble();
+            const qint64 quote_ts = signal.value(QStringLiteral("quote_observed_at_ms")).toString().toLongLong();
+            const qint64 quote_age_ms = quote_ts > 0 ? now_ms - quote_ts : -1;
+            const auto evidence = edge_radar::KalshiAutoEngine::evaluate_micro_evidence(
+                edge_radar::KalshiMicroEvidenceInput{
+                    side, probability, selected_depth, model_confidence,
+                    edge_after_cost, quote_age_ms, seconds_left});
+            if (!evidence.eligible) {
+                report.skipped++;
+                continue;
+            }
+        }
 
         OpenPlan plan;
         plan.decision_id = id;
         plan.symbol = symbol;
-        plan.side = QStringLiteral("yes");
+        plan.side = side == QStringLiteral("no") ? QStringLiteral("no") : QStringLiteral("yes");
         plan.hypothetical = false;
         plan.limit_price = probability;
         plan.qty = notional_usd / probability;
         plan.target_price = QVariant();
         plan.stop_price = QVariant();
-        plan.expires_at = created_at + static_cast<qint64>(horizon_sec_param) * 1000;
+        const int actual_seconds_left = seconds_left > 0 ? seconds_left : horizon_sec_param;
+        plan.expires_at = created_at + static_cast<qint64>(actual_seconds_left) * 1000;
         plan.created_at = created_at;
         plan.state = QStringLiteral("open");
         plan.opened_at = QVariant(now_ms);
-        plan.entry_fee = fee_for(notional_usd, fees.taker_bps);
+        plan.entry_fee = journal_fee_per_contract > 0.0
+            ? journal_fee_per_contract * plan.qty
+            : fee_for(notional_usd, fees.taker_bps);
         plan.data_quality = data_quality_from_freshness(freshness);
         plan.notional_usd = notional_usd;
 
@@ -478,6 +588,9 @@ Result<void> open_prediction_candidates(const StrategyRow& strategy, const QJson
         if (ins.is_err())
             return ins;
         report.opened++;
+        active_market_ids.insert(market_id);
+        if (max_open_positions > 0 && --remaining_slots == 0)
+            break;
     }
     return Result<void>::ok();
 }
@@ -754,6 +867,107 @@ Result<void> advance_pending_fills(const QString& ticks_path, qint64 now_ms, Cyc
     return Result<void>::ok();
 }
 
+// Reprice open prediction positions from the latest timestamped journal
+// snapshot for the same Kalshi ticker. This is an executable paper exit:
+// the held side closes at its current bid, never at midpoint or model fair.
+Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
+    auto& db = Database::instance();
+    auto selected = db.execute(
+        "SELECT position.position_id, position.side, position.limit_price, position.qty,"
+        " position.entry_fee, position.notional_usd, position.opened_at, original.market_id,"
+        " strategy.params_json"
+        " FROM sandbox_position position"
+        " JOIN edge_decision_journal original ON original.id=position.decision_id"
+        " JOIN sandbox_strategy strategy ON strategy.strategy_id=position.strategy_id"
+        " WHERE position.state='open' AND position.hypothetical=0"
+        " AND position.side IN ('yes','no')");
+    if (selected.is_err())
+        return Result<void>::err(selected.error());
+
+    struct Row {
+        QString position_id, side, market_id;
+        double entry = 0.0, qty = 0.0, entry_fee = 0.0, notional = 0.0;
+        qint64 opened_at = 0;
+        QJsonObject params;
+    };
+    QList<Row> rows;
+    auto& query = selected.value();
+    while (query.next()) {
+        rows.append(Row{query.value(0).toString(), query.value(1).toString(),
+                        query.value(7).toString(), query.value(2).toDouble(),
+                        query.value(3).toDouble(), query.value(4).toDouble(),
+                        query.value(5).toDouble(), query.value(6).toLongLong(),
+                        parse_object(query.value(8).toString())});
+    }
+
+    for (const auto& row : rows) {
+        if (row.market_id.isEmpty() || row.entry <= 0.0)
+            continue;
+        if (row.params.value(QStringLiteral("exit_policy")).toString() != QStringLiteral("managed"))
+            continue;
+        const QString source = row.params.value(QStringLiteral("journal_source")).toString();
+        auto latest = db.execute(
+            "SELECT side, model_probability, features_json, gate_edge, created_at"
+            " FROM edge_decision_journal WHERE source=? AND market_id=? AND created_at>?"
+            " ORDER BY created_at DESC LIMIT 1",
+            {source, row.market_id, row.opened_at});
+        if (latest.is_err())
+            return Result<void>::err(latest.error());
+        if (!latest.value().next())
+            continue;
+
+        auto& current = latest.value();
+        const QString selected_side = current.value(0).toString().trimmed().toLower();
+        const double selected_probability = current.value(1).toDouble();
+        const QJsonObject features = parse_object(current.value(2).toString());
+        const QJsonObject signal = features.value(QStringLiteral("signal")).toObject();
+        const double exit_bid = signal.value(row.side == QStringLiteral("yes")
+                                                  ? QStringLiteral("yes_bid")
+                                                  : QStringLiteral("no_bid")).toDouble();
+        if (exit_bid <= 0.0)
+            continue;
+
+        const double held_model_probability = selected_side == row.side
+            ? selected_probability : 1.0 - selected_probability;
+        const double move = (exit_bid - row.entry) / row.entry;
+        const double take_profit = row.params.value(QStringLiteral("take_profit_pct")).toDouble(0.20);
+        const double stop_loss = row.params.value(QStringLiteral("stop_loss_pct")).toDouble(0.20);
+        const double exit_fee = kalshi_prediction_fee_per_contract(exit_bid) * row.qty;
+        const double remaining_edge = held_model_probability - exit_bid -
+                                      (row.notional > 0.0 ? exit_fee / row.notional : 0.0);
+
+        QString reason;
+        if (move >= take_profit)
+            reason = QStringLiteral("take_profit");
+        else if (move <= -stop_loss)
+            reason = QStringLiteral("stop_loss");
+        else if (remaining_edge <= -0.02)
+            reason = QStringLiteral("edge_reversal");
+        if (reason.isEmpty())
+            continue;
+
+        const double pnl = (exit_bid - row.entry) * row.qty - row.entry_fee - exit_fee;
+        auto updated = db.execute(
+            "UPDATE sandbox_position SET state='closed', closed_at=?, exit_fee=?, realized_pnl=?,"
+            " close_reason=? WHERE position_id=? AND state='open'",
+            {now_ms, exit_fee, pnl, reason, row.position_id});
+        if (updated.is_err())
+            return Result<void>::err(updated.error());
+        if (updated.value().numRowsAffected() == 0)
+            continue;
+        auto fill = db.execute(
+            "INSERT INTO sandbox_fill (fill_id, position_id, ts, kind, price, fee, note)"
+            " VALUES (?,?,?,?,?,?,?)",
+            {new_id(), row.position_id, now_ms, QStringLiteral("early_exit"), exit_bid, exit_fee,
+             QStringLiteral("%1; held_model=%2; remaining_edge=%3")
+                 .arg(reason).arg(held_model_probability, 0, 'f', 6).arg(remaining_edge, 0, 'f', 6)});
+        if (fill.is_err())
+            return Result<void>::err(fill.error());
+        report.closed++;
+    }
+    return Result<void>::ok();
+}
+
 // ---------------------------------------------------------------------
 // Step 3: open -> closed via check_exit. Restricted to concrete positions
 // (side buy/sell/long/short, hypothetical=0) -- prediction (side 'yes'/'no')
@@ -928,6 +1142,10 @@ Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir,
     auto step3 = advance_open_positions(ticks_path, now_ms, report);
     if (step3.is_err())
         return Result<CycleReport>::err(step3.error());
+
+    auto prediction_exits = advance_prediction_exits(now_ms, report);
+    if (prediction_exits.is_err())
+        return Result<CycleReport>::err(prediction_exits.error());
 
     // Step 4 (Task 8): settle prediction/hypothetical books steps 1-3 above
     // deliberately never advance to 'closed' -- see this file's header.

@@ -61,14 +61,14 @@ struct PredictionRow {
     qint64 expires_at = 0;
 };
 
-// Prediction books (side 'yes', hypothetical=0): settle against
+// Prediction books (side 'yes' or 'no', hypothetical=0): settle against
 // edge_decision_journal.outcome. See SandboxResolver.h for the full contract
 // and the outcome-semantics citation.
 Result<void> resolve_predictions(qint64 now_ms, ResolveReport& report) {
     auto& db = Database::instance();
     auto sel = db.execute(
         "SELECT position_id, decision_id, limit_price, entry_fee, qty, expires_at"
-        " FROM sandbox_position WHERE state = 'open' AND side = 'yes' AND hypothetical = 0");
+        " FROM sandbox_position WHERE state = 'open' AND side IN ('yes','no') AND hypothetical = 0");
     if (sel.is_err())
         return Result<void>::err(sel.error());
 

@@ -142,6 +142,8 @@ static pr::PredictionMarket parse_market(const QJsonObject& obj) {
                     str_or_num(obj.value("previous_yes_ask_dollars")));
     m.extras.insert(QStringLiteral("price_level_structure"),
                     obj.value("price_level_structure").toString());
+    m.extras.insert(QStringLiteral("fractional_trading_enabled"),
+                    obj.value("fractional_trading_enabled").toBool(false));
     m.extras.insert(QStringLiteral("mve_collection_ticker"),
                     obj.value("mve_collection_ticker").toString());
     m.extras.insert(QStringLiteral("mve_selected_legs"),
@@ -411,7 +413,7 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
     const int cap = qBound(1, limit, 500);
     QPointer<KalshiRestClient> self = this;
     get_json(u.toString(),
-             [self, category, frequencies, series_keywords, as_events, cap](const QJsonDocument& doc) {
+             [self, frequencies, series_keywords, as_events, cap](const QJsonDocument& doc) {
                  if (!self) return;
                  const auto arr = doc.object().value("series").toArray();
                  // Sort series by recency (last_updated_ts, ISO-8601 sorts
@@ -438,11 +440,11 @@ void KalshiRestClient::fetch_category(const QString& category, const QStringList
                  QStringList series;
                  series.reserve(by_recency.size());
                  for (const auto& p : by_recency) series.push_back(p.second);
-                 if (as_events) {
-                     self->fan_out_series_events(series, as_events, cap);
-                 } else {
-                     self->fan_out_series_markets(series, category, cap);
-                 }
+                 // Nested event payloads contain the complete active contract
+                 // ladder (hourly BTC threshold events can expose ~185 markets).
+                 // Flatten those for market callers instead of taking an
+                 // arbitrary first /markets page that can omit near-spot legs.
+                 self->fan_out_series_events(series, as_events, cap);
              },
              QStringLiteral("Kalshi.fetch_category.series"));
 }
@@ -461,6 +463,7 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
         int in_flight = 0;
         bool emitted = false;
         int limit = 0;
+        int per_series_cap = 0;
         int error_count = 0;
         QString last_error;
         QVector<pr::PredictionMarket> markets;
@@ -468,13 +471,18 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
     auto st = std::make_shared<State>();
     st->series = series;
     st->limit = limit;
+    st->per_series_cap = qBound(10, (limit + qMin(series.size(), kConcurrency) - 1) /
+                                         qMax(1, qMin(series.size(), kConcurrency)), 100);
     QPointer<KalshiRestClient> self = this;
 
     auto pump = std::make_shared<std::function<void()>>();
     *pump = [self, st, pump, category]() {
         if (!self || st->emitted) return;
 
-        const bool enough = st->markets.size() >= st->limit;
+        // Wait for the current fan-out batch before declaring the cap met.
+        // Otherwise one large series can fill the entire result before sibling
+        // series (for example BTC ranges vs BTC thresholds) are merged.
+        const bool enough = st->markets.size() >= st->limit && st->in_flight == 0;
         const bool exhausted = st->next >= st->series.size() && st->in_flight == 0;
         if (enough || exhausted) {
             st->emitted = true;
@@ -504,7 +512,7 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
             QUrlQuery q;
             q.addQueryItem(QStringLiteral("status"), QStringLiteral("open"));
             q.addQueryItem(QStringLiteral("series_ticker"), s);
-            q.addQueryItem(QStringLiteral("limit"), QStringLiteral("100"));
+            q.addQueryItem(QStringLiteral("limit"), QString::number(st->per_series_cap));
             u.setQuery(q);
 
             QNetworkRequest req{QUrl(u.toString())};
@@ -521,12 +529,14 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
                                                         .object()
                                                         .value("markets")
                                                         .toArray();
+                                  int added = 0;
                                   for (const auto& v : mkts) {
+                                      if (added >= st->per_series_cap) break;
                                       auto m = parse_market(v.toObject());
                                       m.extras.insert(QStringLiteral("series_ticker"), s);
                                       if (!category.isEmpty()) m.category = category;
                                       st->markets.push_back(std::move(m));
-                                      if (st->markets.size() >= st->limit) break;
+                                      ++added;
                                   }
                               } else if (self && !st->emitted) {
                                   ++st->error_count;
@@ -586,7 +596,7 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
     *pump = [self, st, pump, collected]() {
         if (!self || st->emitted) return;
 
-        const bool enough = collected(st) >= st->limit;
+        const bool enough = collected(st) >= st->limit && st->in_flight == 0;
         const bool exhausted = st->next >= st->series.size() && st->in_flight == 0;
         if (enough || exhausted) {
             // Emit once. If we hit `limit` with requests still in flight, emit
@@ -599,8 +609,23 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
                          .arg(st->market_count)
                          .arg(st->next)
                          .arg(st->limit));
+            QVector<pr::PredictionEvent> ordered_events = st->events;
+            const qint64 now = QDateTime::currentSecsSinceEpoch();
+            auto nearest_close = [now](const pr::PredictionEvent& event) {
+                qint64 close = std::numeric_limits<qint64>::max();
+                for (const auto& market : event.markets) {
+                    const qint64 candidate =
+                        QDateTime::fromString(market.end_date_iso, Qt::ISODate).toSecsSinceEpoch();
+                    if (candidate >= now && candidate < close) close = candidate;
+                }
+                return close;
+            };
+            std::stable_sort(ordered_events.begin(), ordered_events.end(),
+                             [&nearest_close](const auto& left, const auto& right) {
+                return nearest_close(left) < nearest_close(right);
+            });
             if (st->as_events) {
-                QVector<pr::PredictionEvent> out = st->events;
+                QVector<pr::PredictionEvent> out = ordered_events;
                 if (out.size() > st->limit) out.resize(st->limit);
                 emit self->events_ready(out, QString());
                 if (out.isEmpty() && st->error_count > 0) {
@@ -609,7 +634,7 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
                 }
             } else {
                 QVector<pr::PredictionMarket> mkts;
-                for (const auto& e : st->events)
+                for (const auto& e : ordered_events)
                     for (const auto& m : e.markets) mkts.push_back(m);
                 if (mkts.size() > st->limit) mkts.resize(st->limit);
                 emit self->markets_ready(mkts, QString());

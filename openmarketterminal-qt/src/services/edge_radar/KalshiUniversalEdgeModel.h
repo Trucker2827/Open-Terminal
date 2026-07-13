@@ -17,6 +17,10 @@ struct KalshiUniversalOptions {
     double strong_net_edge = 0.08;
     double minimum_liquidity_score = 0.30;
     double safety_buffer = 0.01;
+    double exit_cost_reserve = 0.01;
+    double annual_volatility = 0.70;
+    int minimum_seconds_left = 20;
+    int maximum_seconds_left = 2 * 24 * 60 * 60;
     bool allow_market_implied_baseline = true;
 };
 
@@ -36,6 +40,16 @@ struct KalshiUniversalSignal {
     double fee_cost = 0.0;
     double liquidity_score = 0.0;
     double confidence = 0.0;
+    double reference_price = 0.0;
+    double target_price = 0.0;
+    double executable_price = 0.0;
+    double yes_bid = 0.0;
+    double yes_ask = 0.0;
+    double no_bid = 0.0;
+    double no_ask = 0.0;
+    double exit_price = 0.0;
+    int seconds_left = -1;
+    QString underlying_symbol;
     QString side;
     QString recommendation;
     QString gate;
@@ -67,6 +81,16 @@ class KalshiUniversalEdgeModel {
         double model_probability = -1.0,
         double confidence_override = -1.0,
         const QString& probability_source = {});
+
+    /// Price a crypto threshold/range contract from a timestamped underlying
+    /// reference. The returned market_probability is the executable ask for
+    /// the selected YES/NO side, not a midpoint or last trade.
+    static KalshiUniversalSignal score_crypto_target(
+        const openmarketterminal::services::prediction::PredictionMarket& market,
+        double reference_price,
+        const KalshiUniversalOptions& options = {},
+        qint64 decision_ts_ms = 0,
+        const QString& probability_source = QStringLiteral("cross-exchange-spot-proxy"));
 
     static QVector<KalshiUniversalSignal> rank_markets(
         const QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,

@@ -1,4 +1,5 @@
 #include "screens/algo_trading/StrategyOpsMapPanel.h"
+#include "screens/algo_trading/StrategyEvidencePresentation.h"
 
 #include "core/config/ProfileManager.h"
 #include "services/sandbox/SandboxEligibility.h"
@@ -7,6 +8,7 @@
 #include "storage/sqlite/Database.h"
 #include "ui/theme/Theme.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLinearGradient>
@@ -95,8 +97,23 @@ void StrategyOpsMapPanel::animate() {
 void StrategyOpsMapPanel::refresh() {
     books_.clear();
     active_books_ = chronos_books_ = spot_books_ = hypothetical_books_ = 0;
-    open_positions_ = resolved_total_ = eligible_books_ = 0;
+    open_positions_ = resolved_total_ = eligible_books_ = no_edge_books_ = 0;
     net_pnl_total_ = 0.0;
+    decision_envelopes_ = trade_candidates_ = 0;
+    latest_decision_verdict_ = QStringLiteral("WAITING");
+    latest_decision_blocker_.clear();
+
+    decision_envelopes_ = scalar_int(QStringLiteral("SELECT COUNT(*) FROM decision_envelopes"));
+    trade_candidates_ = scalar_int(
+        QStringLiteral("SELECT COUNT(*) FROM decision_envelopes WHERE verdict='TRADE_CANDIDATE'"));
+    auto latest_envelope = Database::instance().execute(
+        QStringLiteral("SELECT verdict,envelope_json FROM decision_envelopes ORDER BY decision_ts DESC LIMIT 1"));
+    if (latest_envelope.is_ok() && latest_envelope.value().next()) {
+        latest_decision_verdict_ = latest_envelope.value().value(0).toString();
+        const QJsonObject envelope = parse_params(latest_envelope.value().value(1).toString());
+        const QJsonArray blockers = envelope.value(QStringLiteral("risk_blockers")).toArray();
+        if (!blockers.isEmpty()) latest_decision_blocker_ = blockers.first().toString();
+    }
 
     auto strategies = services::sandbox::list_strategies();
     if (strategies.is_err()) {
@@ -165,8 +182,12 @@ void StrategyOpsMapPanel::refresh() {
             in.gross_notional = lb->gross_notional;
         }
         b.eligible = services::sandbox::evaluate_eligibility(in).eligible;
+        b.no_edge = strategy_proof_state(b.hypothetical, b.eligible, b.resolved, b.net_pnl,
+                                         services::sandbox::kMinResolvedSample) == StrategyProofState::NoEdge;
         if (b.eligible)
             ++eligible_books_;
+        if (b.no_edge)
+            ++no_edge_books_;
 
         if (row.status == QStringLiteral("active"))
             ++active_books_;
@@ -193,7 +214,9 @@ void StrategyOpsMapPanel::refresh() {
     last_refresh_ms_ = QDateTime::currentMSecsSinceEpoch();
     status_text_ = books_.isEmpty()
         ? tr("No proof books yet. Seed books from Proof Books to start the machine.")
-        : tr("Sandbox/Chronos books are being watched locally. Paper-only evidence layer.");
+        : tr("Unified decisions are journaled locally. Latest: %1%2")
+              .arg(latest_decision_verdict_, latest_decision_blocker_.isEmpty()
+                    ? QString() : QStringLiteral(" — ") + latest_decision_blocker_);
     update();
 }
 
@@ -229,7 +252,7 @@ void StrategyOpsMapPanel::draw_hud(QPainter& p, const QRectF& r) {
     p.save();
     p.setFont(QFont(ui::fonts::DATA_FAMILY(), 10, QFont::Bold));
     p.setPen(QColor(ui::colors::AMBER()));
-    p.drawText(QRectF(18, 16, 360, 24), Qt::AlignLeft | Qt::AlignVCenter, tr("STRATEGY OPERATIONS MAP"));
+    p.drawText(QRectF(18, 16, 420, 24), Qt::AlignLeft | Qt::AlignVCenter, tr("LOCAL STRATEGY CONTROL CENTER"));
 
     p.setFont(QFont(ui::fonts::DATA_FAMILY(), 8));
     p.setPen(QColor(ui::colors::TEXT_SECONDARY()));
@@ -242,11 +265,12 @@ void StrategyOpsMapPanel::draw_hud(QPainter& p, const QRectF& r) {
     struct Chip { QString label; QString value; QColor color; };
     const QVector<Chip> chips = {
         {tr("BOOKS"), QString::number(books_.size()), QColor(ui::colors::TEXT_PRIMARY())},
-        {tr("ACTIVE"), QString::number(active_books_), QColor(ui::colors::POSITIVE())},
+        {tr("ENVELOPES"), QString::number(decision_envelopes_), QColor(ui::colors::CYAN())},
         {tr("CHRONOS"), QString::number(chronos_books_), QColor(167, 139, 250)},
         {tr("OPEN"), QString::number(open_positions_), QColor(ui::colors::AMBER())},
         {tr("RESOLVED"), QString::number(resolved_total_), QColor(ui::colors::CYAN())},
         {tr("ELIGIBLE"), QString::number(eligible_books_), QColor(ui::colors::POSITIVE())},
+        {tr("NO EDGE"), QString::number(no_edge_books_), no_edge_books_ > 0 ? QColor(ui::colors::NEGATIVE()) : QColor(ui::colors::TEXT_PRIMARY())},
         {tr("NET"), money(net_pnl_total_), net_pnl_total_ >= 0.0 ? QColor(ui::colors::POSITIVE()) : QColor(ui::colors::NEGATIVE())},
     };
     qreal x = 18;
@@ -277,9 +301,9 @@ void StrategyOpsMapPanel::draw_flow(QPainter& p, const QRectF& r) {
         {tr("NEWS + NOTES"), QPointF(w * 0.20, h * 0.70)},
     };
     const QVector<QPair<QString, QPointF>> right_nodes = {
-        {tr("PAPER EXECUTOR"), QPointF(w * 0.82, h * 0.34)},
-        {tr("OUTCOME RESOLVER"), QPointF(w * 0.86, h * 0.52)},
-        {tr("LEADERBOARD"), QPointF(w * 0.80, h * 0.70)},
+        {tr("RISK GATE"), QPointF(w * 0.82, h * 0.34)},
+        {tr("PAPER EXECUTOR"), QPointF(w * 0.86, h * 0.52)},
+        {tr("OUTCOME + SCORE"), QPointF(w * 0.80, h * 0.70)},
     };
 
     for (int i = 0; i < left_nodes.size(); ++i) {
@@ -291,12 +315,15 @@ void StrategyOpsMapPanel::draw_flow(QPainter& p, const QRectF& r) {
     draw_node(p, QPointF(center.x(), center.y() - 116), 48, tr("CHRONOS-2"), tr("forecast books"), QColor(167, 139, 250), chronos_books_ > 0);
     draw_particle_line(p, QPointF(center.x(), center.y() - 116), center, QColor(167, 139, 250), 0.37);
 
-    draw_node(p, center, 64, tr("RISK GATE"), tr("paper-only proof"), QColor(ui::colors::AMBER()), true);
+    draw_node(p, center, 64, tr("DECISION ENVELOPE"), latest_decision_verdict_,
+              QColor(ui::colors::AMBER()), decision_envelopes_ > 0);
 
     for (int i = 0; i < right_nodes.size(); ++i) {
         const QColor c = i == 0 ? QColor(ui::colors::POSITIVE()) : (i == 1 ? QColor(ui::colors::CYAN()) : QColor(ui::colors::AMBER()));
         draw_particle_line(p, center, right_nodes[i].second, c, 0.44 + i * 0.19);
-        draw_node(p, right_nodes[i].second, 42, right_nodes[i].first, i == 0 ? tr("fills") : (i == 1 ? tr("settles") : tr("scores")), c, true);
+        draw_node(p, right_nodes[i].second, 42, right_nodes[i].first,
+                  i == 0 ? tr("%1 candidates").arg(trade_candidates_)
+                         : (i == 1 ? tr("paper fills") : tr("settles + learns")), c, true);
     }
 }
 
@@ -383,6 +410,8 @@ void StrategyOpsMapPanel::draw_particle_line(QPainter& p, const QPointF& a, cons
 QColor StrategyOpsMapPanel::color_for_book(const BookNode& b) const {
     if (b.eligible)
         return QColor(ui::colors::POSITIVE());
+    if (b.no_edge)
+        return QColor(ui::colors::NEGATIVE());
     if (b.hypothetical)
         return QColor(ui::colors::TEXT_TERTIARY());
     if (b.chronos)

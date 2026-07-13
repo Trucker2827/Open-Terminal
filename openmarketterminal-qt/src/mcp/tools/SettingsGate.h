@@ -76,7 +76,10 @@ QStringList cli_allowed_venues();
 /// cli_allowed_venues(). Default-deny: false when the list is empty.
 bool cli_venue_allowed(const QString& venue);
 
-/// `cli.kill_switch` == "true" — the PANIC button (Phase C). When engaged it
+/// `cli.kill_switch` or `cli.kill_switch_latched` == "true" — the PANIC button
+/// (Phase C). The latched key prevents stale GUI state from clearing an
+/// emergency stop; only an explicit human reset in Security may clear it.
+/// When engaged it
 /// halts ALL AI trading (paper AND live): every order-flow handler checks this
 /// FIRST and short-circuits to a recorded refusal before any drafting or
 /// execution. GUI-only (a human owns it; the CLI/agent can never write it).

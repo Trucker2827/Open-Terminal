@@ -99,7 +99,8 @@ QStringList CryptoLatencyService::default_sources() {
 
 QStringList CryptoLatencyService::supported_sources() {
     return {QStringLiteral("coinbase"), QStringLiteral("kraken"), QStringLiteral("binanceus"),
-            QStringLiteral("binance"), QStringLiteral("bitcointicker")};
+            QStringLiteral("binance"), QStringLiteral("binanceperp"),
+            QStringLiteral("bitcointicker")};
 }
 
 QString CryptoLatencyService::normalize_symbol(QString symbol) {
@@ -222,6 +223,10 @@ CryptoLatencyService::Feed CryptoLatencyService::make_feed(const QString& source
         f.venue_symbol = binance_pair(symbol);
         f.url = QStringLiteral("wss://stream.binance.us:9443/stream?streams=%1@trade/%1@bookTicker")
                     .arg(f.venue_symbol);
+    } else if (source == QStringLiteral("binanceperp")) {
+        f.venue_symbol = binance_pair(symbol);
+        f.url = QStringLiteral("wss://fstream.binance.com/stream?streams=%1@trade/%1@bookTicker")
+                    .arg(f.venue_symbol);
     } else {
         f.venue_symbol = binance_pair(symbol);
         f.url = QStringLiteral("wss://stream.binance.com:9443/stream?streams=%1@trade/%1@bookTicker")
@@ -310,7 +315,8 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
     if (obj.contains(QStringLiteral("data")) && obj.value(QStringLiteral("data")).isObject())
         obj = obj.value(QStringLiteral("data")).toObject();
     QString message_type;
-    if (source == QStringLiteral("binance") || source == QStringLiteral("binanceus")) {
+    if (source == QStringLiteral("binance") || source == QStringLiteral("binanceus") ||
+        source == QStringLiteral("binanceperp")) {
         message_type = obj.value(QStringLiteral("e")).toString();
     } else if (source == QStringLiteral("coinbase")) {
         message_type = obj.value(QStringLiteral("channel")).toString();
@@ -331,7 +337,8 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
     tick.venue_symbol = venue_symbol;
     tick.received_ts_ms = now_ms();
 
-    if (source == QStringLiteral("binance") || source == QStringLiteral("binanceus")) {
+    if (source == QStringLiteral("binance") || source == QStringLiteral("binanceus") ||
+        source == QStringLiteral("binanceperp")) {
         const QString event = obj.value(QStringLiteral("e")).toString();
         if (event == QStringLiteral("bookTicker")) {
             tick.best_bid = as_double(obj.value(QStringLiteral("b")));

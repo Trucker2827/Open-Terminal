@@ -1,5 +1,15 @@
 # QtTest suite (built only when OPENMARKETTERMINAL_BUILD_TESTS=ON).
 find_package(Qt6 REQUIRED COMPONENTS Test Network Concurrent)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+# Read-only authenticated Kalshi queue-position bridge. Uses unittest so the
+# packaged developer test path does not require pytest or other test extras.
+add_test(NAME test_prediction_kalshi_queue
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_prediction_kalshi_queue.py -v)
+add_test(NAME test_kalshi_strategy
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_strategy.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
@@ -457,6 +467,28 @@ target_include_directories(tst_kalshi_evidence PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_evidence PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_evidence COMMAND tst_kalshi_evidence)
 
+# Coherent Kalshi hourly probability surface, constrained portfolio selection,
+# no-lookahead replay, and API compatibility audit. Pure and paper-only.
+add_executable(tst_kalshi_auto_engine tst_kalshi_auto_engine.cpp)
+target_include_directories(tst_kalshi_auto_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_auto_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_auto_engine COMMAND tst_kalshi_auto_engine)
+
+add_executable(tst_decision_orchestrator tst_decision_orchestrator.cpp)
+target_include_directories(tst_decision_orchestrator PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_decision_orchestrator PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_decision_orchestrator COMMAND tst_decision_orchestrator)
+
+add_executable(tst_btc_news_pulse tst_btc_news_pulse.cpp)
+target_include_directories(tst_btc_news_pulse PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_btc_news_pulse PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_btc_news_pulse COMMAND tst_btc_news_pulse)
+
+add_executable(tst_bitcoin_evidence_engine tst_bitcoin_evidence_engine.cpp)
+target_include_directories(tst_bitcoin_evidence_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_bitcoin_evidence_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_bitcoin_evidence_engine COMMAND tst_bitcoin_evidence_engine)
+
 # Strategy Sandbox Task 1 — migration v056 schema (sandbox_strategy,
 # sandbox_position, sandbox_fill, sandbox_score). Opens a real profile DB
 # through the normal migration path under a temp $HOME (pattern of
@@ -522,6 +554,11 @@ add_executable(tst_sandbox_eligibility tst_sandbox_eligibility.cpp)
 target_include_directories(tst_sandbox_eligibility PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_eligibility PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_sandbox_eligibility COMMAND tst_sandbox_eligibility)
+
+add_executable(tst_strategy_evidence_presentation tst_strategy_evidence_presentation.cpp)
+target_include_directories(tst_strategy_evidence_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_strategy_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_strategy_evidence_presentation COMMAND tst_strategy_evidence_presentation)
 
 # Strategy Sandbox Task 11 — power-boundary check: the sandbox service
 # object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/

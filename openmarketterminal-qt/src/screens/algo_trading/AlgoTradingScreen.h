@@ -1,8 +1,6 @@
 // src/screens/algo_trading/AlgoTradingScreen.h
 #pragma once
-#include "screens/algo_trading/AlertsPanel.h"
 #include "screens/common/IStatefulScreen.h"
-#include "services/algo_trading/AlgoTradingTypes.h"
 
 #include <QEvent>
 #include <QHideEvent>
@@ -15,16 +13,12 @@
 
 namespace openmarketterminal::screens {
 
-class StrategyBuilderPanel;
-class StrategyListPanel;
 class SandboxBooksPanel;
-class ScannerPanel;
-class DeploymentDashboard;
 class StrategyOpsMapPanel;
-class UniverseScannerPanel;
+class StrategyAutomationPanel;
 
-/// Strategy workspace: operations map first, proof books and classic tools behind it.
-/// Tabs: Ops Map, Proof Books, Deployments, Classic Rules, Builder, Scanner, Alerts, Universe.
+/// Evidence-first strategy workspace. Every visible surface is backed by the
+/// sandbox registry, paper ledger, scorer, or the daemon jobs that feed them.
 class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     Q_OBJECT
   public:
@@ -33,7 +27,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     void restore_state(const QVariantMap& state) override;
     QVariantMap save_state() const override;
     QString state_key() const override { return "algo_trading"; }
-    int state_version() const override { return 2; }
+    int state_version() const override { return 3; }
 
   protected:
     void showEvent(QShowEvent* event) override;
@@ -52,20 +46,14 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
 
     QStackedWidget* content_stack_ = nullptr;
     StrategyOpsMapPanel* ops_map_ = nullptr;
-    StrategyBuilderPanel* builder_ = nullptr;
-    StrategyListPanel* strategies_ = nullptr;
     SandboxBooksPanel* proof_books_ = nullptr;
-    ScannerPanel* scanner_ = nullptr;
-    AlertsPanel* alerts_ = nullptr;
-    DeploymentDashboard* dashboard_ = nullptr;
-    UniverseScannerPanel* universe_ = nullptr;
+    StrategyAutomationPanel* automation_ = nullptr;
 
     QVector<QPushButton*> tab_buttons_;
     int active_tab_ = 0;
-    int active_deployments_ = 0;
     QLabel* title_label_ = nullptr;
     QLabel* engine_caption_ = nullptr;
-    QLabel* deploy_count_label_ = nullptr;
+    QLabel* mode_label_ = nullptr;
     QLabel* status_label_ = nullptr;
     QTimer* poll_timer_ = nullptr;
     bool first_show_ = true;

@@ -131,6 +131,8 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
     // singleton shared across slots). last_req_ records the request the bridge
     // actually fired so the happy-path test can assert the RESOLVED price/size.
     bool creds_ = true;
+    bool suppress_place_result_ = false;
+    int place_order_calls_ = 0;
     pred::OrderRequest last_req_;
 
     bool has_credentials() const override { return creds_; }
@@ -140,7 +142,10 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
     void fetch_open_orders() override {}
     void fetch_user_activity(int) override {}
     void place_order(const pred::OrderRequest& req) override {
+        ++place_order_calls_;
         last_req_ = req;
+        if (suppress_place_result_)
+            return;
         // Async fill on the event loop while run_async_wait blocks the worker —
         // exercising the real correlated+timed bridge. A success OrderResult.
         QMetaObject::invokeMethod(
@@ -476,7 +481,10 @@ class TstPmPaper : public QObject {
             "prepare_order",
             QJsonObject{{"asset_class", "prediction"}, {"venue", "polymarket"},
                         {"market_id", "mkt-1"}, {"asset_id", "asset-yes"},
-                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10}});
+                        {"outcome", "Yes"}, {"side", "buy"}, {"contracts", 10},
+                        {"autonomous", true}, {"max_orders_per_hour", 10},
+                        {"automation_session_id", "session-test"},
+                        {"automation_session_ends_at", "2026-12-30T00:00:00.000Z"}});
         QVERIFY2(res.success, qPrintable("pm prepare should succeed: " + res.error));
         const QJsonObject data = res.data.toObject();
         QCOMPARE(data.value("status").toString(), QStringLiteral("prepared"));
@@ -493,6 +501,14 @@ class TstPmPaper : public QObject {
         QCOMPARE(got.value().status, QStringLiteral("prepared"));
         QCOMPARE(got.value().account, QStringLiteral("pm-paper"));
         QCOMPARE(got.value().mode_hint, QStringLiteral("paper"));
+        const QJsonObject persisted_intent =
+            QJsonDocument::fromJson(got.value().intent_json.toUtf8()).object();
+        QVERIFY(persisted_intent.value(QStringLiteral("autonomous")).toBool());
+        QCOMPARE(persisted_intent.value(QStringLiteral("max_orders_per_hour")).toInt(), 10);
+        QCOMPARE(persisted_intent.value(QStringLiteral("automation_session_id")).toString(),
+                 QStringLiteral("session-test"));
+        QCOMPARE(persisted_intent.value(QStringLiteral("automation_session_ends_at")).toString(),
+                 QStringLiteral("2026-12-30T00:00:00.000Z"));
 
         auto recent = TradeAuditRepository::instance().recent(50);
         QVERIFY2(recent.is_ok(), "audit recent() failed");
@@ -776,6 +792,7 @@ class TstPmPaper : public QObject {
 
         QVERIFY2(fake_adapter(), "fake adapter must be registered");
         fake_adapter()->creds_ = true;
+        fake_adapter()->suppress_place_result_ = false;
 
         arm_live();
         auto res = rt_.call_tool("submit_order",
@@ -795,7 +812,7 @@ class TstPmPaper : public QObject {
         QCOMPARE(req.size, 10.0);
         QVERIFY2(qFuzzyCompare(req.price, 0.45), "OrderRequest must carry the RESOLVED best_ask 0.45");
         QCOMPARE(req.key.exchange_id, QStringLiteral("polymarket"));
-        QVERIFY2(!req.client_order_id.isEmpty(), "a client_order_id must be generated");
+        QCOMPARE(req.client_order_id, draft_id);
 
         // A live ledger row opened at the resolved price (NOT the AI's limit).
         auto pos = LivePnlRepository::instance().get_open("", "polymarket", "live-happy");
@@ -807,6 +824,63 @@ class TstPmPaper : public QObject {
         QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
                  QStringLiteral("submitted"));
         QVERIFY2(find_submit_audit("filled", "live"), "the live fill must be audited mode 'live'");
+    }
+
+    // A local timeout does not prove rejection. Keep the draft and its market
+    // locked under the same exchange client UUID until account reconciliation
+    // determines whether Kalshi accepted the order.
+    void pm_submit_live_timeout_is_indeterminate_and_not_retryable() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-timeout", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        fake_adapter()->suppress_place_result_ = true;
+        const int calls_before = fake_adapter()->place_order_calls_;
+        qputenv("OPENTERMINAL_TEST_PM_PLACE_TIMEOUT_MS", "25");
+
+        arm_live();
+        auto res = rt_.call_tool("submit_order",
+                                 QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        qunsetenv("OPENTERMINAL_TEST_PM_PLACE_TIMEOUT_MS");
+        fake_adapter()->suppress_place_result_ = false;
+
+        QVERIFY2(res.success, qPrintable("timeout remains an auditable decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("submission_unknown"));
+        QVERIFY(data.value("reconciliation_required").toBool());
+        QCOMPARE(data.value("client_order_id").toString(), draft_id);
+        QCOMPARE(fake_adapter()->last_req_.client_order_id, draft_id);
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("submission_unknown"));
+        verify_no_live_position("live-timeout");
+
+        arm_live();
+        const auto retry = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY(!retry.success || retry.data.toObject().value("status").toString() ==
+                                  QStringLiteral("rejected"));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+
+        const QString other_draft = prepare_pm_buy(
+            QStringLiteral("live-after-timeout"), 10, QStringLiteral("mkt-2"));
+        QVERIFY2(!other_draft.isEmpty(), "a second market can still be drafted for review");
+        arm_live();
+        const auto other_submit = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", other_draft}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY(other_submit.success);
+        QCOMPARE(other_submit.data.toObject().value("status").toString(),
+                 QStringLiteral("rejected"));
+        QVERIFY(other_submit.data.toObject().value("reconciliation_required").toBool());
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+        QVERIFY(OrderDraftRepository::instance()
+                    .update_status(draft_id, QStringLiteral("reconciled_rejected"))
+                    .is_ok());
     }
 
     // GATE — NOT ARMED: venue allowed + creds present, but the live arming toggle

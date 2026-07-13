@@ -37,9 +37,9 @@
 #
 # Flow (mirrors PaperExecutor.cpp's open_price_forecast_candidates /
 # advance_open_positions and PaperFillModel.cpp's check_exit):
-#   1. `sandbox seed` registers the eleven season-1 books (spot 1h/4h/1d,
-#      kalshi 15m/1h/1d, long_short, plus Chronos BTC 15m/1h/1d and equity;
-#      scalp/btc5m/chronos2_5m are retired, not seeded).
+#   1. `sandbox seed` registers 28 books (Kraken/Coinbase scalp,
+#      spot 1h/4h/1d, 18 Kalshi v2 cohort/policy books, long_short, plus Chronos BTC
+#      15m/1h/1d and equity; btc5m/chronos2_5m are retired).
 #   2. A fresh chronos2-forecast/horizon=15m/side=buy journal row is
 #      inserted directly into edge_decision_journal (via python3's stdlib
 #      sqlite3 against the profile DB — there is no scalp-style .jsonl
@@ -119,9 +119,9 @@ SEED_JSON="$(wd 30 "$CLI" --json sandbox seed)" || fail "sandbox seed exited non
 printf '%s' "$SEED_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 8, d
-" || fail "sandbox seed did not report 8 seeded strategy ids: $SEED_JSON"
-echo "PASS: sandbox seed -> 8 strategies"
+assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 28, d
+" || fail "sandbox seed did not report 28 seeded strategy ids: $SEED_JSON"
+echo "PASS: sandbox seed -> 28 strategies"
 
 CHRONOS_ID="$(printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json
@@ -132,18 +132,20 @@ print(ids[0] if ids else '')
 [ -n "$CHRONOS_ID" ] || fail "no active chronos2 (15m) strategy after seed"
 echo "PASS: chronos2 (15m) strategy id = $CHRONOS_ID"
 
-# Removed-kind retirement (task 2 of the horizon reshape): scalp/btc5m must
-# never be ACTIVE after a seed, regardless of what an older binary may have
-# left behind.
+# Removed-kind retirement: btc5m/chronos2_5m must never remain active. Scalp
+# remains active only as venue-specific Kraken/Coinbase paper books.
 printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 kinds = {s['kind'] for s in d['strategies']}
-assert 'scalp' not in kinds, d
 assert 'btc5m' not in kinds, d
 assert 'chronos2_5m' not in kinds, d
+scalps = [s for s in d['strategies'] if s['kind'] == 'scalp']
+assert len(scalps) == 2, d
+venues = {s['params']['venue'] for s in scalps}
+assert venues == {'kraken_pro', 'coinbase_advanced'}, d
 " || fail "sandbox seed left a removed-kind book ACTIVE"
-echo "PASS: no scalp/btc5m/chronos2_5m book is active after seed"
+echo "PASS: venue scalp books active; removed horizon books retired"
 
 # ============================================================================
 # Locate the app root the CLI actually bootstrapped `sandbox seed` into, by

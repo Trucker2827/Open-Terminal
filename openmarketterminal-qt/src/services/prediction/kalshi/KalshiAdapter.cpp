@@ -374,6 +374,8 @@ void KalshiAdapter::unsubscribe_market(const QStringList& asset_ids) {
 
 bool KalshiAdapter::is_ws_connected() const { return ws_->is_connected(); }
 
+void KalshiAdapter::restart_websocket() { ws_->restart(); }
+
 // ── Auth / trading (Python bridge) ──────────────────────────────────────────
 
 bool KalshiAdapter::has_credentials() const { return creds_.is_valid(); }
@@ -476,6 +478,8 @@ void KalshiAdapter::fetch_positions() {
                    p.realized_pnl = o.value("realized_pnl").toDouble();
                    p.unrealized_pnl = o.value("unrealized_pnl").toDouble();
                    p.current_value = o.value("current_value").toDouble();
+                   p.total_traded = o.value("total_traded").toDouble();
+                   p.fees_paid = o.value("fees_paid").toDouble();
                    out.push_back(p);
                }
                emit self->positions_ready(out);
@@ -491,6 +495,22 @@ void KalshiAdapter::fetch_settlements(int limit, const QString& cursor) {
            [self](const QJsonObject& response) {
                if (self) emit self->settlements_ready(response.value(QStringLiteral("settlements")).toArray());
            }, QStringLiteral("fetch_settlements"));
+}
+
+void KalshiAdapter::fetch_queue_positions(const QString& market_tickers,
+                                          const QString& event_ticker,
+                                          int subaccount) {
+    QPointer<KalshiAdapter> self = this;
+    run_py(QStringLiteral("queue_positions"),
+           QJsonObject{{QStringLiteral("market_tickers"), market_tickers},
+                       {QStringLiteral("event_ticker"), event_ticker},
+                       {QStringLiteral("subaccount"), qBound(0, subaccount, 32)}},
+           [self](const QJsonObject& response) {
+               if (!self) return;
+               emit self->queue_positions_ready(
+                   response.value(QStringLiteral("queue_positions")).toArray(),
+                   response.value(QStringLiteral("resting_orders")).toInt());
+           }, QStringLiteral("fetch_queue_positions"));
 }
 
 void KalshiAdapter::fetch_open_orders() {
@@ -547,7 +567,7 @@ void KalshiAdapter::place_order(const pr::OrderRequest& req) {
     extra.insert("side", side);
     extra.insert("action", req.side.toLower() == QStringLiteral("sell") ? QStringLiteral("sell")
                                                                          : QStringLiteral("buy"));
-    extra.insert("count", int(req.size));
+    extra.insert("count", req.size);
     const QString order_type = req.order_type.isEmpty() ? QStringLiteral("limit")
                                                         : req.order_type.toLower();
     extra.insert("order_type", order_type);
@@ -556,6 +576,10 @@ void KalshiAdapter::place_order(const pr::OrderRequest& req) {
     if (side == QStringLiteral("yes")) extra.insert("yes_price_cents", price_cents);
     else extra.insert("no_price_cents", price_cents);
     if (req.expires_ms > 0) extra.insert("expiration_ts", qint64(req.expires_ms / 1000));
+    extra.insert("post_only", req.extras.value(QStringLiteral("post_only")).toBool());
+    extra.insert("reduce_only", req.extras.value(QStringLiteral("reduce_only")).toBool());
+    extra.insert("cancel_order_on_pause",
+                 req.extras.value(QStringLiteral("cancel_order_on_pause"), true).toBool());
     extra.insert("client_order_id", req.client_order_id.isEmpty()
                                         ? QUuid::createUuid().toString(QUuid::WithoutBraces)
                                         : req.client_order_id);
@@ -741,6 +765,10 @@ void KalshiAdapter::set_credentials(const KalshiCredentials& creds) {
     emit credentials_changed();
 }
 
+void KalshiAdapter::subscribe_cf_benchmarks(const QStringList& index_ids) {
+    ws_->subscribe_cf_indices(index_ids);
+}
+
 // ── Hub registration ────────────────────────────────────────────────────────
 
 void KalshiAdapter::ensure_registered_with_hub() {
@@ -873,6 +901,8 @@ void KalshiAdapter::wire() {
             this, &KalshiAdapter::ws_orderbook_event);
     connect(ws_.get(), &KalshiWsClient::account_event,
             this, &KalshiAdapter::ws_account_event);
+    connect(ws_.get(), &KalshiWsClient::cf_benchmark_event,
+            this, &KalshiAdapter::ws_cf_benchmark_event);
     connect(ws_.get(), &KalshiWsClient::connection_status_changed,
             this, &KalshiAdapter::ws_connection_changed);
 }

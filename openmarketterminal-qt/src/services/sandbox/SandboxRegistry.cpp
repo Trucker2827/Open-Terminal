@@ -16,17 +16,20 @@ QString params_json_compact(const QJsonObject& params) {
     return QString::fromUtf8(QJsonDocument(params).toJson(QJsonDocument::Compact));
 }
 
-// Retires (status='retired') any ACTIVE book whose kind is no longer part of
-// the season-1 seed set: scalp/btc5m (no venue / no edge; fee-dead sub-minute
-// or unlisted 5m book), chronos2_5m (dropped in the horizon reshape), and
-// kalshi (the kalshi-scan producer has no pricing model, so its books can never
-// be fed). This runs at the end of every seed_default_strategies() call so a
+// Retires removed legacy books. Venue-specific scalp books remain active so
+// lower-cost venues and future fee changes can be tested independently. Only
+// old scalp rows without a venue are retired because their P&L cannot be
+// attributed to an executable fee schedule.
+// Kalshi books are intentionally retained: the crypto producer now prices
+// executable YES/NO asks from target, close time, spot, fees, and exit reserve.
+// This runs at the end of every seed_default_strategies() call so a
 // reseed durably kills a pre-existing row of a removed kind even though
 // register_strategy() itself only ever inserts, never mutates.
 Result<void> retire_removed_kinds() {
     auto r = Database::instance().execute(
         "UPDATE sandbox_strategy SET status = 'retired' "
-        "WHERE status = 'active' AND kind IN ('scalp', 'btc5m', 'chronos2_5m', 'kalshi')",
+        "WHERE status = 'active' AND (kind IN ('btc5m', 'chronos2_5m') "
+        "OR (kind='scalp' AND json_extract(params_json, '$.venue') IS NULL))",
         {});
     if (r.is_err())
         return Result<void>::err(r.error());
@@ -126,15 +129,41 @@ Result<QList<QString>> seed_default_strategies() {
     // Season-1 defaults — params objects are binding per the sandbox core plan
     // (task 2 brief); do not tweak field values without updating the brief.
     //
-    // Real-horizon reshape (2026-07-07 plan): scalp, btc5m, and chronos2_5m
-    // have no venue / no edge (sub-minute or unlisted horizons) and are
-    // retired outright -- see retire_removed_kinds() below. spot and kalshi
-    // are each three horizon variants of the SAME kind ('spot'/'kalshi'):
-    // params differ (horizon_sec/target_move_pct/stop_move_pct for spot,
-    // horizon_sec/max_age_sec for kalshi), so each variant content-hashes to
-    // a distinct strategy_id and all three coexist under one journal feed
-    // (migration v058's per-strategy dedup makes that safe).
-    const QList<Seed> seeds = {
+    // Real-horizon reshape (2026-07-07 plan): btc5m and chronos2_5m have no
+    // venue / no edge and are retired outright. Scalp experiments are now
+    // explicitly venue- and fee-profile-specific. spot and kalshi
+    // Every experiment configuration is content-addressed. Kalshi uses a v2
+    // protocol with explicit horizon, entry-time cohort, and exit policy so
+    // unlike experiments can never share a score.
+    QList<Seed> seeds = {
+        {QStringLiteral("scalp"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
+         QJsonObject{{"notional_usd", 50.0},
+                     {"source", "scalp_decisions"},
+                     {"venue", "kraken_pro"},
+                     {"liquidity", "maker"},
+                     {"maker_bps", 25.0},
+                     {"taker_bps", 40.0},
+                     {"max_age_sec", 15},
+                     {"entry_offset_bps", 1.0},
+                     {"target_bps", 85.0},
+                     {"stop_bps", 45.0},
+                     {"horizon_sec", 900},
+                     {"paper_only", true},
+                     {"fee_profile_source", "Kraken Pro account tier; verify before live"}}},
+        {QStringLiteral("scalp"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
+         QJsonObject{{"notional_usd", 50.0},
+                     {"source", "scalp_decisions"},
+                     {"venue", "coinbase_advanced"},
+                     {"liquidity", "maker"},
+                     {"maker_bps", 40.0},
+                     {"taker_bps", 60.0},
+                     {"max_age_sec", 15},
+                     {"entry_offset_bps", 1.0},
+                     {"target_bps", 120.0},
+                     {"stop_bps", 60.0},
+                     {"horizon_sec", 900},
+                     {"paper_only", true},
+                     {"fee_profile_source", "Coinbase Advanced account tier; verify before live"}}},
         {QStringLiteral("spot"), QStringLiteral("BTC-USD,ETH-USD,SOL-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
@@ -168,17 +197,6 @@ Result<QList<QString>> seed_default_strategies() {
                      {"target_move_pct", 5.0},
                      {"stop_move_pct", 2.5},
                      {"horizon_sec", 86400}}},
-        // max_age_sec on the prediction/hypothetical books (task-5 review
-        // fix 3): the executor's staleness cutoff -- without it, activating
-        // a book would backfill positions from arbitrarily old gate-pass
-        // journal history. Changing these params changes the strategy_ids
-        // (content-addressed) -- acceptable pre-season.
-        // kalshi (15m/1h/1d) removed 2026-07-07: the edge journal-kalshi-scan
-        // producer is a market classifier with NO pricing model -- every row is
-        // call='research'/data_status='research_needed' with model_probability
-        // echoing market_probability, so the gate rejects 100% (0 passes over
-        // 27k rows) and the books can never be fed. Retired via retire_removed_kinds()
-        // below. Re-add when a real Kalshi edge model exists.
         {QStringLiteral("long_short"), QStringLiteral("BTC-USD"),
          QJsonObject{{"notional_usd", 50.0},
                      {"source", "edge_journal"},
@@ -247,6 +265,51 @@ Result<QList<QString>> seed_default_strategies() {
                      {"horizon_sec", 86400}}},
     };
 
+    struct KalshiCohort {
+        const char* horizon;
+        const char* entry_cohort;
+        int min_seconds_left;
+        int max_seconds_left;
+        int horizon_sec;
+    };
+    static constexpr KalshiCohort kKalshiCohorts[] = {
+        {"15m", "late", 20, 60, 900},
+        {"15m", "middle", 61, 300, 900},
+        {"15m", "early", 301, 900, 900},
+        {"1h", "late", 30, 180, 3600},
+        {"1h", "middle", 181, 900, 3600},
+        {"1h", "early", 901, 3600, 3600},
+        {"daily", "late", 300, 3600, 86400},
+        {"daily", "middle", 3601, 21600, 86400},
+        {"daily", "early", 21601, 172800, 86400},
+    };
+    for (const KalshiCohort& cohort : kKalshiCohorts) {
+        for (const QString& exit_policy : {QStringLiteral("settlement"), QStringLiteral("managed")}) {
+            QJsonObject params{{"notional_usd", 2.0},
+                               {"source", "edge_journal"},
+                               {"journal_source", "kalshi auto-plan"},
+                               {"venue", "kalshi"},
+                               {"prediction", true},
+                               {"paper_only", true},
+                               {"experiment_protocol", "kalshi-v2"},
+                               {"horizon", QString::fromLatin1(cohort.horizon)},
+                               {"entry_cohort", QString::fromLatin1(cohort.entry_cohort)},
+                               {"exit_policy", exit_policy},
+                               {"allowed_side", "both"},
+                               {"min_seconds_left", cohort.min_seconds_left},
+                               {"max_seconds_left", cohort.max_seconds_left},
+                               {"min_entry_probability", 0.05},
+                               {"max_entry_probability", 0.95},
+                               {"horizon_sec", cohort.horizon_sec},
+                               {"max_age_sec", 5},
+                               {"max_open_positions", 0},
+                               {"take_profit_pct", 0.20},
+                               {"stop_loss_pct", 0.20},
+                               {"fee_model", "journal_exact"}};
+            seeds.append(Seed{QStringLiteral("kalshi"), QStringLiteral("BTC-USD"), params});
+        }
+    }
+
     QList<QString> ids;
     ids.reserve(seeds.size());
     for (const auto& s : seeds) {
@@ -259,6 +322,26 @@ Result<QList<QString>> seed_default_strategies() {
     auto retired = retire_removed_kinds();
     if (retired.is_err())
         return Result<QList<QString>>::err(retired.error());
+
+    // Quarantine every older parameterization of a managed seed kind. This
+    // preserves its evidence for audit while preventing contaminated legacy
+    // Kalshi books (and stale fee profiles in other lanes) from continuing to
+    // collect positions or appearing in the active proof leaderboard.
+    const QSet<QString> current_ids(ids.begin(), ids.end());
+    const QSet<QString> managed_kinds = {
+        QStringLiteral("scalp"), QStringLiteral("spot"), QStringLiteral("kalshi"),
+        QStringLiteral("long_short"), QStringLiteral("chronos2"), QStringLiteral("chronos2_1h"),
+        QStringLiteral("chronos2_1d"), QStringLiteral("chronos2_equity")};
+    auto active = list_strategies(QStringLiteral("active"));
+    if (active.is_err())
+        return Result<QList<QString>>::err(active.error());
+    for (const auto& row : active.value()) {
+        if (!managed_kinds.contains(row.kind) || current_ids.contains(row.strategy_id))
+            continue;
+        auto status = set_status(row.strategy_id, QStringLiteral("retired"));
+        if (status.is_err())
+            return Result<QList<QString>>::err(status.error());
+    }
 
     return Result<QList<QString>>::ok(ids);
 }

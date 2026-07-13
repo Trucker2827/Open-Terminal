@@ -758,8 +758,8 @@ void register_builtins() {
     register_screen("gov_data", "Government Data", {"gov", "census", "fred data", "government data"});
     register_screen("data_sources", "Data Sources", {"api", "data", "connectors", "data sources"});
     register_screen("equity_trading", "Equity Trading", {"trade", "orders", "equity trading"});
-    register_screen("bitcoin", "Bitcoin", {"btc", "xbt", "bitcoin", "satoshi", "bitcoin tape", "bitcoin trading"});
-    register_screen("crypto_trading", "Crypto Trading", {"crypto trade", "crypto trading", "altcoins"});
+    register_screen("crypto_trading", "Crypto Trading",
+                    {"crypto", "crypto trade", "crypto trading", "altcoins", "btc", "xbt", "bitcoin", "satoshi"});
     register_screen("derivatives", "Derivatives", {"opt", "options", "derivatives"});
     register_screen("fno", "FNO", {"fno", "nse options", "futures options"});
     register_screen("backtesting", "Strategy Lab", {"bt", "backtest", "strategy test", "strategy lab"});

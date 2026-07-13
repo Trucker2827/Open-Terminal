@@ -11,6 +11,7 @@ Commands:
     balance           — GET /portfolio/balance
     positions         — GET /portfolio/positions
     open_orders       — GET /portfolio/orders?status=resting
+    queue_positions   — GET /portfolio/orders/queue_positions
     fills             — GET /portfolio/fills
     place_order       — POST /portfolio/events/orders
     cancel_order      — DELETE /portfolio/orders/{order_id}
@@ -364,16 +365,17 @@ def cmd_balance(payload: dict) -> None:
         _fail(f"HTTP {code}", detail=data)
         return
     cents = int(data.get("balance", 0))
+    portfolio_cents = int(data.get("portfolio_value", cents))
     _emit({
         "ok": True,
         "available": cents / 100.0,
-        "total_value": cents / 100.0,
+        "total_value": portfolio_cents / 100.0,
         "currency": "USD",
     })
 
 def cmd_positions(payload: dict) -> None:
     ok, code, data = _request(payload, "GET", "/portfolio/positions",
-                              params={"limit": 500})
+                              params={"limit": 500, "count_filter": "position,total_traded"})
     if not ok:
         _fail(f"HTTP {code}", detail=data)
         return
@@ -383,10 +385,19 @@ def cmd_positions(payload: dict) -> None:
     # Kalshi does not expose unrealized PnL directly — the UI shows 0 rather
     # than the cumulative traded notional (which was mislabeled previously).
     for p in data.get("market_positions", []) or []:
+        # V2 currently uses position_fp. Keep the older `position` fallback
+        # because it preserves the signed YES/NO direction if Kalshi returns a
+        # legacy-shaped response for an archived or migrated market.
         position_fp = _to_float(p.get("position_fp"))
+        if position_fp == 0.0 and p.get("position") is not None:
+            position_fp = _to_float(p.get("position"))
         market_exposure = _to_float(p.get("market_exposure_dollars"))
         size = abs(position_fp)
-        avg_price = market_exposure / size if size > 0 else 0.0
+        # Kalshi may sign exposure with the YES/NO position direction. Entry
+        # price and current notional are magnitudes; direction is carried by
+        # `outcome` above.
+        exposure_value = abs(market_exposure)
+        avg_price = exposure_value / size if size > 0 else 0.0
         positions.append({
             "asset_id": (p.get("ticker") or "") + (":yes" if position_fp >= 0 else ":no"),
             "market_id": p.get("ticker", ""),
@@ -395,9 +406,11 @@ def cmd_positions(payload: dict) -> None:
             "avg_price": avg_price,
             "realized_pnl": _to_float(p.get("realized_pnl_dollars")),
             "unrealized_pnl": 0.0,
-            "current_value": market_exposure,
+            "current_value": exposure_value,
             "total_traded_dollars": _to_float(p.get("total_traded_dollars")),
             "fees_paid_dollars": _to_float(p.get("fees_paid_dollars")),
+            "total_traded": _to_float(p.get("total_traded_dollars")),
+            "fees_paid": _to_float(p.get("fees_paid_dollars")),
         })
     _emit({"ok": True, "positions": positions})
 
@@ -451,6 +464,67 @@ def cmd_open_orders(payload: dict) -> None:
     _emit({"ok": True, "orders": orders})
 
 
+def cmd_queue_positions(payload: dict) -> None:
+    """Return resting orders joined with their price-time queue positions.
+
+    Kalshi requires a market or event filter on the bulk queue endpoint. For
+    the user-friendly no-filter case, discover the account's resting markets
+    first and use those tickers as the filter. This command is read-only.
+    """
+    market_tickers = str(payload.get("market_tickers", "")).strip()
+    event_ticker = str(payload.get("event_ticker", "")).strip()
+    subaccount = int(payload.get("subaccount", 0))
+
+    orders_ok, orders_code, orders_data = _request(
+        payload, "GET", "/portfolio/orders",
+        params={"status": "resting", "limit": 1000, "subaccount": subaccount})
+    if not orders_ok:
+        _fail(f"HTTP {orders_code}", detail=orders_data)
+        return
+    orders = orders_data.get("orders", []) or []
+
+    if not market_tickers and not event_ticker:
+        tickers = sorted({str(o.get("ticker", "")).strip() for o in orders
+                          if str(o.get("ticker", "")).strip()})
+        market_tickers = ",".join(tickers)
+    if not market_tickers and not event_ticker:
+        _emit({"ok": True, "queue_positions": [], "resting_orders": 0})
+        return
+
+    params = {"subaccount": subaccount}
+    if market_tickers:
+        params["market_tickers"] = market_tickers
+    else:
+        params["event_ticker"] = event_ticker
+    ok, code, data = _request(payload, "GET",
+                              "/portfolio/orders/queue_positions", params=params)
+    if not ok:
+        _fail(f"HTTP {code}", detail=data)
+        return
+
+    orders_by_id = {str(o.get("order_id", "")): o for o in orders}
+    rows = []
+    for q in data.get("queue_positions", []) or []:
+        order_id = str(q.get("order_id", ""))
+        order = orders_by_id.get(order_id, {})
+        side = str(order.get("side") or order.get("outcome_side") or "").lower()
+        price_field = "yes_price_dollars" if side == "yes" else "no_price_dollars"
+        ahead = _to_float(q.get("queue_position_fp"))
+        rows.append({
+            "order_id": order_id,
+            "market_ticker": q.get("market_ticker") or order.get("ticker", ""),
+            "side": side.upper(),
+            "action": str(order.get("action", "")).upper(),
+            "price": _to_float(order.get(price_field)),
+            "remaining": _to_float(order.get("remaining_count_fp")),
+            "queue_position": ahead,
+            "queue_position_fp": str(q.get("queue_position_fp", "0.00")),
+            "readiness": "FRONT" if ahead <= 0 else ("NEAR" if ahead <= 10 else "WAITING"),
+        })
+    _emit({"ok": True, "queue_positions": rows,
+           "resting_orders": len(orders)})
+
+
 def cmd_fills(payload: dict) -> None:
     ok, code, data = _request(payload, "GET", "/portfolio/fills",
                               params={"limit": int(payload.get("limit", 100))})
@@ -482,6 +556,7 @@ def cmd_fills(payload: dict) -> None:
             "size": _to_float(f.get("count_fp")),
             "price": _to_float(f.get("yes_price_dollars") if side == "yes"
                                else f.get("no_price_dollars")),
+            "fee_cost": _to_float(f.get("fee_cost")),
             "is_taker": bool(f.get("is_taker", False)),
             "ts_ms": ts_ms,
         })
@@ -497,7 +572,43 @@ def cmd_settlements(payload: dict) -> None:
     if not ok:
         _fail(f"HTTP {code}", detail=data)
         return
-    _emit({"ok": True, "settlements": data.get("settlements", []) or [],
+    settlements_out = []
+    for s in data.get("settlements", []) or []:
+        yes_count = _to_float(s.get("yes_count_fp"))
+        no_count = _to_float(s.get("no_count_fp"))
+        yes_cost = _to_float(s.get("yes_total_cost_dollars"))
+        no_cost = _to_float(s.get("no_total_cost_dollars"))
+        fees = _to_float(s.get("fee_cost"))
+        # Revenue remains a legacy integer-cent field in the current endpoint;
+        # prefer a future fixed-point dollar field if Kalshi adds one.
+        revenue = (_to_float(s.get("revenue_dollars"))
+                   if s.get("revenue_dollars") is not None
+                   else _to_float(s.get("revenue")) / 100.0)
+        ticker = s.get("ticker", "")
+        settled_time = s.get("settled_time", "")
+        side = ("YES" if yes_count > 0 and no_count == 0 else
+                "NO" if no_count > 0 and yes_count == 0 else "MIXED")
+        realized_pnl = (revenue - yes_cost - no_cost - fees) if side != "MIXED" else None
+        settlements_out.append({
+            "internal_id": f"{ticker}:{settled_time}",
+            "market_id": ticker,
+            "event_ticker": s.get("event_ticker", ""),
+            "market_result": (s.get("market_result") or "").upper(),
+            "side": side,
+            "yes_count": yes_count,
+            "no_count": no_count,
+            "stake": yes_cost + no_cost,
+            "fees": fees,
+            "payout": revenue,
+            "realized_pnl": realized_pnl,
+            "accounting_status": ("exact_one_sided" if realized_pnl is not None
+                                  else "mixed_requires_fill_reconciliation"),
+            "settled_time": settled_time,
+        })
+    # Do not depend on exchange response order. ISO-8601 UTC timestamps sort
+    # lexicographically, so the newest closed bet is always rendered first.
+    settlements_out.sort(key=lambda row: row.get("settled_time", ""), reverse=True)
+    _emit({"ok": True, "settlements": settlements_out,
            "cursor": data.get("cursor", "")})
 
 
@@ -756,6 +867,7 @@ COMMANDS = {
     "balance": cmd_balance,
     "positions": cmd_positions,
     "open_orders": cmd_open_orders,
+    "queue_positions": cmd_queue_positions,
     "fills": cmd_fills,
     "settlements": cmd_settlements,
     "place_order": cmd_place_order,
@@ -773,6 +885,7 @@ AUTH_COMMANDS = {
     "balance",
     "positions",
     "open_orders",
+    "queue_positions",
     "fills",
     "settlements",
     "place_order",

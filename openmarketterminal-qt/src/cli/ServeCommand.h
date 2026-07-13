@@ -10,4 +10,11 @@ int serve_status(const QString& profile, bool json);
 int serve_stop(const QString& profile);
 int daemon_command(const QString& profile, bool json, QStringList args);
 int sync_command(const QString& profile, bool json, QStringList args);
+
+// Pure watchdog predicates kept public for deterministic regression tests.
+bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
+                                        int subscribed_assets, qint64 event_age_ms,
+                                        qint64 stale_after_ms);
+bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
+                                      qint64 timeout_ms);
 }

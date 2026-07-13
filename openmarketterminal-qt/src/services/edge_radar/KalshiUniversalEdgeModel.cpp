@@ -48,6 +48,62 @@ double variant_double(const QVariantMap& extras, const QString& key) {
     return ok ? v : 0.0;
 }
 
+double normal_cdf(double z) {
+    return 0.5 * std::erfc(-z / std::sqrt(2.0));
+}
+
+double probability_above(double spot, double strike, int seconds_left, double annual_volatility) {
+    if (spot <= 0.0 || strike <= 0.0)
+        return 0.0;
+    if (seconds_left <= 0)
+        return spot > strike ? 1.0 : 0.0;
+    constexpr double seconds_per_year = 365.0 * 24.0 * 60.0 * 60.0;
+    const double sigma = annual_volatility * std::sqrt(seconds_left / seconds_per_year);
+    if (sigma <= 0.0)
+        return spot > strike ? 1.0 : 0.0;
+    return std::clamp(normal_cdf(std::log(spot / strike) / sigma), 0.001, 0.999);
+}
+
+double executable_ask(const pr::PredictionMarket& market, bool yes) {
+    const double explicit_ask = variant_double(
+        market.extras, yes ? QStringLiteral("yes_ask_dollars") : QStringLiteral("no_ask_dollars"));
+    if (explicit_ask > 0.0)
+        return clamp01(explicit_ask);
+    if (!yes) {
+        const double yes_bid = KalshiUniversalEdgeModel::yes_probability(market);
+        if (yes_bid > 0.0)
+            return clamp01(1.0 - yes_bid);
+    }
+    return yes ? KalshiUniversalEdgeModel::yes_probability(market) : 0.0;
+}
+
+double fee_per_contract(double price, const pr::PredictionMarket& market, qint64 decision_ts_ms) {
+    if (price <= 0.0 || price >= 1.0)
+        return 0.0;
+    const QDateTime waiver = QDateTime::fromString(
+        market.extras.value(QStringLiteral("fee_waiver_expiration_time")).toString(), Qt::ISODate);
+    const QDateTime decision_time = QDateTime::fromMSecsSinceEpoch(decision_ts_ms, QTimeZone::UTC);
+    if (waiver.isValid() && waiver > decision_time)
+        return 0.0;
+    if (market.extras.value(QStringLiteral("fee_type")).toString().compare(
+            QStringLiteral("none"), Qt::CaseInsensitive) == 0)
+        return 0.0;
+    const double multiplier = market.extras.contains(QStringLiteral("fee_multiplier"))
+        ? std::max(0.0, variant_double(market.extras, QStringLiteral("fee_multiplier"))) : 1.0;
+    return 0.07 * multiplier * price * (1.0 - price);
+}
+
+QString crypto_symbol(const pr::PredictionMarket& market) {
+    const QString text = normalized_text(market.question + QStringLiteral(" ") +
+                                         market.key.market_id + QStringLiteral(" ") +
+                                         market.extras.value(QStringLiteral("series_ticker")).toString());
+    if (has_any(text, {QStringLiteral("BTC"), QStringLiteral("BITCOIN")})) return QStringLiteral("BTC-USD");
+    if (has_any(text, {QStringLiteral("ETH"), QStringLiteral("ETHEREUM")})) return QStringLiteral("ETH-USD");
+    if (has_any(text, {QStringLiteral("SOL"), QStringLiteral("SOLANA")})) return QStringLiteral("SOL-USD");
+    if (has_any(text, {QStringLiteral("DOGE"), QStringLiteral("DOGECOIN")})) return QStringLiteral("DOGE-USD");
+    return {};
+}
+
 } // namespace
 
 QString KalshiUniversalEdgeModel::classify_family(const pr::PredictionMarket& market) {
@@ -115,8 +171,10 @@ QString KalshiUniversalEdgeModel::infer_time_horizon(const pr::PredictionMarket&
     const QDateTime close = QDateTime::fromString(market.end_date_iso, Qt::ISODate);
     if (close.isValid()) {
         const qint64 secs = QDateTime::currentDateTimeUtc().secsTo(close.toUTC());
+        if (secs <= 20 * 60)
+            return QStringLiteral("15m");
         if (secs <= 2 * 3600)
-            return QStringLiteral("intraday");
+            return QStringLiteral("1h");
         if (secs <= 48 * 3600)
             return QStringLiteral("daily");
         if (secs <= 14 * 24 * 3600)
@@ -323,6 +381,119 @@ KalshiUniversalSignal KalshiUniversalEdgeModel::score_market(const pr::Predictio
     return out;
 }
 
+KalshiUniversalSignal KalshiUniversalEdgeModel::score_crypto_target(
+    const pr::PredictionMarket& market, double reference_price,
+    const KalshiUniversalOptions& options, qint64 decision_ts_ms,
+    const QString& probability_source) {
+    KalshiUniversalSignal out;
+    out.market_id = market.key.market_id;
+    out.event_id = market.key.event_id;
+    out.question = market.question;
+    out.family = classify_family(market);
+    out.time_horizon = infer_time_horizon(market);
+    out.underlying_symbol = crypto_symbol(market);
+    out.reference_price = reference_price;
+    out.probability_source = probability_source;
+    out.research_drivers = research_drivers_for_family(QStringLiteral("crypto"));
+    out.data_sources = {QStringLiteral("Kalshi executable order book"),
+                        QStringLiteral("timestamped cross-exchange spot reference"),
+                        QStringLiteral("Kalshi/CF Benchmarks settlement feed when available")};
+    out.tags = {QStringLiteral("crypto"), out.time_horizon, QStringLiteral("paper-only")};
+
+    const qint64 now_ms = decision_ts_ms > 0 ? decision_ts_ms : QDateTime::currentMSecsSinceEpoch();
+    const QDateTime close = QDateTime::fromString(market.end_date_iso, Qt::ISODate);
+    out.seconds_left = close.isValid()
+        ? static_cast<int>(std::max<qint64>(0, now_ms / 1000 < close.toSecsSinceEpoch()
+                                                  ? close.toSecsSinceEpoch() - now_ms / 1000 : 0))
+        : -1;
+
+    const double floor = variant_double(market.extras, QStringLiteral("floor_strike"));
+    const double cap = variant_double(market.extras, QStringLiteral("cap_strike"));
+    out.target_price = floor > 0.0 ? floor : cap;
+    double fair_yes = 0.0;
+    if (floor > 0.0 && cap > floor) {
+        fair_yes = probability_above(reference_price, floor, out.seconds_left, options.annual_volatility) -
+                   probability_above(reference_price, cap, out.seconds_left, options.annual_volatility);
+    } else if (floor > 0.0) {
+        fair_yes = probability_above(reference_price, floor, out.seconds_left, options.annual_volatility);
+    } else if (cap > 0.0) {
+        fair_yes = 1.0 - probability_above(reference_price, cap, out.seconds_left, options.annual_volatility);
+    }
+    fair_yes = std::clamp(fair_yes, 0.001, 0.999);
+
+    const double yes_ask = executable_ask(market, true);
+    const double no_ask = executable_ask(market, false);
+    const double yes_bid = yes_probability(market);
+    double no_bid = 0.0;
+    for (const auto& outcome : market.outcomes) {
+        if (normalized_text(outcome.name) == QStringLiteral("NO")) {
+            no_bid = clamp01(outcome.price);
+            break;
+        }
+    }
+    const double yes_fee = fee_per_contract(yes_ask, market, now_ms);
+    const double no_fee = fee_per_contract(no_ask, market, now_ms);
+    const double yes_net = fair_yes - yes_ask - yes_fee - options.exit_cost_reserve;
+    const double no_net = (1.0 - fair_yes) - no_ask - no_fee - options.exit_cost_reserve;
+    const bool choose_yes = yes_net >= no_net;
+
+    out.side = choose_yes ? QStringLiteral("yes") : QStringLiteral("no");
+    out.model_probability = choose_yes ? fair_yes : 1.0 - fair_yes;
+    out.market_probability = choose_yes ? yes_ask : no_ask;
+    out.executable_price = out.market_probability;
+    out.yes_bid = yes_bid;
+    out.yes_ask = yes_ask;
+    out.no_bid = no_bid;
+    out.no_ask = no_ask;
+    out.exit_price = choose_yes ? yes_bid : no_bid;
+    out.fee_cost = choose_yes ? yes_fee : no_fee;
+    out.spread_cost = options.exit_cost_reserve;
+    out.raw_edge = out.model_probability - out.market_probability;
+    out.edge_after_cost = out.raw_edge - out.fee_cost - out.spread_cost;
+    out.gate_edge = out.edge_after_cost - options.safety_buffer;
+    out.liquidity_score = liquidity_score(market.liquidity, options.minimum_liquidity_score);
+    const double distance_sigma = out.target_price > 0.0 && reference_price > 0.0 && out.seconds_left > 0
+        ? std::abs(std::log(reference_price / out.target_price)) /
+              std::max(1e-9, options.annual_volatility *
+                                std::sqrt(out.seconds_left / (365.0 * 24.0 * 60.0 * 60.0)))
+        : 0.0;
+    out.confidence = std::clamp(0.50 + std::min(0.35, distance_sigma * 0.08), 0.0, 0.85);
+    out.is_valid = out.family == QStringLiteral("crypto") && !out.market_id.isEmpty() &&
+                   !out.underlying_symbol.isEmpty() && reference_price > 0.0 &&
+                   out.target_price > 0.0 && out.market_probability > 0.0 && !market.closed;
+
+    QStringList reject;
+    if (!out.is_valid) reject << QStringLiteral("missing crypto symbol, target, spot, or executable ask");
+    if (out.seconds_left < options.minimum_seconds_left) reject << QStringLiteral("too late for a new entry");
+    if (out.seconds_left > options.maximum_seconds_left) reject << QStringLiteral("outside configured crypto horizon");
+    if (out.gate_edge < options.minimum_net_edge)
+        reject << QStringLiteral("executable net edge %1 below %2 hurdle")
+                      .arg(pct(out.gate_edge), pct(options.minimum_net_edge));
+    if (out.liquidity_score < options.minimum_liquidity_score)
+        reject << QStringLiteral("insufficient liquidity");
+    if (out.confidence < 0.55) reject << QStringLiteral("model confidence below paper gate");
+
+    out.passes_gate = reject.isEmpty();
+    out.is_strong = out.passes_gate && out.gate_edge >= options.strong_net_edge;
+    out.gate = out.passes_gate ? QStringLiteral("pass") : QStringLiteral("reject");
+    out.recommendation = out.is_strong ? QStringLiteral("strong")
+                           : out.passes_gate ? QStringLiteral("candidate")
+                           : out.gate_edge >= 0.02 ? QStringLiteral("watch") : QStringLiteral("avoid");
+    out.rejection_reasons = reject.join(QStringLiteral("; "));
+    out.risk_notes = out.rejection_reasons;
+    out.rationale = QStringLiteral(
+        "%1 %2 ask %3 versus fair %4; fee %5, exit reserve %6, net after safety %7, %8s left")
+                        .arg(out.underlying_symbol)
+                        .arg(out.side.toUpper())
+                        .arg(pct(out.market_probability))
+                        .arg(pct(out.model_probability))
+                        .arg(pct(out.fee_cost))
+                        .arg(pct(out.spread_cost))
+                        .arg(pct(out.gate_edge))
+                        .arg(out.seconds_left);
+    return out;
+}
+
 QVector<KalshiUniversalSignal> KalshiUniversalEdgeModel::rank_markets(
     const QVector<pr::PredictionMarket>& markets,
     const KalshiUniversalOptions& options) {
@@ -370,6 +541,16 @@ QJsonObject KalshiUniversalEdgeModel::to_json(const KalshiUniversalSignal& s) {
                        {"fee_cost", s.fee_cost},
                        {"liquidity_score", s.liquidity_score},
                        {"confidence", s.confidence},
+                       {"reference_price", s.reference_price},
+                       {"target_price", s.target_price},
+                       {"executable_price", s.executable_price},
+                       {"yes_bid", s.yes_bid},
+                       {"yes_ask", s.yes_ask},
+                       {"no_bid", s.no_bid},
+                       {"no_ask", s.no_ask},
+                       {"exit_price", s.exit_price},
+                       {"seconds_left", s.seconds_left},
+                       {"underlying_symbol", s.underlying_symbol},
                        {"side", s.side},
                        {"recommendation", s.recommendation},
                        {"gate", s.gate},
