@@ -30,6 +30,13 @@ struct FeeModel {
     double maker_bps = 0;
     double taker_bps = 0;
     double slippage_bps = 0;
+    // Half of the quoted bid/ask spread, in bps. A taker crosses it on entry
+    // AND on exit; a resting maker earns it (does not pay it).
+    double half_spread_bps = 0;
+    // A resting maker limit fills only when a tick trades THROUGH the limit by
+    // at least this many bps (models queue position / adverse selection). 0
+    // reproduces the optimistic touch-fills behaviour of try_fill().
+    double maker_fill_through_bps = 0;
 };
 
 struct FillResult {
@@ -51,6 +58,25 @@ struct FillResult {
 // No qualifying tick (or an empty ticks vector) -> filled == false.
 FillResult try_fill(const QString& side, double limit_price, const QVector<TickRow>& ticks,
                      qint64 entry_deadline_ms);
+
+// Honest maker fill. Unlike try_fill (which fills the moment a tick merely
+// touches the limit), a resting order fills only once a tick trades THROUGH
+// the limit by at least through_bps -- modelling that a mere touch usually
+// leaves you behind the queue / adversely selected. Fill price is still the
+// limit (the maker earns the spread). through_bps == 0 reproduces try_fill.
+//   buy/long:   fills at first tick with price <= limit_price*(1 - through_bps/1e4)
+//   sell/short: fills at first tick with price >= limit_price*(1 + through_bps/1e4)
+FillResult try_maker_fill(const QString& side, double limit_price, const QVector<TickRow>& ticks,
+                          qint64 entry_deadline_ms, double through_bps);
+
+// Effective price a TAKER actually gets after crossing the half-spread and
+// paying slippage, both adverse to the trade direction:
+//   buy/long:   reference_price * (1 + (half_spread_bps + slippage_bps)/1e4)
+//   sell/short: reference_price * (1 - (half_spread_bps + slippage_bps)/1e4)
+// This is the price honesty try_fill omits; fees are applied separately by the
+// caller via fee_for(notional, taker_bps).
+double effective_taker_price(const QString& side, double reference_price,
+                             double half_spread_bps, double slippage_bps);
 
 struct ExitResult {
     bool exited = false;

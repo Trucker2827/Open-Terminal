@@ -70,6 +70,34 @@ ExitResult check_exit(const QString& side, double target_price, double stop_pric
     return ExitResult{};
 }
 
+FillResult try_maker_fill(const QString& side, double limit_price, const QVector<TickRow>& ticks,
+                          qint64 entry_deadline_ms, double through_bps) {
+    const bool short_side = is_short_side(side);
+    // A buy rests below the market and needs a tick at/through its limit; a
+    // through margin pushes that threshold further away (harder to fill).
+    const double margin = limit_price * through_bps / 10000.0;
+    const double buy_threshold = limit_price - margin;
+    const double sell_threshold = limit_price + margin;
+    for (const TickRow& tick : ticks) {
+        if (tick.ts_ms > entry_deadline_ms) {
+            continue;
+        }
+        const bool qualifies = short_side ? (tick.price >= sell_threshold)
+                                          : (tick.price <= buy_threshold);
+        if (qualifies) {
+            return FillResult{true, limit_price, tick.ts_ms};
+        }
+    }
+    return FillResult{};
+}
+
+double effective_taker_price(const QString& side, double reference_price,
+                             double half_spread_bps, double slippage_bps) {
+    const double adverse = (half_spread_bps + slippage_bps) / 10000.0;
+    return is_short_side(side) ? reference_price * (1.0 - adverse)
+                               : reference_price * (1.0 + adverse);
+}
+
 double fee_for(double notional, double bps) {
     return notional * bps / 10000.0;
 }

@@ -225,6 +225,46 @@ class TstSandboxFillModel : public QObject {
         QCOMPARE(stop_r.reason, QStringLiteral("stop"));
         QVERIFY(qAbs(stop_r.price - 103.7) < 1e-9);
     }
+
+    // Honest maker fill: a mere touch of the limit does NOT fill when a
+    // through-margin is required (queue / adverse selection); the price must
+    // trade strictly through the limit by the margin. through_bps == 0 must
+    // reproduce try_fill's optimistic touch-fills behaviour.
+    void maker_fill_requires_trade_through_not_touch() {
+        // buy limit 100, 5 bps through => threshold 99.95. A touch at 100.0
+        // and a shallow 99.97 both fail; 99.9 (below threshold) fills at 100.
+        const QVector<TickRow> touch = {tick(100.0, 1000), tick(99.97, 2000)};
+        QVERIFY(!try_maker_fill(QStringLiteral("buy"), 100.0, touch, 5000, 5.0).filled);
+
+        const QVector<TickRow> through = {tick(100.0, 1000), tick(99.9, 2000)};
+        const FillResult f = try_maker_fill(QStringLiteral("buy"), 100.0, through, 5000, 5.0);
+        QVERIFY(f.filled);
+        QVERIFY(qAbs(f.price - 100.0) < 1e-9);   // maker earns the limit, no improvement
+        QCOMPARE(f.ts_ms, qint64(2000));
+
+        // sell limit 100, 5 bps through => threshold 100.05; a touch at 100.0
+        // fails, 100.1 fills.
+        QVERIFY(!try_maker_fill(QStringLiteral("sell"), 100.0, {tick(100.0, 1000)}, 5000, 5.0).filled);
+        QVERIFY(try_maker_fill(QStringLiteral("sell"), 100.0, {tick(100.1, 1000)}, 5000, 5.0).filled);
+
+        // through_bps == 0 reproduces the optimistic touch-fills behaviour.
+        QVERIFY(try_maker_fill(QStringLiteral("buy"), 100.0, {tick(100.0, 1000)}, 5000, 0.0).filled);
+    }
+
+    // Taker crosses the half-spread AND pays slippage, both adverse: a buyer
+    // pays up, a seller receives down, by (half_spread + slippage) bps.
+    void taker_price_crosses_spread_and_slippage() {
+        // 2 bps half-spread + 1 bps slippage = 3 bps = 0.03% adverse.
+        const double buy = effective_taker_price(QStringLiteral("buy"), 100.0, 2.0, 1.0);
+        QVERIFY(qAbs(buy - 100.03) < 1e-9);      // pays UP
+        const double sell = effective_taker_price(QStringLiteral("sell"), 100.0, 2.0, 1.0);
+        QVERIFY(qAbs(sell - 99.97) < 1e-9);      // receives DOWN
+        // long/short mirror buy/sell.
+        QVERIFY(qAbs(effective_taker_price(QStringLiteral("long"), 100.0, 2.0, 1.0) - 100.03) < 1e-9);
+        QVERIFY(qAbs(effective_taker_price(QStringLiteral("short"), 100.0, 2.0, 1.0) - 99.97) < 1e-9);
+        // Zero costs => reference price unchanged.
+        QVERIFY(qAbs(effective_taker_price(QStringLiteral("buy"), 100.0, 0.0, 0.0) - 100.0) < 1e-9);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxFillModel)
