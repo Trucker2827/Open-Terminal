@@ -2195,9 +2195,13 @@ class DaemonMakerEngine {
     QString decisions_path_;
     QTimer* decision_timer_ = nullptr;
     int cadence_ms_ = 250;
-    // CryptoLatencyService::normalize_symbol only supports BTC-USD / ETH-USD;
-    // spot_lane_grid's SOL-USD has no latency feed, so it is correctly excluded.
-    const QStringList symbols_{QStringLiteral("BTC-USD"), QStringLiteral("ETH-USD")};
+    // Mirrors spot_lane_grid's crypto venues' symbol set (BTC-USD,ETH-USD,SOL-USD
+    // in SandboxRegistry.cpp:140-143) so every seeded maker lane has a producer:
+    // open_maker_quotes iterates all of a strategy's symbols, so omitting SOL-USD
+    // would leave its seeded maker lanes dormant. CryptoLatencyService supports all
+    // three (normalize_symbol/kraken_pair/make_feed are generic, not two-symbol).
+    const QStringList symbols_{QStringLiteral("BTC-USD"), QStringLiteral("ETH-USD"),
+                               QStringLiteral("SOL-USD")};
     // Sandbox crypto venues from spot_lane_grid (SandboxRegistry.cpp:140-143).
     const QStringList kCryptoVenues{QStringLiteral("coinbase_advanced"), QStringLiteral("kraken_pro")};
     QHash<QString, CryptoLatencyService*> services_;
