@@ -668,6 +668,25 @@ KalshiCalibrationModel KalshiAutoEngine::fit_isotonic_calibration(
     return out;
 }
 
+QVector<KalshiCohortModel> KalshiAutoEngine::fit_cohort_calibration(
+    const QVector<QPair<QString, KalshiCalibrationSample>>& tagged_samples,
+    int minimum_events) {
+    QHash<QString, QVector<KalshiCalibrationSample>> grouped;
+    QStringList order;
+    for (const auto& tagged : tagged_samples) {
+        if (!grouped.contains(tagged.first))
+            order.append(tagged.first);
+        grouped[tagged.first].append(tagged.second);
+    }
+    std::sort(order.begin(), order.end());
+    QVector<KalshiCohortModel> out;
+    out.reserve(order.size());
+    for (const auto& cohort : order)
+        out.append(KalshiCohortModel{
+            cohort, fit_isotonic_calibration(grouped.value(cohort), minimum_events)});
+    return out;
+}
+
 double KalshiAutoEngine::calibrated_probability(
     double probability,
     const QVector<KalshiCalibrationPoint>& curve) {
