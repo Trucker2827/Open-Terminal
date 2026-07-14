@@ -10,6 +10,7 @@
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
+#include "services/sandbox/MakerQuotes.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
@@ -131,6 +132,10 @@ QString daemon_scalp_ticks_path(const QString& profile) {
 
 QString daemon_scalp_decisions_path(const QString& profile) {
     return daemon_state_dir(profile) + QStringLiteral("/scalp_decisions.jsonl");
+}
+
+QString daemon_maker_decisions_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/maker_decisions.jsonl");
 }
 
 QString now_utc() {
@@ -2102,6 +2107,102 @@ class DaemonScalpEngine {
     QHash<QString, qint64> last_journal_ms_;
 };
 
+// Paper maker-spread producer. On a timer it polls the cross-venue mid for each
+// crypto symbol from its own CryptoLatencyService feeds and writes two-sided
+// resting-quote decision rows (bid+ask) to maker_decisions.jsonl, the journal
+// the sandbox executor consumer (open_maker_quotes) already reads. It is
+// read-only: no order path, no credentials — it only appends decision rows.
+//
+// One CryptoLatencyService per SYMBOL (the service aggregates all source feeds
+// into ONE cross-venue mid; it is not per-exchange). Each fire we emit a
+// bid+ask row pair for BOTH sandbox crypto venues off that shared mid — the
+// venues differ only in cost profile, which the executor applies from the lane
+// params, not in the mid we quote from.
+//
+// NOTE (deliberate): unlike DaemonScalpEngine, this engine has no config file
+// and no `enabled` gate — it is always-on while `serve` runs and opens its own
+// crypto feeds (duplicating the scalp engine's connections when both are up).
+// That is within the paper/read-only intent of this glue.
+class DaemonMakerEngine {
+  public:
+    explicit DaemonMakerEngine(QString profile)
+        : profile_(std::move(profile)),
+          decisions_path_(daemon_maker_decisions_path(profile_)) {
+        restart_services();
+        decision_timer_ = new QTimer(qApp);
+        decision_timer_->setInterval(cadence_ms_);
+        QObject::connect(decision_timer_, &QTimer::timeout, qApp, [this]() { evaluate(); });
+        decision_timer_->start();
+    }
+
+    ~DaemonMakerEngine() { stop_services(); }
+
+  private:
+    using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
+
+    // One CryptoLatencyService per symbol. snapshot() is populated by the
+    // service's own feeds, so we only start() it and poll — no tick subscriber,
+    // no local tick buffers (contrast DaemonScalpEngine, which subscribes to
+    // tick_received to feed its millisecond-window math).
+    void restart_services() {
+        stop_services();
+        for (const QString& symbol : symbols_) {
+            auto* svc = new CryptoLatencyService(qApp);
+            services_.insert(symbol, svc);
+            svc->start(symbol, CryptoLatencyService::default_sources());
+        }
+    }
+
+    void stop_services() {
+        for (auto it = services_.begin(); it != services_.end(); ++it) {
+            if (it.value()) {
+                it.value()->stop();
+                it.value()->deleteLater();
+            }
+        }
+        services_.clear();
+    }
+
+    void evaluate() {
+        // Match DaemonScalpEngine's decision clock (ts_ms).
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        for (auto it = services_.cbegin(); it != services_.cend(); ++it) {
+            if (!it.value())
+                continue;
+            const auto snap = it.value()->snapshot();
+            if (snap.mid_price <= 0.0)
+                continue;
+            // Emit sandbox-side venue ids DIRECTLY (coinbase_advanced/kraken_pro,
+            // NOT coinbase/kraken) — the executor matches venue by exact string.
+            for (const QString& venue : kCryptoVenues) {
+                services::sandbox::append_maker_decisions(
+                    decisions_path_, it.key(), venue, snap.mid_price, half_spread_for(venue),
+                    static_cast<double>(snap.freshest_age_ms), snap.live_sources, now_ms);
+            }
+        }
+    }
+
+    static double half_spread_for(const QString& venue) {
+        // MUST stay in lockstep with spot_lane_grid's crypto venue table in
+        // SandboxRegistry.cpp: coinbase_advanced and kraken_pro both use
+        // half_spread_bps = 2.0. If a venue's half_spread_bps changes there,
+        // change it here.
+        Q_UNUSED(venue);
+        return 2.0;
+    }
+
+    QString profile_;
+    QString decisions_path_;
+    QTimer* decision_timer_ = nullptr;
+    int cadence_ms_ = 250;
+    // CryptoLatencyService::normalize_symbol only supports BTC-USD / ETH-USD;
+    // spot_lane_grid's SOL-USD has no latency feed, so it is correctly excluded.
+    const QStringList symbols_{QStringLiteral("BTC-USD"), QStringLiteral("ETH-USD")};
+    // Sandbox crypto venues from spot_lane_grid (SandboxRegistry.cpp:140-143).
+    const QStringList kCryptoVenues{QStringLiteral("coinbase_advanced"), QStringLiteral("kraken_pro")};
+    QHash<QString, CryptoLatencyService*> services_;
+};
+
 QJsonObject daemon_health_object(const QString& profile) {
     QJsonObject o = daemon_status_object(profile);
     auto info = read_bridge_file(profile_root_for(profile));
@@ -2529,6 +2630,8 @@ int serve_run(const QString& profile) {
     start_daemon_job_scheduler(profile);
     auto* scalp_engine = new DaemonScalpEngine(profile);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [scalp_engine]() { delete scalp_engine; });
+    auto* maker_engine = new DaemonMakerEngine(profile);
+    QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [maker_engine]() { delete maker_engine; });
     auto* kalshi_event_engine = new KalshiLiveEventEngine(profile, qApp);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp,
                      [kalshi_event_engine]() { delete kalshi_event_engine; });
