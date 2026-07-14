@@ -265,6 +265,30 @@ class TstSandboxFillModel : public QObject {
         // Zero costs => reference price unchanged.
         QVERIFY(qAbs(effective_taker_price(QStringLiteral("buy"), 100.0, 0.0, 0.0) - 100.0) < 1e-9);
     }
+
+    // Honest round-trip PnL: a taker pays the spread/slippage crossing on BOTH
+    // legs; a maker earns the spread; zero-cost reduces to realized_pnl.
+    void honest_round_trip_pnl_charges_taker_both_legs() {
+        // long 100 -> 110, qty 1, no fees; 5 bps half-spread + 5 bps slippage
+        // = 10 bps = 0.1% adverse per leg.
+        const double maker_pnl = honest_round_trip_pnl(QStringLiteral("long"), true, 100.0, 110.0,
+                                                       1.0, 0.0, 0.0, 5.0, 5.0);
+        const double taker_pnl = honest_round_trip_pnl(QStringLiteral("long"), false, 100.0, 110.0,
+                                                       1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(maker_pnl - 10.0) < 1e-9);   // maker keeps the raw gross
+        QVERIFY(qAbs(taker_pnl - 9.79) < 1e-9);   // pays up to 100.1, receives 109.89
+        QVERIFY(taker_pnl < maker_pnl);
+
+        // Short mirrors: sells lower (109.89), buys back higher (100.1) => 9.79.
+        const double short_taker = honest_round_trip_pnl(QStringLiteral("short"), false, 110.0, 100.0,
+                                                         1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(short_taker - 9.79) < 1e-9);
+
+        // Zero spread/slippage reduces EXACTLY to realized_pnl (legacy path).
+        const double zero = honest_round_trip_pnl(QStringLiteral("long"), false, 100.0, 110.0,
+                                                  1.0, 0.2, 0.3, 0.0, 0.0);
+        QVERIFY(qAbs(zero - realized_pnl(QStringLiteral("long"), 100.0, 110.0, 1.0, 0.2, 0.3)) < 1e-9);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxFillModel)

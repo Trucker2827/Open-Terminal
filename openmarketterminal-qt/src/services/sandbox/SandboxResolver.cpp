@@ -37,6 +37,9 @@ FeeModel fee_model_from_params(const QJsonObject& params) {
     fm.taker_bps = params.contains(QStringLiteral("taker_bps"))
                        ? params.value(QStringLiteral("taker_bps")).toDouble()
                        : 60.0;
+    // Honest-execution fields, default 0 so legacy books are unaffected.
+    fm.half_spread_bps = params.value(QStringLiteral("half_spread_bps")).toDouble(0.0);
+    fm.slippage_bps = params.value(QStringLiteral("slippage_bps")).toDouble(0.0);
     return fm;
 }
 
@@ -244,8 +247,19 @@ Result<void> resolve_hypotheticals(const QString& ticks_path, qint64 now_ms, Res
 
         // Real target/stop/expiry-with-a-tick-price exit.
         const FeeModel fees = fee_model_from_params(row.params);
-        const double exit_fee = fee_for(row.notional_usd, fees.taker_bps);
-        const double pnl = realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
+        // A book opts into the honest execution model by carrying half_spread_bps
+        // (only the spot lane grid does). Legacy books lack it and keep the exact
+        // prior behaviour: taker-rate exit fee, raw round-trip PnL -- so their
+        // accumulated evidence is untouched.
+        const bool honest = row.params.contains(QStringLiteral("half_spread_bps"));
+        const bool maker = row.params.value(QStringLiteral("liquidity")).toString() ==
+                           QLatin1String("maker");
+        const double exit_fee =
+            fee_for(row.notional_usd, honest && maker ? fees.maker_bps : fees.taker_bps);
+        const double pnl = honest
+            ? honest_round_trip_pnl(row.side, maker, row.limit_price, exit.price, row.qty,
+                                    row.entry_fee, exit_fee, fees.half_spread_bps, fees.slippage_bps)
+            : realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
 
         auto upd = db.execute(
             "UPDATE sandbox_position SET state='closed', closed_at=?, exit_fee=?, realized_pnl=?, close_reason=?"
