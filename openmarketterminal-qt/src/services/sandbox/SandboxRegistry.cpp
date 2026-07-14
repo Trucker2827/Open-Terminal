@@ -219,9 +219,12 @@ QVector<SpotLaneSeed> spot_lane_grid() {
                      with_source(lane(v, QStringLiteral("taker"), kSwingMarginBps, 14400, 900),
                                  QStringLiteral("edge_journal"), swing_journal)});
 
-        // maker spread-capture: market-making, no directional producer -> deferred.
-        grid.append({QStringLiteral("maker"), symbols,
-                     lane(v, QStringLiteral("maker"), kMakerMarginBps, 900, 15)});
+        // maker spread-capture: fed by the maker_decisions producer on crypto
+        // venues (DaemonMakerEngine). Equity maker has no producer -> deferred.
+        QJsonObject maker_lane = lane(v, QStringLiteral("maker"), kMakerMarginBps, 900, 15);
+        if (v.is_crypto)
+            maker_lane = with_source(maker_lane, QStringLiteral("maker_decisions"));
+        grid.append({QStringLiteral("maker"), symbols, maker_lane});
     }
     return grid;
 }
@@ -455,6 +458,7 @@ Result<QList<QString>> seed_default_strategies() {
     const QSet<QString> current_ids(ids.begin(), ids.end());
     const QSet<QString> managed_kinds = {
         QStringLiteral("scalp"), QStringLiteral("spot"), QStringLiteral("swing"),
+        QStringLiteral("maker"),
         QStringLiteral("kalshi"), QStringLiteral("long_short"), QStringLiteral("chronos2"),
         QStringLiteral("chronos2_1h"), QStringLiteral("chronos2_1d"), QStringLiteral("chronos2_equity")};
     auto active = list_strategies(QStringLiteral("active"));

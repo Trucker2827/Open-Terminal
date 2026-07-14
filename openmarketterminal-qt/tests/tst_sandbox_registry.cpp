@@ -177,11 +177,11 @@ class TstSandboxRegistry : public QObject {
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 35);  // 28 base + 7 activatable spot-grid lanes
+        QCOMPARE(first.value().size(), 37);  // 28 base + 9 activatable spot-grid lanes
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 35);
+        QCOMPARE(second.value().size(), 37);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -194,7 +194,9 @@ class TstSandboxRegistry : public QObject {
         int scalp_count = 0;
         int kalshi_count = 0;
         int long_short_count = 0;
+        int maker_count = 0;
         QSet<QString> scalp_venues;
+        QSet<QString> maker_venues;
         QSet<QString> kalshi_cohorts;
         QSet<QString> kalshi_exit_policies;
         for (const auto& row : rows.value()) {
@@ -219,13 +221,18 @@ class TstSandboxRegistry : public QObject {
                          QStringLiteral("kalshi-v2"));
             } else if (row.kind == QStringLiteral("long_short")) {
                 ++long_short_count;
+            } else if (row.kind == QStringLiteral("maker")) {
+                ++maker_count;
+                maker_venues.insert(params.value(QStringLiteral("venue")).toString());
             }
         }
-        QCOMPARE(seed_row_count, 35);
-        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "kalshi", "long_short", "chronos2",
+        QCOMPARE(seed_row_count, 37);
+        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "maker", "kalshi", "long_short", "chronos2",
                                        "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
         QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase_advanced/kraken_pro maker+taker)
         QCOMPARE(scalp_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
+        QCOMPARE(maker_count, 2);  // coinbase_advanced/kraken_pro maker_decisions lanes
+        QCOMPARE(maker_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
         QCOMPARE(spot_count, 3);
         QCOMPARE(kalshi_count, 18);
         QCOMPARE(kalshi_cohorts.size(), 9);
@@ -242,15 +249,15 @@ class TstSandboxRegistry : public QObject {
         }
     }
 
-    // Seeding activates exactly the 7 producer-backed spot-grid lanes -- honest
-    // execution params, kinds scalp + swing -- distinct from the legacy books.
+    // Seeding activates exactly the 9 producer-backed spot-grid lanes -- honest
+    // execution params, kinds scalp + swing + maker -- distinct from the legacy books.
     void seed_activates_honest_spot_grid_lanes() {
         auto seeded = seed_default_strategies();
         QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
         auto rows = list_strategies(QStringLiteral("active"));
         QVERIFY(rows.is_ok());
 
-        int honest = 0, honest_scalp = 0, honest_swing = 0;
+        int honest = 0, honest_scalp = 0, honest_swing = 0, honest_maker = 0;
         for (const auto& row : rows.value()) {
             const QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
             if (!params.contains(QStringLiteral("half_spread_bps")))
@@ -260,10 +267,12 @@ class TstSandboxRegistry : public QObject {
             QVERIFY(params.value(QStringLiteral("paper_only")).toBool());
             if (row.kind == QStringLiteral("swing")) ++honest_swing;
             else if (row.kind == QStringLiteral("scalp")) ++honest_scalp;
+            else if (row.kind == QStringLiteral("maker")) ++honest_maker;
         }
-        QCOMPARE(honest, 7);
+        QCOMPARE(honest, 9);
         QCOMPARE(honest_scalp, 4);  // coinbase/kraken maker+taker
         QCOMPARE(honest_swing, 3);  // coinbase/kraken/alpaca
+        QCOMPARE(honest_maker, 2);  // coinbase/kraken maker_decisions lanes
     }
 
     // (e2) seeding retires legacy venue-less scalp plus removed horizon kinds.
@@ -422,8 +431,8 @@ class TstSandboxRegistry : public QObject {
                 QVERIFY(lane.symbols.contains(QStringLiteral("BTC-USD")));
         }
 
-        // Producer wiring: 7 activatable lanes reuse an existing feed; the rest
-        // (maker spread-capture, equity scalp) are deferred (no source).
+        // Producer wiring: 9 activatable lanes reuse an existing feed; the rest
+        // (equity maker, equity scalp) are deferred (no source).
         int activatable = 0;
         for (const auto& lane : grid) {
             const QString kind = lane.kind;
@@ -434,7 +443,11 @@ class TstSandboxRegistry : public QObject {
                 ++activatable;
 
             if (kind == QLatin1String("maker")) {
-                QVERIFY(!has_source);  // market-making has no directional producer yet
+                if (crypto)
+                    QCOMPARE(lane.params.value(QStringLiteral("source")).toString(),
+                             QStringLiteral("maker_decisions"));
+                else
+                    QVERIFY(!has_source);  // equity maker deferred
             } else if (kind == QLatin1String("scalp")) {
                 if (crypto)
                     QCOMPARE(lane.params.value(QStringLiteral("source")).toString(),
@@ -447,7 +460,7 @@ class TstSandboxRegistry : public QObject {
                                 : QStringLiteral("chronos2-equity-forecast"));
             }
         }
-        QCOMPARE(activatable, 7);  // 2 crypto x scalp{maker,taker} + 3 swing
+        QCOMPARE(activatable, 9);  // 2 crypto x scalp{maker,taker} + 3 swing + 2 crypto maker
     }
 
     // Break-even gate: every grid lane's target clears its honest round-trip
@@ -464,6 +477,26 @@ class TstSandboxRegistry : public QObject {
         QVERIFY(lane_is_tradeable(QJsonObject{{"target_bps", 120.0}, {"round_trip_cost_bps", 80.0}}));
         QVERIFY(!lane_is_tradeable(QJsonObject{{"target_bps", 85.0}, {"round_trip_cost_bps", 126.0}}));
         QVERIFY(!lane_is_tradeable(QJsonObject{{"target_bps", 80.0}, {"round_trip_cost_bps", 80.0}}));
+    }
+
+    // The crypto maker lanes activate on the maker_decisions producer: exactly
+    // two (coinbase_advanced, kraken_pro), each tradeable and source-tagged.
+    void maker_lanes_seed_active_on_maker_decisions() {
+        auto ids = seed_default_strategies();
+        QVERIFY2(ids.is_ok(), ids.is_err() ? ids.error().c_str() : "");
+        auto active = list_strategies(QStringLiteral("active"));
+        QVERIFY(active.is_ok());
+        int maker_count = 0;
+        for (const auto& row : active.value()) {
+            if (row.kind != QLatin1String("maker"))
+                continue;
+            const QJsonObject p = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+            QCOMPARE(p.value("source").toString(), QStringLiteral("maker_decisions"));
+            QVERIFY(p.value("liquidity").toString() == QLatin1String("maker"));
+            QVERIFY(p.value("target_bps").toDouble() > p.value("round_trip_cost_bps").toDouble());
+            ++maker_count;
+        }
+        QCOMPARE(maker_count, 2);
     }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)
