@@ -4,12 +4,15 @@
 #include "storage/sqlite/Database.h"
 
 #include <QDateTime>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QStringList>
 #include <QTimeZone>
 #include <QVariant>
 #include <algorithm>
+#include <cmath>
 
 namespace openmarketterminal::services::sandbox {
 
@@ -246,6 +249,64 @@ Result<QList<LeaderboardRow>> leaderboard(const QString& profile) {
         out.append(row);
     }
     return Result<QList<LeaderboardRow>>::ok(out);
+}
+
+QVector<LaneSignificance> evaluate_lane_significance(const QVector<LanePnlSample>& samples,
+                                                     int minimum_sessions) {
+    // A sample variance and its standard error require at least two
+    // independent observations, even if a diagnostic caller asks for less.
+    const int effective_minimum_sessions = std::max(minimum_sessions, 2);
+    struct Acc {
+        QHash<QString, double> session_pnl;  // session key -> summed pnl
+        int trades = 0;
+        double net_pnl = 0.0;
+    };
+    QHash<QString, Acc> lanes;
+    QStringList order;
+    for (const auto& s : samples) {
+        if (!lanes.contains(s.lane))
+            order.append(s.lane);
+        Acc& a = lanes[s.lane];
+        a.session_pnl[s.session] += s.pnl;
+        ++a.trades;
+        a.net_pnl += s.pnl;
+    }
+    std::sort(order.begin(), order.end());
+
+    QVector<LaneSignificance> out;
+    out.reserve(order.size());
+    for (const auto& lane : order) {
+        const Acc& a = lanes.value(lane);
+        LaneSignificance r;
+        r.lane = lane;
+        r.trades = a.trades;
+        r.net_pnl = a.net_pnl;
+        r.sessions = a.session_pnl.size();
+        if (r.sessions < effective_minimum_sessions) {
+            r.reason = QStringLiteral("insufficient independent sessions (%1 < %2)")
+                           .arg(r.sessions).arg(effective_minimum_sessions);
+            out.append(r);
+            continue;
+        }
+        // Each session's TOTAL pnl is one independent observation.
+        double sum = 0.0;
+        for (auto it = a.session_pnl.cbegin(); it != a.session_pnl.cend(); ++it)
+            sum += it.value();
+        r.mean_session_pnl = sum / r.sessions;
+        double squared_deviation = 0.0;
+        for (auto it = a.session_pnl.cbegin(); it != a.session_pnl.cend(); ++it)
+            squared_deviation += std::pow(it.value() - r.mean_session_pnl, 2.0);
+        const double sample_variance = squared_deviation / (r.sessions - 1);
+        r.clustered_standard_error = std::sqrt(sample_variance / r.sessions);
+        r.conservative_expectancy = r.mean_session_pnl - 2.0 * r.clustered_standard_error;
+        r.ready = true;
+        r.has_edge = r.conservative_expectancy > 0.0;
+        r.reason = r.has_edge
+            ? QStringLiteral("mean session PnL positive beyond 2 clustered SE")
+            : QStringLiteral("no positive expectancy beyond 2 clustered SE");
+        out.append(r);
+    }
+    return out;
 }
 
 } // namespace openmarketterminal::services::sandbox
