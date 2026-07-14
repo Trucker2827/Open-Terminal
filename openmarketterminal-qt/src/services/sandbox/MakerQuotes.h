@@ -22,4 +22,11 @@ struct MakerQuotePair {
 // bid rests at mid*(1 - half_spread_bps/1e4); ask at mid*(1 + half_spread_bps/1e4).
 MakerQuotePair build_maker_quotes(double mid, double half_spread_bps);
 
+// Appends a bid+ask decision row pair to the maker_decisions journal at `path`
+// (created if absent). No-op when mid is non-positive. reference_price carries
+// the resting quote price (the half-spread is already applied).
+void append_maker_decisions(const QString& path, const QString& symbol, const QString& venue,
+                            double mid, double half_spread_bps, double freshest_age_ms,
+                            int live_sources, qint64 ts_ms);
+
 } // namespace openmarketterminal::services::sandbox
