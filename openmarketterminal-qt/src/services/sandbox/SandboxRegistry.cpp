@@ -123,6 +123,7 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     struct Venue {
         const char* venue;
         const char* symbols;
+        bool is_crypto;
         double maker_bps;
         double taker_bps;
         double half_spread_bps;
@@ -133,11 +134,11 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     // scalp seeds; Alpaca equities are commission-free, so their cost is the
     // spread + slippage, not a fee.
     static const Venue venues[] = {
-        {"coinbase", "BTC-USD,ETH-USD,SOL-USD", 40.0, 60.0, 2.0, 1.0,
+        {"coinbase", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 60.0, 2.0, 1.0,
          "Coinbase Advanced account tier; verify before live"},
-        {"kraken", "BTC-USD,ETH-USD,SOL-USD", 25.0, 40.0, 2.0, 1.0,
+        {"kraken", "BTC-USD,ETH-USD,SOL-USD", true, 25.0, 40.0, 2.0, 1.0,
          "Kraken Pro account tier; verify before live"},
-        {"alpaca", "AAPL,NVDA,MSFT,SPY,QQQ", 0.0, 0.0, 3.0, 2.0,
+        {"alpaca", "AAPL,NVDA,MSFT,SPY,QQQ", false, 0.0, 0.0, 3.0, 2.0,
          "Alpaca commission-free equities; spread/slippage is the cost"},
     };
     constexpr double kMakerThroughBps = 5.0;
@@ -165,18 +166,42 @@ QVector<SpotLaneSeed> spot_lane_grid() {
             {"fee_profile_source", QString::fromLatin1(v.fee_source)}};
     };
 
+    // A lane reuses an existing signal producer (hold the signal constant,
+    // vary execution). Lanes with a source are activatable; those without
+    // (maker spread-capture -- market-making, no directional signal; equity
+    // scalp -- no sub-minute equity producer) are documented but not seeded.
+    const auto with_source = [](QJsonObject params, const QString& source,
+                                const QString& journal = QString()) {
+        params.insert(QStringLiteral("source"), source);
+        if (!journal.isEmpty())
+            params.insert(QStringLiteral("journal_source"), journal);
+        return params;
+    };
+
     QVector<SpotLaneSeed> grid;
     for (const Venue& v : venues) {
         const QString symbols = QString::fromLatin1(v.symbols);
-        // scalp: maker vs taker compete on the same short horizon.
-        grid.append({QStringLiteral("scalp"), symbols,
-                     lane(v, QStringLiteral("maker"), 85.0, 45.0, 900, 15)});
-        grid.append({QStringLiteral("scalp"), symbols,
-                     lane(v, QStringLiteral("taker"), 85.0, 45.0, 900, 15)});
-        // swing: taker entry, longer hold, wider bracket.
+
+        // scalp maker/taker: reuse scalp_decisions on crypto venues. Equity
+        // scalp has no producer yet, so those lanes stay deferred (no source).
+        QJsonObject scalp_maker = lane(v, QStringLiteral("maker"), 85.0, 45.0, 900, 15);
+        QJsonObject scalp_taker = lane(v, QStringLiteral("taker"), 85.0, 45.0, 900, 15);
+        if (v.is_crypto) {
+            scalp_maker = with_source(scalp_maker, QStringLiteral("scalp_decisions"));
+            scalp_taker = with_source(scalp_taker, QStringLiteral("scalp_decisions"));
+        }
+        grid.append({QStringLiteral("scalp"), symbols, scalp_maker});
+        grid.append({QStringLiteral("scalp"), symbols, scalp_taker});
+
+        // swing: reuse the venue's directional feed (crypto recommend / equity
+        // forecast), taker entry, longer hold, wider bracket.
+        const QString swing_journal = v.is_crypto ? QStringLiteral("edge crypto-recommend")
+                                                  : QStringLiteral("chronos2-equity-forecast");
         grid.append({QStringLiteral("swing"), symbols,
-                     lane(v, QStringLiteral("taker"), 300.0, 150.0, 14400, 900)});
-        // maker spread-capture: earn the spread, target just beyond it.
+                     with_source(lane(v, QStringLiteral("taker"), 300.0, 150.0, 14400, 900),
+                                 QStringLiteral("edge_journal"), swing_journal)});
+
+        // maker spread-capture: market-making, no directional producer -> deferred.
         grid.append({QStringLiteral("maker"), symbols,
                      lane(v, QStringLiteral("maker"), 2.0 * v.half_spread_bps, 40.0, 900, 15)});
     }
@@ -374,6 +399,17 @@ Result<QList<QString>> seed_default_strategies() {
         }
     }
 
+    // Activate the spot measurement grid lanes that reuse an existing producer
+    // (scalp -> scalp_decisions; swing -> edge crypto-recommend / chronos2-
+    // equity-forecast). Lanes without a source (maker spread-capture, equity
+    // scalp) are deferred until they have a signal feed. Each carries honest
+    // execution params, so the resolver scores it cost-net; they mint new
+    // strategy_ids and never disturb the legacy optimistic books.
+    for (const auto& g : spot_lane_grid()) {
+        if (g.params.contains(QStringLiteral("source")))
+            seeds.append(Seed{g.kind, g.symbols, g.params});
+    }
+
     QList<QString> ids;
     ids.reserve(seeds.size());
     for (const auto& s : seeds) {
@@ -393,9 +429,9 @@ Result<QList<QString>> seed_default_strategies() {
     // collect positions or appearing in the active proof leaderboard.
     const QSet<QString> current_ids(ids.begin(), ids.end());
     const QSet<QString> managed_kinds = {
-        QStringLiteral("scalp"), QStringLiteral("spot"), QStringLiteral("kalshi"),
-        QStringLiteral("long_short"), QStringLiteral("chronos2"), QStringLiteral("chronos2_1h"),
-        QStringLiteral("chronos2_1d"), QStringLiteral("chronos2_equity")};
+        QStringLiteral("scalp"), QStringLiteral("spot"), QStringLiteral("swing"),
+        QStringLiteral("kalshi"), QStringLiteral("long_short"), QStringLiteral("chronos2"),
+        QStringLiteral("chronos2_1h"), QStringLiteral("chronos2_1d"), QStringLiteral("chronos2_equity")};
     auto active = list_strategies(QStringLiteral("active"));
     if (active.is_err())
         return Result<QList<QString>>::err(active.error());
