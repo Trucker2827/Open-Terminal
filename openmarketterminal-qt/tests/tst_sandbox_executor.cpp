@@ -1381,6 +1381,108 @@ class TstSandboxExecutor : public QObject {
             if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
         QCOMPARE(opened_kind, QStringLiteral("chronos2_1h"));
     }
+
+    // Maker spread producer end-to-end. Two-sided OPEN is proved on a shared
+    // symbol (XMK); the signed round trips are proved on dedicated per-leg
+    // symbols (XMB long, XMS short) so two opposing brackets never fight over one
+    // tick stream. (On a single symbol a bid's long target sits above an ask's
+    // short stop -- physically real, but only one leg can win per symbol; separate
+    // symbols make each leg's target reachable, which is what exercises the executor.)
+    void maker_quotes_open_both_legs_fill_and_book_signed_pnl() {
+        const QJsonObject params{
+            {"notional_usd", 100.0}, {"liquidity", "maker"}, {"venue", "coinbase_advanced"},
+            {"maker_bps", 40.0}, {"taker_bps", 60.0}, {"half_spread_bps", 2.0},
+            {"slippage_bps", 1.0}, {"maker_fill_through_bps", 5.0},
+            {"target_bps", 90.0}, {"stop_bps", 45.0}, {"horizon_sec", kFarHorizonSec},
+            {"max_age_sec", 15}, {"source", "maker_decisions"}, {"paper_only", true}};
+        auto strat = register_strategy(QStringLiteral("maker"),
+                                       QStringLiteral("XMK-USD,XMB-USD,XMS-USD"), params);
+        QVERIFY2(strat.is_ok(), strat.is_err() ? strat.error().c_str() : "");
+
+        const qint64 t0 = 6000000;
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto quote_line = [&](const QString& symbol, const QString& side, double price) {
+            return QStringLiteral(
+                       R"({"symbol":"%1","venue":"coinbase_advanced","side":"%2",)"
+                       R"("liquidity":"maker","action":"PAPER_MAKER_QUOTE","reference_price":%3,)"
+                       R"("ts_ms":"%4","freshest_age_ms":120,"live_sources":3})")
+                .arg(symbol, side).arg(price, 0, 'f', 4).arg(t0);
+        };
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line(QStringLiteral("XMK-USD"), QStringLiteral("buy"), 99.98),
+                     quote_line(QStringLiteral("XMK-USD"), QStringLiteral("sell"), 100.02),
+                     quote_line(QStringLiteral("XMB-USD"), QStringLiteral("buy"), 99.98),
+                     quote_line(QStringLiteral("XMS-USD"), QStringLiteral("sell"), 100.02)});
+
+        // Cycle 1: all four decisions open as pending_fill. run_cycle's report
+        // .opened is a GLOBAL count across every active strategy, and this
+        // binary shares one DB across slots (see the file header) -- an earlier
+        // slot's seeded producer-backed book can open its own leftover
+        // edge_decision_journal row in the same cycle. Assert on THIS strategy's
+        // four legs directly so the count is isolated from that shared state.
+        auto c1 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(c1.is_ok(), c1.is_err() ? c1.error().c_str() : "");
+        auto mine = Database::instance().execute(
+            "SELECT count(*) FROM sandbox_position WHERE strategy_id=?", {strat.value()});
+        QVERIFY(mine.is_ok() && mine.value().next());
+        QCOMPARE(mine.value().value(0).toInt(), 4);
+
+        // Two-sided open on ONE symbol: a buy and a sell leg, mirrored brackets.
+        const PositionRow kbid = fetch_position(QStringLiteral("XMK-USD|buy|") + QString::number(t0));
+        const PositionRow kask = fetch_position(QStringLiteral("XMK-USD|sell|") + QString::number(t0));
+        QVERIFY(kbid.found);
+        QVERIFY(kask.found);
+        QCOMPARE(kbid.side, QStringLiteral("buy"));
+        QCOMPARE(kask.side, QStringLiteral("sell"));
+        QCOMPARE(kbid.state, QStringLiteral("pending_fill"));
+        QCOMPARE(kask.state, QStringLiteral("pending_fill"));
+        QVERIFY(qAbs(kbid.limit_price - 99.98) < 1e-9);
+        QVERIFY(qAbs(kask.limit_price - 100.02) < 1e-9);
+        QVERIFY(kbid.target_price > kbid.limit_price);   // long reverts up
+        QVERIFY(kbid.stop_price < kbid.limit_price);
+        QVERIFY(kask.target_price < kask.limit_price);   // short reverts down
+        QVERIFY(kask.stop_price > kask.limit_price);
+        QCOMPARE(kbid.data_quality, QStringLiteral("ok"));
+
+        // Cycle 2: fill the two dedicated legs by trading THROUGH each quote
+        // (XMB bid on a down-tick, XMS ask on an up-tick).
+        write_lines(daemon.filePath("scalp_ticks.jsonl"),
+                    {tick_line(QStringLiteral("XMB-USD"), 99.90, t0 + 2000),
+                     tick_line(QStringLiteral("XMS-USD"), 100.10, t0 + 2500)});
+        auto c2 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 3000);
+        QVERIFY2(c2.is_ok(), c2.is_err() ? c2.error().c_str() : "");
+        const PositionRow bfill = fetch_position(QStringLiteral("XMB-USD|buy|") + QString::number(t0));
+        const PositionRow sfill = fetch_position(QStringLiteral("XMS-USD|sell|") + QString::number(t0));
+        QCOMPARE(bfill.state, QStringLiteral("open"));
+        QCOMPARE(sfill.state, QStringLiteral("open"));
+
+        // Cycle 3: each dedicated leg reaches its OWN target on its OWN symbol,
+        // so they never contend. Long target is above; short target is below.
+        // A maker exit requires the tick to trade THROUGH the target by
+        // maker_fill_through_bps (5 bps) -- a mere touch leaves us behind the
+        // queue (see honest_maker_exit_requires_trade_through_end_to_end) -- so
+        // push each tick ~10 bps past its target. The fill is still booked at
+        // target_price itself, so realized pnl is independent of this overshoot.
+        write_lines(daemon.filePath("scalp_ticks.jsonl"),
+                    {tick_line(QStringLiteral("XMB-USD"), bfill.target_price * 1.001, t0 + 4000),
+                     tick_line(QStringLiteral("XMS-USD"), sfill.target_price * 0.999, t0 + 4500)});
+        auto c3 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 5000);
+        QVERIFY2(c3.is_ok(), c3.is_err() ? c3.error().c_str() : "");
+
+        const PositionRow bclosed = fetch_position(QStringLiteral("XMB-USD|buy|") + QString::number(t0));
+        const PositionRow sclosed = fetch_position(QStringLiteral("XMS-USD|sell|") + QString::number(t0));
+        QCOMPARE(bclosed.state, QStringLiteral("closed"));
+        QCOMPARE(sclosed.state, QStringLiteral("closed"));
+        QCOMPARE(bclosed.close_reason, QStringLiteral("target"));
+        QCOMPARE(sclosed.close_reason, QStringLiteral("target"));
+        QVERIFY(bclosed.has_realized_pnl);
+        QVERIFY(sclosed.has_realized_pnl);
+        // Both hit their target => both wins. The short leg is a win only if its
+        // pnl uses (entry - exit); the buy-forced neuter turns it into a loss.
+        QVERIFY2(bclosed.realized_pnl > 0.0, "long leg target hit must be a win");
+        QVERIFY2(sclosed.realized_pnl > 0.0, "short leg target hit must be a win (signed pnl)");
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxExecutor)

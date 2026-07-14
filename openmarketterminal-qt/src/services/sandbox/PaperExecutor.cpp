@@ -369,6 +369,127 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
     return Result<void>::ok();
 }
 
+// maker: two-sided spread-capture. Scans <daemon_dir>/maker_decisions.jsonl for
+// the latest resting bid (side=buy) and ask (side=sell) per symbol and opens each
+// as a pending_fill leg. Unlike scalp this is NOT buy-only and has no directional
+// verdict -- a market maker always quotes; the honest fill model only fills a leg
+// when price trades THROUGH it. reference_price IS the resting quote price (the
+// producer already applied the half-spread via build_maker_quotes), so the bracket
+// is built directly around it, mirrored by side.
+Result<void> open_maker_quotes(const StrategyRow& strategy, const QJsonObject& params,
+                               const QString& daemon_dir, qint64 now_ms, CycleReport& report) {
+    const int max_age_sec = params.contains(QStringLiteral("max_age_sec"))
+                                 ? params.value(QStringLiteral("max_age_sec")).toInt()
+                                 : 15;
+    const double notional_usd = params.value(QStringLiteral("notional_usd")).toDouble(0.0);
+    int horizon_sec_param = params.value(QStringLiteral("horizon_sec")).toInt(0);
+    if (horizon_sec_param <= 0)
+        horizon_sec_param = 900;
+    const double target_bps = params.value(QStringLiteral("target_bps")).toDouble(0.0);
+    const double stop_bps = params.value(QStringLiteral("stop_bps")).toDouble(0.0);
+    const QString strategy_venue = params.value(QStringLiteral("venue")).toString().trimmed().toLower();
+
+    const QString decisions_path = daemon_dir + QStringLiteral("/maker_decisions.jsonl");
+    const QByteArray buffer = read_tail_with_prev(decisions_path, kTickTailBytes);
+    const QList<QByteArray> lines = buffer.split('\n');
+
+    for (const QString& symbol : split_symbols(strategy.symbols)) {
+        // Find the most recent bid and the most recent ask for this symbol.
+        QJsonObject found_by_side[2]; // [0]=buy, [1]=sell
+        bool have[2] = {false, false};
+        for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+            const QByteArray line = it->trimmed();
+            if (line.isEmpty())
+                continue;
+            QJsonParseError pe;
+            const QJsonDocument doc = QJsonDocument::fromJson(line, &pe);
+            if (pe.error != QJsonParseError::NoError || !doc.isObject())
+                continue;
+            const QJsonObject d = doc.object();
+            if (d.value(QStringLiteral("symbol")).toString().trimmed().toUpper() != symbol)
+                continue;
+            if (d.value(QStringLiteral("action")).toString() != QLatin1String("PAPER_MAKER_QUOTE"))
+                continue;
+            const QString decision_venue = d.value(QStringLiteral("venue")).toString().trimmed().toLower();
+            if (!strategy_venue.isEmpty() && decision_venue != strategy_venue)
+                continue;
+            const QString side = d.value(QStringLiteral("side")).toString().trimmed().toLower();
+            const int idx = side == QLatin1String("buy") ? 0 : side == QLatin1String("sell") ? 1 : -1;
+            if (idx < 0 || have[idx])
+                continue;
+            bool ok = false;
+            const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
+            if (!ok || ts_ms <= 0 || now_ms - ts_ms > static_cast<qint64>(max_age_sec) * 1000)
+                continue;
+            found_by_side[idx] = d;
+            have[idx] = true;
+            if (have[0] && have[1])
+                break;
+        }
+
+        for (int idx = 0; idx < 2; ++idx) {
+            if (!have[idx])
+                continue;
+            const QJsonObject& found = found_by_side[idx];
+            const QString side = idx == 0 ? QStringLiteral("buy") : QStringLiteral("sell");
+            bool ok = false;
+            const qint64 ts_ms = found.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
+            const QString decision_id = symbol + QLatin1Char('|') + side + QLatin1Char('|') + QString::number(ts_ms);
+
+            auto existing = Database::instance().execute(
+                "SELECT 1 FROM sandbox_position WHERE decision_id = ? AND strategy_id = ?",
+                {decision_id, strategy.strategy_id});
+            if (existing.is_err())
+                return Result<void>::err(existing.error());
+            if (existing.value().next()) {
+                report.skipped++;
+                continue;
+            }
+
+            const double ref = found.value(QStringLiteral("reference_price")).toDouble();
+            if (ref <= 0.0) {
+                report.skipped++;
+                report.notes << QStringLiteral("maker quote %1 skipped: non-positive reference_price").arg(decision_id);
+                continue;
+            }
+
+            OpenPlan plan;
+            plan.decision_id = decision_id;
+            plan.symbol = symbol;
+            plan.side = side;
+            plan.hypothetical = false;
+            plan.limit_price = ref; // producer already applied the half-spread
+            plan.qty = notional_usd / plan.limit_price;
+            // Bracket mirrored by side: a long reverts UP, a short reverts DOWN.
+            const double up = 1.0 + target_bps / 10000.0;
+            const double down_t = 1.0 - target_bps / 10000.0;
+            const double down_s = 1.0 - stop_bps / 10000.0;
+            const double up_s = 1.0 + stop_bps / 10000.0;
+            if (side == QStringLiteral("buy")) {
+                plan.target_price = target_bps > 0.0 ? QVariant(plan.limit_price * up) : QVariant();
+                plan.stop_price = stop_bps > 0.0 ? QVariant(plan.limit_price * down_s) : QVariant();
+            } else {
+                plan.target_price = target_bps > 0.0 ? QVariant(plan.limit_price * down_t) : QVariant();
+                plan.stop_price = stop_bps > 0.0 ? QVariant(plan.limit_price * up_s) : QVariant();
+            }
+            plan.expires_at = ts_ms + static_cast<qint64>(horizon_sec_param) * 1000;
+            plan.created_at = ts_ms;
+            plan.state = QStringLiteral("pending_fill"); // a maker always rests
+            plan.opened_at = QVariant();
+            plan.fill_ts = 0;
+            plan.entry_fee = 0.0; // maker fee is charged at the fill transition
+            plan.data_quality = data_quality_from_freshness(found);
+            plan.notional_usd = notional_usd;
+
+            auto ins = insert_position(strategy.strategy_id, plan);
+            if (ins.is_err())
+                return ins;
+            report.opened++;
+        }
+    }
+    return Result<void>::ok();
+}
+
 // Non-scalp, non-prediction, non-hypothetical (season-1: "spot"). Same query
 // family as automation_latest_spot_candidate (src/cli/CommandDispatch.cpp):
 // journal_source/side/call/gate SQL filters, horizon/confidence filters
@@ -1224,6 +1345,8 @@ Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir,
         Result<void> r = Result<void>::ok();
         if (strategy.kind == QLatin1String("scalp"))
             r = open_scalp_candidates(strategy, params, daemon_dir, now_ms, report);
+        else if (strategy.kind == QLatin1String("maker"))
+            r = open_maker_quotes(strategy, params, daemon_dir, now_ms, report);
         else if (is_prediction)
             r = open_prediction_candidates(strategy, params, now_ms, report);
         else if (is_price_forecast)
