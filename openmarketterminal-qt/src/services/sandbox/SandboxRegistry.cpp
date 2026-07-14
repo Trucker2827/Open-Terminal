@@ -119,6 +119,70 @@ Result<void> set_status(const QString& strategy_id, const QString& status) {
     return Result<void>::ok();
 }
 
+QVector<SpotLaneSeed> spot_lane_grid() {
+    struct Venue {
+        const char* venue;
+        const char* symbols;
+        double maker_bps;
+        double taker_bps;
+        double half_spread_bps;
+        double slippage_bps;
+        const char* fee_source;
+    };
+    // Honest per-venue cost profiles. Crypto maker/taker mirror the existing
+    // scalp seeds; Alpaca equities are commission-free, so their cost is the
+    // spread + slippage, not a fee.
+    static const Venue venues[] = {
+        {"coinbase", "BTC-USD,ETH-USD,SOL-USD", 40.0, 60.0, 2.0, 1.0,
+         "Coinbase Advanced account tier; verify before live"},
+        {"kraken", "BTC-USD,ETH-USD,SOL-USD", 25.0, 40.0, 2.0, 1.0,
+         "Kraken Pro account tier; verify before live"},
+        {"alpaca", "AAPL,NVDA,MSFT,SPY,QQQ", 0.0, 0.0, 3.0, 2.0,
+         "Alpaca commission-free equities; spread/slippage is the cost"},
+    };
+    constexpr double kMakerThroughBps = 5.0;
+
+    const auto lane = [&](const Venue& v, const QString& liquidity, double target_bps,
+                          double stop_bps, int horizon_sec, int max_age_sec) {
+        return QJsonObject{
+            {"notional_usd", 50.0},
+            {"venue", QString::fromLatin1(v.venue)},
+            {"liquidity", liquidity},
+            {"maker_bps", v.maker_bps},
+            {"taker_bps", v.taker_bps},
+            {"half_spread_bps", v.half_spread_bps},
+            // Only a resting maker pays the queue/adverse-selection cost; a
+            // taker crosses immediately and has no through requirement.
+            {"maker_fill_through_bps",
+             liquidity == QLatin1String("maker") ? kMakerThroughBps : 0.0},
+            {"slippage_bps", v.slippage_bps},
+            {"entry_offset_bps", 1.0},
+            {"target_bps", target_bps},
+            {"stop_bps", stop_bps},
+            {"horizon_sec", horizon_sec},
+            {"max_age_sec", max_age_sec},
+            {"paper_only", true},
+            {"fee_profile_source", QString::fromLatin1(v.fee_source)}};
+    };
+
+    QVector<SpotLaneSeed> grid;
+    for (const Venue& v : venues) {
+        const QString symbols = QString::fromLatin1(v.symbols);
+        // scalp: maker vs taker compete on the same short horizon.
+        grid.append({QStringLiteral("scalp"), symbols,
+                     lane(v, QStringLiteral("maker"), 85.0, 45.0, 900, 15)});
+        grid.append({QStringLiteral("scalp"), symbols,
+                     lane(v, QStringLiteral("taker"), 85.0, 45.0, 900, 15)});
+        // swing: taker entry, longer hold, wider bracket.
+        grid.append({QStringLiteral("swing"), symbols,
+                     lane(v, QStringLiteral("taker"), 300.0, 150.0, 14400, 900)});
+        // maker spread-capture: earn the spread, target just beyond it.
+        grid.append({QStringLiteral("maker"), symbols,
+                     lane(v, QStringLiteral("maker"), 2.0 * v.half_spread_bps, 40.0, 900, 15)});
+    }
+    return grid;
+}
+
 Result<QList<QString>> seed_default_strategies() {
     struct Seed {
         QString kind;

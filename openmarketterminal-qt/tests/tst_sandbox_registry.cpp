@@ -347,6 +347,57 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_1d")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_equity")), 1);
     }
+
+    // The spot measurement grid enumerates every style x venue with an honest
+    // execution-cost profile on each lane. Pure (no DB) -- just shape checks.
+    void spot_lane_grid_covers_styles_venues_and_honest_costs() {
+        const auto grid = spot_lane_grid();
+        QCOMPARE(grid.size(), 12);  // 3 venues x (scalp-maker, scalp-taker, swing, maker)
+
+        QSet<QString> kinds;
+        QSet<QString> venues;
+        QSet<QString> ids;
+        int maker_liquidity = 0;
+        int taker_liquidity = 0;
+        for (const auto& lane : grid) {
+            kinds.insert(lane.kind);
+            venues.insert(lane.params.value(QStringLiteral("venue")).toString());
+            ids.insert(strategy_id_for(lane.kind, lane.symbols, lane.params));
+
+            // Every lane carries the honest-cost params -- the whole point.
+            QVERIFY(lane.params.contains(QStringLiteral("half_spread_bps")));
+            QVERIFY(lane.params.contains(QStringLiteral("maker_fill_through_bps")));
+            QVERIFY(lane.params.contains(QStringLiteral("slippage_bps")));
+            QVERIFY(lane.params.value(QStringLiteral("paper_only")).toBool());
+
+            const QString liquidity = lane.params.value(QStringLiteral("liquidity")).toString();
+            const double through = lane.params.value(QStringLiteral("maker_fill_through_bps")).toDouble();
+            if (liquidity == QLatin1String("maker")) {
+                ++maker_liquidity;
+                QVERIFY(through > 0.0);   // makers pay the queue/adverse-selection cost
+            } else if (liquidity == QLatin1String("taker")) {
+                ++taker_liquidity;
+                QCOMPARE(through, 0.0);   // takers cross immediately, no through requirement
+            }
+        }
+
+        QCOMPARE(kinds, (QSet<QString>{QStringLiteral("scalp"), QStringLiteral("swing"),
+                                       QStringLiteral("maker")}));
+        QCOMPARE(venues, (QSet<QString>{QStringLiteral("coinbase"), QStringLiteral("kraken"),
+                                        QStringLiteral("alpaca")}));
+        QCOMPARE(ids.size(), 12);  // content-addressed: no duplicate lanes
+        QVERIFY(maker_liquidity > 0);
+        QVERIFY(taker_liquidity > 0);
+
+        // The equity venue trades equities; crypto venues trade crypto.
+        for (const auto& lane : grid) {
+            const QString venue = lane.params.value(QStringLiteral("venue")).toString();
+            if (venue == QLatin1String("alpaca"))
+                QVERIFY(lane.symbols.contains(QStringLiteral("AAPL")));
+            else
+                QVERIFY(lane.symbols.contains(QStringLiteral("BTC-USD")));
+        }
+    }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)
 #include "tst_sandbox_registry.moc"
