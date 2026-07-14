@@ -82,7 +82,40 @@ FeeModel fee_model_from_params(const QJsonObject& params) {
     fm.taker_bps = params.contains(QStringLiteral("taker_bps"))
                        ? params.value(QStringLiteral("taker_bps")).toDouble()
                        : 60.0;
+    // Honest-execution fields, default 0 so legacy books are unaffected.
+    fm.half_spread_bps = params.value(QStringLiteral("half_spread_bps")).toDouble(0.0);
+    fm.slippage_bps = params.value(QStringLiteral("slippage_bps")).toDouble(0.0);
+    fm.maker_fill_through_bps = params.value(QStringLiteral("maker_fill_through_bps")).toDouble(0.0);
     return fm;
+}
+
+// A book opts into the honest execution model by carrying half_spread_bps
+// (only the spot lane grid does). Legacy books lack it and keep the exact
+// prior optimistic behaviour, so their accumulated evidence is untouched.
+bool is_honest_lane(const QJsonObject& params) {
+    return params.contains(QStringLiteral("half_spread_bps"));
+}
+
+bool is_maker_lane(const QJsonObject& params) {
+    return params.value(QStringLiteral("liquidity")).toString() == QLatin1String("maker");
+}
+
+double target_bps_from_params(const QJsonObject& params) {
+    if (params.contains(QStringLiteral("target_bps")))
+        return params.value(QStringLiteral("target_bps")).toDouble();
+    return params.value(QStringLiteral("target_move_pct")).toDouble() * 100.0;
+}
+
+double stop_bps_from_params(const QJsonObject& params) {
+    if (params.contains(QStringLiteral("stop_bps")))
+        return params.value(QStringLiteral("stop_bps")).toDouble();
+    return params.value(QStringLiteral("stop_move_pct")).toDouble() * 100.0;
+}
+
+double lane_round_trip_cost_bps(const QJsonObject& params) {
+    const FeeModel fees = fee_model_from_params(params);
+    return honest_round_trip_cost_bps(is_maker_lane(params), fees.half_spread_bps,
+                                      fees.slippage_bps, fees.maker_bps, fees.taker_bps);
 }
 
 double kalshi_prediction_fee_per_contract(double price) {
@@ -157,6 +190,7 @@ struct OpenPlan {
     qint64 created_at = 0;
     QString state; // 'pending_fill' | 'open'
     QVariant opened_at; // invalid QVariant == SQL NULL (pending_fill)
+    qint64 fill_ts = 0; // optional actual execution time for immediate opens
     double entry_fee = 0;
     QString data_quality;
     double notional_usd = 0;
@@ -190,7 +224,8 @@ Result<void> insert_position(const QString& strategy_id, const OpenPlan& plan) {
     // row instead.
     auto fill = db.execute(
         "INSERT INTO sandbox_fill (fill_id, position_id, ts, kind, price, fee, note) VALUES (?,?,?,?,?,?,?)",
-        {new_id(), position_id, plan.created_at, QStringLiteral("open"), plan.limit_price, plan.entry_fee,
+        {new_id(), position_id, plan.fill_ts > 0 ? plan.fill_ts : plan.created_at,
+         QStringLiteral("open"), plan.limit_price, plan.entry_fee,
          QStringLiteral("")});
     if (fill.is_err())
         return Result<void>::err(fill.error());
@@ -281,25 +316,44 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
             continue;
         }
 
+        const bool honest = is_honest_lane(params);
+        const bool maker = is_maker_lane(params);
+        if (honest) {
+            const double expected_capture_bps = found.value(QStringLiteral("expected_capture_bps")).toDouble(-1.0);
+            if (expected_capture_bps < target_bps) {
+                report.skipped++;
+                report.notes << QStringLiteral("scalp candidate %1 skipped: expected capture %2bps below lane target %3bps")
+                                    .arg(decision_id)
+                                    .arg(expected_capture_bps, 0, 'f', 2)
+                                    .arg(target_bps, 0, 'f', 2);
+                continue;
+            }
+        }
+
         OpenPlan plan;
         plan.decision_id = decision_id;
         plan.symbol = symbol;
         plan.side = QStringLiteral("buy");
         plan.hypothetical = false;
-        plan.limit_price = ref * (1.0 - entry_offset_bps / 10000.0);
+        const FeeModel fees = fee_model_from_params(params);
+        plan.limit_price = honest && !maker
+            ? effective_taker_price(plan.side, ref, fees.half_spread_bps, fees.slippage_bps)
+            : ref * (1.0 - entry_offset_bps / 10000.0);
         if (plan.limit_price <= 0.0) {
             report.skipped++;
             report.notes << QStringLiteral("scalp candidate %1 skipped: non-positive limit_price").arg(decision_id);
             continue;
         }
         plan.qty = notional_usd / plan.limit_price;
-        plan.target_price = target_bps > 0.0 ? QVariant(plan.limit_price * (1.0 + target_bps / 10000.0)) : QVariant();
-        plan.stop_price = stop_bps > 0.0 ? QVariant(plan.limit_price * (1.0 - stop_bps / 10000.0)) : QVariant();
+        const double bracket_reference = honest && !maker ? ref : plan.limit_price;
+        plan.target_price = target_bps > 0.0 ? QVariant(bracket_reference * (1.0 + target_bps / 10000.0)) : QVariant();
+        plan.stop_price = stop_bps > 0.0 ? QVariant(bracket_reference * (1.0 - stop_bps / 10000.0)) : QVariant();
         plan.expires_at = ts_ms + static_cast<qint64>(horizon_sec_param) * 1000;
         plan.created_at = ts_ms;
-        plan.state = QStringLiteral("pending_fill");
-        plan.opened_at = QVariant();
-        plan.entry_fee = 0.0;
+        plan.state = honest && !maker ? QStringLiteral("open") : QStringLiteral("pending_fill");
+        plan.opened_at = honest && !maker ? QVariant(now_ms) : QVariant();
+        plan.fill_ts = honest && !maker ? now_ms : 0;
+        plan.entry_fee = honest && !maker ? fee_for(notional_usd, fees.taker_bps) : 0.0;
         // Scalp decisions carry freshest_age_ms/live_sources at the row's
         // TOP level (no freshness_json wrapper); the shared three-way rule
         // applies directly, yielding 'unknown' when an older daemon build
@@ -345,7 +399,7 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
 
     for (const QString& symbol : split_symbols(strategy.symbols)) {
         auto sel = Database::instance().execute(
-            "SELECT id, created_at, horizon, confidence, features_json, freshness_json"
+            "SELECT id, created_at, horizon, confidence, features_json, freshness_json, model_probability"
             " FROM edge_decision_journal"
             " WHERE source = ? AND symbol = ? AND created_at >= ? AND side = 'buy'"
             " AND call = 'BUY CANDIDATE' AND gate = 'pass'"
@@ -366,6 +420,7 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
             const qint64 created_at = q.value(1).toLongLong();
             const QJsonObject features = parse_object(q.value(4).toString());
             const QJsonObject freshness = parse_object(q.value(5).toString());
+            const double model_probability = q.value(6).toDouble();
             const double ref = features.value(QStringLiteral("reference_price")).toDouble();
             if (ref <= 0.0) {
                 report.skipped++;
@@ -374,12 +429,40 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
                 continue;
             }
 
+            const bool honest = is_honest_lane(params);
+            const bool maker = is_maker_lane(params);
+            const double target_bps = target_bps_from_params(params);
+            const double stop_bps = stop_bps_from_params(params);
+            if (honest) {
+                double lane_ev_bps = 0.0;
+                QString evidence;
+                if (features.contains(QStringLiteral("expected_move_bps")) &&
+                    features.value(QStringLiteral("expected_move_bps")).isDouble()) {
+                    lane_ev_bps = features.value(QStringLiteral("expected_move_bps")).toDouble() - target_bps;
+                    evidence = QStringLiteral("expected move");
+                } else {
+                    lane_ev_bps = bracket_expected_value_bps(model_probability, target_bps, stop_bps,
+                                                              lane_round_trip_cost_bps(params));
+                    evidence = QStringLiteral("bracket EV");
+                }
+                if (lane_ev_bps < 0.0) {
+                    report.skipped++;
+                    report.notes << QStringLiteral("%1 candidate %2 skipped: lane %3 %4bps")
+                                        .arg(strategy.kind, id, evidence)
+                                        .arg(lane_ev_bps, 0, 'f', 2);
+                    continue;
+                }
+            }
+
             OpenPlan plan;
             plan.decision_id = id;
             plan.symbol = symbol;
             plan.side = QStringLiteral("buy");
             plan.hypothetical = false;
-            plan.limit_price = ref * (1.0 - entry_offset_bps / 10000.0);
+            const FeeModel fees = fee_model_from_params(params);
+            plan.limit_price = honest && !maker
+                ? effective_taker_price(plan.side, ref, fees.half_spread_bps, fees.slippage_bps)
+                : ref * (1.0 - entry_offset_bps / 10000.0);
             if (plan.limit_price <= 0.0) {
                 report.skipped++;
                 report.notes << QStringLiteral("%1 candidate %2 skipped: non-positive limit_price")
@@ -390,22 +473,18 @@ Result<void> open_spot_like_candidates(const StrategyRow& strategy, const QJsonO
 
             double target_frac = 0.0;
             double stop_frac = 0.0;
-            if (params.contains(QStringLiteral("target_move_pct")))
-                target_frac = params.value(QStringLiteral("target_move_pct")).toDouble() / 100.0;
-            else if (params.contains(QStringLiteral("target_bps")))
-                target_frac = params.value(QStringLiteral("target_bps")).toDouble() / 10000.0;
-            if (params.contains(QStringLiteral("stop_move_pct")))
-                stop_frac = params.value(QStringLiteral("stop_move_pct")).toDouble() / 100.0;
-            else if (params.contains(QStringLiteral("stop_bps")))
-                stop_frac = params.value(QStringLiteral("stop_bps")).toDouble() / 10000.0;
-            plan.target_price = target_frac > 0.0 ? QVariant(plan.limit_price * (1.0 + target_frac)) : QVariant();
-            plan.stop_price = stop_frac > 0.0 ? QVariant(plan.limit_price * (1.0 - stop_frac)) : QVariant();
+            target_frac = target_bps / 10000.0;
+            stop_frac = stop_bps / 10000.0;
+            const double bracket_reference = honest && !maker ? ref : plan.limit_price;
+            plan.target_price = target_frac > 0.0 ? QVariant(bracket_reference * (1.0 + target_frac)) : QVariant();
+            plan.stop_price = stop_frac > 0.0 ? QVariant(bracket_reference * (1.0 - stop_frac)) : QVariant();
 
             plan.expires_at = created_at + static_cast<qint64>(horizon_sec_param) * 1000;
             plan.created_at = created_at;
-            plan.state = QStringLiteral("pending_fill");
-            plan.opened_at = QVariant();
-            plan.entry_fee = 0.0;
+            plan.state = honest && !maker ? QStringLiteral("open") : QStringLiteral("pending_fill");
+            plan.opened_at = honest && !maker ? QVariant(now_ms) : QVariant();
+            plan.fill_ts = honest && !maker ? now_ms : 0;
+            plan.entry_fee = honest && !maker ? fee_for(notional_usd, fees.taker_bps) : 0.0;
             plan.data_quality = data_quality_from_freshness(freshness);
             plan.notional_usd = notional_usd;
 
@@ -822,11 +901,20 @@ Result<void> advance_pending_fills(const QString& ticks_path, qint64 now_ms, Cyc
         }
 
         const auto ticks = ticks_since(ticks_path, row.symbol, row.created_at);
-        const FillResult fill = try_fill(row.side, row.limit_price, ticks, row.expires_at);
         const FeeModel fees = fee_model_from_params(row.params);
+        const bool honest = is_honest_lane(row.params);
+        const bool maker = is_maker_lane(row.params);
+        // Honest maker lanes require price to trade THROUGH the resting limit
+        // (queue / adverse selection); everything else keeps the try_fill touch.
+        const FillResult fill = (honest && maker)
+            ? try_maker_fill(row.side, row.limit_price, ticks, row.expires_at, fees.maker_fill_through_bps)
+            : try_fill(row.side, row.limit_price, ticks, row.expires_at);
 
         if (fill.filled) {
-            const double entry_fee = fee_for(row.notional_usd, fees.maker_bps);
+            // Honest lanes pay the entry fee at their own liquidity; legacy
+            // lanes keep the historical maker-rate entry fee.
+            const double entry_bps = honest ? (maker ? fees.maker_bps : fees.taker_bps) : fees.maker_bps;
+            const double entry_fee = fee_for(row.notional_usd, entry_bps);
             auto upd = db.execute(
                 "UPDATE sandbox_position SET state='open', opened_at=?, entry_fee=?"
                 " WHERE position_id=? AND state='pending_fill'",
@@ -1034,7 +1122,13 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
         const double stop_price = row.has_stop ? row.stop_price : (short_side ? kNever : 0.0);
 
         const auto ticks = ticks_since(ticks_path, row.symbol, row.opened_at);
-        const ExitResult exit = check_exit(row.side, target_price, stop_price, row.expires_at, ticks, now_ms);
+        const FeeModel fees = fee_model_from_params(row.params);
+        const bool honest = is_honest_lane(row.params);
+        const bool maker = is_maker_lane(row.params);
+        const ExitResult exit = honest && maker
+            ? check_maker_exit(row.side, target_price, stop_price, row.expires_at, ticks,
+                               now_ms, fees.maker_fill_through_bps)
+            : check_exit(row.side, target_price, stop_price, row.expires_at, ticks, now_ms);
         if (!exit.exited)
             continue;
 
@@ -1068,15 +1162,22 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
             continue;
         }
 
-        const FeeModel fees = fee_model_from_params(row.params);
         // Deliberate modeling approximation: the exit fee is charged on the
         // position's ENTRY notional (notional_usd), not the actual exit
         // notional (exit.price * qty). For the small per-position moves this
         // sandbox trades (bps-scale targets/stops) the difference is second-
         // order, and using the fixed entry notional keeps entry and exit
         // fees directly comparable across a book.
-        const double exit_fee = fee_for(row.notional_usd, fees.taker_bps);
-        const double pnl = realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
+        // A maker lane earns the spread at a resting target, but a stop is
+        // taker-like: exit is maker-liquidity only on a target.
+        const bool maker_exit = honest && maker && exit.reason == QLatin1String("target");
+        const double exit_fee = fee_for(row.notional_usd, maker_exit ? fees.maker_bps : fees.taker_bps);
+        const QString close_side = short_side ? QStringLiteral("buy") : QStringLiteral("sell");
+        const double execution_exit_price = honest && !maker_exit
+            ? effective_taker_price(close_side, exit.price, fees.half_spread_bps, fees.slippage_bps)
+            : exit.price;
+        const double pnl = realized_pnl(row.side, row.limit_price, execution_exit_price, row.qty,
+                                        row.entry_fee, exit_fee);
 
         auto upd = db.execute(
             "UPDATE sandbox_position SET state='closed', closed_at=?, exit_fee=?, realized_pnl=?, close_reason=?"
@@ -1090,7 +1191,8 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
         }
         auto f = db.execute(
             "INSERT INTO sandbox_fill (fill_id, position_id, ts, kind, price, fee, note) VALUES (?,?,?,?,?,?,?)",
-            {new_id(), row.position_id, exit.ts_ms, exit.reason, exit.price, exit_fee, QStringLiteral("")});
+            {new_id(), row.position_id, exit.ts_ms, exit.reason, execution_exit_price, exit_fee,
+             QStringLiteral("")});
         if (f.is_err())
             return Result<void>::err(f.error());
         report.closed++;

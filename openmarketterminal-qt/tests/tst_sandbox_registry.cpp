@@ -177,11 +177,11 @@ class TstSandboxRegistry : public QObject {
     void seed_default_strategies_is_idempotent() {
         auto first = seed_default_strategies();
         QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
-        QCOMPARE(first.value().size(), 28);
+        QCOMPARE(first.value().size(), 35);  // 28 base + 7 activatable spot-grid lanes
 
         auto second = seed_default_strategies();
         QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
-        QCOMPARE(second.value().size(), 28);
+        QCOMPARE(second.value().size(), 35);
         QCOMPARE(second.value(), first.value());
 
         auto rows = list_strategies();
@@ -221,10 +221,10 @@ class TstSandboxRegistry : public QObject {
                 ++long_short_count;
             }
         }
-        QCOMPARE(seed_row_count, 28);
-        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "kalshi", "long_short", "chronos2", "chronos2_1h",
-                                       "chronos2_1d", "chronos2_equity"}));
-        QCOMPARE(scalp_count, 2);
+        QCOMPARE(seed_row_count, 35);
+        QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "kalshi", "long_short", "chronos2",
+                                       "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
+        QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase_advanced/kraken_pro maker+taker)
         QCOMPARE(scalp_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
         QCOMPARE(spot_count, 3);
         QCOMPARE(kalshi_count, 18);
@@ -240,6 +240,30 @@ class TstSandboxRegistry : public QObject {
             QVERIFY2(row.kind != QStringLiteral("btc5m"), "btc5m must not be seeded");
             QVERIFY2(row.kind != QStringLiteral("chronos2_5m"), "chronos2_5m must not be seeded");
         }
+    }
+
+    // Seeding activates exactly the 7 producer-backed spot-grid lanes -- honest
+    // execution params, kinds scalp + swing -- distinct from the legacy books.
+    void seed_activates_honest_spot_grid_lanes() {
+        auto seeded = seed_default_strategies();
+        QVERIFY2(seeded.is_ok(), seeded.is_err() ? seeded.error().c_str() : "");
+        auto rows = list_strategies(QStringLiteral("active"));
+        QVERIFY(rows.is_ok());
+
+        int honest = 0, honest_scalp = 0, honest_swing = 0;
+        for (const auto& row : rows.value()) {
+            const QJsonObject params = QJsonDocument::fromJson(row.params_json.toUtf8()).object();
+            if (!params.contains(QStringLiteral("half_spread_bps")))
+                continue;  // legacy books carry no honest params
+            ++honest;
+            QVERIFY(params.contains(QStringLiteral("source")));  // activatable => producer-backed
+            QVERIFY(params.value(QStringLiteral("paper_only")).toBool());
+            if (row.kind == QStringLiteral("swing")) ++honest_swing;
+            else if (row.kind == QStringLiteral("scalp")) ++honest_scalp;
+        }
+        QCOMPARE(honest, 7);
+        QCOMPARE(honest_scalp, 4);  // coinbase/kraken maker+taker
+        QCOMPARE(honest_swing, 3);  // coinbase/kraken/alpaca
     }
 
     // (e2) seeding retires legacy venue-less scalp plus removed horizon kinds.
@@ -346,6 +370,100 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_1h")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_1d")), 1);
         QCOMPARE(checked_count.value(QStringLiteral("chronos2_equity")), 1);
+    }
+
+    // The spot measurement grid enumerates every style x venue with an honest
+    // execution-cost profile on each lane. Pure (no DB) -- just shape checks.
+    void spot_lane_grid_covers_styles_venues_and_honest_costs() {
+        const auto grid = spot_lane_grid();
+        QCOMPARE(grid.size(), 12);  // 3 venues x (scalp-maker, scalp-taker, swing, maker)
+
+        QSet<QString> kinds;
+        QSet<QString> venues;
+        QSet<QString> ids;
+        int maker_liquidity = 0;
+        int taker_liquidity = 0;
+        for (const auto& lane : grid) {
+            kinds.insert(lane.kind);
+            venues.insert(lane.params.value(QStringLiteral("venue")).toString());
+            ids.insert(strategy_id_for(lane.kind, lane.symbols, lane.params));
+
+            // Every lane carries the honest-cost params -- the whole point.
+            QVERIFY(lane.params.contains(QStringLiteral("half_spread_bps")));
+            QVERIFY(lane.params.contains(QStringLiteral("maker_fill_through_bps")));
+            QVERIFY(lane.params.contains(QStringLiteral("slippage_bps")));
+            QVERIFY(lane.params.value(QStringLiteral("paper_only")).toBool());
+
+            const QString liquidity = lane.params.value(QStringLiteral("liquidity")).toString();
+            const double through = lane.params.value(QStringLiteral("maker_fill_through_bps")).toDouble();
+            if (liquidity == QLatin1String("maker")) {
+                ++maker_liquidity;
+                QVERIFY(through > 0.0);   // makers pay the queue/adverse-selection cost
+            } else if (liquidity == QLatin1String("taker")) {
+                ++taker_liquidity;
+                QCOMPARE(through, 0.0);   // takers cross immediately, no through requirement
+            }
+        }
+
+        QCOMPARE(kinds, (QSet<QString>{QStringLiteral("scalp"), QStringLiteral("swing"),
+                                       QStringLiteral("maker")}));
+        QCOMPARE(venues, (QSet<QString>{QStringLiteral("coinbase_advanced"), QStringLiteral("kraken_pro"),
+                                        QStringLiteral("alpaca")}));
+        QCOMPARE(ids.size(), 12);  // content-addressed: no duplicate lanes
+        QVERIFY(maker_liquidity > 0);
+        QVERIFY(taker_liquidity > 0);
+
+        // The equity venue trades equities; crypto venues trade crypto.
+        for (const auto& lane : grid) {
+            const QString venue = lane.params.value(QStringLiteral("venue")).toString();
+            if (venue == QLatin1String("alpaca"))
+                QVERIFY(lane.symbols.contains(QStringLiteral("AAPL")));
+            else
+                QVERIFY(lane.symbols.contains(QStringLiteral("BTC-USD")));
+        }
+
+        // Producer wiring: 7 activatable lanes reuse an existing feed; the rest
+        // (maker spread-capture, equity scalp) are deferred (no source).
+        int activatable = 0;
+        for (const auto& lane : grid) {
+            const QString kind = lane.kind;
+            const QString venue = lane.params.value(QStringLiteral("venue")).toString();
+            const bool crypto = venue != QLatin1String("alpaca");
+            const bool has_source = lane.params.contains(QStringLiteral("source"));
+            if (has_source)
+                ++activatable;
+
+            if (kind == QLatin1String("maker")) {
+                QVERIFY(!has_source);  // market-making has no directional producer yet
+            } else if (kind == QLatin1String("scalp")) {
+                if (crypto)
+                    QCOMPARE(lane.params.value(QStringLiteral("source")).toString(),
+                             QStringLiteral("scalp_decisions"));
+                else
+                    QVERIFY(!has_source);  // equity scalp deferred
+            } else if (kind == QLatin1String("swing")) {
+                QCOMPARE(lane.params.value(QStringLiteral("journal_source")).toString(),
+                         crypto ? QStringLiteral("edge crypto-recommend")
+                                : QStringLiteral("chronos2-equity-forecast"));
+            }
+        }
+        QCOMPARE(activatable, 7);  // 2 crypto x scalp{maker,taker} + 3 swing
+    }
+
+    // Break-even gate: every grid lane's target clears its honest round-trip
+    // cost (target = cost + margin by construction), and lane_is_tradeable
+    // rejects a net-negative configuration.
+    void grid_lanes_clear_cost_and_gate_rejects_net_negative() {
+        for (const auto& lane : spot_lane_grid()) {
+            QVERIFY(lane.params.contains(QStringLiteral("round_trip_cost_bps")));
+            QVERIFY(lane.params.value(QStringLiteral("target_bps")).toDouble() >
+                    lane.params.value(QStringLiteral("round_trip_cost_bps")).toDouble());
+            QVERIFY(lane_is_tradeable(lane.params));
+        }
+        // The gate itself: a win that clears cost passes; target <= cost fails.
+        QVERIFY(lane_is_tradeable(QJsonObject{{"target_bps", 120.0}, {"round_trip_cost_bps", 80.0}}));
+        QVERIFY(!lane_is_tradeable(QJsonObject{{"target_bps", 85.0}, {"round_trip_cost_bps", 126.0}}));
+        QVERIFY(!lane_is_tradeable(QJsonObject{{"target_bps", 80.0}, {"round_trip_cost_bps", 80.0}}));
     }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)
