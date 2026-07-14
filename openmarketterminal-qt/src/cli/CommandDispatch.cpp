@@ -415,6 +415,7 @@ static int command_help(const QString& topic) {
             "  sandbox positions [--open|--closed] [--limit N]\n"
             "  sandbox score-now (alias: score)\n"
             "  sandbox leaderboard [--json] (alias: board)\n"
+            "  sandbox lane-significance [--json]\n"
             "  sandbox book <strategy_id> [--json]\n"
             "  sandbox eligibility [--json]\n"
             "  sandbox install-jobs\n"
@@ -8495,6 +8496,69 @@ static int sandbox_leaderboard_command(const GlobalOpts& opts, QStringList args)
     return 0;
 }
 
+// Phase 1: rank the honest (cost-net) lanes by session-clustered expectancy.
+// Read-only. A lane shows edge only when its mean session PnL clears two
+// clustered standard errors -- the spot analog of the Kalshi authority gate.
+static int sandbox_lane_significance_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: sandbox lane-significance [--json]\n");
+        return 2;
+    }
+    int code = 0;
+    if (!init_headless_for_cli(opts, code))
+        return code;
+    auto rows = Database::instance().execute(
+        "SELECT s.kind, s.params_json, p.realized_pnl, p.closed_at"
+        " FROM sandbox_position p JOIN sandbox_strategy s ON s.strategy_id = p.strategy_id"
+        " WHERE p.state='closed' AND p.realized_pnl IS NOT NULL"
+        " AND p.data_quality='ok'", {});
+    if (rows.is_err()) {
+        std::fprintf(stderr, "%s\n", rows.error().c_str());
+        return 5;
+    }
+    QVector<sandboxsvc::LanePnlSample> samples;
+    while (rows.value().next()) {
+        const QJsonObject params = QJsonDocument::fromJson(
+            rows.value().value(1).toString().toUtf8()).object();
+        if (!params.contains(QStringLiteral("half_spread_bps")))
+            continue;  // only honest, cost-net lanes
+        const QString lane = rows.value().value(0).toString() + QLatin1Char('/') +
+            params.value(QStringLiteral("venue")).toString() + QLatin1Char('/') +
+            params.value(QStringLiteral("liquidity")).toString();
+        const QString session = QDateTime::fromMSecsSinceEpoch(
+            rows.value().value(3).toLongLong(), QTimeZone::UTC).date().toString(Qt::ISODate);
+        samples.append({lane, session, rows.value().value(2).toDouble()});
+    }
+    const auto lanes = sandboxsvc::evaluate_lane_significance(samples, 20);
+    if (opts.json) {
+        QJsonArray arr;
+        for (const auto& r : lanes)
+            arr.append(QJsonObject{
+                {"lane", r.lane}, {"trades", r.trades}, {"sessions", r.sessions},
+                {"net_pnl", r.net_pnl}, {"mean_session_pnl", r.mean_session_pnl},
+                {"clustered_standard_error", r.clustered_standard_error},
+                {"conservative_expectancy", r.conservative_expectancy},
+                {"verdict", !r.ready ? "insufficient" : r.has_edge ? "EDGE" : "no edge"},
+                {"reason", r.reason}});
+        return automation_emit_object(opts, QJsonObject{
+            {"lanes", arr}, {"minimum_sessions", 20},
+            {"rule", "a lane shows edge only when mean session PnL exceeds two clustered SE"}});
+    }
+    std::printf("Spot lane significance (honest cost-net; %lld resolved trades)\n",
+                static_cast<long long>(samples.size()));
+    std::printf("%-30s %6s %8s %9s %10s %10s %s\n",
+                "LANE", "TRADES", "SESSIONS", "NET_PNL", "MEAN/SESS", "CONS-EXP", "VERDICT");
+    for (const auto& r : lanes) {
+        const char* verdict = !r.ready ? "insufficient" : r.has_edge ? "EDGE" : "no edge";
+        std::printf("%-30s %6d %8d %9.2f %10.4f %10.4f %s\n",
+                    qUtf8Printable(elide_text(r.lane, 30)), r.trades, r.sessions, r.net_pnl,
+                    r.mean_session_pnl, r.conservative_expectancy, verdict);
+    }
+    if (samples.isEmpty())
+        std::printf("No honest lane trades have resolved yet.\n");
+    return 0;
+}
+
 static int sandbox_book_command(const GlobalOpts& opts, QStringList args) {
     if (args.isEmpty() || args.size() > 2) {
         std::fprintf(stderr, "usage: sandbox book <strategy_id> [--json]\n");
@@ -8739,6 +8803,8 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
         return sandbox_score_now_command(opts, args);
     if (sub == "leaderboard" || sub == "board")
         return sandbox_leaderboard_command(opts, args);
+    if (sub == "lane-significance")
+        return sandbox_lane_significance_command(opts, args);
     if (sub == "book")
         return sandbox_book_command(opts, args);
     if (sub == "eligibility")

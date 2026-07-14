@@ -1255,6 +1255,55 @@ private slots:
         QVERIFY(text.contains("HYPOTHETICAL"));
     }
 
+    void sandbox_lane_significance_uses_only_honest_ok_quality_rows() {
+        sandbox_test_home();
+        const QString strategy_id = QStringLiteral("t9_lane_significance_strategy");
+        const QString params = QStringLiteral(
+            "{\"venue\":\"kraken_pro\",\"liquidity\":\"taker\",\"half_spread_bps\":5}");
+        auto strategy = Database::instance().execute(
+            "INSERT INTO sandbox_strategy (strategy_id, kind, symbols, params_json, status, created_at,"
+            " notes) VALUES (?,?,?,?,?,?,?)",
+            {strategy_id, QStringLiteral("scalp"), QStringLiteral("BTC-USD"), params,
+             QStringLiteral("active"), QDateTime::currentMSecsSinceEpoch(), QStringLiteral("")});
+        QVERIFY2(strategy.is_ok(), strategy.is_err() ? strategy.error().c_str() : "");
+
+        const qint64 day_ms = 24LL * 60 * 60 * 1000;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        auto insert_closed = [&](const QString& id, double pnl, qint64 closed_at,
+                                 const QString& quality) {
+            auto r = Database::instance().execute(
+                "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side,"
+                " hypothetical, qty, limit_price, expires_at, state, opened_at, closed_at, entry_fee,"
+                " exit_fee, realized_pnl, close_reason, data_quality, notional_usd, created_at)"
+                " VALUES (?,?,?,?,'buy',0,1.0,100.0,?,'closed',?,?,0,0,?,'target',?,10.0,?)",
+                {id, strategy_id, id + QStringLiteral("-dec"), QStringLiteral("BTC-USD"), closed_at,
+                 closed_at, closed_at, pnl, quality, closed_at});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        insert_closed(QStringLiteral("t9_lane_ok_1"), 1.25, now - 2 * day_ms, QStringLiteral("ok"));
+        insert_closed(QStringLiteral("t9_lane_ok_2"), -0.25, now - day_ms, QStringLiteral("ok"));
+        insert_closed(QStringLiteral("t9_lane_degraded"), 99.0, now, QStringLiteral("degraded"));
+        insert_closed(QStringLiteral("t9_lane_unknown"), 99.0, now, QStringLiteral("unknown"));
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "sandbox", "lane-significance"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("minimum_sessions").toInt(), 20);
+        bool found = false;
+        for (const QJsonValue& value : out.value("lanes").toArray()) {
+            const QJsonObject lane = value.toObject();
+            if (lane.value("lane").toString() != QStringLiteral("scalp/kraken_pro/taker"))
+                continue;
+            found = true;
+            QCOMPARE(lane.value("trades").toInt(), 2);
+            QCOMPARE(lane.value("sessions").toInt(), 2);
+            QVERIFY(qAbs(lane.value("net_pnl").toDouble() - 1.0) < 1e-9);
+            QCOMPARE(lane.value("verdict").toString(), QStringLiteral("insufficient"));
+        }
+        QVERIFY2(found, "lane-significance must report the honest fixture lane");
+    }
+
     void sandbox_book_returns_per_day_rows_and_live_counts() {
         sandbox_test_home();
         const QString strategy_id = QStringLiteral("t9_book_strategy");

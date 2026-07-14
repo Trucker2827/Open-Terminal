@@ -54,6 +54,7 @@
 
 #include <QList>
 #include <QString>
+#include <QVector>
 
 namespace openmarketterminal::services::sandbox {
 
@@ -116,5 +117,39 @@ struct LeaderboardRow {
 // strategy's own params_json (`hypothetical: true`, the exact key
 // PaperExecutor.cpp's run_cycle branches on), not inferred per-position.
 Result<QList<LeaderboardRow>> leaderboard(const QString& profile);
+
+// --- Phase 1: cost-net lane significance (analog of the Kalshi cohort gate) ---
+//
+// One resolved paper trade's realized PnL, tagged with its lane (the cohort we
+// rank) and its session (the INDEPENDENT unit we cluster on, so many correlated
+// trades in one day don't inflate N). realized_pnl is already cost-net (honest
+// execution nets fees + spread + slippage).
+struct LanePnlSample {
+    QString lane;     // cohort key, e.g. "scalp/coinbase_advanced/taker"
+    QString session;  // independent cluster key, e.g. a UTC calendar day
+    double pnl = 0.0; // realized_pnl of one closed trade
+};
+
+struct LaneSignificance {
+    QString lane;
+    int trades = 0;
+    int sessions = 0;                     // independent observations
+    double net_pnl = 0.0;                 // total realized pnl
+    double mean_session_pnl = 0.0;        // mean per-session total
+    double clustered_standard_error = 0.0;
+    double conservative_expectancy = 0.0; // mean - 2 * SE (per session)
+    bool ready = false;                   // sessions >= minimum_sessions
+    bool has_edge = false;                // ready AND conservative_expectancy > 0
+    QString reason;
+};
+
+// Clusters each lane's trades by session, treats each session's TOTAL pnl as
+// one observation, and computes the conservative expectancy (mean - 2 clustered
+// standard errors). A lane earns "edge" only when that is > 0 over at least
+// minimum_sessions independent sessions -- the same don't-fool-yourself bar as
+// the Kalshi authority gate, on realized cost-net PnL instead of Brier. Pure:
+// no DB. Result is sorted by lane.
+QVector<LaneSignificance> evaluate_lane_significance(const QVector<LanePnlSample>& samples,
+                                                     int minimum_sessions = 20);
 
 } // namespace openmarketterminal::services::sandbox

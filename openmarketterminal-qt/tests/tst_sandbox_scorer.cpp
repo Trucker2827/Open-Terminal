@@ -351,6 +351,63 @@ class TstSandboxScorer : public QObject {
         QCOMPARE(lrow->resolved, 3);
         QVERIFY(qAbs(lrow->net_pnl - 1.0) < 1e-9);
     }
+
+    // Phase 1: lane significance clusters by session and gates on conservative
+    // expectancy (mean - 2 clustered SE), the same don't-fool-yourself bar as
+    // the Kalshi gate. Pure -- no DB.
+    void evaluate_lane_significance_clusters_by_session_and_gates_on_expectancy() {
+        QVector<LanePnlSample> samples;
+        // Lane A: a genuine edge -- +10/session (3 trades of 4,4,2) for 30
+        // sessions. Consistent => conservative expectancy > 0.
+        for (int d = 0; d < 30; ++d) {
+            const QString s = QStringLiteral("A-day-%1").arg(d);
+            samples.append({QStringLiteral("A"), s, 4.0});
+            samples.append({QStringLiteral("A"), s, 4.0});
+            samples.append({QStringLiteral("A"), s, 2.0});
+        }
+        // Lane B: no edge -- session totals alternate +30/-30, mean 0, high
+        // variance => conservative <= 0.
+        for (int d = 0; d < 30; ++d)
+            samples.append({QStringLiteral("B"), QStringLiteral("B-day-%1").arg(d),
+                            d % 2 ? 30.0 : -30.0});
+        // Lane C: thin -- only 5 independent sessions.
+        for (int d = 0; d < 5; ++d)
+            samples.append({QStringLiteral("C"), QStringLiteral("C-day-%1").arg(d), 100.0});
+
+        const auto result = evaluate_lane_significance(samples, 20);
+        QCOMPARE(result.size(), 3);  // grouping keeps the three lanes distinct
+        const LaneSignificance& A = result[0];  // sorted by lane
+        const LaneSignificance& B = result[1];
+        const LaneSignificance& C = result[2];
+
+        QCOMPARE(A.lane, QStringLiteral("A"));
+        QCOMPARE(A.trades, 90);
+        QCOMPARE(A.sessions, 30);
+        QVERIFY(qAbs(A.mean_session_pnl - 10.0) < 1e-9);
+        QVERIFY(A.ready);
+        QVERIFY(A.has_edge);
+        QVERIFY(A.conservative_expectancy > 0.0);
+
+        QVERIFY(B.ready);
+        QVERIFY(!B.has_edge);
+        QVERIFY(B.conservative_expectancy <= 0.0);
+
+        QVERIFY(!C.ready);          // < 20 sessions
+        QVERIFY(!C.has_edge);
+    }
+
+    void evaluate_lane_significance_requires_variance_estimating_sample() {
+        const QVector<LanePnlSample> samples{
+            {QStringLiteral("A"), QStringLiteral("only-session"), 100.0},
+        };
+
+        const auto result = evaluate_lane_significance(samples, 1);
+        QCOMPARE(result.size(), 1);
+        QCOMPARE(result[0].sessions, 1);
+        QVERIFY(!result[0].ready);
+        QVERIFY(!result[0].has_edge);
+        QVERIFY(result[0].reason.contains(QStringLiteral("1 < 2")));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxScorer)
