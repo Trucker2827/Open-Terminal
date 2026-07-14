@@ -17,6 +17,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QString>
+#include <QVector>
 
 namespace openmarketterminal::services::sandbox {
 
@@ -64,5 +65,35 @@ Result<void> set_status(const QString& strategy_id, const QString& status);
 // Returns the newly-registered/looked-up strategy_ids in seed-list order
 // (retired removed-kind ids are not included).
 Result<QList<QString>> seed_default_strategies();
+
+/// One candidate lane in the spot measurement grid: a (kind, symbols, params)
+/// triple ready for register_strategy(). Mirrors the local Seed struct in
+/// seed_default_strategies() but is public so it can be enumerated and tested.
+struct SpotLaneSeed {
+    QString kind;
+    QString symbols;
+    QJsonObject params;
+};
+
+// The spot measurement lane grid: every style (scalp maker / scalp taker /
+// swing / maker spread-capture) crossed with every venue (Coinbase, Kraken,
+// Alpaca), each carrying that venue's HONEST execution-cost profile
+// (maker_bps/taker_bps + half_spread_bps + maker_fill_through_bps + slippage_bps)
+// so the fill model can charge what a real order actually pays. Crypto venues
+// trade BTC/ETH/SOL; the equity venue trades a small large-cap set. Pure: no
+// DB, no registration side effects -- callers register and score. Every lane is
+// paper_only; nothing here can place a live order.
+//
+// This enumerates every competing lane. seed_default_strategies() activates
+// only producer-backed lanes whose target clears the honest round-trip cost;
+// deferred lanes remain visible here until their producers exist.
+QVector<SpotLaneSeed> spot_lane_grid();
+
+// True iff a lane's target clears its honest round-trip cost -- i.e. hitting
+// the target actually makes money. Reads target_bps and round_trip_cost_bps
+// from the lane params. A lane that fails this is net-negative on a win and is
+// NOT seeded (it could only be a cost-floor control). The break-even gate that
+// keeps guaranteed-loser configurations out of the active leaderboard.
+bool lane_is_tradeable(const QJsonObject& params);
 
 } // namespace openmarketterminal::services::sandbox

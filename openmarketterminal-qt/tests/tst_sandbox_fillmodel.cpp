@@ -225,6 +225,118 @@ class TstSandboxFillModel : public QObject {
         QCOMPARE(stop_r.reason, QStringLiteral("stop"));
         QVERIFY(qAbs(stop_r.price - 103.7) < 1e-9);
     }
+
+    // Honest maker fill: a mere touch of the limit does NOT fill when a
+    // through-margin is required (queue / adverse selection); the price must
+    // trade strictly through the limit by the margin. through_bps == 0 must
+    // reproduce try_fill's optimistic touch-fills behaviour.
+    void maker_fill_requires_trade_through_not_touch() {
+        // buy limit 100, 5 bps through => threshold 99.95. A touch at 100.0
+        // and a shallow 99.97 both fail; 99.9 (below threshold) fills at 100.
+        const QVector<TickRow> touch = {tick(100.0, 1000), tick(99.97, 2000)};
+        QVERIFY(!try_maker_fill(QStringLiteral("buy"), 100.0, touch, 5000, 5.0).filled);
+
+        const QVector<TickRow> through = {tick(100.0, 1000), tick(99.9, 2000)};
+        const FillResult f = try_maker_fill(QStringLiteral("buy"), 100.0, through, 5000, 5.0);
+        QVERIFY(f.filled);
+        QVERIFY(qAbs(f.price - 100.0) < 1e-9);   // maker earns the limit, no improvement
+        QCOMPARE(f.ts_ms, qint64(2000));
+
+        // sell limit 100, 5 bps through => threshold 100.05; a touch at 100.0
+        // fails, 100.1 fills.
+        QVERIFY(!try_maker_fill(QStringLiteral("sell"), 100.0, {tick(100.0, 1000)}, 5000, 5.0).filled);
+        QVERIFY(try_maker_fill(QStringLiteral("sell"), 100.0, {tick(100.1, 1000)}, 5000, 5.0).filled);
+
+        // through_bps == 0 reproduces the optimistic touch-fills behaviour.
+        QVERIFY(try_maker_fill(QStringLiteral("buy"), 100.0, {tick(100.0, 1000)}, 5000, 0.0).filled);
+    }
+
+    void maker_exit_requires_trade_through_and_books_resting_limit() {
+        const QVector<TickRow> touch_only = {tick(105.0, 1000), tick(105.04, 2000)};
+        QVERIFY(!check_maker_exit(QStringLiteral("long"), 105.0, 97.0, 5000,
+                                  touch_only, 3000, 5.0).exited);
+
+        const ExitResult through = check_maker_exit(
+            QStringLiteral("long"), 105.0, 97.0, 5000,
+            {tick(105.10, 3000)}, 3500, 5.0);
+        QVERIFY(through.exited);
+        QCOMPARE(through.reason, QStringLiteral("target"));
+        QVERIFY(qAbs(through.price - 105.0) < 1e-9);
+        QCOMPARE(through.ts_ms, qint64(3000));
+
+        const ExitResult stop = check_maker_exit(
+            QStringLiteral("long"), 105.0, 97.0, 5000,
+            {tick(96.5, 3000)}, 3500, 5.0);
+        QVERIFY(stop.exited);
+        QCOMPARE(stop.reason, QStringLiteral("stop"));
+        QVERIFY(qAbs(stop.price - 96.5) < 1e-9);
+    }
+
+    // Taker crosses the half-spread AND pays slippage, both adverse: a buyer
+    // pays up, a seller receives down, by (half_spread + slippage) bps.
+    void taker_price_crosses_spread_and_slippage() {
+        // 2 bps half-spread + 1 bps slippage = 3 bps = 0.03% adverse.
+        const double buy = effective_taker_price(QStringLiteral("buy"), 100.0, 2.0, 1.0);
+        QVERIFY(qAbs(buy - 100.03) < 1e-9);      // pays UP
+        const double sell = effective_taker_price(QStringLiteral("sell"), 100.0, 2.0, 1.0);
+        QVERIFY(qAbs(sell - 99.97) < 1e-9);      // receives DOWN
+        // long/short mirror buy/sell.
+        QVERIFY(qAbs(effective_taker_price(QStringLiteral("long"), 100.0, 2.0, 1.0) - 100.03) < 1e-9);
+        QVERIFY(qAbs(effective_taker_price(QStringLiteral("short"), 100.0, 2.0, 1.0) - 99.97) < 1e-9);
+        // Zero costs => reference price unchanged.
+        QVERIFY(qAbs(effective_taker_price(QStringLiteral("buy"), 100.0, 0.0, 0.0) - 100.0) < 1e-9);
+    }
+
+    // Honest round-trip PnL: a taker pays the spread/slippage crossing on BOTH
+    // legs; a maker earns the spread; zero-cost reduces to realized_pnl.
+    void honest_round_trip_pnl_charges_taker_both_legs() {
+        // long 100 -> 110, qty 1, no fees; 5 bps half-spread + 5 bps slippage
+        // = 10 bps = 0.1% adverse per taker leg.
+        const double maker = honest_round_trip_pnl(QStringLiteral("long"), true, true, 100.0, 110.0,
+                                                   1.0, 0.0, 0.0, 5.0, 5.0);
+        const double taker = honest_round_trip_pnl(QStringLiteral("long"), false, false, 100.0, 110.0,
+                                                   1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(maker - 10.0) < 1e-9);   // both legs raw
+        QVERIFY(qAbs(taker - 9.79) < 1e-9);   // pays up to 100.1, receives 109.89
+        QVERIFY(taker < maker);
+
+        // Mixed: a maker lane that stops out (maker entry, TAKER exit) crosses
+        // only the exit leg -- between the all-maker and all-taker figures.
+        const double mixed = honest_round_trip_pnl(QStringLiteral("long"), true, false, 100.0, 110.0,
+                                                   1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(mixed - 9.89) < 1e-9);   // entry raw 100, exit 109.89
+        QVERIFY(mixed < maker && mixed > taker);
+
+        // Short mirrors (both taker): sells lower (109.89), buys back higher (100.1).
+        const double short_taker = honest_round_trip_pnl(QStringLiteral("short"), false, false, 110.0,
+                                                         100.0, 1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(short_taker - 9.79) < 1e-9);
+
+        // Zero spread/slippage reduces EXACTLY to realized_pnl (legacy path).
+        const double zero = honest_round_trip_pnl(QStringLiteral("long"), false, false, 100.0, 110.0,
+                                                  1.0, 0.2, 0.3, 0.0, 0.0);
+        QVERIFY(qAbs(zero - realized_pnl(QStringLiteral("long"), 100.0, 110.0, 1.0, 0.2, 0.3)) < 1e-9);
+    }
+
+    // Honest round-trip cost: the floor a target must clear. A taker pays
+    // spread+slippage+fee on both legs; a maker pays only its fee (earns the
+    // spread by not crossing), so the same venue is cheaper as a maker.
+    void honest_round_trip_cost_bps_taker_vs_maker() {
+        // taker: 2*(2+1) + 2*60 = 126
+        QVERIFY(qAbs(honest_round_trip_cost_bps(false, 2.0, 1.0, 40.0, 60.0) - 126.0) < 1e-9);
+        // maker: 2*40 = 80
+        QVERIFY(qAbs(honest_round_trip_cost_bps(true, 2.0, 1.0, 40.0, 60.0) - 80.0) < 1e-9);
+        QVERIFY(honest_round_trip_cost_bps(false, 2.0, 1.0, 40.0, 60.0) >
+                honest_round_trip_cost_bps(true, 2.0, 1.0, 40.0, 60.0));
+    }
+
+
+    void bracket_expected_value_is_lane_specific() {
+        // Same 80% signal and 100/50 bracket. A 20bps round trip is worth
+        // +50bps; an 80bps round trip is worth -10bps.
+        QVERIFY(qAbs(bracket_expected_value_bps(0.8, 100.0, 50.0, 20.0) - 50.0) < 1e-9);
+        QVERIFY(qAbs(bracket_expected_value_bps(0.8, 100.0, 50.0, 80.0) - (-10.0)) < 1e-9);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxFillModel)

@@ -30,6 +30,13 @@ struct FeeModel {
     double maker_bps = 0;
     double taker_bps = 0;
     double slippage_bps = 0;
+    // Half of the quoted bid/ask spread, in bps. A taker crosses it on entry
+    // AND on exit; a resting maker earns it (does not pay it).
+    double half_spread_bps = 0;
+    // A resting maker limit fills only when a tick trades THROUGH the limit by
+    // at least this many bps (models queue position / adverse selection). 0
+    // reproduces the optimistic touch-fills behaviour of try_fill().
+    double maker_fill_through_bps = 0;
 };
 
 struct FillResult {
@@ -51,6 +58,25 @@ struct FillResult {
 // No qualifying tick (or an empty ticks vector) -> filled == false.
 FillResult try_fill(const QString& side, double limit_price, const QVector<TickRow>& ticks,
                      qint64 entry_deadline_ms);
+
+// Honest maker fill. Unlike try_fill (which fills the moment a tick merely
+// touches the limit), a resting order fills only once a tick trades THROUGH
+// the limit by at least through_bps -- modelling that a mere touch usually
+// leaves you behind the queue / adversely selected. Fill price is still the
+// limit (the maker earns the spread). through_bps == 0 reproduces try_fill.
+//   buy/long:   fills at first tick with price <= limit_price*(1 - through_bps/1e4)
+//   sell/short: fills at first tick with price >= limit_price*(1 + through_bps/1e4)
+FillResult try_maker_fill(const QString& side, double limit_price, const QVector<TickRow>& ticks,
+                          qint64 entry_deadline_ms, double through_bps);
+
+// Effective price a TAKER actually gets after crossing the half-spread and
+// paying slippage, both adverse to the trade direction:
+//   buy/long:   reference_price * (1 + (half_spread_bps + slippage_bps)/1e4)
+//   sell/short: reference_price * (1 - (half_spread_bps + slippage_bps)/1e4)
+// This is the price honesty try_fill omits; fees are applied separately by the
+// caller via fee_for(notional, taker_bps).
+double effective_taker_price(const QString& side, double reference_price,
+                             double half_spread_bps, double slippage_bps);
 
 struct ExitResult {
     bool exited = false;
@@ -92,6 +118,16 @@ struct ExitResult {
 ExitResult check_exit(const QString& side, double target_price, double stop_price, qint64 expires_at,
                        const QVector<TickRow>& ticks, qint64 now_ms);
 
+// Exit check for a position whose profitable exit is a resting maker order.
+// Stops and expiry retain check_exit's conservative traded-price behavior,
+// but a target fills only after price trades THROUGH target_price by
+// through_bps. The maker fill is booked at target_price, never at a favorable
+// gap print. through_bps == 0 reproduces target touch behavior while still
+// booking the resting limit price.
+ExitResult check_maker_exit(const QString& side, double target_price, double stop_price,
+                            qint64 expires_at, const QVector<TickRow>& ticks,
+                            qint64 now_ms, double through_bps);
+
 // Net realized PnL for a closed round trip, all costs included:
 //   buy/long:    (exit_price - entry_price) * qty - entry_fee - exit_fee
 //   sell/short:  (entry_price - exit_price) * qty - entry_fee - exit_fee
@@ -100,5 +136,33 @@ double realized_pnl(const QString& side, double entry_price, double exit_price, 
 
 // notional * bps / 10000.
 double fee_for(double notional, double bps);
+
+// Net realized PnL for a closed round trip under the HONEST execution model,
+// with entry and exit liquidity distinguished: a taker LEG crosses
+// half_spread_bps + slippage_bps adverse (via effective_taker_price -- paying
+// up to enter, receiving down to exit); a maker LEG trades at the raw price
+// and earns the spread. entry_maker/exit_maker are per-leg because a maker
+// lane's stop-loss exit is still taker-like. entry_fee/exit_fee are the fees
+// already charged by the caller. With both legs maker (or zero spread and
+// slippage) this reduces exactly to realized_pnl(side, entry, exit, ...).
+double honest_round_trip_pnl(const QString& side, bool entry_maker, bool exit_maker,
+                             double entry_price, double exit_price, double qty,
+                             double entry_fee, double exit_fee,
+                             double half_spread_bps, double slippage_bps);
+
+// Honest round-trip cost, in bps, of a lane's WINNING (target) path -- the
+// floor a target must clear to make money. A taker crosses half_spread+slippage
+// and pays its fee on both legs; a maker pays only its fee on both legs (it
+// earns the spread by not crossing). A lane whose target_bps <= this is
+// net-negative on a win and is only a cost-floor control, not a strategy.
+double honest_round_trip_cost_bps(bool maker, double half_spread_bps, double slippage_bps,
+                                  double maker_bps, double taker_bps);
+
+// Expected net return, in bps, for a bracketed candidate. win_probability is
+// the probability that target_bps is reached before stop_bps. round-trip cost
+// is paid on either outcome. This is deliberately lane-specific: the same
+// signal can clear a maker lane and fail a more expensive taker lane.
+double bracket_expected_value_bps(double win_probability, double target_bps,
+                                  double stop_bps, double round_trip_cost_bps);
 
 } // namespace openmarketterminal::services::sandbox

@@ -37,7 +37,7 @@
 #
 # Flow (mirrors PaperExecutor.cpp's open_price_forecast_candidates /
 # advance_open_positions and PaperFillModel.cpp's check_exit):
-#   1. `sandbox seed` registers 28 books (Kraken/Coinbase scalp,
+#   1. `sandbox seed` registers 35 books, including producer-backed honest lanes
 #      spot 1h/4h/1d, 18 Kalshi v2 cohort/policy books, long_short, plus Chronos BTC
 #      15m/1h/1d and equity; btc5m/chronos2_5m are retired).
 #   2. A fresh chronos2-forecast/horizon=15m/side=buy journal row is
@@ -119,9 +119,9 @@ SEED_JSON="$(wd 30 "$CLI" --json sandbox seed)" || fail "sandbox seed exited non
 printf '%s' "$SEED_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 28, d
-" || fail "sandbox seed did not report 28 seeded strategy ids: $SEED_JSON"
-echo "PASS: sandbox seed -> 28 strategies"
+assert isinstance(d.get('seeded'), list) and len(d['seeded']) == 35, d
+" || fail "sandbox seed did not report 35 seeded strategy ids: $SEED_JSON"
+echo "PASS: sandbox seed -> 35 strategies"
 
 CHRONOS_ID="$(printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json
@@ -133,7 +133,8 @@ print(ids[0] if ids else '')
 echo "PASS: chronos2 (15m) strategy id = $CHRONOS_ID"
 
 # Removed-kind retirement: btc5m/chronos2_5m must never remain active. Scalp
-# remains active only as venue-specific Kraken/Coinbase paper books.
+# keeps the two legacy venue books beside the four honest maker/taker lanes so
+# their evidence can be compared without rewriting either history.
 printf '%s' "$(wd 30 "$CLI" --json sandbox list --status active)" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
@@ -141,11 +142,16 @@ kinds = {s['kind'] for s in d['strategies']}
 assert 'btc5m' not in kinds, d
 assert 'chronos2_5m' not in kinds, d
 scalps = [s for s in d['strategies'] if s['kind'] == 'scalp']
-assert len(scalps) == 2, d
-venues = {s['params']['venue'] for s in scalps}
-assert venues == {'kraken_pro', 'coinbase_advanced'}, d
+assert len(scalps) == 6, d
+legacy = [s for s in scalps if 'half_spread_bps' not in s['params']]
+honest = [s for s in scalps if 'half_spread_bps' in s['params']]
+assert len(legacy) == 2 and len(honest) == 4, d
+assert {s['params']['venue'] for s in legacy} == {'kraken_pro', 'coinbase_advanced'}, d
+assert {(s['params']['venue'], s['params']['liquidity']) for s in honest} == {
+    ('kraken_pro', 'maker'), ('kraken_pro', 'taker'),
+    ('coinbase_advanced', 'maker'), ('coinbase_advanced', 'taker')}, d
 " || fail "sandbox seed left a removed-kind book ACTIVE"
-echo "PASS: venue scalp books active; removed horizon books retired"
+echo "PASS: legacy + honest venue scalp books active; removed horizon books retired"
 
 # ============================================================================
 # Locate the app root the CLI actually bootstrapped `sandbox seed` into, by

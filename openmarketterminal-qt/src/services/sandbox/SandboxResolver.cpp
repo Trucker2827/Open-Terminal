@@ -37,6 +37,9 @@ FeeModel fee_model_from_params(const QJsonObject& params) {
     fm.taker_bps = params.contains(QStringLiteral("taker_bps"))
                        ? params.value(QStringLiteral("taker_bps")).toDouble()
                        : 60.0;
+    // Honest-execution fields, default 0 so legacy books are unaffected.
+    fm.half_spread_bps = params.value(QStringLiteral("half_spread_bps")).toDouble(0.0);
+    fm.slippage_bps = params.value(QStringLiteral("slippage_bps")).toDouble(0.0);
     return fm;
 }
 
@@ -242,7 +245,9 @@ Result<void> resolve_hypotheticals(const QString& ticks_path, qint64 now_ms, Res
             continue;
         }
 
-        // Real target/stop/expiry-with-a-tick-price exit.
+        // Real target/stop/expiry-with-a-tick-price exit. (Honest execution is
+        // applied to CONCRETE lanes in PaperExecutor; hypothetical books do not
+        // carry honest params, so this path stays as the original.)
         const FeeModel fees = fee_model_from_params(row.params);
         const double exit_fee = fee_for(row.notional_usd, fees.taker_bps);
         const double pnl = realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
