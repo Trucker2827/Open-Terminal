@@ -224,8 +224,8 @@ class TstSandboxRegistry : public QObject {
         QCOMPARE(seed_row_count, 35);
         QCOMPARE(kinds, QSet<QString>({"scalp", "spot", "swing", "kalshi", "long_short", "chronos2",
                                        "chronos2_1h", "chronos2_1d", "chronos2_equity"}));
-        QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase/kraken maker+taker)
-        QCOMPARE(scalp_venues, QSet<QString>({"kraken_pro", "coinbase_advanced", "coinbase", "kraken"}));
+        QCOMPARE(scalp_count, 6);  // 2 legacy + 4 honest grid (coinbase_advanced/kraken_pro maker+taker)
+        QCOMPARE(scalp_venues, QSet<QString>({"kraken_pro", "coinbase_advanced"}));
         QCOMPARE(spot_count, 3);
         QCOMPARE(kalshi_count, 18);
         QCOMPARE(kalshi_cohorts.size(), 9);
@@ -407,7 +407,7 @@ class TstSandboxRegistry : public QObject {
 
         QCOMPARE(kinds, (QSet<QString>{QStringLiteral("scalp"), QStringLiteral("swing"),
                                        QStringLiteral("maker")}));
-        QCOMPARE(venues, (QSet<QString>{QStringLiteral("coinbase"), QStringLiteral("kraken"),
+        QCOMPARE(venues, (QSet<QString>{QStringLiteral("coinbase_advanced"), QStringLiteral("kraken_pro"),
                                         QStringLiteral("alpaca")}));
         QCOMPARE(ids.size(), 12);  // content-addressed: no duplicate lanes
         QVERIFY(maker_liquidity > 0);

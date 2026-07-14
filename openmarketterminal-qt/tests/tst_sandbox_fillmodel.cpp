@@ -270,22 +270,29 @@ class TstSandboxFillModel : public QObject {
     // legs; a maker earns the spread; zero-cost reduces to realized_pnl.
     void honest_round_trip_pnl_charges_taker_both_legs() {
         // long 100 -> 110, qty 1, no fees; 5 bps half-spread + 5 bps slippage
-        // = 10 bps = 0.1% adverse per leg.
-        const double maker_pnl = honest_round_trip_pnl(QStringLiteral("long"), true, 100.0, 110.0,
-                                                       1.0, 0.0, 0.0, 5.0, 5.0);
-        const double taker_pnl = honest_round_trip_pnl(QStringLiteral("long"), false, 100.0, 110.0,
-                                                       1.0, 0.0, 0.0, 5.0, 5.0);
-        QVERIFY(qAbs(maker_pnl - 10.0) < 1e-9);   // maker keeps the raw gross
-        QVERIFY(qAbs(taker_pnl - 9.79) < 1e-9);   // pays up to 100.1, receives 109.89
-        QVERIFY(taker_pnl < maker_pnl);
+        // = 10 bps = 0.1% adverse per taker leg.
+        const double maker = honest_round_trip_pnl(QStringLiteral("long"), true, true, 100.0, 110.0,
+                                                   1.0, 0.0, 0.0, 5.0, 5.0);
+        const double taker = honest_round_trip_pnl(QStringLiteral("long"), false, false, 100.0, 110.0,
+                                                   1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(maker - 10.0) < 1e-9);   // both legs raw
+        QVERIFY(qAbs(taker - 9.79) < 1e-9);   // pays up to 100.1, receives 109.89
+        QVERIFY(taker < maker);
 
-        // Short mirrors: sells lower (109.89), buys back higher (100.1) => 9.79.
-        const double short_taker = honest_round_trip_pnl(QStringLiteral("short"), false, 110.0, 100.0,
-                                                         1.0, 0.0, 0.0, 5.0, 5.0);
+        // Mixed: a maker lane that stops out (maker entry, TAKER exit) crosses
+        // only the exit leg -- between the all-maker and all-taker figures.
+        const double mixed = honest_round_trip_pnl(QStringLiteral("long"), true, false, 100.0, 110.0,
+                                                   1.0, 0.0, 0.0, 5.0, 5.0);
+        QVERIFY(qAbs(mixed - 9.89) < 1e-9);   // entry raw 100, exit 109.89
+        QVERIFY(mixed < maker && mixed > taker);
+
+        // Short mirrors (both taker): sells lower (109.89), buys back higher (100.1).
+        const double short_taker = honest_round_trip_pnl(QStringLiteral("short"), false, false, 110.0,
+                                                         100.0, 1.0, 0.0, 0.0, 5.0, 5.0);
         QVERIFY(qAbs(short_taker - 9.79) < 1e-9);
 
         // Zero spread/slippage reduces EXACTLY to realized_pnl (legacy path).
-        const double zero = honest_round_trip_pnl(QStringLiteral("long"), false, 100.0, 110.0,
+        const double zero = honest_round_trip_pnl(QStringLiteral("long"), false, false, 100.0, 110.0,
                                                   1.0, 0.2, 0.3, 0.0, 0.0);
         QVERIFY(qAbs(zero - realized_pnl(QStringLiteral("long"), 100.0, 110.0, 1.0, 0.2, 0.3)) < 1e-9);
     }

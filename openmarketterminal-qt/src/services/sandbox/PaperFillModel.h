@@ -127,15 +127,17 @@ double realized_pnl(const QString& side, double entry_price, double exit_price, 
 // notional * bps / 10000.
 double fee_for(double notional, double bps);
 
-// Net realized PnL for a closed round trip under the HONEST execution model.
-// A taker crosses half_spread_bps + slippage_bps adverse on BOTH legs (paying
-// up to enter, receiving down to exit, via effective_taker_price); a maker
-// earns the spread and trades at the raw prices. entry_fee/exit_fee are the
-// fees already charged by the caller. With maker == true (or zero spread and
-// slippage) this reduces exactly to realized_pnl(side, entry, exit, ...), so
-// legacy books routed through it are unchanged.
-double honest_round_trip_pnl(const QString& side, bool maker, double entry_price, double exit_price,
-                             double qty, double entry_fee, double exit_fee,
+// Net realized PnL for a closed round trip under the HONEST execution model,
+// with entry and exit liquidity distinguished: a taker LEG crosses
+// half_spread_bps + slippage_bps adverse (via effective_taker_price -- paying
+// up to enter, receiving down to exit); a maker LEG trades at the raw price
+// and earns the spread. entry_maker/exit_maker are per-leg because a maker
+// lane's stop-loss exit is still taker-like. entry_fee/exit_fee are the fees
+// already charged by the caller. With both legs maker (or zero spread and
+// slippage) this reduces exactly to realized_pnl(side, entry, exit, ...).
+double honest_round_trip_pnl(const QString& side, bool entry_maker, bool exit_maker,
+                             double entry_price, double exit_price, double qty,
+                             double entry_fee, double exit_fee,
                              double half_spread_bps, double slippage_bps);
 
 } // namespace openmarketterminal::services::sandbox

@@ -133,10 +133,12 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     // Honest per-venue cost profiles. Crypto maker/taker mirror the existing
     // scalp seeds; Alpaca equities are commission-free, so their cost is the
     // spread + slippage, not a fee.
+    // Venue identifiers MUST match what the producers emit (the scalp producer
+    // writes coinbase_advanced / kraken_pro; candidate selection is exact-match).
     static const Venue venues[] = {
-        {"coinbase", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 60.0, 2.0, 1.0,
+        {"coinbase_advanced", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 60.0, 2.0, 1.0,
          "Coinbase Advanced account tier; verify before live"},
-        {"kraken", "BTC-USD,ETH-USD,SOL-USD", true, 25.0, 40.0, 2.0, 1.0,
+        {"kraken_pro", "BTC-USD,ETH-USD,SOL-USD", true, 25.0, 40.0, 2.0, 1.0,
          "Kraken Pro account tier; verify before live"},
         {"alpaca", "AAPL,NVDA,MSFT,SPY,QQQ", false, 0.0, 0.0, 3.0, 2.0,
          "Alpaca commission-free equities; spread/slippage is the cost"},

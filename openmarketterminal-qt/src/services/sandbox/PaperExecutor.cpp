@@ -82,7 +82,22 @@ FeeModel fee_model_from_params(const QJsonObject& params) {
     fm.taker_bps = params.contains(QStringLiteral("taker_bps"))
                        ? params.value(QStringLiteral("taker_bps")).toDouble()
                        : 60.0;
+    // Honest-execution fields, default 0 so legacy books are unaffected.
+    fm.half_spread_bps = params.value(QStringLiteral("half_spread_bps")).toDouble(0.0);
+    fm.slippage_bps = params.value(QStringLiteral("slippage_bps")).toDouble(0.0);
+    fm.maker_fill_through_bps = params.value(QStringLiteral("maker_fill_through_bps")).toDouble(0.0);
     return fm;
+}
+
+// A book opts into the honest execution model by carrying half_spread_bps
+// (only the spot lane grid does). Legacy books lack it and keep the exact
+// prior optimistic behaviour, so their accumulated evidence is untouched.
+bool is_honest_lane(const QJsonObject& params) {
+    return params.contains(QStringLiteral("half_spread_bps"));
+}
+
+bool is_maker_lane(const QJsonObject& params) {
+    return params.value(QStringLiteral("liquidity")).toString() == QLatin1String("maker");
 }
 
 double kalshi_prediction_fee_per_contract(double price) {
@@ -822,11 +837,20 @@ Result<void> advance_pending_fills(const QString& ticks_path, qint64 now_ms, Cyc
         }
 
         const auto ticks = ticks_since(ticks_path, row.symbol, row.created_at);
-        const FillResult fill = try_fill(row.side, row.limit_price, ticks, row.expires_at);
         const FeeModel fees = fee_model_from_params(row.params);
+        const bool honest = is_honest_lane(row.params);
+        const bool maker = is_maker_lane(row.params);
+        // Honest maker lanes require price to trade THROUGH the resting limit
+        // (queue / adverse selection); everything else keeps the try_fill touch.
+        const FillResult fill = (honest && maker)
+            ? try_maker_fill(row.side, row.limit_price, ticks, row.expires_at, fees.maker_fill_through_bps)
+            : try_fill(row.side, row.limit_price, ticks, row.expires_at);
 
         if (fill.filled) {
-            const double entry_fee = fee_for(row.notional_usd, fees.maker_bps);
+            // Honest lanes pay the entry fee at their own liquidity; legacy
+            // lanes keep the historical maker-rate entry fee.
+            const double entry_bps = honest ? (maker ? fees.maker_bps : fees.taker_bps) : fees.maker_bps;
+            const double entry_fee = fee_for(row.notional_usd, entry_bps);
             auto upd = db.execute(
                 "UPDATE sandbox_position SET state='open', opened_at=?, entry_fee=?"
                 " WHERE position_id=? AND state='pending_fill'",
@@ -1075,8 +1099,16 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
         // sandbox trades (bps-scale targets/stops) the difference is second-
         // order, and using the fixed entry notional keeps entry and exit
         // fees directly comparable across a book.
-        const double exit_fee = fee_for(row.notional_usd, fees.taker_bps);
-        const double pnl = realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
+        const bool honest = is_honest_lane(row.params);
+        const bool maker = is_maker_lane(row.params);
+        // A maker lane earns the spread at a resting target, but a stop is
+        // taker-like: exit is maker-liquidity only on a target.
+        const bool maker_exit = honest && maker && exit.reason == QLatin1String("target");
+        const double exit_fee = fee_for(row.notional_usd, maker_exit ? fees.maker_bps : fees.taker_bps);
+        const double pnl = honest
+            ? honest_round_trip_pnl(row.side, maker, maker_exit, row.limit_price, exit.price, row.qty,
+                                    row.entry_fee, exit_fee, fees.half_spread_bps, fees.slippage_bps)
+            : realized_pnl(row.side, row.limit_price, exit.price, row.qty, row.entry_fee, exit_fee);
 
         auto upd = db.execute(
             "UPDATE sandbox_position SET state='closed', closed_at=?, exit_fee=?, realized_pnl=?, close_reason=?"

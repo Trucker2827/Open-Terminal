@@ -109,19 +109,20 @@ double realized_pnl(const QString& side, double entry_price, double exit_price, 
     return gross - entry_fee - exit_fee;
 }
 
-double honest_round_trip_pnl(const QString& side, bool maker, double entry_price, double exit_price,
-                             double qty, double entry_fee, double exit_fee,
+double honest_round_trip_pnl(const QString& side, bool entry_maker, bool exit_maker,
+                             double entry_price, double exit_price, double qty,
+                             double entry_fee, double exit_fee,
                              double half_spread_bps, double slippage_bps) {
-    double adj_entry = entry_price;
-    double adj_exit = exit_price;
-    if (!maker) {
-        // Taker crosses half-spread + slippage on BOTH legs: adverse at the
-        // position side on entry, adverse at the closing (opposite) side on
-        // exit. A maker earns the spread and keeps the raw prices.
-        const QString close_side = is_short_side(side) ? QStringLiteral("buy") : QStringLiteral("sell");
-        adj_entry = effective_taker_price(side, entry_price, half_spread_bps, slippage_bps);
-        adj_exit = effective_taker_price(close_side, exit_price, half_spread_bps, slippage_bps);
-    }
+    // Each taker leg crosses half-spread + slippage adverse: entry at the
+    // position side, exit at the closing (opposite) side. A maker leg keeps
+    // the raw price and earns the spread.
+    const double adj_entry = entry_maker
+        ? entry_price
+        : effective_taker_price(side, entry_price, half_spread_bps, slippage_bps);
+    const QString close_side = is_short_side(side) ? QStringLiteral("buy") : QStringLiteral("sell");
+    const double adj_exit = exit_maker
+        ? exit_price
+        : effective_taker_price(close_side, exit_price, half_spread_bps, slippage_bps);
     return realized_pnl(side, adj_entry, adj_exit, qty, entry_fee, exit_fee);
 }
 

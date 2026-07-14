@@ -358,6 +358,77 @@ class TstSandboxExecutor : public QObject {
         QVERIFY(has_fill(row.position_id, QStringLiteral("target")));
     }
 
+    // End-to-end honesty (P1): an honest TAKER lane must pay TAKER fees on
+    // entry (the executor previously charged maker on every fill) -- proven by
+    // filling a real pending_fill position through the executor.
+    void honest_taker_lane_charges_taker_entry_fee_end_to_end() {
+        auto strat = register_strategy(
+            QStringLiteral("test_honest_entry"), QStringLiteral("XHE-USD"),
+            QJsonObject{{"notional_usd", 100.0}, {"source", "scalp_decisions"},
+                        {"venue", "coinbase_advanced"}, {"liquidity", "taker"},
+                        {"maker_bps", 40.0}, {"taker_bps", 50.0}, {"half_spread_bps", 2.0},
+                        {"slippage_bps", 1.0}, {"maker_fill_through_bps", 0.0}, {"paper_only", true}});
+        QVERIFY(strat.is_ok());
+
+        const qint64 t0 = 5000000;
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, hypothetical,"
+            " qty, limit_price, target_price, stop_price, expires_at, state, opened_at, entry_fee, data_quality,"
+            " notional_usd, created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("pos-he1"), strat.value(), QStringLiteral("dec-he1"), QStringLiteral("XHE-USD"),
+             QStringLiteral("long"), 1.0, 100.0, 105.0, 97.0, t0 + 100000,
+             QStringLiteral("pending_fill"), QVariant(), 0.0, QStringLiteral("ok"), 100.0, t0});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        // One fill tick at the limit; no target tick, so it just fills.
+        write_lines(daemon.filePath("scalp_ticks.jsonl"),
+                    {tick_line(QStringLiteral("XHE-USD"), 100.0, t0 + 300)});
+
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 400);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        const PositionRow row = fetch_position(QStringLiteral("dec-he1"));
+        QCOMPARE(row.state, QStringLiteral("open"));
+        // HONEST: taker entry fee (50 bps => 0.5), NOT the maker 40 bps (0.4).
+        QVERIFY(qAbs(row.entry_fee - 0.5) < 1e-9);
+    }
+
+    // End-to-end honesty (P1): an honest TAKER lane's realized PnL must charge
+    // the half-spread + slippage crossing on BOTH legs (executor previously
+    // booked raw prices). 3 bps adverse per leg on a 100->106 winner.
+    void honest_taker_lane_books_spread_adjusted_pnl_end_to_end() {
+        auto strat = register_strategy(
+            QStringLiteral("test_honest_exit"), QStringLiteral("XHX-USD"),
+            QJsonObject{{"notional_usd", 100.0}, {"liquidity", "taker"}, {"maker_bps", 40.0},
+                        {"taker_bps", 50.0}, {"half_spread_bps", 2.0}, {"slippage_bps", 1.0},
+                        {"maker_fill_through_bps", 0.0}, {"paper_only", true}});
+        QVERIFY(strat.is_ok());
+
+        const qint64 t0 = 6000000;
+        auto ins = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, hypothetical,"
+            " qty, limit_price, target_price, stop_price, expires_at, state, opened_at, entry_fee, data_quality,"
+            " notional_usd, created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("pos-hx1"), strat.value(), QStringLiteral("dec-hx1"), QStringLiteral("XHX-USD"),
+             QStringLiteral("long"), 1.0, 100.0, 105.0, 97.0, t0 + 100000, QStringLiteral("open"), t0, 0.5,
+             QStringLiteral("ok"), 100.0, t0});
+        QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
+
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        write_lines(daemon.filePath("scalp_ticks.jsonl"), {tick_line(QStringLiteral("XHX-USD"), 106.0, t0 + 500)});
+
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        const PositionRow row = fetch_position(QStringLiteral("dec-hx1"));
+        QCOMPARE(row.state, QStringLiteral("closed"));
+        QVERIFY(row.has_realized_pnl);
+        // entry 100 -> 100.03 (paid up 3bps), exit 106 -> 105.9682 (received down).
+        // gross 5.9382 - 0.5 entry - 0.5 exit = 4.9382 (raw would be 5.0).
+        QVERIFY(qAbs(row.realized_pnl - 4.9382) < 1e-6);
+    }
+
     // (f) stop and expiry variants of the same open->closed transition.
     void open_position_stop_and_expiry_variants() {
         auto strat = register_strategy(QStringLiteral("test_open_f"), QStringLiteral("XFF-USD"),
