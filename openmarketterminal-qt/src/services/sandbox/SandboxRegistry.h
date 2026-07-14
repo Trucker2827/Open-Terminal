@@ -90,4 +90,11 @@ struct SpotLaneSeed {
 // wearing an honest-cost label.
 QVector<SpotLaneSeed> spot_lane_grid();
 
+// True iff a lane's target clears its honest round-trip cost -- i.e. hitting
+// the target actually makes money. Reads target_bps and round_trip_cost_bps
+// from the lane params. A lane that fails this is net-negative on a win and is
+// NOT seeded (it could only be a cost-floor control). The break-even gate that
+// keeps guaranteed-loser configurations out of the active leaderboard.
+bool lane_is_tradeable(const QJsonObject& params);
+
 } // namespace openmarketterminal::services::sandbox

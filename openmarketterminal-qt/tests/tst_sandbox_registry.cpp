@@ -449,6 +449,22 @@ class TstSandboxRegistry : public QObject {
         }
         QCOMPARE(activatable, 7);  // 2 crypto x scalp{maker,taker} + 3 swing
     }
+
+    // Break-even gate: every grid lane's target clears its honest round-trip
+    // cost (target = cost + margin by construction), and lane_is_tradeable
+    // rejects a net-negative configuration.
+    void grid_lanes_clear_cost_and_gate_rejects_net_negative() {
+        for (const auto& lane : spot_lane_grid()) {
+            QVERIFY(lane.params.contains(QStringLiteral("round_trip_cost_bps")));
+            QVERIFY(lane.params.value(QStringLiteral("target_bps")).toDouble() >
+                    lane.params.value(QStringLiteral("round_trip_cost_bps")).toDouble());
+            QVERIFY(lane_is_tradeable(lane.params));
+        }
+        // The gate itself: a win that clears cost passes; target <= cost fails.
+        QVERIFY(lane_is_tradeable(QJsonObject{{"target_bps", 120.0}, {"round_trip_cost_bps", 80.0}}));
+        QVERIFY(!lane_is_tradeable(QJsonObject{{"target_bps", 85.0}, {"round_trip_cost_bps", 126.0}}));
+        QVERIFY(!lane_is_tradeable(QJsonObject{{"target_bps", 80.0}, {"round_trip_cost_bps", 80.0}}));
+    }
 };
 QTEST_GUILESS_MAIN(TstSandboxRegistry)
 #include "tst_sandbox_registry.moc"

@@ -296,6 +296,18 @@ class TstSandboxFillModel : public QObject {
                                                   1.0, 0.2, 0.3, 0.0, 0.0);
         QVERIFY(qAbs(zero - realized_pnl(QStringLiteral("long"), 100.0, 110.0, 1.0, 0.2, 0.3)) < 1e-9);
     }
+
+    // Honest round-trip cost: the floor a target must clear. A taker pays
+    // spread+slippage+fee on both legs; a maker pays only its fee (earns the
+    // spread by not crossing), so the same venue is cheaper as a maker.
+    void honest_round_trip_cost_bps_taker_vs_maker() {
+        // taker: 2*(2+1) + 2*60 = 126
+        QVERIFY(qAbs(honest_round_trip_cost_bps(false, 2.0, 1.0, 40.0, 60.0) - 126.0) < 1e-9);
+        // maker: 2*40 = 80
+        QVERIFY(qAbs(honest_round_trip_cost_bps(true, 2.0, 1.0, 40.0, 60.0) - 80.0) < 1e-9);
+        QVERIFY(honest_round_trip_cost_bps(false, 2.0, 1.0, 40.0, 60.0) >
+                honest_round_trip_cost_bps(true, 2.0, 1.0, 40.0, 60.0));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxFillModel)

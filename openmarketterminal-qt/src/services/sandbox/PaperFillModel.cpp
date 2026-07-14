@@ -102,6 +102,12 @@ double fee_for(double notional, double bps) {
     return notional * bps / 10000.0;
 }
 
+double honest_round_trip_cost_bps(bool maker, double half_spread_bps, double slippage_bps,
+                                  double maker_bps, double taker_bps) {
+    return maker ? 2.0 * maker_bps
+                 : 2.0 * (half_spread_bps + slippage_bps) + 2.0 * taker_bps;
+}
+
 double realized_pnl(const QString& side, double entry_price, double exit_price, double qty, double entry_fee,
                      double exit_fee) {
     const bool short_side = is_short_side(side);

@@ -140,4 +140,12 @@ double honest_round_trip_pnl(const QString& side, bool entry_maker, bool exit_ma
                              double entry_fee, double exit_fee,
                              double half_spread_bps, double slippage_bps);
 
+// Honest round-trip cost, in bps, of a lane's WINNING (target) path -- the
+// floor a target must clear to make money. A taker crosses half_spread+slippage
+// and pays its fee on both legs; a maker pays only its fee on both legs (it
+// earns the spread by not crossing). A lane whose target_bps <= this is
+// net-negative on a win and is only a cost-floor control, not a strategy.
+double honest_round_trip_cost_bps(bool maker, double half_spread_bps, double slippage_bps,
+                                  double maker_bps, double taker_bps);
+
 } // namespace openmarketterminal::services::sandbox

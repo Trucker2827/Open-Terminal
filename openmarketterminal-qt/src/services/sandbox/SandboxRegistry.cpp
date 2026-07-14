@@ -1,5 +1,6 @@
 #include "services/sandbox/SandboxRegistry.h"
 
+#include "services/sandbox/PaperFillModel.h"
 #include "storage/sqlite/Database.h"
 
 #include <QCryptographicHash>
@@ -145,8 +146,16 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     };
     constexpr double kMakerThroughBps = 5.0;
 
-    const auto lane = [&](const Venue& v, const QString& liquidity, double target_bps,
-                          double stop_bps, int horizon_sec, int max_age_sec) {
+    // edge_margin_bps is the edge a lane is TESTING FOR: its target is set at
+    // the honest round-trip cost PLUS this margin, so hitting the target always
+    // clears cost (a win never loses). Stop risks half the target.
+    const auto lane = [&](const Venue& v, const QString& liquidity, double edge_margin_bps,
+                          int horizon_sec, int max_age_sec) {
+        const bool maker = liquidity == QLatin1String("maker");
+        const double cost_bps = honest_round_trip_cost_bps(maker, v.half_spread_bps, v.slippage_bps,
+                                                           v.maker_bps, v.taker_bps);
+        const double target_bps = cost_bps + edge_margin_bps;
+        const double stop_bps = target_bps / 2.0;
         return QJsonObject{
             {"notional_usd", 50.0},
             {"venue", QString::fromLatin1(v.venue)},
@@ -156,10 +165,11 @@ QVector<SpotLaneSeed> spot_lane_grid() {
             {"half_spread_bps", v.half_spread_bps},
             // Only a resting maker pays the queue/adverse-selection cost; a
             // taker crosses immediately and has no through requirement.
-            {"maker_fill_through_bps",
-             liquidity == QLatin1String("maker") ? kMakerThroughBps : 0.0},
+            {"maker_fill_through_bps", maker ? kMakerThroughBps : 0.0},
             {"slippage_bps", v.slippage_bps},
             {"entry_offset_bps", 1.0},
+            {"round_trip_cost_bps", cost_bps},
+            {"edge_margin_bps", edge_margin_bps},
             {"target_bps", target_bps},
             {"stop_bps", stop_bps},
             {"horizon_sec", horizon_sec},
@@ -184,10 +194,16 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     for (const Venue& v : venues) {
         const QString symbols = QString::fromLatin1(v.symbols);
 
+        // Edge margins we test for, by style. scalp seeks a small fast edge;
+        // swing seeks a larger move; maker spread-capture a thin edge.
+        constexpr double kScalpMarginBps = 40.0;
+        constexpr double kSwingMarginBps = 120.0;
+        constexpr double kMakerMarginBps = 20.0;
+
         // scalp maker/taker: reuse scalp_decisions on crypto venues. Equity
         // scalp has no producer yet, so those lanes stay deferred (no source).
-        QJsonObject scalp_maker = lane(v, QStringLiteral("maker"), 85.0, 45.0, 900, 15);
-        QJsonObject scalp_taker = lane(v, QStringLiteral("taker"), 85.0, 45.0, 900, 15);
+        QJsonObject scalp_maker = lane(v, QStringLiteral("maker"), kScalpMarginBps, 900, 15);
+        QJsonObject scalp_taker = lane(v, QStringLiteral("taker"), kScalpMarginBps, 900, 15);
         if (v.is_crypto) {
             scalp_maker = with_source(scalp_maker, QStringLiteral("scalp_decisions"));
             scalp_taker = with_source(scalp_taker, QStringLiteral("scalp_decisions"));
@@ -200,14 +216,19 @@ QVector<SpotLaneSeed> spot_lane_grid() {
         const QString swing_journal = v.is_crypto ? QStringLiteral("edge crypto-recommend")
                                                   : QStringLiteral("chronos2-equity-forecast");
         grid.append({QStringLiteral("swing"), symbols,
-                     with_source(lane(v, QStringLiteral("taker"), 300.0, 150.0, 14400, 900),
+                     with_source(lane(v, QStringLiteral("taker"), kSwingMarginBps, 14400, 900),
                                  QStringLiteral("edge_journal"), swing_journal)});
 
         // maker spread-capture: market-making, no directional producer -> deferred.
         grid.append({QStringLiteral("maker"), symbols,
-                     lane(v, QStringLiteral("maker"), 2.0 * v.half_spread_bps, 40.0, 900, 15)});
+                     lane(v, QStringLiteral("maker"), kMakerMarginBps, 900, 15)});
     }
     return grid;
+}
+
+bool lane_is_tradeable(const QJsonObject& params) {
+    return params.value(QStringLiteral("target_bps")).toDouble() >
+           params.value(QStringLiteral("round_trip_cost_bps")).toDouble();
 }
 
 Result<QList<QString>> seed_default_strategies() {
@@ -408,7 +429,9 @@ Result<QList<QString>> seed_default_strategies() {
     // execution params, so the resolver scores it cost-net; they mint new
     // strategy_ids and never disturb the legacy optimistic books.
     for (const auto& g : spot_lane_grid()) {
-        if (g.params.contains(QStringLiteral("source")))
+        // Seed only producer-backed lanes whose target clears its honest
+        // round-trip cost -- a guaranteed loser is not a candidate strategy.
+        if (g.params.contains(QStringLiteral("source")) && lane_is_tradeable(g.params))
             seeds.append(Seed{g.kind, g.symbols, g.params});
     }
 
