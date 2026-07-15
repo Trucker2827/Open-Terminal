@@ -1602,6 +1602,83 @@ private slots:
         json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "x"}, &show_rc);
         QVERIFY2(show_rc != 0, "no row should have been written for the rejected create");
     }
+
+    // --- Task 4: `ai handler status` (read-only arm-state) + `ai handler run`
+    // (PAPER-ONLY). SAFETY-CRITICAL: `status` must never mutate a gate; `run`
+    // must refuse any non-paper mode. ---
+
+    void ai_handler_status_reports_disarmed_gates() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "status"}, &rc);
+        QCOMPARE(rc, 0);
+        // No live path exists in the plugin core: armed is ALWAYS false.
+        QCOMPARE(out.value("armed").toBool(true), false);
+        QVERIFY2(out.contains("gates"), "status must emit a gates object");
+        const QJsonObject gates = out.value("gates").toObject();
+        QVERIFY2(gates.contains("kill_switch"), "status gates must expose kill_switch");
+        QVERIFY2(!out.value("disarmed_reason").toArray().isEmpty(),
+                 "status must list at least one disarmed reason");
+    }
+
+    void ai_handler_status_is_read_only_on_gates() {
+        sandbox_test_home();
+        auto& settings = openmarketterminal::SettingsRepository::instance();
+        // Arm a known kill-switch state, then prove `status` leaves it unchanged.
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("true"),
+                             QStringLiteral("test")).is_ok());
+        const QString before = settings.get(QStringLiteral("cli.kill_switch"), QString()).value();
+        QCOMPARE(before, QStringLiteral("true"));
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "status"}, &rc);
+        QCOMPARE(rc, 0);
+        // status must READ the engaged value...
+        QCOMPARE(out.value("gates").toObject().value("kill_switch").toBool(false), true);
+
+        const QString after = settings.get(QStringLiteral("cli.kill_switch"), QString()).value();
+        // ...and MUST NOT have written it (gate immutability — the safety gate).
+        QCOMPARE(after, before);
+        QCOMPARE(after, QStringLiteral("true"));
+
+        // Reset shared state so later slots don't inherit an engaged kill switch.
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("false"),
+                             QStringLiteral("test")).is_ok());
+    }
+
+    void ai_handler_run_is_paper_only() {
+        sandbox_test_home();
+        // Belt-and-braces: make sure no earlier slot left the kill switch engaged,
+        // otherwise the paper run would halt on tick 1 and pass for the wrong reason.
+        openmarketterminal::SettingsRepository::instance().set(
+            QStringLiteral("cli.kill_switch"), QStringLiteral("false"), QStringLiteral("test"));
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "create", "p1", "--strategy", "meanrev",
+                                      "--symbols", "BTC-USD"}), 0);
+
+        // Paper-only proof: a live run is REFUSED with exit 2 (no live path).
+        int live_rc = -1;
+        capture_stdout([&]() {
+            live_rc = dispatch(QStringList{"ai", "handler", "run", "p1", "--mode", "live"});
+            return live_rc;
+        });
+        QCOMPARE(live_rc, 2);
+
+        // A bounded paper run completes cleanly and places NO order.
+        int paper_rc = -1;
+        const QString out = capture_stdout([&]() {
+            paper_rc = dispatch(QStringList{"--headless", "ai", "handler", "run", "p1",
+                                            "--mode", "paper", "--max-iters", "1", "--interval-sec", "0"});
+            return paper_rc;
+        });
+        QCOMPARE(paper_rc, 0);
+        QVERIFY2(out.contains("filled=0"),
+                 qUtf8Printable("paper run must place no order; got: " + out));
+
+        dispatch(QStringList{"ai", "handler", "delete", "p1"});
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

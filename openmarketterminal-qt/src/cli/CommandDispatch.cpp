@@ -27950,7 +27950,8 @@ int dispatch(QStringList args) {
         if (sub == "handler") {
             if (args.isEmpty()) {
                 std::fprintf(stderr,
-                             "usage: ai handler <create|list|show|delete|enable|disable> ...\n");
+                             "usage: ai handler "
+                             "<create|list|show|delete|enable|disable|status|run> ...\n");
                 return 2;
             }
             const QString action = args.takeFirst().trimmed().toLower();
@@ -27966,6 +27967,9 @@ int dispatch(QStringList args) {
                      "ai strategy list [--json] | "
                      "ai handler create <name> --strategy <s> [...] | "
                      "ai handler list|show <name>|delete <name>|enable <name>|disable <name> | "
+                     "ai handler status [<name>] | "
+                     "ai handler run <name> --paper [--max-iters N] [--duration-sec D] "
+                     "[--interval-sec N] | "
                      "ai run strategy <meanrev|claude> --mode paper "
                      "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
         return 2;

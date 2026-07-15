@@ -22,16 +22,18 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest);
 // (StrategyRegistry::list()). Pure: builds a throwaway registry, no DB touch.
 int ai_strategy_list_command(const GlobalOpts& opts);
 
-// `ai handler <create|list|show|delete|enable|disable> ...` — CRUD over saved
-// AI trade-handler configs (AiHandlerRepository). `action` is the token right
-// after `ai handler`; `rest` is everything after that.
+// `ai handler <create|list|show|delete|enable|disable|status|run> ...` — CRUD +
+// arm-state readout + paper runner over saved AI trade-handler configs
+// (AiHandlerRepository). `action` is the token right after `ai handler`; `rest`
+// is everything after that.
 //
-// PAPER-ONLY / DISARMED: this manages saved *config rows* only, nothing else.
-// `create` always writes enabled=false. `enable`/`disable` flip ONLY the
-// saved row's `enabled` column (AiHandlerRepository::set_enabled) — they do
-// NOT arm any live trading path. There is no live execution path anywhere in
-// this plugin core (that's Task 4/5's paper run loop, still paper-only), and
-// this command never reads or writes any cli.* SettingsGate flag.
+// PAPER-ONLY / DISARMED. `create` always writes enabled=false. `enable`/`disable`
+// flip ONLY the saved row's `enabled` column (AiHandlerRepository::set_enabled) —
+// they do NOT arm any live trading path. `status` is strictly READ-ONLY: it READS
+// the cli.* SettingsGate flags to report arm-state and NEVER writes any of them
+// (`armed` is always false — no live path exists). `run` drives the handler's
+// strategy through the StrategyRunner PAPER path only and REFUSES any non-paper
+// mode (exit 2). There is no live execution path anywhere in this plugin core.
 int ai_handler_command(const GlobalOpts& opts, const QString& action, QStringList rest);
 
 }  // namespace openmarketterminal::cli

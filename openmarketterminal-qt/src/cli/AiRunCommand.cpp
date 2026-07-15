@@ -5,6 +5,7 @@
 #include "cli/BridgeDiscovery.h"
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
+#include "mcp/tools/SettingsGate.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRegistry.h"
@@ -137,7 +138,10 @@ int ai_handler_usage() {
                  "       ai handler show <name> [--json]\n"
                  "       ai handler delete <name>\n"
                  "       ai handler enable <name>\n"
-                 "       ai handler disable <name>\n");
+                 "       ai handler disable <name>\n"
+                 "       ai handler status [<name>] [--json]\n"
+                 "       ai handler run <name> --paper [--max-iters N] [--duration-sec D] "
+                 "[--interval-sec N]\n");
     return 2;
 }
 
@@ -347,6 +351,252 @@ int ai_handler_set_enabled(const GlobalOpts& opts, const QStringList& rest, bool
     return 0;
 }
 
+// `ai handler status [<name>] [--json]` — READ-ONLY arm-state readout.
+//
+// SAFETY-CRITICAL / READ-ONLY: this command only READS gate flags through the
+// SettingsGate accessors (mcp::cli_*). It NEVER calls any settings/gate SETTER
+// and constructs nothing that writes a cli.* value. `armed` is hard-coded false
+// because there is NO live execution path in this plugin core; disarmed_reason
+// enumerates the conditions that would additionally block live if one existed.
+int ai_handler_status(const GlobalOpts& opts, const QStringList& rest) {
+    // Optional positional <name>; ignore any stray flags (globals are stripped).
+    QString name;
+    for (const QString& a : rest) {
+        if (!a.startsWith(QLatin1String("--"))) {
+            name = a;
+            break;
+        }
+    }
+
+    if (!init_db_for_handler_command(opts))
+        return 7;
+
+    // READ-ONLY gate reads — no setter is ever invoked on this path.
+    const bool kill = mcp::cli_kill_switch_engaged();
+    const bool paper_ok = mcp::cli_paper_trading_allowed();
+    const bool trading_ok = mcp::cli_trading_allowed();
+    const bool live_armed = mcp::cli_live_armed();
+    const bool fast_armed = mcp::cli_fast_live_armed();
+    const QStringList venues = mcp::cli_allowed_venues();
+
+    auto prov = LlmConfigRepository::instance().get_active_provider();
+    const QString provider = prov.is_ok() ? prov.value().provider : QStringLiteral("none");
+
+    QJsonArray reasons;
+    reasons.append(QStringLiteral("no live path in plugin core"));
+    if (!live_armed) reasons.append(QStringLiteral("live_trading_armed=false"));
+    if (!trading_ok) reasons.append(QStringLiteral("allow_trading=false"));
+    if (!fast_armed) reasons.append(QStringLiteral("fast_live_armed=false"));
+    if (kill) reasons.append(QStringLiteral("kill_switch=engaged"));
+
+    QJsonObject gates{
+        {"kill_switch", kill},
+        {"allow_paper_trading", paper_ok},
+        {"allow_trading", trading_ok},
+        {"live_trading_armed", live_armed},
+        {"fast_live_armed", fast_armed},
+        {"allowed_venues", QJsonArray::fromStringList(venues)},
+    };
+
+    QJsonObject out{
+        {"provider", provider},
+        {"gates", gates},
+        {"armed", false},
+        {"disarmed_reason", reasons},
+    };
+
+    if (!name.isEmpty()) {
+        auto fetched = AiHandlerRepository::instance().get(name);
+        if (fetched.is_err()) {
+            std::fprintf(stderr, "error: handler not found: %s\n", qUtf8Printable(name));
+            return 4;
+        }
+        out.insert(QStringLiteral("handler"), ai_handler_to_json(fetched.value()));
+    }
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("armed:    false\n");
+    std::printf("provider: %s\n", qUtf8Printable(provider));
+    std::printf("gates:    kill_switch=%s allow_paper_trading=%s allow_trading=%s "
+                "live_trading_armed=%s fast_live_armed=%s allowed_venues=%s\n",
+                kill ? "true" : "false", paper_ok ? "true" : "false", trading_ok ? "true" : "false",
+                live_armed ? "true" : "false", fast_armed ? "true" : "false",
+                qUtf8Printable(venues.join(QLatin1Char(','))));
+    if (!name.isEmpty())
+        print_ai_handler_row(AiHandlerRepository::instance().get(name).value());
+    std::printf("disarmed_reason:");
+    for (const QJsonValue& v : reasons) std::printf(" [%s]", qUtf8Printable(v.toString()));
+    std::printf("\n");
+    return 0;
+}
+
+// `ai handler run <name> --paper [--max-iters N|--duration-sec D|--interval-sec N]`
+//
+// SAFETY-CRITICAL / PAPER-ONLY: loads the saved handler, builds its strategy via
+// the registry, and drives the SAME StrategyRunner paper path as
+// `ai run strategy`. It REFUSES any mode other than `paper` (exit 2) — there is
+// NO live execution path. RunConfig carries no notional/position caps, so the
+// handler's stored caps are surfaced as stored-not-enforced in the summary line.
+int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
+    if (rest.isEmpty() || rest.first().startsWith(QLatin1String("--")))
+        return ai_handler_usage();
+    const QString name = rest.takeFirst();
+
+    QString mode = QStringLiteral("paper");
+    int interval_sec = -1;  // <0 → fall back to the handler's stored interval.
+    int max_iters = 0;
+    int duration_sec = 0;
+
+    auto take_val = [&](const QString& flag, QString& dst) -> bool {
+        if (rest.isEmpty()) {
+            std::fprintf(stderr, "error: %s requires a value\n", qUtf8Printable(flag));
+            return false;
+        }
+        dst = rest.takeFirst();
+        return true;
+    };
+
+    while (!rest.isEmpty()) {
+        const QString f = rest.takeFirst();
+        QString v;
+        if (f == "--paper") {
+            mode = QStringLiteral("paper");
+        } else if (f == "--mode") {
+            if (!take_val(f, v)) return 2;
+            mode = v;
+        } else if (f == "--interval-sec") {
+            if (!take_val(f, v)) return 2;
+            interval_sec = v.toInt();
+        } else if (f == "--max-iters") {
+            if (!take_val(f, v)) return 2;
+            max_iters = v.toInt();
+        } else if (f == "--duration-sec") {
+            if (!take_val(f, v)) return 2;
+            duration_sec = v.toInt();
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return ai_handler_usage();
+        }
+    }
+
+    // PAPER-ONLY guard — the SINGLE source of truth for this command. Refuse any
+    // non-paper mode BEFORE loading or building anything. There is no live path.
+    if (mode == QLatin1String("live")) {
+        std::fprintf(stderr, "live handler run not supported (paper-first)\n");
+        return 2;
+    }
+    if (mode != QLatin1String("paper")) {
+        std::fprintf(stderr, "error: unknown --mode '%s' (only 'paper' is supported)\n",
+                     qUtf8Printable(mode));
+        return 2;
+    }
+
+    if (!init_db_for_handler_command(opts))
+        return 7;
+
+    auto fetched = AiHandlerRepository::instance().get(name);
+    if (fetched.is_err()) {
+        std::fprintf(stderr, "error: handler not found: %s\n", qUtf8Printable(name));
+        return 4;
+    }
+    const AiHandler h = fetched.value();
+
+    ai_strategy::StrategyRegistry registry;
+    ai_strategy::register_builtin_strategies(registry);
+    if (!registry.has(h.strategy)) {
+        std::fprintf(stderr, "error: handler references unknown strategy '%s'\n",
+                     qUtf8Printable(h.strategy));
+        return 2;
+    }
+
+    // needs_provider: LLM-backed strategies refuse to run without an active provider.
+    bool needs_provider = false;
+    for (const auto& info : registry.list())
+        if (info.name == h.strategy) needs_provider = info.needs_provider;
+    if (needs_provider && LlmConfigRepository::instance().get_active_provider().is_err()) {
+        std::fprintf(stderr, "error: no active LLM provider (strategy '%s' needs one)\n",
+                     qUtf8Printable(h.strategy));
+        return 6;
+    }
+
+    QStringList symbols = h.symbols.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    if (symbols.isEmpty())
+        symbols = QStringList{QStringLiteral("AAPL")};
+
+    std::unique_ptr<ai_strategy::Strategy> strategy =
+        registry.build(h.strategy, {symbols, make_real_completion_fn()});
+    if (!strategy) {
+        std::fprintf(stderr, "error: failed to build strategy '%s'\n", qUtf8Printable(h.strategy));
+        return 5;
+    }
+
+    const int ivl = interval_sec >= 0 ? interval_sec : h.interval_sec;
+
+    // Transport bring-up (mirrors ai_run_strategy). Guard the DB init: only bring
+    // it up when nothing else already opened it — re-opening re-registers the main
+    // connection name and corrupts stdout with a "duplicate connection" warning.
+    headless::HeadlessRuntime hr;
+    std::optional<BridgeClient> client;
+    if (opts.headless) {
+        if (!Database::instance().is_open()) {
+            auto ir = hr.init(opts.profile);
+            if (!ir.ok) {
+                std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+                return 7;
+            }
+        }
+    } else {
+        auto r = resolve(opts.profile);
+        if (auto* d = std::get_if<Discovered>(&r)) {
+            client = BridgeClient(d->info);
+        } else {
+            std::fprintf(stderr, "%s (profile '%s')\n", describe(std::get<DiscoveryError>(r)),
+                         qUtf8Printable(opts.profile));
+            return 3;
+        }
+    }
+    CliToolCaller caller(opts.headless, &hr, client ? &*client : nullptr);
+
+    // SIGINT → clean stop after the current tick.
+    g_stop.store(false);
+    std::signal(SIGINT, on_sigint);
+
+    ai_strategy::StrategyRunner runner;
+    runner.on_log = [](const QString& msg) {
+        std::printf("[strategy] %s\n", msg.toUtf8().constData());
+        std::fflush(stdout);
+    };
+
+    ai_strategy::RunConfig cfg;
+    cfg.interval_sec = ivl;
+    cfg.max_iters = max_iters;
+    cfg.duration_sec = duration_sec;
+
+    std::printf("[handler] running '%s' strategy=%s mode=paper interval=%ds max-iters=%d "
+                "duration=%ds symbols=%s\n",
+                qUtf8Printable(h.name), qUtf8Printable(h.strategy), ivl, max_iters, duration_sec,
+                qUtf8Printable(symbols.join(QLatin1Char(','))));
+    std::fflush(stdout);
+
+    const ai_strategy::RunSummary s =
+        runner.run(*strategy, caller, cfg, [] { return g_stop.load(); });
+
+    // RunConfig has no notional/position caps, so the handler's stored caps are
+    // NOT enforced by the paper runner — surface that explicitly (stored, not applied).
+    std::printf("summary: ticks=%d proposed=%d prepared=%d filled=%d rejected=%d errors=%d "
+                "halted=%s caps_enforced=false max_notional=%.2f max_position=%.2f\n",
+                s.ticks, s.proposed, s.prepared, s.filled, s.rejected, s.errors,
+                s.halted_by_kill_switch ? "true" : "false", h.max_notional, h.max_position);
+    std::fflush(stdout);
+
+    std::signal(SIGINT, SIG_DFL);
+    return 0;
+}
+
 }  // namespace
 
 int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
@@ -513,6 +763,10 @@ int ai_handler_command(const GlobalOpts& opts, const QString& action, QStringLis
         return ai_handler_set_enabled(opts, rest, /*enabled=*/true);
     if (action == QLatin1String("disable"))
         return ai_handler_set_enabled(opts, rest, /*enabled=*/false);
+    if (action == QLatin1String("status"))
+        return ai_handler_status(opts, rest);
+    if (action == QLatin1String("run"))
+        return ai_handler_run(opts, std::move(rest));
     return ai_handler_usage();
 }
 
