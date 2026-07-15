@@ -68,7 +68,7 @@ QString binance_pair(const QString& symbol) {
 QString kraken_pair(const QString& symbol) {
     const QString s = CryptoLatencyService::normalize_symbol(symbol);
     if (s == QStringLiteral("BTC-USD"))
-        return QStringLiteral("XBT/USD");
+        return QStringLiteral("BTC/USD");
     if (s == QStringLiteral("ETH-USD"))
         return QStringLiteral("ETH/USD");
     if (s == QStringLiteral("SOL-USD"))

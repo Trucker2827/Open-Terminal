@@ -1385,6 +1385,7 @@ set(SERVICE_SOURCES
     src/services/sandbox/TickTail.cpp
     # Strategy Sandbox — pure fill/exit rules for the paper executor (Task 4).
     src/services/sandbox/PaperFillModel.cpp
+    src/services/sandbox/MakerQuotes.cpp
     # Strategy Sandbox — PaperExecutor: run_cycle candidate open/fill/exit (Task 5).
     src/services/sandbox/PaperExecutor.cpp
     # Strategy Sandbox — Outcome Resolver: settle prediction/hypothetical books (Task 8).

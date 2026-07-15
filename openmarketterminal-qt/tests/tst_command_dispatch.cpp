@@ -487,10 +487,10 @@ private slots:
     // slot with no predecessors, so a slot may not lean on an earlier slot
     // having set HOME or brought the runtime/DB up; sandbox_test_home()
     // does both.
-    // Proof protocol v2 plus the producer-backed honest lane grid: 35 rows,
-    // spot 1h/4h/1d, 18 Kalshi horizon/cohort/exit-policy books, long_short, and
-    // chronos2/1h/1d/equity -- btc5m/chronos2_5m are retired), and
-    // 'spot' and 'kalshi' are each THREE rows of one kind (distinct
+    // Proof protocol v2 plus the producer-backed honest lane grid: 37 rows,
+    // spot 1h/4h/1d, 18 Kalshi horizon/cohort/exit-policy books, long_short,
+    // chronos2/1h/1d/equity, and the two crypto maker_decisions lanes
+    // (btc5m/chronos2_5m are retired). 'spot' and 'kalshi' are each THREE rows of one kind (distinct
     // strategy_ids). This test picks the LAST-seen row of kind 'spot' for the
     // pause/resume half and the long_short row for the retire half --
     // exercising the pause/resume/retire status-flip contract on two distinct
@@ -502,14 +502,14 @@ private slots:
             QStringList{"--json", "sandbox", "seed"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray seeded_ids = seeded.value("seeded").toArray();
-        QCOMPARE(seeded_ids.size(), 35);
+        QCOMPARE(seeded_ids.size(), 37);
         QCOMPARE(seeded.value("retired_stale").toInt(-1), 0);
 
         QJsonObject listed = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list"}, &rc);
         QCOMPARE(rc, 0);
         const QJsonArray rows = listed.value("strategies").toArray();
-        QCOMPARE(rows.size(), 35);
+        QCOMPARE(rows.size(), 37);
 
         QString spot_id;
         QString long_short_id;
@@ -534,7 +534,7 @@ private slots:
         QJsonObject active_after_pause = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 34);
+        QCOMPARE(active_after_pause.value("strategies").toArray().size(), 36);
 
         // resume flips it back.
         const QJsonObject resumed = json_object_from_dispatch(
@@ -544,7 +544,7 @@ private slots:
         QJsonObject active_after_resume = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 35);
+        QCOMPARE(active_after_resume.value("strategies").toArray().size(), 37);
 
         // retire is permanent-by-convention here but still just a status flip.
         const QJsonObject retired = json_object_from_dispatch(
@@ -554,7 +554,7 @@ private slots:
         QJsonObject active_after_retire = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "list", "--status", "active"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 34);
+        QCOMPARE(active_after_retire.value("strategies").toArray().size(), 36);
 
         // put it back so later slots in this file see the full season-1 set.
         rc = -1;

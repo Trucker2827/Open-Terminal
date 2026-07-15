@@ -186,6 +186,12 @@ QString tick_line(const QString& symbol, double price, qint64 ts_ms) {
         .arg(ts_ms);
 }
 
+QString maker_tick_line(const QString& symbol, const QString& venue, double price, qint64 ts_ms) {
+    return QStringLiteral(
+               R"({"symbol":"%1","venue":"%2","price":%3,"best_bid":%3,"best_ask":%3,"received_ts_ms":"%4"})")
+        .arg(symbol, venue).arg(price).arg(ts_ms);
+}
+
 void write_lines(const QString& path, const QStringList& lines) {
     QFile f(path);
     QVERIFY2(f.open(QIODevice::WriteOnly | QIODevice::Truncate), qUtf8Printable(path));
@@ -1380,6 +1386,259 @@ class TstSandboxExecutor : public QObject {
         for (const auto& r : rows.value())
             if (r.strategy_id == row.strategy_id) opened_kind = r.kind;
         QCOMPARE(opened_kind, QStringLiteral("chronos2_1h"));
+    }
+
+    void maker_quote_refresh_replaces_pending_instead_of_stacking() {
+        const QJsonObject params{
+            {"notional_usd", 100.0}, {"liquidity", "maker"}, {"venue", "coinbase_advanced"},
+            {"maker_bps", 40.0}, {"taker_bps", 60.0}, {"half_spread_bps", 2.0},
+            {"maker_fill_through_bps", 5.0}, {"target_bps", 90.0}, {"stop_bps", 45.0},
+            {"horizon_sec", kFarHorizonSec}, {"max_age_sec", 15},
+            {"source", "maker_decisions"}, {"paper_only", true}};
+        auto strat = register_strategy(QStringLiteral("maker"), QStringLiteral("XMR-USD"), params);
+        QVERIFY2(strat.is_ok(), strat.is_err() ? strat.error().c_str() : "");
+
+        const qint64 t0 = 5800000;
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto quote_line = [&](const QString& side, double price, qint64 ts) {
+            return QStringLiteral(
+                       R"({"symbol":"XMR-USD","venue":"coinbase_advanced","side":"%1",)"
+                       R"("action":"PAPER_MAKER_QUOTE","reference_price":%2,"ts_ms":"%3",)"
+                       R"("freshest_age_ms":100,"live_sources":2})")
+                .arg(side).arg(price).arg(ts);
+        };
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line("buy", 99.98, t0), quote_line("sell", 100.02, t0)});
+        auto first = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 500);
+        QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
+
+        // Sub-basis-point drift inside the default 60-second working-quote TTL
+        // keeps the existing orders instead of manufacturing cancel/replace
+        // rows on every sandbox cycle.
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line("buy", 99.985, t0 + 1000), quote_line("sell", 100.025, t0 + 1000)});
+        auto second = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1500);
+        QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
+        QCOMPARE(second.value().opened, 0);
+        QCOMPARE(second.value().unfilled, 0);
+
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line("buy", 100.08, t0 + 2000), quote_line("sell", 100.12, t0 + 2000)});
+        auto third = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 2500);
+        QVERIFY2(third.is_ok(), third.is_err() ? third.error().c_str() : "");
+
+        auto active = Database::instance().execute(
+            "SELECT count(*) FROM sandbox_position WHERE strategy_id=? AND state IN ('pending_fill','open')",
+            {strat.value()});
+        QVERIFY(active.is_ok() && active.value().next());
+        QCOMPARE(active.value().value(0).toInt(), 2);
+        auto replaced = Database::instance().execute(
+            "SELECT count(*) FROM sandbox_position WHERE strategy_id=? AND close_reason='replaced'",
+            {strat.value()});
+        QVERIFY(replaced.is_ok() && replaced.value().next());
+        QCOMPARE(replaced.value().value(0).toInt(), 2);
+        QCOMPARE(fetch_position(QStringLiteral("XMR-USD|buy|") + QString::number(t0 + 2000)).state,
+                 QStringLiteral("pending_fill"));
+        QCOMPARE(fetch_position(QStringLiteral("XMR-USD|sell|") + QString::number(t0 + 2000)).state,
+                 QStringLiteral("pending_fill"));
+    }
+
+    void maker_quote_rejects_future_decisions() {
+        const QJsonObject params{
+            {"notional_usd", 100.0}, {"liquidity", "maker"}, {"venue", "coinbase_advanced"},
+            {"maker_bps", 40.0}, {"taker_bps", 60.0}, {"half_spread_bps", 2.0},
+            {"horizon_sec", kFarHorizonSec}, {"max_age_sec", 15},
+            {"source", "maker_decisions"}, {"paper_only", true}};
+        auto strat = register_strategy(QStringLiteral("maker"), QStringLiteral("XMF-USD"), params);
+        QVERIFY2(strat.is_ok(), strat.is_err() ? strat.error().c_str() : "");
+
+        const qint64 now_ms = 5850000;
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        write_lines(daemon.filePath("maker_decisions.jsonl"), {
+            QStringLiteral(
+                R"({"symbol":"XMF-USD","venue":"coinbase_advanced","side":"buy",)"
+                R"("action":"PAPER_MAKER_QUOTE","reference_price":100.0,"ts_ms":"%1",)"
+                R"("freshest_age_ms":100,"live_sources":2})").arg(now_ms + 1),
+        });
+
+        auto cycle = run_cycle(QStringLiteral("default"), daemon.path(), now_ms);
+        QVERIFY2(cycle.is_ok(), cycle.is_err() ? cycle.error().c_str() : "");
+        QCOMPARE(cycle.value().opened, 0);
+        auto positions = Database::instance().execute(
+            "SELECT count(*) FROM sandbox_position WHERE strategy_id=?", {strat.value()});
+        QVERIFY(positions.is_ok() && positions.value().next());
+        QCOMPARE(positions.value().value(0).toInt(), 0);
+    }
+
+    void maker_quote_refresh_collapses_legacy_pending_duplicates() {
+        const QJsonObject params{
+            {"notional_usd", 100.0}, {"liquidity", "maker"}, {"venue", "coinbase_advanced"},
+            {"maker_bps", 40.0}, {"taker_bps", 60.0}, {"half_spread_bps", 2.0},
+            {"maker_fill_through_bps", 5.0}, {"target_bps", 90.0}, {"stop_bps", 45.0},
+            {"horizon_sec", kFarHorizonSec}, {"max_age_sec", 15},
+            {"source", "maker_decisions"}, {"paper_only", true}};
+        auto strat = register_strategy(QStringLiteral("maker"), QStringLiteral("XMR-USD"), params);
+        QVERIFY2(strat.is_ok(), strat.is_err() ? strat.error().c_str() : "");
+
+        const qint64 t0 = 5900000;
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto quote_line = [&](const QString& side, double price, qint64 ts) {
+            return QStringLiteral(
+                       R"({"symbol":"XMR-USD","venue":"coinbase_advanced","side":"%1",)"
+                       R"("action":"PAPER_MAKER_QUOTE","reference_price":%2,"ts_ms":"%3",)"
+                       R"("freshest_age_ms":100,"live_sources":2})")
+                .arg(side).arg(price).arg(ts);
+        };
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line("buy", 99.98, t0), quote_line("sell", 100.02, t0)});
+        auto first = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 500);
+        QVERIFY2(first.is_ok(), first.is_err() ? first.error().c_str() : "");
+
+        auto duplicate = Database::instance().execute(
+            "INSERT INTO sandbox_position (position_id, strategy_id, decision_id, symbol, side, hypothetical,"
+            " qty, limit_price, target_price, stop_price, expires_at, state, opened_at, entry_fee, data_quality,"
+            " notional_usd, created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,'pending_fill',NULL,0,'ok',?,?)",
+            {QStringLiteral("legacy-maker-duplicate"), strat.value(), QStringLiteral("legacy-maker-decision"),
+             QStringLiteral("XMR-USD"), QStringLiteral("buy"), 1.0, 99.981, 100.88, 99.53,
+             t0 + kFarHorizonSec * 1000, 100.0, t0 + 100});
+        QVERIFY2(duplicate.is_ok(), duplicate.is_err() ? duplicate.error().c_str() : "");
+
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line("buy", 99.985, t0 + 1000), quote_line("sell", 100.025, t0 + 1000)});
+        auto second = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1500);
+        QVERIFY2(second.is_ok(), second.is_err() ? second.error().c_str() : "");
+        QCOMPARE(second.value().opened, 0);
+        QCOMPARE(second.value().unfilled, 1);
+
+        auto active = Database::instance().execute(
+            "SELECT side, count(*) FROM sandbox_position WHERE strategy_id=?"
+            " AND state IN ('pending_fill','open') GROUP BY side ORDER BY side",
+            {strat.value()});
+        QVERIFY(active.is_ok());
+        QVERIFY(active.value().next());
+        QCOMPARE(active.value().value(0).toString(), QStringLiteral("buy"));
+        QCOMPARE(active.value().value(1).toInt(), 1);
+        QVERIFY(active.value().next());
+        QCOMPARE(active.value().value(0).toString(), QStringLiteral("sell"));
+        QCOMPARE(active.value().value(1).toInt(), 1);
+        QVERIFY(!active.value().next());
+    }
+
+    // Maker spread producer end-to-end. Two-sided OPEN is proved on a shared
+    // symbol (XMK); the signed round trips are proved on dedicated per-leg
+    // symbols (XMB long, XMS short) so two opposing brackets never fight over one
+    // tick stream. (On a single symbol a bid's long target sits above an ask's
+    // short stop -- physically real, but only one leg can win per symbol; separate
+    // symbols make each leg's target reachable, which is what exercises the executor.)
+    void maker_quotes_open_both_legs_fill_and_book_signed_pnl() {
+        const QJsonObject params{
+            {"notional_usd", 100.0}, {"liquidity", "maker"}, {"venue", "coinbase_advanced"},
+            {"maker_bps", 40.0}, {"taker_bps", 60.0}, {"half_spread_bps", 2.0},
+            {"slippage_bps", 1.0}, {"maker_fill_through_bps", 5.0},
+            {"target_bps", 90.0}, {"stop_bps", 45.0}, {"horizon_sec", kFarHorizonSec},
+            {"max_age_sec", 15}, {"source", "maker_decisions"}, {"paper_only", true}};
+        auto strat = register_strategy(QStringLiteral("maker"),
+                                       QStringLiteral("XMK-USD,XMB-USD,XMS-USD"), params);
+        QVERIFY2(strat.is_ok(), strat.is_err() ? strat.error().c_str() : "");
+
+        const qint64 t0 = 6000000;
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto quote_line = [&](const QString& symbol, const QString& side, double price) {
+            return QStringLiteral(
+                       R"({"symbol":"%1","venue":"coinbase_advanced","side":"%2",)"
+                       R"("liquidity":"maker","action":"PAPER_MAKER_QUOTE","reference_price":%3,)"
+                       R"("ts_ms":"%4","freshest_age_ms":120,"live_sources":3})")
+                .arg(symbol, side).arg(price, 0, 'f', 4).arg(t0);
+        };
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote_line(QStringLiteral("XMK-USD"), QStringLiteral("buy"), 99.98),
+                     quote_line(QStringLiteral("XMK-USD"), QStringLiteral("sell"), 100.02),
+                     quote_line(QStringLiteral("XMB-USD"), QStringLiteral("buy"), 99.98),
+                     quote_line(QStringLiteral("XMS-USD"), QStringLiteral("sell"), 100.02)});
+
+        // Cycle 1: all four decisions open as pending_fill. run_cycle's report
+        // .opened is a GLOBAL count across every active strategy, and this
+        // binary shares one DB across slots (see the file header) -- an earlier
+        // slot's seeded producer-backed book can open its own leftover
+        // edge_decision_journal row in the same cycle. Assert on THIS strategy's
+        // four legs directly so the count is isolated from that shared state.
+        auto c1 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(c1.is_ok(), c1.is_err() ? c1.error().c_str() : "");
+        auto mine = Database::instance().execute(
+            "SELECT count(*) FROM sandbox_position WHERE strategy_id=?", {strat.value()});
+        QVERIFY(mine.is_ok() && mine.value().next());
+        QCOMPARE(mine.value().value(0).toInt(), 4);
+
+        // Two-sided open on ONE symbol: a buy and a sell leg, mirrored brackets.
+        const PositionRow kbid = fetch_position(QStringLiteral("XMK-USD|buy|") + QString::number(t0));
+        const PositionRow kask = fetch_position(QStringLiteral("XMK-USD|sell|") + QString::number(t0));
+        QVERIFY(kbid.found);
+        QVERIFY(kask.found);
+        QCOMPARE(kbid.side, QStringLiteral("buy"));
+        QCOMPARE(kask.side, QStringLiteral("sell"));
+        QCOMPARE(kbid.state, QStringLiteral("pending_fill"));
+        QCOMPARE(kask.state, QStringLiteral("pending_fill"));
+        QVERIFY(qAbs(kbid.limit_price - 99.98) < 1e-9);
+        QVERIFY(qAbs(kask.limit_price - 100.02) < 1e-9);
+        QVERIFY(kbid.target_price > kbid.limit_price);   // long reverts up
+        QVERIFY(kbid.stop_price < kbid.limit_price);
+        QVERIFY(kask.target_price < kask.limit_price);   // short reverts down
+        QVERIFY(kask.stop_price > kask.limit_price);
+        QCOMPARE(kbid.data_quality, QStringLiteral("ok"));
+
+        // Cycle 2: fill the two dedicated legs by trading THROUGH each quote
+        // (XMB bid on a down-tick, XMS ask on an up-tick).
+        write_lines(daemon.filePath("maker_ticks.jsonl"),
+                    {maker_tick_line(QStringLiteral("XMB-USD"), QStringLiteral("kraken_pro"), 99.90, t0 + 1500),
+                     maker_tick_line(QStringLiteral("XMS-USD"), QStringLiteral("kraken_pro"), 100.10, t0 + 1600)});
+        auto wrong_venue = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1700);
+        QVERIFY2(wrong_venue.is_ok(), wrong_venue.is_err() ? wrong_venue.error().c_str() : "");
+        QCOMPARE(fetch_position(QStringLiteral("XMB-USD|buy|") + QString::number(t0)).state,
+                 QStringLiteral("pending_fill"));
+        QCOMPARE(fetch_position(QStringLiteral("XMS-USD|sell|") + QString::number(t0)).state,
+                 QStringLiteral("pending_fill"));
+
+        write_lines(daemon.filePath("maker_ticks.jsonl"),
+                    {maker_tick_line(QStringLiteral("XMB-USD"), QStringLiteral("coinbase_advanced"), 99.90, t0 + 2000),
+                     maker_tick_line(QStringLiteral("XMS-USD"), QStringLiteral("coinbase_advanced"), 100.10, t0 + 2500)});
+        auto c2 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 3000);
+        QVERIFY2(c2.is_ok(), c2.is_err() ? c2.error().c_str() : "");
+        const PositionRow bfill = fetch_position(QStringLiteral("XMB-USD|buy|") + QString::number(t0));
+        const PositionRow sfill = fetch_position(QStringLiteral("XMS-USD|sell|") + QString::number(t0));
+        QCOMPARE(bfill.state, QStringLiteral("open"));
+        QCOMPARE(sfill.state, QStringLiteral("open"));
+
+        // Cycle 3: each dedicated leg reaches its OWN target on its OWN symbol,
+        // so they never contend. Long target is above; short target is below.
+        // A maker exit requires the tick to trade THROUGH the target by
+        // maker_fill_through_bps (5 bps) -- a mere touch leaves us behind the
+        // queue (see honest_maker_exit_requires_trade_through_end_to_end) -- so
+        // push each tick ~10 bps past its target. The fill is still booked at
+        // target_price itself, so realized pnl is independent of this overshoot.
+        write_lines(daemon.filePath("maker_ticks.jsonl"),
+                    {maker_tick_line(QStringLiteral("XMB-USD"), QStringLiteral("coinbase_advanced"),
+                                     bfill.target_price * 1.001, t0 + 4000),
+                     maker_tick_line(QStringLiteral("XMS-USD"), QStringLiteral("coinbase_advanced"),
+                                     sfill.target_price * 0.999, t0 + 4500)});
+        auto c3 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 5000);
+        QVERIFY2(c3.is_ok(), c3.is_err() ? c3.error().c_str() : "");
+
+        const PositionRow bclosed = fetch_position(QStringLiteral("XMB-USD|buy|") + QString::number(t0));
+        const PositionRow sclosed = fetch_position(QStringLiteral("XMS-USD|sell|") + QString::number(t0));
+        QCOMPARE(bclosed.state, QStringLiteral("closed"));
+        QCOMPARE(sclosed.state, QStringLiteral("closed"));
+        QCOMPARE(bclosed.close_reason, QStringLiteral("target"));
+        QCOMPARE(sclosed.close_reason, QStringLiteral("target"));
+        QVERIFY(bclosed.has_realized_pnl);
+        QVERIFY(sclosed.has_realized_pnl);
+        // Both hit their target => both wins. The short leg is a win only if its
+        // pnl uses (entry - exit); the buy-forced neuter turns it into a loss.
+        QVERIFY2(bclosed.realized_pnl > 0.0, "long leg target hit must be a win");
+        QVERIFY2(sclosed.realized_pnl > 0.0, "short leg target hit must be a win (signed pnl)");
     }
 };
 

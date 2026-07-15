@@ -19,6 +19,7 @@
 #include <QVariant>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace openmarketterminal::services::sandbox {
@@ -98,6 +99,16 @@ bool is_honest_lane(const QJsonObject& params) {
 
 bool is_maker_lane(const QJsonObject& params) {
     return params.value(QStringLiteral("liquidity")).toString() == QLatin1String("maker");
+}
+
+bool uses_maker_tick_feed(const QJsonObject& params) {
+    return params.value(QStringLiteral("source")).toString() == QLatin1String("maker_decisions");
+}
+
+QString ticks_path_for(const QString& daemon_dir, const QJsonObject& params) {
+    return daemon_dir + (uses_maker_tick_feed(params)
+                             ? QStringLiteral("/maker_ticks.jsonl")
+                             : QStringLiteral("/scalp_ticks.jsonl"));
 }
 
 double target_bps_from_params(const QJsonObject& params) {
@@ -365,6 +376,192 @@ Result<void> open_scalp_candidates(const StrategyRow& strategy, const QJsonObjec
         if (ins.is_err())
             return ins;
         report.opened++;
+    }
+    return Result<void>::ok();
+}
+
+// maker: two-sided spread-capture. Scans <daemon_dir>/maker_decisions.jsonl for
+// the latest resting bid (side=buy) and ask (side=sell) per symbol and opens each
+// as a pending_fill leg. Unlike scalp this is NOT buy-only and has no directional
+// verdict -- a market maker always quotes; the honest fill model only fills a leg
+// when price trades THROUGH it. reference_price IS the resting quote price (the
+// producer already applied the half-spread via build_maker_quotes), so the bracket
+// is built directly around it, mirrored by side.
+Result<void> open_maker_quotes(const StrategyRow& strategy, const QJsonObject& params,
+                               const QString& daemon_dir, qint64 now_ms, CycleReport& report) {
+    const int max_age_sec = params.contains(QStringLiteral("max_age_sec"))
+                                 ? params.value(QStringLiteral("max_age_sec")).toInt()
+                                 : 15;
+    const double notional_usd = params.value(QStringLiteral("notional_usd")).toDouble(0.0);
+    int horizon_sec_param = params.value(QStringLiteral("horizon_sec")).toInt(0);
+    if (horizon_sec_param <= 0)
+        horizon_sec_param = 900;
+    const double target_bps = params.value(QStringLiteral("target_bps")).toDouble(0.0);
+    const double stop_bps = params.value(QStringLiteral("stop_bps")).toDouble(0.0);
+    const double requote_bps = std::max(
+        0.0, params.value(QStringLiteral("maker_requote_bps")).toDouble(1.0));
+    const int quote_ttl_sec = std::max(
+        0, params.value(QStringLiteral("maker_quote_ttl_sec")).toInt(60));
+    const QString strategy_venue = params.value(QStringLiteral("venue")).toString().trimmed().toLower();
+
+    const QString decisions_path = daemon_dir + QStringLiteral("/maker_decisions.jsonl");
+    const QByteArray buffer = read_tail_with_prev(decisions_path, kTickTailBytes);
+    const QList<QByteArray> lines = buffer.split('\n');
+
+    for (const QString& symbol : split_symbols(strategy.symbols)) {
+        // Find the most recent bid and the most recent ask for this symbol.
+        QJsonObject found_by_side[2]; // [0]=buy, [1]=sell
+        bool have[2] = {false, false};
+        for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+            const QByteArray line = it->trimmed();
+            if (line.isEmpty())
+                continue;
+            QJsonParseError pe;
+            const QJsonDocument doc = QJsonDocument::fromJson(line, &pe);
+            if (pe.error != QJsonParseError::NoError || !doc.isObject())
+                continue;
+            const QJsonObject d = doc.object();
+            if (d.value(QStringLiteral("symbol")).toString().trimmed().toUpper() != symbol)
+                continue;
+            if (d.value(QStringLiteral("action")).toString() != QLatin1String("PAPER_MAKER_QUOTE"))
+                continue;
+            const QString decision_venue = d.value(QStringLiteral("venue")).toString().trimmed().toLower();
+            if (!strategy_venue.isEmpty() && decision_venue != strategy_venue)
+                continue;
+            const QString side = d.value(QStringLiteral("side")).toString().trimmed().toLower();
+            const int idx = side == QLatin1String("buy") ? 0 : side == QLatin1String("sell") ? 1 : -1;
+            if (idx < 0 || have[idx])
+                continue;
+            bool ok = false;
+            const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
+            if (!ok || ts_ms <= 0 || ts_ms > now_ms ||
+                now_ms - ts_ms > static_cast<qint64>(max_age_sec) * 1000)
+                continue;
+            found_by_side[idx] = d;
+            have[idx] = true;
+            if (have[0] && have[1])
+                break;
+        }
+
+        for (int idx = 0; idx < 2; ++idx) {
+            if (!have[idx])
+                continue;
+            const QJsonObject& found = found_by_side[idx];
+            const QString side = idx == 0 ? QStringLiteral("buy") : QStringLiteral("sell");
+            bool ok = false;
+            const qint64 ts_ms = found.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);
+            const QString decision_id = symbol + QLatin1Char('|') + side + QLatin1Char('|') + QString::number(ts_ms);
+            const double ref = found.value(QStringLiteral("reference_price")).toDouble();
+            if (!std::isfinite(ref) || ref <= 0.0) {
+                report.skipped++;
+                report.notes << QStringLiteral("maker quote %1 skipped: non-positive reference_price").arg(decision_id);
+                continue;
+            }
+
+            auto existing = Database::instance().execute(
+                "SELECT position_id, decision_id, state, limit_price, created_at FROM sandbox_position"
+                " WHERE strategy_id = ? AND symbol = ? AND side = ?"
+                " AND state IN ('pending_fill','open') ORDER BY created_at DESC",
+                {strategy.strategy_id, symbol, side});
+            if (existing.is_err())
+                return Result<void>::err(existing.error());
+            QStringList pending_position_ids;
+            QString retained_pending_id;
+            bool has_open_position = false;
+            while (existing.value().next()) {
+                const QString existing_position_id = existing.value().value(0).toString();
+                const QString existing_decision_id = existing.value().value(1).toString();
+                const QString existing_state = existing.value().value(2).toString();
+                if (existing_state == QLatin1String("open")) {
+                    has_open_position = true;
+                    continue;
+                }
+
+                pending_position_ids << existing_position_id;
+                // Prefer the exact decision when a dirty/legacy database has
+                // more than one pending row. Otherwise retain one sufficiently
+                // fresh quote and retire every duplicate below.
+                if (existing_decision_id == decision_id) {
+                    retained_pending_id = existing_position_id;
+                } else if (retained_pending_id.isEmpty()) {
+                    const double existing_limit = existing.value().value(3).toDouble();
+                    const qint64 existing_created_at = existing.value().value(4).toLongLong();
+                    const double drift_bps = existing_limit > 0.0
+                        ? std::abs(ref - existing_limit) / existing_limit * 10000.0
+                        : std::numeric_limits<double>::infinity();
+                    const bool within_ttl = quote_ttl_sec > 0 &&
+                        now_ms - existing_created_at < static_cast<qint64>(quote_ttl_sec) * 1000;
+                    if (drift_bps < requote_bps && within_ttl)
+                        retained_pending_id = existing_position_id;
+                }
+            }
+
+            if (has_open_position)
+                retained_pending_id.clear();
+
+            // A maker has one working quote per strategy/symbol/side. Refresh
+            // its pending quote instead of stacking a new 15-minute exposure
+            // every sandbox cycle. Filled inventory remains untouched until
+            // its normal target/stop/expiry closes it.
+            for (const QString& position_id : pending_position_ids) {
+                if (position_id == retained_pending_id)
+                    continue;
+                auto upd = Database::instance().execute(
+                    "UPDATE sandbox_position SET state='unfilled', closed_at=?, close_reason='replaced'"
+                    " WHERE position_id=? AND state='pending_fill'",
+                    {now_ms, position_id});
+                if (upd.is_err())
+                    return Result<void>::err(upd.error());
+                if (upd.value().numRowsAffected() == 0)
+                    continue;
+                auto fill = Database::instance().execute(
+                    "INSERT INTO sandbox_fill (fill_id, position_id, ts, kind, price, fee, note)"
+                    " VALUES (?,?,?,?,?,?,?)",
+                    {new_id(), position_id, now_ms, QStringLiteral("unfilled"), 0.0, 0.0,
+                     QStringLiteral("maker quote replaced")});
+                if (fill.is_err())
+                    return Result<void>::err(fill.error());
+                report.unfilled++;
+            }
+
+            if (has_open_position || !retained_pending_id.isEmpty()) {
+                report.skipped++;
+                continue;
+            }
+
+            OpenPlan plan;
+            plan.decision_id = decision_id;
+            plan.symbol = symbol;
+            plan.side = side;
+            plan.hypothetical = false;
+            plan.limit_price = ref; // producer already applied the half-spread
+            plan.qty = notional_usd / plan.limit_price;
+            // Bracket mirrored by side: a long reverts UP, a short reverts DOWN.
+            const double up = 1.0 + target_bps / 10000.0;
+            const double down_t = 1.0 - target_bps / 10000.0;
+            const double down_s = 1.0 - stop_bps / 10000.0;
+            const double up_s = 1.0 + stop_bps / 10000.0;
+            if (side == QStringLiteral("buy")) {
+                plan.target_price = target_bps > 0.0 ? QVariant(plan.limit_price * up) : QVariant();
+                plan.stop_price = stop_bps > 0.0 ? QVariant(plan.limit_price * down_s) : QVariant();
+            } else {
+                plan.target_price = target_bps > 0.0 ? QVariant(plan.limit_price * down_t) : QVariant();
+                plan.stop_price = stop_bps > 0.0 ? QVariant(plan.limit_price * up_s) : QVariant();
+            }
+            plan.expires_at = ts_ms + static_cast<qint64>(horizon_sec_param) * 1000;
+            plan.created_at = ts_ms;
+            plan.state = QStringLiteral("pending_fill"); // a maker always rests
+            plan.opened_at = QVariant();
+            plan.fill_ts = 0;
+            plan.entry_fee = 0.0; // maker fee is charged at the fill transition
+            plan.data_quality = data_quality_from_freshness(found);
+            plan.notional_usd = notional_usd;
+
+            auto ins = insert_position(strategy.strategy_id, plan);
+            if (ins.is_err())
+                return ins;
+            report.opened++;
+        }
     }
     return Result<void>::ok();
 }
@@ -859,7 +1056,7 @@ Result<void> open_hypothetical_candidates(const StrategyRow& strategy, const QJs
 // Step 2: pending_fill -> open|unfilled (spot/scalp only -- prediction and
 // hypothetical positions never enter pending_fill).
 // ---------------------------------------------------------------------
-Result<void> advance_pending_fills(const QString& ticks_path, qint64 now_ms, CycleReport& report) {
+Result<void> advance_pending_fills(const QString& daemon_dir, qint64 now_ms, CycleReport& report) {
     auto& db = Database::instance();
     auto sel = db.execute(
         "SELECT p.position_id, p.symbol, p.side, p.limit_price, p.expires_at, p.created_at, p.notional_usd,"
@@ -900,7 +1097,11 @@ Result<void> advance_pending_fills(const QString& ticks_path, qint64 now_ms, Cyc
             continue;
         }
 
-        const auto ticks = ticks_since(ticks_path, row.symbol, row.created_at);
+        const QString venue = uses_maker_tick_feed(row.params)
+                                  ? row.params.value(QStringLiteral("venue")).toString()
+                                  : QString();
+        const auto ticks = ticks_since(ticks_path_for(daemon_dir, row.params), row.symbol,
+                                       row.created_at, kTickTailBytes, venue);
         const FeeModel fees = fee_model_from_params(row.params);
         const bool honest = is_honest_lane(row.params);
         const bool maker = is_maker_lane(row.params);
@@ -1062,7 +1263,7 @@ Result<void> advance_prediction_exits(qint64 now_ms, CycleReport& report) {
 // and hypothetical (long_short) positions are opened by run_cycle but closed
 // only by the Outcome Resolver (Task 8).
 // ---------------------------------------------------------------------
-Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, CycleReport& report) {
+Result<void> advance_open_positions(const QString& daemon_dir, qint64 now_ms, CycleReport& report) {
     auto& db = Database::instance();
     auto sel = db.execute(
         "SELECT p.position_id, p.symbol, p.side, p.limit_price, p.target_price, p.stop_price, p.expires_at,"
@@ -1121,7 +1322,11 @@ Result<void> advance_open_positions(const QString& ticks_path, qint64 now_ms, Cy
         const double target_price = row.has_target ? row.target_price : (short_side ? 0.0 : kNever);
         const double stop_price = row.has_stop ? row.stop_price : (short_side ? kNever : 0.0);
 
-        const auto ticks = ticks_since(ticks_path, row.symbol, row.opened_at);
+        const QString venue = uses_maker_tick_feed(row.params)
+                                  ? row.params.value(QStringLiteral("venue")).toString()
+                                  : QString();
+        const auto ticks = ticks_since(ticks_path_for(daemon_dir, row.params), row.symbol,
+                                       row.opened_at, kTickTailBytes, venue);
         const FeeModel fees = fee_model_from_params(row.params);
         const bool honest = is_honest_lane(row.params);
         const bool maker = is_maker_lane(row.params);
@@ -1224,6 +1429,8 @@ Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir,
         Result<void> r = Result<void>::ok();
         if (strategy.kind == QLatin1String("scalp"))
             r = open_scalp_candidates(strategy, params, daemon_dir, now_ms, report);
+        else if (strategy.kind == QLatin1String("maker"))
+            r = open_maker_quotes(strategy, params, daemon_dir, now_ms, report);
         else if (is_prediction)
             r = open_prediction_candidates(strategy, params, now_ms, report);
         else if (is_price_forecast)
@@ -1237,11 +1444,11 @@ Result<CycleReport> run_cycle(const QString& profile, const QString& daemon_dir,
             return Result<CycleReport>::err(r.error());
     }
 
-    auto step2 = advance_pending_fills(ticks_path, now_ms, report);
+    auto step2 = advance_pending_fills(daemon_dir, now_ms, report);
     if (step2.is_err())
         return Result<CycleReport>::err(step2.error());
 
-    auto step3 = advance_open_positions(ticks_path, now_ms, report);
+    auto step3 = advance_open_positions(daemon_dir, now_ms, report);
     if (step3.is_err())
         return Result<CycleReport>::err(step3.error());
 

@@ -26,6 +26,12 @@ QString tick_line(const QString& symbol, double price, double bid, double ask, q
         .arg(ts_ms);
 }
 
+QString venue_tick_line(const QString& symbol, const QString& venue, double price, qint64 ts_ms) {
+    return QStringLiteral(
+               R"({"symbol":"%1","venue":"%2","price":%3,"received_ts_ms":"%4"})")
+        .arg(symbol, venue).arg(price).arg(ts_ms);
+}
+
 void write_lines(const QString& path, const QStringList& lines) {
     QFile f(path);
     QVERIFY2(f.open(QIODevice::WriteOnly | QIODevice::Truncate), qUtf8Printable(path));
@@ -104,6 +110,25 @@ class TstSandboxTickTail : public QObject {
         QCOMPARE(rows.size(), 2);
         QCOMPARE(rows[0].ts_ms, qint64(500));
         QCOMPARE(rows[1].ts_ms, qint64(1000));
+    }
+
+
+    void filters_ticks_by_normalized_venue_when_requested() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath("maker_ticks.jsonl");
+        write_lines(path, {
+            venue_tick_line("BTC-USD", "coinbase_advanced", 60000.0, 1000),
+            venue_tick_line("BTC-USD", "kraken_pro", 60010.0, 1100),
+        });
+
+        const auto coinbase = ticks_since(path, "BTC-USD", 0, kTickTailBytes, " COINBASE_ADVANCED ");
+        QCOMPARE(coinbase.size(), 1);
+        QCOMPARE(coinbase[0].venue, QStringLiteral("coinbase_advanced"));
+        QCOMPARE(coinbase[0].price, 60000.0);
+
+        const auto all = ticks_since(path, "BTC-USD", 0);
+        QCOMPARE(all.size(), 2);
     }
 };
 
