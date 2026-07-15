@@ -550,6 +550,14 @@ target_include_directories(tst_freshness_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_freshness_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_freshness_gate COMMAND tst_freshness_gate)
 
+# ai ctx decision-packet Task 2 — DecisionContext::assess: pure-read packet
+# assembly over edge_decision_journal + FreshnessGate.h + SandboxScorer.h's
+# evaluate_lane_significance. Same DB bootstrap as tst_sandbox_registry.
+add_executable(tst_decision_context tst_decision_context.cpp)
+target_include_directories(tst_decision_context PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_decision_context PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_decision_context COMMAND tst_decision_context)
+
 # Strategy Sandbox Task 8 — SandboxResolver::resolve_pending: settle
 # prediction (journal outcome) and hypothetical (tick target/stop/expiry)
 # books. Same DB bootstrap as tst_sandbox_executor.

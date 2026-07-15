@@ -1395,6 +1395,10 @@ set(SERVICE_SOURCES
     src/services/sandbox/SandboxScorer.cpp
     # Strategy Sandbox — Live Eligibility Gate: report-only verdict (Task 10).
     src/services/sandbox/SandboxEligibility.cpp
+
+    # ai ctx decision-packet Task 2 — DecisionContext::assess: pure-read
+    # decision packet over edge_decision_journal + cost/freshness/lane.
+    src/services/ai_decision/DecisionContext.cpp
 )
 
 # UI framework
@@ -2381,6 +2385,11 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    # DecisionContext.cpp — defines an anonymous-namespace `enum class
+    # EdgeCol` (scoped enumerators, but the type name itself still lives in
+    # the anon namespace); excluded defensively so a Release unity batch can
+    # never collide it against another anon-namespace symbol of the same name.
+    src/services/ai_decision/DecisionContext.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
