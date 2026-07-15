@@ -91,13 +91,16 @@ struct DecisionPacket {
 // created_at DESC LIMIT 1) and assembles a DecisionPacket: cost/clears_cost
 // from the row's own spread_cost/fee_cost/edge_after_cost/gate columns,
 // freshness via FreshnessGate.h's data_quality_from_freshness over the row's
-// freshness_json, lane_verdict as a best-effort read of the symbol's
-// resolved, honest sandbox_position samples through
-// SandboxScorer.h's evaluate_lane_significance, and recommendation_hint via
-// compute_hint(). `market` is not used to filter the query (the journal has
-// no market-scoped uniqueness guarantee beyond symbol+created_at); it is
-// only carried through into the returned packet as a label. PURE READ: no
-// writes, no order placement, no gate mutation — see file header.
+// freshness_json, and recommendation_hint via compute_hint(). lane_verdict is
+// deferred: it is set to "unknown" (best-effort, not yet wired) because
+// SandboxScorer.h's evaluate_lane_significance produces per-LANE verdicts,
+// not the per-symbol verdict this packet needs, and no single-verdict
+// collapse rule is defined yet (see DecisionContext.cpp) — assess() issues no
+// sandbox_position query for it. `market` is not used to filter the query
+// (the journal has no market-scoped uniqueness guarantee beyond
+// symbol+created_at); it is only carried through into the returned packet as
+// a label. PURE READ: no writes, no order placement, no gate mutation — see
+// file header.
 DecisionPacket assess(const QString& symbol, const QString& market = {});
 
 // Serializes every DecisionPacket field to a QJsonObject.

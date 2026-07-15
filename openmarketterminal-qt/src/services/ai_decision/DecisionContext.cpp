@@ -166,7 +166,14 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
 QString compute_hint(const DecisionPacket& packet) {
     if (!packet.has_edge_signal)
         return QStringLiteral("no edge signal");
-    if (packet.freshness != QStringLiteral("ok"))
+    // Only 'degraded' is stale. 'unknown' means the row carries NO freshness
+    // telemetry at all (freshness_json has neither freshest_age_ms nor
+    // live_sources) -- absence of telemetry is NOT evidence of degradation
+    // (see FreshnessGate.h's three-way contract), and prediction/Kalshi
+    // journal rows legitimately carry none. Blocking 'unknown' would falsely
+    // "blocked: stale data" every prediction candidate, defeating the tool's
+    // purpose; 'unknown' falls THROUGH to the cost check.
+    if (packet.freshness == QStringLiteral("degraded"))
         return QStringLiteral("blocked: stale data");
     if (packet.clears_cost == QStringLiteral("false"))
         return QStringLiteral("blocked: below cost");

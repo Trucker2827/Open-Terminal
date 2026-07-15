@@ -75,13 +75,35 @@ class TstDecisionContext : public QObject {
         QCOMPARE(below.clears_cost, QStringLiteral("false"));
         QCOMPARE(below.recommendation_hint, QStringLiteral("blocked: below cost"));
 
-        // stale row => hint "blocked: stale data".
+        // stale (DEGRADED) row => hint "blocked: stale data". freshest_age_ms
+        // 9000 > 5000 => data_quality_from_freshness returns "degraded", which
+        // is the ONLY freshness value that blocks (not "unknown").
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " freshness_json, source) VALUES (?,?,?,?,?,?,?,?)",
             {QStringLiteral("dc3"), 3000, 3000, QStringLiteral("SOL-USD"), QStringLiteral("pass"), 5.0,
              QStringLiteral("{\"freshest_age_ms\":9000,\"live_sources\":3}"), QStringLiteral("x")});
-        QCOMPARE(assess(QStringLiteral("SOL-USD")).recommendation_hint, QStringLiteral("blocked: stale data"));
+        const auto stale = assess(QStringLiteral("SOL-USD"));
+        QCOMPARE(stale.freshness, QStringLiteral("degraded"));
+        QCOMPARE(stale.recommendation_hint, QStringLiteral("blocked: stale data"));
+
+        // UNKNOWN-freshness row (regression guard): freshness_json = {} carries
+        // NEITHER freshest_age_ms NOR live_sources, so data_quality_from_freshness
+        // returns "unknown" -- meaning "no telemetry", NOT "stale". Prediction/
+        // Kalshi journal rows legitimately carry none. With edge present,
+        // gate=pass, edge_after_cost>0, the hint MUST fall through to
+        // "all gates pass", never "blocked: stale data" -- otherwise every
+        // prediction candidate is falsely blocked.
+        Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
+            " spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("dc5"), 5000, 5000, QStringLiteral("KXBTC-USD"), QStringLiteral("pass"), 4.0,
+             1.0, 0.5, QStringLiteral("{}"), QStringLiteral("kalshi auto-plan")});
+        const auto unknown = assess(QStringLiteral("KXBTC-USD"));
+        QVERIFY(unknown.has_edge_signal);
+        QCOMPARE(unknown.freshness, QStringLiteral("unknown"));
+        QCOMPARE(unknown.clears_cost, QStringLiteral("true"));
+        QCOMPARE(unknown.recommendation_hint, QStringLiteral("all gates pass"));
 
         // no row => graceful, no edge.
         const auto none = assess(QStringLiteral("ZZZZ-USD"));
