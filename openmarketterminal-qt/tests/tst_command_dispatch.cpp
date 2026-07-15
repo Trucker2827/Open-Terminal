@@ -80,6 +80,18 @@ static QJsonObject json_object_from_dispatch(const QStringList& args, int* rc_ou
     return doc.isObject() ? doc.object() : QJsonObject{};
 }
 
+// `ai screen` (Task 2) emits a top-level JSON ARRAY (screen_to_json), not an
+// object -- json_object_from_dispatch's QJsonDocument::isObject() guard would
+// silently discard it, so parse the raw stdout as an array instead.
+static QJsonArray json_array_from_dispatch(const QStringList& args, int* rc_out = nullptr) {
+    int rc = -1;
+    const QString out = capture_stdout([&]() { return dispatch(args); }, &rc);
+    if (rc_out)
+        *rc_out = rc;
+    const QJsonDocument doc = QJsonDocument::fromJson(out.toUtf8());
+    return doc.isArray() ? doc.array() : QJsonArray{};
+}
+
 static QStringList json_strings(const QJsonArray& arr) {
     QStringList out;
     for (const QJsonValue& v : arr)
@@ -1602,6 +1614,130 @@ private slots:
 
         int rc = -1;
         json_object_from_dispatch(QStringList{"ai", "ctx", "CTXRO-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+
+        const QStringList after = cli_settings_fingerprint();
+        const int journal_after = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_after = table_row_count(QStringLiteral("order_drafts"));
+        QCOMPARE(after, before);
+        QCOMPARE(journal_after, journal_before);
+        QCOMPARE(orders_after, orders_before);
+    }
+
+    // ai screen shortlist Task 2 -- `ai screen --market crypto --json` ranks
+    // the all-gates-pass candidates by edge_after_cost desc and tags each
+    // with its market. Fixture mirrors tst_screener.cpp's
+    // screen_filters_ranks_and_tags seed shape exactly (id, created_at,
+    // updated_at, symbol, venue, side, gate, edge_after_cost, spread_cost,
+    // fee_cost, freshness_json, source).
+    void ai_screen_ranks_crypto_json() {
+        sandbox_test_home();
+        auto seed = [&](const QString& id, const QString& sym, const QString& venue,
+                        const QString& gate, double edge, qint64 ts) {
+            auto r = Database::instance().execute(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                {id, ts, ts, sym, venue, QStringLiteral("buy"), gate, edge, 0.0, 0.0,
+                 QStringLiteral("{}"), QStringLiteral("s")});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        seed(QStringLiteral("cd-scr-1"), QStringLiteral("SCRBTC-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("pass"), 12.0, 9000);
+        seed(QStringLiteral("cd-scr-2"), QStringLiteral("SCRETH-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("pass"), 5.0, 9000);
+        // A crypto FAIL (excluded from the shortlist).
+        seed(QStringLiteral("cd-scr-3"), QStringLiteral("SCRSOL-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("fail"), 9.0, 9000);
+        // A prediction passer -- must NOT appear when --market crypto filters it out.
+        seed(QStringLiteral("cd-scr-4"), QStringLiteral("SCRKXBTC-USD"), QStringLiteral("kalshi"),
+             QStringLiteral("pass"), 20.0, 9000);
+
+        int rc = -1;
+        const QJsonArray arr = json_array_from_dispatch(
+            QStringList{"ai", "screen", "--market", "crypto", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(arr.size(), 2);
+
+        const QJsonObject first = arr.at(0).toObject();
+        const QJsonObject second = arr.at(1).toObject();
+        QCOMPARE(first.value(QStringLiteral("symbol")).toString(), QStringLiteral("SCRBTC-USD"));
+        QCOMPARE(first.value(QStringLiteral("market")).toString(), QStringLiteral("crypto"));
+        QVERIFY(first.contains(QStringLiteral("edge_after_cost")));
+        QCOMPARE(first.value(QStringLiteral("recommendation_hint")).toString(),
+                 QStringLiteral("all gates pass"));
+        QCOMPARE(second.value(QStringLiteral("symbol")).toString(), QStringLiteral("SCRETH-USD"));
+        // Ranked by edge_after_cost desc: 12.0 (SCRBTC) before 5.0 (SCRETH).
+        QVERIFY(first.value(QStringLiteral("edge_after_cost")).toDouble() >
+                second.value(QStringLiteral("edge_after_cost")).toDouble());
+    }
+
+    // Unrecognized --market value -> usage error, exit 2 (never falls through
+    // to "all markets").
+    void ai_screen_rejects_bad_market() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--market", "bogus"}); }, &rc);
+        QCOMPARE(rc, 2);
+    }
+
+    // A recognized market with no seeded/passing edge_decision_journal rows
+    // -> exit 0 with an empty JSON array, not an error. Asserts the raw
+    // stdout text itself (not just a parsed-array emptiness check) --
+    // json_array_from_dispatch would also return an empty QJsonArray for
+    // blank/null/malformed output, which would let this test pass even if
+    // the command emitted nothing at all.
+    void ai_screen_empty_market_returns_empty_array() {
+        sandbox_test_home();
+        int rc = -1;
+        const QString out = capture_stdout([&]() {
+            return dispatch(QStringList{"ai", "screen", "--market", "equity", "--json"});
+        }, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.trimmed(), QStringLiteral("[]"));
+
+        const QJsonDocument doc = QJsonDocument::fromJson(out.toUtf8());
+        QVERIFY(doc.isArray());
+        QVERIFY(doc.array().isEmpty());
+    }
+
+    // --limit garbage/non-positive -> usage error, exit 2 (never silently
+    // falls back to the default).
+    void ai_screen_rejects_bad_limit() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--limit", "abc"}); }, &rc);
+        QCOMPARE(rc, 2);
+
+        rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--limit", "0"}); }, &rc);
+        QCOMPARE(rc, 2);
+
+        rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--limit", "-3"}); }, &rc);
+        QCOMPARE(rc, 2);
+    }
+
+    // READ-ONLY invariant: `ai screen` must not mutate a single cli.*
+    // settings row, nor insert/delete any edge_decision_journal or
+    // order_drafts row -- it only ever SELECTs (Screener.h's READ-ONLY
+    // INVARIANT, reused via DecisionContext::assess).
+    void ai_screen_is_read_only_on_gates() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("cd-scr-ro"), 9500, 9500, QStringLiteral("SCRROX-USD"),
+             QStringLiteral("coinbase_advanced"), QStringLiteral("buy"), QStringLiteral("pass"), 6.0, 0.0, 0.0,
+             QStringLiteral("{}"), QStringLiteral("s")}).is_ok());
+
+        const QStringList before = cli_settings_fingerprint();
+        const int journal_before = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_before = table_row_count(QStringLiteral("order_drafts"));
+        QVERIFY(journal_before >= 0);
+        QVERIFY(orders_before >= 0);
+
+        int rc = -1;
+        json_array_from_dispatch(QStringList{"ai", "screen", "--market", "crypto", "--json"}, &rc);
         QCOMPARE(rc, 0);
 
         const QStringList after = cli_settings_fingerprint();

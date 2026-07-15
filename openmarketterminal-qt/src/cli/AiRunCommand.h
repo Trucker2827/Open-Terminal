@@ -27,4 +27,14 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest);
 // with a packet carrying has_edge_signal=false. Returns a process exit code.
 int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest);
 
+// Run `ai screen [--market prediction|equity|crypto] [--limit N] [--json]`
+// (ai screen shortlist Task 2). `rest` is the args AFTER `ai screen`.
+// READ-ONLY: calls ai_decision::screen + screen_to_json and emits the
+// resulting JSON array (or a readable table) — never places an order, writes
+// a gate setting, or otherwise mutates the DB. An unrecognized --market or a
+// non-positive/garbage --limit -> usage error on stderr, exit 2. No matching
+// candidates still exits 0 with an empty array/table. Returns a process exit
+// code.
+int ai_screen_command(const GlobalOpts& opts, const QStringList& rest);
+
 }  // namespace openmarketterminal::cli

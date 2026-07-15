@@ -6,6 +6,7 @@
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
 #include "services/ai_decision/DecisionContext.h"
+#include "services/ai_decision/Screener.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
@@ -98,6 +99,12 @@ int ai_usage() {
 
 int ai_ctx_usage() {
     std::fprintf(stderr, "usage: ai ctx <symbol> [--json] [--market prediction|equity]\n");
+    return 2;
+}
+
+int ai_screen_usage() {
+    std::fprintf(stderr,
+                 "usage: ai screen [--market prediction|equity|crypto] [--limit N] [--json]\n");
     return 2;
 }
 
@@ -306,6 +313,82 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     std::printf("freshness:           %s\n", qUtf8Printable(packet.freshness));
     std::printf("lane_verdict:        %s\n", qUtf8Printable(packet.lane_verdict));
     std::printf("recommendation_hint: %s\n", qUtf8Printable(packet.recommendation_hint));
+    return 0;
+}
+
+int ai_screen_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    QString market;
+    int limit = 5;
+    bool json_flag = false;
+
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--market")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --market requires a value\n");
+                return 2;
+            }
+            market = args.takeFirst();
+            if (market != QLatin1String("prediction") && market != QLatin1String("equity") &&
+                market != QLatin1String("crypto")) {
+                std::fprintf(stderr, "error: --market must be 'prediction', 'equity', or 'crypto'\n");
+                return 2;
+            }
+        } else if (f == QLatin1String("--limit")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --limit requires a value\n");
+                return 2;
+            }
+            const QString v = args.takeFirst();
+            bool ok = false;
+            const int parsed = v.toInt(&ok);
+            if (!ok || parsed <= 0) {
+                std::fprintf(stderr, "error: --limit must be a positive integer\n");
+                return 2;
+            }
+            limit = parsed;
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return ai_screen_usage();
+        }
+    }
+
+    // Bring up the DB only if it isn't already live in this process -- same
+    // idempotent-init guard as ai_ctx_command above (see its comment).
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: screen() issues only SELECTs, directly and via assess() (see
+    // Screener.h's READ-ONLY INVARIANT) -- this command places no order,
+    // writes no cli.* gate setting, and performs no DB write of any kind.
+    const QVector<ai_decision::ScreenRow> rows = ai_decision::screen(market, limit);
+    const QJsonArray arr = ai_decision::screen_to_json(rows);
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(arr).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    if (rows.isEmpty()) {
+        std::printf("(no candidates)\n");
+        return 0;
+    }
+    std::printf("%-16s %-11s %10s  %-6s %-10s %s\n", "SYMBOL", "MARKET", "EDGE", "SIDE",
+                "HORIZON", "FRESHNESS");
+    for (const auto& row : rows) {
+        std::printf("%-16s %-11s %10.4f  %-6s %-10s %s\n", qUtf8Printable(row.symbol),
+                    qUtf8Printable(row.market), row.edge_after_cost, qUtf8Printable(row.side),
+                    qUtf8Printable(row.horizon), qUtf8Printable(row.freshness));
+    }
     return 0;
 }
 
