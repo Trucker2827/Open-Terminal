@@ -10,6 +10,7 @@
 #include <QTemporaryDir>
 
 #include "mcp/McpTypes.h"
+#include "services/ai_decision/DecisionContext.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/Strategy.h"
@@ -102,7 +103,10 @@ class TstStrategyLoop : public QObject {
         tc.enqueue("submit_order", filled());
 
         FakeStrategy s;
-        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}}};
+        // quantity/limit_price populated so the pre-trade guardrail (a no-op
+        // here: default caps are 0 and no assess_fn is injected) allows the
+        // intent through to prepare/submit unchanged.
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
@@ -135,7 +139,8 @@ class TstStrategyLoop : public QObject {
         tc.enqueue("submit_order", submit_rejected("exceeds max order value"));
 
         FakeStrategy s;
-        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}}};
+        // quantity/limit_price so the gate (no-op under default config) lets it through.
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
@@ -153,7 +158,9 @@ class TstStrategyLoop : public QObject {
         tc.enqueue("prepare_order", prepare_rejected());
 
         FakeStrategy s;
-        s.intents_ = {TradeIntent{{"symbol", "AAA"}}};
+        // quantity/limit_price so the gate (no-op under default config) lets it through
+        // to prepare_order, which is what this test exercises.
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
@@ -176,7 +183,8 @@ class TstStrategyLoop : public QObject {
         }
 
         FakeStrategy s;
-        s.intents_ = {TradeIntent{{"symbol", "AAA"}}};
+        // quantity/limit_price so the gate (no-op under default config) lets it through.
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 5});
@@ -199,6 +207,49 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(sum.ticks, 3);
         QCOMPARE(sum.proposed, 0);
         QCOMPARE(tc.count("get_quote"), 3); // universe has one symbol, one fetch/tick.
+    }
+
+    // ── Pre-trade guardrail integration (Task 2 of the pretrade-guardrail spec) ─
+
+    // Gate runs BEFORE prepare_order: a below-cost intent is recorded in
+    // gate_rejections and NEVER reaches prepare/submit; a clean intent passes
+    // through the existing prepare→submit(paper) pipeline unchanged.
+    void gate_rejects_below_cost_intent_and_records_it() {
+        FakeStrategy s;
+        // Two intents: BTC-USD (will be gate-rejected), ETH-USD (will pass).
+        s.intents_ = {
+            TradeIntent{{"symbol", "BTC-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 100.0}},
+            TradeIntent{{"symbol", "ETH-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 50.0}},
+        };
+        FakeToolCaller tc; // prepare_order/submit_order default to success
+        StrategyRunner runner;
+        // Inject assess: BTC-USD -> below cost (clears_cost false); ETH-USD -> all good.
+        runner.assess_fn = [](const QString& sym) {
+            openmarketterminal::ai_decision::DecisionPacket p;
+            p.has_edge_signal = true;
+            p.clears_cost = sym == QStringLiteral("BTC-USD") ? QStringLiteral("false") : QStringLiteral("true");
+            p.freshness = QStringLiteral("ok");
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+
+        // BTC-USD gate-rejected: recorded, and NEVER submitted.
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections[0].symbol, QStringLiteral("BTC-USD"));
+        QCOMPARE(sum.gate_rejections[0].rule, QStringLiteral("cost"));
+        // No prepare_order/submit_order call carried symbol BTC-USD; submit_order only ever mode:paper.
+        for (const auto& c : tc.calls) {
+            if (c.first == QLatin1String("prepare_order"))
+                QVERIFY(c.second.value("symbol").toString() != QLatin1String("BTC-USD"));
+            if (c.first == QLatin1String("submit_order"))
+                QCOMPARE(c.second.value("mode").toString(), QStringLiteral("paper"));
+        }
+        // ETH-USD passed the gate -> a prepare_order happened for it.
+        bool eth_prepared = false;
+        for (const auto& c : tc.calls)
+            if (c.first == QLatin1String("prepare_order") && c.second.value("symbol").toString() == QLatin1String("ETH-USD"))
+                eth_prepared = true;
+        QVERIFY(eth_prepared);
     }
 
     // ── MeanReversionStrategy (Task 2) ───────────────────────────────────────

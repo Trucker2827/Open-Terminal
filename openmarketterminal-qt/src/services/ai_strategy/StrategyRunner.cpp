@@ -2,6 +2,7 @@
 #include "services/ai_strategy/StrategyRunner.h"
 
 #include "mcp/tools/SettingsGate.h"
+#include "services/ai_strategy/PretradeGate.h"
 
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -27,6 +28,17 @@ bool reason_is_halting(const QString& reason) {
 RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg,
                                std::function<bool()> stop_requested) {
     RunSummary summary;
+
+    // Pre-trade guardrail policy, derived once from cfg. Pure/subtractive:
+    // evaluate_pretrade() only ever rejects (or is a no-op when caps are 0
+    // and clears_cost/freshness come back "unknown") — it never opens a live
+    // path or touches submit_order's mode:paper.
+    GatePolicy policy;
+    policy.max_notional_per_order = cfg.max_notional_per_order;
+    policy.max_position_qty = cfg.max_position_qty;
+    policy.allowed_venues = cfg.allowed_venues;
+    policy.require_cost_gate = cfg.require_cost_gate;
+    policy.require_freshness_gate = cfg.require_freshness_gate;
 
     auto log = [this](const QString& msg) {
         if (on_log) {
@@ -71,6 +83,39 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
         summary.proposed += intents.size();
 
         for (const TradeIntent& intent : intents) {
+            // Pre-trade guardrail: runs BEFORE prepare_order. Reject -> record
+            // + continue (never submits). Allow -> falls through to the
+            // existing, unchanged prepare_order -> submit_order(mode:paper)
+            // path below.
+            const QString sym = intent.value(QStringLiteral("symbol")).toString();
+            GateInputs gin;
+            gin.resolved_price = intent.contains(QStringLiteral("limit_price"))
+                ? intent.value(QStringLiteral("limit_price")).toDouble()
+                : snap.quotes.value(sym, 0.0);
+            ai_decision::DecisionPacket pkt;
+            try {
+                pkt = assess_fn ? assess_fn(sym) : ai_decision::DecisionPacket{};
+            } catch (...) {
+                // assess_fn must never crash the loop; an error degrades to an
+                // "unknown" packet, same as assess()'s own no-row/query-failed
+                // path, so the cost/freshness gates fall through rather than
+                // spuriously reject.
+                pkt = ai_decision::DecisionPacket{};
+                pkt.clears_cost = QStringLiteral("unknown");
+                pkt.freshness = QStringLiteral("unknown");
+            }
+            gin.clears_cost = pkt.clears_cost;
+            gin.freshness = pkt.freshness;
+            gin.has_edge_signal = pkt.has_edge_signal;
+            const GateVerdict gv = evaluate_pretrade(intent, gin, policy);
+            if (!gv.ok) {
+                ++summary.rejected;
+                summary.gate_rejections.push_back(
+                    {sym, intent.value(QStringLiteral("side")).toString(), gv.reason, gv.rule});
+                log(QStringLiteral("gate rejected %1: %2").arg(sym, gv.reason));
+                continue;
+            }
+
             auto prep = tc.call(QStringLiteral("prepare_order"), intent);
             const QJsonObject prepo = prep.data.toObject();
             const QString prep_status = prepo.value(QStringLiteral("status")).toString();
