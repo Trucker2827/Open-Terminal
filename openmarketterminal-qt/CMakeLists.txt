@@ -3306,6 +3306,7 @@ add_executable(openterminalcli
     src/cli/AiRunCommand.cpp
     src/cli/ObserveCommand.cpp
     src/cli/ServeCommand.cpp
+    src/cli/CryptoFeedHub.cpp
     src/cli/BridgeDiscovery.cpp
     src/cli/BridgeClient.cpp
     src/cli/BridgeDiscoveryFile.cpp
