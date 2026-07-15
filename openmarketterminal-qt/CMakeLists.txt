@@ -899,6 +899,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/LivePnlRepository.cpp
     src/storage/repositories/EdgePredictionModelRepository.cpp
     src/storage/repositories/EdgeRadarRepository.cpp
+    src/storage/repositories/AiFillRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -970,6 +971,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v064_ai_fill.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -2393,6 +2395,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v064_ai_fill.cpp
     # DecisionContext.cpp — defines an anonymous-namespace `enum class
     # EdgeCol` (scoped enumerators, but the type name itself still lives in
     # the anon namespace); excluded defensively so a Release unity batch can

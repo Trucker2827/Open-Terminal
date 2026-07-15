@@ -1,6 +1,11 @@
 #include <QtTest>
 #include "services/ai_ledger/AiLedger.h"
 
+#include <QTemporaryDir>
+#include "core/headless/HeadlessRuntime.h"
+#include "storage/sqlite/Database.h"
+#include "storage/repositories/AiFillRepository.h"
+
 using namespace openmarketterminal;
 using ai_ledger::LedgerPosition;
 using ai_ledger::FillDelta;
@@ -69,6 +74,48 @@ class TstAiLedger : public QObject {
     void unrealized_long_and_short() {
         QCOMPARE(unrealized_of(LedgerPosition{10.0, 100.0, 0.0}, 110.0), 100.0);   // (110-100)*10
         QCOMPARE(unrealized_of(LedgerPosition{-10.0, 100.0, 0.0}, 110.0), -100.0); // short loses as price rises
+    }
+
+  private:
+    QTemporaryDir home_;
+
+  private slots:
+    void initTestCase() {
+        QVERIFY(home_.isValid());
+        qputenv("HOME", home_.path().toUtf8());
+        headless::HeadlessRuntime hr;
+        headless::InitResult ir = hr.init(QString{});  // default profile → migrated DB under HOME
+        QVERIFY2(ir.ok, qUtf8Printable(ir.error));
+        // Discriminating check: prove the migration runner actually ran (our v064 table is present).
+        auto probe = Database::instance().execute("SELECT name FROM sqlite_master WHERE name='ai_fill'");
+        QVERIFY(probe.is_ok());
+        QVERIFY(probe.value().next());  // ai_fill exists ⇒ open() ran migrations ⇒ fixture is sound
+    }
+
+    void repo_append_and_list_recent_first() {
+        AiFillRepository& repo = AiFillRepository::instance();
+        AiFill a{"f1", "h", "S-USD", "buy", 10.0, 100.0, 0.0, 0.0, 1000, "d1"};
+        AiFill b{"f2", "h", "S-USD", "sell", 4.0, 130.0, 0.0, 120.0, 2000, "d2"};
+        QVERIFY(repo.append(a).is_ok());
+        QVERIFY(repo.append(b).is_ok());
+
+        auto listed = repo.list("h", "S-USD", 10);
+        QVERIFY(listed.is_ok());
+        QCOMPARE(listed.value().size(), 2);
+        QCOMPARE(listed.value().at(0).id, QStringLiteral("f2"));  // recent first
+        QCOMPARE(listed.value().at(1).id, QStringLiteral("f1"));
+
+        auto del = Database::instance().execute("DELETE FROM ai_fill WHERE id = 'f1'");
+        QVERIFY(del.is_err());  // append-only trigger aborts the delete
+    }
+
+    void repo_fills_for_is_chronological() {
+        AiFillRepository& repo = AiFillRepository::instance();
+        auto chrono = repo.fills_for("h", "S-USD");
+        QVERIFY(chrono.is_ok());
+        QCOMPARE(chrono.value().size(), 2);
+        QCOMPARE(chrono.value().at(0).id, QStringLiteral("f1"));  // oldest first
+        QCOMPARE(chrono.value().at(1).id, QStringLiteral("f2"));
     }
 };
 
