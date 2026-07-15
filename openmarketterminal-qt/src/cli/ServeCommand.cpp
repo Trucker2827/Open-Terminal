@@ -1889,6 +1889,16 @@ class DaemonScalpEngine {
             const QStringList safe_sources = scalp_sources_for_symbol(sources_, symbol);
             // The hub owns the shared feed; ensure it covers this symbol with our
             // sources. Ticks arrive via the hub connection made in the ctor.
+            //
+            // SHARED-FEED INVARIANT: on any symbol served by both engines, this
+            // scalp `sources` config MUST be a superset of the maker's
+            // {coinbase,kraken}. Scalp's tick intake filters on symbol only (never
+            // tick.source), so if scalp narrows its sources below that on a shared
+            // symbol, the maker forces the missing venue back into the shared
+            // CryptoLatencyService and those foreign ticks reach scalp's decision
+            // windows/radar/snapshot AND scalp_ticks.jsonl — a scalp behavior
+            // divergence. Default config satisfies this (scalp default sources ⊇
+            // {coinbase,kraken}).
             hub_->ensure_symbol(symbol, safe_sources);
         }
     }
@@ -2136,6 +2146,14 @@ class DaemonMakerEngine {
           ticks_path_(daemon_maker_ticks_path(profile_)) {
         // The hub owns the shared feeds. Register each maker symbol with the
         // maker's own venue sources and consume ticks/snapshots from the hub.
+        //
+        // SHARED-FEED INVARIANT: on any symbol served by both engines, the scalp
+        // `sources` config MUST be a superset of the maker's {coinbase,kraken}. If
+        // scalp narrows its sources below that on a shared symbol, the maker forces
+        // the missing venue back into the shared CryptoLatencyService, and those
+        // foreign ticks reach scalp's decision windows/radar/snapshot AND
+        // scalp_ticks.jsonl — a scalp behavior divergence. Default config satisfies
+        // this (scalp default sources ⊇ {coinbase,kraken}).
         for (const QString& symbol : symbols_)
             hub_->ensure_symbol(symbol, {QStringLiteral("coinbase"), QStringLiteral("kraken")});
         QObject::connect(hub_, &CryptoFeedHub::tick_received, qApp,
