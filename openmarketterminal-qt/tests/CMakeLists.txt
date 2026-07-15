@@ -542,6 +542,14 @@ target_include_directories(tst_sandbox_executor PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_executor PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_executor COMMAND tst_sandbox_executor)
 
+# FreshnessGate.h — pure data_quality_from_freshness/freshness_field helper,
+# extracted from PaperExecutor.cpp's anon namespace for reuse (ai ctx
+# decision-packet task 1). Header-only, so this target just needs Qt Core.
+add_executable(tst_freshness_gate tst_freshness_gate.cpp)
+target_include_directories(tst_freshness_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_freshness_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_freshness_gate COMMAND tst_freshness_gate)
+
 # Strategy Sandbox Task 8 — SandboxResolver::resolve_pending: settle
 # prediction (journal outcome) and hypothetical (tick target/stop/expiry)
 # books. Same DB bootstrap as tst_sandbox_executor.
