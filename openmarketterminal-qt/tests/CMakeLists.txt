@@ -596,6 +596,13 @@ target_include_directories(tst_strategy_evidence_presentation PRIVATE ${CMAKE_SO
 target_link_libraries(tst_strategy_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_strategy_evidence_presentation COMMAND tst_strategy_evidence_presentation)
 
+# AI pre-trade guardrail Task 1 — evaluate_pretrade: pure, no DB/settings/I-O.
+# Takes a TradeIntent + GateInputs + GatePolicy and returns a GateVerdict.
+add_executable(tst_pretrade_gate tst_pretrade_gate.cpp)
+target_include_directories(tst_pretrade_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_pretrade_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_pretrade_gate COMMAND tst_pretrade_gate)
+
 # Strategy Sandbox Task 11 — power-boundary check: the sandbox service
 # object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/
 # SandboxEligibility/SandboxRegistry/TickTail, under

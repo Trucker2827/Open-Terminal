@@ -1233,6 +1233,7 @@ set(SERVICE_SOURCES
     src/services/ai_strategy/StrategyRunner.cpp
     src/services/ai_strategy/MeanReversionStrategy.cpp
     src/services/ai_strategy/LlmStrategy.cpp
+    src/services/ai_strategy/PretradeGate.cpp
     src/services/report_builder/ReportBuilderService.cpp
     src/services/report_builder/ReportBuilderTemplates.cpp
     src/core/services/Services.cpp
