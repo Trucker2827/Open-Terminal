@@ -16,7 +16,7 @@ struct MakerQuote {
 };
 
 struct MakerQuotePair {
-    bool valid = false;  // false iff mid was non-positive (nothing to quote)
+    bool valid = false;  // false when inputs cannot produce a finite, uncrossed quote
     MakerQuote bid;
     MakerQuote ask;
 };

@@ -51,9 +51,10 @@ QByteArray read_tail_with_prev(const QString& path, qint64 tail_bytes) {
 }
 
 QVector<TickRow> ticks_since(const QString& ticks_path, const QString& symbol, qint64 since_ms,
-                              qint64 tail_bytes) {
+                              qint64 tail_bytes, const QString& venue) {
     const QByteArray buffer = read_tail_with_prev(ticks_path, tail_bytes);
     const QString symbol_filter = symbol.trimmed().toUpper();
+    const QString venue_filter = venue.trimmed().toLower();
 
     QVector<TickRow> rows;
     for (const QByteArray& raw : buffer.split('\n')) {
@@ -70,6 +71,9 @@ QVector<TickRow> ticks_since(const QString& ticks_path, const QString& symbol, q
         const QString row_symbol = o.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
         if (row_symbol != symbol_filter)
             continue;
+        const QString row_venue = o.value(QStringLiteral("venue")).toString().trimmed().toLower();
+        if (!venue_filter.isEmpty() && row_venue != venue_filter)
+            continue;
 
         const double price = o.value(QStringLiteral("price")).toDouble();
         if (price <= 0)
@@ -85,6 +89,7 @@ QVector<TickRow> ticks_since(const QString& ticks_path, const QString& symbol, q
 
         TickRow row;
         row.symbol = row_symbol;
+        row.venue = row_venue;
         row.price = price;
         row.best_bid = o.value(QStringLiteral("best_bid")).toDouble();
         row.best_ask = o.value(QStringLiteral("best_ask")).toDouble();

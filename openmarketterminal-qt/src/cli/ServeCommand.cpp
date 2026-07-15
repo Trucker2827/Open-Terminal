@@ -138,6 +138,10 @@ QString daemon_maker_decisions_path(const QString& profile) {
     return daemon_state_dir(profile) + QStringLiteral("/maker_decisions.jsonl");
 }
 
+QString daemon_maker_ticks_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/maker_ticks.jsonl");
+}
+
 QString now_utc() {
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
 }
@@ -2107,17 +2111,15 @@ class DaemonScalpEngine {
     QHash<QString, qint64> last_journal_ms_;
 };
 
-// Paper maker-spread producer. On a timer it polls the cross-venue mid for each
-// crypto symbol from its own CryptoLatencyService feeds and writes two-sided
+// Paper maker-spread producer. On a timer it reads each venue's own BBO/last
+// trade for every crypto symbol and writes two-sided
 // resting-quote decision rows (bid+ask) to maker_decisions.jsonl, the journal
 // the sandbox executor consumer (open_maker_quotes) already reads. It is
 // read-only: no order path, no credentials — it only appends decision rows.
 //
-// One CryptoLatencyService per SYMBOL (the service aggregates all source feeds
-// into ONE cross-venue mid; it is not per-exchange). Each fire we emit a
-// bid+ask row pair for BOTH sandbox crypto venues off that shared mid — the
-// venues differ only in cost profile, which the executor applies from the lane
-// params, not in the mid we quote from.
+// The same feed also writes venue-tagged ticks to maker_ticks.jsonl. That keeps
+// Coinbase and Kraken fill evidence separate and lets maker lanes run without
+// depending on the separately-configured scalp engine.
 //
 // NOTE (deliberate): unlike DaemonScalpEngine, this engine has no config file
 // and no `enabled` gate — it is always-on while `serve` runs and opens its own
@@ -2127,7 +2129,8 @@ class DaemonMakerEngine {
   public:
     explicit DaemonMakerEngine(QString profile)
         : profile_(std::move(profile)),
-          decisions_path_(daemon_maker_decisions_path(profile_)) {
+          decisions_path_(daemon_maker_decisions_path(profile_)),
+          ticks_path_(daemon_maker_ticks_path(profile_)) {
         restart_services();
         decision_timer_ = new QTimer(qApp);
         decision_timer_->setInterval(cadence_ms_);
@@ -2139,18 +2142,34 @@ class DaemonMakerEngine {
 
   private:
     using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
+    using CryptoLatencyTick = services::crypto_latency::CryptoLatencyTick;
 
-    // One CryptoLatencyService per symbol. snapshot() is populated by the
-    // service's own feeds, so we only start() it and poll — no tick subscriber,
-    // no local tick buffers (contrast DaemonScalpEngine, which subscribes to
-    // tick_received to feed its millisecond-window math).
     void restart_services() {
         stop_services();
         for (const QString& symbol : symbols_) {
             auto* svc = new CryptoLatencyService(qApp);
             services_.insert(symbol, svc);
-            svc->start(symbol, CryptoLatencyService::default_sources());
+            QObject::connect(svc, &CryptoLatencyService::tick_received, svc,
+                             [this](const CryptoLatencyTick& tick) { ingest_tick(tick); });
+            svc->start(symbol, {QStringLiteral("coinbase"), QStringLiteral("kraken")});
         }
+    }
+
+    static QString venue_for_source(const QString& source) {
+        if (source == QLatin1String("coinbase"))
+            return QStringLiteral("coinbase_advanced");
+        if (source == QLatin1String("kraken"))
+            return QStringLiteral("kraken_pro");
+        return {};
+    }
+
+    void ingest_tick(const CryptoLatencyTick& tick) {
+        const QString venue = venue_for_source(tick.source);
+        if (venue.isEmpty())
+            return;
+        QJsonObject row = CryptoLatencyService::tick_to_json(tick);
+        row.insert(QStringLiteral("venue"), venue);
+        automation::append_jsonl_rotating(ticks_path_, row);
     }
 
     void stop_services() {
@@ -2170,18 +2189,22 @@ class DaemonMakerEngine {
             if (!it.value())
                 continue;
             const auto snap = it.value()->snapshot();
-            if (snap.mid_price <= 0.0)
-                continue;
-            // Emit sandbox-side venue ids DIRECTLY (coinbase_advanced/kraken_pro,
-            // NOT coinbase/kraken) — the executor matches venue by exact string.
-            // Write through the canonical rotating jsonl writer so the journal is
-            // size-bounded and stays consistent with the scalp producer and the
-            // read_tail_with_prev reader; the core append_maker_decisions cannot
-            // (layering: it must not depend on the cli automation:: helper).
-            for (const QString& venue : kCryptoVenues) {
+            int fresh_sources = 0;
+            for (const auto& tick : snap.latest_ticks) {
+                if (tick.received_ts_ms > 0 && now_ms - tick.received_ts_ms <= max_tick_age_ms_)
+                    ++fresh_sources;
+            }
+            for (const auto& tick : snap.latest_ticks) {
+                const QString venue = venue_for_source(tick.source);
+                const qint64 age_ms = tick.received_ts_ms > 0 ? now_ms - tick.received_ts_ms : -1;
+                if (venue.isEmpty() || age_ms < 0 || age_ms > max_tick_age_ms_)
+                    continue;
+                const double venue_mid = tick.best_bid > 0.0 && tick.best_ask >= tick.best_bid
+                    ? (tick.best_bid + tick.best_ask) / 2.0
+                    : tick.price;
                 for (const QJsonObject& row : services::sandbox::maker_decision_rows(
-                         it.key(), venue, snap.mid_price, half_spread_for(venue),
-                         static_cast<double>(snap.freshest_age_ms), snap.live_sources, now_ms)) {
+                         it.key(), venue, venue_mid, half_spread_for(venue),
+                         static_cast<double>(age_ms), fresh_sources, now_ms)) {
                     automation::append_jsonl_rotating(decisions_path_, row);
                 }
             }
@@ -2199,8 +2222,13 @@ class DaemonMakerEngine {
 
     QString profile_;
     QString decisions_path_;
+    QString ticks_path_;
     QTimer* decision_timer_ = nullptr;
-    int cadence_ms_ = 250;
+    // The sandbox consumes only the latest quote on its much slower job
+    // cadence. One-second snapshots preserve market movement without writing
+    // four redundant decision batches per second to the rotating journal.
+    int cadence_ms_ = 1000;
+    int max_tick_age_ms_ = 5000;
     // Mirrors spot_lane_grid's crypto venues' symbol set (BTC-USD,ETH-USD,SOL-USD
     // in SandboxRegistry.cpp:140-143) so every seeded maker lane has a producer:
     // open_maker_quotes iterates all of a strategy's symbols, so omitting SOL-USD
@@ -2208,8 +2236,6 @@ class DaemonMakerEngine {
     // three (normalize_symbol/kraken_pair/make_feed are generic, not two-symbol).
     const QStringList symbols_{QStringLiteral("BTC-USD"), QStringLiteral("ETH-USD"),
                                QStringLiteral("SOL-USD")};
-    // Sandbox crypto venues from spot_lane_grid (SandboxRegistry.cpp:140-143).
-    const QStringList kCryptoVenues{QStringLiteral("coinbase_advanced"), QStringLiteral("kraken_pro")};
     QHash<QString, CryptoLatencyService*> services_;
 };
 

@@ -4,11 +4,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <cmath>
+
 namespace openmarketterminal::services::sandbox {
 
 MakerQuotePair build_maker_quotes(double mid, double half_spread_bps) {
     MakerQuotePair pair;
-    if (mid <= 0.0)
+    if (!std::isfinite(mid) || !std::isfinite(half_spread_bps) ||
+        mid <= 0.0 || half_spread_bps < 0.0 || half_spread_bps >= 10000.0)
         return pair; // valid stays false
     pair.valid = true;
     pair.bid = MakerQuote{QStringLiteral("buy"), mid * (1.0 - half_spread_bps / 1e4)};

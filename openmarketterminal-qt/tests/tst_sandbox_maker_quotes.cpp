@@ -8,6 +8,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <limits>
+
 using namespace openmarketterminal::services::sandbox;
 
 class TstSandboxMakerQuotes : public QObject {
@@ -27,6 +29,14 @@ class TstSandboxMakerQuotes : public QObject {
     void non_positive_mid_is_invalid() {
         QVERIFY(!build_maker_quotes(0.0, 2.0).valid);
         QVERIFY(!build_maker_quotes(-5.0, 2.0).valid);
+    }
+
+    void non_finite_or_invalid_spread_is_invalid() {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        QVERIFY(!build_maker_quotes(nan, 2.0).valid);
+        QVERIFY(!build_maker_quotes(100.0, nan).valid);
+        QVERIFY(!build_maker_quotes(100.0, -1.0).valid);
+        QVERIFY(!build_maker_quotes(100.0, 10000.0).valid);
     }
 
     void append_writes_bid_and_ask_rows() {

@@ -24,6 +24,7 @@ namespace openmarketterminal::services::sandbox {
 /// One parsed row of scalp_ticks.jsonl.
 struct TickRow {
     QString symbol;
+    QString venue;
     double price = 0;
     double best_bid = 0;
     double best_ask = 0;
@@ -42,7 +43,7 @@ struct TickRow {
 inline constexpr qint64 kTickTailBytes = 2LL * 1024 * 1024;
 
 QVector<TickRow> ticks_since(const QString& ticks_path, const QString& symbol, qint64 since_ms,
-                              qint64 tail_bytes = kTickTailBytes);
+                              qint64 tail_bytes = kTickTailBytes, const QString& venue = {});
 
 // Promoted for reuse by PaperExecutor.cpp (Task 5), which needs the exact
 // same active+".1" blending rule to tail-scan scalp_decisions.jsonl for scalp
