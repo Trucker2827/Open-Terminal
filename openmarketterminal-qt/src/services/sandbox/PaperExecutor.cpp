@@ -184,6 +184,23 @@ QString data_quality_from_freshness(const QJsonObject& freshness) {
     return QStringLiteral("ok");
 }
 
+// A maker quote is priced off a SINGLE venue's own resting book (the producer
+// emits one quote per source-venue), so its honest quality gates on THAT venue's
+// tick freshness alone -- the cross-venue live_sources>=2 clause is a
+// latency/scalp cross-check that does not apply to single-venue market-making and
+// would otherwise mark every maker quote 'degraded' and exclude it from the
+// cost-net scorecard. The freshest_age_ms gate (venue staleness) is kept; only
+// the source-count clause is dropped.
+QString maker_data_quality_from_freshness(const QJsonObject& freshness) {
+    double freshest_age_ms = 0;
+    const bool has_age = freshness_field(freshness, QStringLiteral("freshest_age_ms"), &freshest_age_ms);
+    if (!has_age)
+        return QStringLiteral("unknown");
+    if (freshest_age_ms > 5000.0)
+        return QStringLiteral("degraded");
+    return QStringLiteral("ok");
+}
+
 QString new_id() {
     return QUuid::createUuid().toString(QUuid::WithoutBraces);
 }
@@ -554,7 +571,9 @@ Result<void> open_maker_quotes(const StrategyRow& strategy, const QJsonObject& p
             plan.opened_at = QVariant();
             plan.fill_ts = 0;
             plan.entry_fee = 0.0; // maker fee is charged at the fill transition
-            plan.data_quality = data_quality_from_freshness(found);
+            // Single-venue quote: quality gates on the quoting venue's own
+            // freshness, not a cross-venue source count. See helper comment.
+            plan.data_quality = maker_data_quality_from_freshness(found);
             plan.notional_usd = notional_usd;
 
             auto ins = insert_position(strategy.strategy_id, plan);

@@ -1640,6 +1640,46 @@ class TstSandboxExecutor : public QObject {
         QVERIFY2(bclosed.realized_pnl > 0.0, "long leg target hit must be a win");
         QVERIFY2(sclosed.realized_pnl > 0.0, "short leg target hit must be a win (signed pnl)");
     }
+
+    // A maker quote is priced off its OWN venue's fresh book, so its data_quality
+    // gates on that venue's tick freshness -- NOT the cross-venue live_sources
+    // count (a latency/scalp heuristic). A single fresh venue (live_sources=1)
+    // must be 'ok' so its resolved trades reach the cost-net scorecard; a stale
+    // venue quote must still be 'degraded' so the freshness gate is not lost.
+    void maker_quote_quality_gates_on_venue_freshness_not_source_count() {
+        const QJsonObject params{
+            {"notional_usd", 100.0}, {"liquidity", "maker"}, {"venue", "coinbase_advanced"},
+            {"maker_bps", 40.0}, {"taker_bps", 60.0}, {"half_spread_bps", 2.0},
+            {"slippage_bps", 1.0}, {"maker_fill_through_bps", 5.0},
+            {"target_bps", 90.0}, {"stop_bps", 45.0}, {"horizon_sec", kFarHorizonSec},
+            {"max_age_sec", 15}, {"source", "maker_decisions"}, {"paper_only", true}};
+        auto strat = register_strategy(QStringLiteral("maker"), QStringLiteral("XMQ-USD"), params);
+        QVERIFY2(strat.is_ok(), strat.is_err() ? strat.error().c_str() : "");
+
+        const qint64 t0 = 6100000;
+        QTemporaryDir daemon;
+        QVERIFY(daemon.isValid());
+        auto quote = [&](const QString& side, double price, int age_ms) {
+            return QStringLiteral(
+                       R"({"symbol":"XMQ-USD","venue":"coinbase_advanced","side":"%1",)"
+                       R"("liquidity":"maker","action":"PAPER_MAKER_QUOTE","reference_price":%2,)"
+                       R"("ts_ms":"%3","freshest_age_ms":%4,"live_sources":1})")
+                .arg(side).arg(price, 0, 'f', 4).arg(t0).arg(age_ms);
+        };
+        // Both single-venue (live_sources=1). Fresh bid -> ok; stale ask -> degraded.
+        write_lines(daemon.filePath("maker_decisions.jsonl"),
+                    {quote(QStringLiteral("buy"), 99.98, 120),
+                     quote(QStringLiteral("sell"), 100.02, 9000)});
+
+        auto c1 = run_cycle(QStringLiteral("default"), daemon.path(), t0 + 1000);
+        QVERIFY2(c1.is_ok(), c1.is_err() ? c1.error().c_str() : "");
+        const PositionRow fresh = fetch_position(QStringLiteral("XMQ-USD|buy|") + QString::number(t0));
+        const PositionRow stale = fetch_position(QStringLiteral("XMQ-USD|sell|") + QString::number(t0));
+        QVERIFY(fresh.found);
+        QVERIFY(stale.found);
+        QCOMPARE(fresh.data_quality, QStringLiteral("ok"));       // 1 fresh venue is enough
+        QCOMPARE(stale.data_quality, QStringLiteral("degraded")); // stale venue still caught
+    }
 };
 
 QTEST_GUILESS_MAIN(TstSandboxExecutor)
