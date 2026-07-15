@@ -25,6 +25,7 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/CryptoFeedHub.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscovery.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
