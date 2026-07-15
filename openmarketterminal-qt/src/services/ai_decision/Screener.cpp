@@ -11,51 +11,54 @@
 
 namespace openmarketterminal::ai_decision {
 
-namespace {
-
-// Single source of truth for the market<->venue mapping, shared by
-// market_venue_filter() (market -> venue IN (...) fragment) and
-// market_for_venue() (venue -> market, reverse lookup). Kept in this
-// anonymous-namespace function (rather than a file-scope static) so a
-// same-named helper in a unity batch-mate cannot collide with it — see
-// DecisionContext.cpp's EdgeCol note; this TU is excluded from the unity
-// batch in CMakeLists.txt for the same defensive reason.
-const QVector<QPair<QString, QStringList>>& market_venue_table() {
-    static const QVector<QPair<QString, QStringList>> table = {
-        {QStringLiteral("prediction"), {QStringLiteral("kalshi"), QStringLiteral("polymarket")}},
-        {QStringLiteral("equity"), {QStringLiteral("chronos2_equity"), QStringLiteral("alpaca")}},
-        {QStringLiteral("crypto"),
-         {QStringLiteral("coinbase_advanced"), QStringLiteral("coinbase"), QStringLiteral("kraken_pro"),
-          QStringLiteral("coinbase_perps"), QStringLiteral("chronos2"), QStringLiteral("coinbase_tier3")}},
-    };
-    return table;
-}
-
-} // namespace
+// ---------------------------------------------------------------------------
+// LOCKSTEP INVARIANT (binding): market_for_venue() (venue -> market, applied
+// per-row in C++) and market_venue_filter() (market -> SQL predicate over the
+// `venue` column, applied in the universe query) MUST classify identically.
+// A venue that market_for_venue() maps to "crypto" MUST be matched by
+// market_venue_filter("crypto")'s LIKE predicate, and vice versa — otherwise
+// `ai screen --market crypto` and the all-markets path disagree about which
+// venues are crypto, silently dropping or mis-tagging candidates.
+//
+// The mapping is PATTERN-based (prefix/exact), not a fixed venue enumeration:
+// the journal writer (crypto_fee_venue_key() in CommandDispatch.cpp) emits a
+// large, open-ended venue vocabulary — coinbase_advanced/base, coinbase_tier1
+// ..9, coinbase_tier_1..9, coinbase_<band>_plus fee bands, alpaca_crypto,
+// binance/binanceus, kraken*, etc. A hardcoded IN-list would silently exclude
+// every non-enumerated fee tier. When you change one function's rules, change
+// the other's to match.
+// ---------------------------------------------------------------------------
 
 QString market_venue_filter(const QString& market) {
     if (market.isEmpty())
-        return QString();
-    for (const auto& entry : market_venue_table()) {
-        if (entry.first == market) {
-            QStringList quoted;
-            quoted.reserve(entry.second.size());
-            for (const auto& venue : entry.second)
-                quoted << QStringLiteral("'%1'").arg(venue);
-            return QStringLiteral(" AND venue IN (%1)").arg(quoted.join(QStringLiteral(",")));
-        }
-    }
+        return QString(); // no filter — all venues
+    if (market == QStringLiteral("prediction"))
+        return QStringLiteral(" AND (venue LIKE 'kalshi%' OR venue LIKE 'polymarket%')");
+    if (market == QStringLiteral("equity"))
+        return QStringLiteral(" AND (venue = 'alpaca' OR venue = 'chronos2_equity')");
+    if (market == QStringLiteral("crypto"))
+        return QStringLiteral(
+            " AND (venue LIKE 'coinbase%' OR venue LIKE 'kraken%' OR venue LIKE 'binance%'"
+            " OR venue = 'alpaca_crypto' OR (venue LIKE 'chronos2%' AND venue <> 'chronos2_equity'))");
     // Unrecognized, non-empty market: match nothing rather than silently
     // falling through to "all venues" (see file header).
     return QStringLiteral(" AND 0");
 }
 
 QString market_for_venue(const QString& venue) {
-    for (const auto& entry : market_venue_table()) {
-        if (entry.second.contains(venue))
-            return entry.first;
-    }
-    return QString();
+    // ORDER MATTERS: check the equity exact-matches (chronos2_equity, alpaca)
+    // BEFORE the crypto chronos2*/alpaca_crypto prefix rules, or chronos2_equity
+    // would fall into crypto via the "chronos2" prefix and alpaca into crypto is
+    // avoided (alpaca crypto is the distinct venue "alpaca_crypto").
+    if (venue.startsWith(QStringLiteral("kalshi")) || venue.startsWith(QStringLiteral("polymarket")))
+        return QStringLiteral("prediction");
+    if (venue == QStringLiteral("alpaca") || venue == QStringLiteral("chronos2_equity"))
+        return QStringLiteral("equity");
+    if (venue.startsWith(QStringLiteral("coinbase")) || venue.startsWith(QStringLiteral("kraken"))
+        || venue.startsWith(QStringLiteral("binance")) || venue == QStringLiteral("alpaca_crypto")
+        || (venue.startsWith(QStringLiteral("chronos2")) && venue != QStringLiteral("chronos2_equity")))
+        return QStringLiteral("crypto");
+    return QString(); // unclassifiable
 }
 
 QVector<ScreenRow> screen(const QString& market, int limit) {
@@ -93,6 +96,13 @@ QVector<ScreenRow> screen(const QString& market, int limit) {
         const QString& symbol = symbol_venue.first;
         const QString& venue = symbol_venue.second;
         const QString row_market = market_for_venue(venue);
+
+        // Drop unclassifiable venues: a shortlisted row must never carry an
+        // empty market tag. In the all-markets path (no venue filter), the
+        // universe can surface venues the mapping doesn't recognize; skip them
+        // so screen("") only ever emits classified rows.
+        if (row_market.isEmpty())
+            continue;
 
         const QString key = symbol + QStringLiteral("|") + row_market;
         if (seen.contains(key))

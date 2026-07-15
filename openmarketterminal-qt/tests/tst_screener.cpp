@@ -119,6 +119,71 @@ class TstScreener : public QObject {
                 ++xrp_count;
         QCOMPARE(xrp_count, 1); // deduped by (symbol, market), not twice
     }
+
+    // Pattern-based venue->market classification: the journal writer emits an
+    // open-ended crypto venue vocabulary (coinbase_tier1..9, alpaca_crypto,
+    // binance, kraken*, ...), so market classification must be prefix/exact
+    // pattern-based, NOT a hardcoded IN-list — else non-enumerated fee tiers
+    // are silently dropped from `screen("crypto")` and mis-tagged in the
+    // all-markets path.
+    void screen_classifies_open_ended_crypto_venues() {
+        auto seed = [&](const QString& id, const QString& sym, const QString& venue,
+                        const QString& gate, double edge, qint64 ts) {
+            auto r = Database::instance().execute(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                {id, ts, ts, sym, venue, QStringLiteral("buy"), gate, edge, 0.0, 0.0,
+                 QStringLiteral("{}"), QStringLiteral("s")});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        auto contains = [](const QVector<ScreenRow>& rows, const QString& sym) {
+            for (const auto& row : rows)
+                if (row.symbol == sym)
+                    return true;
+            return false;
+        };
+        auto market_of = [](const QVector<ScreenRow>& rows, const QString& sym) -> QString {
+            for (const auto& row : rows)
+                if (row.symbol == sym)
+                    return row.market;
+            return QString();
+        };
+
+        // (a) A passer on a non-enumerated fee tier (coinbase_tier5) is
+        // classified crypto and INCLUDED in screen("crypto").
+        seed(QStringLiteral("t5"), QStringLiteral("AVAX-USD"), QStringLiteral("coinbase_tier5"),
+             QStringLiteral("pass"), 11.0, 3000);
+        // And alpaca_crypto is crypto too.
+        seed(QStringLiteral("ac"), QStringLiteral("LTC-USD"), QStringLiteral("alpaca_crypto"),
+             QStringLiteral("pass"), 6.0, 3000);
+        const auto crypto = screen(QStringLiteral("crypto"), 20);
+        QVERIFY2(contains(crypto, QStringLiteral("AVAX-USD")), "coinbase_tier5 passer must be crypto");
+        QCOMPARE(market_of(crypto, QStringLiteral("AVAX-USD")), QStringLiteral("crypto"));
+        QVERIFY2(contains(crypto, QStringLiteral("LTC-USD")), "alpaca_crypto passer must be crypto");
+        QCOMPARE(market_of(crypto, QStringLiteral("LTC-USD")), QStringLiteral("crypto"));
+
+        // (b) An unclassifiable venue is DROPPED from the all-markets path
+        // (never emitted with an empty market tag).
+        seed(QStringLiteral("wv"), QStringLiteral("WEIRD-SYM"), QStringLiteral("weirdvenue"),
+             QStringLiteral("pass"), 99.0, 3000);
+        const auto all = screen(QString(), 50);
+        QVERIFY2(!contains(all, QStringLiteral("WEIRD-SYM")),
+                 "unclassifiable venue must be dropped, never tagged market=''");
+
+        // (c) Cross-tier double-count guard: same symbol under two crypto fee
+        // tiers (coinbase_advanced + coinbase_tier5) both now map to "crypto",
+        // so the (symbol, market) dedup collapses them to ONE row.
+        seed(QStringLiteral("x1"), QStringLiteral("MATIC-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("pass"), 10.0, 3000);
+        seed(QStringLiteral("x2"), QStringLiteral("MATIC-USD"), QStringLiteral("coinbase_tier5"),
+             QStringLiteral("pass"), 4.0, 3000);
+        const auto all2 = screen(QString(), 50);
+        int matic_count = 0;
+        for (const auto& row : all2)
+            if (row.symbol == QStringLiteral("MATIC-USD"))
+                ++matic_count;
+        QCOMPARE(matic_count, 1); // both tiers -> crypto -> collapsed by dedup
+    }
 };
 QTEST_GUILESS_MAIN(TstScreener)
 #include "tst_screener.moc"
