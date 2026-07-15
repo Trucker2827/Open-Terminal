@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QTemporaryDir>
 #include <functional>
 #include <unistd.h>
@@ -118,6 +119,27 @@ static QString sandbox_test_home() {
         runtime_ready = true;
     }
     return dir.path();
+}
+
+// Fingerprint of EVERY `cli.*` settings row (key|value|updated_at, key-ordered).
+// Used by the gate-immutability test to detect any write `ai handler status`
+// might make: a value change, a stray new row, OR a same-value INSERT-OR-REPLACE
+// that re-stamps updated_at (the settings table carries
+// `updated_at TEXT DEFAULT (datetime('now'))`). Residual limitation: a same-value
+// rewrite within the SAME wall-clock second produces an identical row (datetime
+// is 1-second granular), so that one no-op case is indistinguishable without a
+// setter spy — acceptable because the live status code is verified to call no setter.
+static QString cli_settings_fingerprint() {
+    auto r = Database::instance().execute(
+        "SELECT key, value, updated_at FROM settings WHERE key LIKE 'cli.%' ORDER BY key", {});
+    if (r.is_err())
+        return QStringLiteral("<err>");
+    QString fp;
+    auto& q = r.value();
+    while (q.next())
+        fp += q.value(0).toString() + '|' + q.value(1).toString() + '|' +
+              q.value(2).toString() + '\n';
+    return fp;
 }
 
 class TstCommandDispatch : public QObject {
@@ -1625,11 +1647,25 @@ private slots:
     void ai_handler_status_is_read_only_on_gates() {
         sandbox_test_home();
         auto& settings = openmarketterminal::SettingsRepository::instance();
-        // Arm a known kill-switch state, then prove `status` leaves it unchanged.
+        // Arm a known kill-switch state so status has a non-default gate to read.
         QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("true"),
                              QStringLiteral("test")).is_ok());
-        const QString before = settings.get(QStringLiteral("cli.kill_switch"), QString()).value();
-        QCOMPARE(before, QStringLiteral("true"));
+
+        // Snapshot ALL SIX gates status reads (not just kill_switch) so a stray
+        // write to any of them is caught (default-deny false/empty when unset).
+        const QStringList gate_keys{
+            QStringLiteral("cli.kill_switch"),     QStringLiteral("cli.allow_paper_trading"),
+            QStringLiteral("cli.allow_trading"),   QStringLiteral("cli.live_trading_armed"),
+            QStringLiteral("cli.fast_live_armed"), QStringLiteral("cli.allowed_venues")};
+        QMap<QString, QString> before_vals;
+        for (const QString& k : gate_keys)
+            before_vals[k] = settings.get(k, QString()).value();
+        QCOMPARE(before_vals.value(QStringLiteral("cli.kill_switch")), QStringLiteral("true"));
+
+        // Full row fingerprint (value AND updated_at) of every cli.* key — catches
+        // an idempotent same-value INSERT-OR-REPLACE that bumps the timestamp, plus
+        // any stray write to a cli.* key not in the six above.
+        const QString before_fp = cli_settings_fingerprint();
 
         int rc = -1;
         const QJsonObject out = json_object_from_dispatch(
@@ -1638,10 +1674,11 @@ private slots:
         // status must READ the engaged value...
         QCOMPARE(out.value("gates").toObject().value("kill_switch").toBool(false), true);
 
-        const QString after = settings.get(QStringLiteral("cli.kill_switch"), QString()).value();
-        // ...and MUST NOT have written it (gate immutability — the safety gate).
-        QCOMPARE(after, before);
-        QCOMPARE(after, QStringLiteral("true"));
+        // ...and MUST NOT have written ANY of the six gates (values unchanged)...
+        for (const QString& k : gate_keys)
+            QCOMPARE(settings.get(k, QString()).value(), before_vals.value(k));
+        // ...nor mutated any cli.* row at all (value or timestamp) — gate immutability.
+        QCOMPARE(cli_settings_fingerprint(), before_fp);
 
         // Reset shared state so later slots don't inherit an engaged kill switch.
         QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("false"),
