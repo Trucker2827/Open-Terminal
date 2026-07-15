@@ -5,12 +5,15 @@
 #include "cli/BridgeDiscovery.h"
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
+#include "services/ai_decision/DecisionContext.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
 #include "services/llm/LlmService.h"
 #include "storage/repositories/LlmConfigRepository.h"
+#include "storage/sqlite/Database.h"
 
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
 
@@ -90,6 +93,11 @@ int ai_usage() {
     std::fprintf(stderr,
                  "usage: ai run strategy <meanrev|claude> --mode paper "
                  "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
+    return 2;
+}
+
+int ai_ctx_usage() {
+    std::fprintf(stderr, "usage: ai ctx <symbol> [--json] [--market prediction|equity]\n");
     return 2;
 }
 
@@ -221,6 +229,83 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
 
     // Restore default SIGINT so a follow-up Ctrl-C behaves normally.
     std::signal(SIGINT, SIG_DFL);
+    return 0;
+}
+
+int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
+    if (rest.isEmpty())
+        return ai_ctx_usage();
+
+    QStringList args = rest;
+    const QString symbol = args.takeFirst();
+    if (symbol.isEmpty() || symbol.startsWith(QLatin1String("--")))
+        return ai_ctx_usage();
+
+    QString market;
+    bool json_flag = false;
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--market")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --market requires a value\n");
+                return 2;
+            }
+            market = args.takeFirst();
+            if (market != QLatin1String("prediction") && market != QLatin1String("equity")) {
+                std::fprintf(stderr, "error: --market must be 'prediction' or 'equity'\n");
+                return 2;
+            }
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return ai_ctx_usage();
+        }
+    }
+
+    // Bring up the DB only if it isn't already live in this process. A real
+    // CLI invocation is a fresh process, so this is always false there and
+    // init() (same local-HeadlessRuntime bring-up ai_run_strategy uses above)
+    // runs exactly once. The guard exists for hosts (e.g. the dispatch test
+    // binary) that already brought the DB up earlier in-process: constructing
+    // a second HeadlessRuntime and calling init() there would tear down and
+    // replace the live "openmarketterminal_main" QSqlDatabase connection out
+    // from under whatever already opened it.
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: assess() issues only SELECTs (see DecisionContext.h's READ-
+    // ONLY INVARIANT) -- this command places no order, writes no cli.* gate
+    // setting, and performs no DB write of any kind.
+    const auto packet = ai_decision::assess(symbol, market);
+    const QJsonObject obj = ai_decision::to_json(packet);
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("symbol:              %s\n", qUtf8Printable(packet.symbol));
+    if (!packet.market.isEmpty())
+        std::printf("market:              %s\n", qUtf8Printable(packet.market));
+    std::printf("has_edge_signal:     %s\n", packet.has_edge_signal ? "true" : "false");
+    if (packet.has_edge_signal) {
+        std::printf("venue:               %s\n", qUtf8Printable(packet.venue));
+        std::printf("call/side/gate:      %s / %s / %s\n", qUtf8Printable(packet.call),
+                    qUtf8Printable(packet.side), qUtf8Printable(packet.gate));
+        std::printf("edge_after_cost:     %.4f\n", packet.edge_after_cost);
+        std::printf("round_trip_cost_bps: %.4f\n", packet.round_trip_cost_bps);
+    }
+    std::printf("clears_cost:         %s\n", qUtf8Printable(packet.clears_cost));
+    std::printf("freshness:           %s\n", qUtf8Printable(packet.freshness));
+    std::printf("lane_verdict:        %s\n", qUtf8Printable(packet.lane_verdict));
+    std::printf("recommendation_hint: %s\n", qUtf8Printable(packet.recommendation_hint));
     return 0;
 }
 

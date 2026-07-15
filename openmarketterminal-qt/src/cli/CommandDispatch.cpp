@@ -27930,6 +27930,8 @@ int dispatch(QStringList args) {
             return run_ask(args.join(' '));
         if (sub == "brief" || sub == "risk" || sub == "thesis" || sub == "radar")
             return run_workflow(sub, args);
+        if (sub == "ctx")
+            return ai_ctx_command(opts, args);  // args == tokens after "ai ctx" (starts with <symbol>)
         const QString what = args.isEmpty() ? QString() : args.takeFirst();
         if (sub == "run" && what == "strategy")
             return ai_run_strategy(opts, args);  // args == tokens after "ai run strategy"
@@ -27937,6 +27939,7 @@ int dispatch(QStringList args) {
                      "usage: ai providers | ai use <provider> | ai test [prompt...] | ai recipes | "
                      "ai recipe show|run ... | "
                      "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
+                     "ai ctx <symbol> [--json] [--market prediction|equity] | "
                      "ai run strategy <meanrev|claude> --mode paper "
                      "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
         return 2;

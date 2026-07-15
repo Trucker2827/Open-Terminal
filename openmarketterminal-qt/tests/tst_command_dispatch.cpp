@@ -87,6 +87,31 @@ static QStringList json_strings(const QJsonArray& arr) {
     return out;
 }
 
+// ai ctx decision-packet Task 3 read-only invariant helpers -- fingerprint
+// EVERY cli.* settings row (key|value|updated_at) so a test can assert `ai
+// ctx` mutates none of them (mirrors the shape of the kalshi gate rows
+// exercised above, generalized to "all of them" rather than one named key).
+static QStringList cli_settings_fingerprint() {
+    QStringList out;
+    auto rows = Database::instance().execute(
+        "SELECT key, value, updated_at FROM settings WHERE key LIKE 'cli.%' ORDER BY key");
+    if (rows.is_ok()) {
+        QSqlQuery& q = rows.value();
+        while (q.next()) {
+            out << q.value(0).toString() + QStringLiteral("|") + q.value(1).toString() +
+                       QStringLiteral("|") + q.value(2).toString();
+        }
+    }
+    return out;
+}
+
+static int table_row_count(const QString& table) {
+    auto rows = Database::instance().execute(QStringLiteral("SELECT COUNT(*) FROM ") + table);
+    if (rows.is_ok() && rows.value().next())
+        return rows.value().value(0).toInt();
+    return -1;
+}
+
 // Points HOME at ONE process-lifetime temp dir (never at a fresh one per
 // call) -- see the Task 6 sandbox-suite comment below for why: headless_
 // runtime()'s DB is opened exactly once per binary, at whatever HOME is live
@@ -1512,6 +1537,79 @@ private slots:
             [&]() { return dispatch(QStringList{"sandbox", "eligibility"}); }, &rc);
         QCOMPARE(rc, 0);
         QVERIFY(text.contains("ELIGIBLE"));
+    }
+
+    // ai ctx decision-packet Task 3 -- `ai ctx <symbol> --json` reads the
+    // latest edge_decision_journal row (seeded exactly like Task 2's
+    // tst_decision_context.cpp fixture) and emits DecisionContext::to_json.
+    void ai_ctx_reads_edge_and_gates_json() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " market_probability, model_probability, edge_after_cost, spread_cost, fee_cost,"
+            " confidence, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("cd-ctx-1"), 1000, 1000, QStringLiteral("CTXTEST-USD"),
+             QStringLiteral("buy"), QStringLiteral("pass"), 0.40, 0.55, 8.0, 2.0, 1.0, 0.8,
+             QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"),
+             QStringLiteral("edge crypto-recommend")}).is_ok());
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"ai", "ctx", "CTXTEST-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value(QStringLiteral("symbol")).toString(), QStringLiteral("CTXTEST-USD"));
+        QVERIFY(out.value(QStringLiteral("has_edge_signal")).toBool());
+        QVERIFY(out.contains(QStringLiteral("clears_cost")));
+        QVERIFY(out.contains(QStringLiteral("freshness")));
+        QCOMPARE(out.value(QStringLiteral("recommendation_hint")).toString(),
+                 QStringLiteral("all gates pass"));
+    }
+
+    // No edge_decision_journal row for the symbol -> still exit 0 with a
+    // graceful "no edge signal" packet (never a hard failure).
+    void ai_ctx_no_data_symbol_returns_no_edge_signal() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"ai", "ctx", "ZZZZ-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!out.value(QStringLiteral("has_edge_signal")).toBool());
+        QCOMPARE(out.value(QStringLiteral("recommendation_hint")).toString(),
+                 QStringLiteral("no edge signal"));
+    }
+
+    // READ-ONLY invariant: `ai ctx` must not mutate a single cli.* settings
+    // row, nor insert/delete any edge_decision_journal or order_drafts row.
+    // Fingerprint (key|value|updated_at) every cli.* row before and after --
+    // any drift, even a no-op re-write of the same value, changes
+    // updated_at and would show up here.
+    void ai_ctx_is_read_only_on_gates() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("cd-ctx-2"), 2000, 2000, QStringLiteral("CTXRO-USD"),
+             QStringLiteral("pass"), 5.0, 1.0, 0.5,
+             QStringLiteral("{\"freshest_age_ms\":100,\"live_sources\":3}"),
+             QStringLiteral("x")}).is_ok());
+
+        const QStringList before = cli_settings_fingerprint();
+        const int journal_before = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_before = table_row_count(QStringLiteral("order_drafts"));
+        QVERIFY(journal_before >= 0);
+        QVERIFY(orders_before >= 0);
+
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "ctx", "CTXRO-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+
+        const QStringList after = cli_settings_fingerprint();
+        const int journal_after = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_after = table_row_count(QStringLiteral("order_drafts"));
+        QCOMPARE(after, before);
+        QCOMPARE(journal_after, journal_before);
+        QCOMPARE(orders_after, orders_before);
     }
 };
 QTEST_MAIN(TstCommandDispatch)
