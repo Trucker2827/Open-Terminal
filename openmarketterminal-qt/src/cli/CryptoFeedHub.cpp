@@ -26,7 +26,10 @@ void CryptoFeedHub::ensure_symbol(const QString& symbol, const QStringList& sour
         // service owned by the hub, relay its ticks, and start it.
         QStringList requested;
         QSet<QString> seen;
-        for (const QString& src : sources) {
+        for (const QString& raw : sources) {
+            const QString src = raw.trimmed().toLower();
+            if (src.isEmpty())
+                continue;
             if (!seen.contains(src)) {
                 seen.insert(src);
                 requested.append(src);
@@ -50,7 +53,10 @@ void CryptoFeedHub::ensure_symbol(const QString& symbol, const QStringList& sour
     QStringList& existing = requested_sources_[normalized];
     QSet<QString> seen(existing.cbegin(), existing.cend());
     bool grew = false;
-    for (const QString& src : sources) {
+    for (const QString& raw : sources) {
+        const QString src = raw.trimmed().toLower();
+        if (src.isEmpty())
+            continue;
         if (!seen.contains(src)) {
             seen.insert(src);
             existing.append(src);

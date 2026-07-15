@@ -132,6 +132,7 @@ add_test(NAME tst_data_services COMMAND tst_data_services)
 add_executable(tst_serve_command
     tst_serve_command.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/CryptoFeedHub.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp)
 target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
