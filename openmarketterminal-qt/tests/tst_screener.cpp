@@ -87,6 +87,38 @@ class TstScreener : public QObject {
         QCOMPARE(limited.size(), 1);
         QCOMPARE(limited[0].symbol, QStringLiteral("BTC-USD"));
     }
+
+    // Regression: the universe is DISTINCT (symbol, venue), but assess() keys
+    // on symbol alone. A symbol logged under two venues that map to the SAME
+    // market (e.g. BTC-USD on coinbase_advanced AND coinbase, both "crypto")
+    // yields two universe rows returning the same packet — so it must be
+    // deduped by (symbol, market) to appear exactly once, not twice consuming
+    // two shortlist slots.
+    void screen_dedups_same_symbol_across_same_market_venues() {
+        auto seed = [&](const QString& id, const QString& sym, const QString& venue,
+                        const QString& gate, double edge, qint64 ts) {
+            auto r = Database::instance().execute(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                {id, ts, ts, sym, venue, QStringLiteral("buy"), gate, edge, 0.0, 0.0,
+                 QStringLiteral("{}"), QStringLiteral("s")});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        // Same symbol (XRP-USD) under two same-market (crypto) venues, both
+        // passing gates. Distinct id/venue => two DISTINCT (symbol, venue)
+        // universe rows for the one symbol.
+        seed(QStringLiteral("d1"), QStringLiteral("XRP-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("pass"), 12.0, 2000);
+        seed(QStringLiteral("d2"), QStringLiteral("XRP-USD"), QStringLiteral("coinbase"),
+             QStringLiteral("pass"), 8.0, 2000);
+
+        const auto crypto = screen(QStringLiteral("crypto"), 5);
+        int xrp_count = 0;
+        for (const auto& row : crypto)
+            if (row.symbol == QStringLiteral("XRP-USD"))
+                ++xrp_count;
+        QCOMPARE(xrp_count, 1); // deduped by (symbol, market), not twice
+    }
 };
 QTEST_GUILESS_MAIN(TstScreener)
 #include "tst_screener.moc"

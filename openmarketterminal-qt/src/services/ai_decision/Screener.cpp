@@ -5,6 +5,7 @@
 
 #include <QJsonObject>
 #include <QPair>
+#include <QSet>
 #include <QSqlQuery>
 #include <algorithm>
 
@@ -80,10 +81,23 @@ QVector<ScreenRow> screen(const QString& market, int limit) {
             universe.append({q.value(0).toString(), q.value(1).toString()});
     }
 
+    // Dedup by (symbol, market): the universe is DISTINCT (symbol, venue),
+    // but assess() keys on symbol alone, so a symbol logged under multiple
+    // venues that map to the SAME market (e.g. BTC-USD on coinbase_advanced
+    // AND coinbase AND coinbase_tier3, all "crypto") would otherwise be
+    // screened once per venue and appear multiple times in the shortlist,
+    // burning limit slots with duplicates. Compute row_market first and skip
+    // BEFORE assess() so redundant per-symbol SELECTs are avoided too.
+    QSet<QString> seen;
     for (const auto& symbol_venue : universe) {
         const QString& symbol = symbol_venue.first;
         const QString& venue = symbol_venue.second;
         const QString row_market = market_for_venue(venue);
+
+        const QString key = symbol + QStringLiteral("|") + row_market;
+        if (seen.contains(key))
+            continue;
+        seen.insert(key);
 
         DecisionPacket p = assess(symbol, row_market);
         if (p.recommendation_hint != QStringLiteral("all gates pass"))
