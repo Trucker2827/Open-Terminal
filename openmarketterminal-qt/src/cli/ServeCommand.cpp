@@ -2174,10 +2174,16 @@ class DaemonMakerEngine {
                 continue;
             // Emit sandbox-side venue ids DIRECTLY (coinbase_advanced/kraken_pro,
             // NOT coinbase/kraken) — the executor matches venue by exact string.
+            // Write through the canonical rotating jsonl writer so the journal is
+            // size-bounded and stays consistent with the scalp producer and the
+            // read_tail_with_prev reader; the core append_maker_decisions cannot
+            // (layering: it must not depend on the cli automation:: helper).
             for (const QString& venue : kCryptoVenues) {
-                services::sandbox::append_maker_decisions(
-                    decisions_path_, it.key(), venue, snap.mid_price, half_spread_for(venue),
-                    static_cast<double>(snap.freshest_age_ms), snap.live_sources, now_ms);
+                for (const QJsonObject& row : services::sandbox::maker_decision_rows(
+                         it.key(), venue, snap.mid_price, half_spread_for(venue),
+                         static_cast<double>(snap.freshest_age_ms), snap.live_sources, now_ms)) {
+                    automation::append_jsonl_rotating(decisions_path_, row);
+                }
             }
         }
     }

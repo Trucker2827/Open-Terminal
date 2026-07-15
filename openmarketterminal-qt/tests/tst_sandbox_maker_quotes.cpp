@@ -58,6 +58,22 @@ class TstSandboxMakerQuotes : public QObject {
         QCOMPARE(bid.value("live_sources").toInt(), 3);
     }
 
+    void rows_returns_pair_for_good_mid_and_empty_for_bad() {
+        const QVector<QJsonObject> good = maker_decision_rows(
+            QStringLiteral("BTC-USD"), QStringLiteral("kraken_pro"), 100.0, 2.0, 120.0, 3, 42);
+        QCOMPARE(good.size(), 2);
+        QCOMPARE(good[0].value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(good[1].value("side").toString(), QStringLiteral("sell"));
+        QCOMPARE(good[0].value("venue").toString(), QStringLiteral("kraken_pro"));
+        // Non-positive mid -> no rows (rotation reader/consumer never sees a bad-mid row).
+        QVERIFY(maker_decision_rows(QStringLiteral("BTC-USD"), QStringLiteral("kraken_pro"),
+                                    0.0, 2.0, 120.0, 3, 42)
+                    .isEmpty());
+        QVERIFY(maker_decision_rows(QStringLiteral("BTC-USD"), QStringLiteral("kraken_pro"),
+                                    -1.0, 2.0, 120.0, 3, 42)
+                    .isEmpty());
+    }
+
     void append_skips_non_positive_mid() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

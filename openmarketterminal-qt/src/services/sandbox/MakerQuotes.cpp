@@ -17,9 +17,9 @@ MakerQuotePair build_maker_quotes(double mid, double half_spread_bps) {
 }
 
 namespace {
-QByteArray maker_row(const QString& symbol, const QString& venue, const MakerQuote& q,
-                     double freshest_age_ms, int live_sources, qint64 ts_ms) {
-    const QJsonObject row{
+QJsonObject maker_row(const QString& symbol, const QString& venue, const MakerQuote& q,
+                      double freshest_age_ms, int live_sources, qint64 ts_ms) {
+    return QJsonObject{
         {QStringLiteral("engine"), QStringLiteral("daemon-maker")},
         {QStringLiteral("paper"), true},
         {QStringLiteral("symbol"), symbol},
@@ -31,23 +31,33 @@ QByteArray maker_row(const QString& symbol, const QString& venue, const MakerQuo
         {QStringLiteral("ts_ms"), QString::number(ts_ms)},
         {QStringLiteral("freshest_age_ms"), freshest_age_ms},
         {QStringLiteral("live_sources"), live_sources}};
-    return QJsonDocument(row).toJson(QJsonDocument::Compact);
 }
 } // namespace
+
+QVector<QJsonObject> maker_decision_rows(const QString& symbol, const QString& venue, double mid,
+                                         double half_spread_bps, double freshest_age_ms,
+                                         int live_sources, qint64 ts_ms) {
+    const MakerQuotePair pair = build_maker_quotes(mid, half_spread_bps);
+    if (!pair.valid)
+        return {}; // non-positive mid -> nothing to quote; consumers never see a bad-mid row
+    return {maker_row(symbol, venue, pair.bid, freshest_age_ms, live_sources, ts_ms),
+            maker_row(symbol, venue, pair.ask, freshest_age_ms, live_sources, ts_ms)};
+}
 
 void append_maker_decisions(const QString& path, const QString& symbol, const QString& venue,
                             double mid, double half_spread_bps, double freshest_age_ms,
                             int live_sources, qint64 ts_ms) {
-    const MakerQuotePair pair = build_maker_quotes(mid, half_spread_bps);
-    if (!pair.valid)
+    const QVector<QJsonObject> rows =
+        maker_decision_rows(symbol, venue, mid, half_spread_bps, freshest_age_ms, live_sources, ts_ms);
+    if (rows.isEmpty())
         return;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Append))
         return;
-    f.write(maker_row(symbol, venue, pair.bid, freshest_age_ms, live_sources, ts_ms));
-    f.write("\n");
-    f.write(maker_row(symbol, venue, pair.ask, freshest_age_ms, live_sources, ts_ms));
-    f.write("\n");
+    for (const QJsonObject& row : rows) {
+        f.write(QJsonDocument(row).toJson(QJsonDocument::Compact));
+        f.write("\n");
+    }
 }
 
 } // namespace openmarketterminal::services::sandbox
