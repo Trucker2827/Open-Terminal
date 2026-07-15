@@ -1,7 +1,9 @@
 // tst_feed_reconnect.cpp — pure backoff + rate-limit-detection decisions for
 // crypto feed auto-reconnection. No sockets, no timers, no wall-clock.
 #include "services/crypto_latency/FeedReconnect.h"
+#include "services/crypto_latency/CryptoLatencyService.h"
 
+#include <QJsonObject>
 #include <QtTest/QtTest>
 
 using namespace openmarketterminal::services::crypto_latency;
@@ -33,6 +35,21 @@ class TstFeedReconnect : public QObject {
         QCOMPARE(next_reconnect_delay_ms(1, true, 1000, 60000, 15000), 15000);  // max(15000,2000)
         QCOMPARE(next_reconnect_delay_ms(5, true, 1000, 60000, 15000), 32000);  // max(15000,32000)
         QCOMPARE(next_reconnect_delay_ms(20, true, 1000, 60000, 15000), 60000); // capped
+    }
+
+    void source_json_includes_reconnect_telemetry() {
+        CryptoLatencySourceState s;
+        s.source = QStringLiteral("kraken");
+        s.status = QStringLiteral("disconnected");
+        s.error = QStringLiteral("429 Too Many Requests");
+        s.reconnect_attempts = 4;
+        s.last_close_code = 1000;
+        s.last_tick_ms = 123;
+        const QJsonObject o = CryptoLatencyService::source_to_json(s);
+        QCOMPARE(o.value("source").toString(), QStringLiteral("kraken"));
+        QCOMPARE(o.value("status").toString(), QStringLiteral("disconnected"));
+        QCOMPARE(o.value("reconnect_attempts").toInt(), 4);
+        QCOMPARE(o.value("last_close_code").toInt(), 1000);
     }
 };
 

@@ -142,7 +142,9 @@ QJsonObject CryptoLatencyService::source_to_json(const CryptoLatencySourceState&
                        {QStringLiteral("last_tick_ms"), QString::number(s.last_tick_ms)},
                        {QStringLiteral("age_ms"), s.last_tick_ms > 0 ? now_ms() - s.last_tick_ms : -1},
                        {QStringLiteral("raw_messages"), s.raw_messages},
-                       {QStringLiteral("ticks"), s.ticks}};
+                       {QStringLiteral("ticks"), s.ticks},
+                       {QStringLiteral("reconnect_attempts"), s.reconnect_attempts},
+                       {QStringLiteral("last_close_code"), s.last_close_code}};
 }
 
 QJsonObject CryptoLatencyService::snapshot_to_json(const CryptoLatencySnapshot& s) {

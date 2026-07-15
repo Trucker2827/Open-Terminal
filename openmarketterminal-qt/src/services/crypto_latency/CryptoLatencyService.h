@@ -36,6 +36,8 @@ struct CryptoLatencySourceState {
     qint64 last_message_ms = 0;
     int raw_messages = 0;
     int ticks = 0;
+    int reconnect_attempts = 0;
+    int last_close_code = 0;
 };
 
 struct CryptoLatencySnapshot {
