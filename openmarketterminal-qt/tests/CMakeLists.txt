@@ -558,6 +558,14 @@ target_include_directories(tst_decision_context PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_decision_context PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_decision_context COMMAND tst_decision_context)
 
+# ai screen shortlist Task 1 — Screener::screen: ranked gate-vetted shortlist
+# over edge_decision_journal, reusing DecisionContext::assess per (symbol,
+# venue). Same DB bootstrap as tst_decision_context.
+add_executable(tst_screener tst_screener.cpp)
+target_include_directories(tst_screener PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_screener PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_screener COMMAND tst_screener)
+
 # Strategy Sandbox Task 8 — SandboxResolver::resolve_pending: settle
 # prediction (journal outcome) and hypothetical (tick target/stop/expiry)
 # books. Same DB bootstrap as tst_sandbox_executor.

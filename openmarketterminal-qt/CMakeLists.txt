@@ -1399,6 +1399,9 @@ set(SERVICE_SOURCES
     # ai ctx decision-packet Task 2 — DecisionContext::assess: pure-read
     # decision packet over edge_decision_journal + cost/freshness/lane.
     src/services/ai_decision/DecisionContext.cpp
+    # ai screen shortlist Task 1 — Screener::screen: ranked gate-vetted
+    # shortlist over edge_decision_journal, reusing DecisionContext::assess.
+    src/services/ai_decision/Screener.cpp
 )
 
 # UI framework
@@ -2390,6 +2393,11 @@ set_source_files_properties(
     # the anon namespace); excluded defensively so a Release unity batch can
     # never collide it against another anon-namespace symbol of the same name.
     src/services/ai_decision/DecisionContext.cpp
+    # Screener.cpp — defines an anonymous-namespace market_venue_table()
+    # helper; excluded defensively for the same reason as DecisionContext.cpp
+    # above (a same-named helper in a unity batch-mate's own anon namespace
+    # would otherwise collide).
+    src/services/ai_decision/Screener.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
