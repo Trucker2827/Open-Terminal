@@ -296,7 +296,14 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
             return;
         states_[source].last_close_code = static_cast<int>(socket->closeCode());
         set_state(source, QStringLiteral("disconnected"));
-        schedule_reconnect(source, socket->closeReason());
+        // Detect a handshake 429 regardless of which signal wins the race:
+        // closeReason() won't carry "429", but errorString() does. schedule_reconnect
+        // is first-signal-wins, so fold both in here so the rate-limited (>=15s)
+        // backoff is used even if disconnected fires before errorOccurred.
+        const QString reason = socket->closeReason();
+        schedule_reconnect(source, is_rate_limited(reason) || is_rate_limited(socket->errorString())
+                                       ? socket->errorString()
+                                       : reason);
     });
     connect(socket, &QWebSocket::textMessageReceived, this,
             [this, source = feed.source, venue = feed.venue_symbol](const QString& text) {
