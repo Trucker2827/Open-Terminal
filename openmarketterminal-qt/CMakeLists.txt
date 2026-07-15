@@ -987,6 +987,7 @@ set(PYTHON_SOURCES
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
     src/services/crypto_latency/CryptoLatencyService.cpp
+    src/services/crypto_latency/FeedReconnect.cpp
     src/services/edge_radar/BtcFiveMinuteEdgeModel.cpp
     src/services/edge_radar/EdgePredictionModel.cpp
     src/services/edge_radar/EdgeRadarService.cpp
@@ -3305,6 +3306,7 @@ add_executable(openterminalcli
     src/cli/AiRunCommand.cpp
     src/cli/ObserveCommand.cpp
     src/cli/ServeCommand.cpp
+    src/cli/CryptoFeedHub.cpp
     src/cli/BridgeDiscovery.cpp
     src/cli/BridgeClient.cpp
     src/cli/BridgeDiscoveryFile.cpp

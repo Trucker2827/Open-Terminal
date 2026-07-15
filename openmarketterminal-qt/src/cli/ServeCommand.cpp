@@ -1,5 +1,6 @@
 #include "cli/ServeCommand.h"
 #include "cli/BridgeDiscoveryFile.h"
+#include "cli/CryptoFeedHub.h"
 #include "cli/automation/AutomationState.h"
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/TerminalMcpBridge.h"
@@ -1385,7 +1386,8 @@ bool write_daemon_runtime(const QString& profile,
                           const QString& mode,
                           const QString& endpoint = {},
                           const QString& bridge_owner_kind = {},
-                          const QString& bridge_owner_endpoint = {}) {
+                          const QString& bridge_owner_endpoint = {},
+                          const QJsonArray& crypto_feeds = {}) {
     QDir().mkpath(daemon_state_dir(profile));
     QJsonObject old = read_daemon_runtime(profile);
     QJsonObject rt{{"schema", 1},
@@ -1403,6 +1405,14 @@ bool write_daemon_runtime(const QString& profile,
         rt["bridge_owner_kind"] = bridge_owner_kind;
     if (!bridge_owner_endpoint.isEmpty())
         rt["bridge_owner_endpoint"] = bridge_owner_endpoint;
+    // Crypto feed health (Task 4's CryptoFeedHub::feed_health()) is only
+    // available once the hub exists in the serve loop; until then, preserve
+    // whatever was last written so the key doesn't flicker away between
+    // heartbeats.
+    if (!crypto_feeds.isEmpty())
+        rt["crypto_feeds"] = crypto_feeds;
+    else if (old.contains(QStringLiteral("crypto_feeds")))
+        rt["crypto_feeds"] = old.value(QStringLiteral("crypto_feeds"));
 
     QSaveFile f(daemon_runtime_path(profile));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -1466,6 +1476,7 @@ QJsonObject daemon_status_object(const QString& profile) {
         o["daemon_process_mode"] = runtime_mode;
         o["daemon_heartbeat_at"] = runtime.value("heartbeat_at");
         o["daemon_started_at"] = runtime.value("started_at");
+        o["crypto_feeds"] = runtime.value("crypto_feeds");
     }
     return o;
 }
@@ -1689,12 +1700,25 @@ double normalize_confidence_gate(double value) {
 
 class DaemonScalpEngine {
   public:
-    explicit DaemonScalpEngine(QString profile)
+    explicit DaemonScalpEngine(QString profile, CryptoFeedHub* hub)
         : profile_(std::move(profile)),
+          hub_(hub),
           config_path_(daemon_scalp_config_path(profile_)),
           state_path_(daemon_scalp_state_path(profile_)),
           ticks_path_(daemon_scalp_ticks_path(profile_)),
           decisions_path_(daemon_scalp_decisions_path(profile_)) {
+        // The hub owns the feeds (shared with the maker engine). We connect once
+        // and filter to the symbols this engine currently tracks so config
+        // reloads that change symbols_ are handled without reconnecting.
+        hub_connection_ = QObject::connect(
+            hub_, &CryptoFeedHub::tick_received, qApp,
+            [this](const QString& symbol, const CryptoLatencyTick& tick) {
+                if (!enabled_ || !symbols_.contains(symbol))
+                    return;
+                if (!scalp_sources_for_symbol(sources_, symbol).contains(tick.source))
+                    return;
+                ingest_tick(symbol, tick);
+            });
         config_timer_ = new QTimer(qApp);
         config_timer_->setInterval(1000);
         QObject::connect(config_timer_, &QTimer::timeout, qApp, [this]() { reload_config(); });
@@ -1707,7 +1731,10 @@ class DaemonScalpEngine {
         QTimer::singleShot(0, qApp, [this]() { reload_config(); });
     }
 
-    ~DaemonScalpEngine() { stop_services(); }
+    ~DaemonScalpEngine() {
+        QObject::disconnect(hub_connection_);
+        stop_services();
+    }
 
   private:
     using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
@@ -1874,25 +1901,18 @@ class DaemonScalpEngine {
     void restart_services() {
         stop_services();
         for (const QString& symbol : symbols_) {
-            auto* svc = new CryptoLatencyService(qApp);
-            services_.insert(symbol, svc);
             radars_.insert(symbol, CryptoMicrostructureRadar{});
             recent_.insert(symbol, {});
             const QStringList safe_sources = scalp_sources_for_symbol(sources_, symbol);
-            QObject::connect(svc, &CryptoLatencyService::tick_received, svc,
-                             [this, symbol](const CryptoLatencyTick& tick) { ingest_tick(symbol, tick); });
-            svc->start(symbol, safe_sources);
+            // The hub owns the shared feed; ensure it covers this symbol with our
+            // sources. Ticks arrive via the hub connection made in the ctor.
+            hub_->ensure_symbol(symbol, safe_sources);
         }
     }
 
     void stop_services() {
-        for (auto it = services_.begin(); it != services_.end(); ++it) {
-            if (it.value()) {
-                it.value()->stop();
-                it.value()->deleteLater();
-            }
-        }
-        services_.clear();
+        // The hub owns the feeds and outlives this engine; we only drop our own
+        // per-symbol derived state here (never tear down the shared service).
         radars_.clear();
         recent_.clear();
         last_decisions_.clear();
@@ -1917,8 +1937,9 @@ class DaemonScalpEngine {
         automation::append_jsonl_rotating(ticks_path_, CryptoLatencyService::tick_to_json(tick));
     }
 
-    QJsonObject evaluate_symbol(const QString& symbol, CryptoLatencyService* svc) {
-        const auto latency_snapshot = svc->snapshot();
+    QJsonObject evaluate_symbol(const QString& symbol) {
+        const auto latency_snapshot = CryptoLatencyService::filtered_snapshot(
+            hub_->snapshot(symbol), scalp_sources_for_symbol(sources_, symbol));
         const auto micro = radars_[symbol].snapshot(latency_snapshot);
         const QVector<CryptoLatencyTick> rows = recent_.value(symbol);
         const ScalpMsWindow w250 = ms_window(rows, 250);
@@ -2043,11 +2064,9 @@ class DaemonScalpEngine {
         if (!enabled_)
             return;
         QJsonArray decisions;
-        for (auto it = services_.begin(); it != services_.end(); ++it) {
-            if (!it.value())
-                continue;
-            const QJsonObject decision = evaluate_symbol(it.key(), it.value());
-            last_decisions_[it.key()] = decision;
+        for (const QString& symbol : symbols_) {
+            const QJsonObject decision = evaluate_symbol(symbol);
+            last_decisions_[symbol] = decision;
             decisions.append(decision);
         }
         write_state(QStringLiteral("running"), decisions);
@@ -2078,6 +2097,8 @@ class DaemonScalpEngine {
     }
 
     QString profile_;
+    CryptoFeedHub* hub_ = nullptr;
+    QMetaObject::Connection hub_connection_;
     QString config_path_;
     QString state_path_;
     QString ticks_path_;
@@ -2103,7 +2124,6 @@ class DaemonScalpEngine {
     int max_age_ms_ = 1000;
     double max_spread_bps_ = 8.0;
     int min_live_sources_ = 2;
-    QHash<QString, CryptoLatencyService*> services_;
     QHash<QString, CryptoMicrostructureRadar> radars_;
     QHash<QString, QVector<CryptoLatencyTick>> recent_;
     QHash<QString, QJsonObject> last_decisions_;
@@ -2122,38 +2142,38 @@ class DaemonScalpEngine {
 // depending on the separately-configured scalp engine.
 //
 // NOTE (deliberate): unlike DaemonScalpEngine, this engine has no config file
-// and no `enabled` gate — it is always-on while `serve` runs and opens its own
-// crypto feeds (duplicating the scalp engine's connections when both are up).
-// That is within the paper/read-only intent of this glue.
+// and no `enabled` gate — it is always-on while `serve` runs. It no longer opens
+// its own crypto feeds: it registers its symbols with the shared CryptoFeedHub
+// and consumes the hub's ticks/snapshots, so it shares one WebSocket per venue
+// with the scalp engine instead of duplicating connections. Read-only glue.
 class DaemonMakerEngine {
   public:
-    explicit DaemonMakerEngine(QString profile)
+    explicit DaemonMakerEngine(QString profile, CryptoFeedHub* hub)
         : profile_(std::move(profile)),
+          hub_(hub),
           decisions_path_(daemon_maker_decisions_path(profile_)),
           ticks_path_(daemon_maker_ticks_path(profile_)) {
-        restart_services();
+        // The hub owns the shared feeds. Register each maker symbol with the
+        // maker's own venue sources and consume ticks/snapshots from the hub.
+        for (const QString& symbol : symbols_)
+            hub_->ensure_symbol(symbol, {QStringLiteral("coinbase"), QStringLiteral("kraken")});
+        hub_connection_ = QObject::connect(
+            hub_, &CryptoFeedHub::tick_received, qApp,
+            [this](const QString& symbol, const CryptoLatencyTick& tick) {
+                if (symbols_.contains(symbol))
+                    ingest_tick(tick);
+            });
         decision_timer_ = new QTimer(qApp);
         decision_timer_->setInterval(cadence_ms_);
         QObject::connect(decision_timer_, &QTimer::timeout, qApp, [this]() { evaluate(); });
         decision_timer_->start();
     }
 
-    ~DaemonMakerEngine() { stop_services(); }
+    ~DaemonMakerEngine() { QObject::disconnect(hub_connection_); }
 
   private:
     using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
     using CryptoLatencyTick = services::crypto_latency::CryptoLatencyTick;
-
-    void restart_services() {
-        stop_services();
-        for (const QString& symbol : symbols_) {
-            auto* svc = new CryptoLatencyService(qApp);
-            services_.insert(symbol, svc);
-            QObject::connect(svc, &CryptoLatencyService::tick_received, svc,
-                             [this](const CryptoLatencyTick& tick) { ingest_tick(tick); });
-            svc->start(symbol, {QStringLiteral("coinbase"), QStringLiteral("kraken")});
-        }
-    }
 
     static QString venue_for_source(const QString& source) {
         if (source == QLatin1String("coinbase"))
@@ -2172,25 +2192,19 @@ class DaemonMakerEngine {
         automation::append_jsonl_rotating(ticks_path_, row);
     }
 
-    void stop_services() {
-        for (auto it = services_.begin(); it != services_.end(); ++it) {
-            if (it.value()) {
-                it.value()->stop();
-                it.value()->deleteLater();
-            }
-        }
-        services_.clear();
-    }
-
     void evaluate() {
         // Match DaemonScalpEngine's decision clock (ts_ms).
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-        for (auto it = services_.cbegin(); it != services_.cend(); ++it) {
-            if (!it.value())
-                continue;
-            const auto snap = it.value()->snapshot();
+        for (const QString& symbol : symbols_) {
+            const auto snap = hub_->snapshot(symbol);
             int fresh_sources = 0;
             for (const auto& tick : snap.latest_ticks) {
+                // Count only the maker's own venue sources (coinbase/kraken). The
+                // hub's service may carry extra sources (e.g. scalp's binanceus /
+                // bitcointicker) on symbols both engines share, but legacy maker
+                // never saw those, so exclude them to keep decision rows identical.
+                if (venue_for_source(tick.source).isEmpty())
+                    continue;
                 if (tick.received_ts_ms > 0 && now_ms - tick.received_ts_ms <= max_tick_age_ms_)
                     ++fresh_sources;
             }
@@ -2203,7 +2217,7 @@ class DaemonMakerEngine {
                     ? (tick.best_bid + tick.best_ask) / 2.0
                     : tick.price;
                 for (const QJsonObject& row : services::sandbox::maker_decision_rows(
-                         it.key(), venue, venue_mid, half_spread_for(venue),
+                         symbol, venue, venue_mid, half_spread_for(venue),
                          static_cast<double>(age_ms), fresh_sources, now_ms)) {
                     automation::append_jsonl_rotating(decisions_path_, row);
                 }
@@ -2221,6 +2235,8 @@ class DaemonMakerEngine {
     }
 
     QString profile_;
+    CryptoFeedHub* hub_ = nullptr;
+    QMetaObject::Connection hub_connection_;
     QString decisions_path_;
     QString ticks_path_;
     QTimer* decision_timer_ = nullptr;
@@ -2236,7 +2252,6 @@ class DaemonMakerEngine {
     // three (normalize_symbol/kraken_pair/make_feed are generic, not two-symbol).
     const QStringList symbols_{QStringLiteral("BTC-USD"), QStringLiteral("ETH-USD"),
                                QStringLiteral("SOL-USD")};
-    QHash<QString, CryptoLatencyService*> services_;
 };
 
 QJsonObject daemon_health_object(const QString& profile) {
@@ -2604,9 +2619,15 @@ int serve_run(const QString& profile) {
 
     auto& bridge = mcp::TerminalMcpBridge::instance();
     bool bridge_started = false;
+    // Declared here (before write_runtime_state captures it by reference) but
+    // constructed later, once the crypto engines are set up; write_runtime_state
+    // tolerates it being null until then.
+    CryptoFeedHub* crypto_feed_hub = nullptr;
     auto write_runtime_state = [&]() {
+        const QJsonArray feeds = crypto_feed_hub ? crypto_feed_hub->feed_health() : QJsonArray{};
         if (bridge_started) {
-            write_daemon_runtime(profile, QStringLiteral("owner"), bridge.endpoint());
+            write_daemon_runtime(profile, QStringLiteral("owner"), bridge.endpoint(), QString(), QString(),
+                                 feeds);
             return;
         }
         auto owner = read_bridge_file(root);
@@ -2615,7 +2636,8 @@ int serve_run(const QString& profile) {
                              owner_live ? QStringLiteral("warm") : QStringLiteral("warm-no-owner"),
                              {},
                              owner_live ? owner->kind : QString(),
-                             owner_live ? owner->endpoint : QString());
+                             owner_live ? owner->endpoint : QString(),
+                             feeds);
     };
 
     auto try_promote_to_owner = [&]() {
@@ -2664,10 +2686,17 @@ int serve_run(const QString& profile) {
     heartbeat->start();
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [profile]() { remove_daemon_runtime(profile); });
     start_daemon_job_scheduler(profile);
-    auto* scalp_engine = new DaemonScalpEngine(profile);
+    // One shared crypto feed hub for both daemon engines: it owns a single
+    // CryptoLatencyService per union symbol so scalp and maker share one
+    // WebSocket per venue instead of each opening their own (which tripped
+    // Kraken's HTTP 429 rate limit). Constructed before the engines; its
+    // teardown is registered last so the hub outlives both engines.
+    crypto_feed_hub = new CryptoFeedHub(qApp);
+    auto* scalp_engine = new DaemonScalpEngine(profile, crypto_feed_hub);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [scalp_engine]() { delete scalp_engine; });
-    auto* maker_engine = new DaemonMakerEngine(profile);
+    auto* maker_engine = new DaemonMakerEngine(profile, crypto_feed_hub);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [maker_engine]() { delete maker_engine; });
+    QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [crypto_feed_hub]() { delete crypto_feed_hub; });
     auto* kalshi_event_engine = new KalshiLiveEventEngine(profile, qApp);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp,
                      [kalshi_event_engine]() { delete kalshi_event_engine; });

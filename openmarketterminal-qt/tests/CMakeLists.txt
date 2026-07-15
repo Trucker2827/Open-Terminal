@@ -25,6 +25,7 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/CryptoFeedHub.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscovery.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
@@ -132,6 +133,7 @@ add_test(NAME tst_data_services COMMAND tst_data_services)
 add_executable(tst_serve_command
     tst_serve_command.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/CryptoFeedHub.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp)
 target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -498,6 +500,11 @@ add_executable(tst_sandbox_schema tst_sandbox_schema.cpp)
 target_include_directories(tst_sandbox_schema PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_schema PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_schema COMMAND tst_sandbox_schema)
+
+add_executable(tst_feed_reconnect tst_feed_reconnect.cpp)
+target_include_directories(tst_feed_reconnect PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_feed_reconnect PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_feed_reconnect COMMAND tst_feed_reconnect)
 
 add_executable(tst_sandbox_maker_quotes tst_sandbox_maker_quotes.cpp)
 target_include_directories(tst_sandbox_maker_quotes PRIVATE ${CMAKE_SOURCE_DIR}/src)
