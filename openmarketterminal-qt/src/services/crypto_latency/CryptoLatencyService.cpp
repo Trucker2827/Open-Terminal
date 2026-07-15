@@ -1,6 +1,7 @@
 #include "services/crypto_latency/CryptoLatencyService.h"
 
 #include "datahub/DataHub.h"
+#include "services/crypto_latency/FeedReconnect.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -8,6 +9,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QUrl>
 #include <QVariant>
 #include <QWebSocket>
@@ -178,28 +180,44 @@ void CryptoLatencyService::start(const QString& symbol, const QStringList& sourc
     QStringList wanted = sources;
     if (wanted.isEmpty())
         wanted = default_sources();
+    // Stagger the initial opens by `index * 200ms` so we do not fire every
+    // handshake simultaneously and self-trip the venue rate limit (HTTP 429).
+    int index = 0;
     for (QString source : wanted) {
         source = source.trimmed().toLower();
         if (!supported_sources().contains(source)) {
             set_state(source, QStringLiteral("unsupported"), QStringLiteral("unsupported source"));
             continue;
         }
-        const Feed feed = make_feed(source, symbol_);
-        feeds_.insert(source, feed);
+        wanted_sources_.insert(source);
         set_state(source, QStringLiteral("connecting"));
-        open_feed(feed);
+        schedule_open(source, index * 200);
+        ++index;
     }
 }
 
 void CryptoLatencyService::stop() {
+    // Order matters: drop `running_` and cancel every pending reconnect/stagger
+    // timer BEFORE closing sockets, so the disconnected/errorOccurred handlers
+    // (which check running_) cannot re-schedule a reconnect after stop.
     running_ = false;
+    wanted_sources_.clear();
+    for (auto it = reconnect_timers_.begin(); it != reconnect_timers_.end(); ++it) {
+        if (it.value()) {
+            it.value()->stop();
+            it.value()->deleteLater();
+        }
+    }
+    reconnect_timers_.clear();
     for (auto it = feeds_.begin(); it != feeds_.end(); ++it) {
         if (it->socket) {
+            it->socket->disconnect(this);
             it->socket->close();
             it->socket->deleteLater();
             it->socket = nullptr;
         }
         if (it->tcp_socket) {
+            it->tcp_socket->disconnect(this);
             it->tcp_socket->close();
             it->tcp_socket->deleteLater();
             it->tcp_socket = nullptr;
@@ -207,6 +225,11 @@ void CryptoLatencyService::stop() {
     }
     feeds_.clear();
     terminal_states_.clear();
+    // Clear per-feed reconnect state so a fresh start() begins at attempt 0.
+    for (auto it = states_.begin(); it != states_.end(); ++it) {
+        it->reconnect_attempts = 0;
+        it->last_close_code = 0;
+    }
 }
 
 CryptoLatencyService::Feed CryptoLatencyService::make_feed(const QString& source, const QString& symbol) const {
@@ -249,6 +272,7 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
     feeds_.insert(feed.source, stored);
 
     connect(socket, &QWebSocket::connected, this, [this, source = feed.source, venue = feed.venue_symbol, socket]() {
+        states_[source].reconnect_attempts = 0;
         set_state(source, QStringLiteral("connected"));
         if (source == QStringLiteral("coinbase")) {
             QJsonObject msg{{QStringLiteral("type"), QStringLiteral("subscribe")},
@@ -267,9 +291,12 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
             }
         }
     });
-    connect(socket, &QWebSocket::disconnected, this, [this, source = feed.source]() {
-        if (running_)
-            set_state(source, QStringLiteral("disconnected"));
+    connect(socket, &QWebSocket::disconnected, this, [this, source = feed.source, socket]() {
+        if (!running_)
+            return;
+        states_[source].last_close_code = static_cast<int>(socket->closeCode());
+        set_state(source, QStringLiteral("disconnected"));
+        schedule_reconnect(source, socket->closeReason());
     });
     connect(socket, &QWebSocket::textMessageReceived, this,
             [this, source = feed.source, venue = feed.venue_symbol](const QString& text) {
@@ -278,6 +305,8 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
     connect(socket, qOverload<QAbstractSocket::SocketError>(&QWebSocket::errorOccurred),
             this, [this, source = feed.source, socket](QAbstractSocket::SocketError) {
                 set_state(source, QStringLiteral("error"), socket->errorString());
+                if (running_)
+                    schedule_reconnect(source, socket->errorString());
             });
     socket->open(QUrl(feed.url));
 }
@@ -293,19 +322,76 @@ void CryptoLatencyService::open_tcp_feed(const Feed& feed) {
     terminal_states_.insert(feed.source, term);
 
     connect(socket, &QTcpSocket::connected, this, [this, source = feed.source]() {
+        states_[source].reconnect_attempts = 0;
         set_state(source, QStringLiteral("connected"));
     });
-    connect(socket, &QTcpSocket::disconnected, this, [this, source = feed.source]() {
-        if (running_)
-            set_state(source, QStringLiteral("disconnected"));
+    connect(socket, &QTcpSocket::disconnected, this, [this, source = feed.source, socket]() {
+        if (!running_)
+            return;
+        set_state(source, QStringLiteral("disconnected"));
+        // QTcpSocket has no WS close code/reason; last_close_code stays 0.
+        schedule_reconnect(source, socket->errorString());
     });
     connect(socket, &QTcpSocket::readyRead, this, [this, source = feed.source, venue = feed.venue_symbol, socket]() {
         handle_tcp_bytes(source, venue, socket->readAll());
     });
     connect(socket, &QTcpSocket::errorOccurred, this, [this, source = feed.source, socket](QAbstractSocket::SocketError) {
         set_state(source, QStringLiteral("error"), socket->errorString());
+        if (running_)
+            schedule_reconnect(source, socket->errorString());
     });
     socket->connectToHost(QStringLiteral("ticker.bitcointicker.co"), 10080);
+}
+
+void CryptoLatencyService::schedule_open(const QString& source, int delay_ms) {
+    QTimer* timer = reconnect_timers_.value(source, nullptr);
+    if (!timer) {
+        timer = new QTimer(this);
+        timer->setSingleShot(true);
+        connect(timer, &QTimer::timeout, this, [this, source]() {
+            // Guard against use-after-stop: stop() drops running_ and clears the
+            // wanted set + timers before this could fire.
+            if (!running_ || !wanted_sources_.contains(source))
+                return;
+            // Tear down any prior (dead) socket for this source before reopening,
+            // so stale lambdas cannot deliver ticks (scalp safety) and we do not
+            // leak a QWebSocket per reconnect in the long-running daemon.
+            Feed& existing = feeds_[source];
+            if (existing.socket) {
+                existing.socket->disconnect(this);
+                existing.socket->close();
+                existing.socket->deleteLater();
+                existing.socket = nullptr;
+            }
+            if (existing.tcp_socket) {
+                existing.tcp_socket->disconnect(this);
+                existing.tcp_socket->close();
+                existing.tcp_socket->deleteLater();
+                existing.tcp_socket = nullptr;
+            }
+            open_feed(make_feed(source, symbol_));
+        });
+        reconnect_timers_.insert(source, timer);
+    }
+    timer->start(delay_ms);
+}
+
+void CryptoLatencyService::schedule_reconnect(const QString& source, const QString& error_string) {
+    if (!running_ || !wanted_sources_.contains(source))
+        return;
+    QTimer* timer = reconnect_timers_.value(source, nullptr);
+    // Dedup: errorOccurred and disconnected both fire for one failure. The
+    // first (errorOccurred, which carries the 429 string) schedules; the
+    // second finds the timer active and is a no-op — so we count one attempt.
+    if (timer && timer->isActive())
+        return;
+    const int attempt = states_[source].reconnect_attempts;
+    const bool rate_limited = is_rate_limited(error_string);
+    // Deterministic jitter (no rand) to de-correlate concurrent feeds' retries.
+    const int delay = next_reconnect_delay_ms(attempt, rate_limited, 1000, 60000, 15000)
+                      + (attempt * 37) % 250;
+    states_[source].reconnect_attempts = attempt + 1;
+    schedule_open(source, delay);
 }
 
 void CryptoLatencyService::handle_text(const QString& source, const QString& venue_symbol, const QString& text) {

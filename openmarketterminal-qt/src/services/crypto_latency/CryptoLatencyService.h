@@ -3,12 +3,14 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
 
 class QWebSocket;
 class QTcpSocket;
+class QTimer;
 
 namespace openmarketterminal::services::crypto_latency {
 
@@ -99,6 +101,12 @@ class CryptoLatencyService : public QObject {
     Feed make_feed(const QString& source, const QString& symbol) const;
     void open_feed(const Feed& feed);
     void open_tcp_feed(const Feed& feed);
+    // Schedule a single-shot (re)open of `source` after `delay_ms`, tearing down
+    // any prior socket for that source first. Reused for staggered startup opens.
+    void schedule_open(const QString& source, int delay_ms);
+    // Backoff-driven reconnect scheduling off the socket lifecycle. Dedups the
+    // errorOccurred+disconnected pair via the per-source timer's active state.
+    void schedule_reconnect(const QString& source, const QString& error_string);
     void handle_text(const QString& source, const QString& venue_symbol, const QString& text);
     void handle_tcp_bytes(const QString& source, const QString& venue_symbol, const QByteArray& bytes);
     void apply_terminal_escape(TerminalState& term, const QString& seq);
@@ -115,6 +123,8 @@ class CryptoLatencyService : public QObject {
     QHash<QString, CryptoLatencyTick> latest_;
     QHash<QString, CryptoLatencySourceState> states_;
     QHash<QString, TerminalState> terminal_states_;
+    QSet<QString> wanted_sources_;
+    QHash<QString, QTimer*> reconnect_timers_;
 };
 
 } // namespace openmarketterminal::services::crypto_latency
