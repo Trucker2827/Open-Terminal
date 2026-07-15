@@ -506,6 +506,14 @@ target_include_directories(tst_strategy_registry PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_strategy_registry PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME tst_strategy_registry COMMAND tst_strategy_registry)
 
+# AI Handler Plugin Core Task 2 — AiHandlerRepository: CRUD over migration
+# v063's ai_handler table (named AI-handler configs, disarmed by default).
+# Same DB bootstrap as tst_sandbox_registry.
+add_executable(tst_ai_handler_repository tst_ai_handler_repository.cpp)
+target_include_directories(tst_ai_handler_repository PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_handler_repository PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_handler_repository COMMAND tst_ai_handler_repository)
+
 add_executable(tst_feed_reconnect tst_feed_reconnect.cpp)
 target_include_directories(tst_feed_reconnect PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_feed_reconnect PRIVATE openterminal_core Qt6::Core Qt6::Test)

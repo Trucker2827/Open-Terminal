@@ -899,6 +899,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/LivePnlRepository.cpp
     src/storage/repositories/EdgePredictionModelRepository.cpp
     src/storage/repositories/EdgeRadarRepository.cpp
+    src/storage/repositories/AiHandlerRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -970,6 +971,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v063_ai_handler.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -2382,6 +2384,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v063_ai_handler.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
