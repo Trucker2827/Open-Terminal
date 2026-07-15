@@ -16,4 +16,8 @@ bool is_rate_limited(const QString& error_string);
 int next_reconnect_delay_ms(int attempt, bool rate_limited, int base_ms, int cap_ms,
                             int rate_limited_floor_ms);
 
+// Stable per-(symbol, source) jitter. Distinct symbol feeds must not retry a
+// rate-limited venue in lockstep and continually renew the same IP-level 429.
+int reconnect_jitter_ms(const QString& symbol, const QString& source, bool rate_limited);
+
 } // namespace openmarketterminal::services::crypto_latency

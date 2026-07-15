@@ -40,6 +40,8 @@ struct CryptoLatencySourceState {
     int ticks = 0;
     int reconnect_attempts = 0;
     int last_close_code = 0;
+    int reconnect_delay_ms = 0;
+    bool rate_limited = false;
 };
 
 struct CryptoLatencySnapshot {
@@ -70,8 +72,11 @@ class CryptoLatencyService : public QObject {
     static QJsonObject tick_to_json(const CryptoLatencyTick& tick);
     static QJsonObject source_to_json(const CryptoLatencySourceState& state);
     static QJsonObject snapshot_to_json(const CryptoLatencySnapshot& snapshot);
+    static CryptoLatencySnapshot filtered_snapshot(const CryptoLatencySnapshot& snapshot,
+                                                    const QStringList& sources);
 
-    void start(const QString& symbol, const QStringList& sources = default_sources());
+    void start(const QString& symbol, const QStringList& sources = default_sources(),
+               int initial_delay_ms = 0);
     void stop();
     bool is_running() const { return running_; }
     CryptoLatencySnapshot snapshot() const;

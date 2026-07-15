@@ -20,4 +20,16 @@ int next_reconnect_delay_ms(int attempt, bool rate_limited, int base_ms, int cap
     return static_cast<int>(grown);
 }
 
+int reconnect_jitter_ms(const QString& symbol, const QString& source, bool rate_limited) {
+    const QByteArray key = (symbol.trimmed().toUpper() + QLatin1Char('|')
+                            + source.trimmed().toLower()).toUtf8();
+    quint32 hash = 2166136261u;
+    for (const unsigned char byte : key) {
+        hash ^= byte;
+        hash *= 16777619u;
+    }
+    const int span_ms = rate_limited ? 5000 : 1000;
+    return static_cast<int>(hash % static_cast<quint32>(span_ms));
+}
+
 } // namespace openmarketterminal::services::crypto_latency

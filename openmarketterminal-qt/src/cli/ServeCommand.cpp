@@ -1710,11 +1710,15 @@ class DaemonScalpEngine {
         // The hub owns the feeds (shared with the maker engine). We connect once
         // and filter to the symbols this engine currently tracks so config
         // reloads that change symbols_ are handled without reconnecting.
-        QObject::connect(hub_, &CryptoFeedHub::tick_received, qApp,
-                         [this](const QString& symbol, const CryptoLatencyTick& tick) {
-                             if (symbols_.contains(symbol))
-                                 ingest_tick(symbol, tick);
-                         });
+        hub_connection_ = QObject::connect(
+            hub_, &CryptoFeedHub::tick_received, qApp,
+            [this](const QString& symbol, const CryptoLatencyTick& tick) {
+                if (!enabled_ || !symbols_.contains(symbol))
+                    return;
+                if (!scalp_sources_for_symbol(sources_, symbol).contains(tick.source))
+                    return;
+                ingest_tick(symbol, tick);
+            });
         config_timer_ = new QTimer(qApp);
         config_timer_->setInterval(1000);
         QObject::connect(config_timer_, &QTimer::timeout, qApp, [this]() { reload_config(); });
@@ -1727,7 +1731,10 @@ class DaemonScalpEngine {
         QTimer::singleShot(0, qApp, [this]() { reload_config(); });
     }
 
-    ~DaemonScalpEngine() { stop_services(); }
+    ~DaemonScalpEngine() {
+        QObject::disconnect(hub_connection_);
+        stop_services();
+    }
 
   private:
     using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
@@ -1899,16 +1906,6 @@ class DaemonScalpEngine {
             const QStringList safe_sources = scalp_sources_for_symbol(sources_, symbol);
             // The hub owns the shared feed; ensure it covers this symbol with our
             // sources. Ticks arrive via the hub connection made in the ctor.
-            //
-            // SHARED-FEED INVARIANT: on any symbol served by both engines, this
-            // scalp `sources` config MUST be a superset of the maker's
-            // {coinbase,kraken}. Scalp's tick intake filters on symbol only (never
-            // tick.source), so if scalp narrows its sources below that on a shared
-            // symbol, the maker forces the missing venue back into the shared
-            // CryptoLatencyService and those foreign ticks reach scalp's decision
-            // windows/radar/snapshot AND scalp_ticks.jsonl — a scalp behavior
-            // divergence. Default config satisfies this (scalp default sources ⊇
-            // {coinbase,kraken}).
             hub_->ensure_symbol(symbol, safe_sources);
         }
     }
@@ -1941,7 +1938,8 @@ class DaemonScalpEngine {
     }
 
     QJsonObject evaluate_symbol(const QString& symbol) {
-        const auto latency_snapshot = hub_->snapshot(symbol);
+        const auto latency_snapshot = CryptoLatencyService::filtered_snapshot(
+            hub_->snapshot(symbol), scalp_sources_for_symbol(sources_, symbol));
         const auto micro = radars_[symbol].snapshot(latency_snapshot);
         const QVector<CryptoLatencyTick> rows = recent_.value(symbol);
         const ScalpMsWindow w250 = ms_window(rows, 250);
@@ -2100,6 +2098,7 @@ class DaemonScalpEngine {
 
     QString profile_;
     CryptoFeedHub* hub_ = nullptr;
+    QMetaObject::Connection hub_connection_;
     QString config_path_;
     QString state_path_;
     QString ticks_path_;
@@ -2156,28 +2155,21 @@ class DaemonMakerEngine {
           ticks_path_(daemon_maker_ticks_path(profile_)) {
         // The hub owns the shared feeds. Register each maker symbol with the
         // maker's own venue sources and consume ticks/snapshots from the hub.
-        //
-        // SHARED-FEED INVARIANT: on any symbol served by both engines, the scalp
-        // `sources` config MUST be a superset of the maker's {coinbase,kraken}. If
-        // scalp narrows its sources below that on a shared symbol, the maker forces
-        // the missing venue back into the shared CryptoLatencyService, and those
-        // foreign ticks reach scalp's decision windows/radar/snapshot AND
-        // scalp_ticks.jsonl — a scalp behavior divergence. Default config satisfies
-        // this (scalp default sources ⊇ {coinbase,kraken}).
         for (const QString& symbol : symbols_)
             hub_->ensure_symbol(symbol, {QStringLiteral("coinbase"), QStringLiteral("kraken")});
-        QObject::connect(hub_, &CryptoFeedHub::tick_received, qApp,
-                         [this](const QString& symbol, const CryptoLatencyTick& tick) {
-                             if (symbols_.contains(symbol))
-                                 ingest_tick(tick);
-                         });
+        hub_connection_ = QObject::connect(
+            hub_, &CryptoFeedHub::tick_received, qApp,
+            [this](const QString& symbol, const CryptoLatencyTick& tick) {
+                if (symbols_.contains(symbol))
+                    ingest_tick(tick);
+            });
         decision_timer_ = new QTimer(qApp);
         decision_timer_->setInterval(cadence_ms_);
         QObject::connect(decision_timer_, &QTimer::timeout, qApp, [this]() { evaluate(); });
         decision_timer_->start();
     }
 
-    ~DaemonMakerEngine() = default;
+    ~DaemonMakerEngine() { QObject::disconnect(hub_connection_); }
 
   private:
     using CryptoLatencyService = services::crypto_latency::CryptoLatencyService;
@@ -2244,6 +2236,7 @@ class DaemonMakerEngine {
 
     QString profile_;
     CryptoFeedHub* hub_ = nullptr;
+    QMetaObject::Connection hub_connection_;
     QString decisions_path_;
     QString ticks_path_;
     QTimer* decision_timer_ = nullptr;

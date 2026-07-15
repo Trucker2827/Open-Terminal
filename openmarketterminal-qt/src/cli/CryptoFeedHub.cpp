@@ -35,6 +35,8 @@ void CryptoFeedHub::ensure_symbol(const QString& symbol, const QStringList& sour
                 requested.append(src);
             }
         }
+        if (requested.isEmpty())
+            requested = CryptoLatencyService::default_sources();
 
         auto* svc = new CryptoLatencyService(this);
         services_.insert(normalized, svc);
@@ -44,7 +46,9 @@ void CryptoFeedHub::ensure_symbol(const QString& symbol, const QStringList& sour
                          [this, normalized](const CryptoLatencyTick& tick) {
                              emit tick_received(normalized, tick);
                          });
-        svc->start(normalized, requested);
+        const int initial_delay_ms = next_start_delay_ms_;
+        next_start_delay_ms_ += 2000;
+        svc->start(normalized, requested, initial_delay_ms);
         return;
     }
 

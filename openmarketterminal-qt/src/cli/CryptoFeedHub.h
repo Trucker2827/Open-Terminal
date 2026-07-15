@@ -45,6 +45,7 @@ class CryptoFeedHub : public QObject {
   private:
     QHash<QString, CryptoLatencyService*> services_;
     QHash<QString, QStringList> requested_sources_;
+    int next_start_delay_ms_ = 0;
 };
 
 } // namespace openmarketterminal::cli

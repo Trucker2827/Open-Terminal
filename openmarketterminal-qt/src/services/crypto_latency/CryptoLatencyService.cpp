@@ -146,7 +146,63 @@ QJsonObject CryptoLatencyService::source_to_json(const CryptoLatencySourceState&
                        {QStringLiteral("raw_messages"), s.raw_messages},
                        {QStringLiteral("ticks"), s.ticks},
                        {QStringLiteral("reconnect_attempts"), s.reconnect_attempts},
-                       {QStringLiteral("last_close_code"), s.last_close_code}};
+                       {QStringLiteral("last_close_code"), s.last_close_code},
+                       {QStringLiteral("reconnect_delay_ms"), s.reconnect_delay_ms},
+                       {QStringLiteral("rate_limited"), s.rate_limited}};
+}
+
+CryptoLatencySnapshot CryptoLatencyService::filtered_snapshot(const CryptoLatencySnapshot& snapshot,
+                                                               const QStringList& sources) {
+    QSet<QString> allowed;
+    for (const QString& raw : sources) {
+        const QString source = raw.trimmed().toLower();
+        if (!source.isEmpty())
+            allowed.insert(source);
+    }
+    if (allowed.isEmpty())
+        return snapshot;
+
+    CryptoLatencySnapshot filtered;
+    filtered.symbol = snapshot.symbol;
+    for (const auto& state : snapshot.sources) {
+        if (allowed.contains(state.source.toLower()))
+            filtered.sources.append(state);
+    }
+    for (const auto& tick : snapshot.latest_ticks) {
+        if (allowed.contains(tick.source.toLower()))
+            filtered.latest_ticks.append(tick);
+    }
+
+    const qint64 now = now_ms();
+    for (const auto& tick : filtered.latest_ticks) {
+        if (tick.price <= 0.0)
+            continue;
+        ++filtered.total_ticks;
+        if (filtered.min_price <= 0.0 || tick.price < filtered.min_price)
+            filtered.min_price = tick.price;
+        if (tick.price > filtered.max_price)
+            filtered.max_price = tick.price;
+        if (tick.received_ts_ms > filtered.newest_tick_ms) {
+            filtered.newest_tick_ms = tick.received_ts_ms;
+            filtered.freshest_source = tick.source;
+        }
+        if (filtered.oldest_tick_ms <= 0 || tick.received_ts_ms < filtered.oldest_tick_ms)
+            filtered.oldest_tick_ms = tick.received_ts_ms;
+    }
+    for (const auto& state : filtered.sources) {
+        if (state.last_tick_ms > 0)
+            ++filtered.live_sources;
+    }
+    if (filtered.newest_tick_ms > 0)
+        filtered.freshest_age_ms = now - filtered.newest_tick_ms;
+    if (filtered.min_price > 0.0 && filtered.max_price > 0.0) {
+        filtered.mid_price = (filtered.min_price + filtered.max_price) / 2.0;
+        if (filtered.mid_price > 0.0) {
+            filtered.cross_source_spread_bps =
+                ((filtered.max_price - filtered.min_price) / filtered.mid_price) * 10000.0;
+        }
+    }
+    return filtered;
 }
 
 QJsonObject CryptoLatencyService::snapshot_to_json(const CryptoLatencySnapshot& s) {
@@ -171,7 +227,7 @@ QJsonObject CryptoLatencyService::snapshot_to_json(const CryptoLatencySnapshot& 
                        {QStringLiteral("sources"), sources}};
 }
 
-void CryptoLatencyService::start(const QString& symbol, const QStringList& sources) {
+void CryptoLatencyService::start(const QString& symbol, const QStringList& sources, int initial_delay_ms) {
     stop();
     symbol_ = normalize_symbol(symbol);
     running_ = true;
@@ -191,7 +247,7 @@ void CryptoLatencyService::start(const QString& symbol, const QStringList& sourc
         }
         wanted_sources_.insert(source);
         set_state(source, QStringLiteral("connecting"));
-        schedule_open(source, index * 200);
+        schedule_open(source, qMax(0, initial_delay_ms) + index * 200);
         ++index;
     }
 }
@@ -229,6 +285,8 @@ void CryptoLatencyService::stop() {
     for (auto it = states_.begin(); it != states_.end(); ++it) {
         it->reconnect_attempts = 0;
         it->last_close_code = 0;
+        it->reconnect_delay_ms = 0;
+        it->rate_limited = false;
     }
 }
 
@@ -273,6 +331,8 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
 
     connect(socket, &QWebSocket::connected, this, [this, source = feed.source, venue = feed.venue_symbol, socket]() {
         states_[source].reconnect_attempts = 0;
+        states_[source].reconnect_delay_ms = 0;
+        states_[source].rate_limited = false;
         set_state(source, QStringLiteral("connected"));
         if (source == QStringLiteral("coinbase")) {
             QJsonObject msg{{QStringLiteral("type"), QStringLiteral("subscribe")},
@@ -330,6 +390,8 @@ void CryptoLatencyService::open_tcp_feed(const Feed& feed) {
 
     connect(socket, &QTcpSocket::connected, this, [this, source = feed.source]() {
         states_[source].reconnect_attempts = 0;
+        states_[source].reconnect_delay_ms = 0;
+        states_[source].rate_limited = false;
         set_state(source, QStringLiteral("connected"));
     });
     connect(socket, &QTcpSocket::disconnected, this, [this, source = feed.source, socket]() {
@@ -387,17 +449,25 @@ void CryptoLatencyService::schedule_reconnect(const QString& source, const QStri
     if (!running_ || !wanted_sources_.contains(source))
         return;
     QTimer* timer = reconnect_timers_.value(source, nullptr);
-    // Dedup: errorOccurred and disconnected both fire for one failure. The
-    // first (errorOccurred, which carries the 429 string) schedules; the
-    // second finds the timer active and is a no-op — so we count one attempt.
-    if (timer && timer->isActive())
-        return;
-    const int attempt = states_[source].reconnect_attempts;
     const bool rate_limited = is_rate_limited(error_string);
+    // Dedup errorOccurred + disconnected, but allow a later 429-bearing signal
+    // to upgrade a short retry that an earlier generic signal already queued.
+    if (timer && timer->isActive()) {
+        const int upgraded_delay = 15000 + reconnect_jitter_ms(symbol_, source, true);
+        if (rate_limited && timer->remainingTime() < upgraded_delay) {
+            states_[source].rate_limited = true;
+            states_[source].reconnect_delay_ms = upgraded_delay;
+            timer->start(upgraded_delay);
+        }
+        return;
+    }
+    const int attempt = states_[source].reconnect_attempts;
     // Deterministic jitter (no rand) to de-correlate concurrent feeds' retries.
     const int delay = next_reconnect_delay_ms(attempt, rate_limited, 1000, 60000, 15000)
-                      + (attempt * 37) % 250;
+                      + reconnect_jitter_ms(symbol_, source, rate_limited);
     states_[source].reconnect_attempts = attempt + 1;
+    states_[source].reconnect_delay_ms = delay;
+    states_[source].rate_limited = rate_limited;
     schedule_open(source, delay);
 }
 
