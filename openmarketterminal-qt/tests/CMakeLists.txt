@@ -499,6 +499,11 @@ target_include_directories(tst_sandbox_schema PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_schema PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_schema COMMAND tst_sandbox_schema)
 
+add_executable(tst_feed_reconnect tst_feed_reconnect.cpp)
+target_include_directories(tst_feed_reconnect PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_feed_reconnect PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_feed_reconnect COMMAND tst_feed_reconnect)
+
 add_executable(tst_sandbox_maker_quotes tst_sandbox_maker_quotes.cpp)
 target_include_directories(tst_sandbox_maker_quotes PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_maker_quotes PRIVATE openterminal_core Qt6::Core Qt6::Test)
