@@ -1403,6 +1403,10 @@ set(SERVICE_SOURCES
     # ai screen shortlist Task 1 — Screener::screen: ranked gate-vetted
     # shortlist over edge_decision_journal, reusing DecisionContext::assess.
     src/services/ai_decision/Screener.cpp
+
+    # AI paper ledger Task 1 — pure signed-position accounting core
+    # (apply_fill/unrealized_of), no persistence.
+    src/services/ai_ledger/AiLedger.cpp
 )
 
 # UI framework

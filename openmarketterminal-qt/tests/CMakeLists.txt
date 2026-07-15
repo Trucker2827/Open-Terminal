@@ -106,6 +106,13 @@ target_include_directories(tst_strategy_loop PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_strategy_loop PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_strategy_loop COMMAND tst_strategy_loop)
 
+# AI paper ledger Task 1 — pure signed-position accounting core (apply_fill,
+# unrealized_of). No DB/persistence; pure math over LedgerPosition/FillDelta.
+add_executable(tst_ai_ledger tst_ai_ledger.cpp)
+target_include_directories(tst_ai_ledger PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_ledger PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_ledger COMMAND tst_ai_ledger)
+
 # AI-Trading Substrate Phase A Task 1 — the SECURITY KEYSTONE: the settings-WRITE
 # tool path must refuse any cli.* key (arm/enable trading, raise risk caps) even
 # when cli.allow_settings_write is on, so a CLI/AI agent can't escalate itself.
