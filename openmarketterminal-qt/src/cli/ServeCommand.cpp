@@ -1386,7 +1386,8 @@ bool write_daemon_runtime(const QString& profile,
                           const QString& mode,
                           const QString& endpoint = {},
                           const QString& bridge_owner_kind = {},
-                          const QString& bridge_owner_endpoint = {}) {
+                          const QString& bridge_owner_endpoint = {},
+                          const QJsonArray& crypto_feeds = {}) {
     QDir().mkpath(daemon_state_dir(profile));
     QJsonObject old = read_daemon_runtime(profile);
     QJsonObject rt{{"schema", 1},
@@ -1404,6 +1405,14 @@ bool write_daemon_runtime(const QString& profile,
         rt["bridge_owner_kind"] = bridge_owner_kind;
     if (!bridge_owner_endpoint.isEmpty())
         rt["bridge_owner_endpoint"] = bridge_owner_endpoint;
+    // Crypto feed health (Task 4's CryptoFeedHub::feed_health()) is only
+    // available once the hub exists in the serve loop; until then, preserve
+    // whatever was last written so the key doesn't flicker away between
+    // heartbeats.
+    if (!crypto_feeds.isEmpty())
+        rt["crypto_feeds"] = crypto_feeds;
+    else if (old.contains(QStringLiteral("crypto_feeds")))
+        rt["crypto_feeds"] = old.value(QStringLiteral("crypto_feeds"));
 
     QSaveFile f(daemon_runtime_path(profile));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -1467,6 +1476,7 @@ QJsonObject daemon_status_object(const QString& profile) {
         o["daemon_process_mode"] = runtime_mode;
         o["daemon_heartbeat_at"] = runtime.value("heartbeat_at");
         o["daemon_started_at"] = runtime.value("started_at");
+        o["crypto_feeds"] = runtime.value("crypto_feeds");
     }
     return o;
 }
@@ -2616,9 +2626,15 @@ int serve_run(const QString& profile) {
 
     auto& bridge = mcp::TerminalMcpBridge::instance();
     bool bridge_started = false;
+    // Declared here (before write_runtime_state captures it by reference) but
+    // constructed later, once the crypto engines are set up; write_runtime_state
+    // tolerates it being null until then.
+    CryptoFeedHub* crypto_feed_hub = nullptr;
     auto write_runtime_state = [&]() {
+        const QJsonArray feeds = crypto_feed_hub ? crypto_feed_hub->feed_health() : QJsonArray{};
         if (bridge_started) {
-            write_daemon_runtime(profile, QStringLiteral("owner"), bridge.endpoint());
+            write_daemon_runtime(profile, QStringLiteral("owner"), bridge.endpoint(), QString(), QString(),
+                                 feeds);
             return;
         }
         auto owner = read_bridge_file(root);
@@ -2627,7 +2643,8 @@ int serve_run(const QString& profile) {
                              owner_live ? QStringLiteral("warm") : QStringLiteral("warm-no-owner"),
                              {},
                              owner_live ? owner->kind : QString(),
-                             owner_live ? owner->endpoint : QString());
+                             owner_live ? owner->endpoint : QString(),
+                             feeds);
     };
 
     auto try_promote_to_owner = [&]() {
@@ -2681,7 +2698,7 @@ int serve_run(const QString& profile) {
     // WebSocket per venue instead of each opening their own (which tripped
     // Kraken's HTTP 429 rate limit). Constructed before the engines; its
     // teardown is registered last so the hub outlives both engines.
-    auto* crypto_feed_hub = new CryptoFeedHub(qApp);
+    crypto_feed_hub = new CryptoFeedHub(qApp);
     auto* scalp_engine = new DaemonScalpEngine(profile, crypto_feed_hub);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [scalp_engine]() { delete scalp_engine; });
     auto* maker_engine = new DaemonMakerEngine(profile, crypto_feed_hub);
