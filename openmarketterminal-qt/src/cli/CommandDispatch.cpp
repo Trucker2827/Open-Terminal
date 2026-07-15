@@ -502,6 +502,15 @@ static int command_help(const QString& topic) {
             "  ai recipe show <name>\n"
             "  ai recipe run <name> <target...>\n"
             "  ai ask <prompt...>\n"
+            "  ai strategy list [--json]\n"
+            "  ai handler create <name> --strategy <s> [--provider p] [--symbols A,B]\n"
+            "      [--interval-sec N] [--venues v1,v2] [--max-notional X] [--max-position Y]\n"
+            "      [--notes \"...\"]\n"
+            "  ai handler list [--json]\n"
+            "  ai handler show <name> [--json]\n"
+            "  ai handler delete <name>\n"
+            "  ai handler enable <name>   # flips ONLY the saved config's enabled flag\n"
+            "  ai handler disable <name>  # (no live trading path exists yet)\n"
             "  ai run strategy <meanrev|claude> --mode paper [--symbols AAPL,MSFT]\n");
         return 0;
     }
@@ -27930,6 +27939,23 @@ int dispatch(QStringList args) {
             return run_ask(args.join(' '));
         if (sub == "brief" || sub == "risk" || sub == "thesis" || sub == "radar")
             return run_workflow(sub, args);
+        if (sub == "strategy") {
+            const QString action = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
+            if (action != "list" && action != "ls") {
+                std::fprintf(stderr, "usage: ai strategy list [--json]\n");
+                return 2;
+            }
+            return ai_strategy_list_command(opts);
+        }
+        if (sub == "handler") {
+            if (args.isEmpty()) {
+                std::fprintf(stderr,
+                             "usage: ai handler <create|list|show|delete|enable|disable> ...\n");
+                return 2;
+            }
+            const QString action = args.takeFirst().trimmed().toLower();
+            return ai_handler_command(opts, action, args);
+        }
         const QString what = args.isEmpty() ? QString() : args.takeFirst();
         if (sub == "run" && what == "strategy")
             return ai_run_strategy(opts, args);  // args == tokens after "ai run strategy"
@@ -27937,6 +27963,9 @@ int dispatch(QStringList args) {
                      "usage: ai providers | ai use <provider> | ai test [prompt...] | ai recipes | "
                      "ai recipe show|run ... | "
                      "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
+                     "ai strategy list [--json] | "
+                     "ai handler create <name> --strategy <s> [...] | "
+                     "ai handler list|show <name>|delete <name>|enable <name>|disable <name> | "
                      "ai run strategy <meanrev|claude> --mode paper "
                      "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
         return 2;

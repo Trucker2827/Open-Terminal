@@ -1513,6 +1513,95 @@ private slots:
         QCOMPARE(rc, 0);
         QVERIFY(text.contains("ELIGIBLE"));
     }
+
+    // --- Task 3: `ai strategy list` + `ai handler` CRUD (PAPER-ONLY/DISARMED;
+    // AiHandlerRepository is a real DB-backed repo, so these need the shared
+    // process-lifetime DB brought up via sandbox_test_home() like the sandbox
+    // slots above). ---
+
+    void ai_strategy_list_advertises_builtins() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "strategy", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonArray strategies = out.value("strategies").toArray();
+        QStringList names;
+        for (const QJsonValue& v : strategies)
+            names << v.toObject().value("name").toString();
+        QVERIFY(names.contains("meanrev"));
+        QVERIFY(names.contains("claude"));
+        for (const QJsonValue& v : strategies) {
+            const QJsonObject o = v.toObject();
+            if (o.value("name").toString() == "claude")
+                QVERIFY(o.value("needs_provider").toBool());
+            if (o.value("name").toString() == "meanrev")
+                QVERIFY(!o.value("needs_provider").toBool());
+            QVERIFY(!o.value("description").toString().isEmpty());
+        }
+    }
+
+    void ai_handler_create_list_show_roundtrip() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject created = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "create", "crypto-scout", "--strategy", "claude",
+                       "--symbols", "BTC-USD"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(created.value("name").toString(), QString("crypto-scout"));
+        QCOMPARE(created.value("strategy").toString(), QString("claude"));
+        QCOMPARE(created.value("symbols").toString(), QString("BTC-USD"));
+        // paper-only/disarmed invariant: a freshly created handler is never enabled.
+        QVERIFY(!created.value("enabled").toBool());
+
+        const QJsonObject shown = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(shown.value("strategy").toString(), QString("claude"));
+        QCOMPARE(shown.value("symbols").toString(), QString("BTC-USD"));
+        QVERIFY(!shown.value("enabled").toBool());
+
+        const QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        bool found = false;
+        for (const QJsonValue& v : listed.value("handlers").toArray())
+            if (v.toObject().value("name").toString() == "crypto-scout")
+                found = true;
+        QVERIFY(found);
+
+        // enable/disable flip ONLY the saved-config flag.
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "enable", "crypto-scout"}), 0);
+        QJsonObject after_enable = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(after_enable.value("enabled").toBool());
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "disable", "crypto-scout"}), 0);
+        QJsonObject after_disable = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!after_disable.value("enabled").toBool());
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "delete", "crypto-scout"}), 0);
+        int show_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &show_rc);
+        QVERIFY(show_rc != 0);
+    }
+
+    void ai_handler_create_rejects_unknown_strategy() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch(QStringList{"ai", "handler", "create", "x", "--strategy", "bogus"});
+            return rc;
+        });
+        QVERIFY2(rc != 0, "create with an unregistered strategy must fail");
+
+        int show_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "x"}, &show_rc);
+        QVERIFY2(show_rc != 0, "no row should have been written for the rejected create");
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"
