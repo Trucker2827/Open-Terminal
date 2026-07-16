@@ -103,7 +103,7 @@ int ai_usage() {
     std::fprintf(stderr,
                  "usage: ai run strategy <meanrev|claude> --mode paper "
                  "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor] "
-                 "[--max-aggregate-qty N]\n");
+                 "[--max-aggregate-qty N] [--max-position-qty N] [--max-notional-per-order N]\n");
     return 2;
 }
 
@@ -632,6 +632,8 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     QStringList symbols;
     bool require_floor = true;  ///< default-ON deterministic floor; --no-floor disables it.
     double max_aggregate_qty = 0.0;
+    double max_position_qty = 0.0;
+    double max_notional_per_order = 0.0;
 
     // Consume the next token as the value for `flag`; false if missing.
     auto take_val = [&](const QString& flag, QString& dst) -> bool {
@@ -666,6 +668,12 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
         } else if (f == "--max-aggregate-qty") {
             if (!take_val(f, v)) return 2;
             max_aggregate_qty = v.toDouble();  // non-numeric -> 0 = off
+        } else if (f == "--max-position-qty") {
+            if (!take_val(f, v)) return 2;
+            max_position_qty = v.toDouble();  // non-numeric -> 0 = off
+        } else if (f == "--max-notional-per-order") {
+            if (!take_val(f, v)) return 2;
+            max_notional_per_order = v.toDouble();  // non-numeric -> 0 = off
         } else {
             std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
             return ai_usage();
@@ -736,10 +744,13 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     cfg.duration_sec = duration_sec;
     cfg.require_floor = require_floor;
     cfg.max_aggregate_position_qty = max_aggregate_qty;
+    cfg.max_position_qty = max_position_qty;
+    cfg.max_notional_per_order = max_notional_per_order;
 
-    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f\n",
+    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
                 qUtf8Printable(strategy->name()), interval_sec, max_iters, duration_sec,
-                qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off", max_aggregate_qty);
+                qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off", max_aggregate_qty,
+                max_position_qty, max_notional_per_order);
     std::fflush(stdout);
 
     const ai_strategy::RunSummary s =

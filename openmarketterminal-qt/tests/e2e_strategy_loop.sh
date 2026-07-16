@@ -136,6 +136,22 @@ printf '%s' "$R1C" | grep -q "agg_cap=5" \
 echo "PASS: --max-aggregate-qty accepted, agg_cap=5"
 
 # ============================================================================
+# Step 1d — --max-position-qty N and --max-notional-per-order N thread the
+# per-handler position cap and per-order notional cap into RunConfig (CLI
+# parity, F5): exit 0, and the run line reports pos_cap=7 and notional_cap=500.
+# ============================================================================
+R1D=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --interval-sec 0 --max-iters 3 --symbols AAPL \
+        --max-position-qty 7 --max-notional-per-order 500 2>&1)
+RC1D=$?
+[ $RC1D -eq 0 ] || fail "--max-position-qty/--max-notional-per-order run rc=$RC1D (expected 0)"
+printf '%s' "$R1D" | grep -q "pos_cap=7" \
+    || fail "--max-position-qty did not report 'pos_cap=7' (out: $R1D)"
+printf '%s' "$R1D" | grep -q "notional_cap=500" \
+    || fail "--max-notional-per-order did not report 'notional_cap=500' (out: $R1D)"
+echo "PASS: --max-position-qty/--max-notional-per-order accepted, pos_cap=7 notional_cap=500"
+
+# ============================================================================
 # Step 2 — --mode live is REFUSED: nonzero exit + exact-substring message.
 # ============================================================================
 R2=$(wd 30 "$CLI" --headless --profile "$PROF" \
