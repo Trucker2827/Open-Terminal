@@ -9,12 +9,15 @@
 #include <QQueue>
 #include <QTemporaryDir>
 
+#include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
 #include "services/ai_decision/DecisionContext.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/Strategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
+#include "storage/repositories/AiFillRepository.h"
+#include "storage/sqlite/Database.h"
 
 using namespace openmarketterminal;
 using ai_strategy::LlmStrategy;
@@ -419,6 +422,79 @@ class TstStrategyLoop : public QObject {
         // Null completion function ⇒ clean empty, never invoked.
         LlmStrategy null_strat(aapl_universe(), nullptr);
         QVERIFY(null_strat.propose(s).isEmpty());
+    }
+
+    // ── AI paper ledger (Task 4) write-hook integration ─────────────────────
+    // These two slots need a MIGRATED DB (the pre-existing slots above run
+    // against an empty, unmigrated DB — that's what keeps their kill-switch
+    // read at false). Declared last so the empty-DB slots run first/unaffected.
+
+  private:
+    void ensure_migrated_db() {
+        static bool up = false;
+        if (up) return;
+        headless::HeadlessRuntime hr;
+        headless::InitResult ir = hr.init(QString{});
+        QVERIFY2(ir.ok, qUtf8Printable(ir.error));
+        up = true;
+    }
+
+  private slots:
+    // A filled paper intent must produce exactly one ai_fill row tagged with
+    // the strategy's handler name, symbol, side/qty/price, and draft_id.
+    void fill_writes_one_ai_fill_row() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DLED"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;  // name() == "fake"
+        s.intents_ = {TradeIntent{{"symbol", "LED-USD"}, {"side", "buy"}, {"quantity", 3.0}, {"limit_price", 40.0}}};
+
+        StrategyRunner runner;
+        // Make the gate pass for LED-USD (default-constructed packet ⇒
+        // clears_cost/freshness are empty strings ⇒ neither gate rejects).
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.filled, 1);
+
+        auto rows = AiFillRepository::instance().list("fake", "LED-USD", 10);
+        QVERIFY(rows.is_ok());
+        QCOMPARE(rows.value().size(), 1);
+        QCOMPARE(rows.value().at(0).handler, QStringLiteral("fake"));
+        QCOMPARE(rows.value().at(0).symbol, QStringLiteral("LED-USD"));
+        QCOMPARE(rows.value().at(0).quantity, 3.0);
+        QCOMPARE(rows.value().at(0).fill_price, 40.0);  // limit_price used
+        QCOMPARE(rows.value().at(0).draft_id, QStringLiteral("DLED"));
+    }
+
+    // A gate-rejected intent never reaches prepare/submit, so it must write
+    // no ai_fill row at all.
+    void gate_rejected_intent_writes_no_row() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;  // no prepare/submit needed — gate rejects first
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "REJ-USD"}, {"side", "buy"}, {"quantity", 3.0}, {"limit_price", 40.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.clears_cost = QStringLiteral("false");  // cost gate rejects
+            return p;
+        };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        cfg.require_cost_gate = true;
+        RunSummary sum = runner.run(s, tc, cfg);
+        QCOMPARE(sum.filled, 0);
+
+        auto rows = AiFillRepository::instance().list("fake", "REJ-USD", 10);
+        QVERIFY(rows.is_ok());
+        QCOMPARE(rows.value().size(), 0);  // rejected before submit → no fill row
     }
 };
 

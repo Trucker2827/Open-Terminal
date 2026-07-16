@@ -3,6 +3,7 @@
 
 #include "mcp/tools/SettingsGate.h"
 #include "services/ai_strategy/PretradeGate.h"
+#include "services/ai_ledger/AiLedger.h"
 
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -156,6 +157,17 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
                 // submit never happened, so a strategy tracking positions here must
                 // not book it.
                 s.on_fill(intent, subo);
+
+                // Best-effort paper-ledger record — never break the loop on a DB error.
+                const double fill_price = intent.contains(QStringLiteral("limit_price"))
+                    ? intent.value(QStringLiteral("limit_price")).toDouble()
+                    : snap.quotes.value(sym, 0.0);
+                auto rec = ai_ledger::record_fill(
+                    s.name(), sym, intent.value(QStringLiteral("side")).toString(),
+                    intent.value(QStringLiteral("quantity")).toDouble(), fill_price,
+                    /*fee=*/0.0, draft_id);
+                if (rec.is_err())
+                    log(QStringLiteral("ledger record skipped: ") + QString::fromStdString(rec.error()));
             } else {
                 ++summary.rejected;
                 log(QStringLiteral("submit rejected draft ") + draft_id + QStringLiteral(": ") +
