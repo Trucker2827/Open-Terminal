@@ -1,5 +1,6 @@
 #include "services/ai_decision/DecisionContext.h"
 
+#include "services/ai_ledger/AiLedger.h"
 #include "services/sandbox/FreshnessGate.h"
 #include "storage/sqlite/Database.h"
 
@@ -67,6 +68,16 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
     DecisionPacket packet;
     packet.symbol = symbol;
     packet.market = market;
+
+    // Position: real read of the AI paper ledger (piece 4b) — aggregate net
+    // across all handlers for this symbol. Synchronous SELECT(s), no broker.
+    // Independent of the edge_decision_journal lookup below (a separate
+    // table), so it is set here unconditionally: every return path below
+    // (query error, no row, normal) carries the real position.
+    // buying_power stays -1 (unknown): paper has no funded-account concept.
+    packet.position_source = QStringLiteral("ai_ledger");
+    packet.position_qty = ai_ledger::net_position_for_symbol(symbol);
+    packet.buying_power = -1.0;
 
     auto rows = openmarketterminal::Database::instance().execute(
         "SELECT id, created_at, updated_at, venue, symbol, horizon, market_id, question, direction,"
@@ -150,14 +161,6 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
     packet.notes << QStringLiteral(
         "lane_verdict is a best-effort stub: evaluate_lane_significance is per-lane "
         "(kind/venue/liquidity), not per-symbol, so no single-verdict collapse is defined yet");
-
-    // Position/headroom: documented best-effort stub. assess() is
-    // synchronous and must not reach into a broker/event-loop connection
-    // (see file header), so this is a placeholder, not a live read.
-    packet.position_source = QStringLiteral("none");
-    packet.position_qty = 0.0;
-    packet.buying_power = -1.0;
-    packet.notes << QStringLiteral("position enrichment pending AI ledger (piece 4)");
 
     packet.recommendation_hint = compute_hint(packet);
     return packet;

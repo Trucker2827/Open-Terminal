@@ -129,6 +129,15 @@ QVector<HandlerPosition> positions_of(const QString& handler) {
     return out;
 }
 
+double net_position_for_symbol(const QString& symbol) {
+    double sum = 0.0;
+    for (const HandlerPosition& hp : positions_of()) {
+        if (hp.symbol == symbol)
+            sum += hp.position.net_qty;
+    }
+    return sum;
+}
+
 double realized_total(const QString& handler) {
     double sum = 0.0;
     auto fills = AiFillRepository::instance().list(handler, {}, 0);  // all fills, no symbol filter

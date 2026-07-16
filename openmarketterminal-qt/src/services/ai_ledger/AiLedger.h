@@ -50,6 +50,9 @@ LedgerPosition position_of(const QString& handler, const QString& symbol);
 /// All (handler, symbol) with a non-flat net_qty, each folded. Empty handler = all handlers. Read-only.
 QVector<HandlerPosition> positions_of(const QString& handler = {});
 
+/// Aggregate signed net position for a symbol summed across ALL handlers. Read-only; 0 when flat/none/error.
+double net_position_for_symbol(const QString& symbol);
+
 /// Sum of realized_pnl across all fills (optionally for one handler). Read-only.
 double realized_total(const QString& handler = {});
 

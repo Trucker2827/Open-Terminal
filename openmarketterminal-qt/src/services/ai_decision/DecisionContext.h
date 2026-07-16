@@ -7,12 +7,13 @@
 // reuse this seam instead of re-deriving the same gates.
 //
 // READ-ONLY INVARIANT (binding): assess() issues only SELECTs against
-// edge_decision_journal and sandbox_position/sandbox_strategy. It never
-// INSERTs/UPDATEs/DELETEs, places an order, or mutates a gate/setting. It is
-// synchronous and does not touch the event loop or any broker connection —
-// callers that need a live position/buying-power figure get it from the
-// AI ledger (a later piece); until then position/headroom is a documented
-// best-effort stub (see PositionSource note below).
+// edge_decision_journal, sandbox_position/sandbox_strategy, and (piece 4b)
+// ai_fill via ai_ledger::net_position_for_symbol. It never INSERTs/UPDATEs/
+// DELETEs, places an order, or mutates a gate/setting. It is synchronous and
+// does not touch the event loop or any broker connection — position/
+// buying-power come from a synchronous read of the AI paper ledger (see
+// PositionSource note below); buying_power remains an unknown (-1) sentinel
+// since paper trading has no funded-account concept.
 //
 // COST ACCOUNTING (binding): round_trip_cost_bps and clears_cost come from
 // the edge_decision_journal row's OWN recorded spread_cost/fee_cost/
@@ -73,10 +74,9 @@ struct DecisionPacket {
     // --- Derived: lane significance (best-effort; see DecisionContext.cpp) ---
     QString lane_verdict; // "EDGE"|"no edge"|"insufficient"|"unknown"
 
-    // --- Position/headroom: best-effort stub until the AI ledger (a later
-    // piece) is wired. assess() is synchronous and must not reach into a
-    // broker/event-loop connection, so these are placeholder values, not a
-    // live read. See notes for the explicit reason. ---
+    // --- Position/headroom: real read of the AI paper ledger (piece 4b),
+    // aggregated net across all handlers for this symbol. buying_power stays
+    // an unknown (-1) sentinel: paper trading has no funded-account concept. ---
     QString position_source = QStringLiteral("none");
     double position_qty = 0.0;
     double buying_power = -1.0; // -1 sentinel: "unknown", not "zero headroom".

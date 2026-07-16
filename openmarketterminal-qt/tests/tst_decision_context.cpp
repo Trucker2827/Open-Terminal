@@ -124,7 +124,35 @@ class TstDecisionContext : public QObject {
         QVERIFY(obj.value(QStringLiteral("has_edge_signal")).toBool());
         QCOMPARE(obj.value(QStringLiteral("clears_cost")).toString(), QStringLiteral("true"));
         QCOMPARE(obj.value(QStringLiteral("recommendation_hint")).toString(), QStringLiteral("all gates pass"));
-        QCOMPARE(obj.value(QStringLiteral("position_source")).toString(), QStringLiteral("none"));
+        QCOMPARE(obj.value(QStringLiteral("position_source")).toString(), QStringLiteral("ai_ledger"));
+    }
+
+    void ctx_position_aggregates_across_handlers() {
+        // Two handlers, same symbol: A net +5 (buy 5), B net +3 (buy 3).
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('af1','A','AGG-USD','buy',5,100,0,0,1000,'d'),"
+            "       ('af2','B','AGG-USD','buy',3,100,0,0,1001,'d')").is_ok());
+        const auto pkt = ai_decision::assess(QStringLiteral("AGG-USD"));
+        QCOMPARE(pkt.position_source, QStringLiteral("ai_ledger"));
+        QCOMPARE(pkt.position_qty, 8.0);
+        QCOMPARE(pkt.buying_power, -1.0);
+    }
+
+    void ctx_position_nets_opposing_handlers_to_zero() {
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('af3','A','NET-USD','buy',5,100,0,0,1000,'d'),"
+            "       ('af4','B','NET-USD','sell',5,100,0,0,1001,'d')").is_ok());
+        const auto pkt = ai_decision::assess(QStringLiteral("NET-USD"));
+        QCOMPARE(pkt.position_qty, 0.0);
+        QCOMPARE(pkt.position_source, QStringLiteral("ai_ledger"));
+    }
+
+    void ctx_position_flat_when_no_fills() {
+        const auto pkt = ai_decision::assess(QStringLiteral("NONE-USD"));
+        QCOMPARE(pkt.position_qty, 0.0);
+        QCOMPARE(pkt.position_source, QStringLiteral("ai_ledger"));
     }
 };
 QTEST_GUILESS_MAIN(TstDecisionContext)
