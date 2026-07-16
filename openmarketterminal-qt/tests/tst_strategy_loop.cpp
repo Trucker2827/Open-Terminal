@@ -496,6 +496,56 @@ class TstStrategyLoop : public QObject {
         QVERIFY(rows.is_ok());
         QCOMPARE(rows.value().size(), 0);  // rejected before submit → no fill row
     }
+
+    // ── Runner wiring: cumulative + handler-scoped cap via ledger (Task 3) ──
+
+    void cumulative_cap_rejects_growing_intent_over_existing() {
+        ensure_migrated_db();
+        // Existing ledger position for fake/CAP-USD = +8 (buy 8).
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('cap1','fake','CAP-USD','buy',8,100,0,0,1000,'d')").is_ok());
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DCAP"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","CAP-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };  // passes cost/freshness
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        cfg.max_position_qty = 10.0;  // 8 + 5 = 13 > 10 and > 8 -> reject
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(tc.count("submit_order"), 0);              // never submitted
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+    }
+
+    void cumulative_cap_allows_reducing_intent_over_cap() {
+        ensure_migrated_db();
+        // Existing fake/RED-USD = +15 (over cap 10).
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('red1','fake','RED-USD','buy',15,100,0,0,1000,'d')").is_ok());
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DRED"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","RED-USD"},{"side","sell"},{"quantity",3.0},{"limit_price",100.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        cfg.max_position_qty = 10.0;  // 15 - 3 = 12, still > cap 10 but |12| <= |15| (reduces) -> allowed
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);                            // reduce passed to submit
+        QVERIFY(tc.count("submit_order") >= 1);
+    }
 };
 
 QTEST_MAIN(TstStrategyLoop)

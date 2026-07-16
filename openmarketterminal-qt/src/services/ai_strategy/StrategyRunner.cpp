@@ -108,6 +108,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             gin.clears_cost = pkt.clears_cost;
             gin.freshness = pkt.freshness;
             gin.has_edge_signal = pkt.has_edge_signal;
+            gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
             const GateVerdict gv = evaluate_pretrade(intent, gin, policy);
             if (!gv.ok) {
                 ++summary.rejected;

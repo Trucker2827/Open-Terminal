@@ -316,6 +316,8 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     std::printf("freshness:           %s\n", qUtf8Printable(packet.freshness));
     std::printf("lane_verdict:        %s\n", qUtf8Printable(packet.lane_verdict));
     std::printf("recommendation_hint: %s\n", qUtf8Printable(packet.recommendation_hint));
+    std::printf("position:            %s qty=%.4f\n", qUtf8Printable(packet.position_source),
+                packet.position_qty);
     return 0;
 }
 
