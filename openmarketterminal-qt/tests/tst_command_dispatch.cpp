@@ -2313,7 +2313,8 @@ private slots:
             QStringLiteral("cli.kill_switch"), QStringLiteral("false"), QStringLiteral("test"));
 
         QCOMPARE(dispatch(QStringList{"ai", "handler", "create", "p1", "--strategy", "meanrev",
-                                      "--symbols", "BTC-USD"}), 0);
+                                      "--symbols", "BTC-USD", "--venues", " Coinbase, kraken ",
+                                      "--max-notional", "12.5", "--max-position", "0.75"}), 0);
 
         // Paper-only proof: a live run is REFUSED with exit 2 (no live path).
         int live_rc = -1;
@@ -2333,6 +2334,9 @@ private slots:
         QCOMPARE(paper_rc, 0);
         QVERIFY2(out.contains("filled=0"),
                  qUtf8Printable("paper run must place no order; got: " + out));
+        QVERIFY2(out.contains("caps_enforced=true max_notional=12.50 max_position=0.75 "
+                              "allowed_venues=coinbase,kraken"),
+                 qUtf8Printable("saved handler limits must reach RunConfig; got: " + out));
 
         dispatch(QStringList{"ai", "handler", "delete", "p1"});
     }

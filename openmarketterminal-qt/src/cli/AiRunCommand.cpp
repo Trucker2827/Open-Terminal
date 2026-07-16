@@ -594,6 +594,13 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
     cfg.interval_sec = ivl;
     cfg.max_iters = max_iters;
     cfg.duration_sec = duration_sec;
+    cfg.max_notional_per_order = h.max_notional;
+    cfg.max_position_qty = h.max_position;
+    for (const QString& raw_venue : h.allowed_venues.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        const QString venue = raw_venue.trimmed().toLower();
+        if (!venue.isEmpty() && !cfg.allowed_venues.contains(venue))
+            cfg.allowed_venues.push_back(venue);
+    }
 
     std::printf("[handler] running '%s' strategy=%s mode=paper interval=%ds max-iters=%d "
                 "duration=%ds symbols=%s\n",
@@ -604,12 +611,12 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
     const ai_strategy::RunSummary s =
         runner.run(*strategy, caller, cfg, [] { return g_stop.load(); });
 
-    // RunConfig has no notional/position caps, so the handler's stored caps are
-    // NOT enforced by the paper runner — surface that explicitly (stored, not applied).
     std::printf("summary: ticks=%d proposed=%d prepared=%d filled=%d rejected=%d errors=%d "
-                "halted=%s caps_enforced=false max_notional=%.2f max_position=%.2f\n",
+                "halted=%s caps_enforced=true max_notional=%.2f max_position=%.2f allowed_venues=%s\n",
                 s.ticks, s.proposed, s.prepared, s.filled, s.rejected, s.errors,
-                s.halted_by_kill_switch ? "true" : "false", h.max_notional, h.max_position);
+                s.halted_by_kill_switch ? "true" : "false", cfg.max_notional_per_order,
+                cfg.max_position_qty,
+                qUtf8Printable(cfg.allowed_venues.join(QLatin1Char(','))));
     std::fflush(stdout);
 
     std::signal(SIGINT, SIG_DFL);
