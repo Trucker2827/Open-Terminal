@@ -631,6 +631,11 @@ target_include_directories(tst_deterministic_floor PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_deterministic_floor PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_deterministic_floor COMMAND tst_deterministic_floor)
 
+add_executable(tst_typed_action tst_typed_action.cpp)
+target_include_directories(tst_typed_action PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_typed_action PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_typed_action COMMAND tst_typed_action)
+
 # Strategy Sandbox Task 11 — power-boundary check: the sandbox service
 # object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/
 # SandboxEligibility/SandboxRegistry/TickTail, under

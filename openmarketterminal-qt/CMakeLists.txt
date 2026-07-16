@@ -1237,6 +1237,7 @@ set(SERVICE_SOURCES
     src/services/ai_strategy/LlmStrategy.cpp
     src/services/ai_strategy/PretradeGate.cpp
     src/services/ai_strategy/DeterministicFloor.cpp
+    src/services/ai_strategy/TypedAction.cpp
     src/services/report_builder/ReportBuilderService.cpp
     src/services/report_builder/ReportBuilderTemplates.cpp
     src/core/services/Services.cpp
