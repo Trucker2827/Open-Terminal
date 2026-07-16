@@ -13,6 +13,7 @@
 // The completion seam (CompletionFn) lets tests inject a fake; the real CLI
 // (Task 4) injects a lambda wrapping the app's LlmService.
 #include "services/ai_strategy/Strategy.h"
+#include "services/ai_strategy/TypedAction.h"
 
 #include <QString>
 #include <QStringList>
@@ -26,19 +27,20 @@ class LlmStrategy : public Strategy {
     /// The LLM seam: given a prompt, return the model's text reply.
     using CompletionFn = std::function<QString(const QString& prompt)>;
 
-    LlmStrategy(QStringList universe, CompletionFn complete);
+    LlmStrategy(QStringList universe, CompletionFn complete, double max_qty = 10.0);
 
     QString name() const override { return QStringLiteral("claude"); }
     QStringList universe() const override { return universe_; }
     QVector<TradeIntent> propose(const MarketSnapshot& s) override;
 
-    /// Robust, side-effect-free parse of an LLM reply into universe-filtered
-    /// intents. Exposed for direct unit testing. NEVER throws.
-    static QVector<TradeIntent> parse_intents(const QString& reply, const QStringList& universe);
+    /// Robust, side-effect-free parse of an LLM reply into universe-filtered typed
+    /// actions. Exposed for direct unit testing. NEVER throws.
+    static QVector<ActionChoice> parse_actions(const QString& reply, const QStringList& universe);
 
   private:
     QStringList universe_;
     CompletionFn complete_;
+    double max_qty_ = 10.0;
 };
 
 } // namespace openmarketterminal::ai_strategy
