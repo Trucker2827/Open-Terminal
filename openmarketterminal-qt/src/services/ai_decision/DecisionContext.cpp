@@ -5,6 +5,8 @@
 #include "services/sandbox/FreshnessGate.h"
 #include "storage/sqlite/Database.h"
 
+#include <algorithm>
+
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -64,9 +66,10 @@ constexpr int col(EdgeCol c) {
     return static_cast<int>(c);
 }
 
-// Edge endorsements expire after 24h (wall-clock) — an edge_decision_journal
-// row older than this is not actionable and assess() must not report it as a
-// usable signal.
+// Ceiling on how old an edge_decision_journal row may be before assess() stops
+// reporting it as a usable signal. Also the fallback bound when the row's
+// seconds_left is unknown (<=0). The actual bound applied per-row is
+// horizon-aware — see the recency check below.
 constexpr qint64 kEdgeMaxAgeMs = 24LL * 60 * 60 * 1000;  // 86400000
 
 } // namespace
@@ -125,10 +128,22 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
     QSqlQuery& q = rows.value();
 
     const qint64 created_at_ms = q.value(col(EdgeCol::kCreatedAt)).toLongLong();
-    if (QDateTime::currentMSecsSinceEpoch() - created_at_ms > kEdgeMaxAgeMs) {
-        // Expired endorsement: an edge decision older than 24h (wall-clock) is not
-        // actionable. Treat as no usable signal (has_edge_signal stays false).
-        packet.notes << QStringLiteral("edge_decision_journal row too old (age > 24h)");
+    // Horizon-aware recency bound. seconds_left is the edge's validity window
+    // from creation: for crypto rows it is the horizon length in seconds; for
+    // Kalshi/prediction rows it is seconds-to-resolution at write time — both
+    // approximate "how long this edge stays actionable." Bound the row's age by
+    // that window, capped at the 24h ceiling (min) so this is purely
+    // subtractive vs the old flat 24h; seconds_left<=0 (unknown/-1 default)
+    // falls back to the 24h ceiling (unchanged behavior). Do NOT parse the
+    // horizon string — the journal's horizon vocabulary is heterogeneous
+    // (raw-seconds "3600s" AND "5m"/"daily") and no parser covers it.
+    const qint64 seconds_left = q.value(col(EdgeCol::kSecondsLeft)).toLongLong();
+    const qint64 max_age_ms = (seconds_left > 0)
+        ? std::min(seconds_left * 1000, kEdgeMaxAgeMs)
+        : kEdgeMaxAgeMs;
+    if (QDateTime::currentMSecsSinceEpoch() - created_at_ms > max_age_ms) {
+        // Endorsement past its horizon window: not actionable. has_edge_signal stays false.
+        packet.notes << QStringLiteral("edge_decision_journal row too old (age > horizon window)");
         packet.clears_cost = QStringLiteral("unknown");
         packet.freshness = QStringLiteral("unknown");
         packet.lane_verdict = QStringLiteral("unknown");

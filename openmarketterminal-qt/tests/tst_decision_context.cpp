@@ -143,6 +143,35 @@ class TstDecisionContext : public QObject {
         QVERIFY(has_note);
     }
 
+    void assess_recency_bound_is_horizon_aware() {
+        // Short-horizon edge (seconds_left=300 => 5m window), aged 10 min: under
+        // the OLD flat 24h bound this was fresh; horizon-aware it is STALE.
+        const qint64 ten_min = QDateTime::currentMSecsSinceEpoch() - 10LL * 60 * 1000;
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, seconds_left, freshness_json, source)"
+            " VALUES ('rec-short', ?, ?, 'SHORTH-USD', 'buy', 'pass', 6.0, 1.0, 0.5, 300,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')", {ten_min, ten_min}).is_ok());
+        const auto short_h = assess(QStringLiteral("SHORTH-USD"));
+        QVERIFY(!short_h.has_edge_signal);            // 600s age > 300s window => stale
+        bool too_old = false;
+        for (const QString& n : short_h.notes) if (n.contains(QStringLiteral("too old"))) too_old = true;
+        QVERIFY(too_old);
+
+        // Daily-horizon edge (seconds_left=86400 => 24h window), aged 2h: still
+        // fresh (proves the change did not just make everything stale — the
+        // "daily shouldn't expire in an hour" half of the finding).
+        const qint64 two_h = QDateTime::currentMSecsSinceEpoch() - 2LL * 60 * 60 * 1000;
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, seconds_left, freshness_json, source)"
+            " VALUES ('rec-daily', ?, ?, 'DAILYH-USD', 'buy', 'pass', 6.0, 1.0, 0.5, 86400,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')", {two_h, two_h}).is_ok());
+        const auto daily_h = assess(QStringLiteral("DAILYH-USD"));
+        QVERIFY(daily_h.has_edge_signal);             // 7200s age < 86400s window => fresh
+        QVERIFY(qAbs(daily_h.edge_after_cost - 6.0) < 1e-9);
+    }
+
     void assess_scopes_by_market() {
         // Same symbol, two markets. The CRYPTO row (coinbase) is OLDER; the
         // PREDICTION row (kalshi) is NEWER. Without market scoping, assess()
