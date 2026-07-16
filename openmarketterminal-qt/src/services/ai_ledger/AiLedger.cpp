@@ -28,16 +28,22 @@ FillDelta apply_fill(const LedgerPosition& current, const QString& side, double 
     const bool same_dir = (net == 0.0) || ((net > 0.0) == (signed_qty > 0.0));
 
     if (same_dir) {
-        // Open or average-in. New avg is size-weighted; fee is a cost booked immediately.
+        // Open or average-in. New avg is size-weighted, with the fee folded into
+        // the cost basis (worsening the effective entry: +fee for a long, -fee for
+        // a short). Booking the fee here rather than as immediate realized P&L
+        // keeps an OPEN's realized_pnl == 0, so the scorecard's realized-close
+        // filter still distinguishes opens from closes; the fee is realized at the
+        // eventual close via the worsened entry. (F3)
         const double prev_abs = std::abs(net);
         const double add_abs = std::abs(signed_qty);
         const double total_abs = prev_abs + add_abs;
+        const double fee_basis = sell ? -fee : fee;  // long adds cost, short reduces proceeds
         p.avg_entry_price = total_abs > 0.0
-            ? (current.avg_entry_price * prev_abs + price * add_abs) / total_abs
+            ? (current.avg_entry_price * prev_abs + price * add_abs + fee_basis) / total_abs
             : 0.0;
         p.net_qty = net + signed_qty;
-        realized_this = -fee;
-        p.realized_pnl = current.realized_pnl + realized_this;
+        realized_this = 0.0;
+        p.realized_pnl = current.realized_pnl;  // unchanged on an open — fee lives in the basis
     } else {
         // Opposite direction: close up to min(|net|, qty), realizing PnL on the closed portion.
         const double closing = std::min(std::abs(net), qty);

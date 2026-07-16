@@ -25,6 +25,12 @@ bool reason_is_halting(const QString& reason) {
            r.contains(QLatin1String("paper trading disabled"));
 }
 
+// The paper rail (UnifiedTrading::init_session) charges this fee per fill; it is
+// not surfaced by submit_order, so mirror it here to keep the ai_fill ledger's
+// realized P&L truthful (a fee=0 record inflates the scorecard). Keep in sync
+// with UnifiedTrading::init_session's paper-portfolio fee_rate.
+constexpr double kPaperFeeRate = 0.0003;  // 3 bps
+
 } // namespace
 
 RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg,
@@ -196,10 +202,12 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
                 const double fill_price = intent.contains(QStringLiteral("limit_price"))
                     ? intent.value(QStringLiteral("limit_price")).toDouble()
                     : snap.quotes.value(sym, 0.0);
+                const double fill_qty = intent.value(QStringLiteral("quantity")).toDouble();
+                // Mirror the paper rail's fee so realized P&L is net of costs (F3).
+                const double fee = fill_qty * fill_price * kPaperFeeRate;
                 auto rec = ai_ledger::record_fill(
                     s.name(), sym, intent.value(QStringLiteral("side")).toString(),
-                    intent.value(QStringLiteral("quantity")).toDouble(), fill_price,
-                    /*fee=*/0.0, draft_id);
+                    fill_qty, fill_price, fee, draft_id);
                 if (rec.is_err())
                     log(QStringLiteral("ledger record skipped: ") + QString::fromStdString(rec.error()));
             } else {

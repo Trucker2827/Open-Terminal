@@ -71,6 +71,28 @@ class TstAiLedger : public QObject {
         QCOMPARE(d.realized_pnl_this_fill, 115.0);     // (130-100)*4 - 5
     }
 
+    void open_long_fee_folds_into_basis() {
+        // Long open with a fee: fee raises the effective entry, realized stays 0.
+        FillDelta d = apply_fill(LedgerPosition{}, "buy", 10.0, 100.0, 3.0);
+        QCOMPARE(d.position.avg_entry_price, 100.3);   // (100*10 + 3)/10
+        QCOMPARE(d.position.realized_pnl, 0.0);
+        QCOMPARE(d.realized_pnl_this_fill, 0.0);        // open books no realized P&L
+    }
+    void open_short_fee_folds_into_basis() {
+        // Short open with a fee: fee lowers the effective entry (worse proceeds).
+        FillDelta d = apply_fill(LedgerPosition{}, "sell", 10.0, 100.0, 3.0);
+        QVERIFY(qAbs(d.position.avg_entry_price - 99.7) < 1e-9);  // (100*10 - 3)/10
+        QCOMPARE(d.position.realized_pnl, 0.0);
+        QCOMPARE(d.realized_pnl_this_fill, 0.0);
+    }
+    void round_trip_nets_both_leg_fees() {
+        // Both legs pay a fee; realized at close is net of BOTH (entry via basis).
+        FillDelta o = apply_fill(LedgerPosition{}, "buy", 10.0, 100.0, 3.0);  // entry 100.3
+        FillDelta c = apply_fill(o.position, "sell", 10.0, 100.0, 3.0);       // exit fee 3
+        // (100 - 100.3)*10 - 3 = -3 - 3 = -6  (a flat-price round trip loses both fees)
+        QVERIFY(qAbs(c.realized_pnl_this_fill - (-6.0)) < 1e-9);
+    }
+
     void unrealized_long_and_short() {
         QCOMPARE(unrealized_of(LedgerPosition{10.0, 100.0, 0.0}, 110.0), 100.0);   // (110-100)*10
         QCOMPARE(unrealized_of(LedgerPosition{-10.0, 100.0, 0.0}, 110.0), -100.0); // short loses as price rises

@@ -12,6 +12,7 @@
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
 #include "services/ai_decision/DecisionContext.h"
+#include "services/ai_ledger/AiLedger.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/Strategy.h"
@@ -650,6 +651,43 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(rows.value().at(0).quantity, 3.0);
         QCOMPARE(rows.value().at(0).fill_price, 40.0);  // limit_price used
         QCOMPARE(rows.value().at(0).draft_id, QStringLiteral("DLED"));
+    }
+
+    // A filled paper intent must record the real 3-bps paper fee (F3), not
+    // fee=0.0 — mirroring UnifiedTrading::init_session's paper fee_rate. The
+    // fee folds into cost basis on this open, so realized_pnl stays 0 and
+    // avg_entry_price is worsened by fee/qty.
+    void fill_records_real_paper_fee() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DFEE"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;  // name() == "fake"
+        s.intents_ = {TradeIntent{{"symbol", "FEE-USD"}, {"side", "buy"}, {"quantity", 3.0}, {"limit_price", 40.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        QCOMPARE(sum.filled, 1);
+
+        auto rows = AiFillRepository::instance().list("fake", "FEE-USD", 10);
+        QVERIFY(rows.is_ok());
+        QCOMPARE(rows.value().size(), 1);
+        const double expected_fee = 3.0 * 40.0 * 0.0003;  // qty * fill_price * kPaperFeeRate
+        QVERIFY2(qAbs(rows.value().at(0).fee - expected_fee) < 1e-9,
+                  qUtf8Printable(QString::number(rows.value().at(0).fee)));
+        QCOMPARE(rows.value().at(0).realized_pnl, 0.0);  // open books no realized P&L (fee lives in basis)
+
+        ai_ledger::LedgerPosition pos = ai_ledger::position_of("fake", "FEE-USD");
+        const double expected_avg = 40.0 + expected_fee / 3.0;
+        QVERIFY2(qAbs(pos.avg_entry_price - expected_avg) < 1e-9,
+                  qUtf8Printable(QString::number(pos.avg_entry_price)));
+        QVERIFY(pos.avg_entry_price > 40.0);  // fee-adjusted basis for a long is worse than fill_price
     }
 
     // A gate-rejected intent never reaches prepare/submit, so it must write
