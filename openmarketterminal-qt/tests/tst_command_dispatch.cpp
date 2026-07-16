@@ -1820,12 +1820,21 @@ private slots:
         QCOMPARE(obj.value("realized_pnl").toDouble(), 25.0);
     }
 
-    // READ-ONLY invariant: `ai positions|pnl|ledger` must not mutate a single
-    // cli.* settings row, nor insert any ai_fill row -- these three commands
-    // issue only SELECTs (via positions_of/realized_total/list, all
-    // repository reads). ai_fill is these commands' own domain table, so the
-    // count check guards against the worst violation: a read command that
-    // accidentally appends a fill (e.g. a future record_fill mis-wire).
+    // READ-ONLY invariant: `ai positions|pnl|ledger|scorecard` must not mutate
+    // a single cli.* settings row, nor insert any ai_fill row -- these four
+    // commands issue only SELECTs (via positions_of/realized_total/list/
+    // scorecard_of, all repository reads). ai_fill is these commands' own
+    // domain table, so the count check guards against the worst violation: a
+    // read command that accidentally appends a fill (e.g. a future
+    // record_fill mis-wire). `scorecard` is bundled in HERE (rather than only
+    // relying on its own `ai_scorecard_is_read_only`) because this slot runs
+    // BEFORE any of the dedicated `ai_scorecard_*` slots below, so its
+    // `before` snapshot cannot already contain a `cli.*` row a prior
+    // scorecard-test neuter left behind -- unlike a same-key/same-value
+    // same-second `INSERT OR REPLACE` that runs AFTER an earlier test already
+    // wrote that exact row (undetectable by fingerprint at that point), a
+    // neutered write here is the FIRST touch of `cli.*` in the run and so
+    // reliably flips this assertion.
     void ai_read_commands_are_read_only_on_gates() {
         sandbox_test_home();
         const QStringList before = cli_settings_fingerprint();
@@ -1837,6 +1846,8 @@ private slots:
         json_array_from_dispatch(QStringList{"ai", "ledger", "--json"}, &rc);
         QCOMPARE(rc, 0);
         json_object_from_dispatch(QStringList{"ai", "pnl", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        json_object_from_dispatch(QStringList{"ai", "scorecard", "--json"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(cli_settings_fingerprint(), before);  // no cli.* gate written
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);  // no ai_fill row written
@@ -1904,6 +1915,57 @@ private slots:
                                               "--side", "buy", "--qty", "1", "--price", "10", "--json"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(cli_settings_fingerprint(), before);  // writes ai_fill, never a cli.* gate
+    }
+
+    // `ai scorecard --handler H --json` emits the handler's realized track
+    // record (aggregate over realized closes), sourced from
+    // ai_ledger::scorecard_of (Task 1). One open fill (excluded) + one win +
+    // one loss -> 2 trades, 1 win, 1 loss, hit_rate 0.5, realized_total 60.
+    void ai_scorecard_reports_track_record() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('sc1','SCLI','SC-USD','buy',10,100,0,0,1000,'d'),"      // open, excluded
+            "       ('sc2','SCLI','SC-USD','sell',2,110,0,100,1001,'d'),"    // win
+            "       ('sc3','SCLI','SC-USD','sell',2,90,0,-40,1002,'d')").is_ok());  // loss
+
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "scorecard", "--handler", "SCLI", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("trades").toInt(), 2);
+        QCOMPARE(o.value("wins").toInt(), 1);
+        QCOMPARE(o.value("losses").toInt(), 1);
+        QCOMPARE(o.value("hit_rate").toDouble(), 0.5);
+        QCOMPARE(o.value("realized_total").toDouble(), 60.0);  // 100 - 40
+    }
+
+    // An unknown/empty handler has no fills -> zeroed scorecard, still exit 0.
+    void ai_scorecard_empty_is_zero() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "scorecard", "--handler", "nobody-xyz", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("trades").toInt(), 0);
+        QCOMPARE(o.value("hit_rate").toDouble(), 0.0);
+    }
+
+    // READ-ONLY invariant: `ai scorecard` must not mutate a single cli.*
+    // settings row, nor insert/alter any ai_fill row -- scorecard_of issues
+    // only a SELECT (via AiFillRepository::list).
+    void ai_scorecard_is_read_only() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('scr1','h','SCRO-USD','sell',1,10,0,5,1000,'d')").is_ok());
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "scorecard", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
     }
 };
 QTEST_MAIN(TstCommandDispatch)

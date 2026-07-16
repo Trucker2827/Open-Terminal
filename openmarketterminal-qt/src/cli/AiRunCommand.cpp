@@ -8,6 +8,7 @@
 #include "services/ai_decision/DecisionContext.h"
 #include "services/ai_decision/Screener.h"
 #include "services/ai_ledger/AiLedger.h"
+#include "services/ai_ledger/Scorecard.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
@@ -595,6 +596,60 @@ int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest) {
                     qUtf8Printable(o.value("side").toString()), o.value("quantity").toDouble(),
                     o.value("fill_price").toDouble(), o.value("realized_pnl").toDouble());
     }
+    return 0;
+}
+
+int ai_scorecard_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    QString handler;
+    QString symbol;
+    int limit = 0;  // 0 = all closes
+    bool json_flag = false;
+
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--handler")) {
+            if (args.isEmpty()) { std::fprintf(stderr, "error: --handler requires a value\n"); return 2; }
+            handler = args.takeFirst();
+        } else if (f == QLatin1String("--symbol")) {
+            if (args.isEmpty()) { std::fprintf(stderr, "error: --symbol requires a value\n"); return 2; }
+            symbol = args.takeFirst();
+        } else if (f == QLatin1String("--limit")) {
+            if (args.isEmpty()) { std::fprintf(stderr, "error: --limit requires a value\n"); return 2; }
+            bool ok = false;
+            const int parsed = args.takeFirst().toInt(&ok);
+            limit = (ok && parsed > 0) ? parsed : 0;  // non-positive/garbage -> all
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return 2;
+        }
+    }
+
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: scorecard_of only SELECTs (AiFillRepository::list) -- no write of any kind.
+    const ai_ledger::Scorecard sc = ai_ledger::scorecard_of(handler, symbol, limit);
+    const QJsonObject obj = ai_ledger::scorecard_to_json(sc);
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("trades=%d wins=%d losses=%d hit_rate=%.4f realized=%.4f avg=%.4f best=%.4f worst=%.4f\n",
+                sc.trades, sc.wins, sc.losses, sc.hit_rate, sc.realized_total, sc.avg_realized,
+                sc.best, sc.worst);
+    for (const ai_ledger::SymbolScore& ss : sc.per_symbol)
+        std::printf("  %s trades=%d hit_rate=%.4f realized=%.4f\n", qUtf8Printable(ss.symbol),
+                    ss.trades, ss.hit_rate, ss.realized_total);
     return 0;
 }
 

@@ -57,6 +57,14 @@ int ai_pnl_command(const GlobalOpts& opts, const QStringList& rest);
 // code.
 int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest);
 
+// Run `ai scorecard [--handler H] [--symbol S] [--limit N] [--json]` (AI
+// ledger Task 2 -- track record). READ-ONLY: folds realized closes via
+// ai_ledger::scorecard_of + scorecard_to_json -- never writes any DB row.
+// Empty --handler/--symbol = no filter on that column; default --limit is 0
+// (all closes); a non-positive or unparseable --limit value also means "all"
+// (unlike `ai ledger`, it does NOT error). Returns a process exit code.
+int ai_scorecard_command(const GlobalOpts& opts, const QStringList& rest);
+
 // Run `ai record-fill --handler H --symbol S --side buy|sell --qty Q --price P
 // [--fee F] [--draft-id D] [--json]` (AI paper ledger Task 6). WRITE, but
 // paper-only: the ONLY mutation is a single ai_fill row appended via
