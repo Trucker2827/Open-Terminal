@@ -7,6 +7,7 @@
 // datadir tree, register migrations, then open the DB).
 
 #include <QtTest>
+#include <QDateTime>
 #include <QTemporaryDir>
 #include <QDir>
 
@@ -32,6 +33,11 @@ bool open_profile_database_for_test() {
     return db.is_ok();
 }
 
+// assess() now expires edge_decision_journal rows older than 24h
+// (wall-clock) -- seeds must be fresh, `now`-relative timestamps rather than
+// tiny fixed values.
+static qint64 recent_ms(qint64 back = 60000) { return QDateTime::currentMSecsSinceEpoch() - back; }
+
 } // namespace
 
 class TstDecisionContext : public QObject {
@@ -50,7 +56,7 @@ class TstDecisionContext : public QObject {
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
             " market_probability, model_probability, edge_after_cost, spread_cost, fee_cost, confidence,"
             " freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("dc1"), 1000, 1000, QStringLiteral("BTC-USD"), QStringLiteral("buy"),
+            {QStringLiteral("dc1"), recent_ms(), recent_ms(), QStringLiteral("BTC-USD"), QStringLiteral("buy"),
              QStringLiteral("pass"), 0.40, 0.55, 8.0, 2.0, 1.0, 0.8,
              QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"), QStringLiteral("edge crypto-recommend")});
         QVERIFY2(ins.is_ok(), ins.is_err() ? ins.error().c_str() : "");
@@ -69,7 +75,7 @@ class TstDecisionContext : public QObject {
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("dc2"), 2000, 2000, QStringLiteral("ETH-USD"), QStringLiteral("fail"), -1.0,
+            {QStringLiteral("dc2"), recent_ms(), recent_ms(), QStringLiteral("ETH-USD"), QStringLiteral("fail"), -1.0,
              1.0, 1.0, QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"), QStringLiteral("x")});
         const auto below = assess(QStringLiteral("ETH-USD"));
         QCOMPARE(below.clears_cost, QStringLiteral("false"));
@@ -81,7 +87,7 @@ class TstDecisionContext : public QObject {
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " freshness_json, source) VALUES (?,?,?,?,?,?,?,?)",
-            {QStringLiteral("dc3"), 3000, 3000, QStringLiteral("SOL-USD"), QStringLiteral("pass"), 5.0,
+            {QStringLiteral("dc3"), recent_ms(), recent_ms(), QStringLiteral("SOL-USD"), QStringLiteral("pass"), 5.0,
              QStringLiteral("{\"freshest_age_ms\":9000,\"live_sources\":3}"), QStringLiteral("x")});
         const auto stale = assess(QStringLiteral("SOL-USD"));
         QCOMPARE(stale.freshness, QStringLiteral("degraded"));
@@ -97,7 +103,7 @@ class TstDecisionContext : public QObject {
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("dc5"), 5000, 5000, QStringLiteral("KXBTC-USD"), QStringLiteral("pass"), 4.0,
+            {QStringLiteral("dc5"), recent_ms(), recent_ms(), QStringLiteral("KXBTC-USD"), QStringLiteral("pass"), 4.0,
              1.0, 0.5, QStringLiteral("{}"), QStringLiteral("kalshi auto-plan")});
         const auto unknown = assess(QStringLiteral("KXBTC-USD"));
         QVERIFY(unknown.has_edge_signal);
@@ -111,12 +117,38 @@ class TstDecisionContext : public QObject {
         QCOMPARE(none.recommendation_hint, QStringLiteral("no edge signal"));
     }
 
+    void assess_fresh_edge_row_has_signal() {
+        const qint64 fresh = QDateTime::currentMSecsSinceEpoch() - 60000;   // 1 min ago
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('rec-fresh', ?, ?, 'RECF-USD', 'buy', 'pass', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')", {fresh, fresh}).is_ok());
+        const auto p = ai_decision::assess(QStringLiteral("RECF-USD"));
+        QVERIFY(p.has_edge_signal);
+        QCOMPARE(p.recommendation_hint, QStringLiteral("all gates pass"));
+    }
+    void assess_expired_edge_row_is_no_signal() {
+        const qint64 old = QDateTime::currentMSecsSinceEpoch() - 25LL * 60 * 60 * 1000;  // 25h ago
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('rec-old', ?, ?, 'RECO-USD', 'buy', 'pass', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')", {old, old}).is_ok());
+        const auto p = ai_decision::assess(QStringLiteral("RECO-USD"));
+        QVERIFY(!p.has_edge_signal);
+        QCOMPARE(p.recommendation_hint, QStringLiteral("no edge signal"));
+        bool has_note = false;
+        for (const QString& n : p.notes) if (n.contains(QStringLiteral("too old"))) has_note = true;
+        QVERIFY(has_note);
+    }
+
     // to_json emits the packet's fields, keyed by symbol/clears_cost/etc.
     void to_json_emits_packet_fields() {
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("dc4"), 4000, 4000, QStringLiteral("DOGE-USD"), QStringLiteral("pass"), 3.0,
+            {QStringLiteral("dc4"), recent_ms(), recent_ms(), QStringLiteral("DOGE-USD"), QStringLiteral("pass"), 3.0,
              1.0, 0.5, QStringLiteral("{\"freshest_age_ms\":100,\"live_sources\":3}"), QStringLiteral("x")});
         const auto p = assess(QStringLiteral("DOGE-USD"));
         const auto obj = to_json(p);

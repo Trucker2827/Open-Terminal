@@ -8,6 +8,7 @@
 // open_profile_database_for_test() (same "default" profile bootstrap).
 
 #include <QtTest>
+#include <QDateTime>
 #include <QTemporaryDir>
 #include <QDir>
 
@@ -33,6 +34,11 @@ bool open_profile_database_for_test() {
     return db.is_ok();
 }
 
+// assess() now expires edge_decision_journal rows older than 24h
+// (wall-clock) -- seeds must be fresh, `now`-relative timestamps rather than
+// tiny fixed values.
+static qint64 recent_ms(qint64 back = 60000) { return QDateTime::currentMSecsSinceEpoch() - back; }
+
 } // namespace
 
 class TstScreener : public QObject {
@@ -57,15 +63,15 @@ class TstScreener : public QObject {
         };
         // Two crypto passers (pass gate, edge>0, unknown-freshness passes), different edge.
         seed(QStringLiteral("c1"), QStringLiteral("BTC-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("pass"), 12.0, 1000);
+             QStringLiteral("pass"), 12.0, recent_ms());
         seed(QStringLiteral("c2"), QStringLiteral("ETH-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("pass"), 5.0, 1000);
+             QStringLiteral("pass"), 5.0, recent_ms());
         // A crypto FAIL (excluded).
         seed(QStringLiteral("c3"), QStringLiteral("SOL-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("fail"), 9.0, 1000);
+             QStringLiteral("fail"), 9.0, recent_ms());
         // A prediction passer (kalshi).
         seed(QStringLiteral("p1"), QStringLiteral("KXBTC-USD"), QStringLiteral("kalshi"),
-             QStringLiteral("pass"), 7.0, 1000);
+             QStringLiteral("pass"), 7.0, recent_ms());
 
         const auto crypto = screen(QStringLiteral("crypto"), 5);
         QCOMPARE(crypto.size(), 2);                                  // SOL-USD fail excluded
@@ -108,9 +114,9 @@ class TstScreener : public QObject {
         // passing gates. Distinct id/venue => two DISTINCT (symbol, venue)
         // universe rows for the one symbol.
         seed(QStringLiteral("d1"), QStringLiteral("XRP-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("pass"), 12.0, 2000);
+             QStringLiteral("pass"), 12.0, recent_ms());
         seed(QStringLiteral("d2"), QStringLiteral("XRP-USD"), QStringLiteral("coinbase"),
-             QStringLiteral("pass"), 8.0, 2000);
+             QStringLiteral("pass"), 8.0, recent_ms());
 
         const auto crypto = screen(QStringLiteral("crypto"), 5);
         int xrp_count = 0;
@@ -152,10 +158,10 @@ class TstScreener : public QObject {
         // (a) A passer on a non-enumerated fee tier (coinbase_tier5) is
         // classified crypto and INCLUDED in screen("crypto").
         seed(QStringLiteral("t5"), QStringLiteral("AVAX-USD"), QStringLiteral("coinbase_tier5"),
-             QStringLiteral("pass"), 11.0, 3000);
+             QStringLiteral("pass"), 11.0, recent_ms());
         // And alpaca_crypto is crypto too.
         seed(QStringLiteral("ac"), QStringLiteral("LTC-USD"), QStringLiteral("alpaca_crypto"),
-             QStringLiteral("pass"), 6.0, 3000);
+             QStringLiteral("pass"), 6.0, recent_ms());
         const auto crypto = screen(QStringLiteral("crypto"), 20);
         QVERIFY2(contains(crypto, QStringLiteral("AVAX-USD")), "coinbase_tier5 passer must be crypto");
         QCOMPARE(market_of(crypto, QStringLiteral("AVAX-USD")), QStringLiteral("crypto"));
@@ -165,7 +171,7 @@ class TstScreener : public QObject {
         // (b) An unclassifiable venue is DROPPED from the all-markets path
         // (never emitted with an empty market tag).
         seed(QStringLiteral("wv"), QStringLiteral("WEIRD-SYM"), QStringLiteral("weirdvenue"),
-             QStringLiteral("pass"), 99.0, 3000);
+             QStringLiteral("pass"), 99.0, recent_ms());
         const auto all = screen(QString(), 50);
         QVERIFY2(!contains(all, QStringLiteral("WEIRD-SYM")),
                  "unclassifiable venue must be dropped, never tagged market=''");
@@ -174,9 +180,9 @@ class TstScreener : public QObject {
         // tiers (coinbase_advanced + coinbase_tier5) both now map to "crypto",
         // so the (symbol, market) dedup collapses them to ONE row.
         seed(QStringLiteral("x1"), QStringLiteral("MATIC-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("pass"), 10.0, 3000);
+             QStringLiteral("pass"), 10.0, recent_ms());
         seed(QStringLiteral("x2"), QStringLiteral("MATIC-USD"), QStringLiteral("coinbase_tier5"),
-             QStringLiteral("pass"), 4.0, 3000);
+             QStringLiteral("pass"), 4.0, recent_ms());
         const auto all2 = screen(QString(), 50);
         int matic_count = 0;
         for (const auto& row : all2)

@@ -23,6 +23,11 @@ bool update_job_by_id(const QString& profile, const QString& id,
                       const std::function<void(QJsonObject&)>& fn, int lock_timeout_ms);
 }
 
+// assess() now expires edge_decision_journal rows older than 24h
+// (wall-clock) -- seeds must be fresh, `now`-relative timestamps rather than
+// tiny fixed values.
+static qint64 recent_ms(qint64 back = 60000) { return QDateTime::currentMSecsSinceEpoch() - back; }
+
 static QString capture_stdout(const std::function<int()>& fn, int* rc_out = nullptr) {
     fflush(stdout);
     int fds[2];
@@ -1561,7 +1566,7 @@ private slots:
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
             " market_probability, model_probability, edge_after_cost, spread_cost, fee_cost,"
             " confidence, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("cd-ctx-1"), 1000, 1000, QStringLiteral("CTXTEST-USD"),
+            {QStringLiteral("cd-ctx-1"), recent_ms(), recent_ms(), QStringLiteral("CTXTEST-USD"),
              QStringLiteral("buy"), QStringLiteral("pass"), 0.40, 0.55, 8.0, 2.0, 1.0, 0.8,
              QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"),
              QStringLiteral("edge crypto-recommend")}).is_ok());
@@ -1602,7 +1607,7 @@ private slots:
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
             " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("cd-ctx-2"), 2000, 2000, QStringLiteral("CTXRO-USD"),
+            {QStringLiteral("cd-ctx-2"), recent_ms(), recent_ms(), QStringLiteral("CTXRO-USD"),
              QStringLiteral("pass"), 5.0, 1.0, 0.5,
              QStringLiteral("{\"freshest_age_ms\":100,\"live_sources\":3}"),
              QStringLiteral("x")}).is_ok());
@@ -1655,10 +1660,11 @@ private slots:
     void ai_ctx_floor_permits_endorsed_symbol() {
         sandbox_test_home();
         QVERIFY(Database::instance().execute(
-            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
-            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
-            " VALUES ('flp1', 3000, 3000, 'FLP-USD', 'pass', 5.0, 1.0, 0.5,"
-            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").is_ok());
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp1', %1, %1, 'FLP-USD', 'pass', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         int rc = -1;
         QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLP-USD","--json"}, &rc);
         QCOMPARE(rc, 0);
@@ -1671,10 +1677,11 @@ private slots:
     void ai_ctx_floor_skips_rejected_symbol() {
         sandbox_test_home();
         QVERIFY(Database::instance().execute(
-            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
-            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
-            " VALUES ('flp2', 3000, 3000, 'FLPR-USD', 'reject', 5.0, 1.0, 0.5,"
-            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").is_ok());
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp2', %1, %1, 'FLPR-USD', 'reject', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         int rc = -1;
         QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLPR-USD","--json"}, &rc);
         QCOMPARE(rc, 0);
@@ -1688,10 +1695,11 @@ private slots:
     void ai_ctx_floor_is_read_only() {
         sandbox_test_home();
         QVERIFY(Database::instance().execute(
-            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
-            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
-            " VALUES ('flp3', 3000, 3000, 'FLPRO-USD', 'pass', 5.0, 1.0, 0.5,"
-            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").is_ok());
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp3', %1, %1, 'FLPRO-USD', 'pass', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         const QStringList before = cli_settings_fingerprint();
         int rc = -1;
         json_object_from_dispatch(QStringList{"ai","ctx","FLPRO-USD","--json"}, &rc);
@@ -1759,15 +1767,15 @@ private slots:
             QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
         };
         seed(QStringLiteral("cd-scr-1"), QStringLiteral("SCRBTC-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("pass"), 12.0, 9000);
+             QStringLiteral("pass"), 12.0, recent_ms());
         seed(QStringLiteral("cd-scr-2"), QStringLiteral("SCRETH-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("pass"), 5.0, 9000);
+             QStringLiteral("pass"), 5.0, recent_ms());
         // A crypto FAIL (excluded from the shortlist).
         seed(QStringLiteral("cd-scr-3"), QStringLiteral("SCRSOL-USD"), QStringLiteral("coinbase_advanced"),
-             QStringLiteral("fail"), 9.0, 9000);
+             QStringLiteral("fail"), 9.0, recent_ms());
         // A prediction passer -- must NOT appear when --market crypto filters it out.
         seed(QStringLiteral("cd-scr-4"), QStringLiteral("SCRKXBTC-USD"), QStringLiteral("kalshi"),
-             QStringLiteral("pass"), 20.0, 9000);
+             QStringLiteral("pass"), 20.0, recent_ms());
 
         int rc = -1;
         const QJsonArray arr = json_array_from_dispatch(
@@ -1843,7 +1851,7 @@ private slots:
         QVERIFY(Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
             " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            {QStringLiteral("cd-scr-ro"), 9500, 9500, QStringLiteral("SCRROX-USD"),
+            {QStringLiteral("cd-scr-ro"), recent_ms(), recent_ms(), QStringLiteral("SCRROX-USD"),
              QStringLiteral("coinbase_advanced"), QStringLiteral("buy"), QStringLiteral("pass"), 6.0, 0.0, 0.0,
              QStringLiteral("{}"), QStringLiteral("s")}).is_ok());
 

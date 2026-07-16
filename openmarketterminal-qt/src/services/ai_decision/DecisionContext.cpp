@@ -4,6 +4,7 @@
 #include "services/sandbox/FreshnessGate.h"
 #include "storage/sqlite/Database.h"
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSqlQuery>
@@ -62,6 +63,11 @@ constexpr int col(EdgeCol c) {
     return static_cast<int>(c);
 }
 
+// Edge endorsements expire after 24h (wall-clock) — an edge_decision_journal
+// row older than this is not actionable and assess() must not report it as a
+// usable signal.
+constexpr qint64 kEdgeMaxAgeMs = 24LL * 60 * 60 * 1000;  // 86400000
+
 } // namespace
 
 DecisionPacket assess(const QString& symbol, const QString& market) {
@@ -107,6 +113,19 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
     }
 
     QSqlQuery& q = rows.value();
+
+    const qint64 created_at_ms = q.value(col(EdgeCol::kCreatedAt)).toLongLong();
+    if (QDateTime::currentMSecsSinceEpoch() - created_at_ms > kEdgeMaxAgeMs) {
+        // Expired endorsement: an edge decision older than 24h (wall-clock) is not
+        // actionable. Treat as no usable signal (has_edge_signal stays false).
+        packet.notes << QStringLiteral("edge_decision_journal row too old (age > 24h)");
+        packet.clears_cost = QStringLiteral("unknown");
+        packet.freshness = QStringLiteral("unknown");
+        packet.lane_verdict = QStringLiteral("unknown");
+        packet.recommendation_hint = compute_hint(packet);
+        return packet;
+    }
+
     packet.has_edge_signal = true;
     packet.venue = q.value(col(EdgeCol::kVenue)).toString();
     packet.symbol = q.value(col(EdgeCol::kSymbol)).toString();
