@@ -103,35 +103,49 @@ class TstPretradeGate : public QObject {
         QVERIFY(evaluate_pretrade(intent_of("buy", 5.0), in, p).ok);    // 0+5=5 <= 10 -> allow
     }
     void aggregate_cap_blocks_growing_over_cap() {
-        GateInputs in; in.resolved_price = 100.0; in.aggregate_net_qty = 8.0;
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 2.0; in.aggregate_gross_qty = 8.0;
         GatePolicy p; p.max_aggregate_position_qty = 10.0;
-        GateVerdict v = evaluate_pretrade(intent_of("buy", 5.0), in, p);  // 8+5=13 > 10 and > 8
+        GateVerdict v = evaluate_pretrade(intent_of("buy", 5.0), in, p);  // gross 8-2+|2+5|=13
         QVERIFY(!v.ok);
         QCOMPARE(v.rule, QStringLiteral("aggregate"));
     }
     void aggregate_cap_allows_reduce_over_cap() {
-        GateInputs in; in.resolved_price = 100.0; in.aggregate_net_qty = 15.0;   // over cap 10
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 15.0; in.aggregate_gross_qty = 15.0;
         GatePolicy p; p.max_aggregate_position_qty = 10.0;
-        // 15-3=12, still > cap but |12| <= |15| (reducing) -> allow.
+        // gross 15-15+|15-3|=12: still over cap but reducing -> allow.
         QVERIFY(evaluate_pretrade(intent_of("sell", 3.0), in, p).ok);
     }
     void aggregate_cap_flat_and_small_add() {
         GatePolicy p; p.max_aggregate_position_qty = 10.0;
-        GateInputs flat; flat.resolved_price = 100.0; flat.aggregate_net_qty = 0.0;
+        GateInputs flat; flat.resolved_price = 100.0; flat.aggregate_gross_qty = 0.0;
         QVERIFY(!evaluate_pretrade(intent_of("buy", 15.0), flat, p).ok);   // 0+15=15 > 10 -> reject
-        GateInputs small; small.resolved_price = 100.0; small.aggregate_net_qty = 8.0;
+        GateInputs small; small.resolved_price = 100.0; small.aggregate_gross_qty = 8.0;
         QVERIFY(evaluate_pretrade(intent_of("buy", 1.0), small, p).ok);    // 9 <= 10 -> pass
     }
     void aggregate_cap_fires_when_handler_position_is_fine() {
-        // This handler's own position is tiny, but the cross-handler aggregate is near cap.
-        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 2.0; in.aggregate_net_qty = 9.0;
+        // This handler's own position is tiny, but cross-handler gross is near cap.
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 2.0; in.aggregate_gross_qty = 9.0;
         GatePolicy p; p.max_position_qty = 100.0; p.max_aggregate_position_qty = 10.0;  // per-handler won't fire
-        GateVerdict v = evaluate_pretrade(intent_of("buy", 5.0), in, p);   // agg 9+5=14 > 10 -> reject{aggregate}
+        GateVerdict v = evaluate_pretrade(intent_of("buy", 5.0), in, p);   // gross 9-2+7=14 -> reject
         QVERIFY(!v.ok);
         QCOMPARE(v.rule, QStringLiteral("aggregate"));
     }
+    void aggregate_cap_opposing_handlers_do_not_cancel() {
+        // Current handler is +8 and another is -8. Signed net is zero, but gross is 16.
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 8.0; in.aggregate_gross_qty = 16.0;
+        GatePolicy p; p.max_aggregate_position_qty = 16.0;
+        GateVerdict v = evaluate_pretrade(intent_of("buy", 1.0), in, p);  // gross becomes 17
+        QVERIFY(!v.ok);
+        QCOMPARE(v.rule, QStringLiteral("aggregate"));
+    }
+    void aggregate_cap_hedged_leg_reduce_always_passes() {
+        // Reducing +8 to +5 lowers gross from 16 to 13 even though signed aggregate net becomes -3.
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 8.0; in.aggregate_gross_qty = 16.0;
+        GatePolicy p; p.max_aggregate_position_qty = 10.0;
+        QVERIFY(evaluate_pretrade(intent_of("sell", 3.0), in, p).ok);
+    }
     void aggregate_cap_off_by_default() {
-        GateInputs in; in.resolved_price = 100.0; in.aggregate_net_qty = 1000.0;
+        GateInputs in; in.resolved_price = 100.0; in.aggregate_gross_qty = 1000.0;
         GatePolicy p;  // max_aggregate_position_qty defaults 0 -> no cap
         QVERIFY(evaluate_pretrade(intent_of("buy", 1000.0), in, p).ok);
     }

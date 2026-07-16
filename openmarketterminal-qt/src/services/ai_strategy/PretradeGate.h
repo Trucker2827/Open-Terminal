@@ -25,13 +25,13 @@ struct GateInputs {
     QString freshness;
     bool has_edge_signal = false;
     double existing_net_qty = 0.0;  ///< signed current ledger position (handler+symbol); 0 = flat/none.
-    double aggregate_net_qty = 0.0;  ///< signed total net across ALL handlers for the symbol; 0 = flat/none.
+    double aggregate_gross_qty = 0.0;  ///< sum(abs(handler net)) across ALL handlers for the symbol.
 };
 
 struct GatePolicy {
     double max_notional_per_order = 0.0;
     double max_position_qty = 0.0;
-    double max_aggregate_position_qty = 0.0;  ///< 0 = no aggregate cap.
+    double max_aggregate_position_qty = 0.0;  ///< gross cross-handler cap; 0 = disabled.
     QStringList allowed_venues;
     bool require_cost_gate = true;
     bool require_freshness_gate = true;

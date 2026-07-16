@@ -112,7 +112,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             gin.freshness = pkt.freshness;
             gin.has_edge_signal = pkt.has_edge_signal;
             gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
-            gin.aggregate_net_qty = ai_ledger::net_position_for_symbol(sym);
+            gin.aggregate_gross_qty = ai_ledger::gross_position_for_symbol(sym);
 
             // Deterministic floor: runs BEFORE the pre-trade guardrail. Reads
             // only the already-resolved packet and, when it doesn't

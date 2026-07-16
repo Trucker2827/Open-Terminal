@@ -121,6 +121,14 @@ class TstAiLedger : public QObject {
         QCOMPARE(ps.at(0).position.net_qty, 5.0);
     }
 
+    void gross_position_keeps_opposing_handlers_visible() {
+        QVERIFY(ai_ledger::record_fill("gross-long", "GROSS-USD", "buy", 8.0, 100.0, 0.0, "d1").is_ok());
+        QVERIFY(ai_ledger::record_fill("gross-short", "GROSS-USD", "sell", 8.0, 100.0, 0.0, "d2").is_ok());
+
+        QCOMPARE(ai_ledger::net_position_for_symbol("GROSS-USD"), 0.0);
+        QCOMPARE(ai_ledger::gross_position_for_symbol("GROSS-USD"), 16.0);
+    }
+
   private:
     QTemporaryDir home_;
 

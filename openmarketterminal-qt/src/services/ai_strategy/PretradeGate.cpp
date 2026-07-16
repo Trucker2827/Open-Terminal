@@ -30,10 +30,13 @@ GateVerdict evaluate_pretrade(const TradeIntent& intent, const GateInputs& in, c
         const QString side = intent.value(QStringLiteral("side")).toString();
         const double signed_new =
             (side == QLatin1String("sell") || side == QLatin1String("short")) ? -qty : qty;
-        const double agg_resulting = in.aggregate_net_qty + signed_new;
-        // Increase-only on the AGGREGATE (all handlers) exposure; a reduce/close always passes.
-        if (std::abs(agg_resulting) > policy.max_aggregate_position_qty &&
-            std::abs(agg_resulting) > std::abs(in.aggregate_net_qty))
+        const double handler_resulting = in.existing_net_qty + signed_new;
+        const double gross_resulting =
+            in.aggregate_gross_qty - std::abs(in.existing_net_qty) + std::abs(handler_resulting);
+        // Replace this handler's current leg inside the cross-handler gross total.
+        // Opposing handlers cannot cancel risk, and reducing this leg can never be blocked.
+        if (gross_resulting > policy.max_aggregate_position_qty &&
+            gross_resulting > in.aggregate_gross_qty)
             return {false, QStringLiteral("aggregate position would exceed cap"), QStringLiteral("aggregate")};
     }
     if (!policy.allowed_venues.isEmpty()) {

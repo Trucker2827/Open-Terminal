@@ -53,6 +53,10 @@ QVector<HandlerPosition> positions_of(const QString& handler = {});
 /// Aggregate signed net position for a symbol summed across ALL handlers. Read-only; 0 when flat/none/error.
 double net_position_for_symbol(const QString& symbol);
 
+/// Aggregate gross position for a symbol across ALL handlers: sum(abs(net_qty)).
+/// Unlike signed net, opposing strategy positions do not cancel. Read-only; 0 on none/error.
+double gross_position_for_symbol(const QString& symbol);
+
 /// Sum of realized_pnl across all fills (optionally for one handler). Read-only.
 double realized_total(const QString& handler = {});
 

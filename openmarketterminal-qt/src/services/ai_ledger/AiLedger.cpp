@@ -138,6 +138,15 @@ double net_position_for_symbol(const QString& symbol) {
     return sum;
 }
 
+double gross_position_for_symbol(const QString& symbol) {
+    double sum = 0.0;
+    for (const HandlerPosition& hp : positions_of()) {
+        if (hp.symbol == symbol)
+            sum += std::abs(hp.position.net_qty);
+    }
+    return sum;
+}
+
 double realized_total(const QString& handler) {
     double sum = 0.0;
     auto fills = AiFillRepository::instance().list(handler, {}, 0);  // all fills, no symbol filter

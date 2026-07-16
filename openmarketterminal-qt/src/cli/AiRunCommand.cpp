@@ -25,6 +25,7 @@
 #include <QStringList>
 
 #include <atomic>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <memory>
@@ -164,7 +165,12 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
             require_floor = false;  // opt out of the default-ON deterministic floor (still paper-only).
         } else if (f == "--max-aggregate-qty") {
             if (!take_val(f, v)) return 2;
-            max_aggregate_qty = v.toDouble();  // non-numeric -> 0 = off
+            bool ok = false;
+            max_aggregate_qty = v.toDouble(&ok);
+            if (!ok || !std::isfinite(max_aggregate_qty) || max_aggregate_qty <= 0.0) {
+                std::fprintf(stderr, "error: --max-aggregate-qty must be a positive finite number\n");
+                return 2;
+            }
         } else {
             std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
             return ai_usage();

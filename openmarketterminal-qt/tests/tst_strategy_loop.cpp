@@ -692,6 +692,55 @@ class TstStrategyLoop : public QObject {
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});  // no agg cap
         QCOMPARE(sum.filled, 1);
     }
+
+    void aggregate_cap_opposing_handlers_cannot_hide_gross_risk() {
+        ensure_migrated_db();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('agh1','long-book','HEDGE-USD','buy',8,100,0,0,1000,'d')").is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('agh2','short-book','HEDGE-USD','sell',8,100,0,0,1001,'d')").is_ok());
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","HEDGE-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;
+        };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        cfg.max_aggregate_position_qty = 16.0;
+        RunSummary sum = runner.run(s, tc, cfg);
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("aggregate"));
+    }
+
+    void aggregate_cap_allows_hedged_handler_to_reduce() {
+        ensure_migrated_db();
+        // FakeStrategy::name() is "fake", so this +8 is the leg being reduced.
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('agr1','fake','HRED-USD','buy',8,100,0,0,1000,'d')").is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('agr2','other','HRED-USD','sell',8,100,0,0,1001,'d')").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DHRED"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","HRED-USD"},{"side","sell"},{"quantity",3.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.max_aggregate_position_qty = 10.0;
+        RunSummary sum = runner.run(s, tc, cfg);
+        QCOMPARE(sum.filled, 1);
+        QCOMPARE(tc.count("submit_order"), 1);
+    }
 };
 
 QTEST_MAIN(TstStrategyLoop)

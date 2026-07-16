@@ -24,7 +24,7 @@
 # exactly like the GUI — we toggle the gate via a DIRECT sqlite write. Confirmed
 # schema: key,value,category,updated_at.
 
-CLI=/tmp/ot-build-ht/openterminalcli
+CLI=${CLI:-/tmp/ot-build-ht/openterminalcli}
 APP_ROOT="$HOME/Library/Application Support/org.openterminal.OpenTerminal"
 PROF_ROOT="$APP_ROOT/profiles"
 
@@ -134,6 +134,15 @@ RC1C=$?
 printf '%s' "$R1C" | grep -q "agg_cap=5" \
     || fail "--max-aggregate-qty did not report 'agg_cap=5' (out: $R1C)"
 echo "PASS: --max-aggregate-qty accepted, agg_cap=5"
+
+# Invalid risk input must fail closed instead of silently parsing to 0 (cap off).
+R1D=$(wd 30 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --max-iters 1 --max-aggregate-qty nope 2>&1)
+RC1D=$?
+[ $RC1D -eq 2 ] || fail "invalid --max-aggregate-qty rc=$RC1D (expected 2)"
+echo "$R1D" | grep -q "must be a positive finite number" \
+    || fail "invalid --max-aggregate-qty did not fail closed (out: $R1D)"
+echo "PASS: invalid --max-aggregate-qty fails closed"
 
 # ============================================================================
 # Step 2 — --mode live is REFUSED: nonzero exit + exact-substring message.
