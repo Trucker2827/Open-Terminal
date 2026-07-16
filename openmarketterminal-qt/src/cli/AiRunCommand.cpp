@@ -9,6 +9,7 @@
 #include "services/ai_decision/Screener.h"
 #include "services/ai_ledger/AiLedger.h"
 #include "services/ai_ledger/Scorecard.h"
+#include "services/ai_strategy/DeterministicFloor.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
@@ -295,7 +296,17 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     // ONLY INVARIANT) -- this command places no order, writes no cli.* gate
     // setting, and performs no DB write of any kind.
     const auto packet = ai_decision::assess(symbol, market);
-    const QJsonObject obj = ai_decision::to_json(packet);
+    QJsonObject obj = ai_decision::to_json(packet);
+
+    // READ-ONLY: floor_verdict is pure (no DB, no I/O) -- it just reads the
+    // already-assessed packet's edge signals. This adds a floor field to the
+    // CLI's own JSON, not to DecisionPacket/to_json, so ai_decision does not
+    // gain an ai_strategy dependency (layering: cli -> {ai_decision, ai_strategy}).
+    const ai_strategy::GateVerdict floor = ai_strategy::floor_verdict(
+        ai_strategy::FloorInputs{packet.has_edge_signal, packet.gate, packet.clears_cost, packet.freshness},
+        ai_strategy::FloorPolicy{true});
+    obj.insert(QStringLiteral("floor_permits"), floor.ok);
+    obj.insert(QStringLiteral("floor_reason"), floor.ok ? QString() : floor.reason);
 
     if (opts.json || json_flag) {
         std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
@@ -317,6 +328,9 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     std::printf("freshness:           %s\n", qUtf8Printable(packet.freshness));
     std::printf("lane_verdict:        %s\n", qUtf8Printable(packet.lane_verdict));
     std::printf("recommendation_hint: %s\n", qUtf8Printable(packet.recommendation_hint));
+    std::printf("floor:               %s\n",
+                floor.ok ? "permit"
+                         : qUtf8Printable(QStringLiteral("skip (%1)").arg(floor.reason)));
     std::printf("position:            %s qty=%.4f\n", qUtf8Printable(packet.position_source),
                 packet.position_qty);
     return 0;

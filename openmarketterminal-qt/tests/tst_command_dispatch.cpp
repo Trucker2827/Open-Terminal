@@ -1645,6 +1645,59 @@ private slots:
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);   // assess wrote no fill
     }
 
+    // ai ctx floor verdict, piece ⑤b Task 3 -- `ai ctx <symbol> --json` gains
+    // read-only floor_permits/floor_reason fields computed from the
+    // DecisionPacket via ai_strategy::floor_verdict. A "pass" gate with
+    // edge_after_cost>0 makes clears_cost="true" (DecisionContext.cpp:138),
+    // so the honest-edge system positively endorses the symbol and the floor
+    // permits.
+    void ai_ctx_floor_permits_endorsed_symbol() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('flp1', 3000, 3000, 'FLP-USD', 'pass', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLP-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("floor_permits").toBool(), true);
+        QCOMPARE(o.value("floor_reason").toString(), QString());
+    }
+
+    // A "reject" gate never earns clears_cost="true"/gate=="pass", so the
+    // floor skips with the specific "edge gate not pass" reason.
+    void ai_ctx_floor_skips_rejected_symbol() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('flp2', 3000, 3000, 'FLPR-USD', 'reject', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLPR-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("floor_permits").toBool(), false);
+        QCOMPARE(o.value("floor_reason").toString(), QStringLiteral("edge gate not pass"));
+    }
+
+    // READ-ONLY invariant: computing/emitting the floor verdict must not
+    // mutate a single cli.* settings row (floor_verdict is pure; assess()
+    // is SELECT-only).
+    void ai_ctx_floor_is_read_only() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('flp3', 3000, 3000, 'FLPRO-USD', 'pass', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").is_ok());
+        const QStringList before = cli_settings_fingerprint();
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai","ctx","FLPRO-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+    }
+
     // ai screen shortlist Task 2 -- `ai screen --market crypto --json` ranks
     // the all-gates-pass candidates by edge_after_cost desc and tags each
     // with its market. Fixture mirrors tst_screener.cpp's
