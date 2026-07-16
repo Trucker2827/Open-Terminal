@@ -24,6 +24,7 @@ struct GateInputs {
     QString clears_cost;
     QString freshness;
     bool has_edge_signal = false;
+    double existing_net_qty = 0.0;  ///< signed current ledger position (handler+symbol); 0 = flat/none.
 };
 
 struct GatePolicy {

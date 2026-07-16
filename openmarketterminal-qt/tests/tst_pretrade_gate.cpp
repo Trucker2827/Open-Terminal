@@ -14,6 +14,10 @@ TradeIntent mk(double qty, double limit = 0.0, const QString& venue = {}) {
     return t;
 }
 GateInputs fresh_ok(double price) { return GateInputs{price, QStringLiteral("true"), QStringLiteral("ok"), true}; }
+TradeIntent intent_of(const QString& side, double qty) {
+    return TradeIntent{{"symbol", "X-USD"}, {"side", side}, {"quantity", qty},
+                       {"order_type", "limit"}, {"limit_price", 100.0}};
+}
 } // namespace
 
 class TstPretradeGate : public QObject {
@@ -63,6 +67,40 @@ class TstPretradeGate : public QObject {
         GatePolicy p; p.require_cost_gate = false; p.require_freshness_gate = false;
         GateInputs bad{100.0, QStringLiteral("false"), QStringLiteral("degraded"), true};
         QVERIFY(evaluate_pretrade(mk(1.0, 100.0), bad, p).ok); // gates disabled -> allowed
+    }
+    void cumulative_cap_blocks_growing_over_cap() {
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 8.0;
+        GatePolicy p; p.max_position_qty = 10.0;
+        GateVerdict v = evaluate_pretrade(intent_of("buy", 5.0), in, p);  // 8+5=13 > 10 and > 8
+        QVERIFY(!v.ok);
+        QCOMPARE(v.rule, QStringLiteral("position"));
+    }
+    void cumulative_cap_allows_reduce_while_over_cap() {
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 15.0;  // over cap 10
+        GatePolicy p; p.max_position_qty = 10.0;
+        // 15-3=12, still > cap 10 BUT |12| <= |15| (reducing) -> allow. This is the case that
+        // exercises the increase-only clause: |resulting|>cap yet still permitted because it shrinks.
+        GateVerdict v = evaluate_pretrade(intent_of("sell", 3.0), in, p);
+        QVERIFY(v.ok);
+    }
+    void cumulative_cap_allows_flip_that_reduces() {
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 10.0;
+        GatePolicy p; p.max_position_qty = 10.0;
+        GateVerdict v = evaluate_pretrade(intent_of("sell", 13.0), in, p);  // 10-13=-3, |−3| <= |10| -> allow
+        QVERIFY(v.ok);
+    }
+    void cumulative_cap_blocks_flip_that_grows() {
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 10.0;
+        GatePolicy p; p.max_position_qty = 10.0;
+        GateVerdict v = evaluate_pretrade(intent_of("sell", 25.0), in, p);  // 10-25=-15, |−15|>10 and >|10| -> reject
+        QVERIFY(!v.ok);
+        QCOMPARE(v.rule, QStringLiteral("position"));
+    }
+    void cumulative_cap_collapses_to_per_intent_when_flat() {
+        GateInputs in; in.resolved_price = 100.0; in.existing_net_qty = 0.0;
+        GatePolicy p; p.max_position_qty = 10.0;
+        QVERIFY(!evaluate_pretrade(intent_of("buy", 15.0), in, p).ok);  // 0+15=15 > 10 -> reject (old rule)
+        QVERIFY(evaluate_pretrade(intent_of("buy", 5.0), in, p).ok);    // 0+5=5 <= 10 -> allow
     }
 };
 

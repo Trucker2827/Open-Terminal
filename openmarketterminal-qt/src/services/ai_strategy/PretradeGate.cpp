@@ -1,5 +1,7 @@
 #include "services/ai_strategy/PretradeGate.h"
 
+#include <cmath>
+
 namespace openmarketterminal::ai_strategy {
 
 GateVerdict evaluate_pretrade(const TradeIntent& intent, const GateInputs& in, const GatePolicy& policy) {
@@ -14,8 +16,16 @@ GateVerdict evaluate_pretrade(const TradeIntent& intent, const GateInputs& in, c
         return {false, QStringLiteral("stale data"), QStringLiteral("freshness")};
     if (policy.max_notional_per_order > 0.0 && qty * in.resolved_price > policy.max_notional_per_order)
         return {false, QStringLiteral("notional exceeds cap"), QStringLiteral("notional")};
-    if (policy.max_position_qty > 0.0 && qty > policy.max_position_qty)
-        return {false, QStringLiteral("quantity exceeds cap"), QStringLiteral("position")};
+    if (policy.max_position_qty > 0.0) {
+        const QString side = intent.value(QStringLiteral("side")).toString();
+        const double signed_new =
+            (side == QLatin1String("sell") || side == QLatin1String("short")) ? -qty : qty;
+        const double resulting = in.existing_net_qty + signed_new;
+        // Increase-only: reject only when the intent grows absolute exposure beyond the cap.
+        // A reduce/close/flip-that-reduces (|resulting| <= |existing|) always passes.
+        if (std::abs(resulting) > policy.max_position_qty && std::abs(resulting) > std::abs(in.existing_net_qty))
+            return {false, QStringLiteral("position would exceed cap"), QStringLiteral("position")};
+    }
     if (!policy.allowed_venues.isEmpty()) {
         QString v = intent.value(QStringLiteral("venue")).toString();
         if (v.isEmpty()) v = intent.value(QStringLiteral("exchange")).toString();
