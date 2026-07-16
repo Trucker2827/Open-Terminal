@@ -20,9 +20,13 @@ class TstDeterministicFloor : public QObject {
     void permits_fully_endorsed() {
         QVERIFY(floor_verdict(endorsing(), FloorPolicy{}).ok);
     }
-    void permits_unknown_freshness() {
-        FloorInputs in{true, "pass", "true", "unknown"};   // prediction rows carry no freshness
-        QVERIFY(floor_verdict(in, FloorPolicy{}).ok);
+    void skips_freshness_not_affirmatively_ok() {
+        for (const char* freshness : {"unknown", "degraded", ""}) {
+            FloorInputs in{true, "pass", "true", QString::fromLatin1(freshness)};
+            const auto v = floor_verdict(in, FloorPolicy{});
+            QVERIFY2(!v.ok, freshness);
+            QCOMPARE(v.rule, QStringLiteral("floor"));
+        }
     }
     void skips_no_edge_signal() {
         FloorInputs in{false, "pass", "true", "ok"};
@@ -46,12 +50,6 @@ class TstDeterministicFloor : public QObject {
             QVERIFY2(!v.ok, c);
             QCOMPARE(v.rule, QStringLiteral("floor"));
         }
-    }
-    void skips_degraded_freshness() {
-        FloorInputs in{true, "pass", "true", "degraded"};
-        const auto v = floor_verdict(in, FloorPolicy{});
-        QVERIFY(!v.ok);
-        QCOMPARE(v.reason, QStringLiteral("stale data"));
     }
     void require_floor_off_permits_all_bad() {
         FloorInputs in{false, "reject", "false", "degraded"};

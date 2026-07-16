@@ -110,13 +110,15 @@ class TstStrategyLoop : public QObject {
         tc.enqueue("submit_order", filled());
 
         FakeStrategy s;
-        // quantity/limit_price populated so the pre-trade guardrail (a no-op
-        // here: default caps are 0 and no assess_fn is injected) allows the
-        // intent through to prepare/submit unchanged.
+        // quantity/limit_price populated; unrelated evidence gates are disabled
+        // below so this test isolates prepare/submit behavior.
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
 
         QCOMPARE(sum.proposed, 1);
         QCOMPARE(sum.prepared, 1);
@@ -146,11 +148,14 @@ class TstStrategyLoop : public QObject {
         tc.enqueue("submit_order", submit_rejected("exceeds max order value"));
 
         FakeStrategy s;
-        // quantity/limit_price so the gate (no-op under default config) lets it through.
+        // quantity/limit_price so prepare/submit receives a complete intent.
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
 
         QCOMPARE(sum.prepared, 1);
         QCOMPARE(sum.filled, 0);
@@ -165,12 +170,15 @@ class TstStrategyLoop : public QObject {
         tc.enqueue("prepare_order", prepare_rejected());
 
         FakeStrategy s;
-        // quantity/limit_price so the gate (no-op under default config) lets it through
-        // to prepare_order, which is what this test exercises.
+        // Evidence gates are disabled below because prepare rejection is what
+        // this test exercises.
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
 
         QCOMPARE(tc.count("submit_order"), 0);
         QCOMPARE(sum.rejected, 1);
@@ -190,11 +198,14 @@ class TstStrategyLoop : public QObject {
         }
 
         FakeStrategy s;
-        // quantity/limit_price so the gate (no-op under default config) lets it through.
+        // Evidence gates are disabled below so submit kill-switch handling is isolated.
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 5, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 5, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
 
         QCOMPARE(sum.ticks, 1); // loop broke on the very first tick — no spin.
         QVERIFY(sum.halted_by_kill_switch);
@@ -321,7 +332,10 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol","OFF-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
         StrategyRunner runner;
         runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
         QCOMPARE(sum.floor_skipped, 0);            // floor disabled -> proceeds past the floor
         QCOMPARE(sum.filled, 1);
     }
@@ -634,13 +648,16 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol", "LED-USD"}, {"side", "buy"}, {"quantity", 3.0}, {"limit_price", 40.0}}};
 
         StrategyRunner runner;
-        // Make the gate pass for LED-USD (default-constructed packet ⇒
-        // clears_cost/freshness are empty strings ⇒ neither gate rejects).
+        // This test isolates fill persistence, so cost/freshness gates are
+        // explicitly disabled rather than relying on missing telemetry.
         runner.assess_fn = [](const QString&) {
             ai_decision::DecisionPacket p;
             return p;
         };
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
         QCOMPARE(sum.filled, 1);
 
         auto rows = AiFillRepository::instance().list("fake", "LED-USD", 10);
@@ -672,7 +689,10 @@ class TstStrategyLoop : public QObject {
             ai_decision::DecisionPacket p;
             return p;
         };
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        RunSummary sum = runner.run(s, tc, cfg);
         QCOMPARE(sum.filled, 1);
 
         auto rows = AiFillRepository::instance().list("fake", "FEE-USD", 10);
@@ -731,8 +751,10 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol","CAP-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
 
         StrategyRunner runner;
-        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };  // passes cost/freshness
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
         RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
         cfg.max_position_qty = 10.0;  // 8 + 5 = 13 > 10 and > 8 -> reject
         RunSummary sum = runner.run(s, tc, cfg);
 
@@ -758,6 +780,8 @@ class TstStrategyLoop : public QObject {
         StrategyRunner runner;
         runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
         RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
         cfg.max_position_qty = 10.0;  // 15 - 3 = 12, still > cap 10 but |12| <= |15| (reduces) -> allowed
         RunSummary sum = runner.run(s, tc, cfg);
 

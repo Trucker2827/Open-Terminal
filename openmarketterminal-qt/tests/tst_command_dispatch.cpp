@@ -1791,7 +1791,7 @@ private slots:
                 "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
                 " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 {id, ts, ts, sym, venue, QStringLiteral("buy"), gate, edge, 0.0, 0.0,
-                 QStringLiteral("{}"), QStringLiteral("s")});
+                 QStringLiteral("{\"freshest_age_ms\":100,\"live_sources\":2}"), QStringLiteral("s")});
             QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
         };
         seed(QStringLiteral("cd-scr-1"), QStringLiteral("SCRBTC-USD"), QStringLiteral("coinbase_advanced"),

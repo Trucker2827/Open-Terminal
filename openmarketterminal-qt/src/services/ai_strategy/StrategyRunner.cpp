@@ -106,10 +106,9 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
                 pkt = assess_fn ? assess_fn(sym) : ai_decision::DecisionPacket{};
             } catch (...) {
                 ++summary.errors;
-                // assess_fn must never crash the loop; an error degrades to an
-                // "unknown" packet, same as assess()'s own no-row/query-failed
-                // path, so the cost/freshness gates fall through rather than
-                // spuriously reject.
+                // assess_fn must never crash the loop. An error degrades to an
+                // "unknown" packet, which fail-closed gates reject unless the
+                // operator explicitly disabled those gates.
                 pkt = ai_decision::DecisionPacket{};
                 pkt.clears_cost = QStringLiteral("unknown");
                 pkt.freshness = QStringLiteral("unknown");

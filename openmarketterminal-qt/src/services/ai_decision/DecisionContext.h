@@ -110,9 +110,9 @@ QJsonObject to_json(const DecisionPacket& packet);
 
 // Pure precedence rule (no DB, no side effects):
 //   !has_edge_signal        -> "no edge signal"
-//   freshness == "degraded" -> "blocked: stale data"  ("unknown" does NOT block)
-//   clears_cost == "false"  -> "blocked: below cost"
-//   otherwise               -> "all gates pass"
+//   freshness != "ok"       -> "blocked: freshness not confirmed"
+//   clears_cost != "true"   -> "blocked: cost not confirmed"
+//   otherwise                -> "all gates pass"
 QString compute_hint(const DecisionPacket& packet);
 
 } // namespace openmarketterminal::ai_decision

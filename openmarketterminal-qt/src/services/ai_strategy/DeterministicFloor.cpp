@@ -14,8 +14,8 @@ GateVerdict floor_verdict(const FloorInputs& in, const FloorPolicy& policy) {
         return {false, QStringLiteral("edge gate not pass"), QStringLiteral("floor")};
     if (in.clears_cost != QLatin1String("true"))
         return {false, QStringLiteral("below cost (not affirmatively clear)"), QStringLiteral("floor")};
-    if (in.freshness == QLatin1String("degraded"))
-        return {false, QStringLiteral("stale data"), QStringLiteral("floor")};
+    if (in.freshness != QLatin1String("ok"))
+        return {false, QStringLiteral("freshness not affirmatively ok"), QStringLiteral("floor")};
     return {true, {}, {}};
 }
 

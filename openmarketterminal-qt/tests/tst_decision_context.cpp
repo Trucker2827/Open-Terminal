@@ -71,7 +71,7 @@ class TstDecisionContext : public QObject {
     }
 
     void assess_below_cost_and_stale_and_missing() {
-        // gate=fail => clears_cost false; hint "blocked: below cost" when fresh.
+        // gate=fail => clears_cost false; hint reports that cost is unconfirmed.
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -79,11 +79,9 @@ class TstDecisionContext : public QObject {
              1.0, 1.0, QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"), QStringLiteral("x")});
         const auto below = assess(QStringLiteral("ETH-USD"));
         QCOMPARE(below.clears_cost, QStringLiteral("false"));
-        QCOMPARE(below.recommendation_hint, QStringLiteral("blocked: below cost"));
+        QCOMPARE(below.recommendation_hint, QStringLiteral("blocked: cost not confirmed"));
 
-        // stale (DEGRADED) row => hint "blocked: stale data". freshest_age_ms
-        // 9000 > 5000 => data_quality_from_freshness returns "degraded", which
-        // is the ONLY freshness value that blocks (not "unknown").
+        // stale (DEGRADED) row is blocked. freshest_age_ms 9000 > 5000.
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " freshness_json, source) VALUES (?,?,?,?,?,?,?,?)",
@@ -91,15 +89,10 @@ class TstDecisionContext : public QObject {
              QStringLiteral("{\"freshest_age_ms\":9000,\"live_sources\":3}"), QStringLiteral("x")});
         const auto stale = assess(QStringLiteral("SOL-USD"));
         QCOMPARE(stale.freshness, QStringLiteral("degraded"));
-        QCOMPARE(stale.recommendation_hint, QStringLiteral("blocked: stale data"));
+        QCOMPARE(stale.recommendation_hint, QStringLiteral("blocked: freshness not confirmed"));
 
-        // UNKNOWN-freshness row (regression guard): freshness_json = {} carries
-        // NEITHER freshest_age_ms NOR live_sources, so data_quality_from_freshness
-        // returns "unknown" -- meaning "no telemetry", NOT "stale". Prediction/
-        // Kalshi journal rows legitimately carry none. With edge present,
-        // gate=pass, edge_after_cost>0, the hint MUST fall through to
-        // "all gates pass", never "blocked: stale data" -- otherwise every
-        // prediction candidate is falsely blocked.
+        // Missing freshness telemetry must fail closed rather than presenting an
+        // incomplete prediction row as ready for execution.
         Database::instance().execute(
             "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, edge_after_cost,"
             " spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -109,7 +102,7 @@ class TstDecisionContext : public QObject {
         QVERIFY(unknown.has_edge_signal);
         QCOMPARE(unknown.freshness, QStringLiteral("unknown"));
         QCOMPARE(unknown.clears_cost, QStringLiteral("true"));
-        QCOMPARE(unknown.recommendation_hint, QStringLiteral("all gates pass"));
+        QCOMPARE(unknown.recommendation_hint, QStringLiteral("blocked: freshness not confirmed"));
 
         // no row => graceful, no edge.
         const auto none = assess(QStringLiteral("ZZZZ-USD"));
