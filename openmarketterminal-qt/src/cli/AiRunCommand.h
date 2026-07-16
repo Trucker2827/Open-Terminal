@@ -58,7 +58,7 @@ int ai_pnl_command(const GlobalOpts& opts, const QStringList& rest);
 int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest);
 
 // Run `ai scorecard [--handler H] [--symbol S] [--limit N] [--json]` (AI
-// ledger Task 2 -- track record). READ-ONLY: folds realized closes via
+// scorecard -- track record). READ-ONLY: folds realized closes via
 // ai_ledger::scorecard_of + scorecard_to_json -- never writes any DB row.
 // Empty --handler/--symbol = no filter on that column; default --limit is 0
 // (all closes); a non-positive or unparseable --limit value also means "all"

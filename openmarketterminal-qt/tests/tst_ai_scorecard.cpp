@@ -79,6 +79,33 @@ class TstAiScorecard : public QObject {
         QCOMPARE(sc.per_symbol.at(1).trades, 2);
     }
 
+    void best_worst_seed_from_first_close_all_negative() {
+        // Guards the 0-init trap: an all-negative book must report best = the
+        // largest (least negative) close, NOT 0 (which a max(0,...) bug leaves).
+        QVERIFY(seed("n1", "NEG", "N-USD", "sell", 1, 10, -50.0, 4000));
+        QVERIFY(seed("n2", "NEG", "N-USD", "sell", 1, 10, -10.0, 4001));  // largest (least negative)
+        QVERIFY(seed("n3", "NEG", "N-USD", "sell", 1, 10, -30.0, 4002));
+
+        Scorecard sc = scorecard_of("NEG", "N-USD");
+        QCOMPARE(sc.trades, 3);
+        QCOMPARE(sc.wins, 0);
+        QCOMPARE(sc.losses, 3);
+        QCOMPARE(sc.best, -10.0);   // NOT 0 — seeded from a real close
+        QCOMPARE(sc.worst, -50.0);
+        QCOMPARE(sc.realized_total, -90.0);
+    }
+
+    void best_worst_seed_from_first_close_all_positive() {
+        // Mirror: an all-positive book must report worst = the smallest close, NOT 0.
+        QVERIFY(seed("po1", "POS", "P-USD", "sell", 1, 10, 50.0, 5000));
+        QVERIFY(seed("po2", "POS", "P-USD", "sell", 1, 10, 10.0, 5001));  // smallest
+        QVERIFY(seed("po3", "POS", "P-USD", "sell", 1, 10, 30.0, 5002));
+
+        Scorecard sc = scorecard_of("POS", "P-USD");
+        QCOMPARE(sc.best, 50.0);
+        QCOMPARE(sc.worst, 10.0);    // NOT 0 — seeded from a real close
+    }
+
     void empty_is_all_zero() {
         Scorecard sc = scorecard_of("nobody");
         QCOMPARE(sc.trades, 0);
