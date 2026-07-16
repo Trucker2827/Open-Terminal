@@ -52,6 +52,29 @@ class TstPretradeGate : public QObject {
         const auto v = evaluate_pretrade(mk(1.0, 100.0), fresh_ok(100.0), p); // 100 > 50
         QVERIFY(!v.ok); QCOMPARE(v.rule, QStringLiteral("notional"));
     }
+    void notional_cap_exempts_de_risking() {
+        GatePolicy p;
+        p.max_notional_per_order = 500.0;
+        // GROWING order over the cap -> rejected {notional} (regression guard on the cap itself).
+        {
+            GateInputs in;
+            in.resolved_price = 100.0;
+            in.existing_net_qty = 0.0;  // flat -> a buy grows exposure
+            const TradeIntent buy{{"symbol", "X"}, {"side", "buy"}, {"quantity", 10.0}};  // notional 1000 > 500
+            const auto v = evaluate_pretrade(buy, in, p);
+            QVERIFY(!v.ok);
+            QCOMPARE(v.rule, QStringLiteral("notional"));
+        }
+        // REDUCING order over the cap -> PASSES (de-risking never blocked).
+        {
+            GateInputs in;
+            in.resolved_price = 100.0;
+            in.existing_net_qty = 100.0;  // long 100
+            const TradeIntent exit{{"symbol", "X"}, {"side", "sell"}, {"quantity", 100.0}};  // notional 10000 >> 500, full exit
+            const auto v = evaluate_pretrade(exit, in, p);
+            QVERIFY2(v.ok, "a full de-risking exit must not be notional-capped");
+        }
+    }
     void position_cap_rejects() {
         GatePolicy p; p.max_position_qty = 0.5;
         const auto v = evaluate_pretrade(mk(1.0, 100.0), fresh_ok(100.0), p); // 1 > 0.5

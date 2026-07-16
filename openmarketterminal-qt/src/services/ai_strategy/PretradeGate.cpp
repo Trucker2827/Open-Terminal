@@ -14,8 +14,17 @@ GateVerdict evaluate_pretrade(const TradeIntent& intent, const GateInputs& in, c
         return {false, QStringLiteral("below cost"), QStringLiteral("cost")};
     if (policy.require_freshness_gate && in.freshness == QStringLiteral("degraded"))
         return {false, QStringLiteral("stale data"), QStringLiteral("freshness")};
-    if (policy.max_notional_per_order > 0.0 && qty * in.resolved_price > policy.max_notional_per_order)
-        return {false, QStringLiteral("notional exceeds cap"), QStringLiteral("notional")};
+    if (policy.max_notional_per_order > 0.0 && qty * in.resolved_price > policy.max_notional_per_order) {
+        const QString side = intent.value(QStringLiteral("side")).toString();
+        const double signed_new =
+            (side == QLatin1String("sell") || side == QLatin1String("short")) ? -qty : qty;
+        const double resulting = in.existing_net_qty + signed_new;
+        // De-risking exemption (mirrors the position/aggregate caps): a reduce/close
+        // that does not grow absolute exposure is never blocked — a full exit must not
+        // be rejected for size. Only an EXPOSURE-GROWING order is notional-capped.
+        if (std::abs(resulting) > std::abs(in.existing_net_qty))
+            return {false, QStringLiteral("notional exceeds cap"), QStringLiteral("notional")};
+    }
     if (policy.max_position_qty > 0.0) {
         const QString side = intent.value(QStringLiteral("side")).toString();
         const double signed_new =
