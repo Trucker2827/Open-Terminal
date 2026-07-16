@@ -1409,6 +1409,10 @@ set(SERVICE_SOURCES
     # AI paper ledger Task 1 — pure signed-position accounting core
     # (apply_fill/unrealized_of), no persistence.
     src/services/ai_ledger/AiLedger.cpp
+
+    # AI scorecard Task 1 — read-only realized-close track record derived
+    # from the ai_fill ledger (scorecard_of/scorecard_to_json).
+    src/services/ai_ledger/Scorecard.cpp
 )
 
 # UI framework

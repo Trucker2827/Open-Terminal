@@ -113,6 +113,11 @@ target_include_directories(tst_ai_ledger PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_ai_ledger PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_ai_ledger COMMAND tst_ai_ledger)
 
+add_executable(tst_ai_scorecard tst_ai_scorecard.cpp)
+target_include_directories(tst_ai_scorecard PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_scorecard PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_scorecard COMMAND tst_ai_scorecard)
+
 # AI-Trading Substrate Phase A Task 1 — the SECURITY KEYSTONE: the settings-WRITE
 # tool path must refuse any cli.* key (arm/enable trading, raise risk caps) even
 # when cli.allow_settings_write is on, so a CLI/AI agent can't escalate itself.
