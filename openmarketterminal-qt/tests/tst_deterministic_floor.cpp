@@ -1,14 +1,20 @@
 #include <QtTest>
 #include "services/ai_strategy/DeterministicFloor.h"
+#include "services/ai_strategy/Strategy.h"
 
 using namespace openmarketterminal;
 using ai_strategy::FloorInputs;
 using ai_strategy::FloorPolicy;
 using ai_strategy::floor_verdict;
+using ai_strategy::intent_reduces_exposure;
+using ai_strategy::TradeIntent;
 
 class TstDeterministicFloor : public QObject {
     Q_OBJECT
     static FloorInputs endorsing() { return FloorInputs{true, "pass", "true", "ok"}; }
+    static TradeIntent iof(const QString& side, double qty) {
+        return TradeIntent{{"symbol", "X-USD"}, {"side", side}, {"quantity", qty}};
+    }
   private slots:
     void permits_fully_endorsed() {
         QVERIFY(floor_verdict(endorsing(), FloorPolicy{}).ok);
@@ -49,6 +55,23 @@ class TstDeterministicFloor : public QObject {
     void require_floor_off_permits_all_bad() {
         FloorInputs in{false, "reject", "false", "degraded"};
         QVERIFY(floor_verdict(in, FloorPolicy{false}).ok);   // pass-through when floor disabled
+    }
+    void reduces_long_via_sell() {
+        QVERIFY(intent_reduces_exposure(iof("sell", 5.0), 10.0));    // 10 -> 5
+        QVERIFY(intent_reduces_exposure(iof("sell", 10.0), 10.0));   // close
+        QVERIFY(intent_reduces_exposure(iof("sell", 15.0), 10.0));   // flip-reduce: |-5| <= 10
+    }
+    void grow_long_is_not_reducing() {
+        QVERIFY(!intent_reduces_exposure(iof("buy", 5.0), 10.0));     // 10 -> 15
+        QVERIFY(!intent_reduces_exposure(iof("sell", 25.0), 10.0));   // flip-grow: |-15| > 10
+    }
+    void flat_is_not_reducing() {
+        QVERIFY(!intent_reduces_exposure(iof("buy", 5.0), 0.0));
+        QVERIFY(!intent_reduces_exposure(iof("sell", 5.0), 0.0));
+    }
+    void short_cover_reduces_add_does_not() {
+        QVERIFY(intent_reduces_exposure(iof("buy", 5.0), -10.0));     // cover: -10 -> -5
+        QVERIFY(!intent_reduces_exposure(iof("sell", 5.0), -10.0));   // add short: -10 -> -15
     }
 };
 

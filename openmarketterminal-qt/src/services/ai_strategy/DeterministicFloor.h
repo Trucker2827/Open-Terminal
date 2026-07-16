@@ -24,5 +24,10 @@ struct FloorPolicy {
 /// && freshness != "degraded"). Otherwise rejects with rule="floor" and a specific reason.
 GateVerdict floor_verdict(const FloorInputs& in, const FloorPolicy& policy);
 
+/// Pure: true iff this intent reduces the position's absolute exposure
+/// (reduce / close / flip-that-reduces). Flat or growing -> false. Reads only its args.
+/// Mirrors the reduce side of PretradeGate's increase-only cap.
+bool intent_reduces_exposure(const TradeIntent& intent, double existing_net_qty);
+
 } // namespace ai_strategy
 } // namespace openmarketterminal
