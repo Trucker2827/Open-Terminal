@@ -337,6 +337,46 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(sum.filled, 0);
     }
 
+    // ── Floor exemption for de-risking intents (⑤d, Task 2) ─────────────────
+
+    void floor_allows_unendorsed_reducing_exit() {
+        ensure_migrated_db();
+        // Seed a LONG position for fake/DRK-USD (buy 10) so a sell reduces it.
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('drk1','fake','DRK-USD','buy',10,100,0,0,1000,'d')").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DDRK"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","DRK-USD"},{"side","sell"},{"quantity",4.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {                 // NON-endorsing (gate=watch)
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "watch"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.floor_skipped, 0);                          // de-risking exit NOT floor-skipped
+        QCOMPARE(sum.filled, 1);                                 // proceeded to submit(paper)
+    }
+
+    void floor_still_skips_unendorsed_opening_buy() {
+        ensure_migrated_db();
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","OPN-USD"},{"side","buy"},{"quantity",4.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {                 // NON-endorsing
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "watch"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.floor_skipped, 1);                          // opening from flat still blocked
+        QCOMPARE(sum.filled, 0);
+    }
+
     // ── MeanReversionStrategy (Task 2) ───────────────────────────────────────
     // Driven directly with hand-built snapshots — deterministic, no runner.
 

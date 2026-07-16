@@ -120,7 +120,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             // subtractive: it only prevents paper trades, never enables one.
             const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
             const GateVerdict fv = floor_verdict(fin, FloorPolicy{cfg.require_floor});
-            if (!fv.ok) {
+            if (!fv.ok && !intent_reduces_exposure(intent, gin.existing_net_qty)) {
                 ++summary.floor_skipped;
                 summary.floor_skips.push_back(
                     {sym, intent.value(QStringLiteral("side")).toString(), fv.reason, fv.rule});
