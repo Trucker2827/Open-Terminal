@@ -15,7 +15,9 @@ namespace openmarketterminal::screens {
 
 class SandboxBooksPanel;
 class StrategyOpsMapPanel;
-class StrategyAutomationPanel;
+class StrategyHandlersPanel;
+class StrategyRiskPanel;
+class StrategyRunHistoryPanel;
 
 /// Evidence-first strategy workspace. Every visible surface is backed by the
 /// sandbox registry, paper ledger, scorer, or the daemon jobs that feed them.
@@ -46,8 +48,10 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
 
     QStackedWidget* content_stack_ = nullptr;
     StrategyOpsMapPanel* ops_map_ = nullptr;
+    StrategyHandlersPanel* handlers_ = nullptr;
     SandboxBooksPanel* proof_books_ = nullptr;
-    StrategyAutomationPanel* automation_ = nullptr;
+    StrategyRiskPanel* risk_ = nullptr;
+    StrategyRunHistoryPanel* run_history_ = nullptr;
 
     QVector<QPushButton*> tab_buttons_;
     int active_tab_ = 0;
