@@ -900,6 +900,7 @@ set(STORAGE_SOURCES
     src/storage/repositories/EdgePredictionModelRepository.cpp
     src/storage/repositories/EdgeRadarRepository.cpp
     src/storage/repositories/AiFillRepository.cpp
+    src/storage/repositories/AiHandlerRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -971,6 +972,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v063_ai_handler.cpp
     src/storage/sqlite/migrations/v064_ai_fill.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
@@ -1238,6 +1240,7 @@ set(SERVICE_SOURCES
     src/services/ai_strategy/PretradeGate.cpp
     src/services/ai_strategy/DeterministicFloor.cpp
     src/services/ai_strategy/TypedAction.cpp
+    src/services/ai_strategy/StrategyRegistry.cpp
     src/services/report_builder/ReportBuilderService.cpp
     src/services/report_builder/ReportBuilderTemplates.cpp
     src/core/services/Services.cpp
@@ -2401,6 +2404,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v063_ai_handler.cpp
     src/storage/sqlite/migrations/v064_ai_fill.cpp
     # DecisionContext.cpp — defines an anonymous-namespace `enum class
     # EdgeCol` (scoped enumerators, but the type name itself still lives in

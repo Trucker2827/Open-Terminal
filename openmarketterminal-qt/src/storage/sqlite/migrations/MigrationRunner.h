@@ -109,6 +109,7 @@ void register_migration_v059();
 void register_migration_v060();
 void register_migration_v061();
 void register_migration_v062();
+void register_migration_v063();
 void register_migration_v064();
 
 /// Register every migration above, in version order, in one place. Both the GUI

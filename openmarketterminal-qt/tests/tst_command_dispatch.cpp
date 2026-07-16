@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QTemporaryDir>
 #include <functional>
 #include <unistd.h>
@@ -109,6 +110,10 @@ static QStringList json_strings(const QJsonArray& arr) {
 // EVERY cli.* settings row (key|value|updated_at) so a test can assert `ai
 // ctx` mutates none of them (mirrors the shape of the kalshi gate rows
 // exercised above, generalized to "all of them" rather than one named key).
+// Also used by the `ai handler status` gate-immutability test to detect any
+// write it might make: a value change, a stray new row, OR a same-value
+// INSERT-OR-REPLACE that re-stamps updated_at (the settings table carries
+// `updated_at TEXT DEFAULT (datetime('now'))`).
 static QStringList cli_settings_fingerprint() {
     QStringList out;
     auto rows = Database::instance().execute(
@@ -2126,6 +2131,187 @@ private slots:
         QCOMPARE(rc, 0);
         QCOMPARE(cli_settings_fingerprint(), before);
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+    }
+
+    // --- Task 3: `ai strategy list` + `ai handler` CRUD (PAPER-ONLY/DISARMED;
+    // AiHandlerRepository is a real DB-backed repo, so these need the shared
+    // process-lifetime DB brought up via sandbox_test_home() like the sandbox
+    // slots above). ---
+
+    void ai_strategy_list_advertises_builtins() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "strategy", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonArray strategies = out.value("strategies").toArray();
+        QStringList names;
+        for (const QJsonValue& v : strategies)
+            names << v.toObject().value("name").toString();
+        QVERIFY(names.contains("meanrev"));
+        QVERIFY(names.contains("claude"));
+        for (const QJsonValue& v : strategies) {
+            const QJsonObject o = v.toObject();
+            if (o.value("name").toString() == "claude")
+                QVERIFY(o.value("needs_provider").toBool());
+            if (o.value("name").toString() == "meanrev")
+                QVERIFY(!o.value("needs_provider").toBool());
+            QVERIFY(!o.value("description").toString().isEmpty());
+        }
+    }
+
+    void ai_handler_create_list_show_roundtrip() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject created = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "create", "crypto-scout", "--strategy", "claude",
+                       "--symbols", "BTC-USD"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(created.value("name").toString(), QString("crypto-scout"));
+        QCOMPARE(created.value("strategy").toString(), QString("claude"));
+        QCOMPARE(created.value("symbols").toString(), QString("BTC-USD"));
+        // paper-only/disarmed invariant: a freshly created handler is never enabled.
+        QVERIFY(!created.value("enabled").toBool());
+
+        const QJsonObject shown = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(shown.value("strategy").toString(), QString("claude"));
+        QCOMPARE(shown.value("symbols").toString(), QString("BTC-USD"));
+        QVERIFY(!shown.value("enabled").toBool());
+
+        const QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        bool found = false;
+        for (const QJsonValue& v : listed.value("handlers").toArray())
+            if (v.toObject().value("name").toString() == "crypto-scout")
+                found = true;
+        QVERIFY(found);
+
+        // enable/disable flip ONLY the saved-config flag.
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "enable", "crypto-scout"}), 0);
+        QJsonObject after_enable = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(after_enable.value("enabled").toBool());
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "disable", "crypto-scout"}), 0);
+        QJsonObject after_disable = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!after_disable.value("enabled").toBool());
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "delete", "crypto-scout"}), 0);
+        int show_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &show_rc);
+        QVERIFY(show_rc != 0);
+    }
+
+    void ai_handler_create_rejects_unknown_strategy() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch(QStringList{"ai", "handler", "create", "x", "--strategy", "bogus"});
+            return rc;
+        });
+        QVERIFY2(rc != 0, "create with an unregistered strategy must fail");
+
+        int show_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "x"}, &show_rc);
+        QVERIFY2(show_rc != 0, "no row should have been written for the rejected create");
+    }
+
+    // --- Task 4: `ai handler status` (read-only arm-state) + `ai handler run`
+    // (PAPER-ONLY). SAFETY-CRITICAL: `status` must never mutate a gate; `run`
+    // must refuse any non-paper mode. ---
+
+    void ai_handler_status_reports_disarmed_gates() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "status"}, &rc);
+        QCOMPARE(rc, 0);
+        // No live path exists in the plugin core: armed is ALWAYS false.
+        QCOMPARE(out.value("armed").toBool(true), false);
+        QVERIFY2(out.contains("gates"), "status must emit a gates object");
+        const QJsonObject gates = out.value("gates").toObject();
+        QVERIFY2(gates.contains("kill_switch"), "status gates must expose kill_switch");
+        QVERIFY2(!out.value("disarmed_reason").toArray().isEmpty(),
+                 "status must list at least one disarmed reason");
+    }
+
+    void ai_handler_status_is_read_only_on_gates() {
+        sandbox_test_home();
+        auto& settings = openmarketterminal::SettingsRepository::instance();
+        // Arm a known kill-switch state so status has a non-default gate to read.
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("true"),
+                             QStringLiteral("test")).is_ok());
+
+        // Snapshot ALL SIX gates status reads (not just kill_switch) so a stray
+        // write to any of them is caught (default-deny false/empty when unset).
+        const QStringList gate_keys{
+            QStringLiteral("cli.kill_switch"),     QStringLiteral("cli.allow_paper_trading"),
+            QStringLiteral("cli.allow_trading"),   QStringLiteral("cli.live_trading_armed"),
+            QStringLiteral("cli.fast_live_armed"), QStringLiteral("cli.allowed_venues")};
+        QMap<QString, QString> before_vals;
+        for (const QString& k : gate_keys)
+            before_vals[k] = settings.get(k, QString()).value();
+        QCOMPARE(before_vals.value(QStringLiteral("cli.kill_switch")), QStringLiteral("true"));
+
+        // Full row fingerprint (value AND updated_at) of every cli.* key — catches
+        // an idempotent same-value INSERT-OR-REPLACE that bumps the timestamp, plus
+        // any stray write to a cli.* key not in the six above.
+        const QStringList before_fp = cli_settings_fingerprint();
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "status"}, &rc);
+        QCOMPARE(rc, 0);
+        // status must READ the engaged value...
+        QCOMPARE(out.value("gates").toObject().value("kill_switch").toBool(false), true);
+
+        // ...and MUST NOT have written ANY of the six gates (values unchanged)...
+        for (const QString& k : gate_keys)
+            QCOMPARE(settings.get(k, QString()).value(), before_vals.value(k));
+        // ...nor mutated any cli.* row at all (value or timestamp) — gate immutability.
+        QCOMPARE(cli_settings_fingerprint(), before_fp);
+
+        // Reset shared state so later slots don't inherit an engaged kill switch.
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("false"),
+                             QStringLiteral("test")).is_ok());
+    }
+
+    void ai_handler_run_is_paper_only() {
+        sandbox_test_home();
+        // Belt-and-braces: make sure no earlier slot left the kill switch engaged,
+        // otherwise the paper run would halt on tick 1 and pass for the wrong reason.
+        openmarketterminal::SettingsRepository::instance().set(
+            QStringLiteral("cli.kill_switch"), QStringLiteral("false"), QStringLiteral("test"));
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "create", "p1", "--strategy", "meanrev",
+                                      "--symbols", "BTC-USD"}), 0);
+
+        // Paper-only proof: a live run is REFUSED with exit 2 (no live path).
+        int live_rc = -1;
+        capture_stdout([&]() {
+            live_rc = dispatch(QStringList{"ai", "handler", "run", "p1", "--mode", "live"});
+            return live_rc;
+        });
+        QCOMPARE(live_rc, 2);
+
+        // A bounded paper run completes cleanly and places NO order.
+        int paper_rc = -1;
+        const QString out = capture_stdout([&]() {
+            paper_rc = dispatch(QStringList{"--headless", "ai", "handler", "run", "p1",
+                                            "--mode", "paper", "--max-iters", "1", "--interval-sec", "0"});
+            return paper_rc;
+        });
+        QCOMPARE(paper_rc, 0);
+        QVERIFY2(out.contains("filled=0"),
+                 qUtf8Printable("paper run must place no order; got: " + out));
+
+        dispatch(QStringList{"ai", "handler", "delete", "p1"});
     }
 };
 QTEST_MAIN(TstCommandDispatch)
