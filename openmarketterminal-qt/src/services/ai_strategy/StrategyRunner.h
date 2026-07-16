@@ -28,6 +28,7 @@ struct RunConfig {
     QStringList allowed_venues;          ///< empty = no venue restriction.
     bool require_cost_gate = true;
     bool require_freshness_gate = true;
+    bool require_floor = true;  ///< ON: skip symbols the honest edge system doesn't endorse.
 };
 
 /// Tally of what one run did. halted_by_kill_switch reflects EITHER the
@@ -51,6 +52,8 @@ struct RunSummary {
     int errors = 0;
     bool halted_by_kill_switch = false;
     QVector<GateRejection> gate_rejections;
+    int floor_skipped = 0;
+    QVector<GateRejection> floor_skips;  ///< symbols skipped by the deterministic floor (rule "floor").
 };
 
 class StrategyRunner {

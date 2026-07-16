@@ -2,6 +2,7 @@
 #include "services/ai_strategy/StrategyRunner.h"
 
 #include "mcp/tools/SettingsGate.h"
+#include "services/ai_strategy/DeterministicFloor.h"
 #include "services/ai_strategy/PretradeGate.h"
 #include "services/ai_ledger/AiLedger.h"
 
@@ -97,6 +98,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             try {
                 pkt = assess_fn ? assess_fn(sym) : ai_decision::DecisionPacket{};
             } catch (...) {
+                ++summary.errors;
                 // assess_fn must never crash the loop; an error degrades to an
                 // "unknown" packet, same as assess()'s own no-row/query-failed
                 // path, so the cost/freshness gates fall through rather than
@@ -109,6 +111,23 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             gin.freshness = pkt.freshness;
             gin.has_edge_signal = pkt.has_edge_signal;
             gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
+
+            // Deterministic floor: runs BEFORE the pre-trade guardrail. Reads
+            // only the already-resolved packet and, when it doesn't
+            // positively endorse the symbol, records a floor_skip (rule
+            // "floor", NEVER a gate_rejection) and skips — never reaches
+            // evaluate_pretrade/prepare_order/submit_order. Default ON,
+            // subtractive: it only prevents paper trades, never enables one.
+            const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
+            const GateVerdict fv = floor_verdict(fin, FloorPolicy{cfg.require_floor});
+            if (!fv.ok) {
+                ++summary.floor_skipped;
+                summary.floor_skips.push_back(
+                    {sym, intent.value(QStringLiteral("side")).toString(), fv.reason, fv.rule});
+                log(QStringLiteral("floor skipped %1: %2").arg(sym, fv.reason));
+                continue;  // before the pretrade gate / prepare_order / submit_order
+            }
+
             const GateVerdict gv = evaluate_pretrade(intent, gin, policy);
             if (!gv.ok) {
                 ++summary.rejected;

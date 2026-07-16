@@ -112,7 +112,7 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
 
         QCOMPARE(sum.proposed, 1);
         QCOMPARE(sum.prepared, 1);
@@ -146,7 +146,7 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
 
         QCOMPARE(sum.prepared, 1);
         QCOMPARE(sum.filled, 0);
@@ -166,7 +166,7 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
 
         QCOMPARE(tc.count("submit_order"), 0);
         QCOMPARE(sum.rejected, 1);
@@ -190,7 +190,7 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 5});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 5, .require_floor = false});
 
         QCOMPARE(sum.ticks, 1); // loop broke on the very first tick — no spin.
         QVERIFY(sum.halted_by_kill_switch);
@@ -205,7 +205,7 @@ class TstStrategyLoop : public QObject {
         s.intents_ = {}; // propose nothing.
 
         StrategyRunner runner;
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 3});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 3, .require_floor = false});
 
         QCOMPARE(sum.ticks, 3);
         QCOMPARE(sum.proposed, 0);
@@ -234,7 +234,7 @@ class TstStrategyLoop : public QObject {
             p.freshness = QStringLiteral("ok");
             return p;
         };
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
 
         // BTC-USD gate-rejected: recorded, and NEVER submitted.
         QCOMPARE(sum.gate_rejections.size(), 1);
@@ -253,6 +253,85 @@ class TstStrategyLoop : public QObject {
             if (c.first == QLatin1String("prepare_order") && c.second.value("symbol").toString() == QLatin1String("ETH-USD"))
                 eth_prepared = true;
         QVERIFY(eth_prepared);
+    }
+
+    // ── Deterministic floor integration (Task 2 of the deterministic-floor spec) ─
+
+    void floor_permits_endorsed_intent() {
+        ensure_migrated_db();
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DF1"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","FLR-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.filled, 1);
+        QCOMPARE(sum.floor_skipped, 0);
+    }
+
+    void floor_skips_non_endorsed_intent() {
+        ensure_migrated_db();
+        FakeToolCaller tc;  // no prepare/submit should be reached
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","NFL-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "watch"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(sum.floor_skipped, 1);
+        QCOMPARE(sum.floor_skips.size(), 1);
+        QCOMPARE(sum.floor_skips.at(0).rule, QStringLiteral("floor"));
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 0);   // floor-skip is NOT a gate-reject
+    }
+
+    void floor_default_skips_default_packet() {
+        ensure_migrated_db();
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","DEF-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };  // has_edge_signal=false
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.floor_skipped, 1);            // default-ON floor skips a non-endorsed default packet
+        QCOMPARE(sum.filled, 0);
+    }
+
+    void require_floor_off_lets_non_endorsed_through() {
+        ensure_migrated_db();
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DOF"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","OFF-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
+        QCOMPARE(sum.floor_skipped, 0);            // floor disabled -> proceeds past the floor
+        QCOMPARE(sum.filled, 1);
+    }
+
+    void floor_fail_to_skip_on_assess_throw() {
+        ensure_migrated_db();
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","THR-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) -> ai_decision::DecisionPacket { throw std::runtime_error("boom"); };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.errors, 1);                   // catch incremented errors
+        QCOMPARE(sum.floor_skipped, 1);            // degraded packet -> floor skip
+        QCOMPARE(sum.filled, 0);
     }
 
     // ── MeanReversionStrategy (Task 2) ───────────────────────────────────────
@@ -459,7 +538,7 @@ class TstStrategyLoop : public QObject {
             ai_decision::DecisionPacket p;
             return p;
         };
-        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1, .require_floor = false});
         QCOMPARE(sum.filled, 1);
 
         auto rows = AiFillRepository::instance().list("fake", "LED-USD", 10);
@@ -487,7 +566,7 @@ class TstStrategyLoop : public QObject {
             p.clears_cost = QStringLiteral("false");  // cost gate rejects
             return p;
         };
-        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
         cfg.require_cost_gate = true;
         RunSummary sum = runner.run(s, tc, cfg);
         QCOMPARE(sum.filled, 0);
@@ -514,7 +593,7 @@ class TstStrategyLoop : public QObject {
 
         StrategyRunner runner;
         runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };  // passes cost/freshness
-        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
         cfg.max_position_qty = 10.0;  // 8 + 5 = 13 > 10 and > 8 -> reject
         RunSummary sum = runner.run(s, tc, cfg);
 
@@ -539,7 +618,7 @@ class TstStrategyLoop : public QObject {
 
         StrategyRunner runner;
         runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
-        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
         cfg.max_position_qty = 10.0;  // 15 - 3 = 12, still > cap 10 but |12| <= |15| (reduces) -> allowed
         RunSummary sum = runner.run(s, tc, cfg);
 
