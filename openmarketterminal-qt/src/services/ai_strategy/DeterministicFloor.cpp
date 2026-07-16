@@ -26,7 +26,11 @@ bool intent_reduces_exposure(const TradeIntent& intent, double existing_net_qty)
     const double qty = intent.value(QStringLiteral("quantity")).toDouble();
     const double signed_new =
         (side == QLatin1String("sell") || side == QLatin1String("short")) ? -qty : qty;
-    return std::abs(existing_net_qty + signed_new) <= std::abs(existing_net_qty);
+    const double resulting = existing_net_qty + signed_new;
+    // A pure reduction stays on the same side (or closes to zero) AND shrinks magnitude.
+    // A flip-through-zero (sign change to a nonzero opposite) is a REVERSAL, not de-risking —
+    // it opens a new position and must NOT be floor-exempt.
+    return resulting * existing_net_qty >= 0.0 && std::abs(resulting) < std::abs(existing_net_qty);
 }
 
 } // namespace ai_strategy

@@ -59,7 +59,9 @@ class TstDeterministicFloor : public QObject {
     void reduces_long_via_sell() {
         QVERIFY(intent_reduces_exposure(iof("sell", 5.0), 10.0));    // 10 -> 5
         QVERIFY(intent_reduces_exposure(iof("sell", 10.0), 10.0));   // close
-        QVERIFY(intent_reduces_exposure(iof("sell", 15.0), 10.0));   // flip-reduce: |-5| <= 10
+        // Flip-through-zero is a REVERSAL (closes the long, opens an opposite
+        // short), not a pure reduction — must NOT be floor-exempt.
+        QVERIFY(!intent_reduces_exposure(iof("sell", 15.0), 10.0));  // 10 -> -5: reversal
     }
     void grow_long_is_not_reducing() {
         QVERIFY(!intent_reduces_exposure(iof("buy", 5.0), 10.0));     // 10 -> 15
@@ -72,6 +74,21 @@ class TstDeterministicFloor : public QObject {
     void short_cover_reduces_add_does_not() {
         QVERIFY(intent_reduces_exposure(iof("buy", 5.0), -10.0));     // cover: -10 -> -5
         QVERIFY(!intent_reduces_exposure(iof("sell", 5.0), -10.0));   // add short: -10 -> -15
+    }
+    void long_to_short_reversal_is_not_reduce() {
+        // existing +10, sell 15 -> resulting -5: closes the long AND opens a
+        // new opposite short. A reversal is not de-risking.
+        QVERIFY(!intent_reduces_exposure(iof("sell", 15.0), 10.0));
+    }
+    void short_to_long_reversal_is_not_reduce() {
+        // existing -10, buy 15 -> resulting +5: closes the short AND opens a
+        // new opposite long. A reversal is not de-risking.
+        QVERIFY(!intent_reduces_exposure(iof("buy", 15.0), -10.0));
+    }
+    void same_side_reduce_and_close_still_hold() {
+        QVERIFY(intent_reduces_exposure(iof("sell", 4.0), 10.0));    // +10 -> +6: partial reduce
+        QVERIFY(intent_reduces_exposure(iof("sell", 10.0), 10.0));   // +10 -> 0: full close
+        QVERIFY(intent_reduces_exposure(iof("buy", 5.0), -10.0));    // -10 -> -5: short cover/reduce
     }
 };
 
