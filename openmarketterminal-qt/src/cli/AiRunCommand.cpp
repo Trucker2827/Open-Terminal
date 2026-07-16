@@ -596,4 +596,136 @@ int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest) {
     return 0;
 }
 
+int ai_record_fill_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    QString handler;
+    QString symbol;
+    QString side;
+    QString draft_id;
+    QString qty_str;
+    QString price_str;
+    QString fee_str;
+    bool json_flag = false;
+
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--handler")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --handler requires a value\n");
+                return 2;
+            }
+            handler = args.takeFirst();
+        } else if (f == QLatin1String("--symbol")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --symbol requires a value\n");
+                return 2;
+            }
+            symbol = args.takeFirst();
+        } else if (f == QLatin1String("--side")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --side requires a value\n");
+                return 2;
+            }
+            side = args.takeFirst();
+        } else if (f == QLatin1String("--qty")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --qty requires a value\n");
+                return 2;
+            }
+            qty_str = args.takeFirst();
+        } else if (f == QLatin1String("--price")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --price requires a value\n");
+                return 2;
+            }
+            price_str = args.takeFirst();
+        } else if (f == QLatin1String("--fee")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --fee requires a value\n");
+                return 2;
+            }
+            fee_str = args.takeFirst();
+        } else if (f == QLatin1String("--draft-id")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --draft-id requires a value\n");
+                return 2;
+            }
+            draft_id = args.takeFirst();
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return 2;
+        }
+    }
+
+    auto usage = [] {
+        std::fprintf(stderr,
+                     "usage: ai record-fill --handler H --symbol S --side buy|sell --qty Q "
+                     "--price P [--fee F] [--draft-id D] [--json]\n");
+        return 2;
+    };
+
+    bool qty_ok = false;
+    bool price_ok = false;
+    bool fee_ok = false;
+    const double qty = qty_str.toDouble(&qty_ok);
+    const double price = price_str.toDouble(&price_ok);
+    const double fee = fee_str.isEmpty() ? 0.0 : fee_str.toDouble(&fee_ok);
+
+    if (handler.isEmpty() || symbol.isEmpty() ||
+        (side != QLatin1String("buy") && side != QLatin1String("sell")) ||
+        !qty_ok || qty <= 0.0 || !price_ok || price <= 0.0 ||
+        (!fee_str.isEmpty() && (!fee_ok || fee < 0.0))) {
+        return usage();
+    }
+
+    // Bring up the DB only if it isn't already live in this process -- same
+    // idempotent-init guard as ai_ctx_command above (see its comment).
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // PAPER-ONLY WRITE: the ONLY mutation performed here is the single
+    // ai_fill row appended by record_fill() -- never a cli.* gate setting,
+    // never a live order.
+    auto rec = ai_ledger::record_fill(handler, symbol, side, qty, price, fee, draft_id);
+    if (rec.is_err()) {
+        std::fprintf(stderr, "record-fill failed: %s\n", rec.error().c_str());
+        return 2;
+    }
+    const AiFill& f = rec.value();
+    const ai_ledger::LedgerPosition p = ai_ledger::position_of(handler, symbol);
+
+    const QJsonObject obj{
+        {"fill", QJsonObject{{"id", f.id},
+                             {"handler", f.handler},
+                             {"symbol", f.symbol},
+                             {"side", f.side},
+                             {"quantity", f.quantity},
+                             {"fill_price", f.fill_price},
+                             {"fee", f.fee},
+                             {"realized_pnl", f.realized_pnl},
+                             {"ts", static_cast<double>(f.ts)},
+                             {"draft_id", f.draft_id}}},
+        {"position", QJsonObject{{"net_qty", p.net_qty},
+                                 {"avg_entry_price", p.avg_entry_price},
+                                 {"realized_pnl", p.realized_pnl}}}};
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("recorded %s %s %s qty=%.4f px=%.4f realized=%.4f -> net=%.4f\n",
+                qUtf8Printable(handler), qUtf8Printable(symbol), qUtf8Printable(side), qty, price,
+                f.realized_pnl, p.net_qty);
+    return 0;
+}
+
 }  // namespace openmarketterminal::cli

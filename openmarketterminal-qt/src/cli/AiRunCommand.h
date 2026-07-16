@@ -57,4 +57,14 @@ int ai_pnl_command(const GlobalOpts& opts, const QStringList& rest);
 // code.
 int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest);
 
+// Run `ai record-fill --handler H --symbol S --side buy|sell --qty Q --price P
+// [--fee F] [--draft-id D] [--json]` (AI paper ledger Task 6). WRITE, but
+// paper-only: the ONLY mutation is a single ai_fill row appended via
+// ai_ledger::record_fill — never a cli.* gate setting, never a live order.
+// Invalid/missing args (empty handler/symbol, side not buy|sell, non-positive
+// qty/price, negative fee) -> usage error on stderr, exit 2, no row written.
+// On success emits {fill: {...}, position: {...}} sourced from the fresh
+// AiFill and ai_ledger::position_of. Returns a process exit code.
+int ai_record_fill_command(const GlobalOpts& opts, const QStringList& rest);
+
 }  // namespace openmarketterminal::cli

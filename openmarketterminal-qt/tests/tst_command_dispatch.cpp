@@ -1820,6 +1820,70 @@ private slots:
         QCOMPARE(cli_settings_fingerprint(), before);  // no cli.* gate written
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);  // no ai_fill row written
     }
+
+    // `ai record-fill` is the CLI write surface (Task 6): a buy then an
+    // opposite sell must append two ai_fill rows via record_fill and reflect
+    // the folded position + realized pnl in the emitted JSON.
+    void ai_record_fill_writes_row_and_books_pnl() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject open = json_object_from_dispatch(
+            QStringList{"ai", "record-fill", "--handler", "w", "--symbol", "W-USD",
+                        "--side", "buy", "--qty", "10", "--price", "100", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(open.value("position").toObject().value("net_qty").toDouble(), 10.0);
+
+        QJsonObject close = json_object_from_dispatch(
+            QStringList{"ai", "record-fill", "--handler", "w", "--symbol", "W-USD",
+                        "--side", "sell", "--qty", "4", "--price", "130", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(close.value("fill").toObject().value("realized_pnl").toDouble(), 120.0);  // (130-100)*4
+        QCOMPARE(close.value("position").toObject().value("net_qty").toDouble(), 6.0);
+    }
+
+    // Invalid args (missing --side, non-positive --qty) must be rejected with
+    // exit 2 and write NO ai_fill row -- the validation guard runs BEFORE any
+    // DB write. Note: missing --side and qty<=0 are ALSO independently caught
+    // by lower layers (ai_fill.side is NOT NULL in the schema; record_fill()
+    // itself rejects qty<=0), so this test also exercises a garbage --side
+    // value ("hold") that only the CLI-level guard catches -- apply_fill()
+    // silently treats any non-"sell"/"short" side as a buy, so without this
+    // guard a bogus --side would record_fill() a wrong-direction row instead
+    // of being rejected.
+    void ai_record_fill_rejects_bad_args() {
+        sandbox_test_home();
+        const int rows_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = 0;
+        // missing --side
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w2",
+                                              "--symbol", "W2-USD", "--qty", "1", "--price", "10"}, &rc);
+        QCOMPARE(rc, 2);
+        // garbage --side value (neither "buy" nor "sell") -- only the CLI
+        // guard catches this; record_fill()/apply_fill() would silently
+        // accept it as a buy.
+        rc = 0;
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w2", "--symbol", "W2-USD",
+                                              "--side", "hold", "--qty", "1", "--price", "10"}, &rc);
+        QCOMPARE(rc, 2);
+        // non-positive qty
+        rc = 0;
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w2", "--symbol", "W2-USD",
+                                              "--side", "buy", "--qty", "0", "--price", "10"}, &rc);
+        QCOMPARE(rc, 2);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), rows_before);  // no row written
+    }
+
+    // PARAMOUNT invariant: even the WRITE command's only mutation is the
+    // single ai_fill row -- it must never touch a cli.* gate setting.
+    void ai_record_fill_writes_no_gate() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w3", "--symbol", "W3-USD",
+                                              "--side", "buy", "--qty", "1", "--price", "10", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);  // writes ai_fill, never a cli.* gate
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

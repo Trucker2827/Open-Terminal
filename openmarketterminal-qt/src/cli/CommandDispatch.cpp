@@ -27940,6 +27940,8 @@ int dispatch(QStringList args) {
             return ai_pnl_command(opts, args);  // args == tokens after "ai pnl"
         if (sub == "ledger")
             return ai_ledger_command(opts, args);  // args == tokens after "ai ledger"
+        if (sub == "record-fill")
+            return ai_record_fill_command(opts, args);  // args == tokens after "ai record-fill"
         const QString what = args.isEmpty() ? QString() : args.takeFirst();
         if (sub == "run" && what == "strategy")
             return ai_run_strategy(opts, args);  // args == tokens after "ai run strategy"
@@ -27952,6 +27954,8 @@ int dispatch(QStringList args) {
                      "ai positions [--handler H] [--json] | "
                      "ai pnl [--handler H] [--json] | "
                      "ai ledger [--handler H] [--symbol S] [--limit N] [--json] | "
+                     "ai record-fill --handler H --symbol S --side buy|sell --qty Q --price P "
+                     "[--fee F] [--draft-id D] [--json] | "
                      "ai run strategy <meanrev|claude> --mode paper "
                      "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
         return 2;
