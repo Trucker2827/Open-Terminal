@@ -1769,6 +1769,7 @@ set(SCREEN_SOURCES
     # Algo Trading
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
+    src/screens/algo_trading/StrategyWorkspacePanels.cpp
     src/screens/algo_trading/SandboxBooksPanel.cpp
     src/screens/algo_trading/StrategyAutomationPanel.cpp
 
@@ -2016,6 +2017,7 @@ set_source_files_properties(
     src/screens/akshare/AkShareScreen.cpp
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
+    src/screens/algo_trading/StrategyWorkspacePanels.cpp
     src/screens/algo_trading/DeploymentDashboard.cpp
     src/screens/algo_trading/StrategyAutomationPanel.cpp
     src/screens/algo_trading/ScannerPanel.cpp

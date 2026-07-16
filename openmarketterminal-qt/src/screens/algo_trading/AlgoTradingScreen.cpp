@@ -4,8 +4,8 @@
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
 #include "screens/algo_trading/SandboxBooksPanel.h"
-#include "screens/algo_trading/StrategyAutomationPanel.h"
 #include "screens/algo_trading/StrategyOpsMapPanel.h"
+#include "screens/algo_trading/StrategyWorkspacePanels.h"
 #include "ui/theme/Theme.h"
 
 #include <QHBoxLayout>
@@ -19,8 +19,12 @@ AlgoTradingScreen::AlgoTradingScreen(QWidget* parent) : QWidget(parent) {
     poll_timer_ = new QTimer(this);
     poll_timer_->setInterval(5000);
     connect(poll_timer_, &QTimer::timeout, this, [this]() {
-        if (active_tab_ == 2)
-            automation_->refresh();
+        if (active_tab_ == 1 && handlers_)
+            handlers_->refresh();
+        else if (active_tab_ == 3 && risk_)
+            risk_->refresh();
+        else if (active_tab_ == 4 && run_history_)
+            run_history_->refresh();
     });
 
     LOG_INFO("AlgoTrading", "Screen constructed");
@@ -49,12 +53,16 @@ void AlgoTradingScreen::build_ui() {
 
     content_stack_ = new QStackedWidget(this);
     ops_map_ = new StrategyOpsMapPanel(this);
+    handlers_ = new StrategyHandlersPanel(this);
     proof_books_ = new SandboxBooksPanel(this);
-    automation_ = new StrategyAutomationPanel(this);
+    risk_ = new StrategyRiskPanel(this);
+    run_history_ = new StrategyRunHistoryPanel(this);
 
     content_stack_->addWidget(ops_map_);     // 0
-    content_stack_->addWidget(proof_books_); // 1
-    content_stack_->addWidget(automation_);  // 2
+    content_stack_->addWidget(handlers_);    // 1
+    content_stack_->addWidget(proof_books_); // 2
+    content_stack_->addWidget(risk_);        // 3
+    content_stack_->addWidget(run_history_); // 4
     root->addWidget(content_stack_, 1);
 
     root->addWidget(build_status_bar());
@@ -73,7 +81,7 @@ QWidget* AlgoTradingScreen::build_top_bar() {
 
     title_label_ = new QLabel(tr("STRATEGIES"), bar);
     title_label_->setStyleSheet(QString("color:%1; font-size:12px; font-weight:700;"
-                                         "letter-spacing:1.5px; background:transparent;")
+                                        "letter-spacing:1.5px; background:transparent;")
                                     .arg(ui::colors::TEXT_PRIMARY()));
     hl->addWidget(title_label_);
 
@@ -82,8 +90,8 @@ QWidget* AlgoTradingScreen::build_top_bar() {
     div->setStyleSheet(QString("background:%1;").arg(ui::colors::BORDER_DIM()));
     hl->addWidget(div);
 
-    const QStringList tabs = {tr("CONTROL CENTER"), tr("PROOF BOOKS"), tr("AUTOMATION")};
-    const QStringList colors = {"#D97706", "#14B8A6", "#00E5FF"};
+    const QStringList tabs = {tr("COCKPIT"), tr("HANDLERS"), tr("EVIDENCE"), tr("RISK & SAFETY"), tr("RUN HISTORY")};
+    const QStringList colors = {"#D97706", "#00E5FF", "#14B8A6", "#EF4444", "#A78BFA"};
 
     for (int i = 0; i < tabs.size(); ++i) {
         auto* btn = new QPushButton(tabs[i], bar);
@@ -104,10 +112,10 @@ QWidget* AlgoTradingScreen::build_top_bar() {
 
     mode_label_ = new QLabel(tr("PAPER ONLY"), bar);
     mode_label_->setStyleSheet(QString("color:%1; font-size:9px; font-weight:700; font-family:%2;"
-                                               "padding:3px 8px; background:rgba(217,119,6,0.08);"
-                                               "border:1px solid rgba(217,119,6,0.35); border-radius:2px;")
-                                           .arg(ui::colors::AMBER())
-                                           .arg(ui::fonts::DATA_FAMILY()));
+                                       "padding:3px 8px; background:rgba(217,119,6,0.08);"
+                                       "border:1px solid rgba(217,119,6,0.35); border-radius:2px;")
+                                   .arg(ui::colors::AMBER())
+                                   .arg(ui::fonts::DATA_FAMILY()));
     mode_label_->setToolTip(tr("This workspace collects and scores evidence. It cannot place live orders."));
     hl->addWidget(mode_label_);
 
@@ -122,8 +130,9 @@ QWidget* AlgoTradingScreen::build_status_bar() {
     auto* hl = new QHBoxLayout(bar);
     hl->setContentsMargins(12, 0, 12, 0);
     hl->setSpacing(16);
-    auto s =
-        QString("color:%1; font-size:8px; font-family:%2;").arg(ui::colors::TEXT_TERTIARY()).arg(ui::fonts::DATA_FAMILY);
+    auto s = QString("color:%1; font-size:8px; font-family:%2;")
+                 .arg(ui::colors::TEXT_TERTIARY())
+                 .arg(ui::fonts::DATA_FAMILY);
     engine_caption_ = new QLabel(tr("ENGINE:"), bar);
     engine_caption_->setStyleSheet(s);
     auto* v1 = new QLabel(tr("LOCAL PROOF ENGINE"), bar);
@@ -152,30 +161,32 @@ void AlgoTradingScreen::on_tab_changed(int index) {
     // Refresh data when switching tabs
     if (index == 0 && ops_map_)
         ops_map_->refresh();
-    if (index == 1 && proof_books_)
+    if (index == 1 && handlers_)
+        handlers_->refresh();
+    if (index == 2 && proof_books_)
         proof_books_->refresh();
-    if (index == 2 && automation_)
-        automation_->refresh();
+    if (index == 3 && risk_)
+        risk_->refresh();
+    if (index == 4 && run_history_)
+        run_history_->refresh();
 }
 
 void AlgoTradingScreen::update_tab_buttons() {
-    const QStringList colors = {"#D97706", "#14B8A6", "#00E5FF"};
+    const QStringList colors = {"#D97706", "#00E5FF", "#14B8A6", "#EF4444", "#A78BFA"};
     for (int i = 0; i < tab_buttons_.size(); ++i) {
         bool active = (i == active_tab_);
-        tab_buttons_[i]->setStyleSheet(
-            active
-                ? QString("QPushButton { color:%1; font-size:10px; font-family:%2;"
-                          " padding:4px 12px; border:none; border-bottom:2px solid %1;"
-                          " background:transparent; font-weight:700; }")
-                      .arg(colors[i])
-                      .arg(ui::fonts::DATA_FAMILY())
-                : QString("QPushButton { color:%1; font-size:10px; font-family:%2;"
-                          " padding:4px 12px; border:none;"
-                          " background:transparent; font-weight:400; }"
-                          "QPushButton:hover { color:%3; }")
-                      .arg(ui::colors::TEXT_TERTIARY())
-                      .arg(ui::fonts::DATA_FAMILY())
-                      .arg(colors[i]));
+        tab_buttons_[i]->setStyleSheet(active ? QString("QPushButton { color:%1; font-size:10px; font-family:%2;"
+                                                        " padding:4px 12px; border:none; border-bottom:2px solid %1;"
+                                                        " background:transparent; font-weight:700; }")
+                                                    .arg(colors[i])
+                                                    .arg(ui::fonts::DATA_FAMILY())
+                                              : QString("QPushButton { color:%1; font-size:10px; font-family:%2;"
+                                                        " padding:4px 12px; border:none;"
+                                                        " background:transparent; font-weight:400; }"
+                                                        "QPushButton:hover { color:%3; }")
+                                                    .arg(ui::colors::TEXT_TERTIARY())
+                                                    .arg(ui::fonts::DATA_FAMILY())
+                                                    .arg(colors[i]));
     }
 }
 
@@ -186,15 +197,21 @@ void AlgoTradingScreen::changeEvent(QEvent* event) {
 }
 
 void AlgoTradingScreen::retranslateUi() {
-    if (title_label_)   title_label_->setText(tr("STRATEGIES"));
-    if (engine_caption_) engine_caption_->setText(tr("ENGINE:"));
-    if (status_label_)  status_label_->setText(tr("NO LIVE EXECUTION"));
-    if (mode_label_) mode_label_->setText(tr("PAPER ONLY"));
+    if (title_label_)
+        title_label_->setText(tr("STRATEGIES"));
+    if (engine_caption_)
+        engine_caption_->setText(tr("ENGINE:"));
+    if (status_label_)
+        status_label_->setText(tr("NO LIVE EXECUTION"));
+    if (mode_label_)
+        mode_label_->setText(tr("PAPER ONLY"));
 
-    if (tab_buttons_.size() == 3) {
-        tab_buttons_[0]->setText(tr("CONTROL CENTER"));
-        tab_buttons_[1]->setText(tr("PROOF BOOKS"));
-        tab_buttons_[2]->setText(tr("AUTOMATION"));
+    if (tab_buttons_.size() == 5) {
+        tab_buttons_[0]->setText(tr("COCKPIT"));
+        tab_buttons_[1]->setText(tr("HANDLERS"));
+        tab_buttons_[2]->setText(tr("EVIDENCE"));
+        tab_buttons_[3]->setText(tr("RISK & SAFETY"));
+        tab_buttons_[4]->setText(tr("RUN HISTORY"));
     }
 }
 
