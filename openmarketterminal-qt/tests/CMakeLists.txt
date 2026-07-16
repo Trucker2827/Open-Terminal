@@ -183,6 +183,17 @@ target_include_directories(tst_portfolio_trade_history_migration PRIVATE ${CMAKE
 target_link_libraries(tst_portfolio_trade_history_migration PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_portfolio_trade_history_migration COMMAND tst_portfolio_trade_history_migration)
 
+# MigrationRunner skip-logic regression — synthetic migrations against a
+# fresh temp-file SQLite DB, with NO register_all_migrations() call (this
+# binary's global migration registry starts empty). Proves run() skips by
+# per-version membership in schema_version, not by high-water mark
+# (m.version <= MAX), so a migration registered later with a lower version
+# number is still applied instead of being permanently skipped.
+add_executable(tst_migration_runner tst_migration_runner.cpp)
+target_include_directories(tst_migration_runner PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_migration_runner PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_migration_runner COMMAND tst_migration_runner)
+
 # Trade-history sync Task 2 — PortfolioRepository::import_transaction's
 # INSERT OR IGNORE dedup, keyed on v061's idx_ptx_external partial unique
 # index. Same bring-up as tst_portfolio_account_sync_migration.

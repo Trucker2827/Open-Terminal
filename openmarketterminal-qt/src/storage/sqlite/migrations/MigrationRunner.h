@@ -1,6 +1,7 @@
 #pragma once
 #include "core/result/Result.h"
 
+#include <QSet>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -41,6 +42,7 @@ class MigrationRunner {
     Result<void> apply_migration(const Migration& m);
     Result<void> record_version(int version, const QString& name);
     int read_current_version();
+    QSet<int> read_applied_versions();
 
     QSqlDatabase& db_;
 };
