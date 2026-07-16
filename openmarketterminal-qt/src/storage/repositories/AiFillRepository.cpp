@@ -24,7 +24,7 @@ Result<void> AiFillRepository::append(const AiFill& f) {
 Result<QVector<AiFill>> AiFillRepository::fills_for(const QString& handler, const QString& symbol) {
     return query_list_as<AiFill>(
         "SELECT id, handler, symbol, side, quantity, fill_price, fee, realized_pnl, ts, draft_id "
-        "FROM ai_fill WHERE handler = ? AND symbol = ? ORDER BY ts ASC, id ASC",
+        "FROM ai_fill WHERE handler = ? AND symbol = ? ORDER BY rowid ASC",
         {handler, symbol}, map_row);
 }
 
@@ -37,7 +37,7 @@ Result<QVector<AiFill>> AiFillRepository::list(const QString& handler, const QSt
     if (!symbol.isEmpty())  { clauses << "symbol = ?";  params << symbol; }
     if (!clauses.isEmpty())
         sql += " WHERE " + clauses.join(" AND ");
-    sql += " ORDER BY ts DESC, id DESC";
+    sql += " ORDER BY rowid DESC";
     if (limit > 0) {
         sql += " LIMIT ?";
         params << limit;

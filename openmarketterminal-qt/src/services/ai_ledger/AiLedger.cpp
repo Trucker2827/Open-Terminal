@@ -11,6 +11,12 @@
 namespace openmarketterminal {
 namespace ai_ledger {
 
+namespace {
+// No real position is smaller than this; anything below is float dust from repeated
+// weighted-average / addition ops on fractional (crypto) lot sizes.
+constexpr double kFlatEpsilon = 1e-9;
+} // namespace
+
 FillDelta apply_fill(const LedgerPosition& current, const QString& side, double qty, double price, double fee) {
     const bool sell = (side == QLatin1String("sell") || side == QLatin1String("short"));
     const double signed_qty = sell ? -qty : qty;
@@ -49,6 +55,10 @@ FillDelta apply_fill(const LedgerPosition& current, const QString& side, double 
                 p.avg_entry_price = 0.0;
             // avg_entry unchanged on a partial close
         }
+    }
+    if (std::abs(p.net_qty) < kFlatEpsilon) {
+        p.net_qty = 0.0;
+        p.avg_entry_price = 0.0;
     }
     return FillDelta{p, realized_this};
 }

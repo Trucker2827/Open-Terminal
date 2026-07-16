@@ -76,6 +76,16 @@ class TstAiLedger : public QObject {
         QCOMPARE(unrealized_of(LedgerPosition{-10.0, 100.0, 0.0}, 110.0), -100.0); // short loses as price rises
     }
 
+    void fractional_full_close_snaps_to_flat() {
+        LedgerPosition p{};
+        p = apply_fill(p, "buy", 0.1, 100.0, 0.0).position;
+        p = apply_fill(p, "buy", 0.1, 100.0, 0.0).position;
+        p = apply_fill(p, "buy", 0.1, 100.0, 0.0).position;  // net = 0.30000000000000004
+        FillDelta d = apply_fill(p, "sell", 0.3, 110.0, 0.0);
+        QCOMPARE(d.position.net_qty, 0.0);            // snapped, no 5.5e-17 dust
+        QCOMPARE(d.position.avg_entry_price, 0.0);    // cleared on full close
+    }
+
     void record_fill_appends_row_with_realized() {
         auto opened = ai_ledger::record_fill("rf", "R-USD", "buy", 10.0, 100.0, 0.0, "d1");
         QVERIFY(opened.is_ok());
@@ -151,6 +161,22 @@ class TstAiLedger : public QObject {
         QCOMPARE(chrono.value().size(), 2);
         QCOMPARE(chrono.value().at(0).id, QStringLiteral("f1"));  // oldest first
         QCOMPARE(chrono.value().at(1).id, QStringLiteral("f2"));
+    }
+
+    void repo_fills_for_orders_by_insertion_not_id() {
+        AiFillRepository& repo = AiFillRepository::instance();
+        // Same (handler,symbol), same ts — ids sort ASCII-reverse of insertion order.
+        // Insertion order must win (rowid), not UUID lexical order.
+        AiFill first{"zzz", "ord", "O-USD", "buy", 1.0, 100.0, 0.0, 0.0, 5000, "d1"};
+        AiFill second{"aaa", "ord", "O-USD", "buy", 1.0, 100.0, 0.0, 0.0, 5000, "d2"};
+        QVERIFY(repo.append(first).is_ok());
+        QVERIFY(repo.append(second).is_ok());
+
+        auto chrono = repo.fills_for("ord", "O-USD");
+        QVERIFY(chrono.is_ok());
+        QCOMPARE(chrono.value().size(), 2);
+        QCOMPARE(chrono.value().at(0).id, QStringLiteral("zzz"));  // inserted first
+        QCOMPARE(chrono.value().at(1).id, QStringLiteral("aaa"));  // inserted second
     }
 };
 
