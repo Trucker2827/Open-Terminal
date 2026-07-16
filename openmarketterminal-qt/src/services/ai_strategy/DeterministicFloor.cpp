@@ -33,5 +33,28 @@ bool intent_reduces_exposure(const TradeIntent& intent, double existing_net_qty)
     return resulting * existing_net_qty >= 0.0 && std::abs(resulting) < std::abs(existing_net_qty);
 }
 
+namespace {
+// Normalize a heterogeneous side/direction token to a trade direction:
+// +1 long, -1 short, 0 neutral/unknown. Long tokens: buy/long. Short: sell/short.
+// Everything else (avoid_buy, hold, flat, yes, no, none, "", unknown) -> 0.
+int side_direction(const QString& s) {
+    const QString t = s.trimmed().toLower();
+    if (t == QLatin1String("buy") || t == QLatin1String("long"))
+        return 1;
+    if (t == QLatin1String("sell") || t == QLatin1String("short"))
+        return -1;
+    return 0;
+}
+} // namespace
+
+bool intent_agrees_with_edge(const QString& intent_side, const QString& edge_side) {
+    const int i = side_direction(intent_side);
+    const int e = side_direction(edge_side);
+    // Fail-closed: BOTH must be a definite, MATCHING direction. A neutral/unknown
+    // edge side (avoid_buy/hold/flat/yes/no/empty) never affirmatively endorses,
+    // so a long-only enter on a short/neutral edge is skipped by the floor.
+    return i != 0 && e != 0 && i == e;
+}
+
 } // namespace ai_strategy
 } // namespace openmarketterminal

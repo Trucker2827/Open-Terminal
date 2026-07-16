@@ -124,11 +124,21 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             // subtractive: it only prevents paper trades, never enables one.
             const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
             const GateVerdict fv = floor_verdict(fin, FloorPolicy{cfg.require_floor});
-            if (!fv.ok && !intent_reduces_exposure(intent, gin.existing_net_qty)) {
+            const QString intent_side = intent.value(QStringLiteral("side")).toString();
+            // Direction agreement (F2): even a fully-endorsed edge (gate=pass/cost/
+            // fresh) must recommend the SAME side the intent takes. A perp/chronos2
+            // row can carry gate=="pass" with side=="short"/"sell" (a profitable
+            // SHORT); a long-only enter must not ride a short endorsement. Enforced
+            // only when the floor is on; de-risking is exempt (reduce/close below).
+            const bool dir_ok =
+                !cfg.require_floor || intent_agrees_with_edge(intent_side, pkt.side);
+            if ((!fv.ok || !dir_ok) && !intent_reduces_exposure(intent, gin.existing_net_qty)) {
+                const QString reason = !fv.ok ? fv.reason
+                    : QStringLiteral("edge recommends opposite side");
+                const QString rule = !fv.ok ? fv.rule : QStringLiteral("floor");
                 ++summary.floor_skipped;
-                summary.floor_skips.push_back(
-                    {sym, intent.value(QStringLiteral("side")).toString(), fv.reason, fv.rule});
-                log(QStringLiteral("floor skipped %1: %2").arg(sym, fv.reason));
+                summary.floor_skips.push_back({sym, intent_side, reason, rule});
+                log(QStringLiteral("floor skipped %1: %2").arg(sym, reason));
                 continue;  // before the pretrade gate / prepare_order / submit_order
             }
 

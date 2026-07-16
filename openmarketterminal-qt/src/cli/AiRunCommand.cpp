@@ -831,8 +831,14 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     const ai_strategy::GateVerdict floor = ai_strategy::floor_verdict(
         ai_strategy::FloorInputs{packet.has_edge_signal, packet.gate, packet.clears_cost, packet.freshness},
         ai_strategy::FloorPolicy{true});
-    obj.insert(QStringLiteral("floor_permits"), floor.ok);
-    obj.insert(QStringLiteral("floor_reason"), floor.ok ? QString() : floor.reason);
+    // F2: floor_permits reflects a LONG (enter) entry -- the edge must endorse AND
+    // recommend the long side; a short/neutral edge correctly reports false.
+    const bool floor_permits = floor.ok &&
+        ai_strategy::intent_agrees_with_edge(QStringLiteral("buy"), packet.side);
+    obj.insert(QStringLiteral("floor_permits"), floor_permits);
+    obj.insert(QStringLiteral("floor_reason"),
+               floor_permits ? QString()
+                   : (floor.ok ? QStringLiteral("edge recommends opposite side") : floor.reason));
 
     // READ-ONLY: scorecard_of issues only SELECTs over ai_fill (see
     // Scorecard.h). Aggregate across all handlers ({} = every handler),

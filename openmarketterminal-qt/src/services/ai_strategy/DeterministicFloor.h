@@ -29,5 +29,10 @@ GateVerdict floor_verdict(const FloorInputs& in, const FloorPolicy& policy);
 /// Mirrors the reduce side of PretradeGate's increase-only cap.
 bool intent_reduces_exposure(const TradeIntent& intent, double existing_net_qty);
 
+/// Pure: true iff the edge's recommended side agrees in DIRECTION with the intent's
+/// side (buy/long == long, sell/short == short). Fail-closed: a neutral/unknown edge
+/// side (avoid_buy/hold/flat/yes/no/empty) never agrees. Reads only its args.
+bool intent_agrees_with_edge(const QString& intent_side, const QString& edge_side);
+
 } // namespace ai_strategy
 } // namespace openmarketterminal

@@ -1664,17 +1664,40 @@ private slots:
     // permits.
     void ai_ctx_floor_permits_endorsed_symbol() {
         sandbox_test_home();
+        // F2: floor_permits is now long-aware, so an endorsing-long row must
+        // carry a long side ("buy") to keep permitting -- data-completion,
+        // not a weakening (this row always meant to represent a LONG
+        // endorsement for the ai ctx floor_permits check).
         QVERIFY(Database::instance().execute(
             QStringLiteral(
-                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
                 " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
-                " VALUES ('flp1', %1, %1, 'FLP-USD', 'pass', 5.0, 1.0, 0.5,"
+                " VALUES ('flp1', %1, %1, 'FLP-USD', 'pass', 'buy', 5.0, 1.0, 0.5,"
                 "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         int rc = -1;
         QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLP-USD","--json"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(o.value("floor_permits").toBool(), true);
         QCOMPARE(o.value("floor_reason").toString(), QString());
+    }
+
+    // F2 CLI surface: a fully-endorsed edge (gate=pass/cost-clear/fresh) that
+    // recommends SHORT must NOT report floor_permits=true for a (long-only)
+    // enter -- the honest edge says short, `ai ctx` must say so.
+    void ai_ctx_floor_reports_opposite_side() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp4', %1, %1, 'FLPS-USD', 'pass', 'short', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLPS-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("floor_permits").toBool(), false);
+        QVERIFY2(o.value("floor_reason").toString().contains(QStringLiteral("opposite side")),
+                  qUtf8Printable(o.value("floor_reason").toString()));
     }
 
     // A "reject" gate never earns clears_cost="true"/gate=="pass", so the

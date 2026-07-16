@@ -7,6 +7,7 @@ using ai_strategy::FloorInputs;
 using ai_strategy::FloorPolicy;
 using ai_strategy::floor_verdict;
 using ai_strategy::intent_reduces_exposure;
+using ai_strategy::intent_agrees_with_edge;
 using ai_strategy::TradeIntent;
 
 class TstDeterministicFloor : public QObject {
@@ -89,6 +90,26 @@ class TstDeterministicFloor : public QObject {
         QVERIFY(intent_reduces_exposure(iof("sell", 4.0), 10.0));    // +10 -> +6: partial reduce
         QVERIFY(intent_reduces_exposure(iof("sell", 10.0), 10.0));   // +10 -> 0: full close
         QVERIFY(intent_reduces_exposure(iof("buy", 5.0), -10.0));    // -10 -> -5: short cover/reduce
+    }
+    void intent_agrees_with_edge_directionality() {
+        using ai_strategy::intent_agrees_with_edge;
+        // Agreeing directions.
+        QVERIFY(intent_agrees_with_edge("buy", "buy"));
+        QVERIFY(intent_agrees_with_edge("buy", "long"));
+        QVERIFY(intent_agrees_with_edge("sell", "short"));
+        QVERIFY(intent_agrees_with_edge("short", "sell"));
+        // Disagreeing directions (the F2 bug: long intent on a short edge).
+        QVERIFY(!intent_agrees_with_edge("buy", "short"));
+        QVERIFY(!intent_agrees_with_edge("buy", "sell"));
+        QVERIFY(!intent_agrees_with_edge("sell", "buy"));
+        // Neutral/unknown edge side never endorses (fail-closed).
+        QVERIFY(!intent_agrees_with_edge("buy", "avoid_buy"));
+        QVERIFY(!intent_agrees_with_edge("buy", "hold"));
+        QVERIFY(!intent_agrees_with_edge("buy", "flat"));
+        QVERIFY(!intent_agrees_with_edge("buy", "yes"));
+        QVERIFY(!intent_agrees_with_edge("buy", ""));
+        // Neutral intent never endorses.
+        QVERIFY(!intent_agrees_with_edge("hold", "buy"));
     }
 };
 

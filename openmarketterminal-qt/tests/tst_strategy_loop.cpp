@@ -271,6 +271,7 @@ class TstStrategyLoop : public QObject {
         runner.assess_fn = [](const QString&) {
             ai_decision::DecisionPacket p;
             p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            p.side = QStringLiteral("buy");
             return p;
         };
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
@@ -375,6 +376,74 @@ class TstStrategyLoop : public QObject {
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
         QCOMPARE(sum.floor_skipped, 1);                          // opening from flat still blocked
         QCOMPARE(sum.filled, 0);
+    }
+
+    // ── Direction-agreement floor gate (F2) ──────────────────────────────────
+
+    void floor_skips_direction_disagreement() {
+        ensure_migrated_db();
+        FakeToolCaller tc;  // no prepare/submit should be reached
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","DIR-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {                 // fully endorsed, but SHORT
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            p.side = QStringLiteral("short");
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(sum.floor_skipped, 1);
+        QCOMPARE(sum.floor_skips.size(), 1);
+        QCOMPARE(sum.floor_skips.at(0).rule, QStringLiteral("floor"));
+        QVERIFY2(sum.floor_skips.at(0).reason.contains(QStringLiteral("opposite side")),
+                  qUtf8Printable(sum.floor_skips.at(0).reason));
+        QCOMPARE(sum.gate_rejections.size(), 0);
+        QCOMPARE(tc.count("submit_order"), 0);
+    }
+
+    void floor_permits_direction_agreement() {
+        ensure_migrated_db();
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DDIR"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","DIA-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            p.side = QStringLiteral("buy");
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.filled, 1);
+        QCOMPARE(sum.floor_skipped, 0);
+    }
+
+    void floor_exempts_reduce_on_flipped_edge() {
+        ensure_migrated_db();
+        // Seed an EXISTING long position for fake/FLP2-USD (buy 10).
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('flp1','fake','FLP2-USD','buy',10,100,0,0,1000,'d')").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DFLP"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        // Reducing SELL: quantity < existing net.
+        s.intents_ = {TradeIntent{{"symbol","FLP2-USD"},{"side","sell"},{"quantity",4.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {                 // edge flipped: endorses SHORT now
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            p.side = QStringLiteral("short");
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        QCOMPARE(sum.floor_skipped, 0);   // de-risking exit NOT floor-skipped, even on a flipped edge
+        QCOMPARE(sum.filled, 1);
     }
 
     // ── MeanReversionStrategy (Task 2) ───────────────────────────────────────
@@ -662,6 +731,7 @@ class TstStrategyLoop : public QObject {
         runner.assess_fn = [](const QString&) {
             ai_decision::DecisionPacket p;
             p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            p.side = QStringLiteral("buy");
             return p;  // endorsed, so the floor lets it reach the gate
         };
         RunConfig cfg{.interval_sec = 0, .max_iters = 1};
@@ -687,6 +757,7 @@ class TstStrategyLoop : public QObject {
         runner.assess_fn = [](const QString&) {
             ai_decision::DecisionPacket p;
             p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            p.side = QStringLiteral("buy");
             return p;
         };
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});  // no agg cap
