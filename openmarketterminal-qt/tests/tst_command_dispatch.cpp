@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QDateTime>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -1696,6 +1697,48 @@ private slots:
         json_object_from_dispatch(QStringList{"ai","ctx","FLPRO-USD","--json"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(cli_settings_fingerprint(), before);
+    }
+
+    // ai ctx track record, piece ⑥ Task 1 -- `ai ctx <symbol> --json` gains a
+    // read-only track_record object computed from ai_ledger::scorecard_of
+    // (aggregate across all handlers, symbol-scoped). The edge row must be
+    // FRESH so it isn't excluded by any later recency bound.
+    void ai_ctx_emits_track_record() {
+        sandbox_test_home();
+        const qint64 fresh = QDateTime::currentMSecsSinceEpoch() - 60000;
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('tr-edge', ?, ?, 'TR-USD', 'pass', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')", {fresh, fresh}).is_ok());
+        // Two closing fills under handler 'claude': one win (+100), one loss (-40).
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('trf1','claude','TR-USD','sell',1,110,0,100,1000,'d'),"
+            "       ('trf2','claude','TR-USD','sell',1,90,0,-40,1001,'d')").is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","TR-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject tr = o.value("track_record").toObject();
+        QCOMPARE(tr.value("trades").toInt(), 2);
+        QCOMPARE(tr.value("wins").toInt(), 1);
+        QCOMPARE(tr.value("losses").toInt(), 1);
+        QCOMPARE(tr.value("hit_rate").toDouble(), 0.5);
+        QCOMPARE(tr.value("realized_total").toDouble(), 60.0);
+    }
+
+    // READ-ONLY invariant: scorecard_of is SELECT-only -- computing/emitting
+    // track_record must not mutate a single cli.* settings row nor insert
+    // any ai_fill row.
+    void ai_ctx_track_record_read_only() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai","ctx","NOTR-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
     }
 
     // ai screen shortlist Task 2 -- `ai screen --market crypto --json` ranks

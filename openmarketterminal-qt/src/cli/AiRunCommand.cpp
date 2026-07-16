@@ -316,6 +316,18 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     obj.insert(QStringLiteral("floor_permits"), floor.ok);
     obj.insert(QStringLiteral("floor_reason"), floor.ok ? QString() : floor.reason);
 
+    // READ-ONLY: scorecard_of issues only SELECTs over ai_fill (see
+    // Scorecard.h). Aggregate across all handlers ({} = every handler),
+    // symbol-scoped -- surfaces the AI's own realized track record for this
+    // symbol in the CLI's own JSON, not in DecisionPacket/to_json. This is
+    // CLI-side (not in assess()) on purpose: assess() is called per-candidate
+    // by `ai screen`, so putting scorecard_of there would be N queries per
+    // shortlist instead of one query per `ai ctx` invocation.
+    const ai_ledger::Scorecard tr = ai_ledger::scorecard_of(QString(), symbol);
+    obj.insert(QStringLiteral("track_record"),
+               QJsonObject{{"trades", tr.trades}, {"wins", tr.wins}, {"losses", tr.losses},
+                           {"hit_rate", tr.hit_rate}, {"realized_total", tr.realized_total}});
+
     if (opts.json || json_flag) {
         std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
         return 0;
@@ -341,6 +353,8 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
                          : qUtf8Printable(QStringLiteral("skip (%1)").arg(floor.reason)));
     std::printf("position:            %s qty=%.4f\n", qUtf8Printable(packet.position_source),
                 packet.position_qty);
+    std::printf("track_record:        trades=%d hit_rate=%.4f realized=%.4f\n",
+                tr.trades, tr.hit_rate, tr.realized_total);
     return 0;
 }
 
