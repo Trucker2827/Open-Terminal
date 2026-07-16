@@ -26,6 +26,16 @@ GateVerdict evaluate_pretrade(const TradeIntent& intent, const GateInputs& in, c
         if (std::abs(resulting) > policy.max_position_qty && std::abs(resulting) > std::abs(in.existing_net_qty))
             return {false, QStringLiteral("position would exceed cap"), QStringLiteral("position")};
     }
+    if (policy.max_aggregate_position_qty > 0.0) {
+        const QString side = intent.value(QStringLiteral("side")).toString();
+        const double signed_new =
+            (side == QLatin1String("sell") || side == QLatin1String("short")) ? -qty : qty;
+        const double agg_resulting = in.aggregate_net_qty + signed_new;
+        // Increase-only on the AGGREGATE (all handlers) exposure; a reduce/close always passes.
+        if (std::abs(agg_resulting) > policy.max_aggregate_position_qty &&
+            std::abs(agg_resulting) > std::abs(in.aggregate_net_qty))
+            return {false, QStringLiteral("aggregate position would exceed cap"), QStringLiteral("aggregate")};
+    }
     if (!policy.allowed_venues.isEmpty()) {
         QString v = intent.value(QStringLiteral("venue")).toString();
         if (v.isEmpty()) v = intent.value(QStringLiteral("exchange")).toString();
