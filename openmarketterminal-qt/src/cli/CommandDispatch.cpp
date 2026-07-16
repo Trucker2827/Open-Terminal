@@ -27934,6 +27934,12 @@ int dispatch(QStringList args) {
             return ai_ctx_command(opts, args);  // args == tokens after "ai ctx" (starts with <symbol>)
         if (sub == "screen")
             return ai_screen_command(opts, args);  // args == tokens after "ai screen"
+        if (sub == "positions")
+            return ai_positions_command(opts, args);  // args == tokens after "ai positions"
+        if (sub == "pnl")
+            return ai_pnl_command(opts, args);  // args == tokens after "ai pnl"
+        if (sub == "ledger")
+            return ai_ledger_command(opts, args);  // args == tokens after "ai ledger"
         const QString what = args.isEmpty() ? QString() : args.takeFirst();
         if (sub == "run" && what == "strategy")
             return ai_run_strategy(opts, args);  // args == tokens after "ai run strategy"
@@ -27943,6 +27949,9 @@ int dispatch(QStringList args) {
                      "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
                      "ai ctx <symbol> [--json] [--market prediction|equity] | "
                      "ai screen [--market prediction|equity|crypto] [--limit N] [--json] | "
+                     "ai positions [--handler H] [--json] | "
+                     "ai pnl [--handler H] [--json] | "
+                     "ai ledger [--handler H] [--symbol S] [--limit N] [--json] | "
                      "ai run strategy <meanrev|claude> --mode paper "
                      "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
         return 2;

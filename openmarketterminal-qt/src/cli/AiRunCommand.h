@@ -37,4 +37,24 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest);
 // code.
 int ai_screen_command(const GlobalOpts& opts, const QStringList& rest);
 
+// Run `ai positions [--handler H] [--json]` (AI paper ledger Task 5).
+// READ-ONLY: folds ai_fill rows via ai_ledger::positions_of and emits a JSON
+// array of {handler, symbol, net_qty, avg_entry_price, realized_pnl} — never
+// writes an ai_fill row, a cli.* gate setting, or any other DB row. Empty
+// --handler = all handlers. Returns a process exit code.
+int ai_positions_command(const GlobalOpts& opts, const QStringList& rest);
+
+// Run `ai pnl [--handler H] [--json]` (AI paper ledger Task 5). READ-ONLY:
+// emits a JSON object {realized_pnl, open_positions: [...]}  sourced from
+// ai_ledger::realized_total + positions_of — never writes any DB row. Empty
+// --handler = all handlers. Returns a process exit code.
+int ai_pnl_command(const GlobalOpts& opts, const QStringList& rest);
+
+// Run `ai ledger [--handler H] [--symbol S] [--limit N] [--json]` (AI paper
+// ledger Task 5). READ-ONLY: lists raw fills (recent first) via
+// AiFillRepository::list — never writes any DB row. Empty --handler/--symbol
+// = no filter on that column; default --limit is 50. Returns a process exit
+// code.
+int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest);
+
 }  // namespace openmarketterminal::cli

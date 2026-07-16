@@ -1747,6 +1747,79 @@ private slots:
         QCOMPARE(journal_after, journal_before);
         QCOMPARE(orders_after, orders_before);
     }
+
+    // ai paper ledger Task 5 -- `ai positions --handler H --json` emits the
+    // folded open position for that handler+symbol (net_qty, avg_entry_price,
+    // realized_pnl), sourced from ai_ledger::positions_of (Task 3, pure
+    // read-only fold over ai_fill rows). Seeded directly via SQL -- Task 5 is
+    // read-only and must not depend on Task 6's `ai record-fill`.
+    void ai_positions_reports_open_positions() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('p1','cli','POS-USD','buy',5,20,0,0,100,'d')").is_ok());
+
+        int rc = -1;
+        QJsonArray arr = json_array_from_dispatch(QStringList{"ai", "positions", "--handler", "cli", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(arr.size(), 1);
+        QCOMPARE(arr.at(0).toObject().value("symbol").toString(), QStringLiteral("POS-USD"));
+        QCOMPARE(arr.at(0).toObject().value("net_qty").toDouble(), 5.0);
+    }
+
+    // `ai ledger --handler H --json` lists that handler's fills recent-first
+    // (ts DESC), sourced from AiFillRepository::list (Task 2).
+    void ai_ledger_lists_recent_fills() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('l1','cli2','LDG-USD','buy',5,20,0,0,100,'d'),"
+            "       ('l2','cli2','LDG-USD','sell',5,25,0,25,200,'d')").is_ok());
+
+        int rc = -1;
+        QJsonArray arr = json_array_from_dispatch(
+            QStringList{"ai", "ledger", "--handler", "cli2", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(arr.size(), 2);
+        QCOMPARE(arr.at(0).toObject().value("id").toString(), QStringLiteral("l2"));  // recent first
+    }
+
+    // `ai pnl --handler H --json` emits {realized_pnl, open_positions[]},
+    // sourced from ai_ledger::realized_total + positions_of (Task 3).
+    void ai_pnl_reports_realized_total() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('n1','cli3','PNL-USD','buy',5,20,0,0,100,'d'),"
+            "       ('n2','cli3','PNL-USD','sell',5,25,0,25,200,'d')").is_ok());
+
+        int rc = -1;
+        QJsonObject obj = json_object_from_dispatch(QStringList{"ai", "pnl", "--handler", "cli3", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(obj.value("realized_pnl").toDouble(), 25.0);
+    }
+
+    // READ-ONLY invariant: `ai positions|pnl|ledger` must not mutate a single
+    // cli.* settings row, nor insert any ai_fill row -- these three commands
+    // issue only SELECTs (via positions_of/realized_total/list, all
+    // repository reads). ai_fill is these commands' own domain table, so the
+    // count check guards against the worst violation: a read command that
+    // accidentally appends a fill (e.g. a future record_fill mis-wire).
+    void ai_read_commands_are_read_only_on_gates() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        QVERIFY(fills_before >= 0);
+        int rc = -1;
+        json_array_from_dispatch(QStringList{"ai", "positions", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        json_array_from_dispatch(QStringList{"ai", "ledger", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        json_object_from_dispatch(QStringList{"ai", "pnl", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);  // no cli.* gate written
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);  // no ai_fill row written
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

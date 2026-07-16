@@ -7,13 +7,16 @@
 #include "mcp/McpTypes.h"
 #include "services/ai_decision/DecisionContext.h"
 #include "services/ai_decision/Screener.h"
+#include "services/ai_ledger/AiLedger.h"
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
 #include "services/llm/LlmService.h"
+#include "storage/repositories/AiFillRepository.h"
 #include "storage/repositories/LlmConfigRepository.h"
 #include "storage/sqlite/Database.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
@@ -388,6 +391,207 @@ int ai_screen_command(const GlobalOpts& opts, const QStringList& rest) {
         std::printf("%-16s %-11s %10.4f  %-6s %-10s %s\n", qUtf8Printable(row.symbol),
                     qUtf8Printable(row.market), row.edge_after_cost, qUtf8Printable(row.side),
                     qUtf8Printable(row.horizon), qUtf8Printable(row.freshness));
+    }
+    return 0;
+}
+
+int ai_positions_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    QString handler;
+    bool json_flag = false;
+
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--handler")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --handler requires a value\n");
+                return 2;
+            }
+            handler = args.takeFirst();
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return 2;
+        }
+    }
+
+    // Bring up the DB only if it isn't already live in this process -- same
+    // idempotent-init guard as ai_ctx_command above (see its comment).
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: positions_of() folds ai_fill via SELECTs only (see
+    // AiLedger.h) -- this command writes no ai_fill row, no cli.* gate
+    // setting, and performs no DB write of any kind.
+    const QVector<ai_ledger::HandlerPosition> ps = ai_ledger::positions_of(handler);
+
+    QJsonArray arr;
+    for (const auto& hp : ps) {
+        arr.append(QJsonObject{{"handler", hp.handler},
+                               {"symbol", hp.symbol},
+                               {"net_qty", hp.position.net_qty},
+                               {"avg_entry_price", hp.position.avg_entry_price},
+                               {"realized_pnl", hp.position.realized_pnl}});
+    }
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(arr).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    for (const auto& hp : ps) {
+        std::printf("%-16s %-16s net=%.4f avg=%.4f realized=%.4f\n", qUtf8Printable(hp.handler),
+                    qUtf8Printable(hp.symbol), hp.position.net_qty, hp.position.avg_entry_price,
+                    hp.position.realized_pnl);
+    }
+    return 0;
+}
+
+int ai_pnl_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    QString handler;
+    bool json_flag = false;
+
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--handler")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --handler requires a value\n");
+                return 2;
+            }
+            handler = args.takeFirst();
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return 2;
+        }
+    }
+
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: realized_total()/positions_of() issue only SELECTs (see
+    // AiLedger.h) -- this command writes no ai_fill row, no cli.* gate
+    // setting, and performs no DB write of any kind.
+    const double realized = ai_ledger::realized_total(handler);
+    const QVector<ai_ledger::HandlerPosition> ps = ai_ledger::positions_of(handler);
+
+    QJsonArray open_positions;
+    for (const auto& hp : ps) {
+        open_positions.append(QJsonObject{{"handler", hp.handler},
+                                          {"symbol", hp.symbol},
+                                          {"net_qty", hp.position.net_qty},
+                                          {"avg_entry_price", hp.position.avg_entry_price}});
+    }
+    const QJsonObject obj{{"realized_pnl", realized}, {"open_positions", open_positions}};
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("realized_pnl=%.4f open_positions=%d\n", realized, static_cast<int>(ps.size()));
+    return 0;
+}
+
+int ai_ledger_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    QString handler;
+    QString symbol;
+    int limit = 50;
+    bool json_flag = false;
+
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--handler")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --handler requires a value\n");
+                return 2;
+            }
+            handler = args.takeFirst();
+        } else if (f == QLatin1String("--symbol")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --symbol requires a value\n");
+                return 2;
+            }
+            symbol = args.takeFirst();
+        } else if (f == QLatin1String("--limit")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --limit requires a value\n");
+                return 2;
+            }
+            const QString v = args.takeFirst();
+            bool ok = false;
+            const int parsed = v.toInt(&ok);
+            if (!ok) {
+                std::fprintf(stderr, "error: --limit must be an integer\n");
+                return 2;
+            }
+            limit = parsed;
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return 2;
+        }
+    }
+
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: AiFillRepository::list() issues only a SELECT (recent
+    // first) -- this command writes no ai_fill row, no cli.* gate setting,
+    // and performs no DB write of any kind.
+    const auto rows = AiFillRepository::instance().list(handler, symbol, limit);
+
+    QJsonArray arr;
+    if (rows.is_ok()) {
+        for (const AiFill& f : rows.value()) {
+            arr.append(QJsonObject{{"id", f.id},
+                                   {"handler", f.handler},
+                                   {"symbol", f.symbol},
+                                   {"side", f.side},
+                                   {"quantity", f.quantity},
+                                   {"fill_price", f.fill_price},
+                                   {"fee", f.fee},
+                                   {"realized_pnl", f.realized_pnl},
+                                   {"ts", static_cast<double>(f.ts)},
+                                   {"draft_id", f.draft_id}});
+        }
+    }
+
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(arr).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    for (const auto& v : arr) {
+        const QJsonObject o = v.toObject();
+        std::printf("%-16s %-16s %-4s qty=%.4f px=%.4f pnl=%.4f\n",
+                    qUtf8Printable(o.value("handler").toString()),
+                    qUtf8Printable(o.value("symbol").toString()),
+                    qUtf8Printable(o.value("side").toString()), o.value("quantity").toDouble(),
+                    o.value("fill_price").toDouble(), o.value("realized_pnl").toDouble());
     }
     return 0;
 }
