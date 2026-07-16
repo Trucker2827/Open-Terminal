@@ -27932,6 +27932,8 @@ int dispatch(QStringList args) {
             return run_workflow(sub, args);
         if (sub == "ctx")
             return ai_ctx_command(opts, args);  // args == tokens after "ai ctx" (starts with <symbol>)
+        if (sub == "act")
+            return ai_act_command(opts, args);  // args == tokens after "ai act" (starts with <symbol> <action>)
         if (sub == "screen")
             return ai_screen_command(opts, args);  // args == tokens after "ai screen"
         if (sub == "positions")
@@ -27952,6 +27954,7 @@ int dispatch(QStringList args) {
                      "ai recipe show|run ... | "
                      "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
                      "ai ctx <symbol> [--json] [--market prediction|equity] | "
+                     "ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H] [--json] | "
                      "ai screen [--market prediction|equity|crypto] [--limit N] [--json] | "
                      "ai positions [--handler H] [--json] | "
                      "ai pnl [--handler H] [--json] | "

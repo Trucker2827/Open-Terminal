@@ -13,6 +13,7 @@
 #include "services/ai_strategy/LlmStrategy.h"
 #include "services/ai_strategy/MeanReversionStrategy.h"
 #include "services/ai_strategy/StrategyRunner.h"
+#include "services/ai_strategy/TypedAction.h"
 #include "services/llm/LlmService.h"
 #include "storage/repositories/AiFillRepository.h"
 #include "storage/repositories/LlmConfigRepository.h"
@@ -340,6 +341,93 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
                          : qUtf8Printable(QStringLiteral("skip (%1)").arg(floor.reason)));
     std::printf("position:            %s qty=%.4f\n", qUtf8Printable(packet.position_source),
                 packet.position_qty);
+    return 0;
+}
+
+// `ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H]
+// [--json]` -- previews what a typed verb translates to for a symbol given
+// its CURRENT ledger position. READ-ONLY: position_of issues a SELECT and
+// translate_action is pure (no DB, no LLM) -- this command writes nothing
+// (no cli.* gate, no ai_fill row, no order); it never constructs a
+// StrategyRunner and never calls prepare_order/submit_order.
+int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
+    QStringList args = rest;
+    if (args.isEmpty()) {
+        std::fprintf(stderr, "usage: ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H] [--json]\n");
+        return 2;
+    }
+    const QString symbol = args.takeFirst();
+    if (args.isEmpty()) {
+        std::fprintf(stderr, "error: missing <action>\n");
+        return 2;
+    }
+    const QString action = args.takeFirst();
+
+    ai_strategy::ActionType atype;
+    if (action == QLatin1String("skip"))       atype = ai_strategy::ActionType::Skip;
+    else if (action == QLatin1String("enter")) atype = ai_strategy::ActionType::Enter;
+    else if (action == QLatin1String("trim"))  atype = ai_strategy::ActionType::Trim;
+    else if (action == QLatin1String("exit"))  atype = ai_strategy::ActionType::Exit;
+    else {
+        std::fprintf(stderr, "error: unknown action '%s' (skip|enter|trim|exit)\n", qUtf8Printable(action));
+        return 2;
+    }
+
+    double conviction = 1.0;
+    QString handler = QStringLiteral("claude");
+    bool json_flag = false;
+    while (!args.isEmpty()) {
+        const QString f = args.takeFirst();
+        if (f == QLatin1String("--json")) {
+            json_flag = true;
+        } else if (f == QLatin1String("--conviction")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --conviction requires a value\n");
+                return 2;
+            }
+            conviction = args.takeFirst().toDouble();
+        } else if (f == QLatin1String("--handler")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --handler requires a value\n");
+                return 2;
+            }
+            handler = args.takeFirst();
+        } else {
+            std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
+            return 2;
+        }
+    }
+
+    // Bring up the DB only if it isn't already live in this process -- same
+    // idempotent-init guard as ai_ctx_command above (see its comment).
+    if (!openmarketterminal::Database::instance().is_open()) {
+        headless::HeadlessRuntime hr;
+        auto ir = hr.init(opts.profile);
+        if (!ir.ok) {
+            std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
+            return 7;
+        }
+    }
+
+    // READ-ONLY: position_of issues a SELECT; translate_action is pure. No write.
+    const double net_qty = ai_ledger::position_of(handler, symbol).net_qty;
+    const auto intent = ai_strategy::translate_action(
+        ai_strategy::ActionChoice{symbol, atype, conviction}, net_qty, ai_strategy::ActionParams{10.0, 0.5});
+
+    QJsonObject obj{{"action", action}, {"symbol", symbol}, {"conviction", conviction},
+                    {"current_net_qty", net_qty},
+                    {"intent", intent ? QJsonValue(*intent) : QJsonValue(QJsonValue::Null)}};
+    if (opts.json || json_flag) {
+        std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    if (intent)
+        std::printf("%s %s conv=%.4f net=%.4f -> %s %.4f @ market\n", qUtf8Printable(action),
+                    qUtf8Printable(symbol), conviction, net_qty,
+                    qUtf8Printable(intent->value("side").toString()), intent->value("quantity").toDouble());
+    else
+        std::printf("%s %s conv=%.4f net=%.4f -> no intent\n", qUtf8Printable(action),
+                    qUtf8Printable(symbol), conviction, net_qty);
     return 0;
 }
 

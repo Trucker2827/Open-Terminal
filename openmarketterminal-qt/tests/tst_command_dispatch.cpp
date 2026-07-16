@@ -2020,6 +2020,62 @@ private slots:
         QCOMPARE(cli_settings_fingerprint(), before);
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
     }
+
+    // `ai act` typed-action preview (Task 3 of piece Vc): READ-ONLY --
+    // translates a typed verb into a paper TradeIntent preview given the
+    // symbol's current ledger position, without writing anything.
+    void ai_act_enter_previews_buy() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "ACT-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(intent.value("quantity").toDouble(), 5.0);          // 0.5 * 10
+        QCOMPARE(intent.value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    void ai_act_exit_previews_sell_of_position() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('act1','claude','EXT-USD','buy',8,100,0,0,1000,'d')").is_ok());  // net_qty = 8
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "EXT-USD", "exit", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("sell"));
+        QCOMPARE(intent.value("quantity").toDouble(), 8.0);
+    }
+
+    void ai_act_trim_flat_is_null_intent() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "FLAT-USD", "trim", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(o.value("intent").isNull());   // nothing to trim
+    }
+
+    void ai_act_unknown_action_exits_2() {
+        sandbox_test_home();
+        int rc = 0;
+        json_object_from_dispatch(QStringList{"ai", "act", "X-USD", "bogus", "--json"}, &rc);
+        QCOMPARE(rc, 2);
+    }
+
+    void ai_act_is_read_only() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "act", "RO-USD", "enter", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

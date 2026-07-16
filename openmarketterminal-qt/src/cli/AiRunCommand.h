@@ -27,6 +27,16 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest);
 // with a packet carrying has_edge_signal=false. Returns a process exit code.
 int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest);
 
+// Run `ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H]
+// [--json]` (typed-action preview, piece Vc Task 3). READ-ONLY: reads the
+// symbol's current net position via ai_ledger::position_of (a SELECT) and
+// runs it through the pure ai_strategy::translate_action, then emits the
+// resulting TradeIntent preview (or null) -- it never writes an ai_fill row,
+// a cli.* gate setting, or places any order. Missing <symbol>/<action> or an
+// unrecognized action/flag -> usage error on stderr, exit 2. Returns a
+// process exit code.
+int ai_act_command(const GlobalOpts& opts, const QStringList& rest);
+
 // Run `ai screen [--market prediction|equity|crypto] [--limit N] [--json]`
 // (ai screen shortlist Task 2). `rest` is the args AFTER `ai screen`.
 // READ-ONLY: calls ai_decision::screen + screen_to_json and emits the
