@@ -2,6 +2,9 @@
 #include "services/ai_strategy/StrategyRunner.h"
 
 #include "mcp/tools/SettingsGate.h"
+#include "services/ai_strategy/DeterministicFloor.h"
+#include "services/ai_strategy/PretradeGate.h"
+#include "services/ai_ledger/AiLedger.h"
 
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -22,11 +25,29 @@ bool reason_is_halting(const QString& reason) {
            r.contains(QLatin1String("paper trading disabled"));
 }
 
+// The paper rail (UnifiedTrading::init_session) charges this fee per fill; it is
+// not surfaced by submit_order, so mirror it here to keep the ai_fill ledger's
+// realized P&L truthful (a fee=0 record inflates the scorecard). Keep in sync
+// with UnifiedTrading::init_session's paper-portfolio fee_rate.
+constexpr double kPaperFeeRate = 0.0003;  // 3 bps
+
 } // namespace
 
 RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg,
                                std::function<bool()> stop_requested) {
     RunSummary summary;
+
+    // Pre-trade guardrail policy, derived once from cfg. Pure/subtractive:
+    // evaluate_pretrade() only ever rejects (or is a no-op when caps are 0
+    // and clears_cost/freshness come back "unknown") — it never opens a live
+    // path or touches submit_order's mode:paper.
+    GatePolicy policy;
+    policy.max_notional_per_order = cfg.max_notional_per_order;
+    policy.max_position_qty = cfg.max_position_qty;
+    policy.max_aggregate_position_qty = cfg.max_aggregate_position_qty;
+    policy.allowed_venues = cfg.allowed_venues;
+    policy.require_cost_gate = cfg.require_cost_gate;
+    policy.require_freshness_gate = cfg.require_freshness_gate;
 
     auto log = [this](const QString& msg) {
         if (on_log) {
@@ -71,6 +92,71 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
         summary.proposed += intents.size();
 
         for (const TradeIntent& intent : intents) {
+            // Pre-trade guardrail: runs BEFORE prepare_order. Reject -> record
+            // + continue (never submits). Allow -> falls through to the
+            // existing, unchanged prepare_order -> submit_order(mode:paper)
+            // path below.
+            const QString sym = intent.value(QStringLiteral("symbol")).toString();
+            GateInputs gin;
+            gin.resolved_price = intent.contains(QStringLiteral("limit_price"))
+                ? intent.value(QStringLiteral("limit_price")).toDouble()
+                : snap.quotes.value(sym, 0.0);
+            ai_decision::DecisionPacket pkt;
+            try {
+                pkt = assess_fn ? assess_fn(sym) : ai_decision::DecisionPacket{};
+            } catch (...) {
+                ++summary.errors;
+                // assess_fn must never crash the loop; an error degrades to an
+                // "unknown" packet, same as assess()'s own no-row/query-failed
+                // path, so the cost/freshness gates fall through rather than
+                // spuriously reject.
+                pkt = ai_decision::DecisionPacket{};
+                pkt.clears_cost = QStringLiteral("unknown");
+                pkt.freshness = QStringLiteral("unknown");
+            }
+            gin.clears_cost = pkt.clears_cost;
+            gin.freshness = pkt.freshness;
+            gin.has_edge_signal = pkt.has_edge_signal;
+            gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
+            gin.aggregate_net_qty = ai_ledger::net_position_for_symbol(sym);
+
+            // Deterministic floor: runs BEFORE the pre-trade guardrail. Reads
+            // only the already-resolved packet and, when it doesn't
+            // positively endorse the symbol AND the intent is not de-risking
+            // (⑤d: intent_reduces_exposure — reduce/close is always allowed so
+            // the AI can exit an unendorsed position), records a floor_skip
+            // (rule "floor", NEVER a gate_rejection) and skips — never reaches
+            // evaluate_pretrade/prepare_order/submit_order. Default ON,
+            // subtractive: it only prevents paper trades, never enables one.
+            const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
+            const GateVerdict fv = floor_verdict(fin, FloorPolicy{cfg.require_floor});
+            const QString intent_side = intent.value(QStringLiteral("side")).toString();
+            // Direction agreement (F2): even a fully-endorsed edge (gate=pass/cost/
+            // fresh) must recommend the SAME side the intent takes. A perp/chronos2
+            // row can carry gate=="pass" with side=="short"/"sell" (a profitable
+            // SHORT); a long-only enter must not ride a short endorsement. Enforced
+            // only when the floor is on; de-risking is exempt (reduce/close below).
+            const bool dir_ok =
+                !cfg.require_floor || intent_agrees_with_edge(intent_side, pkt.side);
+            if ((!fv.ok || !dir_ok) && !intent_reduces_exposure(intent, gin.existing_net_qty)) {
+                const QString reason = !fv.ok ? fv.reason
+                    : QStringLiteral("edge recommends opposite side");
+                const QString rule = !fv.ok ? fv.rule : QStringLiteral("floor");
+                ++summary.floor_skipped;
+                summary.floor_skips.push_back({sym, intent_side, reason, rule});
+                log(QStringLiteral("floor skipped %1: %2").arg(sym, reason));
+                continue;  // before the pretrade gate / prepare_order / submit_order
+            }
+
+            const GateVerdict gv = evaluate_pretrade(intent, gin, policy);
+            if (!gv.ok) {
+                ++summary.rejected;
+                summary.gate_rejections.push_back(
+                    {sym, intent.value(QStringLiteral("side")).toString(), gv.reason, gv.rule});
+                log(QStringLiteral("gate rejected %1: %2").arg(sym, gv.reason));
+                continue;
+            }
+
             auto prep = tc.call(QStringLiteral("prepare_order"), intent);
             const QJsonObject prepo = prep.data.toObject();
             const QString prep_status = prepo.value(QStringLiteral("status")).toString();
@@ -111,6 +197,19 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
                 // submit never happened, so a strategy tracking positions here must
                 // not book it.
                 s.on_fill(intent, subo);
+
+                // Best-effort paper-ledger record — never break the loop on a DB error.
+                const double fill_price = intent.contains(QStringLiteral("limit_price"))
+                    ? intent.value(QStringLiteral("limit_price")).toDouble()
+                    : snap.quotes.value(sym, 0.0);
+                const double fill_qty = intent.value(QStringLiteral("quantity")).toDouble();
+                // Mirror the paper rail's fee so realized P&L is net of costs (F3).
+                const double fee = fill_qty * fill_price * kPaperFeeRate;
+                auto rec = ai_ledger::record_fill(
+                    s.name(), sym, intent.value(QStringLiteral("side")).toString(),
+                    fill_qty, fill_price, fee, draft_id);
+                if (rec.is_err())
+                    log(QStringLiteral("ledger record skipped: ") + QString::fromStdString(rec.error()));
             } else {
                 ++summary.rejected;
                 log(QStringLiteral("submit rejected draft ") + draft_id + QStringLiteral(": ") +

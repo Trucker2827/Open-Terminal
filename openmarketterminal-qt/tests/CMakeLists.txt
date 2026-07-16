@@ -106,6 +106,18 @@ target_include_directories(tst_strategy_loop PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_strategy_loop PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_strategy_loop COMMAND tst_strategy_loop)
 
+# AI paper ledger Task 1 — pure signed-position accounting core (apply_fill,
+# unrealized_of). No DB/persistence; pure math over LedgerPosition/FillDelta.
+add_executable(tst_ai_ledger tst_ai_ledger.cpp)
+target_include_directories(tst_ai_ledger PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_ledger PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_ledger COMMAND tst_ai_ledger)
+
+add_executable(tst_ai_scorecard tst_ai_scorecard.cpp)
+target_include_directories(tst_ai_scorecard PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_scorecard PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_scorecard COMMAND tst_ai_scorecard)
+
 # AI-Trading Substrate Phase A Task 1 — the SECURITY KEYSTONE: the settings-WRITE
 # tool path must refuse any cli.* key (arm/enable trading, raise risk caps) even
 # when cli.allow_settings_write is on, so a CLI/AI agent can't escalate itself.
@@ -175,6 +187,17 @@ add_executable(tst_portfolio_trade_history_migration tst_portfolio_trade_history
 target_include_directories(tst_portfolio_trade_history_migration PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_portfolio_trade_history_migration PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_portfolio_trade_history_migration COMMAND tst_portfolio_trade_history_migration)
+
+# MigrationRunner skip-logic regression — synthetic migrations against a
+# fresh temp-file SQLite DB, with NO register_all_migrations() call (this
+# binary's global migration registry starts empty). Proves run() skips by
+# per-version membership in schema_version, not by high-water mark
+# (m.version <= MAX), so a migration registered later with a lower version
+# number is still applied instead of being permanently skipped.
+add_executable(tst_migration_runner tst_migration_runner.cpp)
+target_include_directories(tst_migration_runner PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_migration_runner PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_migration_runner COMMAND tst_migration_runner)
 
 # Trade-history sync Task 2 — PortfolioRepository::import_transaction's
 # INSERT OR IGNORE dedup, keyed on v061's idx_ptx_external partial unique
@@ -501,6 +524,19 @@ target_include_directories(tst_sandbox_schema PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_schema PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_schema COMMAND tst_sandbox_schema)
 
+add_executable(tst_strategy_registry tst_strategy_registry.cpp)
+target_include_directories(tst_strategy_registry PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_strategy_registry PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME tst_strategy_registry COMMAND tst_strategy_registry)
+
+# AI Handler Plugin Core Task 2 — AiHandlerRepository: CRUD over migration
+# v063's ai_handler table (named AI-handler configs, disarmed by default).
+# Same DB bootstrap as tst_sandbox_registry.
+add_executable(tst_ai_handler_repository tst_ai_handler_repository.cpp)
+target_include_directories(tst_ai_handler_repository PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_ai_handler_repository PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_ai_handler_repository COMMAND tst_ai_handler_repository)
+
 add_executable(tst_feed_reconnect tst_feed_reconnect.cpp)
 target_include_directories(tst_feed_reconnect PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_feed_reconnect PRIVATE openterminal_core Qt6::Core Qt6::Test)
@@ -542,6 +578,30 @@ target_include_directories(tst_sandbox_executor PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_executor PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_sandbox_executor COMMAND tst_sandbox_executor)
 
+# FreshnessGate.h — pure data_quality_from_freshness/freshness_field helper,
+# extracted from PaperExecutor.cpp's anon namespace for reuse (ai ctx
+# decision-packet task 1). Header-only, so this target just needs Qt Core.
+add_executable(tst_freshness_gate tst_freshness_gate.cpp)
+target_include_directories(tst_freshness_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_freshness_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_freshness_gate COMMAND tst_freshness_gate)
+
+# ai ctx decision-packet Task 2 — DecisionContext::assess: pure-read packet
+# assembly over edge_decision_journal + FreshnessGate.h + SandboxScorer.h's
+# evaluate_lane_significance. Same DB bootstrap as tst_sandbox_registry.
+add_executable(tst_decision_context tst_decision_context.cpp)
+target_include_directories(tst_decision_context PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_decision_context PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_decision_context COMMAND tst_decision_context)
+
+# ai screen shortlist Task 1 — Screener::screen: ranked gate-vetted shortlist
+# over edge_decision_journal, reusing DecisionContext::assess per (symbol,
+# venue). Same DB bootstrap as tst_decision_context.
+add_executable(tst_screener tst_screener.cpp)
+target_include_directories(tst_screener PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_screener PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_screener COMMAND tst_screener)
+
 # Strategy Sandbox Task 8 — SandboxResolver::resolve_pending: settle
 # prediction (journal outcome) and hypothetical (tick target/stop/expiry)
 # books. Same DB bootstrap as tst_sandbox_executor.
@@ -571,6 +631,23 @@ add_executable(tst_strategy_evidence_presentation tst_strategy_evidence_presenta
 target_include_directories(tst_strategy_evidence_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_strategy_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_strategy_evidence_presentation COMMAND tst_strategy_evidence_presentation)
+
+# AI pre-trade guardrail Task 1 — evaluate_pretrade: pure, no DB/settings/I-O.
+# Takes a TradeIntent + GateInputs + GatePolicy and returns a GateVerdict.
+add_executable(tst_pretrade_gate tst_pretrade_gate.cpp)
+target_include_directories(tst_pretrade_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_pretrade_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_pretrade_gate COMMAND tst_pretrade_gate)
+
+add_executable(tst_deterministic_floor tst_deterministic_floor.cpp)
+target_include_directories(tst_deterministic_floor PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_deterministic_floor PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_deterministic_floor COMMAND tst_deterministic_floor)
+
+add_executable(tst_typed_action tst_typed_action.cpp)
+target_include_directories(tst_typed_action PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_typed_action PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_typed_action COMMAND tst_typed_action)
 
 # Strategy Sandbox Task 11 — power-boundary check: the sandbox service
 # object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/

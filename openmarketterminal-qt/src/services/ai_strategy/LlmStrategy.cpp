@@ -1,56 +1,49 @@
 // LlmStrategy.cpp — see LlmStrategy.h.
 #include "services/ai_strategy/LlmStrategy.h"
 
+#include "services/ai_ledger/AiLedger.h"
+#include "services/ai_strategy/TypedAction.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
 
 namespace openmarketterminal::ai_strategy {
 
-LlmStrategy::LlmStrategy(QStringList universe, CompletionFn complete)
-    : universe_(std::move(universe)), complete_(std::move(complete)) {}
+LlmStrategy::LlmStrategy(QStringList universe, CompletionFn complete, double max_qty)
+    : universe_(std::move(universe)), complete_(std::move(complete)), max_qty_(max_qty) {}
 
-QVector<TradeIntent> LlmStrategy::parse_intents(const QString& reply, const QStringList& universe) {
-    QVector<TradeIntent> intents;
-
-    // Robust array extraction: tolerate prose / markdown fences around the JSON
-    // by slicing from the first '[' to the last ']' (inclusive).
+QVector<ActionChoice> LlmStrategy::parse_actions(const QString& reply, const QStringList& universe) {
+    QVector<ActionChoice> actions;
     const int start = reply.indexOf(QLatin1Char('['));
     const int end = reply.lastIndexOf(QLatin1Char(']'));
     if (start < 0 || end < 0 || end < start)
-        return intents;  // no array delimiters (covers empty / pure-prose replies).
-
+        return actions;  // no array delimiters (empty / pure prose).
     const QString slice = reply.mid(start, end - start + 1);
     const QJsonDocument doc = QJsonDocument::fromJson(slice.toUtf8());
     if (!doc.isArray())
-        return intents;  // not a JSON array ⇒ nothing.
-
-    const QJsonArray arr = doc.array();
-    for (const QJsonValue& v : arr) {
+        return actions;
+    for (const QJsonValue& v : doc.array()) {
         if (!v.isObject())
-            continue;  // skip non-object elements.
+            continue;
         const QJsonObject obj = v.toObject();
-
-        // Structural sanity + universe membership only — the substrate validates
-        // the rest (order_type, limit_price, risk/caps). Pass the object through
-        // UNCHANGED so strategies own the order shape.
         const QJsonValue symv = obj.value(QStringLiteral("symbol"));
         if (!symv.isString())
             continue;
         const QString sym = symv.toString();
         if (sym.isEmpty() || !universe.contains(sym))
-            continue;  // drop out-of-universe / empty symbols.
-
-        const QString side = obj.value(QStringLiteral("side")).toString();
-        if (side != QLatin1String("buy") && side != QLatin1String("sell"))
-            continue;
-
-        if (obj.value(QStringLiteral("quantity")).toDouble() <= 0.0)
-            continue;  // missing / non-positive / non-numeric ⇒ 0 ⇒ dropped.
-
-        intents.append(obj);
+            continue;  // drop out-of-universe / empty.
+        const QString a = obj.value(QStringLiteral("action")).toString();
+        ActionType type;
+        if (a == QLatin1String("skip"))       type = ActionType::Skip;
+        else if (a == QLatin1String("enter")) type = ActionType::Enter;
+        else if (a == QLatin1String("trim"))  type = ActionType::Trim;
+        else if (a == QLatin1String("exit"))  type = ActionType::Exit;
+        else continue;  // unknown / missing action -> drop.
+        const double conv = obj.value(QStringLiteral("conviction")).toDouble(1.0);
+        actions.append(ActionChoice{sym, type, conv});
     }
-    return intents;
+    return actions;
 }
 
 QVector<TradeIntent> LlmStrategy::propose(const MarketSnapshot& s) {
@@ -70,13 +63,12 @@ QVector<TradeIntent> LlmStrategy::propose(const MarketSnapshot& s) {
 
     const QString prompt =
         QStringLiteral(
-            "You are a paper-trading assistant. Given the market snapshot and current "
-            "portfolio, respond with ONLY a JSON array of order intents and nothing else. "
-            "Each intent: {\"symbol\":..., \"side\":\"buy\"|\"sell\", \"quantity\":<number>, "
-            "\"order_type\":\"limit\", \"limit_price\":<number>}. Return [] to do nothing. "
-            "Only trade symbols in the allowed universe: %1. A deterministic risk system "
-            "enforces all limits — oversized or invalid intents are rejected, so propose "
-            "conservatively.\n\n")
+            "You are a paper-trading assistant. Respond with ONLY a JSON array of typed actions and "
+            "nothing else. Each action: {\"symbol\":..., \"action\":\"enter\"|\"trim\"|\"exit\"|\"skip\", "
+            "\"conviction\":<0.0-1.0, for enter>}. enter opens/adds a long position sized by conviction; "
+            "trim reduces the current position; exit closes it; skip does nothing. Return [] to do nothing. "
+            "The environment chooses side and size and enforces every risk limit -- you only pick the verb "
+            "and (for enter) a conviction 0..1. Only symbols in the allowed universe: %1.\n\n")
             .arg(universe_csv);
 
     const auto compact = [](const QJsonObject& o) {
@@ -94,7 +86,13 @@ QVector<TradeIntent> LlmStrategy::propose(const MarketSnapshot& s) {
     if (reply.isEmpty())
         return {};
 
-    return parse_intents(reply, universe_);
+    QVector<TradeIntent> intents;
+    for (const ActionChoice& c : parse_actions(reply, universe_)) {
+        const double net_qty = ai_ledger::position_of(name(), c.symbol).net_qty;
+        if (auto intent = translate_action(c, net_qty, ActionParams{max_qty_, 0.5}))
+            intents.append(*intent);
+    }
+    return intents;
 }
 
 } // namespace openmarketterminal::ai_strategy

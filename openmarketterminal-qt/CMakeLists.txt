@@ -899,6 +899,8 @@ set(STORAGE_SOURCES
     src/storage/repositories/LivePnlRepository.cpp
     src/storage/repositories/EdgePredictionModelRepository.cpp
     src/storage/repositories/EdgeRadarRepository.cpp
+    src/storage/repositories/AiFillRepository.cpp
+    src/storage/repositories/AiHandlerRepository.cpp
 
     # Workflow migration
     src/storage/sqlite/migrations/v008_workflows.cpp
@@ -970,6 +972,8 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v063_ai_handler.cpp
+    src/storage/sqlite/migrations/v064_ai_fill.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -1233,6 +1237,10 @@ set(SERVICE_SOURCES
     src/services/ai_strategy/StrategyRunner.cpp
     src/services/ai_strategy/MeanReversionStrategy.cpp
     src/services/ai_strategy/LlmStrategy.cpp
+    src/services/ai_strategy/PretradeGate.cpp
+    src/services/ai_strategy/DeterministicFloor.cpp
+    src/services/ai_strategy/TypedAction.cpp
+    src/services/ai_strategy/StrategyRegistry.cpp
     src/services/report_builder/ReportBuilderService.cpp
     src/services/report_builder/ReportBuilderTemplates.cpp
     src/core/services/Services.cpp
@@ -1395,6 +1403,21 @@ set(SERVICE_SOURCES
     src/services/sandbox/SandboxScorer.cpp
     # Strategy Sandbox — Live Eligibility Gate: report-only verdict (Task 10).
     src/services/sandbox/SandboxEligibility.cpp
+
+    # ai ctx decision-packet Task 2 — DecisionContext::assess: pure-read
+    # decision packet over edge_decision_journal + cost/freshness/lane.
+    src/services/ai_decision/DecisionContext.cpp
+    # ai screen shortlist Task 1 — Screener::screen: ranked gate-vetted
+    # shortlist over edge_decision_journal, reusing DecisionContext::assess.
+    src/services/ai_decision/Screener.cpp
+
+    # AI paper ledger Task 1 — pure signed-position accounting core
+    # (apply_fill/unrealized_of), no persistence.
+    src/services/ai_ledger/AiLedger.cpp
+
+    # AI scorecard Task 1 — read-only realized-close track record derived
+    # from the ai_fill ledger (scorecard_of/scorecard_to_json).
+    src/services/ai_ledger/Scorecard.cpp
 )
 
 # UI framework
@@ -2381,6 +2404,18 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v060_portfolio_account_sync.cpp
     src/storage/sqlite/migrations/v061_portfolio_trade_history.cpp
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
+    src/storage/sqlite/migrations/v063_ai_handler.cpp
+    src/storage/sqlite/migrations/v064_ai_fill.cpp
+    # DecisionContext.cpp — defines an anonymous-namespace `enum class
+    # EdgeCol` (scoped enumerators, but the type name itself still lives in
+    # the anon namespace); excluded defensively so a Release unity batch can
+    # never collide it against another anon-namespace symbol of the same name.
+    src/services/ai_decision/DecisionContext.cpp
+    # Screener.cpp — defines an anonymous-namespace market_venue_table()
+    # helper; excluded defensively for the same reason as DecisionContext.cpp
+    # above (a same-named helper in a unity batch-mate's own anon namespace
+    # would otherwise collide).
+    src/services/ai_decision/Screener.cpp
     # Polymarket screen files — each defines static fmt_* helpers in same namespace
     src/screens/prediction/PredictionMarketsScreen.cpp
     src/screens/kalshi/KalshiScreen.cpp
