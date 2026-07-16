@@ -3,10 +3,13 @@
 //
 // A Strategy whose deciding brain is an LLM. Each tick it builds a prompt from
 // the market snapshot + portfolio + universe, asks the LLM (via an injected
-// completion function) for a JSON array of trade intents, and parses them. The
+// completion function) for a JSON array of TYPED ACTIONS {skip|enter|trim|exit}
+// (piece 5c), parses them (parse_actions), and translates each verb + the
+// symbol's current ledger position into a paper intent (translate_action). The
 // LLM output is UNTRUSTED: the strategy only enforces STRUCTURAL sanity +
-// universe membership (so it can't propose disallowed symbols); all risk/caps
-// are enforced downstream by prepare_order. propose() NEVER throws — any LLM
+// universe membership (so it can't propose disallowed symbols); side/size come
+// from the environment (not the model) and all risk/caps are enforced downstream
+// by the floor + prepare_order. propose() NEVER throws — any LLM
 // output (empty, prose, markdown-fenced, malformed, non-array) yields a clean
 // (possibly empty) QVector.
 //
