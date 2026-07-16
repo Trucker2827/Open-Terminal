@@ -422,6 +422,17 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(sum.floor_skipped, 0);
     }
 
+    // The edge here fully ENDORSES the long side (gate=pass/cost/fresh, side=
+    // "buy") — that's the SAME direction that would make a plain "sell" fail
+    // intent_agrees_with_edge (sell vs. buy is a directional disagreement, so
+    // dir_ok is false and fv.ok is true: the floor's (!fv.ok || !dir_ok) term
+    // evaluates true on its own). With an existing long position, this SELL
+    // is de-risking (quantity < existing net), so ONLY intent_reduces_exposure
+    // — the exemption under test — can be what keeps it from being floor-skipped.
+    // (Using an edge that instead endorses "short" for a sell, as this test
+    // previously did, makes intent_agrees_with_edge true by itself, so the
+    // skip is bypassed before the exemption clause is ever reached — that
+    // version passed even with the exemption deleted, i.e. it was tautological.)
     void floor_exempts_reduce_on_flipped_edge() {
         ensure_migrated_db();
         // Seed an EXISTING long position for fake/FLP2-USD (buy 10).
@@ -435,14 +446,14 @@ class TstStrategyLoop : public QObject {
         // Reducing SELL: quantity < existing net.
         s.intents_ = {TradeIntent{{"symbol","FLP2-USD"},{"side","sell"},{"quantity",4.0},{"limit_price",100.0}}};
         StrategyRunner runner;
-        runner.assess_fn = [](const QString&) {                 // edge flipped: endorses SHORT now
+        runner.assess_fn = [](const QString&) {                 // still endorses LONG — disagrees with the sell
             ai_decision::DecisionPacket p;
             p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
-            p.side = QStringLiteral("short");
+            p.side = QStringLiteral("buy");
             return p;
         };
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
-        QCOMPARE(sum.floor_skipped, 0);   // de-risking exit NOT floor-skipped, even on a flipped edge
+        QCOMPARE(sum.floor_skipped, 0);   // de-risking exit NOT floor-skipped, even against a disagreeing edge
         QCOMPARE(sum.filled, 1);
     }
 
