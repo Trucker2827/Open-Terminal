@@ -1624,6 +1624,27 @@ private slots:
         QCOMPARE(orders_after, orders_before);
     }
 
+    // READ-ONLY invariant, post-④b: `ai ctx <symbol>` now aggregates the
+    // ledger's net position for its `position` field
+    // (ai_ledger::net_position_for_symbol), but must still not mutate a
+    // single cli.* settings row nor write any ai_fill row while doing so.
+    void ai_ctx_position_read_is_read_only() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('ro1','h','CTXRO2-USD','buy',5,100,0,0,1000,'d')").is_ok());
+
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "ctx", "CTXRO2-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+
+        QCOMPARE(cli_settings_fingerprint(), before);                        // no cli.* gate written
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);   // assess wrote no fill
+    }
+
     // ai screen shortlist Task 2 -- `ai screen --market crypto --json` ranks
     // the all-gates-pass candidates by edge_after_cost desc and tags each
     // with its market. Fixture mirrors tst_screener.cpp's
