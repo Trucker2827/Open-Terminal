@@ -35,9 +35,10 @@ namespace openmarketterminal::ai_decision {
 struct DecisionPacket {
     // --- Query identity ---
     QString symbol;
-    QString market; // caller-supplied market/venue filter hint (not applied
-                     // to the query — the journal is keyed on symbol alone,
-                     // see assess()'s doc comment); carried through so
+    QString market; // caller-supplied market filter: scopes the journal
+                     // lookup to that market's venues via
+                     // market_venue_filter (empty = all venues), see
+                     // assess()'s doc comment; also carried through so
                      // consumers can label the packet.
 
     // --- Raw edge_decision_journal fields (latest row for `symbol`) ---
@@ -96,11 +97,12 @@ struct DecisionPacket {
 // SandboxScorer.h's evaluate_lane_significance produces per-LANE verdicts,
 // not the per-symbol verdict this packet needs, and no single-verdict
 // collapse rule is defined yet (see DecisionContext.cpp) — assess() issues no
-// sandbox_position query for it. `market` is not used to filter the query
-// (the journal has no market-scoped uniqueness guarantee beyond
-// symbol+created_at); it is only carried through into the returned packet as
-// a label. PURE READ: no writes, no order placement, no gate mutation — see
-// file header.
+// sandbox_position query for it. `market` scopes the journal lookup to that
+// market's venues via Screener's market_venue_filter (lockstep with the
+// screener's own market_for_venue classification): empty market means the
+// latest row across all venues (unchanged behavior); an unrecognized,
+// non-empty market matches no row (fail-closed, no signal). PURE READ: no
+// writes, no order placement, no gate mutation — see file header.
 DecisionPacket assess(const QString& symbol, const QString& market = {});
 
 // Serializes every DecisionPacket field to a QJsonObject.

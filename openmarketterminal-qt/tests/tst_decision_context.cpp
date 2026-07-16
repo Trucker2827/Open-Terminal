@@ -143,6 +143,46 @@ class TstDecisionContext : public QObject {
         QVERIFY(has_note);
     }
 
+    void assess_scopes_by_market() {
+        // Same symbol, two markets. The CRYPTO row (coinbase) is OLDER; the
+        // PREDICTION row (kalshi) is NEWER. Without market scoping, assess()
+        // would return the newer kalshi row for a crypto query (ORDER BY
+        // created_at DESC). With scoping it must return the older coinbase row.
+        const qint64 older = recent_ms(120000);  // 2 min ago
+        const qint64 newer = recent_ms(30000);   // 30 s ago (newer)
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('mkt-crypto', ?, ?, 'coinbase_advanced', 'MKT-USD', 'buy', 'pass', 8.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'crypto row')", {older, older}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('mkt-pred', ?, ?, 'kalshi_mkt', 'MKT-USD', 'buy', 'pass', 3.0, 1.0, 0.5,"
+            "         '{}', 'prediction row')", {newer, newer}).is_ok());
+
+        // crypto scope -> the OLDER coinbase row (edge_after_cost 8.0), NOT the newer kalshi row.
+        const auto crypto = assess(QStringLiteral("MKT-USD"), QStringLiteral("crypto"));
+        QVERIFY(crypto.has_edge_signal);
+        QCOMPARE(crypto.venue, QStringLiteral("coinbase_advanced"));
+        QVERIFY(qAbs(crypto.edge_after_cost - 8.0) < 1e-9);
+
+        // prediction scope -> the kalshi row (edge_after_cost 3.0).
+        const auto pred = assess(QStringLiteral("MKT-USD"), QStringLiteral("prediction"));
+        QVERIFY(pred.has_edge_signal);
+        QCOMPARE(pred.venue, QStringLiteral("kalshi_mkt"));
+        QVERIFY(qAbs(pred.edge_after_cost - 3.0) < 1e-9);
+
+        // empty market -> latest across all venues == the newer kalshi row (unchanged behavior).
+        const auto any = assess(QStringLiteral("MKT-USD"));
+        QVERIFY(any.has_edge_signal);
+        QCOMPARE(any.venue, QStringLiteral("kalshi_mkt"));
+
+        // unrecognized non-empty market -> fail-closed, no signal.
+        const auto bogus = assess(QStringLiteral("MKT-USD"), QStringLiteral("nonsense"));
+        QVERIFY(!bogus.has_edge_signal);
+    }
+
     // to_json emits the packet's fields, keyed by symbol/clears_cost/etc.
     void to_json_emits_packet_fields() {
         Database::instance().execute(

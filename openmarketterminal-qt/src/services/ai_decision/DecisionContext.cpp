@@ -1,5 +1,6 @@
 #include "services/ai_decision/DecisionContext.h"
 
+#include "services/ai_decision/Screener.h"   // market_venue_filter — lockstep venue predicate
 #include "services/ai_ledger/AiLedger.h"
 #include "services/sandbox/FreshnessGate.h"
 #include "storage/sqlite/Database.h"
@@ -85,12 +86,21 @@ DecisionPacket assess(const QString& symbol, const QString& market) {
     packet.position_qty = ai_ledger::net_position_for_symbol(symbol);
     packet.buying_power = -1.0;
 
+    // Scope to the requested market's venues so a symbol logged under more
+    // than one market returns THAT market's row, not merely the newest across
+    // all markets. Reuses Screener's market_venue_filter for lockstep with the
+    // screener's own market_for_venue classification (Screener.h invariant).
+    // Empty market -> "" -> unchanged all-venues behavior; unrecognized market
+    // -> " AND 0" -> no row (fail-closed). Fragment has no bind placeholders.
+    const QString market_filter = market_venue_filter(market);
     auto rows = openmarketterminal::Database::instance().execute(
-        "SELECT id, created_at, updated_at, venue, symbol, horizon, market_id, question, direction,"
-        " side, call, gate, market_probability, model_probability, raw_edge, edge_after_cost, gate_edge,"
-        " spread_cost, fee_cost, liquidity_score, confidence, seconds_left, data_status, freshness_json,"
-        " features_json, reasons, outcome, resolved_at, source"
-        " FROM edge_decision_journal WHERE symbol = ? ORDER BY created_at DESC LIMIT 1",
+        QStringLiteral(
+            "SELECT id, created_at, updated_at, venue, symbol, horizon, market_id, question, direction,"
+            " side, call, gate, market_probability, model_probability, raw_edge, edge_after_cost, gate_edge,"
+            " spread_cost, fee_cost, liquidity_score, confidence, seconds_left, data_status, freshness_json,"
+            " features_json, reasons, outcome, resolved_at, source"
+            " FROM edge_decision_journal WHERE symbol = ?") + market_filter +
+            QStringLiteral(" ORDER BY created_at DESC LIMIT 1"),
         {symbol});
 
     if (rows.is_err()) {
