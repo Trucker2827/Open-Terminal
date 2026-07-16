@@ -76,6 +76,41 @@ class TstAiLedger : public QObject {
         QCOMPARE(unrealized_of(LedgerPosition{-10.0, 100.0, 0.0}, 110.0), -100.0); // short loses as price rises
     }
 
+    void record_fill_appends_row_with_realized() {
+        auto opened = ai_ledger::record_fill("rf", "R-USD", "buy", 10.0, 100.0, 0.0, "d1");
+        QVERIFY(opened.is_ok());
+        QCOMPARE(opened.value().realized_pnl, 0.0);
+
+        auto closed = ai_ledger::record_fill("rf", "R-USD", "sell", 4.0, 130.0, 0.0, "d2");
+        QVERIFY(closed.is_ok());
+        QCOMPARE(closed.value().realized_pnl, 120.0);  // (130-100)*4
+
+        ai_ledger::LedgerPosition p = ai_ledger::position_of("rf", "R-USD");
+        QCOMPARE(p.net_qty, 6.0);
+        QCOMPARE(p.avg_entry_price, 100.0);
+        QCOMPARE(p.realized_pnl, 120.0);
+    }
+
+    void record_fill_rejects_bad_input() {
+        auto bad_qty = ai_ledger::record_fill("rf2", "R2-USD", "buy", 0.0, 100.0, 0.0, "d");
+        QVERIFY(bad_qty.is_err());
+        auto bad_px = ai_ledger::record_fill("rf2", "R2-USD", "buy", 1.0, 0.0, 0.0, "d");
+        QVERIFY(bad_px.is_err());
+        // No row written for the rejected handler+symbol.
+        QCOMPARE(ai_ledger::position_of("rf2", "R2-USD").net_qty, 0.0);
+    }
+
+    void positions_of_lists_non_flat_only() {
+        ai_ledger::record_fill("po", "OPEN-USD", "buy", 5.0, 50.0, 0.0, "d");
+        ai_ledger::record_fill("po", "FLAT-USD", "buy", 5.0, 50.0, 0.0, "d");
+        ai_ledger::record_fill("po", "FLAT-USD", "sell", 5.0, 60.0, 0.0, "d");  // closes to flat
+
+        QVector<ai_ledger::HandlerPosition> ps = ai_ledger::positions_of("po");
+        QCOMPARE(ps.size(), 1);
+        QCOMPARE(ps.at(0).symbol, QStringLiteral("OPEN-USD"));
+        QCOMPARE(ps.at(0).position.net_qty, 5.0);
+    }
+
   private:
     QTemporaryDir home_;
 

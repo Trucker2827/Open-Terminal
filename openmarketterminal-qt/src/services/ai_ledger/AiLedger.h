@@ -1,5 +1,9 @@
 #pragma once
+#include "core/result/Result.h"
+#include "storage/repositories/AiFillRepository.h"
+
 #include <QString>
+#include <QVector>
 
 namespace openmarketterminal {
 namespace ai_ledger {
@@ -26,6 +30,28 @@ FillDelta apply_fill(const LedgerPosition& current, const QString& side, double 
 
 /// Mark-to-market of the open position: (mark - avg_entry) * net_qty (sign handles long/short).
 double unrealized_of(const LedgerPosition& p, double mark_price);
+
+/// A handler+symbol pair with its folded position.
+struct HandlerPosition {
+    QString handler;
+    QString symbol;
+    LedgerPosition position;
+};
+
+/// Append one paper fill: folds the handler+symbol's prior fills to the current position,
+/// applies THIS fill for its realized PnL, and appends the row. Returns the appended row.
+/// Rejects (Result::err, no row) when qty <= 0 or price <= 0. The only DB write in this service.
+Result<AiFill> record_fill(const QString& handler, const QString& symbol, const QString& side,
+                           double qty, double price, double fee, const QString& draft_id);
+
+/// Fold a handler+symbol's fills (chronological) into its current position. Read-only.
+LedgerPosition position_of(const QString& handler, const QString& symbol);
+
+/// All (handler, symbol) with a non-flat net_qty, each folded. Empty handler = all handlers. Read-only.
+QVector<HandlerPosition> positions_of(const QString& handler = {});
+
+/// Sum of realized_pnl across all fills (optionally for one handler). Read-only.
+double realized_total(const QString& handler = {});
 
 } // namespace ai_ledger
 } // namespace openmarketterminal
