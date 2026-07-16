@@ -646,6 +646,52 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(sum.filled, 1);                            // reduce passed to submit
         QVERIFY(tc.count("submit_order") >= 1);
     }
+
+    // ── Runner wiring: cross-handler aggregate cap injection (Task 2) ──────
+
+    void aggregate_cap_rejects_growing_cross_handler() {
+        ensure_migrated_db();
+        // Another handler already holds +8 on AGG-USD; 'fake' holds nothing.
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('ag1','other','AGG-USD','buy',8,100,0,0,1000,'d')").is_ok());
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","AGG-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;  // endorsed, so the floor lets it reach the gate
+        };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1};
+        cfg.max_aggregate_position_qty = 10.0;   // aggregate 8 + 5 = 13 > 10 -> reject
+        RunSummary sum = runner.run(s, tc, cfg);
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(tc.count("submit_order"), 0);
+        QVERIFY(sum.gate_rejections.size() >= 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("aggregate"));
+    }
+
+    void aggregate_cap_off_lets_it_through() {
+        ensure_migrated_db();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('ag2','other','AGO-USD','buy',8,100,0,0,1000,'d')").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DAGO"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","AGO-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) {
+            ai_decision::DecisionPacket p;
+            p.has_edge_signal = true; p.gate = "pass"; p.clears_cost = "true"; p.freshness = "ok";
+            return p;
+        };
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});  // no agg cap
+        QCOMPARE(sum.filled, 1);
+    }
 };
 
 QTEST_MAIN(TstStrategyLoop)

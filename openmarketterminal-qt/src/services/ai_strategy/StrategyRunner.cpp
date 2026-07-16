@@ -38,6 +38,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
     GatePolicy policy;
     policy.max_notional_per_order = cfg.max_notional_per_order;
     policy.max_position_qty = cfg.max_position_qty;
+    policy.max_aggregate_position_qty = cfg.max_aggregate_position_qty;
     policy.allowed_venues = cfg.allowed_venues;
     policy.require_cost_gate = cfg.require_cost_gate;
     policy.require_freshness_gate = cfg.require_freshness_gate;
@@ -111,6 +112,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             gin.freshness = pkt.freshness;
             gin.has_edge_signal = pkt.has_edge_signal;
             gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
+            gin.aggregate_net_qty = ai_ledger::net_position_for_symbol(sym);
 
             // Deterministic floor: runs BEFORE the pre-trade guardrail. Reads
             // only the already-resolved packet and, when it doesn't

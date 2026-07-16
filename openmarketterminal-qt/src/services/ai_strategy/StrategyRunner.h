@@ -25,6 +25,7 @@ struct RunConfig {
 
     double max_notional_per_order = 0.0; ///< 0 = no cap.
     double max_position_qty = 0.0;       ///< 0 = no cap.
+    double max_aggregate_position_qty = 0.0;  ///< 0 = no cross-handler aggregate cap.
     QStringList allowed_venues;          ///< empty = no venue restriction.
     bool require_cost_gate = true;
     bool require_freshness_gate = true;
