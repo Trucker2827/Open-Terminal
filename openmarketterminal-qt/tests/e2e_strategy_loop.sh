@@ -124,6 +124,18 @@ printf '%s' "$R1B" | grep -q "floor=off" \
 echo "PASS: --no-floor accepted, floor=off"
 
 # ============================================================================
+# Step 1c — --max-aggregate-qty N threads the cross-handler aggregate cap into
+# RunConfig (CLI parity, ⑦ Task 3): exit 0, and the run line reports agg_cap=5.
+# ============================================================================
+R1C=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --interval-sec 0 --max-iters 3 --symbols AAPL --max-aggregate-qty 5 2>&1)
+RC1C=$?
+[ $RC1C -eq 0 ] || fail "--max-aggregate-qty run rc=$RC1C (expected 0)"
+printf '%s' "$R1C" | grep -q "agg_cap=5" \
+    || fail "--max-aggregate-qty did not report 'agg_cap=5' (out: $R1C)"
+echo "PASS: --max-aggregate-qty accepted, agg_cap=5"
+
+# ============================================================================
 # Step 2 — --mode live is REFUSED: nonzero exit + exact-substring message.
 # ============================================================================
 R2=$(wd 30 "$CLI" --headless --profile "$PROF" \

@@ -99,7 +99,8 @@ ai_strategy::LlmStrategy::CompletionFn make_real_completion_fn() {
 int ai_usage() {
     std::fprintf(stderr,
                  "usage: ai run strategy <meanrev|claude> --mode paper "
-                 "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor]\n");
+                 "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor] "
+                 "[--max-aggregate-qty N]\n");
     return 2;
 }
 
@@ -129,6 +130,7 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     int duration_sec = 0;
     QStringList symbols;
     bool require_floor = true;  ///< default-ON deterministic floor; --no-floor disables it.
+    double max_aggregate_qty = 0.0;
 
     // Consume the next token as the value for `flag`; false if missing.
     auto take_val = [&](const QString& flag, QString& dst) -> bool {
@@ -160,6 +162,9 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
             symbols = v.split(QLatin1Char(','), Qt::SkipEmptyParts);
         } else if (f == "--no-floor") {
             require_floor = false;  // opt out of the default-ON deterministic floor (still paper-only).
+        } else if (f == "--max-aggregate-qty") {
+            if (!take_val(f, v)) return 2;
+            max_aggregate_qty = v.toDouble();  // non-numeric -> 0 = off
         } else {
             std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
             return ai_usage();
@@ -229,10 +234,11 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     cfg.max_iters = max_iters;
     cfg.duration_sec = duration_sec;
     cfg.require_floor = require_floor;
+    cfg.max_aggregate_position_qty = max_aggregate_qty;
 
-    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s\n",
+    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f\n",
                 qUtf8Printable(strategy->name()), interval_sec, max_iters, duration_sec,
-                qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off");
+                qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off", max_aggregate_qty);
     std::fflush(stdout);
 
     const ai_strategy::RunSummary s =
