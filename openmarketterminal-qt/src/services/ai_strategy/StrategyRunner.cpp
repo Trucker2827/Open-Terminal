@@ -114,8 +114,10 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
 
             // Deterministic floor: runs BEFORE the pre-trade guardrail. Reads
             // only the already-resolved packet and, when it doesn't
-            // positively endorse the symbol, records a floor_skip (rule
-            // "floor", NEVER a gate_rejection) and skips — never reaches
+            // positively endorse the symbol AND the intent is not de-risking
+            // (⑤d: intent_reduces_exposure — reduce/close is always allowed so
+            // the AI can exit an unendorsed position), records a floor_skip
+            // (rule "floor", NEVER a gate_rejection) and skips — never reaches
             // evaluate_pretrade/prepare_order/submit_order. Default ON,
             // subtractive: it only prevents paper trades, never enables one.
             const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
