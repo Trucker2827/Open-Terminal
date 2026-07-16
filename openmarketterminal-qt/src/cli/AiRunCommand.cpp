@@ -98,7 +98,7 @@ ai_strategy::LlmStrategy::CompletionFn make_real_completion_fn() {
 int ai_usage() {
     std::fprintf(stderr,
                  "usage: ai run strategy <meanrev|claude> --mode paper "
-                 "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C]\n");
+                 "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor]\n");
     return 2;
 }
 
@@ -127,6 +127,7 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     int max_iters = 0;
     int duration_sec = 0;
     QStringList symbols;
+    bool require_floor = true;  ///< default-ON deterministic floor; --no-floor disables it.
 
     // Consume the next token as the value for `flag`; false if missing.
     auto take_val = [&](const QString& flag, QString& dst) -> bool {
@@ -156,6 +157,8 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
         } else if (f == "--symbols") {
             if (!take_val(f, v)) return 2;
             symbols = v.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        } else if (f == "--no-floor") {
+            require_floor = false;  // opt out of the default-ON deterministic floor (still paper-only).
         } else {
             std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
             return ai_usage();
@@ -224,18 +227,22 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     cfg.interval_sec = interval_sec;
     cfg.max_iters = max_iters;
     cfg.duration_sec = duration_sec;
+    cfg.require_floor = require_floor;
 
-    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s\n",
+    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s\n",
                 qUtf8Printable(strategy->name()), interval_sec, max_iters, duration_sec,
-                qUtf8Printable(symbols.join(QLatin1Char(','))));
+                qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off");
     std::fflush(stdout);
 
     const ai_strategy::RunSummary s =
         runner.run(*strategy, caller, cfg, [] { return g_stop.load(); });
 
     // Final machine-greppable summary line (contains "ticks" and "halted").
-    std::printf("summary: ticks=%d proposed=%d prepared=%d filled=%d rejected=%d errors=%d halted=%s\n",
-                s.ticks, s.proposed, s.prepared, s.filled, s.rejected, s.errors,
+    // floor_skipped explains a proposed>0 / filled=0 run when the deterministic
+    // floor is ON (default) and the honest edge journal endorses nothing.
+    std::printf("summary: ticks=%d proposed=%d prepared=%d filled=%d rejected=%d floor_skipped=%d "
+                "errors=%d halted=%s\n",
+                s.ticks, s.proposed, s.prepared, s.filled, s.rejected, s.floor_skipped, s.errors,
                 s.halted_by_kill_switch ? "true" : "false");
     std::fflush(stdout);
 

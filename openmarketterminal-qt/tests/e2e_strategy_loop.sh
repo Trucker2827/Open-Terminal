@@ -105,6 +105,23 @@ SUMMARY=$(printf '%s\n' "$R1" | grep -E "^summary:|ticks=") \
 TICKS=$(printf '%s\n' "$SUMMARY" | sed -n 's/.*ticks=\([0-9][0-9]*\).*/\1/p' | head -1)
 [ "$TICKS" = "3" ] || fail "expected 3 ticks, got '$TICKS' (summary: $SUMMARY)"
 echo "PASS: bounded paper run -> rc=0, ran exactly 3 ticks, clean summary"
+# The default-ON deterministic floor must be observable + CLI-toggleable.
+printf '%s' "$R1" | grep -q "floor=on" \
+    || fail "default run did not report 'floor=on' (out: $R1)"
+printf '%s' "$SUMMARY" | grep -q "floor_skipped=" \
+    || fail "summary line missing 'floor_skipped=' (summary: $SUMMARY)"
+
+# ============================================================================
+# Step 1b — --no-floor opts out of the default-ON floor (CLI parity): exit 0,
+# and the run line reports floor=off.
+# ============================================================================
+R1B=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --interval-sec 0 --max-iters 3 --symbols AAPL --no-floor 2>&1)
+RC1B=$?
+[ $RC1B -eq 0 ] || fail "--no-floor run rc=$RC1B (expected 0)"
+printf '%s' "$R1B" | grep -q "floor=off" \
+    || fail "--no-floor did not report 'floor=off' (out: $R1B)"
+echo "PASS: --no-floor accepted, floor=off"
 
 # ============================================================================
 # Step 2 — --mode live is REFUSED: nonzero exit + exact-substring message.
