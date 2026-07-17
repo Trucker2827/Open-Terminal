@@ -33,21 +33,23 @@ double record_close(const QString& account, const QString& venue, const QString&
 /// Outcome of reconcile_and_record: the price/qty actually written to the ledger
 /// and whether the broker's real fill price was used (vs the resolved fallback).
 struct ReconciledFill {
-    double price = 0;        // price actually recorded into the ledger
-    double qty = 0;          // qty actually recorded
+    double price = 0;        // price actually recorded; 0 when nothing was recorded
+    double qty = 0;          // broker-confirmed qty actually recorded; 0 when unfilled
     bool reconciled = false; // true iff the broker's actual avg fill price was used
+    bool recorded = false;   // true iff a broker-confirmed non-zero fill changed the ledger
     QString status;          // broker's reported order status; empty if the order wasn't found
 };
 
 /// Best-effort broker-fill reconciliation for a LIVE fill, shared by both fill
 /// sites (fast_submit + the equity submit live path). After place_order reports
 /// success and the order_id is known, query the broker ONCE for that order's
-/// actual avg fill price/qty. If a real fill price (>0) is available, record the
-/// realized-P&L ledger at THAT price/qty; otherwise fall back to resolved_price
-/// (the floor) and the submitted qty. Routes to record_open (Buy) /
-/// record_close (Sell). NEVER throws and NEVER blocks beyond the single
-/// get_orders call — a missing/unfilled order or absent fill price degrades
-/// cleanly to the resolved price. Returns what was actually recorded.
+/// actual cumulative fill quantity and average price. The ledger changes ONLY
+/// when the broker confirms filled_qty > 0; an accepted/open/unfilled order is
+/// exposure-neutral here. A confirmed fill with no average price uses
+/// resolved_price for valuation, but never substitutes submitted qty for fill
+/// qty. Routes confirmed fills to record_open (Buy) / record_close (Sell).
+/// NEVER throws and NEVER blocks beyond the single get_orders call. Returns
+/// what was actually recorded.
 ReconciledFill reconcile_and_record(const QString& account, const QString& venue,
                                     const QString& instrument, trading::OrderSide side,
                                     double qty, double resolved_price, const QString& order_id);

@@ -627,12 +627,9 @@ ToolDef build_fast_submit_order() {
             trading::UnifiedOrderResponse resp =
                 trading::UnifiedTrading::instance().place_order(g.account, order);
 
-            // Record the fill in the LIVE realized-P&L ledger, best-effort
-            // reconciled to the broker's ACTUAL fill price (the place_order
-            // response carries none). reconcile_and_record queries the broker once
-            // for resp.order_id and records at the broker's avg fill price when
-            // available (>0), else at the resolved price (the floor). Venue
-            // "equity"; instrument = symbol. BUY opens/adds, SELL closes/reduces.
+            // Reconcile once against broker execution truth. Only a positive
+            // broker-confirmed filled_qty mutates the ledger; accepted/open orders
+            // remain exposure-neutral until the broker reports an execution.
             // Honest status: the broker's real status (e.g. filled/accepted/
             // partially_filled), or "submitted" when the order couldn't be
             // found/reconciled yet. A rejected broker response → "rejected".
