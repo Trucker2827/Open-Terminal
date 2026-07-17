@@ -785,6 +785,59 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(ai_strategy::edge_direction_of(QStringLiteral("MKTSCOPE-USD")), -1);
     }
 
+    // Runner-level regression for the #38 fix in AiRunCommand.cpp: when
+    // --market is given, ai_run_strategy overrides runner.assess_fn to
+    // `[market](sym){ return ai_decision::assess(sym, market); }` so the
+    // deterministic floor's edge lookup (F2 direction agreement, above) is
+    // scoped the SAME way as the strategy's own edge_direction_of(symbol,
+    // market) — otherwise the floor would silently fall back to the
+    // DEFAULT unscoped assess_fn (StrategyRunner's built-in default), which
+    // reads the newest edge_decision_journal row across ALL venues and can
+    // floor-skip (or wrongly permit) a trade based on a DIFFERENT market's
+    // row for the same symbol.
+    //
+    // Seed the SAME symbol under two market venues, mirroring
+    // edge_direction_of_scopes_by_market above: the CRYPTO row (coinbase,
+    // side=buy) OLDER, the PREDICTION row (kalshi, side=short, OPPOSITE
+    // direction) NEWER, both fully endorsed (gate=pass, cost-clear, fresh).
+    // Deleting the CLI's assess_fn override (reverting to the unscoped
+    // default) would make the floor see the newer kalshi SHORT row instead
+    // of the older coinbase BUY row, disagree with the buy intent (F2), and
+    // floor-skip it — turning this test red. That's the regression this
+    // guards: see the neuter step in the commit message/PR notes.
+    void floor_assess_fn_market_scoping_is_load_bearing() {
+        ensure_migrated_db();
+        const qint64 older = QDateTime::currentMSecsSinceEpoch() - 120000;  // 2 min ago
+        const qint64 newer = QDateTime::currentMSecsSinceEpoch() - 30000;   // 30 s ago (newer)
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('floor-mkt-crypto', ?, ?, 'coinbase_advanced', 'MKT-USD', 'buy', 'pass', 8.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":120,\"live_sources\":3}', 'crypto row')", {older, older}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('floor-mkt-pred', ?, ?, 'kalshi_mkt', 'MKT-USD', 'short', 'pass', 3.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":120,\"live_sources\":3}', 'prediction row')", {newer, newer}).is_ok());
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DMKT"));
+        tc.enqueue("submit_order", filled());
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","MKT-USD"},{"side","buy"},{"quantity",1.0},{"limit_price",100.0}}};
+
+        StrategyRunner runner;
+        // The market-scoped form AiRunCommand.cpp installs when --market is
+        // non-empty (the #38 fix under test).
+        runner.assess_fn = [](const QString& sym) { return ai_decision::assess(sym, QStringLiteral("crypto")); };
+
+        RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});
+        // Scoped to crypto -> the floor sees the OLDER coinbase buy row, which
+        // AGREES with the buy intent (F2) -> NOT floor-skipped, order fills.
+        QCOMPARE(sum.floor_skipped, 0);
+        QCOMPARE(sum.filled, 1);
+    }
+
     // ── AI paper ledger (Task 4) write-hook integration ─────────────────────
     // These two slots need a MIGRATED DB (the pre-existing slots above run
     // against an empty, unmigrated DB — that's what keeps their kill-switch
