@@ -13,35 +13,36 @@ AiHandler AiHandlerRepository::map_handler(QSqlQuery& q) {
     h.strategy = q.value(1).toString();
     h.provider = q.value(2).toString();
     h.symbols = q.value(3).toString();
-    h.interval_sec = q.value(4).toInt();
-    h.allowed_venues = q.value(5).toString();
-    h.max_notional = q.value(6).toDouble();
-    h.max_position = q.value(7).toDouble();
-    h.enabled = q.value(8).toBool();
-    h.notes = q.value(9).toString();
-    h.created_at = q.value(10).toString();
+    h.market = q.value(4).toString();
+    h.interval_sec = q.value(5).toInt();
+    h.allowed_venues = q.value(6).toString();
+    h.max_notional = q.value(7).toDouble();
+    h.max_position = q.value(8).toDouble();
+    h.enabled = q.value(9).toBool();
+    h.notes = q.value(10).toString();
+    h.created_at = q.value(11).toString();
     return h;
 }
 
 Result<void> AiHandlerRepository::save(const AiHandler& h) {
     return exec_write(
         "INSERT OR REPLACE INTO ai_handler "
-        "(name, strategy, provider, symbols, interval_sec, allowed_venues, max_notional, max_position, "
-        "enabled, notes, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s','now'))",
-        {h.name, h.strategy, h.provider, h.symbols, h.interval_sec, h.allowed_venues, h.max_notional,
-         h.max_position, h.enabled ? 1 : 0, h.notes});
+        "(name, strategy, provider, symbols, market, interval_sec, allowed_venues, max_notional, "
+        "max_position, enabled, notes, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s','now'))",
+        {h.name, h.strategy, h.provider, h.symbols, h.market, h.interval_sec, h.allowed_venues,
+         h.max_notional, h.max_position, h.enabled ? 1 : 0, h.notes});
 }
 
 Result<AiHandler> AiHandlerRepository::get(const QString& name) {
-    return query_one("SELECT name, strategy, provider, symbols, interval_sec, allowed_venues, max_notional, "
-                     "max_position, enabled, notes, created_at FROM ai_handler WHERE name = ?",
+    return query_one("SELECT name, strategy, provider, symbols, market, interval_sec, allowed_venues, "
+                     "max_notional, max_position, enabled, notes, created_at FROM ai_handler WHERE name = ?",
                      {name}, map_handler);
 }
 
 Result<QVector<AiHandler>> AiHandlerRepository::list() {
-    return query_list("SELECT name, strategy, provider, symbols, interval_sec, allowed_venues, max_notional, "
-                      "max_position, enabled, notes, created_at FROM ai_handler ORDER BY name",
+    return query_list("SELECT name, strategy, provider, symbols, market, interval_sec, allowed_venues, "
+                      "max_notional, max_position, enabled, notes, created_at FROM ai_handler ORDER BY name",
                       {}, map_handler);
 }
 

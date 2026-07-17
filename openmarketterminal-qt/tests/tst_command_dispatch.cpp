@@ -12,8 +12,11 @@
 #include "cli/BridgeDiscovery.h"
 #include "cli/automation/AutomationState.h"
 #include "storage/sqlite/Database.h"
+#include "storage/repositories/AiHandlerRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 using namespace openmarketterminal::cli;
+using openmarketterminal::AiHandler;
+using openmarketterminal::AiHandlerRepository;
 using openmarketterminal::Database;
 
 namespace openmarketterminal::cli {
@@ -2314,11 +2317,12 @@ private slots:
         int rc = -1;
         const QJsonObject created = json_object_from_dispatch(
             QStringList{"--json", "ai", "handler", "create", "crypto-scout", "--strategy", "claude",
-                       "--symbols", "BTC-USD"}, &rc);
+                       "--symbols", "BTC-USD", "--market", "crypto"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(created.value("name").toString(), QString("crypto-scout"));
         QCOMPARE(created.value("strategy").toString(), QString("claude"));
         QCOMPARE(created.value("symbols").toString(), QString("BTC-USD"));
+        QCOMPARE(created.value("market").toString(), QString("crypto"));
         // paper-only/disarmed invariant: a freshly created handler is never enabled.
         QVERIFY(!created.value("enabled").toBool());
 
@@ -2327,6 +2331,7 @@ private slots:
         QCOMPARE(rc, 0);
         QCOMPARE(shown.value("strategy").toString(), QString("claude"));
         QCOMPARE(shown.value("symbols").toString(), QString("BTC-USD"));
+        QCOMPARE(shown.value("market").toString(), QString("crypto"));
         QVERIFY(!shown.value("enabled").toBool());
 
         const QJsonObject listed = json_object_from_dispatch(
@@ -2369,6 +2374,24 @@ private slots:
         int show_rc = -1;
         json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "x"}, &show_rc);
         QVERIFY2(show_rc != 0, "no row should have been written for the rejected create");
+    }
+
+    void ai_handler_claude_requires_a_persisted_market_scope() {
+        sandbox_test_home();
+        int missing_rc = -1;
+        capture_stdout([&]() {
+            missing_rc = dispatch(QStringList{"ai", "handler", "create", "unscoped", "--strategy", "claude"});
+            return missing_rc;
+        });
+        QCOMPARE(missing_rc, 2);
+
+        int bad_rc = -1;
+        capture_stdout([&]() {
+            bad_rc = dispatch(QStringList{"ai", "handler", "create", "bad-scope", "--strategy", "claude",
+                                          "--market", "all"});
+            return bad_rc;
+        });
+        QCOMPARE(bad_rc, 2);
     }
 
     // --- Task 4: `ai handler status` (read-only arm-state) + `ai handler run`
@@ -2465,6 +2488,23 @@ private slots:
                  qUtf8Printable("saved handler limits must reach RunConfig; got: " + out));
 
         dispatch(QStringList{"ai", "handler", "delete", "p1"});
+    }
+
+    void ai_handler_run_rejects_legacy_unscoped_claude_handler() {
+        sandbox_test_home();
+        AiHandler legacy;
+        legacy.name = QStringLiteral("legacy-claude");
+        legacy.strategy = QStringLiteral("claude");
+        legacy.symbols = QStringLiteral("BTC-USD");
+        QVERIFY(AiHandlerRepository::instance().save(legacy).is_ok());
+
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch(QStringList{"ai", "handler", "run", "legacy-claude", "--paper", "--max-iters", "1"});
+            return rc;
+        });
+        QCOMPARE(rc, 2);
+        QVERIFY(AiHandlerRepository::instance().remove(QStringLiteral("legacy-claude")).is_ok());
     }
 
     // `ai run strategy claude` resolves ENTER direction from the deterministic

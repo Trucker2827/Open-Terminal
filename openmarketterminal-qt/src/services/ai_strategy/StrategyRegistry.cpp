@@ -37,7 +37,7 @@ void register_builtin_strategies(StrategyRegistry& r) {
     r.register_strategy(QStringLiteral("claude"), QStringLiteral("LLM-driven (active provider)"),
                         /*needs_provider=*/true,
                         [](const StrategyBuildConfig& c) -> std::unique_ptr<Strategy> {
-                            return std::make_unique<LlmStrategy>(c.symbols, c.completion);
+                            return std::make_unique<LlmStrategy>(c.symbols, c.completion, 10.0, c.market);
                         });
 }
 
