@@ -58,4 +58,10 @@ class LlmStrategy : public Strategy {
     EdgeDirFn edge_dir_;
 };
 
+/// The default edge-direction resolver: the deterministic edge's ENDORSED direction
+/// for `symbol` (+1 long, -1 short, 0 none/missing/stale/conflicting). Reads assess()
+/// + floor_verdict + side_direction; never throws. Used as LlmStrategy's default
+/// EdgeDirFn and by the `ai act` preview so both agree.
+int edge_direction_of(const QString& symbol);
+
 } // namespace openmarketterminal::ai_strategy

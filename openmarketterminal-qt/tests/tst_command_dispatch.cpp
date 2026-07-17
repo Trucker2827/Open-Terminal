@@ -2100,19 +2100,85 @@ private slots:
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
     }
 
-    // `ai act` typed-action preview (Task 3 of piece Vc): READ-ONLY --
-    // translates a typed verb into a paper TradeIntent preview given the
-    // symbol's current ledger position, without writing anything.
-    void ai_act_enter_previews_buy() {
+    // `ai act` typed-action preview (Task 3 of piece Vc; direction-aware,
+    // track 1 close-out): READ-ONLY -- translates a typed verb into a paper
+    // TradeIntent preview given the symbol's current ledger position AND the
+    // deterministic edge's ENDORSED direction (resolved via the SAME shared
+    // ai_strategy::edge_direction_of() helper LlmStrategy uses by default),
+    // without writing anything. Journal seed shapes mirror the passing `ai
+    // ctx` floor tests (ai_ctx_floor_permits_endorsed_symbol et al.).
+
+    // Enter, long: an endorsed LONG edge (gate=pass, cost-clear, fresh,
+    // side=buy) resolves edge_direction=1 and an enter maps to a buy sized
+    // by conviction.
+    void ai_act_enter_long_previews_buy() {
         sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('act-long1', %1, %1, 'LONGE-USD', 'pass', 'buy', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         int rc = -1;
         QJsonObject o = json_object_from_dispatch(
-            QStringList{"ai", "act", "ACT-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
+            QStringList{"ai", "act", "LONGE-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
         QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), 1);
         const QJsonObject intent = o.value("intent").toObject();
         QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
         QCOMPARE(intent.value("quantity").toDouble(), 5.0);          // 0.5 * 10
         QCOMPARE(intent.value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    // Enter, short: an endorsed SHORT edge (gate=pass, cost-clear, fresh,
+    // side=short) resolves edge_direction=-1 and an enter maps to a sell --
+    // this is the short-side-entries invariant track 1 exists to prove.
+    void ai_act_enter_short_previews_sell() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('act-short1', %1, %1, 'SHORTE-USD', 'pass', 'short', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "SHORTE-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), -1);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("sell"));
+        QCOMPARE(intent.value("quantity").toDouble(), 5.0);          // 0.5 * 10
+        QCOMPARE(intent.value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    // Enter, no/stale edge: a symbol with no edge_decision_journal row at
+    // all resolves edge_direction=0 (missing -> not affirmatively endorsed),
+    // so enter previews NO intent -- it never invents a side.
+    void ai_act_enter_no_edge_previews_null() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "NOEDGE-USD", "enter", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), 0);
+        QVERIFY(o.value("intent").isNull());
+    }
+
+    // Exit, short position: a sell fill leaves net_qty<0; exit ignores
+    // edge_direction entirely and covers via a buy sized to |net_qty|.
+    void ai_act_exit_short_position_previews_buy_cover() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('act-shortpos1','claude','SHORTPOS-USD','sell',6,100,0,0,1000,'d')").is_ok());  // net_qty = -6
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "SHORTPOS-USD", "exit", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(intent.value("quantity").toDouble(), 6.0);
     }
 
     void ai_act_exit_previews_sell_of_position() {
@@ -2138,6 +2204,17 @@ private slots:
         QVERIFY(o.value("intent").isNull());   // nothing to trim
     }
 
+    // "hold" is accepted as a vocabulary synonym for skip (parity with the
+    // LLM verb surface) and always previews no intent.
+    void ai_act_hold_is_null_intent() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "HOLD-USD", "hold", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(o.value("intent").isNull());
+    }
+
     void ai_act_unknown_action_exits_2() {
         sandbox_test_home();
         int rc = 0;
@@ -2145,15 +2222,28 @@ private slots:
         QCOMPARE(rc, 2);
     }
 
+    // READ-ONLY invariant: `ai act` must not mutate a single cli.* settings
+    // row, nor insert/delete any edge_decision_journal or ai_fill row --
+    // position_of and edge_direction_of (via assess) only ever SELECT, and
+    // translate_action is pure (mirrors the `ai ctx` read-only fingerprint
+    // tests above).
     void ai_act_is_read_only() {
         sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('act-ro1', %1, %1, 'RO-USD', 'pass', 'buy', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         const QStringList before = cli_settings_fingerprint();
         const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        const int journal_before = table_row_count(QStringLiteral("edge_decision_journal"));
         int rc = -1;
         json_object_from_dispatch(QStringList{"ai", "act", "RO-USD", "enter", "--json"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(cli_settings_fingerprint(), before);
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+        QCOMPARE(table_row_count(QStringLiteral("edge_decision_journal")), journal_before);
     }
 
     // --- Task 3: `ai strategy list` + `ai handler` CRUD (PAPER-ONLY/DISARMED;

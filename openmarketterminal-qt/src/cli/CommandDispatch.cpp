@@ -28087,7 +28087,7 @@ int dispatch(QStringList args) {
                      "ai recipe show|run ... | "
                      "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
                      "ai ctx <symbol> [--json] [--market prediction|equity] | "
-                     "ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H] [--json] | "
+                     "ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H] [--json] | "
                      "ai screen [--market prediction|equity|crypto] [--limit N] [--json] | "
                      "ai positions [--handler H] [--json] | "
                      "ai pnl [--handler H] [--json] | "

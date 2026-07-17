@@ -889,16 +889,19 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     return 0;
 }
 
-// `ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H]
+// `ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H]
 // [--json]` -- previews what a typed verb translates to for a symbol given
-// its CURRENT ledger position. READ-ONLY: position_of issues a SELECT and
-// translate_action is pure (no DB, no LLM) -- this command writes nothing
-// (no cli.* gate, no ai_fill row, no order); it never constructs a
-// StrategyRunner and never calls prepare_order/submit_order.
+// its CURRENT ledger position AND the deterministic edge's direction (the
+// same edge_direction_of() resolver LlmStrategy uses by default), so the
+// preview matches what a real enter would do. READ-ONLY: position_of issues
+// a SELECT, edge_direction_of()/assess() issues a SELECT, and translate_action
+// is pure (no DB, no LLM) -- this command writes nothing (no cli.* gate, no
+// ai_fill row, no order); it never constructs a StrategyRunner and never
+// calls prepare_order/submit_order.
 int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
     QStringList args = rest;
     if (args.isEmpty()) {
-        std::fprintf(stderr, "usage: ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H] [--json]\n");
+        std::fprintf(stderr, "usage: ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H] [--json]\n");
         return 2;
     }
     const QString symbol = args.takeFirst();
@@ -909,12 +912,12 @@ int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
     const QString action = args.takeFirst();
 
     ai_strategy::ActionType atype;
-    if (action == QLatin1String("skip"))       atype = ai_strategy::ActionType::Skip;
+    if (action == QLatin1String("skip") || action == QLatin1String("hold")) atype = ai_strategy::ActionType::Skip;
     else if (action == QLatin1String("enter")) atype = ai_strategy::ActionType::Enter;
     else if (action == QLatin1String("trim"))  atype = ai_strategy::ActionType::Trim;
     else if (action == QLatin1String("exit"))  atype = ai_strategy::ActionType::Exit;
     else {
-        std::fprintf(stderr, "error: unknown action '%s' (skip|enter|trim|exit)\n", qUtf8Printable(action));
+        std::fprintf(stderr, "error: unknown action '%s' (enter|trim|exit|hold)\n", qUtf8Printable(action));
         return 2;
     }
 
@@ -956,23 +959,27 @@ int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
 
     // READ-ONLY: position_of issues a SELECT; translate_action is pure. No write.
     const double net_qty = ai_ledger::position_of(handler, symbol).net_qty;
+    // The deterministic edge decides direction (same resolver the runtime uses),
+    // so the preview matches what a real enter would do. READ-ONLY (assess=SELECT).
+    const int edge_dir = ai_strategy::edge_direction_of(symbol);
     const auto intent = ai_strategy::translate_action(
-        ai_strategy::ActionChoice{symbol, atype, conviction}, net_qty, ai_strategy::ActionParams{10.0, 0.5});
+        ai_strategy::ActionChoice{symbol, atype, conviction}, net_qty, edge_dir,
+        ai_strategy::ActionParams{10.0, 0.5});
 
     QJsonObject obj{{"action", action}, {"symbol", symbol}, {"conviction", conviction},
-                    {"current_net_qty", net_qty},
+                    {"current_net_qty", net_qty}, {"edge_direction", edge_dir},
                     {"intent", intent ? QJsonValue(*intent) : QJsonValue(QJsonValue::Null)}};
     if (opts.json || json_flag) {
         std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
         return 0;
     }
     if (intent)
-        std::printf("%s %s conv=%.4f net=%.4f -> %s %.4f @ market\n", qUtf8Printable(action),
-                    qUtf8Printable(symbol), conviction, net_qty,
+        std::printf("%s %s conv=%.4f net=%.4f edge_dir=%d -> %s %.4f @ market\n", qUtf8Printable(action),
+                    qUtf8Printable(symbol), conviction, net_qty, edge_dir,
                     qUtf8Printable(intent->value("side").toString()), intent->value("quantity").toDouble());
     else
-        std::printf("%s %s conv=%.4f net=%.4f -> no intent\n", qUtf8Printable(action),
-                    qUtf8Printable(symbol), conviction, net_qty);
+        std::printf("%s %s conv=%.4f net=%.4f edge_dir=%d -> no intent\n", qUtf8Printable(action),
+                    qUtf8Printable(symbol), conviction, net_qty, edge_dir);
     return 0;
 }
 
