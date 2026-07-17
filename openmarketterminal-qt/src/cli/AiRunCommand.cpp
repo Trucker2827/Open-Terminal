@@ -134,6 +134,7 @@ QJsonObject ai_handler_to_json(const AiHandler& h) {
         {"strategy", h.strategy},
         {"provider", h.provider},
         {"symbols", h.symbols},
+        {"market", h.market},
         {"interval_sec", h.interval_sec},
         {"allowed_venues", h.allowed_venues},
         {"max_notional", h.max_notional},
@@ -145,15 +146,17 @@ QJsonObject ai_handler_to_json(const AiHandler& h) {
 }
 
 void print_ai_handler_row(const AiHandler& h) {
-    std::printf("%-20s %-10s %-10s %-20s %6d %-8s %s\n", qUtf8Printable(h.name),
-                qUtf8Printable(h.strategy), qUtf8Printable(h.provider), qUtf8Printable(h.symbols),
-                h.interval_sec, h.enabled ? "enabled" : "disabled", qUtf8Printable(h.notes));
+    std::printf("%-20s %-10s %-12s %-10s %-20s %6d %-8s %s\n", qUtf8Printable(h.name),
+                qUtf8Printable(h.strategy), qUtf8Printable(h.market), qUtf8Printable(h.provider),
+                qUtf8Printable(h.symbols), h.interval_sec, h.enabled ? "enabled" : "disabled",
+                qUtf8Printable(h.notes));
 }
 
 int ai_handler_usage() {
     std::fprintf(stderr,
                  "usage: ai handler create <name> --strategy <s> [--provider p] [--symbols A,B] "
-                 "[--interval-sec N] [--venues v1,v2] [--max-notional X] [--max-position Y] "
+                 "[--market crypto|equity|prediction] [--interval-sec N] [--venues v1,v2] "
+                 "[--max-notional X] [--max-position Y] "
                  "[--notes \"...\"]\n"
                  "       ai handler list [--json]\n"
                  "       ai handler show <name> [--json]\n"
@@ -224,6 +227,14 @@ int ai_handler_create(const GlobalOpts& opts, QStringList rest) {
         } else if (f == "--symbols") {
             if (!take_val(f, v)) return 2;
             h.symbols = v;
+        } else if (f == "--market") {
+            if (!take_val(f, v)) return 2;
+            h.market = v.toLower();
+            if (h.market != QLatin1String("crypto") && h.market != QLatin1String("equity") &&
+                h.market != QLatin1String("prediction")) {
+                std::fprintf(stderr, "error: --market must be 'crypto', 'equity', or 'prediction'\n");
+                return 2;
+            }
         } else if (f == "--interval-sec") {
             if (!take_val(f, v)) return 2;
             h.interval_sec = v.toInt();
@@ -260,6 +271,17 @@ int ai_handler_create(const GlobalOpts& opts, QStringList rest) {
         return 2;
     }
     h.strategy = strategy;
+
+    // Claude derives ENTER direction from edge evidence. Persisting a venue
+    // scope makes saved handlers obey the same no-cross-market rule as
+    // `ai run strategy claude --market ...`; legacy unscoped handlers fail
+    // closed at run time below instead of reading all venues.
+    if (h.strategy == QLatin1String("claude") && h.market.isEmpty()) {
+        std::fprintf(stderr,
+                     "error: --market <crypto|equity|prediction> is required for the 'claude' "
+                     "strategy (edge-scoped direction)\n");
+        return 2;
+    }
 
     if (!init_db_for_handler_command(opts))
         return 7;
@@ -304,8 +326,8 @@ int ai_handler_list(const GlobalOpts& opts) {
                                 .constData());
         return 0;
     }
-    std::printf("%-20s %-10s %-10s %-20s %6s %-8s %s\n", "name", "strategy", "provider", "symbols",
-                "ivl-s", "state", "notes");
+    std::printf("%-20s %-10s %-12s %-10s %-20s %6s %-8s %s\n", "name", "strategy", "market",
+                "provider", "symbols", "ivl-s", "state", "notes");
     for (const auto& h : listed.value()) print_ai_handler_row(h);
     return 0;
 }
@@ -526,6 +548,14 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
     }
     const AiHandler h = fetched.value();
 
+    if (h.strategy == QLatin1String("claude") && h.market.isEmpty()) {
+        std::fprintf(stderr,
+                     "error: handler '%s' has no market scope; recreate it with --market "
+                     "crypto|equity|prediction before running\n",
+                     qUtf8Printable(h.name));
+        return 2;
+    }
+
     ai_strategy::StrategyRegistry registry;
     ai_strategy::register_builtin_strategies(registry);
     if (!registry.has(h.strategy)) {
@@ -549,7 +579,7 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
         symbols = QStringList{QStringLiteral("AAPL")};
 
     std::unique_ptr<ai_strategy::Strategy> strategy =
-        registry.build(h.strategy, {symbols, make_real_completion_fn()});
+        registry.build(h.strategy, {symbols, make_real_completion_fn(), h.market});
     if (!strategy) {
         std::fprintf(stderr, "error: failed to build strategy '%s'\n", qUtf8Printable(h.strategy));
         return 5;
@@ -587,6 +617,11 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
     std::signal(SIGINT, on_sigint);
 
     ai_strategy::StrategyRunner runner;
+    if (!h.market.isEmpty()) {
+        runner.assess_fn = [market = h.market](const QString& symbol) {
+            return ai_decision::assess(symbol, market);
+        };
+    }
     runner.on_log = [](const QString& msg) {
         std::printf("[strategy] %s\n", msg.toUtf8().constData());
         std::fflush(stdout);
@@ -604,10 +639,10 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
             cfg.allowed_venues.push_back(venue);
     }
 
-    std::printf("[handler] running '%s' strategy=%s mode=paper interval=%ds max-iters=%d "
+    std::printf("[handler] running '%s' strategy=%s market=%s mode=paper interval=%ds max-iters=%d "
                 "duration=%ds symbols=%s\n",
-                qUtf8Printable(h.name), qUtf8Printable(h.strategy), ivl, max_iters, duration_sec,
-                qUtf8Printable(symbols.join(QLatin1Char(','))));
+                qUtf8Printable(h.name), qUtf8Printable(h.strategy), qUtf8Printable(h.market), ivl,
+                max_iters, duration_sec, qUtf8Printable(symbols.join(QLatin1Char(','))));
     std::fflush(stdout);
 
     const ai_strategy::RunSummary s =
