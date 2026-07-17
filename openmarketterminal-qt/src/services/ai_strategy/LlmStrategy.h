@@ -41,7 +41,7 @@ class LlmStrategy : public Strategy {
     using EdgeDirFn = std::function<int(const QString& symbol)>;
 
     LlmStrategy(QStringList universe, CompletionFn complete, double max_qty = 10.0,
-                EdgeDirFn edge_dir = {});
+                QString market = {}, EdgeDirFn edge_dir = {});
 
     QString name() const override { return QStringLiteral("claude"); }
     QStringList universe() const override { return universe_; }
@@ -55,13 +55,16 @@ class LlmStrategy : public Strategy {
     QStringList universe_;
     CompletionFn complete_;
     double max_qty_ = 10.0;
+    QString market_;
     EdgeDirFn edge_dir_;
 };
 
 /// The default edge-direction resolver: the deterministic edge's ENDORSED direction
-/// for `symbol` (+1 long, -1 short, 0 none/missing/stale/conflicting). Reads assess()
-/// + floor_verdict + side_direction; never throws. Used as LlmStrategy's default
-/// EdgeDirFn and by the `ai act` preview so both agree.
-int edge_direction_of(const QString& symbol);
+/// for `symbol` (+1 long, -1 short, 0 none/missing/stale/conflicting), scoped to
+/// `market` (empty = all venues; reuses assess()'s market_venue_filter, see F1).
+/// Reads assess() + floor_verdict + side_direction; never throws. Used as
+/// LlmStrategy's default EdgeDirFn (via a market-capturing closure) and by the
+/// `ai act` preview so both agree.
+int edge_direction_of(const QString& symbol, const QString& market = {});
 
 } // namespace openmarketterminal::ai_strategy

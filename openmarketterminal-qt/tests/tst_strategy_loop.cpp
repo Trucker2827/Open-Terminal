@@ -619,7 +619,7 @@ class TstStrategyLoop : public QObject {
             return QStringLiteral("[]");
         };
         // edge_dir injected but irrelevant here -- reply is [] so nothing to translate.
-        LlmStrategy strat({QStringLiteral("AAPL"), QStringLiteral("MSFT")}, fake, 10.0,
+        LlmStrategy strat({QStringLiteral("AAPL"), QStringLiteral("MSFT")}, fake, 10.0, QString(),
                            [](const QString&) { return 0; });
         MarketSnapshot s;
         s.quotes["AAPL"] = 150.0;
@@ -643,7 +643,7 @@ class TstStrategyLoop : public QObject {
         LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
             return R"([{"symbol":"AAA","action":"enter","conviction":1.0}])";
         };
-        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, [](const QString&) { return -1; });
+        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, QString(), [](const QString&) { return -1; });
         MarketSnapshot s;
         s.quotes["AAA"] = 100.0;
         const auto intents = strat.propose(s);  // position_of degrades to flat w/o DB.
@@ -659,7 +659,7 @@ class TstStrategyLoop : public QObject {
         LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
             return R"([{"symbol":"AAA","action":"enter","conviction":1.0}])";
         };
-        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, [](const QString&) { return 1; });
+        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, QString(), [](const QString&) { return 1; });
         MarketSnapshot s;
         s.quotes["AAA"] = 100.0;
         const auto intents = strat.propose(s);
@@ -672,7 +672,7 @@ class TstStrategyLoop : public QObject {
         LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
             return R"([{"symbol":"AAA","action":"enter","conviction":1.0}])";
         };
-        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, [](const QString&) { return 0; });
+        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, QString(), [](const QString&) { return 0; });
         MarketSnapshot s;
         s.quotes["AAA"] = 100.0;
         QVERIFY(strat.propose(s).isEmpty());
@@ -689,7 +689,7 @@ class TstStrategyLoop : public QObject {
             return R"([{"symbol":"LLS-USD","action":"exit"}])";
         };
         // edge_dir=+1 here to prove exit ignores it (a cover is still a buy).
-        LlmStrategy strat({QStringLiteral("LLS-USD")}, fake, 10.0, [](const QString&) { return 1; });
+        LlmStrategy strat({QStringLiteral("LLS-USD")}, fake, 10.0, QString(), [](const QString&) { return 1; });
         MarketSnapshot s;
         s.quotes["LLS-USD"] = 100.0;
         const auto intents = strat.propose(s);
@@ -708,7 +708,7 @@ class TstStrategyLoop : public QObject {
         LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
             return R"([{"symbol":"LLR-USD","action":"enter","conviction":1.0}])";
         };
-        LlmStrategy strat({QStringLiteral("LLR-USD")}, fake, 10.0, [](const QString&) { return -1; });
+        LlmStrategy strat({QStringLiteral("LLR-USD")}, fake, 10.0, QString(), [](const QString&) { return -1; });
         MarketSnapshot s;
         s.quotes["LLR-USD"] = 100.0;
         QVERIFY(strat.propose(s).isEmpty());
@@ -750,6 +750,39 @@ class TstStrategyLoop : public QObject {
         MarketSnapshot s;
         s.quotes["LLN-USD"] = 100.0;
         QVERIFY(strat.propose(s).isEmpty());
+    }
+
+    // Cross-venue scoping (Codex P1, #38): edge_direction_of(symbol) used to call
+    // assess(symbol) with NO market, so DecisionContext::assess returned the
+    // newest edge row across ALL venues -- a short-entry direction for a
+    // Coinbase symbol could come from a Kalshi row. Same class as F1's
+    // assess_scopes_by_market (tst_decision_context.cpp), reintroduced here.
+    // Seed the SAME symbol under two market venues: the CRYPTO row (coinbase,
+    // side=buy) OLDER, the PREDICTION row (kalshi, side=short, OPPOSITE
+    // direction) NEWER, both endorsed (gate=pass, cost-clear, fresh). Scoping
+    // must return the crypto row's direction for a "crypto" query, not the
+    // newer prediction row's.
+    void edge_direction_of_scopes_by_market() {
+        ensure_migrated_db();
+        const qint64 older = QDateTime::currentMSecsSinceEpoch() - 120000;  // 2 min ago
+        const qint64 newer = QDateTime::currentMSecsSinceEpoch() - 30000;   // 30 s ago (newer)
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('llm-mkt-crypto', ?, ?, 'coinbase_advanced', 'MKTSCOPE-USD', 'buy', 'pass', 8.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":120,\"live_sources\":3}', 'crypto row')", {older, older}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('llm-mkt-pred', ?, ?, 'kalshi_mkt', 'MKTSCOPE-USD', 'short', 'pass', 3.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":120,\"live_sources\":3}', 'prediction row')", {newer, newer}).is_ok());
+
+        // crypto scope -> the OLDER coinbase (buy) row => +1, NOT the newer kalshi (short) row.
+        QCOMPARE(ai_strategy::edge_direction_of(QStringLiteral("MKTSCOPE-USD"), QStringLiteral("crypto")), 1);
+        // prediction scope -> the kalshi (short) row => -1.
+        QCOMPARE(ai_strategy::edge_direction_of(QStringLiteral("MKTSCOPE-USD"), QStringLiteral("prediction")), -1);
+        // empty market -> newest-across-all (unchanged behavior) == the kalshi row => -1.
+        QCOMPARE(ai_strategy::edge_direction_of(QStringLiteral("MKTSCOPE-USD")), -1);
     }
 
     // ── AI paper ledger (Task 4) write-hook integration ─────────────────────

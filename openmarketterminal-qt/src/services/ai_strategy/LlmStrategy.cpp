@@ -12,13 +12,14 @@
 
 namespace openmarketterminal::ai_strategy {
 
-// Default edge-direction resolver: the deterministic edge's endorsed direction.
-// Reuses floor_verdict (missing/stale/cost/gate -> not ok -> 0) and side_direction
+// Default edge-direction resolver: the deterministic edge's endorsed direction,
+// scoped to `market` (empty = all venues, same as assess()'s default). Reuses
+// floor_verdict (missing/stale/cost/gate -> not ok -> 0) and side_direction
 // (F2 normalization). Never throws; any failure degrades to 0 (reject Enter).
-int edge_direction_of(const QString& symbol) {
+int edge_direction_of(const QString& symbol, const QString& market) {
     ai_decision::DecisionPacket pkt;
     try {
-        pkt = ai_decision::assess(symbol);
+        pkt = ai_decision::assess(symbol, market);
     } catch (...) {
         return 0;
     }
@@ -29,9 +30,11 @@ int edge_direction_of(const QString& symbol) {
 }
 
 LlmStrategy::LlmStrategy(QStringList universe, CompletionFn complete, double max_qty,
-                          EdgeDirFn edge_dir)
+                          QString market, EdgeDirFn edge_dir)
     : universe_(std::move(universe)), complete_(std::move(complete)), max_qty_(max_qty),
-      edge_dir_(edge_dir ? std::move(edge_dir) : EdgeDirFn(&edge_direction_of)) {}
+      market_(std::move(market)),
+      edge_dir_(edge_dir ? std::move(edge_dir)
+                          : EdgeDirFn([m = market_](const QString& sym) { return edge_direction_of(sym, m); })) {}
 
 QVector<ActionChoice> LlmStrategy::parse_actions(const QString& reply, const QStringList& universe) {
     QVector<ActionChoice> actions;
