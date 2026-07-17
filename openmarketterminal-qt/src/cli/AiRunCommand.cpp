@@ -103,7 +103,11 @@ int ai_usage() {
     std::fprintf(stderr,
                  "usage: ai run strategy <meanrev|claude> --mode paper "
                  "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor] "
-                 "[--max-aggregate-qty N] [--max-position-qty N] [--max-notional-per-order N]\n");
+                 "[--max-aggregate-qty N] [--max-position-qty N] [--max-notional-per-order N]\n"
+                 "  --mode live additionally REQUIRES the floor (no --no-floor), a bounded "
+                 "session (--max-iters or --duration-sec), and a positive "
+                 "--max-notional-per-order; --max-aggregate-qty is REJECTED in live mode "
+                 "(cross-handler aggregate is paper-only, no live analog)\n");
     return 2;
 }
 
@@ -744,6 +748,32 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
             std::fprintf(stderr, "live trading not armed -- arm in GUI Settings (paper-first)\n");
             return 2;
         }
+
+        // Live containment: an armed live loop must keep the strategy-level safety
+        // rails ON. These are the guards enforceable at the CLI today (the floor and
+        // the per-order notional cap need no live position state; the session must be
+        // bounded). The per-handler position cap is enforced against live positions
+        // separately; the cross-handler AGGREGATE cap has no live analog (it reads the
+        // paper ledger) so it is refused rather than left silently ineffective.
+        QStringList live_missing;
+        if (!require_floor)
+            live_missing << QStringLiteral("the deterministic floor (do not pass --no-floor)");
+        if (max_iters <= 0 && duration_sec <= 0)
+            live_missing << QStringLiteral("a bounded session (--max-iters or --duration-sec)");
+        if (max_notional_per_order <= 0.0)
+            live_missing << QStringLiteral("a positive --max-notional-per-order");
+        if (!live_missing.isEmpty()) {
+            std::fprintf(stderr, "live mode requires: %s\n",
+                         qUtf8Printable(live_missing.join(QStringLiteral("; "))));
+            return 2;
+        }
+        if (max_aggregate_qty > 0.0) {
+            std::fprintf(stderr,
+                "--max-aggregate-qty has no live analog (cross-handler aggregate is paper-only); "
+                "not supported in live mode\n");
+            return 2;
+        }
+
         submit_mode = QStringLiteral("live");
     }
 

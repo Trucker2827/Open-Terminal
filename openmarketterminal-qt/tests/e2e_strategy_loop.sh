@@ -250,13 +250,20 @@ set_gate cli.allow_trading true
     || fail "allow_trading write did not land in DB"
 
 # -- 4a. CLI-gate reachability via the strategy loop --------------------------
+# --max-notional-per-order is REQUIRED here (in addition to --max-iters and the
+# default-ON floor) now that live-mode containment (P-C, #39-c) gates entry: a
+# bounded, notional-capped, floor-on request is the minimum that clears
+# containment, so this still isolates "not armed" reachability from containment.
 R4=$(wd 60 "$CLI" --headless --profile "$PROF" \
-        ai run strategy meanrev --mode live --interval-sec 0 --max-iters 1 --symbols AAPL 2>&1)
+        ai run strategy meanrev --mode live --interval-sec 0 --max-iters 1 --symbols AAPL \
+        --max-notional-per-order 500 2>&1)
 RC4=$?
 echo "$R4" | sed 's/^/    | /'
 
 printf '%s' "$R4" | grep -qi "not armed" \
     && fail "armed run was refused 'not armed' -- CLI armed gate did not read real arm state (out: $R4)"
+printf '%s' "$R4" | grep -qi "live mode requires" \
+    && fail "armed+contained run was refused by containment unexpectedly (out: $R4)"
 printf '%s' "$R4" | grep -q "^\[strategy\] running .* mode=live armed=true" \
     || fail "armed run did not report mode=live armed=true (out: $R4)"
 echo "PASS: armed run was NOT refused 'not armed' (mode=live armed=true) -- CLI gate reachability proven"
@@ -290,6 +297,95 @@ set_gate cli.allow_trading false
 [ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.allow_trading';")" = "false" ] \
     || fail "allow_trading reset did not land in DB"
 echo "PASS: arm flags reset -- profile left disarmed"
+
+# ============================================================================
+# Step 5 — LIVE CONTAINMENT (P-C, #39-c): once armed, `--mode live` must still
+# refuse an unrestricted run. Human arming (Step 4) gates ENTRY to the live
+# rail; this proves strategy-level containment is enforced ONCE in: the floor,
+# a bounded session, and a positive per-order notional cap are REQUIRED, and
+# the cross-handler aggregate cap (no live analog) is REJECTED outright.
+#
+# Re-arm the throwaway profile the same way Step 4 did (direct sqlite write of
+# cli.live_trading_armed=true + cli.allow_trading=true); this profile still has
+# NO cli.allowed_account configured, so even the one case that clears
+# containment can never reach a live fill -- it would deny at submit_order's
+# allowed-account gate exactly like Step 4b. Reset the arm flags after.
+# ============================================================================
+set_gate cli.live_trading_armed true
+set_gate cli.allow_trading true
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.live_trading_armed';")" = "true" ] \
+    || fail "live_trading_armed write did not land in DB (containment step)"
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.allow_trading';")" = "true" ] \
+    || fail "allow_trading write did not land in DB (containment step)"
+
+# -- 5a. --no-floor: missing floor is refused ---------------------------------
+R5A=$(wd 30 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --no-floor --max-iters 1 --max-notional-per-order 500 2>&1)
+RC5A=$?
+[ $RC5A -eq 2 ] || fail "containment: --no-floor live run rc=$RC5A (expected 2)"
+printf '%s' "$R5A" | grep -qi "requires" \
+    || fail "containment: --no-floor live run missing 'requires' (out: $R5A)"
+printf '%s' "$R5A" | grep -qi "floor" \
+    || fail "containment: --no-floor live run did not mention the floor (out: $R5A)"
+echo "PASS: containment refuses --mode live --no-floor (rc=2, mentions the floor)"
+
+# -- 5b. unbounded session (--max-iters 0 --duration-sec 0) is refused --------
+R5B=$(wd 30 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --max-iters 0 --duration-sec 0 --max-notional-per-order 500 2>&1)
+RC5B=$?
+[ $RC5B -eq 2 ] || fail "containment: unbounded live run rc=$RC5B (expected 2)"
+printf '%s' "$R5B" | grep -qi "bounded session" \
+    || fail "containment: unbounded live run missing 'bounded session' (out: $R5B)"
+echo "PASS: containment refuses unbounded --mode live (rc=2, 'bounded session')"
+
+# -- 5c. no --max-notional-per-order is refused --------------------------------
+R5C=$(wd 30 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --max-iters 1 2>&1)
+RC5C=$?
+[ $RC5C -eq 2 ] || fail "containment: no-notional live run rc=$RC5C (expected 2)"
+printf '%s' "$R5C" | grep -qi "notional" \
+    || fail "containment: no-notional live run missing 'notional' (out: $R5C)"
+echo "PASS: containment refuses --mode live with no --max-notional-per-order (rc=2, 'notional')"
+
+# -- 5d. --max-aggregate-qty is rejected outright (no live analog) ------------
+R5D=$(wd 30 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --max-iters 1 --max-notional-per-order 500 \
+        --max-aggregate-qty 5 2>&1)
+RC5D=$?
+[ $RC5D -eq 2 ] || fail "containment: aggregate-cap live run rc=$RC5D (expected 2)"
+printf '%s' "$R5D" | grep -qi "no live analog" \
+    || fail "containment: aggregate-cap live run missing 'no live analog' (out: $R5D)"
+echo "PASS: containment rejects --mode live --max-aggregate-qty (rc=2, 'no live analog')"
+
+# -- 5e. fully-contained armed live run PASSES containment --------------------
+# floor default-on (no --no-floor), bounded (--max-iters 1), positive notional,
+# no aggregate cap: must NOT be refused by containment. It still cannot reach a
+# live fill on this profile (no cli.allowed_account) -- that denial is proven
+# by Step 4b's direct submit_order call over the identical handler path; this
+# step only proves containment itself does not misfire on a compliant request.
+R5E=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --max-iters 1 --interval-sec 0 --symbols AAPL \
+        --max-notional-per-order 500 2>&1)
+RC5E=$?
+echo "$R5E" | sed 's/^/    | /'
+[ $RC5E -eq 0 ] || fail "containment: fully-contained live run rc=$RC5E (expected 0)"
+printf '%s' "$R5E" | grep -qi "live mode requires" \
+    && fail "containment: fully-contained live run was wrongly refused by containment (out: $R5E)"
+printf '%s' "$R5E" | grep -qi "no live analog" \
+    && fail "containment: fully-contained live run was wrongly refused by the aggregate check (out: $R5E)"
+printf '%s' "$R5E" | grep -q "^\[strategy\] running .* mode=live armed=true" \
+    || fail "containment: fully-contained live run did not proceed past the gate (out: $R5E)"
+printf '%s' "$R5E" | grep -qE "^summary:.*filled=0" \
+    || fail "containment: fully-contained live run did not report filled=0 -- no live fill must occur (out: $R5E)"
+echo "PASS: containment passes a fully-contained armed live run (floor on, bounded, notional cap, no aggregate) -- proceeds to the gate, no live fill"
+
+set_gate cli.live_trading_armed false   # reset regardless of outcome above
+set_gate cli.allow_trading false
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.live_trading_armed';")" = "false" ] \
+    || fail "live_trading_armed reset did not land in DB (containment step)"
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.allow_trading';")" = "false" ] \
+    || fail "allow_trading reset did not land in DB (containment step)"
+echo "PASS: containment arm flags reset -- profile left disarmed"
 
 echo
 echo "PASS: strategy-loop e2e"
