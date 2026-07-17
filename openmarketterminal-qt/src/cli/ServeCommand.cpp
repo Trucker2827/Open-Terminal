@@ -1129,6 +1129,8 @@ void record_job_run_finish(const QString& profile,
     }
 }
 
+} // namespace
+
 QStringList command_for_job_kind(const QString& kind, const QJsonObject& spec) {
     const QString k = kind.trimmed().toLower();
     if (k == "command")
@@ -1155,6 +1157,15 @@ QStringList command_for_job_kind(const QString& kind, const QJsonObject& spec) {
         const int max_iters = spec.value("max_iters").toInt(1);
         args << QStringLiteral("--max-iters") << QString::number(max_iters);
         args << QStringLiteral("--interval-sec") << QString::number(spec.value("interval_sec").toInt(0));
+        const auto append_cap = [&](const char* spec_key, const char* flag) {
+            bool ok = false;
+            const double v = spec.value(QLatin1String(spec_key)).toString().toDouble(&ok);
+            if (ok && v > 0.0)
+                args << QLatin1String(flag) << QString::number(v);
+        };
+        append_cap("max_notional", "--max-notional-per-order");
+        append_cap("max_position", "--max-position-qty");
+        append_cap("max_aggregate", "--max-aggregate-qty");
         return args;
     }
     if (k == "chronos2") {
@@ -1218,6 +1229,8 @@ QStringList command_for_job_kind(const QString& kind, const QJsonObject& spec) {
         return {QStringLiteral("daemon"), QStringLiteral("health")};
     return {};
 }
+
+namespace {
 
 QJsonObject make_job(const QString& kind,
                      const QString& name,
@@ -3722,6 +3735,9 @@ QJsonObject parse_job_spec(QString kind,
         take_named("--symbols", "symbols");
         take_named_int("--max-iters", "max_iters");
         take_named_int("--interval-sec", "interval_sec");
+        take_named("--max-notional", "max_notional");
+        take_named("--max-position", "max_position");
+        take_named("--max-aggregate", "max_aggregate");
         if (name->isEmpty()) *name = QStringLiteral("paper ") + spec.value("strategy").toString("meanrev");
         return spec;
     }

@@ -152,6 +152,21 @@ target_include_directories(tst_serve_command PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_serve_command PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
 add_test(NAME tst_serve_command COMMAND tst_serve_command)
 
+# Phase 2 / Track 2 — daemon paper-strategy jobs must thread F5's saved risk
+# caps (--max-notional/--max-position/--max-aggregate) into the scheduled
+# `strategy paper-run` subprocess. Exercises the pure command_for_job_kind()
+# spec->args builder directly (no daemon I/O), same compile/link set as
+# tst_serve_command since it shares the same ServeCommand.cpp translation unit.
+add_executable(tst_daemon_job_caps
+    tst_daemon_job_caps.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/ServeCommand.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/CryptoFeedHub.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp)
+target_include_directories(tst_daemon_job_caps PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_daemon_job_caps PRIVATE openterminal_core Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+add_test(NAME tst_daemon_job_caps COMMAND tst_daemon_job_caps)
+
 # AI-Trading Substrate Phase A Task 2 — storage layer for the two-phase order
 # flow: the v049 migration (order_drafts + trade_audit) and the two repositories
 # that read/write them. Brings up a real DB under a QTemporaryDir HOME via
