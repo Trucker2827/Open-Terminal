@@ -177,7 +177,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             const QString draft_id = prepo.value(QStringLiteral("draft_id")).toString();
 
             auto sub = tc.call(QStringLiteral("submit_order"),
-                               {{"draft_id", draft_id}, {"mode", QStringLiteral("paper")}});
+                               {{"draft_id", draft_id}, {"mode", cfg.submit_mode}});
             const QJsonObject subo = sub.data.toObject();
             const QString sub_reason = subo.value(QStringLiteral("reason")).toString();
 

@@ -19,6 +19,7 @@
 #include "services/ai_strategy/StrategyRunner.h"
 #include "services/ai_strategy/TypedAction.h"
 #include "storage/repositories/AiFillRepository.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 
 using namespace openmarketterminal;
@@ -136,6 +137,67 @@ class TstStrategyLoop : public QObject {
         }
         QVERIFY2(found_submit, "expected a submit_order call");
         QCOMPARE(s.fills.size(), 1); // on_fill invoked once.
+    }
+
+    // Track 3 (AI arming path): a default-constructed RunConfig (submit_mode
+    // left at its default) must still submit mode=="paper" — i.e. adding the
+    // field did not change today's byte-identical paper behavior. Neither
+    // cli.live_armed nor cli.trading_allowed is touched anywhere in this test.
+    void default_submit_mode_is_paper() {
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("D1"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        // cfg.submit_mode intentionally left untouched -- exercising the default.
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);
+        bool found_submit = false;
+        for (const auto& c : tc.calls) {
+            if (c.first == "submit_order") {
+                QCOMPARE(c.second.value("mode").toString(), QStringLiteral("paper"));
+                found_submit = true;
+            }
+        }
+        QVERIFY2(found_submit, "expected a submit_order call");
+    }
+
+    // Track 3 core wiring proof: RunConfig.submit_mode=="live" threads straight
+    // through to the mocked submit_order call, with NO cli.live_armed/
+    // cli.trading_allowed write anywhere and NO real broker in this test binary
+    // (FakeToolCaller only). Proves the runner passes whatever mode the caller
+    // set; submit_order itself remains the sole live-gate authority in prod.
+    void submit_mode_live_threads_to_submit_call() {
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("D1"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live"); // caller-set only; no arm flag touched.
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);
+        bool found_submit = false;
+        for (const auto& c : tc.calls) {
+            if (c.first == "submit_order") {
+                QCOMPARE(c.second.value("mode").toString(), QStringLiteral("live"));
+                found_submit = true;
+            }
+        }
+        QVERIFY2(found_submit, "expected a submit_order call carrying mode==live");
     }
 
     // A NON-halting submit rejection (e.g. a risk-floor reject) must NOT fire
@@ -835,6 +897,38 @@ class TstStrategyLoop : public QObject {
         };
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});  // no agg cap
         QCOMPARE(sum.filled, 1);
+    }
+
+    // Track 3: the kill switch dominates submit_mode. Even with submit_mode==
+    // "live" set on the config (never armed here -- cli.live_armed/
+    // cli.trading_allowed are NEVER written by this test), a REAL engaged
+    // cli.kill_switch halts the loop on tick 1 (StrategyRunner's top-of-tick
+    // check), before get_quote/prepare_order/submit_order are ever called.
+    void kill_switch_halts_before_any_submit_even_when_mode_live() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.kill_switch", "true", "cli").is_ok());
+
+        FakeToolCaller tc;  // scripted but must NEVER be reached
+        tc.enqueue("prepare_order", prepared("DKILL"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "KILL-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        RunConfig cfg{.interval_sec = 0, .max_iters = 5, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");  // even an (unarmed) "live" mode must not matter.
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        // Restore immediately so later slots (and re-runs) see a clean switch.
+        QVERIFY(SettingsRepository::instance().set("cli.kill_switch", "false", "cli").is_ok());
+
+        QVERIFY(sum.halted_by_kill_switch);
+        QCOMPARE(sum.ticks, 1);  // halted at the very top of tick 1 -- no spin.
+        QCOMPARE(tc.count("prepare_order"), 0);
+        QCOMPARE(tc.count("submit_order"), 0);
     }
 };
 

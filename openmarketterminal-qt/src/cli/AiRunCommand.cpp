@@ -690,14 +690,18 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     if (symbols.isEmpty())
         symbols = QStringList{QStringLiteral("AAPL")};
 
-    // Paper-only: the loop drives ONLY the gated paper substrate. Refuse live.
+    // Live requires an EXPLICIT per-run opt-in (--mode live) AND a human-armed system
+    // (cli_live_armed + cli_trading_allowed -- GUI-only; the AI can NEVER set them: the
+    // keystone). submit_order re-checks every gate as the final authority. Default: paper.
+    QString submit_mode = QStringLiteral("paper");
     if (mode == QLatin1String("live")) {
-        std::fprintf(stderr, "live strategy loop not supported (paper-first)\n");
-        return 2;
-    }
-    if (mode != QLatin1String("paper")) {
-        std::fprintf(stderr, "error: unknown --mode '%s' (only 'paper' is supported)\n",
-                     qUtf8Printable(mode));
+        if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed())) {
+            std::fprintf(stderr, "live trading not armed -- arm in GUI Settings (paper-first)\n");
+            return 2;
+        }
+        submit_mode = QStringLiteral("live");
+    } else if (mode != QLatin1String("paper")) {
+        std::fprintf(stderr, "error: unknown --mode '%s' (paper|live)\n", qUtf8Printable(mode));
         return 2;
     }
 
@@ -753,9 +757,11 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     cfg.max_aggregate_position_qty = max_aggregate_qty;
     cfg.max_position_qty = max_position_qty;
     cfg.max_notional_per_order = max_notional_per_order;
+    cfg.submit_mode = submit_mode;
 
-    std::printf("[strategy] running '%s' mode=paper interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
-                qUtf8Printable(strategy->name()), interval_sec, max_iters, duration_sec,
+    std::printf("[strategy] running '%s' mode=%s armed=%s interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
+                qUtf8Printable(strategy->name()), qUtf8Printable(submit_mode),
+                submit_mode == QLatin1String("live") ? "true" : "false", interval_sec, max_iters, duration_sec,
                 qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off", max_aggregate_qty,
                 max_position_qty, max_notional_per_order);
     std::fflush(stdout);

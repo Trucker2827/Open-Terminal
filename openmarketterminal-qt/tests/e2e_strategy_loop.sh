@@ -2,15 +2,16 @@
 # End-to-end: the paper Strategy-Loop Driver over the HEADLESS in-process runtime,
 # NO GUI, NO daemon. Proves `ai run strategy <name> --mode paper …` drives the
 # StrategyRunner (which only calls the gated paper substrate) and honors bounds,
-# the paper refusal of --mode live, and the live kill switch.
+# the DISARMED refusal of --mode live, and the live kill switch.
 #
 # Asserts the headline safety/behavior properties:
 #   1. `meanrev --mode paper --interval-sec 0 --max-iters 3` runs EXACTLY 3 ticks
 #      and exits cleanly (rc 0) with a greppable summary line. Headless has no
 #      live quote feed so the strategy may propose nothing — that's fine; what we
 #      assert is the LOOP ran its bound and exited.
-#   2. `--mode live` is REFUSED: nonzero exit + "live strategy loop not supported"
-#      (the driver is paper-only; it opens no live execution path).
+#   2. `--mode live` is REFUSED while UNARMED: nonzero exit + "not armed" (this
+#      e2e NEVER writes cli.live_armed/cli.trading_allowed, so the human-armed
+#      gate never opens — submit_order is never reached, no fill/order occurs).
 #   3. KILL SWITCH: with cli.kill_switch=true the loop halts on the FIRST tick —
 #      exits 0, the summary shows halted=true (+ "halted by kill switch" log), and
 #      it ran FEWER than the 5-iter bound (1 tick). Reset the switch after.
@@ -24,7 +25,7 @@
 # exactly like the GUI — we toggle the gate via a DIRECT sqlite write. Confirmed
 # schema: key,value,category,updated_at.
 
-CLI=/tmp/ot-build-ht/openterminalcli
+CLI="${CLI:-/tmp/ot-build-ht/openterminalcli}"
 APP_ROOT="$HOME/Library/Application Support/org.openterminal.OpenTerminal"
 PROF_ROOT="$APP_ROOT/profiles"
 
@@ -152,15 +153,27 @@ printf '%s' "$R1D" | grep -q "notional_cap=500" \
 echo "PASS: --max-position-qty/--max-notional-per-order accepted, pos_cap=7 notional_cap=500"
 
 # ============================================================================
-# Step 2 — --mode live is REFUSED: nonzero exit + exact-substring message.
+# Step 2 — --mode live is REFUSED while UNARMED (headline safety property, Track
+# 3): nonzero exit + stderr contains "not armed". This e2e NEVER writes
+# cli.live_armed/cli.trading_allowed (only allow_paper_trading, above), so the
+# human-armed gate never opens; the refusal fires before the strategy/runner is
+# even instantiated, so the loop never ran and NO fill/order can have occurred
+# (confirmed below: no "summary:" line was ever printed).
+#
+# NOTE: this reconciles a prior assertion ("live strategy loop not supported")
+# that the old blanket ai_run_strategy refusal produced. That message is gone
+# by design now that `ai run strategy --mode live` reaches the armed gate
+# (cli_trading_allowed() && cli_live_armed()) instead of a hard-coded refusal.
 # ============================================================================
 R2=$(wd 30 "$CLI" --headless --profile "$PROF" \
         ai run strategy meanrev --mode live --max-iters 1 2>&1)
 RC2=$?
-[ $RC2 -ne 0 ] || fail "--mode live returned 0 (must be refused, nonzero)"
-printf '%s' "$R2" | grep -qi "live strategy loop not supported" \
-    || fail "--mode live did not print 'live strategy loop not supported' (out: $R2)"
-echo "PASS: --mode live refused (rc=$RC2, 'live strategy loop not supported')"
+[ $RC2 -ne 0 ] || fail "--mode live (unarmed) returned 0 (must be refused, nonzero)"
+printf '%s' "$R2" | grep -qi "not armed" \
+    || fail "--mode live (unarmed) did not print 'not armed' (out: $R2)"
+printf '%s' "$R2" | grep -q "^summary:" \
+    && fail "--mode live (unarmed) produced a summary line -- the loop must never have run (out: $R2)"
+echo "PASS: --mode live refused while unarmed (rc=$RC2, 'not armed', no run/fill occurred)"
 
 # ============================================================================
 # Step 3 — KILL SWITCH: engage it, run a 5-iter bound; the loop must halt on the

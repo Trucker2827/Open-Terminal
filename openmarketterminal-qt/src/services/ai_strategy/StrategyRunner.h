@@ -30,6 +30,10 @@ struct RunConfig {
     bool require_cost_gate = true;
     bool require_freshness_gate = true;
     bool require_floor = true;  ///< ON: skip symbols the honest edge system doesn't endorse.
+
+    QString submit_mode = QStringLiteral("paper");  ///< "paper" (default) | "live". Live is set
+                                                    ///< ONLY by the armed CLI path; submit_order
+                                                    ///< re-checks every live gate as the authority.
 };
 
 /// Tally of what one run did. halted_by_kill_switch reflects EITHER the
