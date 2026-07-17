@@ -33,7 +33,6 @@ bool intent_reduces_exposure(const TradeIntent& intent, double existing_net_qty)
     return resulting * existing_net_qty >= 0.0 && std::abs(resulting) < std::abs(existing_net_qty);
 }
 
-namespace {
 // Normalize a heterogeneous side/direction token to a trade direction:
 // +1 long, -1 short, 0 neutral/unknown. Long tokens: buy/long. Short: sell/short.
 // Everything else (avoid_buy, hold, flat, yes, no, none, "", unknown) -> 0.
@@ -45,7 +44,6 @@ int side_direction(const QString& s) {
         return -1;
     return 0;
 }
-} // namespace
 
 bool intent_agrees_with_edge(const QString& intent_side, const QString& edge_side) {
     const int i = side_direction(intent_side);

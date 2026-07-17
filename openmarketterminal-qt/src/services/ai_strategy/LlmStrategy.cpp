@@ -1,7 +1,9 @@
 // LlmStrategy.cpp — see LlmStrategy.h.
 #include "services/ai_strategy/LlmStrategy.h"
 
+#include "services/ai_decision/DecisionContext.h"
 #include "services/ai_ledger/AiLedger.h"
+#include "services/ai_strategy/DeterministicFloor.h"
 #include "services/ai_strategy/TypedAction.h"
 
 #include <QJsonArray>
@@ -10,8 +12,28 @@
 
 namespace openmarketterminal::ai_strategy {
 
-LlmStrategy::LlmStrategy(QStringList universe, CompletionFn complete, double max_qty)
-    : universe_(std::move(universe)), complete_(std::move(complete)), max_qty_(max_qty) {}
+namespace {
+// Default edge-direction resolver: the deterministic edge's endorsed direction.
+// Reuses floor_verdict (missing/stale/cost/gate -> not ok -> 0) and side_direction
+// (F2 normalization). Never throws; any failure degrades to 0 (reject Enter).
+int default_edge_dir(const QString& symbol) {
+    ai_decision::DecisionPacket pkt;
+    try {
+        pkt = ai_decision::assess(symbol);
+    } catch (...) {
+        return 0;
+    }
+    const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
+    if (!floor_verdict(fin, FloorPolicy{true}).ok)
+        return 0;  // not affirmatively endorsed -> no directional entry
+    return side_direction(pkt.side);
+}
+}  // namespace
+
+LlmStrategy::LlmStrategy(QStringList universe, CompletionFn complete, double max_qty,
+                          EdgeDirFn edge_dir)
+    : universe_(std::move(universe)), complete_(std::move(complete)), max_qty_(max_qty),
+      edge_dir_(edge_dir ? std::move(edge_dir) : EdgeDirFn(&default_edge_dir)) {}
 
 QVector<ActionChoice> LlmStrategy::parse_actions(const QString& reply, const QStringList& universe) {
     QVector<ActionChoice> actions;
@@ -35,7 +57,7 @@ QVector<ActionChoice> LlmStrategy::parse_actions(const QString& reply, const QSt
             continue;  // drop out-of-universe / empty.
         const QString a = obj.value(QStringLiteral("action")).toString();
         ActionType type;
-        if (a == QLatin1String("skip"))       type = ActionType::Skip;
+        if (a == QLatin1String("skip") || a == QLatin1String("hold")) type = ActionType::Skip;
         else if (a == QLatin1String("enter")) type = ActionType::Enter;
         else if (a == QLatin1String("trim"))  type = ActionType::Trim;
         else if (a == QLatin1String("exit"))  type = ActionType::Exit;
@@ -64,10 +86,13 @@ QVector<TradeIntent> LlmStrategy::propose(const MarketSnapshot& s) {
     const QString prompt =
         QStringLiteral(
             "You are a paper-trading assistant. Respond with ONLY a JSON array of typed actions and "
-            "nothing else. Each action: {\"symbol\":..., \"action\":\"enter\"|\"trim\"|\"exit\"|\"skip\", "
-            "\"conviction\":<0.0-1.0, for enter>}. enter opens/adds a long position sized by conviction; "
-            "trim reduces the current position; exit closes it; skip does nothing. Return [] to do nothing. "
-            "The environment chooses side and size and enforces every risk limit -- you only pick the verb "
+            "nothing else. Each action: {\"symbol\":..., \"action\":\"enter\"|\"trim\"|\"exit\"|\"hold\", "
+            "\"conviction\":<0.0-1.0, for enter>}. The deterministic market edge decides the SIDE, not you: "
+            "an enter opens (or adds to) a position in whichever direction the edge endorses -- long/buy if "
+            "the edge is long, short/sell if the edge is short -- sized by your conviction; an enter with no "
+            "clear, fresh, aligned edge is skipped by the environment. trim reduces whatever position is "
+            "currently held; exit closes it. hold does nothing. Return [] to do nothing. The environment "
+            "chooses side and size from the edge and enforces every risk limit -- you only pick the verb "
             "and (for enter) a conviction 0..1. Only symbols in the allowed universe: %1.\n\n")
             .arg(universe_csv);
 
@@ -89,7 +114,8 @@ QVector<TradeIntent> LlmStrategy::propose(const MarketSnapshot& s) {
     QVector<TradeIntent> intents;
     for (const ActionChoice& c : parse_actions(reply, universe_)) {
         const double net_qty = ai_ledger::position_of(name(), c.symbol).net_qty;
-        if (auto intent = translate_action(c, net_qty, ActionParams{max_qty_, 0.5}))
+        const int dir = edge_dir_ ? edge_dir_(c.symbol) : 0;
+        if (auto intent = translate_action(c, net_qty, dir, ActionParams{max_qty_, 0.5}))
             intents.append(*intent);
     }
     return intents;

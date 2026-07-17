@@ -6,6 +6,7 @@
 // a QTemporaryDir HOME (set so a developer's real cli.kill_switch can't trip
 // these tests).
 #include <QtTest>
+#include <QDateTime>
 #include <QQueue>
 #include <QTemporaryDir>
 
@@ -598,25 +599,157 @@ class TstStrategyLoop : public QObject {
         QCOMPARE(acts.size(), 1);
         QVERIFY(qFuzzyCompare(acts.first().conviction, 1.0));
     }
-    void llm_propose_prompt_has_universe_and_translates() {
+    // "hold" is a Skip synonym: parses cleanly, translates to no intent.
+    void llm_hold_parses_to_skip() {
+        const auto acts = LlmStrategy::parse_actions(R"([{"symbol":"AAPL","action":"hold"}])", aapl_universe());
+        QCOMPARE(acts.size(), 1);
+        QVERIFY(acts.first().action == ActionType::Skip);
+    }
+    // "skip" still works too (pre-existing synonym) -- both collapse to Skip.
+    void llm_skip_parses_to_skip() {
+        const auto acts = LlmStrategy::parse_actions(R"([{"symbol":"AAPL","action":"skip"}])", aapl_universe());
+        QCOMPARE(acts.size(), 1);
+        QVERIFY(acts.first().action == ActionType::Skip);
+    }
+
+    void llm_propose_prompt_has_universe_and_direction_language() {
         QString captured;
         LlmStrategy::CompletionFn fake = [&](const QString& prompt) -> QString {
             captured = prompt;
-            return R"([{"symbol":"AAPL","action":"enter","conviction":1.0}])";
+            return QStringLiteral("[]");
         };
-        LlmStrategy strat({QStringLiteral("AAPL"), QStringLiteral("MSFT")}, fake);  // max_qty default 10
+        // edge_dir injected but irrelevant here -- reply is [] so nothing to translate.
+        LlmStrategy strat({QStringLiteral("AAPL"), QStringLiteral("MSFT")}, fake, 10.0,
+                           [](const QString&) { return 0; });
         MarketSnapshot s;
         s.quotes["AAPL"] = 150.0;
-        const auto intents = strat.propose(s);   // position_of degrades to flat w/o DB; enter is position-independent
-        QCOMPARE(intents.size(), 1);
-        QCOMPARE(intents.first().value("symbol").toString(), QStringLiteral("AAPL"));
-        QCOMPARE(intents.first().value("side").toString(), QStringLiteral("buy"));
-        QCOMPARE(intents.first().value("quantity").toDouble(), 10.0);            // conviction 1.0 * max 10
+        QVERIFY(strat.propose(s).isEmpty());
         QVERIFY2(captured.contains(QStringLiteral("MSFT")), "prompt must include the universe");
-        QVERIFY2(captured.contains(QStringLiteral("enter")), "prompt must describe the typed verbs");
+        QVERIFY2(captured.contains(QStringLiteral("enter")) || captured.contains(QStringLiteral("hold")),
+                  "prompt must describe the typed verbs");
+        QVERIFY2(captured.contains(QStringLiteral("edge")) || captured.contains(QStringLiteral("long")) ||
+                      captured.contains(QStringLiteral("short")) || captured.contains(QStringLiteral("environment")),
+                  "prompt must state the environment/edge decides direction");
 
         LlmStrategy null_strat(aapl_universe(), nullptr);
         QVERIFY(null_strat.propose(s).isEmpty());
+    }
+
+    // ── LlmStrategy directional propose (edge-direction seam) ───────────────
+    // The injected EdgeDirFn (4th ctor arg) makes these deterministic without
+    // seeding the journal: the LLM only picks the verb, the edge picks the side.
+
+    void llm_propose_short_opening_sells() {
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"AAA","action":"enter","conviction":1.0}])";
+        };
+        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, [](const QString&) { return -1; });
+        MarketSnapshot s;
+        s.quotes["AAA"] = 100.0;
+        const auto intents = strat.propose(s);  // position_of degrades to flat w/o DB.
+        QCOMPARE(intents.size(), 1);
+        QCOMPARE(intents.first().value("symbol").toString(), QStringLiteral("AAA"));
+        QCOMPARE(intents.first().value("side").toString(), QStringLiteral("sell"));
+        QCOMPARE(intents.first().value("quantity").toDouble(), 10.0);
+        QCOMPARE(intents.first().value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    // Symmetry with the short-opening case above: +1 edge -> buy.
+    void llm_propose_long_opening_buys() {
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"AAA","action":"enter","conviction":1.0}])";
+        };
+        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, [](const QString&) { return 1; });
+        MarketSnapshot s;
+        s.quotes["AAA"] = 100.0;
+        const auto intents = strat.propose(s);
+        QCOMPARE(intents.size(), 1);
+        QCOMPARE(intents.first().value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(intents.first().value("quantity").toDouble(), 10.0);
+    }
+
+    void llm_propose_neutral_edge_rejects_enter() {
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"AAA","action":"enter","conviction":1.0}])";
+        };
+        LlmStrategy strat({QStringLiteral("AAA")}, fake, 10.0, [](const QString&) { return 0; });
+        MarketSnapshot s;
+        s.quotes["AAA"] = 100.0;
+        QVERIFY(strat.propose(s).isEmpty());
+    }
+
+    // A SHORT position (sell-to-open) closes with a BUY (cover) regardless of
+    // edge_dir -- exit ignores the edge and reduces/closes whatever is held.
+    void llm_propose_short_covering_exits_via_buy() {
+        ensure_migrated_db();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('llmshort1','claude','LLS-USD','sell',6,100,0,0,1000,'d')").is_ok());
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"LLS-USD","action":"exit"}])";
+        };
+        // edge_dir=+1 here to prove exit ignores it (a cover is still a buy).
+        LlmStrategy strat({QStringLiteral("LLS-USD")}, fake, 10.0, [](const QString&) { return 1; });
+        MarketSnapshot s;
+        s.quotes["LLS-USD"] = 100.0;
+        const auto intents = strat.propose(s);
+        QCOMPARE(intents.size(), 1);
+        QCOMPARE(intents.first().value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(intents.first().value("quantity").toDouble(), 6.0);
+    }
+
+    // No one-step reversal: a LONG position + "enter" against a SHORT edge is
+    // rejected by translate_action -- must reduce/close first.
+    void llm_propose_no_reversal_via_strategy() {
+        ensure_migrated_db();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('llmlong1','claude','LLR-USD','buy',6,100,0,0,1000,'d')").is_ok());
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"LLR-USD","action":"enter","conviction":1.0}])";
+        };
+        LlmStrategy strat({QStringLiteral("LLR-USD")}, fake, 10.0, [](const QString&) { return -1; });
+        MarketSnapshot s;
+        s.quotes["LLR-USD"] = 100.0;
+        QVERIFY(strat.propose(s).isEmpty());
+    }
+
+    // Default-resolver smoke: no EdgeDirFn injected -> uses default_edge_dir,
+    // which reads assess() + floor_verdict + side_direction (F2). A freshly
+    // endorsed LONG edge journal row yields a buy; no row (stale/absent) yields
+    // no intent.
+    void llm_propose_default_resolver_endorsed_edge_buys() {
+        ensure_migrated_db();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " market_probability, model_probability, edge_after_cost, spread_cost, fee_cost, confidence,"
+            " freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("llmdef1"), now - 1000, now - 1000, QStringLiteral("LLD-USD"),
+             QStringLiteral("buy"), QStringLiteral("pass"), 0.40, 0.55, 8.0, 2.0, 1.0, 0.8,
+             QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"),
+             QStringLiteral("edge-test")}).is_ok());
+
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"LLD-USD","action":"enter","conviction":1.0}])";
+        };
+        LlmStrategy strat({QStringLiteral("LLD-USD")}, fake, 10.0);  // no EdgeDirFn -> default resolver
+        MarketSnapshot s;
+        s.quotes["LLD-USD"] = 100.0;
+        const auto intents = strat.propose(s);
+        QCOMPARE(intents.size(), 1);
+        QCOMPARE(intents.first().value("side").toString(), QStringLiteral("buy"));
+    }
+
+    void llm_propose_default_resolver_no_edge_rejects() {
+        ensure_migrated_db();
+        LlmStrategy::CompletionFn fake = [](const QString&) -> QString {
+            return R"([{"symbol":"LLN-USD","action":"enter","conviction":1.0}])";
+        };
+        LlmStrategy strat({QStringLiteral("LLN-USD")}, fake, 10.0);  // no journal row for LLN-USD
+        MarketSnapshot s;
+        s.quotes["LLN-USD"] = 100.0;
+        QVERIFY(strat.propose(s).isEmpty());
     }
 
     // ── AI paper ledger (Task 4) write-hook integration ─────────────────────
