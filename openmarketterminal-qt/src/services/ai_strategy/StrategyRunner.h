@@ -54,6 +54,8 @@ struct RunSummary {
     int prepared = 0;
     int filled = 0;
     int rejected = 0;
+    int live_submitted = 0;  ///< LIVE only: broker submission succeeded but not yet an
+                              ///< executed fill (broker_status open/partial/accepted/unknown).
     int errors = 0;
     bool halted_by_kill_switch = false;
     QVector<GateRejection> gate_rejections;

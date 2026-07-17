@@ -811,9 +811,9 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     // floor_skipped explains a proposed>0 / filled=0 run when the deterministic
     // floor is ON (default) and the honest edge journal endorses nothing.
     std::printf("summary: ticks=%d proposed=%d prepared=%d filled=%d rejected=%d floor_skipped=%d "
-                "errors=%d halted=%s\n",
+                "errors=%d live_submitted=%d halted=%s\n",
                 s.ticks, s.proposed, s.prepared, s.filled, s.rejected, s.floor_skipped, s.errors,
-                s.halted_by_kill_switch ? "true" : "false");
+                s.live_submitted, s.halted_by_kill_switch ? "true" : "false");
     std::fflush(stdout);
 
     // Restore default SIGINT so a follow-up Ctrl-C behaves normally.

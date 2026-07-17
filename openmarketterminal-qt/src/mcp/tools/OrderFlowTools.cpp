@@ -1415,11 +1415,11 @@ std::vector<ToolDef> get_order_flow_tools() {
                 // when available (>0), else at the resolved price (the floor).
                 // Venue is "equity"; instrument is the symbol. BUY opens/adds,
                 // SELL closes/reduces.
+                mcp::tools::ReconciledFill reconciled;  // default: empty status, 0 price/qty, not reconciled
                 if (resp.success) {
-                    mcp::tools::reconcile_and_record(acct, QStringLiteral("equity"),
-                                                     b.order.symbol, b.order.side,
-                                                     b.order.quantity, b.resolved_price,
-                                                     resp.order_id);
+                    reconciled = mcp::tools::reconcile_and_record(acct, QStringLiteral("equity"),
+                                     b.order.symbol, b.order.side, b.order.quantity,
+                                     b.resolved_price, resp.order_id);
                 }
 
                 const QString decision = resp.success ? QStringLiteral("filled")
@@ -1433,11 +1433,13 @@ std::vector<ToolDef> get_order_flow_tools() {
                 audit_submit(acct, QStringLiteral("live"), intent, decision, msg, rv);
                 LOG_WARN(TAG, "submit_order LIVE " + decision + " draft " + draft_id);
                 return ToolResult::ok_data(QJsonObject{
-                    {"status", decision},
-                    {"order_id", resp.order_id},
-                    {"account", acct},
-                    {"mode", "live"},
-                    {"message", msg},
+                    {"status", decision},               // UNCHANGED — shared consumers
+                    {"order_id", resp.order_id}, {"account", acct}, {"mode", "live"}, {"message", msg},
+                    // Additive HONEST broker truth for AI-loop consumers (empty/0 when unknown):
+                    {"broker_status", reconciled.status},     // ""|accepted|open|partially_filled|filled|...
+                    {"fill_price", reconciled.price},         // broker avg fill (or resolved floor)
+                    {"filled_qty", reconciled.qty},           // broker filled qty (or submitted qty)
+                    {"reconciled", reconciled.reconciled},    // true iff broker's real avg price was used
                 });
             }
 

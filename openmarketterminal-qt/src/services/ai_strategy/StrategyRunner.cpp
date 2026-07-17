@@ -189,26 +189,43 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
                 break;
             }
 
-            if (subo.value(QStringLiteral("status")).toString() == QLatin1String("filled")) {
+            const QString sub_status = subo.value(QStringLiteral("status")).toString();
+            const bool is_live = (cfg.submit_mode == QLatin1String("live"));
+            // LIVE: submit_order's status is "filled" on broker SUBMISSION success, not an
+            // execution. Trust the reconciled broker_status; the live realized-P&L ledger is
+            // recorded by submit_order (reconcile_and_record), so NEVER book a paper ai_fill.
+            // PAPER: status=="filled" is a real paper fill; the ai_fill ledger is authoritative.
+            const QString broker_status = subo.value(QStringLiteral("broker_status")).toString();
+            const bool really_filled = is_live ? (broker_status == QLatin1String("filled"))
+                                               : (sub_status == QLatin1String("filled"));
+            if (really_filled) {
                 ++summary.filled;
                 log(QStringLiteral("filled draft ") + draft_id);
                 // on_fill notifies the strategy of ACTUAL fills only — a rejected
                 // submit never happened, so a strategy tracking positions here must
                 // not book it.
                 s.on_fill(intent, subo);
-
-                // Best-effort paper-ledger record — never break the loop on a DB error.
-                const double fill_price = intent.contains(QStringLiteral("limit_price"))
-                    ? intent.value(QStringLiteral("limit_price")).toDouble()
-                    : snap.quotes.value(sym, 0.0);
-                const double fill_qty = intent.value(QStringLiteral("quantity")).toDouble();
-                // Mirror the paper rail's fee so realized P&L is net of costs (F3).
-                const double fee = fill_qty * fill_price * kPaperFeeRate;
-                auto rec = ai_ledger::record_fill(
-                    s.name(), sym, intent.value(QStringLiteral("side")).toString(),
-                    fill_qty, fill_price, fee, draft_id);
-                if (rec.is_err())
-                    log(QStringLiteral("ledger record skipped: ") + QString::fromStdString(rec.error()));
+                if (!is_live) {
+                    // ── existing PAPER ai_fill record (UNCHANGED) ──
+                    // Best-effort paper-ledger record — never break the loop on a DB error.
+                    const double fill_price = intent.contains(QStringLiteral("limit_price"))
+                        ? intent.value(QStringLiteral("limit_price")).toDouble()
+                        : snap.quotes.value(sym, 0.0);
+                    const double fill_qty = intent.value(QStringLiteral("quantity")).toDouble();
+                    // Mirror the paper rail's fee so realized P&L is net of costs (F3).
+                    const double fee = fill_qty * fill_price * kPaperFeeRate;
+                    auto rec = ai_ledger::record_fill(
+                        s.name(), sym, intent.value(QStringLiteral("side")).toString(),
+                        fill_qty, fill_price, fee, draft_id);
+                    if (rec.is_err())
+                        log(QStringLiteral("ledger record skipped: ") + QString::fromStdString(rec.error()));
+                }
+            } else if (is_live && sub_status == QLatin1String("filled")) {
+                // Live: submitted/accepted but not yet filled (broker_status open/partial/accepted/empty).
+                // Not an execution — do NOT book, do NOT count as filled or rejected. Surface honestly.
+                ++summary.live_submitted;
+                log(QStringLiteral("live submitted draft %1 (broker_status=%2)")
+                        .arg(draft_id, broker_status.isEmpty() ? QStringLiteral("unknown") : broker_status));
             } else {
                 ++summary.rejected;
                 log(QStringLiteral("submit rejected draft ") + draft_id + QStringLiteral(": ") +
