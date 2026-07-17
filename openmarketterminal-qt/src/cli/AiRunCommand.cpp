@@ -690,17 +690,9 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     if (symbols.isEmpty())
         symbols = QStringList{QStringLiteral("AAPL")};
 
-    // Live requires an EXPLICIT per-run opt-in (--mode live) AND a human-armed system
-    // (cli_live_armed + cli_trading_allowed -- GUI-only; the AI can NEVER set them: the
-    // keystone). submit_order re-checks every gate as the final authority. Default: paper.
-    QString submit_mode = QStringLiteral("paper");
-    if (mode == QLatin1String("live")) {
-        if (!(mcp::cli_trading_allowed() && mcp::cli_live_armed())) {
-            std::fprintf(stderr, "live trading not armed -- arm in GUI Settings (paper-first)\n");
-            return 2;
-        }
-        submit_mode = QStringLiteral("live");
-    } else if (mode != QLatin1String("paper")) {
+    // Validate the run mode up front (no DB needed). The ARMED gate for live runs
+    // after the DB is up (below) so it can read real arm state.
+    if (mode != QLatin1String("paper") && mode != QLatin1String("live")) {
         std::fprintf(stderr, "error: unknown --mode '%s' (paper|live)\n", qUtf8Printable(mode));
         return 2;
     }
@@ -738,6 +730,22 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
         }
     }
     CliToolCaller caller(opts.headless, &hr, client ? &*client : nullptr);
+
+    // Armed live gate (runs AFTER the DB is up so it reads REAL arm state).
+    // Headless: the local DB (opened above) holds cli.* arm flags -- fail fast with a
+    // clear refusal if disarmed. Non-headless: the CLI has NO local DB; arm state lives
+    // in the GUI's DB and is enforced by submit_order over the bridge (the sole
+    // authority), so the CLI proceeds and submit_order denies if the GUI is disarmed.
+    // Either way submit_order re-checks every gate -- the CLI gate is fail-fast only and
+    // can only ever OVER-refuse (a blind read is "not armed").
+    QString submit_mode = QStringLiteral("paper");
+    if (mode == QLatin1String("live")) {
+        if (opts.headless && !(mcp::cli_trading_allowed() && mcp::cli_live_armed())) {
+            std::fprintf(stderr, "live trading not armed -- arm in GUI Settings (paper-first)\n");
+            return 2;
+        }
+        submit_mode = QStringLiteral("live");
+    }
 
     // SIGINT → clean stop after the current tick.
     g_stop.store(false);

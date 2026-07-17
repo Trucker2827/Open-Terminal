@@ -60,6 +60,15 @@ PY
 fail() { echo "FAIL: $1"; cleanup_all; exit 1; }
 trap cleanup_all EXIT
 
+# extract a JSON field from {"data":{...},"success":...} stdout via python3
+# (mirrors tests/e2e_paper_trade.sh's helper).
+json_field() { python3 -c 'import sys,json
+try:
+    d=json.load(sys.stdin)
+    print(d.get("data",{}).get(sys.argv[1],""))
+except Exception:
+    print("")' "$1"; }
+
 [ -x "$CLI" ] || fail "CLI not found/executable at $CLI"
 
 echo "== openterminalcli strategy-loop e2e (headless, no GUI) =="
@@ -156,8 +165,9 @@ echo "PASS: --max-position-qty/--max-notional-per-order accepted, pos_cap=7 noti
 # Step 2 — --mode live is REFUSED while UNARMED (headline safety property, Track
 # 3): nonzero exit + stderr contains "not armed". This e2e NEVER writes
 # cli.live_armed/cli.trading_allowed (only allow_paper_trading, above), so the
-# human-armed gate never opens; the refusal fires before the strategy/runner is
-# even instantiated, so the loop never ran and NO fill/order can have occurred
+# human-armed gate never opens; the refusal fires after the transport/DB is up
+# (the strategy is already instantiated by then) but BEFORE the runner ticks
+# even once, so the loop never ran and NO fill/order can have occurred
 # (confirmed below: no "summary:" line was ever printed).
 #
 # NOTE: this reconciles a prior assertion ("live strategy loop not supported")
@@ -198,6 +208,88 @@ KTICKS=$(printf '%s\n' "$R3" | grep -E "^summary:|ticks=" | sed -n 's/.*ticks=\(
 printf '%s' "$R3" | grep -qi "halted=true" \
     || fail "kill-switch summary did not show halted=true (out: $R3)"
 echo "PASS: kill switch halted the loop on first tick (rc=0, halted=true, ticks=$KTICKS < 5)"
+
+
+# ============================================================================
+# Step 4 — ARMED reachability: with the throwaway profile ARMED directly via
+# sqlite (cli.live_trading_armed=true, cli.allow_trading=true -- mirrors the
+# kill-switch set_gate above), `--mode live` must PASS the CLI-side armed gate
+# (Track 3 fix: the gate now runs AFTER the DB is up, so it reads the REAL
+# arm state instead of the unset default). This profile has NO live broker
+# credentials/allowed-account configured, so submit_order -- the SOLE
+# authority, re-checking armed -> allowed-account -> daily-loss -> reserve ->
+# place_order -- must DENY at the ALLOWED-ACCOUNT gate, before the
+# irreversible place_order call.
+#
+# Two sub-checks, because they prove DIFFERENT things and one command can't
+# prove both here:
+#   4a. `ai run strategy meanrev --mode live` proves CLI-gate reachability
+#       (no "not armed" refusal) -- the actual ordering fix under test.
+#       Headless has NO live quote feed, so meanrev's propose() sees no quote
+#       for AAPL and never proposes an intent (see meanrev_warmup_no_intent
+#       in tst_strategy_loop) -- proposed=0/prepared=0/filled=0 here just
+#       means "nothing to trade", NOT "submit_order denied it". Asserting
+#       filled=0 alone would also trivially hold when nothing was proposed,
+#       so this sub-check ONLY asserts CLI-gate reachability.
+#   4b. A direct `mcp call prepare_order` + `mcp call submit_order` (mode
+#       live), mirroring tests/e2e_paper_trade.sh's Step 5, gives submit_order
+#       an explicit intent (no quote dependency) so it is actually invoked.
+#       StrategyRunner's internal submit is the identical
+#       tc.call("submit_order", {draft_id, mode}) over the same headless
+#       CliToolCaller, so this direct call exercises the SAME handler path
+#       the strategy loop would use -- it proves submit_order (the sole
+#       authority) reaches and denies at the allowed-account gate.
+# Both run while armed; the arm flags are reset once at the end regardless
+# of outcome, leaving the profile disarmed.
+# ============================================================================
+set_gate cli.live_trading_armed true
+set_gate cli.allow_trading true
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.live_trading_armed';")" = "true" ] \
+    || fail "live_trading_armed write did not land in DB"
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.allow_trading';")" = "true" ] \
+    || fail "allow_trading write did not land in DB"
+
+# -- 4a. CLI-gate reachability via the strategy loop --------------------------
+R4=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --interval-sec 0 --max-iters 1 --symbols AAPL 2>&1)
+RC4=$?
+echo "$R4" | sed 's/^/    | /'
+
+printf '%s' "$R4" | grep -qi "not armed" \
+    && fail "armed run was refused 'not armed' -- CLI armed gate did not read real arm state (out: $R4)"
+printf '%s' "$R4" | grep -q "^\[strategy\] running .* mode=live armed=true" \
+    || fail "armed run did not report mode=live armed=true (out: $R4)"
+echo "PASS: armed run was NOT refused 'not armed' (mode=live armed=true) -- CLI gate reachability proven"
+
+# -- 4b. submit_order denial via a direct call (explicit intent, no quote dep) -
+P4_OUT=$(wd 30 "$CLI" --headless --profile "$PROF" --json mcp call prepare_order \
+        '{"symbol":"AAPL","side":"buy","quantity":10,"order_type":"limit","limit_price":200}' 2>&1)
+P4_STATUS=$(printf '%s' "$P4_OUT" | json_field status)
+DID4=$(printf '%s' "$P4_OUT" | json_field draft_id)
+[ "$P4_STATUS" = "prepared" ] && [ -n "$DID4" ] \
+    || fail "armed prepare_order did not return status=prepared+draft_id (out: $P4_OUT)"
+
+S4_OUT=$(wd 30 "$CLI" --headless --profile "$PROF" --json mcp call submit_order \
+        "{\"draft_id\":\"$DID4\",\"mode\":\"live\"}" 2>&1)
+S4_STATUS=$(printf '%s' "$S4_OUT" | json_field status)
+S4_REASON=$(printf '%s' "$S4_OUT" | json_field reason)
+[ "$S4_STATUS" = "rejected" ] \
+    || fail "armed submit_order(live) status != rejected ($S4_STATUS) -- expected a DENY, not a fill (out: $S4_OUT)"
+printf '%s' "$S4_REASON" | grep -qi "no allowed account" \
+    || fail "armed submit_order(live) reason did not mention 'no allowed account' (out: $S4_OUT)"
+echo "PASS: submit_order(live) reached and DENIED at the allowed-account gate (status=rejected, '$S4_REASON', no real broker contacted)"
+D4_DB=$(sqlite3 "$DB" "SELECT status FROM order_drafts WHERE draft_id='$DID4';")
+[ "$D4_DB" = "prepared" ] \
+    || fail "armed draft did not stay 'prepared' (live submit must NEVER execute) -- got '$D4_DB'"
+echo "PASS: armed draft persisted as 'prepared' (never walked to submitted/filled)"
+
+set_gate cli.live_trading_armed false   # reset regardless of outcome above
+set_gate cli.allow_trading false
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.live_trading_armed';")" = "false" ] \
+    || fail "live_trading_armed reset did not land in DB"
+[ "$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='cli.allow_trading';")" = "false" ] \
+    || fail "allow_trading reset did not land in DB"
+echo "PASS: arm flags reset -- profile left disarmed"
 
 echo
 echo "PASS: strategy-loop e2e"
