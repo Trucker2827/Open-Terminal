@@ -362,6 +362,7 @@ static int command_help(const QString& topic) {
             "  daemon notify --title T --message M [--provider P] [--job]\n"
             "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N] [--timeout-sec N]\n"
             "  daemon paper <meanrev|claude> [--symbols AAPL,MSFT] [--every-sec N] [--timeout-sec N]\n"
+            "                [--max-notional N] [--max-position N] [--max-aggregate N]\n"
             "  daemon chronos2 BTC-USD [--horizon 5m|15m|1h|1d] [--every-sec N]\n"
             "  daemon chronos2-equity AAPL [--horizon 1d] [--every-sec 86400]\n"
             "  daemon jobs add chronos2 BTC-USD [--horizon 5m|15m|1h|1d] [--every-sec N]\n"
