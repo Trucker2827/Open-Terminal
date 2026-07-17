@@ -1,8 +1,10 @@
 #include <QtTest>
+#include <QDateTime>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QTemporaryDir>
 #include <functional>
 #include <unistd.h>
@@ -21,6 +23,11 @@ namespace openmarketterminal::cli {
 bool update_job_by_id(const QString& profile, const QString& id,
                       const std::function<void(QJsonObject&)>& fn, int lock_timeout_ms);
 }
+
+// assess() now expires edge_decision_journal rows older than 24h
+// (wall-clock) -- seeds must be fresh, `now`-relative timestamps rather than
+// tiny fixed values.
+static qint64 recent_ms(qint64 back = 60000) { return QDateTime::currentMSecsSinceEpoch() - back; }
 
 static QString capture_stdout(const std::function<int()>& fn, int* rc_out = nullptr) {
     fflush(stdout);
@@ -80,11 +87,52 @@ static QJsonObject json_object_from_dispatch(const QStringList& args, int* rc_ou
     return doc.isObject() ? doc.object() : QJsonObject{};
 }
 
+// `ai screen` (Task 2) emits a top-level JSON ARRAY (screen_to_json), not an
+// object -- json_object_from_dispatch's QJsonDocument::isObject() guard would
+// silently discard it, so parse the raw stdout as an array instead.
+static QJsonArray json_array_from_dispatch(const QStringList& args, int* rc_out = nullptr) {
+    int rc = -1;
+    const QString out = capture_stdout([&]() { return dispatch(args); }, &rc);
+    if (rc_out)
+        *rc_out = rc;
+    const QJsonDocument doc = QJsonDocument::fromJson(out.toUtf8());
+    return doc.isArray() ? doc.array() : QJsonArray{};
+}
+
 static QStringList json_strings(const QJsonArray& arr) {
     QStringList out;
     for (const QJsonValue& v : arr)
         out << v.toString();
     return out;
+}
+
+// ai ctx decision-packet Task 3 read-only invariant helpers -- fingerprint
+// EVERY cli.* settings row (key|value|updated_at) so a test can assert `ai
+// ctx` mutates none of them (mirrors the shape of the kalshi gate rows
+// exercised above, generalized to "all of them" rather than one named key).
+// Also used by the `ai handler status` gate-immutability test to detect any
+// write it might make: a value change, a stray new row, OR a same-value
+// INSERT-OR-REPLACE that re-stamps updated_at (the settings table carries
+// `updated_at TEXT DEFAULT (datetime('now'))`).
+static QStringList cli_settings_fingerprint() {
+    QStringList out;
+    auto rows = Database::instance().execute(
+        "SELECT key, value, updated_at FROM settings WHERE key LIKE 'cli.%' ORDER BY key");
+    if (rows.is_ok()) {
+        QSqlQuery& q = rows.value();
+        while (q.next()) {
+            out << q.value(0).toString() + QStringLiteral("|") + q.value(1).toString() +
+                       QStringLiteral("|") + q.value(2).toString();
+        }
+    }
+    return out;
+}
+
+static int table_row_count(const QString& table) {
+    auto rows = Database::instance().execute(QStringLiteral("SELECT COUNT(*) FROM ") + table);
+    if (rows.is_ok() && rows.value().next())
+        return rows.value().value(0).toInt();
+    return -1;
 }
 
 // Points HOME at ONE process-lifetime temp dir (never at a fresh one per
@@ -1512,6 +1560,785 @@ private slots:
             [&]() { return dispatch(QStringList{"sandbox", "eligibility"}); }, &rc);
         QCOMPARE(rc, 0);
         QVERIFY(text.contains("ELIGIBLE"));
+    }
+
+    // ai ctx decision-packet Task 3 -- `ai ctx <symbol> --json` reads the
+    // latest edge_decision_journal row (seeded exactly like Task 2's
+    // tst_decision_context.cpp fixture) and emits DecisionContext::to_json.
+    void ai_ctx_reads_edge_and_gates_json() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, side, gate,"
+            " market_probability, model_probability, edge_after_cost, spread_cost, fee_cost,"
+            " confidence, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("cd-ctx-1"), recent_ms(), recent_ms(), QStringLiteral("CTXTEST-USD"),
+             QStringLiteral("buy"), QStringLiteral("pass"), 0.40, 0.55, 8.0, 2.0, 1.0, 0.8,
+             QStringLiteral("{\"freshest_age_ms\":120,\"live_sources\":3}"),
+             QStringLiteral("edge crypto-recommend")}).is_ok());
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"ai", "ctx", "CTXTEST-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value(QStringLiteral("symbol")).toString(), QStringLiteral("CTXTEST-USD"));
+        QVERIFY(out.value(QStringLiteral("has_edge_signal")).toBool());
+        QVERIFY(out.contains(QStringLiteral("clears_cost")));
+        QVERIFY(out.contains(QStringLiteral("freshness")));
+        QCOMPARE(out.value(QStringLiteral("recommendation_hint")).toString(),
+                 QStringLiteral("all gates pass"));
+    }
+
+    // No edge_decision_journal row for the symbol -> still exit 0 with a
+    // graceful "no edge signal" packet (never a hard failure).
+    void ai_ctx_no_data_symbol_returns_no_edge_signal() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"ai", "ctx", "ZZZZ-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!out.value(QStringLiteral("has_edge_signal")).toBool());
+        QCOMPARE(out.value(QStringLiteral("recommendation_hint")).toString(),
+                 QStringLiteral("no edge signal"));
+    }
+
+    // READ-ONLY invariant: `ai ctx` must not mutate a single cli.* settings
+    // row, nor insert/delete any edge_decision_journal or order_drafts row.
+    // Fingerprint (key|value|updated_at) every cli.* row before and after --
+    // any drift, even a no-op re-write of the same value, changes
+    // updated_at and would show up here.
+    void ai_ctx_is_read_only_on_gates() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("cd-ctx-2"), recent_ms(), recent_ms(), QStringLiteral("CTXRO-USD"),
+             QStringLiteral("pass"), 5.0, 1.0, 0.5,
+             QStringLiteral("{\"freshest_age_ms\":100,\"live_sources\":3}"),
+             QStringLiteral("x")}).is_ok());
+
+        const QStringList before = cli_settings_fingerprint();
+        const int journal_before = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_before = table_row_count(QStringLiteral("order_drafts"));
+        QVERIFY(journal_before >= 0);
+        QVERIFY(orders_before >= 0);
+
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "ctx", "CTXRO-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+
+        const QStringList after = cli_settings_fingerprint();
+        const int journal_after = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_after = table_row_count(QStringLiteral("order_drafts"));
+        QCOMPARE(after, before);
+        QCOMPARE(journal_after, journal_before);
+        QCOMPARE(orders_after, orders_before);
+    }
+
+    // READ-ONLY invariant, post-④b: `ai ctx <symbol>` now aggregates the
+    // ledger's net position for its `position` field
+    // (ai_ledger::net_position_for_symbol), but must still not mutate a
+    // single cli.* settings row nor write any ai_fill row while doing so.
+    void ai_ctx_position_read_is_read_only() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('ro1','h','CTXRO2-USD','buy',5,100,0,0,1000,'d')").is_ok());
+
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "ctx", "CTXRO2-USD", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+
+        QCOMPARE(cli_settings_fingerprint(), before);                        // no cli.* gate written
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);   // assess wrote no fill
+    }
+
+    // ai ctx floor verdict, piece ⑤b Task 3 -- `ai ctx <symbol> --json` gains
+    // read-only floor_permits/floor_reason fields computed from the
+    // DecisionPacket via ai_strategy::floor_verdict. A "pass" gate with
+    // edge_after_cost>0 makes clears_cost="true" (DecisionContext.cpp:138),
+    // so the honest-edge system positively endorses the symbol and the floor
+    // permits.
+    void ai_ctx_floor_permits_endorsed_symbol() {
+        sandbox_test_home();
+        // F2: floor_permits is now long-aware, so an endorsing-long row must
+        // carry a long side ("buy") to keep permitting -- data-completion,
+        // not a weakening (this row always meant to represent a LONG
+        // endorsement for the ai ctx floor_permits check).
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp1', %1, %1, 'FLP-USD', 'pass', 'buy', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLP-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("floor_permits").toBool(), true);
+        QCOMPARE(o.value("floor_reason").toString(), QString());
+    }
+
+    // F2 CLI surface: a fully-endorsed edge (gate=pass/cost-clear/fresh) that
+    // recommends SHORT must NOT report floor_permits=true for a (long-only)
+    // enter -- the honest edge says short, `ai ctx` must say so.
+    void ai_ctx_floor_reports_opposite_side() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp4', %1, %1, 'FLPS-USD', 'pass', 'short', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLPS-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("floor_permits").toBool(), false);
+        QVERIFY2(o.value("floor_reason").toString().contains(QStringLiteral("opposite side")),
+                  qUtf8Printable(o.value("floor_reason").toString()));
+    }
+
+    // A "reject" gate never earns clears_cost="true"/gate=="pass", so the
+    // floor skips with the specific "edge gate not pass" reason.
+    void ai_ctx_floor_skips_rejected_symbol() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp2', %1, %1, 'FLPR-USD', 'reject', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","FLPR-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("floor_permits").toBool(), false);
+        QCOMPARE(o.value("floor_reason").toString(), QStringLiteral("edge gate not pass"));
+    }
+
+    // READ-ONLY invariant: computing/emitting the floor verdict must not
+    // mutate a single cli.* settings row (floor_verdict is pure; assess()
+    // is SELECT-only).
+    void ai_ctx_floor_is_read_only() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('flp3', %1, %1, 'FLPRO-USD', 'pass', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        const QStringList before = cli_settings_fingerprint();
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai","ctx","FLPRO-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+    }
+
+    // ai ctx track record, piece ⑥ Task 1 -- `ai ctx <symbol> --json` gains a
+    // read-only track_record object computed from ai_ledger::scorecard_of
+    // (aggregate across all handlers, symbol-scoped). The edge row must be
+    // FRESH so it isn't excluded by any later recency bound.
+    void ai_ctx_emits_track_record() {
+        sandbox_test_home();
+        const qint64 fresh = QDateTime::currentMSecsSinceEpoch() - 60000;
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('tr-edge', ?, ?, 'TR-USD', 'pass', 5.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')", {fresh, fresh}).is_ok());
+        // Two closing fills under handler 'claude': one win (+100), one loss (-40).
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('trf1','claude','TR-USD','sell',1,110,0,100,1000,'d'),"
+            "       ('trf2','claude','TR-USD','sell',1,90,0,-40,1001,'d')").is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(QStringList{"ai","ctx","TR-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject tr = o.value("track_record").toObject();
+        QCOMPARE(tr.value("trades").toInt(), 2);
+        QCOMPARE(tr.value("wins").toInt(), 1);
+        QCOMPARE(tr.value("losses").toInt(), 1);
+        QCOMPARE(tr.value("hit_rate").toDouble(), 0.5);
+        QCOMPARE(tr.value("realized_total").toDouble(), 60.0);
+    }
+
+    // READ-ONLY invariant: scorecard_of is SELECT-only -- computing/emitting
+    // track_record must not mutate a single cli.* settings row nor insert
+    // any ai_fill row.
+    void ai_ctx_track_record_read_only() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai","ctx","NOTR-USD","--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+    }
+
+    // ai screen shortlist Task 2 -- `ai screen --market crypto --json` ranks
+    // the all-gates-pass candidates by edge_after_cost desc and tags each
+    // with its market. Fixture mirrors tst_screener.cpp's
+    // screen_filters_ranks_and_tags seed shape exactly (id, created_at,
+    // updated_at, symbol, venue, side, gate, edge_after_cost, spread_cost,
+    // fee_cost, freshness_json, source).
+    void ai_screen_ranks_crypto_json() {
+        sandbox_test_home();
+        auto seed = [&](const QString& id, const QString& sym, const QString& venue,
+                        const QString& gate, double edge, qint64 ts) {
+            auto r = Database::instance().execute(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                {id, ts, ts, sym, venue, QStringLiteral("buy"), gate, edge, 0.0, 0.0,
+                 QStringLiteral("{\"freshest_age_ms\":100,\"live_sources\":2}"), QStringLiteral("s")});
+            QVERIFY2(r.is_ok(), r.is_err() ? r.error().c_str() : "");
+        };
+        seed(QStringLiteral("cd-scr-1"), QStringLiteral("SCRBTC-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("pass"), 12.0, recent_ms());
+        seed(QStringLiteral("cd-scr-2"), QStringLiteral("SCRETH-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("pass"), 5.0, recent_ms());
+        // A crypto FAIL (excluded from the shortlist).
+        seed(QStringLiteral("cd-scr-3"), QStringLiteral("SCRSOL-USD"), QStringLiteral("coinbase_advanced"),
+             QStringLiteral("fail"), 9.0, recent_ms());
+        // A prediction passer -- must NOT appear when --market crypto filters it out.
+        seed(QStringLiteral("cd-scr-4"), QStringLiteral("SCRKXBTC-USD"), QStringLiteral("kalshi"),
+             QStringLiteral("pass"), 20.0, recent_ms());
+
+        int rc = -1;
+        const QJsonArray arr = json_array_from_dispatch(
+            QStringList{"ai", "screen", "--market", "crypto", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(arr.size(), 2);
+
+        const QJsonObject first = arr.at(0).toObject();
+        const QJsonObject second = arr.at(1).toObject();
+        QCOMPARE(first.value(QStringLiteral("symbol")).toString(), QStringLiteral("SCRBTC-USD"));
+        QCOMPARE(first.value(QStringLiteral("market")).toString(), QStringLiteral("crypto"));
+        QVERIFY(first.contains(QStringLiteral("edge_after_cost")));
+        QCOMPARE(first.value(QStringLiteral("recommendation_hint")).toString(),
+                 QStringLiteral("all gates pass"));
+        QCOMPARE(second.value(QStringLiteral("symbol")).toString(), QStringLiteral("SCRETH-USD"));
+        // Ranked by edge_after_cost desc: 12.0 (SCRBTC) before 5.0 (SCRETH).
+        QVERIFY(first.value(QStringLiteral("edge_after_cost")).toDouble() >
+                second.value(QStringLiteral("edge_after_cost")).toDouble());
+    }
+
+    // Unrecognized --market value -> usage error, exit 2 (never falls through
+    // to "all markets").
+    void ai_screen_rejects_bad_market() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--market", "bogus"}); }, &rc);
+        QCOMPARE(rc, 2);
+    }
+
+    // A recognized market with no seeded/passing edge_decision_journal rows
+    // -> exit 0 with an empty JSON array, not an error. Asserts the raw
+    // stdout text itself (not just a parsed-array emptiness check) --
+    // json_array_from_dispatch would also return an empty QJsonArray for
+    // blank/null/malformed output, which would let this test pass even if
+    // the command emitted nothing at all.
+    void ai_screen_empty_market_returns_empty_array() {
+        sandbox_test_home();
+        int rc = -1;
+        const QString out = capture_stdout([&]() {
+            return dispatch(QStringList{"ai", "screen", "--market", "equity", "--json"});
+        }, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.trimmed(), QStringLiteral("[]"));
+
+        const QJsonDocument doc = QJsonDocument::fromJson(out.toUtf8());
+        QVERIFY(doc.isArray());
+        QVERIFY(doc.array().isEmpty());
+    }
+
+    // --limit garbage/non-positive -> usage error, exit 2 (never silently
+    // falls back to the default).
+    void ai_screen_rejects_bad_limit() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--limit", "abc"}); }, &rc);
+        QCOMPARE(rc, 2);
+
+        rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--limit", "0"}); }, &rc);
+        QCOMPARE(rc, 2);
+
+        rc = -1;
+        capture_stdout([&]() { return dispatch(QStringList{"ai", "screen", "--limit", "-3"}); }, &rc);
+        QCOMPARE(rc, 2);
+    }
+
+    // READ-ONLY invariant: `ai screen` must not mutate a single cli.*
+    // settings row, nor insert/delete any edge_decision_journal or
+    // order_drafts row -- it only ever SELECTs (Screener.h's READ-ONLY
+    // INVARIANT, reused via DecisionContext::assess).
+    void ai_screen_is_read_only_on_gates() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, venue, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("cd-scr-ro"), recent_ms(), recent_ms(), QStringLiteral("SCRROX-USD"),
+             QStringLiteral("coinbase_advanced"), QStringLiteral("buy"), QStringLiteral("pass"), 6.0, 0.0, 0.0,
+             QStringLiteral("{}"), QStringLiteral("s")}).is_ok());
+
+        const QStringList before = cli_settings_fingerprint();
+        const int journal_before = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_before = table_row_count(QStringLiteral("order_drafts"));
+        QVERIFY(journal_before >= 0);
+        QVERIFY(orders_before >= 0);
+
+        int rc = -1;
+        json_array_from_dispatch(QStringList{"ai", "screen", "--market", "crypto", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+
+        const QStringList after = cli_settings_fingerprint();
+        const int journal_after = table_row_count(QStringLiteral("edge_decision_journal"));
+        const int orders_after = table_row_count(QStringLiteral("order_drafts"));
+        QCOMPARE(after, before);
+        QCOMPARE(journal_after, journal_before);
+        QCOMPARE(orders_after, orders_before);
+    }
+
+    // ai paper ledger Task 5 -- `ai positions --handler H --json` emits the
+    // folded open position for that handler+symbol (net_qty, avg_entry_price,
+    // realized_pnl), sourced from ai_ledger::positions_of (Task 3, pure
+    // read-only fold over ai_fill rows). Seeded directly via SQL -- Task 5 is
+    // read-only and must not depend on Task 6's `ai record-fill`.
+    void ai_positions_reports_open_positions() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('p1','cli','POS-USD','buy',5,20,0,0,100,'d')").is_ok());
+
+        int rc = -1;
+        QJsonArray arr = json_array_from_dispatch(QStringList{"ai", "positions", "--handler", "cli", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(arr.size(), 1);
+        QCOMPARE(arr.at(0).toObject().value("symbol").toString(), QStringLiteral("POS-USD"));
+        QCOMPARE(arr.at(0).toObject().value("net_qty").toDouble(), 5.0);
+    }
+
+    // `ai ledger --handler H --json` lists that handler's fills recent-first
+    // (ts DESC), sourced from AiFillRepository::list (Task 2).
+    void ai_ledger_lists_recent_fills() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('l1','cli2','LDG-USD','buy',5,20,0,0,100,'d'),"
+            "       ('l2','cli2','LDG-USD','sell',5,25,0,25,200,'d')").is_ok());
+
+        int rc = -1;
+        QJsonArray arr = json_array_from_dispatch(
+            QStringList{"ai", "ledger", "--handler", "cli2", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(arr.size(), 2);
+        QCOMPARE(arr.at(0).toObject().value("id").toString(), QStringLiteral("l2"));  // recent first
+    }
+
+    // `ai pnl --handler H --json` emits {realized_pnl, open_positions[]},
+    // sourced from ai_ledger::realized_total + positions_of (Task 3).
+    void ai_pnl_reports_realized_total() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('n1','cli3','PNL-USD','buy',5,20,0,0,100,'d'),"
+            "       ('n2','cli3','PNL-USD','sell',5,25,0,25,200,'d')").is_ok());
+
+        int rc = -1;
+        QJsonObject obj = json_object_from_dispatch(QStringList{"ai", "pnl", "--handler", "cli3", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(obj.value("realized_pnl").toDouble(), 25.0);
+    }
+
+    // READ-ONLY invariant: `ai positions|pnl|ledger|scorecard` must not mutate
+    // a single cli.* settings row, nor insert any ai_fill row -- these four
+    // commands issue only SELECTs (via positions_of/realized_total/list/
+    // scorecard_of, all repository reads). ai_fill is these commands' own
+    // domain table, so the count check guards against the worst violation: a
+    // read command that accidentally appends a fill (e.g. a future
+    // record_fill mis-wire). `scorecard` is bundled in HERE (rather than only
+    // relying on its own `ai_scorecard_is_read_only`) because this slot runs
+    // BEFORE any of the dedicated `ai_scorecard_*` slots below, so its
+    // `before` snapshot cannot already contain a `cli.*` row a prior
+    // scorecard-test neuter left behind -- unlike a same-key/same-value
+    // same-second `INSERT OR REPLACE` that runs AFTER an earlier test already
+    // wrote that exact row (undetectable by fingerprint at that point), a
+    // neutered write here is the FIRST touch of `cli.*` in the run and so
+    // reliably flips this assertion.
+    void ai_read_commands_are_read_only_on_gates() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        QVERIFY(fills_before >= 0);
+        int rc = -1;
+        json_array_from_dispatch(QStringList{"ai", "positions", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        json_array_from_dispatch(QStringList{"ai", "ledger", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        json_object_from_dispatch(QStringList{"ai", "pnl", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        json_object_from_dispatch(QStringList{"ai", "scorecard", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);  // no cli.* gate written
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);  // no ai_fill row written
+    }
+
+    // `ai record-fill` is the CLI write surface (Task 6): a buy then an
+    // opposite sell must append two ai_fill rows via record_fill and reflect
+    // the folded position + realized pnl in the emitted JSON.
+    void ai_record_fill_writes_row_and_books_pnl() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject open = json_object_from_dispatch(
+            QStringList{"ai", "record-fill", "--handler", "w", "--symbol", "W-USD",
+                        "--side", "buy", "--qty", "10", "--price", "100", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(open.value("position").toObject().value("net_qty").toDouble(), 10.0);
+
+        QJsonObject close = json_object_from_dispatch(
+            QStringList{"ai", "record-fill", "--handler", "w", "--symbol", "W-USD",
+                        "--side", "sell", "--qty", "4", "--price", "130", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(close.value("fill").toObject().value("realized_pnl").toDouble(), 120.0);  // (130-100)*4
+        QCOMPARE(close.value("position").toObject().value("net_qty").toDouble(), 6.0);
+    }
+
+    // Invalid args (missing --side, non-positive --qty) must be rejected with
+    // exit 2 and write NO ai_fill row -- the validation guard runs BEFORE any
+    // DB write. Note: missing --side and qty<=0 are ALSO independently caught
+    // by lower layers (ai_fill.side is NOT NULL in the schema; record_fill()
+    // itself rejects qty<=0), so this test also exercises a garbage --side
+    // value ("hold") that only the CLI-level guard catches -- apply_fill()
+    // silently treats any non-"sell"/"short" side as a buy, so without this
+    // guard a bogus --side would record_fill() a wrong-direction row instead
+    // of being rejected.
+    void ai_record_fill_rejects_bad_args() {
+        sandbox_test_home();
+        const int rows_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = 0;
+        // missing --side
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w2",
+                                              "--symbol", "W2-USD", "--qty", "1", "--price", "10"}, &rc);
+        QCOMPARE(rc, 2);
+        // garbage --side value (neither "buy" nor "sell") -- only the CLI
+        // guard catches this; record_fill()/apply_fill() would silently
+        // accept it as a buy.
+        rc = 0;
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w2", "--symbol", "W2-USD",
+                                              "--side", "hold", "--qty", "1", "--price", "10"}, &rc);
+        QCOMPARE(rc, 2);
+        // non-positive qty
+        rc = 0;
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w2", "--symbol", "W2-USD",
+                                              "--side", "buy", "--qty", "0", "--price", "10"}, &rc);
+        QCOMPARE(rc, 2);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), rows_before);  // no row written
+    }
+
+    // PARAMOUNT invariant: even the WRITE command's only mutation is the
+    // single ai_fill row -- it must never touch a cli.* gate setting.
+    void ai_record_fill_writes_no_gate() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "record-fill", "--handler", "w3", "--symbol", "W3-USD",
+                                              "--side", "buy", "--qty", "1", "--price", "10", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);  // writes ai_fill, never a cli.* gate
+    }
+
+    // `ai scorecard --handler H --json` emits the handler's realized track
+    // record (aggregate over realized closes), sourced from
+    // ai_ledger::scorecard_of (Task 1). One open fill (excluded) + one win +
+    // one loss -> 2 trades, 1 win, 1 loss, hit_rate 0.5, realized_total 60.
+    void ai_scorecard_reports_track_record() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('sc1','SCLI','SC-USD','buy',10,100,0,0,1000,'d'),"      // open, excluded
+            "       ('sc2','SCLI','SC-USD','sell',2,110,0,100,1001,'d'),"    // win
+            "       ('sc3','SCLI','SC-USD','sell',2,90,0,-40,1002,'d')").is_ok());  // loss
+
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "scorecard", "--handler", "SCLI", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("trades").toInt(), 2);
+        QCOMPARE(o.value("wins").toInt(), 1);
+        QCOMPARE(o.value("losses").toInt(), 1);
+        QCOMPARE(o.value("hit_rate").toDouble(), 0.5);
+        QCOMPARE(o.value("realized_total").toDouble(), 60.0);  // 100 - 40
+    }
+
+    // An unknown/empty handler has no fills -> zeroed scorecard, still exit 0.
+    void ai_scorecard_empty_is_zero() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "scorecard", "--handler", "nobody-xyz", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("trades").toInt(), 0);
+        QCOMPARE(o.value("hit_rate").toDouble(), 0.0);
+    }
+
+    // READ-ONLY invariant: `ai scorecard` must not mutate a single cli.*
+    // settings row, nor insert/alter any ai_fill row -- scorecard_of issues
+    // only a SELECT (via AiFillRepository::list).
+    void ai_scorecard_is_read_only() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('scr1','h','SCRO-USD','sell',1,10,0,5,1000,'d')").is_ok());
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "scorecard", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+    }
+
+    // `ai act` typed-action preview (Task 3 of piece Vc): READ-ONLY --
+    // translates a typed verb into a paper TradeIntent preview given the
+    // symbol's current ledger position, without writing anything.
+    void ai_act_enter_previews_buy() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "ACT-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(intent.value("quantity").toDouble(), 5.0);          // 0.5 * 10
+        QCOMPARE(intent.value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    void ai_act_exit_previews_sell_of_position() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('act1','claude','EXT-USD','buy',8,100,0,0,1000,'d')").is_ok());  // net_qty = 8
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "EXT-USD", "exit", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("sell"));
+        QCOMPARE(intent.value("quantity").toDouble(), 8.0);
+    }
+
+    void ai_act_trim_flat_is_null_intent() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "FLAT-USD", "trim", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(o.value("intent").isNull());   // nothing to trim
+    }
+
+    void ai_act_unknown_action_exits_2() {
+        sandbox_test_home();
+        int rc = 0;
+        json_object_from_dispatch(QStringList{"ai", "act", "X-USD", "bogus", "--json"}, &rc);
+        QCOMPARE(rc, 2);
+    }
+
+    void ai_act_is_read_only() {
+        sandbox_test_home();
+        const QStringList before = cli_settings_fingerprint();
+        const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        int rc = -1;
+        json_object_from_dispatch(QStringList{"ai", "act", "RO-USD", "enter", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(cli_settings_fingerprint(), before);
+        QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+    }
+
+    // --- Task 3: `ai strategy list` + `ai handler` CRUD (PAPER-ONLY/DISARMED;
+    // AiHandlerRepository is a real DB-backed repo, so these need the shared
+    // process-lifetime DB brought up via sandbox_test_home() like the sandbox
+    // slots above). ---
+
+    void ai_strategy_list_advertises_builtins() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "strategy", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonArray strategies = out.value("strategies").toArray();
+        QStringList names;
+        for (const QJsonValue& v : strategies)
+            names << v.toObject().value("name").toString();
+        QVERIFY(names.contains("meanrev"));
+        QVERIFY(names.contains("claude"));
+        for (const QJsonValue& v : strategies) {
+            const QJsonObject o = v.toObject();
+            if (o.value("name").toString() == "claude")
+                QVERIFY(o.value("needs_provider").toBool());
+            if (o.value("name").toString() == "meanrev")
+                QVERIFY(!o.value("needs_provider").toBool());
+            QVERIFY(!o.value("description").toString().isEmpty());
+        }
+    }
+
+    void ai_handler_create_list_show_roundtrip() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject created = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "create", "crypto-scout", "--strategy", "claude",
+                       "--symbols", "BTC-USD"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(created.value("name").toString(), QString("crypto-scout"));
+        QCOMPARE(created.value("strategy").toString(), QString("claude"));
+        QCOMPARE(created.value("symbols").toString(), QString("BTC-USD"));
+        // paper-only/disarmed invariant: a freshly created handler is never enabled.
+        QVERIFY(!created.value("enabled").toBool());
+
+        const QJsonObject shown = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(shown.value("strategy").toString(), QString("claude"));
+        QCOMPARE(shown.value("symbols").toString(), QString("BTC-USD"));
+        QVERIFY(!shown.value("enabled").toBool());
+
+        const QJsonObject listed = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        bool found = false;
+        for (const QJsonValue& v : listed.value("handlers").toArray())
+            if (v.toObject().value("name").toString() == "crypto-scout")
+                found = true;
+        QVERIFY(found);
+
+        // enable/disable flip ONLY the saved-config flag.
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "enable", "crypto-scout"}), 0);
+        QJsonObject after_enable = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(after_enable.value("enabled").toBool());
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "disable", "crypto-scout"}), 0);
+        QJsonObject after_disable = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!after_disable.value("enabled").toBool());
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "delete", "crypto-scout"}), 0);
+        int show_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "crypto-scout"}, &show_rc);
+        QVERIFY(show_rc != 0);
+    }
+
+    void ai_handler_create_rejects_unknown_strategy() {
+        sandbox_test_home();
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch(QStringList{"ai", "handler", "create", "x", "--strategy", "bogus"});
+            return rc;
+        });
+        QVERIFY2(rc != 0, "create with an unregistered strategy must fail");
+
+        int show_rc = -1;
+        json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "x"}, &show_rc);
+        QVERIFY2(show_rc != 0, "no row should have been written for the rejected create");
+    }
+
+    // --- Task 4: `ai handler status` (read-only arm-state) + `ai handler run`
+    // (PAPER-ONLY). SAFETY-CRITICAL: `status` must never mutate a gate; `run`
+    // must refuse any non-paper mode. ---
+
+    void ai_handler_status_reports_disarmed_gates() {
+        sandbox_test_home();
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "status"}, &rc);
+        QCOMPARE(rc, 0);
+        // No live path exists in the plugin core: armed is ALWAYS false.
+        QCOMPARE(out.value("armed").toBool(true), false);
+        QVERIFY2(out.contains("gates"), "status must emit a gates object");
+        const QJsonObject gates = out.value("gates").toObject();
+        QVERIFY2(gates.contains("kill_switch"), "status gates must expose kill_switch");
+        QVERIFY2(!out.value("disarmed_reason").toArray().isEmpty(),
+                 "status must list at least one disarmed reason");
+    }
+
+    void ai_handler_status_is_read_only_on_gates() {
+        sandbox_test_home();
+        auto& settings = openmarketterminal::SettingsRepository::instance();
+        // Arm a known kill-switch state so status has a non-default gate to read.
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("true"),
+                             QStringLiteral("test")).is_ok());
+
+        // Snapshot ALL SIX gates status reads (not just kill_switch) so a stray
+        // write to any of them is caught (default-deny false/empty when unset).
+        const QStringList gate_keys{
+            QStringLiteral("cli.kill_switch"),     QStringLiteral("cli.allow_paper_trading"),
+            QStringLiteral("cli.allow_trading"),   QStringLiteral("cli.live_trading_armed"),
+            QStringLiteral("cli.fast_live_armed"), QStringLiteral("cli.allowed_venues")};
+        QMap<QString, QString> before_vals;
+        for (const QString& k : gate_keys)
+            before_vals[k] = settings.get(k, QString()).value();
+        QCOMPARE(before_vals.value(QStringLiteral("cli.kill_switch")), QStringLiteral("true"));
+
+        // Full row fingerprint (value AND updated_at) of every cli.* key — catches
+        // an idempotent same-value INSERT-OR-REPLACE that bumps the timestamp, plus
+        // any stray write to a cli.* key not in the six above.
+        const QStringList before_fp = cli_settings_fingerprint();
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "ai", "handler", "status"}, &rc);
+        QCOMPARE(rc, 0);
+        // status must READ the engaged value...
+        QCOMPARE(out.value("gates").toObject().value("kill_switch").toBool(false), true);
+
+        // ...and MUST NOT have written ANY of the six gates (values unchanged)...
+        for (const QString& k : gate_keys)
+            QCOMPARE(settings.get(k, QString()).value(), before_vals.value(k));
+        // ...nor mutated any cli.* row at all (value or timestamp) — gate immutability.
+        QCOMPARE(cli_settings_fingerprint(), before_fp);
+
+        // Reset shared state so later slots don't inherit an engaged kill switch.
+        QVERIFY(settings.set(QStringLiteral("cli.kill_switch"), QStringLiteral("false"),
+                             QStringLiteral("test")).is_ok());
+    }
+
+    void ai_handler_run_is_paper_only() {
+        sandbox_test_home();
+        // Belt-and-braces: make sure no earlier slot left the kill switch engaged,
+        // otherwise the paper run would halt on tick 1 and pass for the wrong reason.
+        openmarketterminal::SettingsRepository::instance().set(
+            QStringLiteral("cli.kill_switch"), QStringLiteral("false"), QStringLiteral("test"));
+
+        QCOMPARE(dispatch(QStringList{"ai", "handler", "create", "p1", "--strategy", "meanrev",
+                                      "--symbols", "BTC-USD", "--venues", " Coinbase, kraken ",
+                                      "--max-notional", "12.5", "--max-position", "0.75"}), 0);
+
+        // Paper-only proof: a live run is REFUSED with exit 2 (no live path).
+        int live_rc = -1;
+        capture_stdout([&]() {
+            live_rc = dispatch(QStringList{"ai", "handler", "run", "p1", "--mode", "live"});
+            return live_rc;
+        });
+        QCOMPARE(live_rc, 2);
+
+        // A bounded paper run completes cleanly and places NO order.
+        int paper_rc = -1;
+        const QString out = capture_stdout([&]() {
+            paper_rc = dispatch(QStringList{"--headless", "ai", "handler", "run", "p1",
+                                            "--mode", "paper", "--max-iters", "1", "--interval-sec", "0"});
+            return paper_rc;
+        });
+        QCOMPARE(paper_rc, 0);
+        QVERIFY2(out.contains("filled=0"),
+                 qUtf8Printable("paper run must place no order; got: " + out));
+        QVERIFY2(out.contains("caps_enforced=true max_notional=12.50 max_position=0.75 "
+                              "allowed_venues=coinbase,kraken"),
+                 qUtf8Printable("saved handler limits must reach RunConfig; got: " + out));
+
+        dispatch(QStringList{"ai", "handler", "delete", "p1"});
     }
 };
 QTEST_MAIN(TstCommandDispatch)

@@ -105,6 +105,51 @@ SUMMARY=$(printf '%s\n' "$R1" | grep -E "^summary:|ticks=") \
 TICKS=$(printf '%s\n' "$SUMMARY" | sed -n 's/.*ticks=\([0-9][0-9]*\).*/\1/p' | head -1)
 [ "$TICKS" = "3" ] || fail "expected 3 ticks, got '$TICKS' (summary: $SUMMARY)"
 echo "PASS: bounded paper run -> rc=0, ran exactly 3 ticks, clean summary"
+# The default-ON deterministic floor must be observable + CLI-toggleable.
+printf '%s' "$R1" | grep -q "floor=on" \
+    || fail "default run did not report 'floor=on' (out: $R1)"
+printf '%s' "$SUMMARY" | grep -q "floor_skipped=" \
+    || fail "summary line missing 'floor_skipped=' (summary: $SUMMARY)"
+
+# ============================================================================
+# Step 1b — --no-floor opts out of the default-ON floor (CLI parity): exit 0,
+# and the run line reports floor=off.
+# ============================================================================
+R1B=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --interval-sec 0 --max-iters 3 --symbols AAPL --no-floor 2>&1)
+RC1B=$?
+[ $RC1B -eq 0 ] || fail "--no-floor run rc=$RC1B (expected 0)"
+printf '%s' "$R1B" | grep -q "floor=off" \
+    || fail "--no-floor did not report 'floor=off' (out: $R1B)"
+echo "PASS: --no-floor accepted, floor=off"
+
+# ============================================================================
+# Step 1c — --max-aggregate-qty N threads the cross-handler aggregate cap into
+# RunConfig (CLI parity, ⑦ Task 3): exit 0, and the run line reports agg_cap=5.
+# ============================================================================
+R1C=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --interval-sec 0 --max-iters 3 --symbols AAPL --max-aggregate-qty 5 2>&1)
+RC1C=$?
+[ $RC1C -eq 0 ] || fail "--max-aggregate-qty run rc=$RC1C (expected 0)"
+printf '%s' "$R1C" | grep -q "agg_cap=5" \
+    || fail "--max-aggregate-qty did not report 'agg_cap=5' (out: $R1C)"
+echo "PASS: --max-aggregate-qty accepted, agg_cap=5"
+
+# ============================================================================
+# Step 1d — --max-position-qty N and --max-notional-per-order N thread the
+# per-handler position cap and per-order notional cap into RunConfig (CLI
+# parity, F5): exit 0, and the run line reports pos_cap=7 and notional_cap=500.
+# ============================================================================
+R1D=$(wd 60 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode paper --interval-sec 0 --max-iters 3 --symbols AAPL \
+        --max-position-qty 7 --max-notional-per-order 500 2>&1)
+RC1D=$?
+[ $RC1D -eq 0 ] || fail "--max-position-qty/--max-notional-per-order run rc=$RC1D (expected 0)"
+printf '%s' "$R1D" | grep -q "pos_cap=7" \
+    || fail "--max-position-qty did not report 'pos_cap=7' (out: $R1D)"
+printf '%s' "$R1D" | grep -q "notional_cap=500" \
+    || fail "--max-notional-per-order did not report 'notional_cap=500' (out: $R1D)"
+echo "PASS: --max-position-qty/--max-notional-per-order accepted, pos_cap=7 notional_cap=500"
 
 # ============================================================================
 # Step 2 — --mode live is REFUSED: nonzero exit + exact-substring message.

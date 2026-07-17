@@ -1,6 +1,7 @@
 #pragma once
 #include "core/result/Result.h"
 
+#include <QSet>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -41,6 +42,7 @@ class MigrationRunner {
     Result<void> apply_migration(const Migration& m);
     Result<void> record_version(int version, const QString& name);
     int read_current_version();
+    QSet<int> read_applied_versions();
 
     QSqlDatabase& db_;
 };
@@ -107,6 +109,8 @@ void register_migration_v059();
 void register_migration_v060();
 void register_migration_v061();
 void register_migration_v062();
+void register_migration_v063();
+void register_migration_v064();
 
 /// Register every migration above, in version order, in one place. Both the GUI
 /// (main.cpp) and the headless host (HeadlessRuntime) call this before

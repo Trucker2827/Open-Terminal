@@ -33,11 +33,11 @@ Result<void> MigrationRunner::run() {
     if (r.is_err())
         return r;
 
-    int current = read_current_version();
+    const QSet<int> applied = read_applied_versions();
     const auto& migrations = all_migrations();
 
     for (const auto& m : migrations) {
-        if (m.version <= current)
+        if (applied.contains(m.version))
             continue;
 
         LOG_INFO("DB", QString("Applying migration v%1: %2").arg(m.version).arg(m.name));
@@ -121,6 +121,18 @@ int MigrationRunner::read_current_version() {
     if (!q.next())
         return 0;
     return q.value(0).toInt(); // returns 0 if NULL
+}
+
+QSet<int> MigrationRunner::read_applied_versions() {
+    QSet<int> versions;
+    QSqlQuery q(db_);
+    if (!q.exec("SELECT version FROM schema_version")) {
+        return versions;
+    }
+    while (q.next()) {
+        versions.insert(q.value(0).toInt());
+    }
+    return versions;
 }
 
 } // namespace openmarketterminal
