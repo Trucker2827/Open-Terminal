@@ -443,6 +443,7 @@ static int command_help(const QString& topic) {
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
             "  kalshi auto calibration\n"
+            "  kalshi auto cohort-significance\n"
             "  kalshi auto attribution [--limit N]\n"
             "  kalshi auto events\n"
             "  kalshi auto backfill [--series KXBTC] [--limit N] [--candles N] [--days N]\n"
@@ -23371,6 +23372,110 @@ static int kalshi_auto_events_command(const GlobalOpts& opts, QStringList args) 
     return 0;
 }
 
+static int kalshi_auto_cohort_significance_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto cohort-significance\n");
+        return 2;
+    }
+    auto rows = Database::instance().execute(
+        "SELECT outcome, side, features_json FROM edge_decision_journal "
+        "WHERE source='kalshi auto-plan' AND outcome IN (0,1) "
+        "ORDER BY created_at ASC", {});
+    if (rows.is_err()) {
+        std::fprintf(stderr, "%s\n", rows.error().c_str());
+        return 5;
+    }
+    QVector<QPair<QString, services::edge_radar::KalshiCalibrationSample>> tagged;
+    int usable = 0;
+    while (rows.value().next()) {
+        const QJsonObject features = QJsonDocument::fromJson(
+            rows.value().value(2).toString().toUtf8()).object();
+        const QJsonObject signal = features.value(QStringLiteral("signal")).toObject();
+        if (signal.value(QStringLiteral("model_version")).toString() !=
+            QString::fromLatin1(services::edge_radar::kKalshiSettlementModelVersion))
+            continue;
+        const QString event_id = signal.value(
+            QStringLiteral("settlement_event_id")).toString().trimmed();
+        const double raw = signal.value(QStringLiteral("model_probability_raw")).toDouble(-1.0);
+        const double market = signal.value(QStringLiteral("market_implied_probability")).toDouble(-1.0);
+        if (event_id.isEmpty() || raw < 0.0 || market < 0.0)
+            continue;
+        const bool selected_yes = rows.value().value(1).toString().compare(
+            QStringLiteral("yes"), Qt::CaseInsensitive) == 0;
+        const double selected_outcome = rows.value().value(0).toInt();
+        const double outcome = selected_yes ? selected_outcome : 1.0 - selected_outcome;
+        const services::edge_radar::KalshiCalibrationSample sample{
+            raw, market, outcome, 0, event_id};
+        ++usable;
+        const auto tag = [&](const QString& cohort) { tagged.append({cohort, sample}); };
+        tag(QStringLiteral("overall/all"));
+        tag(QStringLiteral("causal/") +
+            (signal.value(QStringLiteral("causal_eligible")).toBool(false)
+                 ? QStringLiteral("pass") : QStringLiteral("blocked")));
+        tag(QStringLiteral("jump/") +
+            (signal.value(QStringLiteral("jump_intensity_per_hour")).toDouble(0.0) >= 0.05
+                 ? QStringLiteral("active") : QStringLiteral("quiet")));
+        tag(QStringLiteral("event/") +
+            (signal.value(QStringLiteral("event_risk_active")).toBool(false)
+                 ? QStringLiteral("active") : QStringLiteral("clear")));
+        tag(QStringLiteral("horizon/") +
+            (signal.value(QStringLiteral("cross_horizon_consistent")).toBool(false)
+                 ? QStringLiteral("consistent") : QStringLiteral("conflict")));
+    }
+
+    const auto cohorts =
+        services::edge_radar::KalshiAutoEngine::fit_cohort_calibration(tagged, 30);
+    QJsonArray json_rows;
+    for (const auto& entry : cohorts) {
+        const auto& model = entry.model;
+        const double advantage = model.market_brier - model.model_brier;
+        json_rows.append(QJsonObject{
+            {"cohort", entry.cohort},
+            {"independent_events", model.sample_count},
+            {"oof_model_brier", model.model_brier},
+            {"oof_market_brier", model.market_brier},
+            {"advantage", advantage},
+            {"clustered_standard_error", model.clustered_standard_error},
+            {"conservative_advantage", model.conservative_advantage},
+            {"ready", model.ready},
+            {"significant", model.ready && model.conservative_advantage > 0.0},
+            {"reason", model.reason}});
+    }
+    const QJsonObject out{
+        {"model_version", QString::fromLatin1(
+             services::edge_radar::kKalshiSettlementModelVersion)},
+        {"resolved_snapshots", usable},
+        {"minimum_independent_events", 30},
+        {"cohorts", json_rows},
+        {"rule", "a cohort shows edge only when the out-of-fold advantage exceeds "
+                 "two event-clustered standard errors"}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Kalshi cohort significance v3: %d resolved observations\n", usable);
+    std::printf("%-22s %6s %8s %8s %9s %8s %9s %s\n",
+                "COHORT", "EVENTS", "B_OOF", "B_MKT", "ADV", "SE", "ADV-2SE", "VERDICT");
+    for (const auto& value : json_rows) {
+        const QJsonObject row = value.toObject();
+        const bool ready = row.value(QStringLiteral("ready")).toBool();
+        const char* verdict = !ready ? "insufficient"
+            : row.value(QStringLiteral("significant")).toBool() ? "EDGE" : "no edge";
+        std::printf("%-22s %6d %8.4f %8.4f %9.4f %8.4f %9.4f %s\n",
+                    qUtf8Printable(elide_text(row.value("cohort").toString(), 22)),
+                    row.value("independent_events").toInt(),
+                    row.value("oof_model_brier").toDouble(),
+                    row.value("oof_market_brier").toDouble(),
+                    row.value("advantage").toDouble(),
+                    row.value("clustered_standard_error").toDouble(),
+                    row.value("conservative_advantage").toDouble(),
+                    verdict);
+    }
+    if (usable == 0)
+        std::printf("No v3 feature observations have settled yet.\n");
+    return 0;
+}
+
 static int kalshi_auto_attribution_command(const GlobalOpts& opts, QStringList args) {
     QString limit_raw;
     if (!take_string_option(args, QStringLiteral("--limit"), limit_raw) || !args.isEmpty()) {
@@ -23552,6 +23657,7 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
         return kalshi_auto_run_command(opts, args);
     if (sub == QStringLiteral("audit")) return kalshi_auto_audit_command(opts, args);
     if (sub == QStringLiteral("calibration")) return kalshi_auto_calibration_command(opts, args);
+    if (sub == QStringLiteral("cohort-significance")) return kalshi_auto_cohort_significance_command(opts, args);
     if (sub == QStringLiteral("attribution")) return kalshi_auto_attribution_command(opts, args);
     if (sub == QStringLiteral("events")) return kalshi_auto_events_command(opts, args);
     if (sub == QStringLiteral("backfill")) return kalshi_auto_backfill_command(opts, args);

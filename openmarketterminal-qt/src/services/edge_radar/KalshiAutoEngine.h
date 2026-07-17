@@ -74,6 +74,11 @@ struct KalshiCalibrationModel {
     QString reason;
 };
 
+struct KalshiCohortModel {
+    QString cohort;
+    KalshiCalibrationModel model;
+};
+
 struct KalshiSettlementAverageState {
     bool available = false;
     double latest_index = 0.0;
@@ -267,6 +272,13 @@ class KalshiAutoEngine {
     static KalshiCalibrationModel fit_isotonic_calibration(
         const QVector<KalshiCalibrationSample>& samples,
         int minimum_samples = 30);
+
+    // Groups tagged samples by cohort key and fits the same out-of-fold
+    // calibration to each cohort independently. Reuses fit_isotonic_calibration
+    // as the single source of truth; result is sorted by cohort key.
+    static QVector<KalshiCohortModel> fit_cohort_calibration(
+        const QVector<QPair<QString, KalshiCalibrationSample>>& tagged_samples,
+        int minimum_events = 30);
 
     static double calibrated_probability(
         double probability,

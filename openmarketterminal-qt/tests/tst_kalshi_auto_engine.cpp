@@ -243,6 +243,43 @@ class TstKalshiAutoEngine : public QObject {
         QVERIFY(skill_less.conservative_advantage <= 0.0);
     }
 
+    void cohort_calibration_groups_and_scores_each_cohort_independently() {
+        QVector<QPair<QString, KalshiCalibrationSample>> tagged;
+        for (int i = 0; i < 80; ++i) {
+            const double outcome = i % 2 ? 1.0 : 0.0;
+            // Skilled cohort: prediction tracks the outcome; market is uninformative.
+            tagged.append({QStringLiteral("test/skilled"),
+                           KalshiCalibrationSample{outcome > 0.5 ? 0.85 : 0.15, 0.5, outcome,
+                                                   0, QStringLiteral("skilled-%1").arg(i)}});
+            // Null cohort: prediction and market both flat; no edge.
+            tagged.append({QStringLiteral("test/null"),
+                           KalshiCalibrationSample{0.5, 0.5, outcome, 0,
+                                                   QStringLiteral("null-%1").arg(i)}});
+        }
+        // Thin cohort: too few independent events to earn a verdict.
+        for (int i = 0; i < 5; ++i)
+            tagged.append({QStringLiteral("test/thin"),
+                           KalshiCalibrationSample{0.6, 0.5, i % 2 ? 1.0 : 0.0, 0,
+                                                   QStringLiteral("thin-%1").arg(i)}});
+
+        const auto cohorts = KalshiAutoEngine::fit_cohort_calibration(tagged, 30);
+        QCOMPARE(cohorts.size(), 3);  // grouping keeps the three cohorts distinct
+
+        QMap<QString, KalshiCalibrationModel> by_name;
+        for (const auto& entry : cohorts)
+            by_name.insert(entry.cohort, entry.model);
+        // Sorted by cohort key.
+        QCOMPARE(cohorts.first().cohort, QStringLiteral("test/null"));
+
+        QVERIFY(by_name.value(QStringLiteral("test/skilled")).ready);
+        QVERIFY(by_name.value(QStringLiteral("test/skilled")).conservative_advantage > 0.0);
+
+        QVERIFY(by_name.value(QStringLiteral("test/null")).ready);
+        QVERIFY(by_name.value(QStringLiteral("test/null")).conservative_advantage <= 0.0);
+
+        QVERIFY(!by_name.value(QStringLiteral("test/thin")).ready);
+    }
+
     void unproven_calibration_bucket_shrinks_entirely_to_market() {
         const qint64 now = 1'800'000'000'000LL;
         auto ctx = context(now);
