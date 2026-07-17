@@ -2,10 +2,32 @@
 
 The AI strategy loop's `--mode live` path (PR #39) is **code-hardened and mock-verified, but has NOT been validated against a real brokerage account.** It ships **disarmed**: reaching a live order requires a human GUI arm (`cli_live_armed`, which the AI provably cannot set) AND a per-run `--mode live`, with `submit_order` re-checking every gate (armed → allowed-account → daily-loss → reserve → place_order) as the sole authority. No automated test ever arms a real order.
 
+## Current safety boundary
+
+The originally reported submitted-but-unexecuted cap failure is fixed in the
+follow-up to #39: the strategy runner rebuilds live exposure from authenticated
+broker positions and remaining working orders every tick. It fails closed when
+either broker query fails. A new buy counts current position plus pending buys;
+a new sell counts current position minus pending sells. Opposite-side working
+orders are never trusted as a hedge because they can cancel. Same-tick accepted
+orders are reserved immediately, and `reconcile_and_record` writes the audit
+ledger only for broker-confirmed filled quantity.
+
 ## Blockers to resolve BEFORE arming against a real broker
-1. **Submitted-but-unexecuted CLOSE under-counts the live position cap (Important).** `reconcile_and_record` writes the full submitted qty to the live ledger at submission time, before execution. An accepted-but-unexecuted SELL records `record_close(full qty)`, shrinking the position the per-handler position cap reads next tick — so a later buy can pass the cap while the close is still open; if the close then cancels/expires and the buy fills, real exposure can exceed the cap. Fix: record the live ledger only for **actually-filled** qty (broker-confirmed), and/or re-sync positions from broker truth each tick. (Buys are conservative/safe; only the close direction under-counts.)
-2. **Broker status-string contract.** The live-fill detection compares the broker's status to `kLiveFilledStatus` (`"filled"`). A real broker adapter MUST normalize its order status to exactly that token, or a real fill is mis-classified as `live_submitted` (fails safe — under-counts — but the loop won't book the fill).
-3. **Closed-loop fill→ledger→cap behavior is inspection-verified, not exercised.** The mock tests seed the live ledger directly; no test drives submit_order → reconcile_and_record → next-tick cap as a closed loop. Validate against a real (or realistic broker-sim) account.
-4. **Live short positions.** `LivePosition.qty` is an unsigned magnitude; the live ledger is long-only by construction. If live shorting is ever added, the position cap's signed-net assumption must be revisited.
+1. **Persistent fill reconciliation.** The immediate order query is deliberately
+   conservative: an accepted/open order does not alter the audit ledger until a
+   confirmed fill is observed. A durable user-order/fill stream or periodic
+   reconciliation job is still needed to record fills that arrive after that
+   one-shot lookup, and to make P&L reporting complete.
+2. **Real broker contract validation.** Mock tests cover accepted-unfilled,
+   partial fills, canceled opposing orders, same-tick duplicate intent, and
+   broker-read failure. They do not prove a real broker's raw position/order
+   schemas, status values, partial-fill behavior, or eventual consistency.
+   Validate this closed loop against a realistic broker simulator, then a
+   deliberately tiny real-account test with the kill switch available.
+3. **Live short positions.** Exposure reads now preserve signed broker
+   positions, but the audit ledger's `LivePosition` record remains oriented to
+   long cost basis. Before live shorting is enabled, extend the P&L/accounting
+   representation and validate cover/borrow behavior for the broker.
 
 Until these are resolved, keep the path disarmed.

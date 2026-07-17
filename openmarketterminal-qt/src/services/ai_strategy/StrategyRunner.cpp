@@ -6,13 +6,15 @@
 #include "services/ai_strategy/DeterministicFloor.h"
 #include "services/ai_strategy/PretradeGate.h"
 #include "services/ai_ledger/AiLedger.h"
-#include "storage/repositories/LivePnlRepository.h"
 
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QHash>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QThread>
 
+#include <algorithm>
 #include <cstdio>
 
 namespace openmarketterminal::ai_strategy {
@@ -32,6 +34,100 @@ bool reason_is_halting(const QString& reason) {
 // realized P&L truthful (a fee=0 record inflates the scorecard). Keep in sync
 // with UnifiedTrading::init_session's paper-portfolio fee_rate.
 constexpr double kPaperFeeRate = 0.0003;  // 3 bps
+
+bool is_terminal_broker_order(QString status) {
+    status = status.trimmed().toLower();
+    status.replace(QLatin1Char('-'), QLatin1Char('_'));
+    status.replace(QLatin1Char(' '), QLatin1Char('_'));
+    return status == QLatin1String("filled") || status == QLatin1String("complete") ||
+           status == QLatin1String("completed") || status == QLatin1String("executed") ||
+           status == QLatin1String("traded") || status == QLatin1String("canceled") ||
+           status == QLatin1String("cancelled") || status == QLatin1String("rejected") ||
+           status == QLatin1String("expired");
+}
+
+double signed_position_quantity(const QJsonObject& position) {
+    const double quantity = position.value(QStringLiteral("quantity")).toDouble();
+    if (quantity < 0.0)
+        return quantity;
+    const QString side = position.value(QStringLiteral("side")).toString().trimmed().toLower();
+    return (side == QLatin1String("short") || side == QLatin1String("sell"))
+        ? -quantity : quantity;
+}
+
+struct LiveExposureSnapshot {
+    bool ready = false;
+    QString error;
+    QHash<QString, double> positions;
+    QHash<QString, double> pending_buys;
+    QHash<QString, double> pending_sells;
+
+    double worst_case_for(const QString& symbol, const QString& side) const {
+        const double actual = positions.value(symbol.toUpper(), 0.0);
+        const QString normalized = side.trimmed().toLower();
+        if (normalized == QLatin1String("sell") || normalized == QLatin1String("short"))
+            return actual - pending_sells.value(symbol.toUpper(), 0.0);
+        return actual + pending_buys.value(symbol.toUpper(), 0.0);
+    }
+
+    void reserve(const QString& symbol, const QString& side, double quantity) {
+        const QString key = symbol.toUpper();
+        const QString normalized = side.trimmed().toLower();
+        if (normalized == QLatin1String("sell") || normalized == QLatin1String("short"))
+            pending_sells[key] += quantity;
+        else
+            pending_buys[key] += quantity;
+    }
+};
+
+LiveExposureSnapshot read_live_exposure(ToolCaller& tc, const QString& account) {
+    LiveExposureSnapshot out;
+    if (account.trimmed().isEmpty()) {
+        out.error = QStringLiteral("live account is not configured");
+        return out;
+    }
+
+    const QJsonObject args{{QStringLiteral("account_id"), account}};
+    const auto positions_result = tc.call(QStringLiteral("live_get_positions"), args);
+    if (!positions_result.success || !positions_result.data.isArray()) {
+        out.error = positions_result.error.isEmpty()
+            ? QStringLiteral("broker positions unavailable") : positions_result.error;
+        return out;
+    }
+    for (const QJsonValue& value : positions_result.data.toArray()) {
+        const QJsonObject position = value.toObject();
+        const QString symbol = position.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
+        if (!symbol.isEmpty())
+            out.positions[symbol] += signed_position_quantity(position);
+    }
+
+    const auto orders_result = tc.call(QStringLiteral("live_get_orders"), args);
+    if (!orders_result.success || !orders_result.data.isArray()) {
+        out.error = orders_result.error.isEmpty()
+            ? QStringLiteral("broker orders unavailable") : orders_result.error;
+        return out;
+    }
+    for (const QJsonValue& value : orders_result.data.toArray()) {
+        const QJsonObject order = value.toObject();
+        if (is_terminal_broker_order(order.value(QStringLiteral("status")).toString()))
+            continue;
+        const QString symbol = order.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
+        if (symbol.isEmpty())
+            continue;
+        const double remaining = std::max(
+            0.0, order.value(QStringLiteral("quantity")).toDouble() -
+                     order.value(QStringLiteral("filled_qty")).toDouble());
+        if (remaining <= 0.0)
+            continue;
+        const QString side = order.value(QStringLiteral("side")).toString().trimmed().toLower();
+        if (side == QLatin1String("sell") || side == QLatin1String("short"))
+            out.pending_sells[symbol] += remaining;
+        else
+            out.pending_buys[symbol] += remaining;
+    }
+    out.ready = true;
+    return out;
+}
 
 } // namespace
 
@@ -89,6 +185,17 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
         if (p.success)
             snap.portfolio = p.data.toObject();
 
+        // A live cap is only meaningful when it is built from the broker's
+        // current positions AND still-working orders. The local P&L ledger is
+        // an audit projection and may lag delayed fills, so it is never an
+        // authority for new live exposure. If either broker read fails, all
+        // live intents fail closed for this tick.
+        LiveExposureSnapshot live_exposure;
+        const bool needs_live_exposure =
+            cfg.submit_mode == QLatin1String("live") && cfg.max_position_qty > 0.0;
+        if (needs_live_exposure)
+            live_exposure = read_live_exposure(tc, mcp::cli_allowed_account());
+
         // 3) Ask the strategy for intents and run each through the pipeline.
         const QVector<TradeIntent> intents = s.propose(snap);
         summary.proposed += intents.size();
@@ -99,6 +206,18 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             // existing, unchanged prepare_order -> submit_order(mode:paper)
             // path below.
             const QString sym = intent.value(QStringLiteral("symbol")).toString();
+            const QString intent_side = intent.value(QStringLiteral("side")).toString();
+            if (needs_live_exposure && !live_exposure.ready) {
+                ++summary.rejected;
+                summary.gate_rejections.push_back(
+                    {sym, intent_side,
+                     QStringLiteral("authoritative live exposure unavailable: %1")
+                         .arg(live_exposure.error),
+                     QStringLiteral("position-source")});
+                log(QStringLiteral("gate rejected %1: authoritative live exposure unavailable (%2)")
+                        .arg(sym, live_exposure.error));
+                continue;
+            }
             GateInputs gin;
             gin.resolved_price = intent.contains(QStringLiteral("limit_price"))
                 ? intent.value(QStringLiteral("limit_price")).toDouble()
@@ -119,15 +238,11 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             gin.freshness = pkt.freshness;
             gin.has_edge_signal = pkt.has_edge_signal;
             if (cfg.submit_mode == QLatin1String("live")) {
-                // Live: the position cap must contain the REAL live position, not the
-                // paper ai_fill ledger (empty in a live run). Source it from the live
-                // realized-P&L ledger (read-only). The cross-handler AGGREGATE cap has no
-                // live analog and is rejected for --mode live at the CLI, so leave it 0.
-                const QString acct = mcp::cli_allowed_account();
-                const QString venue = QStringLiteral("equity");  // the loop drives equity
-                auto lp = LivePnlRepository::instance().get_open(acct, venue, sym);
-                gin.existing_net_qty = (lp.is_ok() && lp.value().has_value())
-                    ? lp.value().value().qty : 0.0;
+                // Directional worst case: for a new BUY, count actual position
+                // plus every working BUY remainder but do not trust working
+                // SELLs as hedges (they can cancel). Mirror that for SELL.
+                gin.existing_net_qty = needs_live_exposure
+                    ? live_exposure.worst_case_for(sym, intent_side) : 0.0;
                 gin.aggregate_net_qty = 0.0;
             } else {
                 gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
@@ -144,7 +259,6 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             // subtractive: it only prevents paper trades, never enables one.
             const FloorInputs fin{pkt.has_edge_signal, pkt.gate, pkt.clears_cost, pkt.freshness};
             const GateVerdict fv = floor_verdict(fin, FloorPolicy{cfg.require_floor});
-            const QString intent_side = intent.value(QStringLiteral("side")).toString();
             // Direction agreement (F2): even a fully-endorsed edge (gate=pass/cost/
             // fresh) must recommend the SAME side the intent takes. A perp/chronos2
             // row can carry gate=="pass" with side=="short"/"sell" (a profitable
@@ -206,6 +320,14 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
 
             const QString sub_status = subo.value(QStringLiteral("status")).toString();
             const bool is_live = (cfg.submit_mode == QLatin1String("live"));
+            // Reserve every accepted live order immediately for the rest of
+            // this tick. The next tick rebuilds from broker positions/orders.
+            // This prevents multiple intents in one strategy response from
+            // individually passing the same cap before the broker read catches up.
+            if (is_live && sub_status == QLatin1String("filled") && needs_live_exposure) {
+                live_exposure.reserve(sym, intent_side,
+                                      intent.value(QStringLiteral("quantity")).toDouble());
+            }
             // LIVE: submit_order's status is "filled" on broker SUBMISSION success, not an
             // execution. Trust the reconciled broker_status; the live realized-P&L ledger is
             // recorded by submit_order (reconcile_and_record), so NEVER book a paper ai_fill.

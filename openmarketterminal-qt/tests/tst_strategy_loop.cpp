@@ -106,6 +106,24 @@ static ToolResult live_open() {
 static ToolResult live_partial() {
     return ToolResult::ok_data(QJsonObject{{"status", "filled"}, {"broker_status", "partially_filled"}});
 }
+static ToolResult live_positions(std::initializer_list<QJsonObject> rows = {}) {
+    QJsonArray result;
+    for (const auto& row : rows)
+        result.append(row);
+    return ToolResult::ok_data(result);
+}
+static ToolResult live_orders(std::initializer_list<QJsonObject> rows = {}) {
+    QJsonArray result;
+    for (const auto& row : rows)
+        result.append(row);
+    return ToolResult::ok_data(result);
+}
+static void enqueue_live_exposure(FakeToolCaller& tc,
+                                  std::initializer_list<QJsonObject> positions = {},
+                                  std::initializer_list<QJsonObject> orders = {}) {
+    tc.enqueue("live_get_positions", live_positions(positions));
+    tc.enqueue("live_get_orders", live_orders(orders));
+}
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -1111,19 +1129,11 @@ class TstStrategyLoop : public QObject {
         QVERIFY(rows.value().isEmpty());
     }
 
-    // ── #39 (P-E) live position cap sources the LIVE ledger, not ai_fill ────
+    // ── Live position cap sources authoritative broker state ──────────────
     //
-    // Seeds a LIVE position via LivePnlRepository::insert_open under the SAME
-    // account the runner reads (mcp::cli_allowed_account()) and venue "equity"
-    // (the loop always drives equity). cli.allowed_account is explicitly set
-    // here to a real account string rather than left unset: a default-unset
-    // cli_allowed_account() returns a NULL QString (not merely empty), and
-    // Qt's SQLite driver binds a null QString as SQL NULL -- `account = NULL`
-    // never matches any row (not even one stored with account=''), and
-    // inserting a NULL into the NOT NULL `account` column fails outright. A
-    // real live account is always configured before live trading is armed in
-    // practice, so this also matches production more closely than an unset
-    // account would. Proves three things in one seed:
+    // The local live P&L ledger is deliberately irrelevant to this gate: it can
+    // lag delayed fills. Broker positions and working orders are authoritative.
+    // Proves three things against a broker-reported +8 position:
     //   (a) a LIVE run whose growing BUY would push the live position past the
     //       cap is GATE-REJECTED with rule "position" -- the cap saw the REAL
     //       live position, not the (empty) paper ai_fill ledger.
@@ -1133,27 +1143,16 @@ class TstStrategyLoop : public QObject {
     //       sees FLAT (not the live-seeded 8) and the growing buy PASSES --
     //       proving the position source actually switches by mode rather than
     //       always reading the live ledger.
-    void live_position_cap_reads_live_ledger_and_paper_stays_on_ai_fill() {
+    void live_position_cap_reads_broker_and_paper_stays_on_ai_fill() {
         ensure_migrated_db();
 
         QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-lpos", "cli").is_ok());
         QCOMPARE(mcp::cli_allowed_account(), QStringLiteral("acct-lpos"));
 
-        LivePosition seed;
-        seed.account = mcp::cli_allowed_account();  // matches what the runner's live branch reads
-        seed.venue = QStringLiteral("equity");
-        seed.instrument = QStringLiteral("LPOS-USD");
-        seed.qty = 8.0;
-        seed.avg_cost = 100.0;
-        seed.cost_basis = 800.0;
-        seed.opened_at = QStringLiteral("2026-01-01T00:00:00Z");
-        seed.status = QStringLiteral("open");
-        auto ins_r = LivePnlRepository::instance().insert_open(seed);
-        QVERIFY2(ins_r.is_ok(), qUtf8Printable(QString::fromStdString(ins_r.is_err() ? ins_r.error() : "")));
-
         // (a) growing buy: 8 + 5 = 13 > cap 10 and > existing 8 -> gate-rejected "position".
         {
             FakeToolCaller tc;  // no prepare/submit should be reached
+            enqueue_live_exposure(tc, {{{"symbol","LPOS-USD"},{"quantity",8.0},{"side","long"}}});
             FakeStrategy s;
             s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
             StrategyRunner runner;
@@ -1174,6 +1173,7 @@ class TstStrategyLoop : public QObject {
         // (b) reducing sell: 8 - 5 = 3, |3| <= |8| -> passes the cap.
         {
             FakeToolCaller tc;
+            enqueue_live_exposure(tc, {{{"symbol","LPOS-USD"},{"quantity",8.0},{"side","long"}}});
             tc.enqueue("prepare_order", prepared("DLPOSR"));
             tc.enqueue("submit_order", live_filled(100.0, 5.0));
             FakeStrategy s;
@@ -1213,6 +1213,139 @@ class TstStrategyLoop : public QObject {
 
         // Reset immediately so later slots (and re-runs) see a clean default.
         QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    // Regression for the reported cap-bypass interaction: a working SELL may
+    // cancel, so it cannot be treated as a guaranteed hedge for a new BUY.
+    // With an actual long 8 and cap 10, an unfilled sell 8 does not create room
+    // for a buy 10; worst-case long exposure would be 18.
+    void live_position_cap_ignores_opposite_working_order_as_hedge() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-opposite", "cli").is_ok());
+
+        FakeToolCaller tc;
+        enqueue_live_exposure(
+            tc,
+            {{{"symbol","RACE-USD"},{"quantity",8.0},{"side","long"}}},
+            {{{"symbol","RACE-USD"},{"side","sell"},{"quantity",8.0},
+              {"filled_qty",0.0},{"status","open"}}});
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","RACE-USD"},{"side","buy"},
+                                  {"quantity",10.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    // Multiple intents in one model response must share reservations. Both
+    // orders individually fit a cap of 10, but two accepted BUY 6 orders do not.
+    void live_position_cap_reserves_same_tick_submissions() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-batch", "cli").is_ok());
+
+        FakeToolCaller tc;
+        enqueue_live_exposure(tc);
+        tc.enqueue("prepare_order", prepared("DBATCH1"));
+        tc.enqueue("submit_order", live_open());
+        FakeStrategy s;
+        s.intents_ = {
+            TradeIntent{{"symbol","BATCH-USD"},{"side","buy"},{"quantity",6.0},{"limit_price",100.0}},
+            TradeIntent{{"symbol","BATCH-USD"},{"side","buy"},{"quantity",6.0},{"limit_price",100.0}}
+        };
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 1);
+        QCOMPARE(sum.live_submitted, 1);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    void live_position_cap_fails_closed_when_broker_state_unavailable() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-down", "cli").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("live_get_positions", ToolResult::fail("broker timeout"));
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","DOWN-USD"},{"side","buy"},
+                                  {"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position-source"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    void live_position_cap_fails_closed_when_broker_orders_are_unavailable() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-orders-down", "cli").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("live_get_positions", live_positions());
+        tc.enqueue("live_get_orders", ToolResult::fail("broker orders timeout"));
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","ORDERS-DOWN-USD"},{"side","buy"},
+                                  {"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position-source"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    void live_position_cap_fails_closed_without_live_account() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","NO-ACCOUNT-USD"},{"side","buy"},
+                                  {"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("live_get_positions"), 0);
+        QCOMPARE(tc.count("live_get_orders"), 0);
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position-source"));
     }
 };
 
