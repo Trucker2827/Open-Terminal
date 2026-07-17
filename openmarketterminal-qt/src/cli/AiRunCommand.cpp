@@ -105,9 +105,10 @@ int ai_usage() {
                  "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor] "
                  "[--max-aggregate-qty N] [--max-position-qty N] [--max-notional-per-order N]\n"
                  "  --mode live additionally REQUIRES the floor (no --no-floor), a bounded "
-                 "session (--max-iters or --duration-sec), and a positive "
-                 "--max-notional-per-order; --max-aggregate-qty is REJECTED in live mode "
-                 "(cross-handler aggregate is paper-only, no live analog)\n");
+                 "session (--max-iters or --duration-sec), a positive "
+                 "--max-notional-per-order, and a positive --max-position-qty (enforced "
+                 "against the LIVE position ledger); --max-aggregate-qty is REJECTED in "
+                 "live mode (cross-handler aggregate is paper-only, no live analog)\n");
     return 2;
 }
 
@@ -762,6 +763,8 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
             live_missing << QStringLiteral("a bounded session (--max-iters or --duration-sec)");
         if (max_notional_per_order <= 0.0)
             live_missing << QStringLiteral("a positive --max-notional-per-order");
+        if (max_position_qty <= 0.0)
+            live_missing << QStringLiteral("a positive --max-position-qty");
         if (!live_missing.isEmpty()) {
             std::fprintf(stderr, "live mode requires: %s\n",
                          qUtf8Printable(live_missing.join(QStringLiteral("; "))));

@@ -5,6 +5,15 @@
 
 namespace openmarketterminal::mcp::tools {
 
+/// The broker-status token that means "actually executed" for a LIVE fill
+/// (ReconciledFill::status / OrderFlowTools' broker_status passthrough). A
+/// broker adapter MUST normalize its reported status to exactly this token
+/// for a real execution — StrategyRunner's live fill-lifecycle check
+/// (broker_status == kLiveFilledStatus) is the sole consumer of this
+/// contract; this constant exists so producer and consumer can never drift
+/// on the literal string.
+inline constexpr QLatin1String kLiveFilledStatus{"filled"};
+
 /// Today's UTC day string (e.g. "2026-06-15") — the daily_pnl tally key.
 QString today_utc();
 

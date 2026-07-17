@@ -1,10 +1,12 @@
 // StrategyRunner.cpp — see StrategyRunner.h.
 #include "services/ai_strategy/StrategyRunner.h"
 
+#include "mcp/tools/LivePnl.h"
 #include "mcp/tools/SettingsGate.h"
 #include "services/ai_strategy/DeterministicFloor.h"
 #include "services/ai_strategy/PretradeGate.h"
 #include "services/ai_ledger/AiLedger.h"
+#include "storage/repositories/LivePnlRepository.h"
 
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -116,8 +118,21 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             gin.clears_cost = pkt.clears_cost;
             gin.freshness = pkt.freshness;
             gin.has_edge_signal = pkt.has_edge_signal;
-            gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
-            gin.aggregate_net_qty = ai_ledger::net_position_for_symbol(sym);
+            if (cfg.submit_mode == QLatin1String("live")) {
+                // Live: the position cap must contain the REAL live position, not the
+                // paper ai_fill ledger (empty in a live run). Source it from the live
+                // realized-P&L ledger (read-only). The cross-handler AGGREGATE cap has no
+                // live analog and is rejected for --mode live at the CLI, so leave it 0.
+                const QString acct = mcp::cli_allowed_account();
+                const QString venue = QStringLiteral("equity");  // the loop drives equity
+                auto lp = LivePnlRepository::instance().get_open(acct, venue, sym);
+                gin.existing_net_qty = (lp.is_ok() && lp.value().has_value())
+                    ? lp.value().value().qty : 0.0;
+                gin.aggregate_net_qty = 0.0;
+            } else {
+                gin.existing_net_qty = ai_ledger::position_of(s.name(), sym).net_qty;
+                gin.aggregate_net_qty = ai_ledger::net_position_for_symbol(sym);
+            }
 
             // Deterministic floor: runs BEFORE the pre-trade guardrail. Reads
             // only the already-resolved packet and, when it doesn't
@@ -196,7 +211,7 @@ RunSummary StrategyRunner::run(Strategy& s, ToolCaller& tc, const RunConfig& cfg
             // recorded by submit_order (reconcile_and_record), so NEVER book a paper ai_fill.
             // PAPER: status=="filled" is a real paper fill; the ai_fill ledger is authoritative.
             const QString broker_status = subo.value(QStringLiteral("broker_status")).toString();
-            const bool really_filled = is_live ? (broker_status == QLatin1String("filled"))
+            const bool really_filled = is_live ? (broker_status == mcp::tools::kLiveFilledStatus)
                                                : (sub_status == QLatin1String("filled"));
             if (really_filled) {
                 ++summary.filled;

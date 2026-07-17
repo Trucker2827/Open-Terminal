@@ -11,6 +11,7 @@
 
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
+#include "mcp/tools/SettingsGate.h"
 #include "services/ai_decision/DecisionContext.h"
 #include "services/ai_ledger/AiLedger.h"
 #include "services/ai_strategy/LlmStrategy.h"
@@ -19,6 +20,7 @@
 #include "services/ai_strategy/StrategyRunner.h"
 #include "services/ai_strategy/TypedAction.h"
 #include "storage/repositories/AiFillRepository.h"
+#include "storage/repositories/LivePnlRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 
@@ -1107,6 +1109,110 @@ class TstStrategyLoop : public QObject {
         auto rows = AiFillRepository::instance().list("fake", "LIFER-USD", 10);
         QVERIFY(rows.is_ok());
         QVERIFY(rows.value().isEmpty());
+    }
+
+    // ── #39 (P-E) live position cap sources the LIVE ledger, not ai_fill ────
+    //
+    // Seeds a LIVE position via LivePnlRepository::insert_open under the SAME
+    // account the runner reads (mcp::cli_allowed_account()) and venue "equity"
+    // (the loop always drives equity). cli.allowed_account is explicitly set
+    // here to a real account string rather than left unset: a default-unset
+    // cli_allowed_account() returns a NULL QString (not merely empty), and
+    // Qt's SQLite driver binds a null QString as SQL NULL -- `account = NULL`
+    // never matches any row (not even one stored with account=''), and
+    // inserting a NULL into the NOT NULL `account` column fails outright. A
+    // real live account is always configured before live trading is armed in
+    // practice, so this also matches production more closely than an unset
+    // account would. Proves three things in one seed:
+    //   (a) a LIVE run whose growing BUY would push the live position past the
+    //       cap is GATE-REJECTED with rule "position" -- the cap saw the REAL
+    //       live position, not the (empty) paper ai_fill ledger.
+    //   (b) a LIVE reducing SELL against the same live position passes
+    //       (increase-only rule) -- the source isn't just "always reject".
+    //   (c) a PAPER run against the identical symbol, with NO ai_fill seeded,
+    //       sees FLAT (not the live-seeded 8) and the growing buy PASSES --
+    //       proving the position source actually switches by mode rather than
+    //       always reading the live ledger.
+    void live_position_cap_reads_live_ledger_and_paper_stays_on_ai_fill() {
+        ensure_migrated_db();
+
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-lpos", "cli").is_ok());
+        QCOMPARE(mcp::cli_allowed_account(), QStringLiteral("acct-lpos"));
+
+        LivePosition seed;
+        seed.account = mcp::cli_allowed_account();  // matches what the runner's live branch reads
+        seed.venue = QStringLiteral("equity");
+        seed.instrument = QStringLiteral("LPOS-USD");
+        seed.qty = 8.0;
+        seed.avg_cost = 100.0;
+        seed.cost_basis = 800.0;
+        seed.opened_at = QStringLiteral("2026-01-01T00:00:00Z");
+        seed.status = QStringLiteral("open");
+        auto ins_r = LivePnlRepository::instance().insert_open(seed);
+        QVERIFY2(ins_r.is_ok(), qUtf8Printable(QString::fromStdString(ins_r.is_err() ? ins_r.error() : "")));
+
+        // (a) growing buy: 8 + 5 = 13 > cap 10 and > existing 8 -> gate-rejected "position".
+        {
+            FakeToolCaller tc;  // no prepare/submit should be reached
+            FakeStrategy s;
+            s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+            StrategyRunner runner;
+            runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+            RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+            cfg.require_cost_gate = false;
+            cfg.require_freshness_gate = false;
+            cfg.submit_mode = QStringLiteral("live");
+            cfg.max_position_qty = 10.0;
+            RunSummary sum = runner.run(s, tc, cfg);
+
+            QCOMPARE(sum.filled, 0);
+            QCOMPARE(tc.count("submit_order"), 0);
+            QCOMPARE(sum.gate_rejections.size(), 1);
+            QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+        }
+
+        // (b) reducing sell: 8 - 5 = 3, |3| <= |8| -> passes the cap.
+        {
+            FakeToolCaller tc;
+            tc.enqueue("prepare_order", prepared("DLPOSR"));
+            tc.enqueue("submit_order", live_filled(100.0, 5.0));
+            FakeStrategy s;
+            s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","sell"},{"quantity",5.0},{"limit_price",100.0}}};
+            StrategyRunner runner;
+            runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+            RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+            cfg.require_cost_gate = false;
+            cfg.require_freshness_gate = false;
+            cfg.submit_mode = QStringLiteral("live");
+            cfg.max_position_qty = 10.0;
+            RunSummary sum = runner.run(s, tc, cfg);
+
+            QCOMPARE(sum.gate_rejections.size(), 0);
+            QCOMPARE(sum.filled, 1);
+        }
+
+        // (c) PAPER, same symbol, no ai_fill seeded -> flat -> growing buy passes.
+        {
+            FakeToolCaller tc;
+            tc.enqueue("prepare_order", prepared("DLPOSP"));
+            tc.enqueue("submit_order", filled());
+            FakeStrategy s;
+            s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+            StrategyRunner runner;
+            runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+            RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+            cfg.require_cost_gate = false;
+            cfg.require_freshness_gate = false;
+            // cfg.submit_mode left default ("paper").
+            cfg.max_position_qty = 10.0;
+            RunSummary sum = runner.run(s, tc, cfg);
+
+            QCOMPARE(sum.gate_rejections.size(), 0);
+            QCOMPARE(sum.filled, 1);
+        }
+
+        // Reset immediately so later slots (and re-runs) see a clean default.
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
     }
 };
 

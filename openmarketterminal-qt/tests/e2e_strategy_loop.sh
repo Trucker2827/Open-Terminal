@@ -250,13 +250,14 @@ set_gate cli.allow_trading true
     || fail "allow_trading write did not land in DB"
 
 # -- 4a. CLI-gate reachability via the strategy loop --------------------------
-# --max-notional-per-order is REQUIRED here (in addition to --max-iters and the
-# default-ON floor) now that live-mode containment (P-C, #39-c) gates entry: a
-# bounded, notional-capped, floor-on request is the minimum that clears
-# containment, so this still isolates "not armed" reachability from containment.
+# --max-notional-per-order and --max-position-qty are REQUIRED here (in addition
+# to --max-iters and the default-ON floor) now that live-mode containment (P-C
+# #39-c, P-E #39 final) gates entry: a bounded, notional-capped, position-capped,
+# floor-on request is the minimum that clears containment, so this still
+# isolates "not armed" reachability from containment.
 R4=$(wd 60 "$CLI" --headless --profile "$PROF" \
         ai run strategy meanrev --mode live --interval-sec 0 --max-iters 1 --symbols AAPL \
-        --max-notional-per-order 500 2>&1)
+        --max-notional-per-order 500 --max-position-qty 100 2>&1)
 RC4=$?
 echo "$R4" | sed 's/^/    | /'
 
@@ -299,11 +300,13 @@ set_gate cli.allow_trading false
 echo "PASS: arm flags reset -- profile left disarmed"
 
 # ============================================================================
-# Step 5 — LIVE CONTAINMENT (P-C, #39-c): once armed, `--mode live` must still
-# refuse an unrestricted run. Human arming (Step 4) gates ENTRY to the live
-# rail; this proves strategy-level containment is enforced ONCE in: the floor,
-# a bounded session, and a positive per-order notional cap are REQUIRED, and
-# the cross-handler aggregate cap (no live analog) is REJECTED outright.
+# Step 5 — LIVE CONTAINMENT (P-C #39-c, P-E #39 final): once armed, `--mode
+# live` must still refuse an unrestricted run. Human arming (Step 4) gates
+# ENTRY to the live rail; this proves strategy-level containment is enforced
+# ONCE in: the floor, a bounded session, a positive per-order notional cap, and
+# a positive per-handler position cap (now enforced against the LIVE position
+# ledger, P-E) are REQUIRED, and the cross-handler aggregate cap (no live
+# analog) is REJECTED outright.
 #
 # Re-arm the throwaway profile the same way Step 4 did (direct sqlite write of
 # cli.live_trading_armed=true + cli.allow_trading=true); this profile still has
@@ -347,10 +350,21 @@ printf '%s' "$R5C" | grep -qi "notional" \
     || fail "containment: no-notional live run missing 'notional' (out: $R5C)"
 echo "PASS: containment refuses --mode live with no --max-notional-per-order (rc=2, 'notional')"
 
+# -- 5c2. no --max-position-qty is refused (P-E, #39 final: completes the ------
+# per-handler position-cap containment -- the cap now reads the LIVE ledger,
+# so it must be REQUIRED, not merely optional, in live mode).
+R5C2=$(wd 30 "$CLI" --headless --profile "$PROF" \
+        ai run strategy meanrev --mode live --max-iters 1 --max-notional-per-order 500 2>&1)
+RC5C2=$?
+[ $RC5C2 -eq 2 ] || fail "containment: no-position-cap live run rc=$RC5C2 (expected 2)"
+printf '%s' "$R5C2" | grep -qi "position" \
+    || fail "containment: no-position-cap live run missing 'position' (out: $R5C2)"
+echo "PASS: containment refuses --mode live with no --max-position-qty (rc=2, 'position')"
+
 # -- 5d. --max-aggregate-qty is rejected outright (no live analog) ------------
 R5D=$(wd 30 "$CLI" --headless --profile "$PROF" \
         ai run strategy meanrev --mode live --max-iters 1 --max-notional-per-order 500 \
-        --max-aggregate-qty 5 2>&1)
+        --max-position-qty 100 --max-aggregate-qty 5 2>&1)
 RC5D=$?
 [ $RC5D -eq 2 ] || fail "containment: aggregate-cap live run rc=$RC5D (expected 2)"
 printf '%s' "$R5D" | grep -qi "no live analog" \
@@ -359,13 +373,14 @@ echo "PASS: containment rejects --mode live --max-aggregate-qty (rc=2, 'no live 
 
 # -- 5e. fully-contained armed live run PASSES containment --------------------
 # floor default-on (no --no-floor), bounded (--max-iters 1), positive notional,
-# no aggregate cap: must NOT be refused by containment. It still cannot reach a
-# live fill on this profile (no cli.allowed_account) -- that denial is proven
-# by Step 4b's direct submit_order call over the identical handler path; this
-# step only proves containment itself does not misfire on a compliant request.
+# positive position cap, no aggregate cap: must NOT be refused by containment.
+# It still cannot reach a live fill on this profile (no cli.allowed_account) --
+# that denial is proven by Step 4b's direct submit_order call over the
+# identical handler path; this step only proves containment itself does not
+# misfire on a compliant request.
 R5E=$(wd 60 "$CLI" --headless --profile "$PROF" \
         ai run strategy meanrev --mode live --max-iters 1 --interval-sec 0 --symbols AAPL \
-        --max-notional-per-order 500 2>&1)
+        --max-notional-per-order 500 --max-position-qty 100 2>&1)
 RC5E=$?
 echo "$R5E" | sed 's/^/    | /'
 [ $RC5E -eq 0 ] || fail "containment: fully-contained live run rc=$RC5E (expected 0)"
