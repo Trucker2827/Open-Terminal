@@ -19,6 +19,7 @@
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 
 #include "screens/crypto_trading/CryptoDepthChart.h"
+#include "screens/crypto_trading/CryptoAutomationCockpit.h"
 #include "screens/crypto_trading/CryptoTimeSales.h"
 #include "ui/theme/Theme.h"
 
@@ -199,6 +200,16 @@ CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     setup_my_trades_tab();
     setup_fees_tab();
 
+    cockpit_ = new CryptoAutomationCockpit;
+    cockpit_tab_idx_ = tabs_->addTab(cockpit_, tr("COCKPIT"));
+    tabs_->setTabToolTip(cockpit_tab_idx_, tr("Coinbase spot and scalp decision engine"));
+    connect(cockpit_, &CryptoAutomationCockpit::positions_requested, this, [this]() {
+        if (positions_tab_idx_ >= 0) tabs_->setCurrentIndex(positions_tab_idx_);
+    });
+    connect(cockpit_, &CryptoAutomationCockpit::orders_requested, this, [this]() {
+        if (orders_tab_idx_ >= 0) tabs_->setCurrentIndex(orders_tab_idx_);
+    });
+
     // Time & Sales
     time_sales_ = new CryptoTimeSales;
     time_sales_tab_idx_ = tabs_->addTab(time_sales_, tr("T&S"));
@@ -233,6 +244,7 @@ void CryptoBottomPanel::retranslateUi() {
         if (depth_tab_idx_ >= 0)     tabs_->setTabText(depth_tab_idx_, tr("DEPTH"));
         if (market_tab_idx_ >= 0)    tabs_->setTabText(market_tab_idx_, tr("MKT"));
         if (stats_tab_idx_ >= 0)     tabs_->setTabText(stats_tab_idx_, tr("STATS"));
+        if (cockpit_tab_idx_ >= 0)   tabs_->setTabText(cockpit_tab_idx_, tr("COCKPIT"));
 
         if (positions_tab_idx_ >= 0) tabs_->setTabToolTip(positions_tab_idx_, tr("Positions"));
         if (orders_tab_idx_ >= 0)    tabs_->setTabToolTip(orders_tab_idx_, tr("Open Orders"));
@@ -243,6 +255,7 @@ void CryptoBottomPanel::retranslateUi() {
         if (depth_tab_idx_ >= 0)     tabs_->setTabToolTip(depth_tab_idx_, tr("Depth Chart"));
         if (market_tab_idx_ >= 0)    tabs_->setTabToolTip(market_tab_idx_, tr("Market Info"));
         if (stats_tab_idx_ >= 0)     tabs_->setTabToolTip(stats_tab_idx_, tr("Execution Stats"));
+        if (cockpit_tab_idx_ >= 0)   tabs_->setTabToolTip(cockpit_tab_idx_, tr("Coinbase spot and scalp decision engine"));
     }
 
     // Table headers

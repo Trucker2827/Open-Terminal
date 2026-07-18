@@ -1632,6 +1632,7 @@ set(SCREEN_SOURCES
     src/screens/crypto_trading/CryptoOrderBook.cpp
     src/screens/crypto_trading/CryptoLadder.cpp
     src/screens/crypto_trading/CryptoBottomPanel.cpp
+    src/screens/crypto_trading/CryptoAutomationCockpit.cpp
     src/screens/crypto_trading/CryptoCredentials.cpp
     src/screens/crypto_trading/CryptoTimeSales.cpp
     src/screens/crypto_trading/CryptoDepthChart.cpp
@@ -2052,6 +2053,7 @@ set_source_files_properties(
     src/screens/code_editor/CodeEditorScreen_Library.cpp
     src/services/notebooks/NotebookLibraryService.cpp
     src/screens/crypto_trading/CryptoBottomPanel.cpp
+    src/screens/crypto_trading/CryptoAutomationCockpit.cpp
     src/screens/crypto_trading/CryptoChart.cpp
     src/screens/crypto_trading/CryptoCredentials.cpp
     src/screens/crypto_trading/CryptoOrderBook.cpp
