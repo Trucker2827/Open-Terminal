@@ -1024,6 +1024,27 @@ private slots:
         QVERIFY(stopped.value(QStringLiteral("global_live_gate_armed")).toBool());
         QCOMPARE(settings.get(QStringLiteral("kalshi.live_automation.enabled"), QString()).value(),
                  QStringLiteral("false"));
+
+        QJsonObject pilot = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("24/7"),
+             QStringLiteral("--max-stake"), QStringLiteral("1"),
+             QStringLiteral("--max-orders-per-hour"), QStringLiteral("3"),
+             QStringLiteral("--max-all-in"), QStringLiteral("1.25"),
+             QStringLiteral("--experiment-cap"), QStringLiteral("3.75")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(pilot.value(QStringLiteral("session_active")).toBool());
+        QCOMPARE(pilot.value(QStringLiteral("max_orders_per_hour")).toInt(), 3);
+        QCOMPARE(pilot.value(QStringLiteral("per_bet_contract_stake_cap")).toDouble(), 1.0);
+        QCOMPARE(pilot.value(QStringLiteral("per_bet_all_in_tolerance")).toDouble(), 1.25);
+        QCOMPARE(pilot.value(QStringLiteral("experiment_cap")).toDouble(), 3.75);
+        QCOMPARE(pilot.value(QStringLiteral("session")).toObject()
+                     .value(QStringLiteral("duration")).toString(), QStringLiteral("24/7"));
+        QJsonObject pilot_stopped = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("stop")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!pilot_stopped.value(QStringLiteral("session_active")).toBool());
         settings.set(QStringLiteral("cli.allow_trading"), QStringLiteral("false"), QStringLiteral("test"));
         settings.set(QStringLiteral("cli.live_trading_armed"), QStringLiteral("false"), QStringLiteral("test"));
         settings.set(QStringLiteral("cli.allowed_venues"), QString(), QStringLiteral("test"));

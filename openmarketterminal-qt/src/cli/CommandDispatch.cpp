@@ -452,7 +452,7 @@ static int command_help(const QString& topic) {
             "  kalshi auto positions\n"
             "  kalshi auto queue [--market TICKER[,TICKER]] [--event EVENT] [--subaccount N]\n"
             "  kalshi auto live status\n"
-            "  kalshi auto live session 1h|6h|12h|24/7|stop|status [--paper|--no-paper]\n"
+            "  kalshi auto live session 1h|6h|12h|24/7|stop|status [--paper|--no-paper] [--max-stake 1|2] [--max-orders-per-hour N] [--max-all-in N] [--experiment-cap N]\n"
             "  kalshi auto live prepare-next [--max-stake 1|2] [--experiment-cap 120]\n"
             "  kalshi auto live execute-next --require-session [--max-stake 1|2]\n"
             "  trade submit <draft-id> --mode live --yes --live-armed\n"
@@ -22761,13 +22761,24 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
 static int kalshi_auto_live_session_command(const GlobalOpts& opts, QStringList args) {
     const bool paper_flag = take_bool_flag(args, QStringLiteral("--paper"));
     const bool no_paper_flag = take_bool_flag(args, QStringLiteral("--no-paper"));
+    QString max_stake_raw;
+    QString max_orders_raw;
+    QString max_all_in_raw;
+    QString experiment_cap_raw;
     if (paper_flag && no_paper_flag) {
         std::fprintf(stderr, "choose either --paper or --no-paper\n");
         return 2;
     }
+    if (!take_string_option(args, QStringLiteral("--max-stake"), max_stake_raw) ||
+        !take_string_option(args, QStringLiteral("--max-orders-per-hour"), max_orders_raw) ||
+        !take_string_option(args, QStringLiteral("--max-all-in"), max_all_in_raw) ||
+        !take_string_option(args, QStringLiteral("--experiment-cap"), experiment_cap_raw)) {
+        std::fprintf(stderr, "invalid Kalshi live session option\n");
+        return 2;
+    }
     const QString duration = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
     if (!args.isEmpty()) {
-        std::fprintf(stderr, "usage: kalshi auto live session 1h|6h|12h|24/7|stop|status [--paper|--no-paper]\n");
+        std::fprintf(stderr, "usage: kalshi auto live session 1h|6h|12h|24/7|stop|status [--paper|--no-paper] [--max-stake 1|2] [--max-orders-per-hour N] [--max-all-in N] [--experiment-cap N]\n");
         return 2;
     }
     const QString path = kalshi_auto_evidence_path(QStringLiteral("kalshi-live-session.json"));
@@ -22781,6 +22792,27 @@ static int kalshi_auto_live_session_command(const GlobalOpts& opts, QStringList 
         session["enabled"] = false;
         session["stopped_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     } else {
+        bool valid = true;
+        const double max_stake = max_stake_raw.isEmpty() ? 2.0 : max_stake_raw.toDouble(&valid);
+        if (!valid || max_stake <= 0.0 || max_stake > 2.0) {
+            std::fprintf(stderr, "--max-stake must be > 0 and <= 2\n");
+            return 2;
+        }
+        const int max_orders = max_orders_raw.isEmpty() ? 10 : max_orders_raw.toInt(&valid);
+        if (!valid || max_orders < 1 || max_orders > 10) {
+            std::fprintf(stderr, "--max-orders-per-hour must be 1..10\n");
+            return 2;
+        }
+        const double max_all_in = max_all_in_raw.isEmpty() ? 3.0 : max_all_in_raw.toDouble(&valid);
+        if (!valid || max_all_in < max_stake || max_all_in > 3.0) {
+            std::fprintf(stderr, "--max-all-in must be at least the stake cap and <= 3\n");
+            return 2;
+        }
+        const double experiment_cap = experiment_cap_raw.isEmpty() ? 120.0 : experiment_cap_raw.toDouble(&valid);
+        if (!valid || experiment_cap < max_all_in || experiment_cap > 120.0) {
+            std::fprintf(stderr, "--experiment-cap must cover one all-in order and be <= 120\n");
+            return 2;
+        }
         int seconds = 0;
         if (duration == QStringLiteral("1h")) seconds = 3600;
         else if (duration == QStringLiteral("6h")) seconds = 6 * 3600;
@@ -22829,12 +22861,12 @@ static int kalshi_auto_live_session_command(const GlobalOpts& opts, QStringList 
                               {"session_id", session_id}, {"autonomous", true},
                               {"started_at", now.toString(Qt::ISODateWithMs)},
                               {"ends_at", ends_at},
-                              {"max_stake", 2.0}, {"experiment_cap", 120.0},
-                              {"max_all_in", 3.0},
-                              {"max_orders_per_hour", 10},
+                              {"max_stake", max_stake}, {"experiment_cap", experiment_cap},
+                              {"max_all_in", max_all_in},
+                              {"max_orders_per_hour", max_orders},
                               {"parallel_paper_enabled", parallel_paper},
                               {"human_approval_required", false},
-                              {"behavior", "same decision gate for live and paper; live max 10 orders per rolling hour; paper has no hourly quota"}};
+                              {"behavior", QStringLiteral("same decision gate for live and paper; live max %1 orders per rolling hour; paper has no hourly quota").arg(max_orders)}};
     }
     QDir().mkpath(QFileInfo(path).absolutePath());
     QSaveFile file(path);
@@ -22866,7 +22898,8 @@ static int kalshi_auto_live_session_command(const GlobalOpts& opts, QStringList 
                                            session.value(QStringLiteral("ends_at")).toString(),
                                            QStringLiteral("kalshi_auto"));
         SettingsRepository::instance().set(QStringLiteral("kalshi.live_automation.max_orders_per_hour"),
-                                           QStringLiteral("10"), QStringLiteral("kalshi_auto"));
+                                           QString::number(session.value(QStringLiteral("max_orders_per_hour")).toInt(10)),
+                                           QStringLiteral("kalshi_auto"));
         // A newly armed session must never inherit a quote-sensitive draft from
         // an older approval session.
         Database::instance().execute(

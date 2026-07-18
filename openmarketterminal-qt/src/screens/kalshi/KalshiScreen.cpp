@@ -3224,15 +3224,26 @@ void KalshiScreen::show_live_automation_dialog() {
     dialog.setWindowTitle(QStringLiteral("Arm bounded Kalshi automation"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* text = new QLabel(QStringLiteral(
-        "Choose how long the bot may place real Kalshi orders without individual approval.\n\n"
+        "Choose a preset and how long the bot may place real Kalshi orders without individual approval.\n\n"
         "CURRENT HOUR starts immediately and stops at the next :00 clock boundary. "
-        "Hard limits: no more than 10 submitted orders in any rolling hour; contract stake <= $2; "
-        "fees may bring all-in cost up to $3; total experiment exposure <= $120; one bot order per contract. "
+        "CONTINUOUS runs until you use the kill switch. Every order still re-checks quote freshness, depth, "
+        "edge after cost, time left, credentials, session expiry, and the global kill switch.\n\n"
+        "The pilot presets deliberately cap both the order count and the total money at risk. "
         "Every submission re-checks quote freshness, executable depth, edge after cost, time left, credentials, "
         "session expiry, and the global kill switch. An emergency kill switch must be reset explicitly in "
         "Settings > Security before a new session can be armed."), &dialog);
     text->setWordWrap(true);
     layout->addWidget(text);
+    auto* preset_row = new QHBoxLayout;
+    preset_row->addWidget(new QLabel(QStringLiteral("LIVE PILOT:"), &dialog));
+    auto* preset = new QComboBox(&dialog);
+    preset->addItem(QStringLiteral("$1 / 3 orders per hour / $3.75 session cap"),
+                    QVariantList{1.0, 3, 1.25, 3.75});
+    preset->addItem(QStringLiteral("$2 / 5 orders per hour / $12.50 session cap"),
+                    QVariantList{2.0, 5, 2.50, 12.50});
+    preset->setToolTip(QStringLiteral("Limits apply to real orders only. Parallel paper remains unlimited and follows the same decision gate."));
+    preset_row->addWidget(preset, 1);
+    layout->addLayout(preset_row);
     auto* parallel_paper = new QCheckBox(
         QStringLiteral("Run unlimited paper trades in parallel (recommended)"), &dialog);
     parallel_paper->setChecked(true);
@@ -3256,7 +3267,7 @@ void KalshiScreen::show_live_automation_dialog() {
         if (duration == QStringLiteral("1H"))
             button->setToolTip(QStringLiteral("Start now and stop at the next :00 clock boundary."));
         button->setStyleSheet(QStringLiteral("padding:9px 16px;font-weight:900;"));
-        connect(button, &QPushButton::clicked, &dialog, [this, &dialog, duration, parallel_paper]() {
+        connect(button, &QPushButton::clicked, &dialog, [this, &dialog, duration, parallel_paper, preset]() {
             const auto killed = openmarketterminal::SettingsRepository::instance().get(
                 QStringLiteral("cli.kill_switch"), QStringLiteral("false"));
             if (killed.is_ok() && killed.value().trimmed().toLower() == QStringLiteral("true")) {
@@ -3264,8 +3275,13 @@ void KalshiScreen::show_live_automation_dialog() {
                     QStringLiteral("Reset the global kill switch explicitly in Settings > Security before arming."));
                 return;
             }
+            const QVariantList limits = preset->currentData().toList();
             run_live_cli({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("live"),
                           QStringLiteral("session"), duration.toLower(),
+                          QStringLiteral("--max-stake"), QString::number(limits.value(0).toDouble(), 'f', 2),
+                          QStringLiteral("--max-orders-per-hour"), QString::number(limits.value(1).toInt()),
+                          QStringLiteral("--max-all-in"), QString::number(limits.value(2).toDouble(), 'f', 2),
+                          QStringLiteral("--experiment-cap"), QString::number(limits.value(3).toDouble(), 'f', 2),
                           parallel_paper->isChecked() ? QStringLiteral("--paper") : QStringLiteral("--no-paper")},
                          [this](const QJsonObject&, const QString& error) {
                              if (!error.isEmpty()) QMessageBox::warning(this, QStringLiteral("Session failed"), error);
