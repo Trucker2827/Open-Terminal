@@ -12,8 +12,11 @@
 #include "cli/BridgeDiscovery.h"
 #include "cli/automation/AutomationState.h"
 #include "storage/sqlite/Database.h"
+#include "storage/repositories/AiHandlerRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 using namespace openmarketterminal::cli;
+using openmarketterminal::AiHandler;
+using openmarketterminal::AiHandlerRepository;
 using openmarketterminal::Database;
 
 namespace openmarketterminal::cli {
@@ -2100,19 +2103,85 @@ private slots:
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
     }
 
-    // `ai act` typed-action preview (Task 3 of piece Vc): READ-ONLY --
-    // translates a typed verb into a paper TradeIntent preview given the
-    // symbol's current ledger position, without writing anything.
-    void ai_act_enter_previews_buy() {
+    // `ai act` typed-action preview (Task 3 of piece Vc; direction-aware,
+    // track 1 close-out): READ-ONLY -- translates a typed verb into a paper
+    // TradeIntent preview given the symbol's current ledger position AND the
+    // deterministic edge's ENDORSED direction (resolved via the SAME shared
+    // ai_strategy::edge_direction_of() helper LlmStrategy uses by default),
+    // without writing anything. Journal seed shapes mirror the passing `ai
+    // ctx` floor tests (ai_ctx_floor_permits_endorsed_symbol et al.).
+
+    // Enter, long: an endorsed LONG edge (gate=pass, cost-clear, fresh,
+    // side=buy) resolves edge_direction=1 and an enter maps to a buy sized
+    // by conviction.
+    void ai_act_enter_long_previews_buy() {
         sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('act-long1', %1, %1, 'LONGE-USD', 'pass', 'buy', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         int rc = -1;
         QJsonObject o = json_object_from_dispatch(
-            QStringList{"ai", "act", "ACT-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
+            QStringList{"ai", "act", "LONGE-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
         QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), 1);
         const QJsonObject intent = o.value("intent").toObject();
         QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
         QCOMPARE(intent.value("quantity").toDouble(), 5.0);          // 0.5 * 10
         QCOMPARE(intent.value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    // Enter, short: an endorsed SHORT edge (gate=pass, cost-clear, fresh,
+    // side=short) resolves edge_direction=-1 and an enter maps to a sell --
+    // this is the short-side-entries invariant track 1 exists to prove.
+    void ai_act_enter_short_previews_sell() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('act-short1', %1, %1, 'SHORTE-USD', 'pass', 'short', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "SHORTE-USD", "enter", "--conviction", "0.5", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), -1);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("sell"));
+        QCOMPARE(intent.value("quantity").toDouble(), 5.0);          // 0.5 * 10
+        QCOMPARE(intent.value("order_type").toString(), QStringLiteral("market"));
+    }
+
+    // Enter, no/stale edge: a symbol with no edge_decision_journal row at
+    // all resolves edge_direction=0 (missing -> not affirmatively endorsed),
+    // so enter previews NO intent -- it never invents a side.
+    void ai_act_enter_no_edge_previews_null() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "NOEDGE-USD", "enter", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), 0);
+        QVERIFY(o.value("intent").isNull());
+    }
+
+    // Exit, short position: a sell fill leaves net_qty<0; exit ignores
+    // edge_direction entirely and covers via a buy sized to |net_qty|.
+    void ai_act_exit_short_position_previews_buy_cover() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO ai_fill (id,handler,symbol,side,quantity,fill_price,fee,realized_pnl,ts,draft_id) "
+            "VALUES ('act-shortpos1','claude','SHORTPOS-USD','sell',6,100,0,0,1000,'d')").is_ok());  // net_qty = -6
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "SHORTPOS-USD", "exit", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
+        QCOMPARE(intent.value("quantity").toDouble(), 6.0);
     }
 
     void ai_act_exit_previews_sell_of_position() {
@@ -2138,6 +2207,17 @@ private slots:
         QVERIFY(o.value("intent").isNull());   // nothing to trim
     }
 
+    // "hold" is accepted as a vocabulary synonym for skip (parity with the
+    // LLM verb surface) and always previews no intent.
+    void ai_act_hold_is_null_intent() {
+        sandbox_test_home();
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "HOLD-USD", "hold", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(o.value("intent").isNull());
+    }
+
     void ai_act_unknown_action_exits_2() {
         sandbox_test_home();
         int rc = 0;
@@ -2145,15 +2225,64 @@ private slots:
         QCOMPARE(rc, 2);
     }
 
+    // READ-ONLY invariant: `ai act` must not mutate a single cli.* settings
+    // row, nor insert/delete any edge_decision_journal or ai_fill row --
+    // position_of and edge_direction_of (via assess) only ever SELECT, and
+    // translate_action is pure (mirrors the `ai ctx` read-only fingerprint
+    // tests above).
     void ai_act_is_read_only() {
         sandbox_test_home();
+        QVERIFY(Database::instance().execute(
+            QStringLiteral(
+                "INSERT INTO edge_decision_journal (id, created_at, updated_at, symbol, gate, side,"
+                " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+                " VALUES ('act-ro1', %1, %1, 'RO-USD', 'pass', 'buy', 5.0, 1.0, 0.5,"
+                "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'x')").arg(recent_ms())).is_ok());
         const QStringList before = cli_settings_fingerprint();
         const int fills_before = table_row_count(QStringLiteral("ai_fill"));
+        const int journal_before = table_row_count(QStringLiteral("edge_decision_journal"));
         int rc = -1;
         json_object_from_dispatch(QStringList{"ai", "act", "RO-USD", "enter", "--json"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(cli_settings_fingerprint(), before);
         QCOMPARE(table_row_count(QStringLiteral("ai_fill")), fills_before);
+        QCOMPARE(table_row_count(QStringLiteral("edge_decision_journal")), journal_before);
+    }
+
+    // `ai act --market` scopes the preview's edge_direction_of the same way a
+    // scoped `ai run strategy claude --market` run would (Codex P1, #38): seed
+    // the SAME symbol under a crypto (coinbase, buy) OLDER row and a prediction
+    // (kalshi, short) NEWER row -- `--market crypto` must resolve the crypto
+    // row's (buy) direction, not the newer prediction row's.
+    void ai_act_market_scopes_edge_direction() {
+        sandbox_test_home();
+        const qint64 older = recent_ms(120000);  // 2 min ago
+        const qint64 newer = recent_ms(30000);   // 30 s ago (newer)
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('act-mkt-crypto', ?, ?, 'coinbase_advanced', 'ACTMKT-USD', 'buy', 'pass', 8.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'crypto row')", {older, older}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, side, gate,"
+            " edge_after_cost, spread_cost, fee_cost, freshness_json, source)"
+            " VALUES ('act-mkt-pred', ?, ?, 'kalshi_mkt', 'ACTMKT-USD', 'short', 'pass', 3.0, 1.0, 0.5,"
+            "         '{\"freshest_age_ms\":100,\"live_sources\":3}', 'prediction row')", {newer, newer}).is_ok());
+
+        int rc = -1;
+        QJsonObject o = json_object_from_dispatch(
+            QStringList{"ai", "act", "ACTMKT-USD", "enter", "--market", "crypto", "--json"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(o.value("edge_direction").toInt(), 1);  // the OLDER crypto (buy) row, not the newer short.
+        const QJsonObject intent = o.value("intent").toObject();
+        QCOMPARE(intent.value("side").toString(), QStringLiteral("buy"));
+
+        // Without --market: unchanged behavior -- newest-across-all == the kalshi (short) row.
+        int rc_any = -1;
+        QJsonObject o_any = json_object_from_dispatch(
+            QStringList{"ai", "act", "ACTMKT-USD", "enter", "--json"}, &rc_any);
+        QCOMPARE(rc_any, 0);
+        QCOMPARE(o_any.value("edge_direction").toInt(), -1);
     }
 
     // --- Task 3: `ai strategy list` + `ai handler` CRUD (PAPER-ONLY/DISARMED;
@@ -2188,11 +2317,12 @@ private slots:
         int rc = -1;
         const QJsonObject created = json_object_from_dispatch(
             QStringList{"--json", "ai", "handler", "create", "crypto-scout", "--strategy", "claude",
-                       "--symbols", "BTC-USD"}, &rc);
+                       "--symbols", "BTC-USD", "--market", "crypto"}, &rc);
         QCOMPARE(rc, 0);
         QCOMPARE(created.value("name").toString(), QString("crypto-scout"));
         QCOMPARE(created.value("strategy").toString(), QString("claude"));
         QCOMPARE(created.value("symbols").toString(), QString("BTC-USD"));
+        QCOMPARE(created.value("market").toString(), QString("crypto"));
         // paper-only/disarmed invariant: a freshly created handler is never enabled.
         QVERIFY(!created.value("enabled").toBool());
 
@@ -2201,6 +2331,7 @@ private slots:
         QCOMPARE(rc, 0);
         QCOMPARE(shown.value("strategy").toString(), QString("claude"));
         QCOMPARE(shown.value("symbols").toString(), QString("BTC-USD"));
+        QCOMPARE(shown.value("market").toString(), QString("crypto"));
         QVERIFY(!shown.value("enabled").toBool());
 
         const QJsonObject listed = json_object_from_dispatch(
@@ -2243,6 +2374,24 @@ private slots:
         int show_rc = -1;
         json_object_from_dispatch(QStringList{"--json", "ai", "handler", "show", "x"}, &show_rc);
         QVERIFY2(show_rc != 0, "no row should have been written for the rejected create");
+    }
+
+    void ai_handler_claude_requires_a_persisted_market_scope() {
+        sandbox_test_home();
+        int missing_rc = -1;
+        capture_stdout([&]() {
+            missing_rc = dispatch(QStringList{"ai", "handler", "create", "unscoped", "--strategy", "claude"});
+            return missing_rc;
+        });
+        QCOMPARE(missing_rc, 2);
+
+        int bad_rc = -1;
+        capture_stdout([&]() {
+            bad_rc = dispatch(QStringList{"ai", "handler", "create", "bad-scope", "--strategy", "claude",
+                                          "--market", "all"});
+            return bad_rc;
+        });
+        QCOMPARE(bad_rc, 2);
     }
 
     // --- Task 4: `ai handler status` (read-only arm-state) + `ai handler run`
@@ -2339,6 +2488,65 @@ private slots:
                  qUtf8Printable("saved handler limits must reach RunConfig; got: " + out));
 
         dispatch(QStringList{"ai", "handler", "delete", "p1"});
+    }
+
+    void ai_handler_run_rejects_legacy_unscoped_claude_handler() {
+        sandbox_test_home();
+        AiHandler legacy;
+        legacy.name = QStringLiteral("legacy-claude");
+        legacy.strategy = QStringLiteral("claude");
+        legacy.symbols = QStringLiteral("BTC-USD");
+        QVERIFY(AiHandlerRepository::instance().save(legacy).is_ok());
+
+        int rc = -1;
+        capture_stdout([&]() {
+            rc = dispatch(QStringList{"ai", "handler", "run", "legacy-claude", "--paper", "--max-iters", "1"});
+            return rc;
+        });
+        QCOMPARE(rc, 2);
+        QVERIFY(AiHandlerRepository::instance().remove(QStringLiteral("legacy-claude")).is_ok());
+    }
+
+    // `ai run strategy claude` resolves ENTER direction from the deterministic
+    // edge (edge_direction_of) and scopes the floor's assess_fn the same way;
+    // without --market that lookup is unscoped and can bleed a direction across
+    // venues (Codex P1, #38). --market is therefore REQUIRED for 'claude' (exit
+    // 2 without it); 'meanrev' is deterministic (no edge direction) and stays
+    // unaffected.
+    void ai_run_strategy_claude_requires_market() {
+        sandbox_test_home();
+        // Belt-and-braces: an engaged kill switch would halt tick 1 for the
+        // wrong reason and mask what this test actually checks.
+        openmarketterminal::SettingsRepository::instance().set(
+            QStringLiteral("cli.kill_switch"), QStringLiteral("false"), QStringLiteral("test"));
+
+        // WITHOUT --market: refused before any transport bring-up (exit 2).
+        int rc_missing = -1;
+        capture_stdout([&]() {
+            rc_missing = dispatch(QStringList{"ai", "run", "strategy", "claude", "--mode", "paper",
+                                              "--max-iters", "1", "--interval-sec", "0"});
+            return rc_missing;
+        });
+        QCOMPARE(rc_missing, 2);
+
+        // WITH --market crypto: accepted; a bounded headless paper run completes.
+        int rc_with_market = -1;
+        capture_stdout([&]() {
+            rc_with_market = dispatch(QStringList{"--headless", "ai", "run", "strategy", "claude",
+                                                  "--mode", "paper", "--market", "crypto",
+                                                  "--max-iters", "1", "--interval-sec", "0"});
+            return rc_with_market;
+        });
+        QCOMPARE(rc_with_market, 0);
+
+        // meanrev is deterministic (no edge direction) -- --market stays optional.
+        int rc_meanrev = -1;
+        capture_stdout([&]() {
+            rc_meanrev = dispatch(QStringList{"--headless", "ai", "run", "strategy", "meanrev",
+                                              "--mode", "paper", "--max-iters", "1", "--interval-sec", "0"});
+            return rc_meanrev;
+        });
+        QCOMPARE(rc_meanrev, 0);
     }
 };
 QTEST_MAIN(TstCommandDispatch)

@@ -974,6 +974,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
     src/storage/sqlite/migrations/v063_ai_handler.cpp
     src/storage/sqlite/migrations/v064_ai_fill.cpp
+    src/storage/sqlite/migrations/v065_ai_handler_market.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -2408,6 +2409,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
     src/storage/sqlite/migrations/v063_ai_handler.cpp
     src/storage/sqlite/migrations/v064_ai_fill.cpp
+    src/storage/sqlite/migrations/v065_ai_handler_market.cpp
     # DecisionContext.cpp — defines an anonymous-namespace `enum class
     # EdgeCol` (scoped enumerators, but the type name itself still lives in
     # the anon namespace); excluded defensively so a Release unity batch can

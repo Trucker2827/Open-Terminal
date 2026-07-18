@@ -3,7 +3,7 @@
 
 namespace openmarketterminal {
 
-/// A named, saved AI trade-handler recipe: {name, strategy, provider, symbols,
+/// A named, saved AI trade-handler recipe: {name, strategy, provider, symbols, market,
 /// interval_sec, allowed_venues, max_notional, max_position, enabled, notes,
 /// created_at}. `enabled` defaults to false — the paper-only/disarmed
 /// invariant is enforced at the data layer (migration v063's column default).
@@ -12,6 +12,7 @@ struct AiHandler {
     QString strategy;
     QString provider;
     QString symbols;
+    QString market;
     int interval_sec = 60;
     QString allowed_venues;
     double max_notional = 0.0;

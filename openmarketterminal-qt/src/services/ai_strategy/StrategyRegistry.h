@@ -16,6 +16,7 @@ namespace openmarketterminal::ai_strategy {
 struct StrategyBuildConfig {
     QStringList symbols;
     std::function<QString(const QString&)> completion; // CompletionFn for LLM strategies
+    QString market; // Required for edge-driven strategies so evidence stays venue-scoped.
 };
 
 struct StrategyInfo {

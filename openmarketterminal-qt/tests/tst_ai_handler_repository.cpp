@@ -46,6 +46,7 @@ class TstAiHandlerRepository : public QObject {
         h.strategy = QStringLiteral("claude");
         h.provider = QStringLiteral("anthropic");
         h.symbols = QStringLiteral("BTC-USD,ETH-USD");
+        h.market = QStringLiteral("crypto");
         h.interval_sec = 30;
         h.allowed_venues = QStringLiteral("coinbase_advanced");
         h.max_notional = 250.0;
@@ -58,6 +59,7 @@ class TstAiHandlerRepository : public QObject {
         QVERIFY(got.is_ok());
         QCOMPARE(got.value().strategy, QStringLiteral("claude"));
         QCOMPARE(got.value().symbols, QStringLiteral("BTC-USD,ETH-USD"));
+        QCOMPARE(got.value().market, QStringLiteral("crypto"));
         QCOMPARE(got.value().interval_sec, 30);
         QVERIFY(qAbs(got.value().max_notional - 250.0) < 1e-9);
         QVERIFY(!got.value().enabled); // disarmed/disabled by default

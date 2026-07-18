@@ -21,12 +21,13 @@ struct ActionParams {
     double trim_fraction = 0.5;  // fraction of the current position a Trim sells.
 };
 
-/// Pure: no DB, no LLM. Turns a verb + the symbol's CURRENT signed ledger position
-/// into a paper TradeIntent, or std::nullopt (skip / nothing to do). Long-only baseline:
-/// Enter buys conviction*max_qty (market); Trim sells trim_fraction of a long; Exit closes
-/// a long; flat/short positions yield nothing for Trim/Exit.
+/// Pure: no DB, no LLM. Turns a verb + the symbol's CURRENT signed ledger position +
+/// the deterministic edge direction (+1 long, -1 short, 0 none) into a paper TradeIntent,
+/// or std::nullopt. Enter opens/adds in the edge direction (0 -> none; opposing an existing
+/// position -> none, i.e. NO one-step reversal). Trim/Exit reduce/close whatever side is held
+/// (long -> sell, short -> buy). Hold/Skip -> none. Reads only its args.
 std::optional<TradeIntent> translate_action(const ActionChoice& choice, double current_net_qty,
-                                            const ActionParams& params);
+                                            int edge_direction, const ActionParams& params);
 
 } // namespace ai_strategy
 } // namespace openmarketterminal
