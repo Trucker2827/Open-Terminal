@@ -3357,13 +3357,23 @@ void KalshiScreen::refresh_live_automation_status() {
                     "Arm bounded autonomous Kalshi execution for 1H, 6H, 12H, or 24/7."));
             }
         }
+        const int accepted_orders = status.value(QStringLiteral("orders_last_hour")).toInt();
+        const int hourly_limit = status.value(QStringLiteral("max_orders_per_hour")).toInt(10);
+        const double reserved = status.value(QStringLiteral("worst_case_exposure_used")).toDouble();
+        const double experiment_cap = status.value(QStringLiteral("experiment_cap")).toDouble(120.0);
+        const double stake_cap = status.value(QStringLiteral("per_bet_contract_stake_cap")).toDouble(2.0);
+        const double all_in_cap = status.value(QStringLiteral("per_bet_all_in_tolerance")).toDouble(3.0);
         live_automation_status_->setText(QStringLiteral(
-            "%1 · %2/10 LIVE orders this rolling hour · $%3 of $120 used · stake <=$2 + fee, all-in <=$3%4%5")
+            "%1 · %2/%3 accepted orders this rolling hour · $%4 of $%5 reserved · stake <=$%6 + fee, all-in <=$%7%8%9")
             .arg(active ? (autonomous ? QStringLiteral("AUTO ACTIVE")
                                       : QStringLiteral("REVIEW SESSION ACTIVE"))
                         : QStringLiteral("SESSION STOPPED"))
-            .arg(status.value(QStringLiteral("orders_last_hour")).toInt())
-            .arg(status.value(QStringLiteral("worst_case_exposure_used")).toDouble(), 0, 'f', 2)
+            .arg(accepted_orders)
+            .arg(hourly_limit)
+            .arg(reserved, 0, 'f', 2)
+            .arg(experiment_cap, 0, 'f', 2)
+            .arg(stake_cap, 0, 'f', 2)
+            .arg(all_in_cap, 0, 'f', 2)
             .arg(paper ? QStringLiteral(" · PAPER ON: %1 open / %2 closed, no hourly limit")
                              .arg(status.value(QStringLiteral("paper_open_positions")).toInt())
                              .arg(status.value(QStringLiteral("paper_closed_positions")).toInt())

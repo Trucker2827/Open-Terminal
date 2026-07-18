@@ -22278,6 +22278,16 @@ static QJsonObject kalshi_live_experiment_status() {
     const QDateTime now = QDateTime::currentDateTimeUtc();
     const QString now_iso = now.toString(Qt::ISODate);
     const QString stale_created_iso = now.addSecs(-30).toString(Qt::ISODate);
+    QJsonObject session;
+    QFile session_file(kalshi_auto_evidence_path(QStringLiteral("kalshi-live-session.json")));
+    if (session_file.open(QIODevice::ReadOnly | QIODevice::Text))
+        session = QJsonDocument::fromJson(session_file.readAll()).object();
+    const QString session_id = session.value(QStringLiteral("session_id")).toString().trimmed();
+    const QString session_clause = session_id.isEmpty()
+        ? QString() : QStringLiteral(" AND json_extract(intent_json,'$.automation_session_id')=?");
+    const double experiment_cap = session.value(QStringLiteral("experiment_cap")).toDouble(120.0);
+    const double max_stake = session.value(QStringLiteral("max_stake")).toDouble(2.0);
+    const double max_all_in = session.value(QStringLiteral("max_all_in")).toDouble(3.0);
     // Older builds gave these quote-sensitive drafts five minutes. Expire any
     // micro-live approval after 30 seconds based on both its explicit expiry
     // and creation time so an upgrade immediately drains an accumulated queue.
@@ -22286,13 +22296,16 @@ static QJsonObject kalshi_live_experiment_status() {
         "AND json_extract(intent_json,'$.experiment_id')=? "
         "AND (expires_at<=? OR created_at<=?)",
         {QString::fromLatin1(kExperiment), now_iso, stale_created_iso});
+    QVariantList aggregate_args{QString::fromLatin1(kExperiment)};
+    if (!session_id.isEmpty()) aggregate_args << session_id;
     auto result = Database::instance().execute(
         "SELECT COUNT(*), "
         "COALESCE(SUM(CAST(json_extract(risk_snapshot_json,'$.order_value') AS REAL)),0) "
-        "FROM trade_audit WHERE mode='live' AND decision='filled' "
+        "FROM trade_audit WHERE mode='live' "
+        "AND decision IN ('submitted','partially_filled','filled') "
         "AND json_extract(intent_json,'$.asset_class')='prediction' "
         "AND json_extract(intent_json,'$.venue')='kalshi' "
-        "AND json_extract(intent_json,'$.experiment_id')=?", {QString::fromLatin1(kExperiment)});
+        "AND json_extract(intent_json,'$.experiment_id')=?" + session_clause, aggregate_args);
     int bets = 0;
     double used = 0.0;
     if (result.is_ok() && result.value().next()) {
@@ -22300,12 +22313,14 @@ static QJsonObject kalshi_live_experiment_status() {
         used = result.value().value(1).toDouble();
     }
     int orders_last_hour = 0;
+    QVariantList hourly_args{now.addSecs(-3600).toString(Qt::ISODateWithMs), QString::fromLatin1(kExperiment)};
+    if (!session_id.isEmpty()) hourly_args << session_id;
     auto hourly = Database::instance().execute(
-        "SELECT COUNT(*) FROM trade_audit WHERE mode='live' AND decision='filled' "
+        "SELECT COUNT(*) FROM trade_audit WHERE mode='live' "
+        "AND decision IN ('submitted','partially_filled','filled') "
         "AND ts>=? AND json_extract(intent_json,'$.asset_class')='prediction' "
         "AND json_extract(intent_json,'$.venue')='kalshi' "
-        "AND json_extract(intent_json,'$.experiment_id')=?",
-        {now.addSecs(-3600).toString(Qt::ISODateWithMs), QString::fromLatin1(kExperiment)});
+        "AND json_extract(intent_json,'$.experiment_id')=?" + session_clause, hourly_args);
     if (hourly.is_ok() && hourly.value().next())
         orders_last_hour = hourly.value().value(0).toInt();
     QJsonObject pending_draft;
@@ -22356,10 +22371,6 @@ static QJsonObject kalshi_live_experiment_status() {
             }
         }
     }
-    QJsonObject session;
-    QFile session_file(kalshi_auto_evidence_path(QStringLiteral("kalshi-live-session.json")));
-    if (session_file.open(QIODevice::ReadOnly | QIODevice::Text))
-        session = QJsonDocument::fromJson(session_file.readAll()).object();
     const QDateTime ends = QDateTime::fromString(session.value("ends_at").toString(), Qt::ISODateWithMs);
     const bool session_active = session.value("enabled").toBool() &&
         (!ends.isValid() || ends > now);
@@ -22412,10 +22423,10 @@ static QJsonObject kalshi_live_experiment_status() {
             engine_fault = QStringLiteral("Kalshi event stream is stale or unsubscribed");
     }
     return QJsonObject{{"experiment_id", kExperiment}, {"live_bets", bets},
-                       {"worst_case_exposure_used", used}, {"experiment_cap", 120.0},
-                       {"remaining_exposure", std::max(0.0, 120.0 - used)},
-                       {"per_bet_contract_stake_cap", 2.0},
-                       {"per_bet_all_in_tolerance", 3.0},
+                       {"worst_case_exposure_used", used}, {"experiment_cap", experiment_cap},
+                       {"remaining_exposure", std::max(0.0, experiment_cap - used)},
+                       {"per_bet_contract_stake_cap", max_stake},
+                       {"per_bet_all_in_tolerance", max_all_in},
                        {"autonomous", autonomous},
                        {"max_orders_per_hour", max_orders_per_hour},
                        {"orders_last_hour", orders_last_hour},
@@ -22457,12 +22468,12 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
         return 2;
     }
     bool ok = true;
-    const double max_stake = max_stake_raw.isEmpty() ? 2.0 : max_stake_raw.toDouble(&ok);
+    double max_stake = max_stake_raw.isEmpty() ? 2.0 : max_stake_raw.toDouble(&ok);
     if (!ok || max_stake <= 0.0 || max_stake > 2.0) {
         std::fprintf(stderr, "--max-stake must be > 0 and <= 2\n");
         return 2;
     }
-    const double experiment_cap = experiment_cap_raw.isEmpty() ? 120.0 : experiment_cap_raw.toDouble(&ok);
+    double experiment_cap = experiment_cap_raw.isEmpty() ? 120.0 : experiment_cap_raw.toDouble(&ok);
     if (!ok || experiment_cap <= 0.0 || experiment_cap > 120.0) {
         std::fprintf(stderr, "--experiment-cap must be > 0 and <= 120\n");
         return 2;
@@ -22479,6 +22490,22 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
     }
 
     const QJsonObject status = kalshi_live_experiment_status();
+    if (status.value(QStringLiteral("session_active")).toBool()) {
+        const double session_stake = status.value(QStringLiteral("per_bet_contract_stake_cap")).toDouble(2.0);
+        const double session_cap = status.value(QStringLiteral("experiment_cap")).toDouble(120.0);
+        if (max_stake_raw.isEmpty())
+            max_stake = session_stake;
+        else if (max_stake > session_stake + 1e-9) {
+            return automation_emit_object(opts, QJsonObject{{"status", "rejected"},
+                {"reason", "requested stake cap exceeds the armed session limit"}, {"experiment", status}});
+        }
+        if (experiment_cap_raw.isEmpty())
+            experiment_cap = session_cap;
+        else if (experiment_cap > session_cap + 1e-9) {
+            return automation_emit_object(opts, QJsonObject{{"status", "rejected"},
+                {"reason", "requested experiment cap exceeds the armed session limit"}, {"experiment", status}});
+        }
+    }
     if (require_session && !status.value("session_active").toBool()) {
         return automation_emit_object(opts, QJsonObject{{"status", "inactive"},
             {"reason", "live evidence session is stopped or expired"}, {"experiment", status}});
@@ -22623,6 +22650,14 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
         return automation_emit_object(opts, QJsonObject{{"status", "rejected"},
             {"reason", "one contract exceeds the requested stake cap"}, {"decision_id", id}});
     }
+    const double estimated_total = contracts * (observed_ask + estimated_fee);
+    const double max_all_in = status.value(QStringLiteral("per_bet_all_in_tolerance")).toDouble(3.0);
+    if (estimated_total > max_all_in + 1e-9) {
+        return automation_emit_object(opts, QJsonObject{{"status", "rejected"},
+            {"reason", QStringLiteral("estimated all-in cost exceeds session limit (%1 > %2)")
+                           .arg(estimated_total, 0, 'f', 2).arg(max_all_in, 0, 'f', 2)},
+            {"decision_id", id}, {"experiment", status}});
+    }
 
     const double spot = signal.value(QStringLiteral("spot")).toDouble();
     const double fair = signal.value(QStringLiteral("selected_fair")).toDouble();
@@ -22677,7 +22712,9 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
         {"market_id", market_id}, {"asset_id", market_id + QLatin1Char(':') + side},
         {"outcome", side == QStringLiteral("yes") ? QStringLiteral("Yes") : QStringLiteral("No")},
         {"side", "buy"}, {"contracts", contracts}, {"limit_price", observed_ask},
-        {"max_live_stake", max_stake}, {"experiment_loss_cap", experiment_cap},
+        {"max_live_stake", max_stake}, {"max_live_all_in", max_all_in},
+        {"estimated_fee", contracts * estimated_fee}, {"estimated_total", estimated_total},
+        {"experiment_loss_cap", experiment_cap},
         {"experiment_id", "kalshi-micro-live-v1"}, {"evidence_decision_id", id},
         {"autonomous", auto_submit},
         {"automation_session_id", session.value(QStringLiteral("session_id"))},
@@ -22694,7 +22731,7 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
         {"estimated_fee_per_contract", estimated_fee}, {"approved_limit", observed_ask},
         {"contracts", contracts}, {"observed_stake", contracts * observed_ask},
         {"estimated_fee", contracts * estimated_fee},
-        {"estimated_total", contracts * (observed_ask + estimated_fee)},
+        {"estimated_total", estimated_total}, {"max_all_in", max_all_in},
         {"decision_rationale", rationale}, {"decision_snapshot", decision_snapshot}};
     QJsonObject out{{"status", result.value("status")}, {"draft", result},
                     {"candidate", candidate}, {"experiment", status},
@@ -22793,6 +22830,7 @@ static int kalshi_auto_live_session_command(const GlobalOpts& opts, QStringList 
                               {"started_at", now.toString(Qt::ISODateWithMs)},
                               {"ends_at", ends_at},
                               {"max_stake", 2.0}, {"experiment_cap", 120.0},
+                              {"max_all_in", 3.0},
                               {"max_orders_per_hour", 10},
                               {"parallel_paper_enabled", parallel_paper},
                               {"human_approval_required", false},

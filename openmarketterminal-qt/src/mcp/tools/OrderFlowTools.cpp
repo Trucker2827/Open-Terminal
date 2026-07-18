@@ -494,7 +494,8 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
         intent["limit_price"] = args.value("limit_price").toDouble();
     // Live micro-evidence limits are persisted into the immutable draft and
     // re-checked against the fresh executable book immediately before submit.
-    for (const char* key : {"max_live_stake", "experiment_loss_cap"}) {
+    for (const char* key : {"max_live_stake", "max_live_all_in", "estimated_fee",
+                            "estimated_total", "experiment_loss_cap"}) {
         if (args.contains(key) && args.value(key).isDouble())
             intent[key] = args.value(key).toDouble();
     }
@@ -554,6 +555,8 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
 struct PmPlaceResult {
     bool ok = false;
     bool indeterminate = false;
+    double filled = 0.0;
+    QString status;
     QString reason;    // non-empty: order_id on success, error/timeout on failure
     QString order_id;
 };
@@ -573,6 +576,8 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
         bool timed_out = false;
         QString error;
         QString order_id;
+        QString status;
+        double filled = 0.0;
     };
     auto st = std::make_shared<PlaceState>();
 
@@ -592,6 +597,8 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
                     return;
                 st->ok = r.ok;
                 st->order_id = r.order_id;
+                st->status = r.status;
+                st->filled = std::max(0.0, r.filled);
                 if (!r.ok)
                     st->error = r.error_message.isEmpty() ? r.error_code : r.error_message;
                 st->finished = true;
@@ -637,7 +644,9 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
     }
     out.ok = true;
     out.order_id = st->order_id;
-    out.reason = st->order_id.isEmpty() ? QStringLiteral("filled") : st->order_id;
+    out.status = st->status;
+    out.filled = st->filled;
+    out.reason = st->order_id.isEmpty() ? QStringLiteral("order accepted") : st->order_id;
     return out;
 }
 
@@ -836,13 +845,34 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         // They can only reduce authority: malformed or missing values fail
         // closed for an experiment-tagged draft.
         if (!experiment_id.isEmpty()) {
+            const QString experiment_session =
+                intent.value(QStringLiteral("automation_session_id")).toString().trimmed();
+            if (experiment_session.isEmpty()) {
+                const QString reason = QStringLiteral(
+                    "micro-live order must belong to an armed automation session");
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
             const double max_live_stake = intent.value("max_live_stake").toDouble(0.0);
             const double experiment_cap = intent.value("experiment_loss_cap").toDouble(0.0);
+            const double max_live_all_in = intent.value("max_live_all_in").toDouble(0.0);
+            const double estimated_fee = intent.value("estimated_fee").toDouble(-1.0);
             if (max_live_stake <= 0.0 || experiment_cap <= 0.0 ||
                 rv.order_value > max_live_stake + 1e-9) {
                 const QString reason = QStringLiteral("micro-live stake cap exceeded (%1 > %2)")
                                            .arg(rv.order_value, 0, 'f', 2)
                                            .arg(max_live_stake, 0, 'f', 2);
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
+            if (max_live_all_in <= 0.0 || estimated_fee < 0.0 ||
+                rv.order_value + estimated_fee > max_live_all_in + 1e-9) {
+                const QString reason = QStringLiteral("micro-live all-in cap exceeded (%1 + %2 > %3)")
+                                           .arg(rv.order_value, 0, 'f', 2)
+                                           .arg(std::max(0.0, estimated_fee), 0, 'f', 2)
+                                           .arg(max_live_all_in, 0, 'f', 2);
                 audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
                 return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
                                                        {"mode", "live"}});
@@ -878,12 +908,14 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
                                                            {"mode", "live"}});
                 }
                 auto hourly = Database::instance().execute(
-                    "SELECT COUNT(*) FROM trade_audit WHERE mode='live' AND decision='filled' "
+                    "SELECT COUNT(*) FROM trade_audit WHERE mode='live' "
+                    "AND decision IN ('submitted','partially_filled','filled') "
                     "AND ts>=? AND json_extract(intent_json,'$.asset_class')='prediction' "
                     "AND json_extract(intent_json,'$.venue')='kalshi' "
-                    "AND json_extract(intent_json,'$.experiment_id')=?",
+                    "AND json_extract(intent_json,'$.experiment_id')=? "
+                    "AND json_extract(intent_json,'$.automation_session_id')=?",
                     {QDateTime::currentDateTimeUtc().addSecs(-3600).toString(Qt::ISODateWithMs),
-                     experiment_id});
+                     experiment_id, draft_session});
                 if (hourly.is_err() || !hourly.value().next() ||
                     hourly.value().value(0).toInt() >= requested_max) {
                     const QString reason = QStringLiteral("rolling limit of %1 autonomous Kalshi orders per hour reached")
@@ -895,10 +927,13 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
             }
             auto spent = Database::instance().execute(
                 "SELECT COALESCE(SUM(CAST(json_extract(risk_snapshot_json,'$.order_value') AS REAL)),0) "
-                "FROM trade_audit WHERE mode='live' AND decision='filled' "
+                "FROM trade_audit WHERE mode='live' "
+                "AND decision IN ('submitted','partially_filled','filled') "
                 "AND json_extract(intent_json,'$.asset_class')='prediction' "
                 "AND json_extract(intent_json,'$.venue')='kalshi' "
-                "AND json_extract(intent_json,'$.experiment_id')=?", {experiment_id});
+                "AND json_extract(intent_json,'$.experiment_id')=? "
+                "AND json_extract(intent_json,'$.automation_session_id')=?",
+                {experiment_id, intent.value(QStringLiteral("automation_session_id")).toString()});
             if (spent.is_err() || !spent.value().next()) {
                 const QString reason = QStringLiteral("could not verify micro-live experiment exposure");
                 audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
@@ -974,19 +1009,22 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         OrderDraftRepository::instance().update_status(
             draft_id, draft_status);
 
-        // Record the fill in the LIVE realized-P&L ledger at the RESOLVED price.
-        // PM has no AccountManager account → account "" ; venue is the exchange;
-        // instrument is the asset_id. BUY opens/adds, SELL closes/reduces.
-        if (pr.ok) {
+        // A venue acknowledgement is not a fill. Only a confirmed filled
+        // quantity may change the live P/L ledger; later authenticated account
+        // reconciliation owns fills for resting or partially filled orders.
+        const double confirmed_fill = std::min(contracts, std::max(0.0, pr.filled));
+        if (pr.ok && confirmed_fill > 0.0) {
             if (side == QLatin1String("buy"))
-                mcp::tools::record_open(QStringLiteral(""), venue, asset_id, contracts, execution_price);
+                mcp::tools::record_open(QStringLiteral(""), venue, asset_id, confirmed_fill, execution_price);
             else
-                mcp::tools::record_close(QStringLiteral(""), venue, asset_id, contracts, execution_price);
+                mcp::tools::record_close(QStringLiteral(""), venue, asset_id, confirmed_fill, execution_price);
         }
 
-        const QString decision = pr.ok ? QStringLiteral("filled")
-            : pr.indeterminate ? QStringLiteral("submission_unknown")
-                               : QStringLiteral("rejected");
+        const QString decision = !pr.ok ? (pr.indeterminate ? QStringLiteral("submission_unknown")
+                                                             : QStringLiteral("rejected"))
+            : confirmed_fill >= contracts ? QStringLiteral("filled")
+            : confirmed_fill > 0.0 ? QStringLiteral("partially_filled")
+                                   : QStringLiteral("submitted");
         // trade_audit.reason is NOT NULL — pr.reason is always non-empty (order_id
         // on success, error/timeout on failure).
         audit_submit(QStringLiteral(""), QStringLiteral("live"), intent, decision, pr.reason, rv);
@@ -995,8 +1033,10 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
             {"status", decision},
             {"order_id", pr.order_id},
             {"client_order_id", draft_id},
-            {"reconciliation_required", pr.indeterminate},
+            {"reconciliation_required", pr.indeterminate || (pr.ok && confirmed_fill < contracts)},
             {"reason", pr.reason},
+            {"exchange_status", pr.status},
+            {"confirmed_fill", confirmed_fill},
             {"venue", venue},
             {"mode", "live"},
         });
@@ -1051,6 +1091,9 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .string("outcome", "Prediction outcome name — prediction only")
                 .number("contracts", "Prediction contracts (must be > 0) — prediction only").min(0.0)
                 .number("max_live_stake", "Optional hard live stake cap carried into the draft").min(0.0)
+                .number("max_live_all_in", "Optional hard live stake plus estimated-fee cap").min(0.0)
+                .number("estimated_fee", "Optional conservative estimated venue fee for a live draft").min(0.0)
+                .number("estimated_total", "Optional estimated stake plus fee for a live draft").min(0.0)
                 .number("experiment_loss_cap", "Optional cumulative live experiment exposure cap").min(0.0)
                 .string("experiment_id", "Optional live evidence experiment id").length(1, 128)
                 .string("evidence_decision_id", "Optional source decision journal id").length(1, 128)

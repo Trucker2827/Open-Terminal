@@ -132,6 +132,7 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
     // actually fired so the happy-path test can assert the RESOLVED price/size.
     bool creds_ = true;
     bool suppress_place_result_ = false;
+    double filled_override_ = -1.0;
     int place_order_calls_ = 0;
     pred::OrderRequest last_req_;
 
@@ -155,7 +156,7 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
                 r.ok = true;
                 r.order_id = "PM-FAKE-1";
                 r.status = "FILLED";
-                r.filled = req.size;
+                r.filled = filled_override_ >= 0.0 ? filled_override_ : req.size;
                 emit order_placed(r);
             },
             Qt::QueuedConnection);
@@ -824,6 +825,64 @@ class TstPmPaper : public QObject {
         QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
                  QStringLiteral("submitted"));
         QVERIFY2(find_submit_audit("filled", "live"), "the live fill must be audited mode 'live'");
+    }
+
+    // An exchange acknowledgement with zero confirmed fills is a resting order,
+    // not a live position or completed evidence point. A later authenticated
+    // account/fill reconciliation owns any transition to a real fill.
+    void pm_submit_live_accepted_but_unfilled_requires_reconciliation() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-resting", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->filled_override_ = 0.0;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+
+        QVERIFY2(res.success, qPrintable("resting live submit is auditable: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("submitted"));
+        QCOMPARE(data.value("confirmed_fill").toDouble(), 0.0);
+        QVERIFY(data.value("reconciliation_required").toBool());
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("submitted"));
+        verify_no_live_position("live-resting");
+        QVERIFY2(find_submit_audit("submitted", "live"),
+                 "an accepted but unfilled order must not be audited as filled");
+    }
+
+    // A partial acknowledgement records only the confirmed quantity and keeps
+    // reconciliation active for the resting remainder.
+    void pm_submit_live_partial_fill_records_confirmed_quantity_only() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-partial", 10);
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->filled_override_ = 4.0;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+
+        QVERIFY2(res.success, qPrintable("partial live submit is auditable: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("partially_filled"));
+        QCOMPARE(data.value("confirmed_fill").toDouble(), 4.0);
+        QVERIFY(data.value("reconciliation_required").toBool());
+        auto pos = LivePnlRepository::instance().get_open("", "polymarket", "live-partial");
+        QVERIFY2(pos.is_ok() && pos.value().has_value(),
+                 "the confirmed partial fill must open a live position");
+        QCOMPARE(pos.value()->qty, 4.0);
+        QVERIFY2(find_submit_audit("partially_filled", "live"),
+                 "a partial acknowledgement must be audited as partially filled");
     }
 
     // A local timeout does not prove rejection. Keep the draft and its market

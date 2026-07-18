@@ -973,7 +973,18 @@ private slots:
             {QStringLiteral("asset_class"), QStringLiteral("prediction")},
             {QStringLiteral("venue"), QStringLiteral("kalshi")},
             {QStringLiteral("experiment_id"), QStringLiteral("kalshi-micro-live-v1")},
+            {QStringLiteral("automation_session_id"),
+             armed_session.value(QStringLiteral("session_id")).toString()},
             {QStringLiteral("autonomous"), true}};
+        QJsonObject old_session_intent = autonomous_intent;
+        old_session_intent[QStringLiteral("automation_session_id")] = QStringLiteral("old-session");
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO trade_audit (ts,phase,tool,account,mode,intent_json,decision,reason,risk_snapshot_json) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            {QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
+             QStringLiteral("submit"), QStringLiteral("submit_order"), QStringLiteral(""),
+             QStringLiteral("live"), QString::fromUtf8(QJsonDocument(old_session_intent).toJson(QJsonDocument::Compact)),
+             QStringLiteral("filled"), QStringLiteral("historic session fill"), QStringLiteral("{}")}).is_ok());
         for (int i = 0; i < 10; ++i) {
             QJsonObject row_intent = autonomous_intent;
             if (i == 0)
