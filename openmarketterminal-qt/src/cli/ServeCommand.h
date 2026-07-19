@@ -77,6 +77,18 @@ struct KalshiFlowMetrics {
     QString confidence = QStringLiteral("LOW");
 };
 
+struct KalshiFlowPriceSample {
+    qint64 ts_ms = 0;
+    double price = 0.0;
+};
+
+struct KalshiFlowQuote {
+    double bid = 0.0;
+    double ask = 0.0;
+    double bid_size = 0.0;
+    double ask_size = 0.0;
+};
+
 KalshiFlowMetrics kalshi_flow_metrics(const QVector<KalshiFlowLevel>& yes_bid_levels,
                                       const QVector<KalshiFlowLevel>& no_bid_levels,
                                       const QVector<KalshiFlowTrade>& trades,
@@ -85,6 +97,21 @@ KalshiFlowMetrics kalshi_flow_metrics(const QVector<KalshiFlowLevel>& yes_bid_le
                                       qint64 lookback_ms = 30000,
                                       int depth_levels = 5);
 QJsonObject kalshi_flow_to_json(const KalshiFlowMetrics& metrics);
+// Multi-window context and economics are deliberately pure and advisory. They
+// make the exact evidence visible to CLI/GUI/journals; they do not authorize
+// an order.
+QJsonObject kalshi_flow_windows_to_json(const QVector<KalshiFlowLevel>& yes_bid_levels,
+                                        const QVector<KalshiFlowLevel>& no_bid_levels,
+                                        const QVector<KalshiFlowTrade>& trades,
+                                        const QVector<KalshiFlowDelta>& deltas,
+                                        qint64 now_ms);
+QJsonObject kalshi_flow_divergence_to_json(double spot_change_bps,
+                                           double contract_change_cents,
+                                           const KalshiFlowMetrics& short_window);
+QJsonObject kalshi_flow_execution_to_json(const KalshiFlowQuote& yes,
+                                          const KalshiFlowQuote& no,
+                                          double yes_fee_per_contract,
+                                          double no_fee_per_contract);
 
 // Pure daemon-job-spec -> CLI-args builder, kept public for deterministic
 // regression tests.

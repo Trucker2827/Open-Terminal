@@ -132,6 +132,43 @@ private slots:
         QCOMPARE(metrics.recent_delta_count, 0);
         QCOMPARE(metrics.confidence, QStringLiteral("LOW"));
     }
+
+    void kalshi_flow_meter_provides_consistent_multi_window_context() {
+        const qint64 now = 1'000'000;
+        const auto windows = kalshi_flow_windows_to_json(
+            {{0.60, 20.0}}, {{0.40, 10.0}},
+            {{now - 1'000, "yes", 4.0}, {now - 45'000, "no", 90.0}},
+            {{now - 1'000, "yes", 2.0}, {now - 45'000, "no", 30.0}}, now);
+        QVERIFY(windows.contains(QStringLiteral("2s")));
+        QVERIFY(windows.contains(QStringLiteral("30s")));
+        QVERIFY(windows.contains(QStringLiteral("5m")));
+        QCOMPARE(windows.value(QStringLiteral("2s")).toObject().value("trade_count").toInt(), 1);
+        QCOMPARE(windows.value(QStringLiteral("30s")).toObject().value("trade_count").toInt(), 1);
+        QCOMPARE(windows.value(QStringLiteral("5m")).toObject().value("trade_count").toInt(), 2);
+        QCOMPARE(windows.value(QStringLiteral("5m")).toObject().value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_flow_meter_marks_flow_price_divergence_as_advisory() {
+        KalshiFlowMetrics pressure;
+        pressure.combined_pressure = -0.4;
+        const auto row = kalshi_flow_divergence_to_json(12.0, -1.2, pressure);
+        QCOMPARE(row.value("label").toString(), QStringLiteral("DIVERGENCE"));
+        QVERIFY(row.value("price_diverges").toBool());
+        QVERIFY(row.value("flow_diverges").toBool());
+        QCOMPARE(row.value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_flow_meter_shows_real_immediate_taker_cost() {
+        const auto economics = kalshi_flow_execution_to_json(
+            {0.55, 0.57, 12.0, 8.0}, {0.43, 0.45, 10.0, 9.0}, 0.01, 0.01);
+        const auto yes = economics.value("yes").toObject();
+        const auto no = economics.value("no").toObject();
+        QCOMPARE(yes.value("entry_cash_cost").toDouble(), 0.58);
+        QCOMPARE(yes.value("immediate_exit_proceeds").toDouble(), 0.54);
+        QCOMPARE(yes.value("immediate_round_trip_loss").toDouble(), 0.04);
+        QCOMPARE(no.value("immediate_round_trip_loss").toDouble(), 0.04);
+        QCOMPARE(economics.value("advisory_only").toBool(), true);
+    }
 };
 QTEST_MAIN(TstServeCommand)
 #include "tst_serve_command.moc"

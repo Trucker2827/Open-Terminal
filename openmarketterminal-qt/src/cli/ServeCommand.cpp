@@ -11,6 +11,7 @@
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
+#include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 #include "services/sandbox/MakerQuotes.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -206,6 +207,76 @@ QJsonObject kalshi_flow_to_json(const KalshiFlowMetrics& metrics) {
         {QStringLiteral("advisory_only"), true},
         {QStringLiteral("interpretation"),
          QStringLiteral("Public contract flow; not unique traders and never an execution signal")}};
+}
+
+QJsonObject kalshi_flow_windows_to_json(const QVector<KalshiFlowLevel>& yes_bid_levels,
+                                        const QVector<KalshiFlowLevel>& no_bid_levels,
+                                        const QVector<KalshiFlowTrade>& trades,
+                                        const QVector<KalshiFlowDelta>& deltas,
+                                        qint64 now_ms) {
+    const QList<QPair<QString, qint64>> windows{{QStringLiteral("2s"), 2'000},
+                                                 {QStringLiteral("10s"), 10'000},
+                                                 {QStringLiteral("30s"), 30'000},
+                                                 {QStringLiteral("2m"), 120'000},
+                                                 {QStringLiteral("5m"), 300'000}};
+    QJsonObject out;
+    for (const auto& window : windows) {
+        QJsonObject row = kalshi_flow_to_json(kalshi_flow_metrics(
+            yes_bid_levels, no_bid_levels, trades, deltas, now_ms, window.second));
+        row.insert(QStringLiteral("window_ms"), QString::number(window.second));
+        out.insert(window.first, row);
+    }
+    return out;
+}
+
+QJsonObject kalshi_flow_divergence_to_json(double spot_change_bps,
+                                           double contract_change_cents,
+                                           const KalshiFlowMetrics& short_window) {
+    const bool spot_up = spot_change_bps > 0.5;
+    const bool spot_down = spot_change_bps < -0.5;
+    const bool contract_up = contract_change_cents > 0.1;
+    const bool contract_down = contract_change_cents < -0.1;
+    const bool flow_yes = short_window.combined_pressure >= 0.25;
+    const bool flow_no = short_window.combined_pressure <= -0.25;
+    const bool price_diverges = (spot_up && contract_down) || (spot_down && contract_up);
+    const bool flow_diverges = (spot_up && flow_no) || (spot_down && flow_yes);
+    QString label = QStringLiteral("ALIGNED");
+    if (price_diverges || flow_diverges) label = QStringLiteral("DIVERGENCE");
+    else if (!spot_up && !spot_down && !contract_up && !contract_down)
+        label = QStringLiteral("QUIET");
+    return QJsonObject{{QStringLiteral("spot_change_bps"), spot_change_bps},
+                       {QStringLiteral("contract_change_cents"), contract_change_cents},
+                       {QStringLiteral("short_flow_pressure"), short_window.combined_pressure},
+                       {QStringLiteral("label"), label},
+                       {QStringLiteral("price_diverges"), price_diverges},
+                       {QStringLiteral("flow_diverges"), flow_diverges},
+                       {QStringLiteral("advisory_only"), true},
+                       {QStringLiteral("interpretation"),
+                        QStringLiteral("A divergence is a research condition, not a trade instruction")}};
+}
+
+QJsonObject kalshi_flow_execution_to_json(const KalshiFlowQuote& yes,
+                                          const KalshiFlowQuote& no,
+                                          double yes_fee_per_contract,
+                                          double no_fee_per_contract) {
+    const auto side = [](const KalshiFlowQuote& quote, double fee) {
+        const double entry = std::max(0.0, quote.ask) + std::max(0.0, fee);
+        const double exit = std::max(0.0, quote.bid) - std::max(0.0, fee);
+        return QJsonObject{{QStringLiteral("bid"), quote.bid},
+                           {QStringLiteral("ask"), quote.ask},
+                           {QStringLiteral("bid_size"), quote.bid_size},
+                           {QStringLiteral("ask_size"), quote.ask_size},
+                           {QStringLiteral("fee_per_contract"), std::max(0.0, fee)},
+                           {QStringLiteral("entry_cash_cost"), entry},
+                           {QStringLiteral("immediate_exit_proceeds"), std::max(0.0, exit)},
+                           {QStringLiteral("immediate_round_trip_loss"), std::max(0.0, entry - exit)},
+                           {QStringLiteral("spread_cents"), std::max(0.0, quote.ask - quote.bid) * 100.0}};
+    };
+    return QJsonObject{{QStringLiteral("yes"), side(yes, yes_fee_per_contract)},
+                       {QStringLiteral("no"), side(no, no_fee_per_contract)},
+                       {QStringLiteral("advisory_only"), true},
+                       {QStringLiteral("interpretation"),
+                        QStringLiteral("Immediate taker economics only; it is not an execution recommendation")}};
 }
 
 namespace {
@@ -538,6 +609,8 @@ class KalshiLiveEventEngine final : public QObject {
         latest_independent_spot_ = tick.price;
         latest_independent_spot_source_ = source;
         latest_independent_spot_ms_ = received;
+        independent_spot_history_.append({received, tick.price});
+        trim_price_history(independent_spot_history_, received);
         ++independent_spot_events_;
         status_dirty_ = true;
         schedule_decision(QStringLiteral("independent_spot_change"));
@@ -627,6 +700,7 @@ class KalshiLiveEventEngine final : public QObject {
         QVector<Candidate> candidates;
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         QSet<QString> next;
+        QHash<QString, services::prediction::PredictionMarket> next_markets;
         for (const auto& market : markets) {
             const QString ticker = market.key.market_id.trimmed().toUpper();
             if (!ticker.startsWith(QStringLiteral("KXBTC")) || market.closed || !market.active)
@@ -661,6 +735,7 @@ class KalshiLiveEventEngine final : public QObject {
                 continue;
             for (const QString& asset_id : candidate.market->key.asset_ids)
                 if (!asset_id.trimmed().isEmpty()) next.insert(asset_id);
+            next_markets.insert(candidate.market->key.market_id.trimmed().toUpper(), *candidate.market);
             cohort_counts[candidate.close_ms] += 1;
         }
         QSet<QString> added = next;
@@ -676,6 +751,7 @@ class KalshiLiveEventEngine final : public QObject {
         if (!added.isEmpty())
             adapter_->subscribe_market(QStringList(added.begin(), added.end()));
         subscribed_asset_ids_ = next;
+        tracked_markets_ = next_markets;
         if (!next.isEmpty() && subscription_started_ms_ <= 0)
             subscription_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         last_universe_refresh_ = now_utc();
@@ -723,8 +799,24 @@ class KalshiLiveEventEngine final : public QObject {
         return side == QStringLiteral("yes") || side == QStringLiteral("no") ? side : QString{};
     }
 
+    static void trim_price_history(QVector<KalshiFlowPriceSample>& samples, qint64 now_ms) {
+        constexpr qint64 kRetainMs = 5 * 60'000;
+        while (!samples.isEmpty() && samples.first().ts_ms < now_ms - kRetainMs)
+            samples.removeFirst();
+    }
+
+    static double historical_price(const QVector<KalshiFlowPriceSample>& samples,
+                                   qint64 target_ms) {
+        double value = 0.0;
+        for (const auto& sample : samples) {
+            if (sample.ts_ms > target_ms) break;
+            if (sample.price > 0.0) value = sample.price;
+        }
+        return value;
+    }
+
     void trim_flow_buffers(const QString& ticker, qint64 now_ms) {
-        constexpr qint64 kRetainMs = 60'000;
+        constexpr qint64 kRetainMs = 5 * 60'000;
         auto& trades = flow_trades_[ticker];
         while (!trades.isEmpty() && trades.first().ts_ms < now_ms - kRetainMs)
             trades.removeFirst();
@@ -769,11 +861,74 @@ class KalshiLiveEventEngine final : public QObject {
         for (const auto& level : yes_book.bids) yes_levels.append({level.price, level.size});
         for (const auto& level : no_book.bids) no_levels.append({level.price, level.size});
         trim_flow_buffers(ticker, now_ms);
-        QJsonObject snapshot = kalshi_flow_to_json(kalshi_flow_metrics(
-            yes_levels, no_levels, flow_trades_.value(ticker), flow_deltas_.value(ticker), now_ms));
+        const QJsonObject windows = kalshi_flow_windows_to_json(
+            yes_levels, no_levels, flow_trades_.value(ticker), flow_deltas_.value(ticker), now_ms);
+        QJsonObject snapshot = windows.value(QStringLiteral("30s")).toObject();
         snapshot.insert(QStringLiteral("ticker"), ticker);
         snapshot.insert(QStringLiteral("source"), QStringLiteral("kalshi_websocket"));
         flow_snapshots_.insert(ticker, snapshot);
+
+        const double yes_mid = yes_book.bids.isEmpty() || yes_book.asks.isEmpty() ? 0.0
+            : (yes_book.bids.first().price + yes_book.asks.first().price) / 2.0;
+        if (yes_mid > 0.0) {
+            yes_mid_history_[ticker].append({now_ms, yes_mid});
+            trim_price_history(yes_mid_history_[ticker], now_ms);
+        }
+        const double prior_spot = historical_price(independent_spot_history_, now_ms - 30'000);
+        const double prior_yes_mid = historical_price(yes_mid_history_.value(ticker), now_ms - 30'000);
+        const double spot_change_bps = prior_spot > 0.0 && latest_independent_spot_ > 0.0
+            ? (latest_independent_spot_ / prior_spot - 1.0) * 10000.0 : 0.0;
+        const double contract_change_cents = prior_yes_mid > 0.0 && yes_mid > 0.0
+            ? (yes_mid - prior_yes_mid) * 100.0 : 0.0;
+        const auto short_flow = kalshi_flow_metrics(
+            yes_levels, no_levels, flow_trades_.value(ticker), flow_deltas_.value(ticker), now_ms, 30'000);
+        const auto market = tracked_markets_.value(ticker);
+        const auto yes_quote = KalshiFlowQuote{yes_book.bids.isEmpty() ? 0.0 : yes_book.bids.first().price,
+                                                yes_book.asks.isEmpty() ? 0.0 : yes_book.asks.first().price,
+                                                yes_book.bids.isEmpty() ? 0.0 : yes_book.bids.first().size,
+                                                yes_book.asks.isEmpty() ? 0.0 : yes_book.asks.first().size};
+        const auto no_quote = KalshiFlowQuote{no_book.bids.isEmpty() ? 0.0 : no_book.bids.first().price,
+                                               no_book.asks.isEmpty() ? 0.0 : no_book.asks.first().price,
+                                               no_book.bids.isEmpty() ? 0.0 : no_book.bids.first().size,
+                                               no_book.asks.isEmpty() ? 0.0 : no_book.asks.first().size};
+        const double yes_fee = services::prediction::kalshi_ns::KalshiEvidenceEngine::conservative_taker_fee(
+            market, yes_quote.ask);
+        const double no_fee = services::prediction::kalshi_ns::KalshiEvidenceEngine::conservative_taker_fee(
+            market, no_quote.ask);
+        QVector<services::prediction::PredictionMarket> cohort_markets;
+        for (const auto& candidate : tracked_markets_) {
+            if (!market.key.event_id.isEmpty() && candidate.key.event_id == market.key.event_id)
+                cohort_markets.append(candidate);
+        }
+        const QJsonArray diagnostics = market.key.event_id.isEmpty() ? QJsonArray{}
+            : services::prediction::kalshi_ns::KalshiEvidenceEngine::analyze_ladder(
+                  cohort_markets, normalized_books_, market.key.event_id);
+        int actionable = 0;
+        for (const auto& value : diagnostics)
+            if (value.toObject().value(QStringLiteral("severity")).toString() == QStringLiteral("opportunity"))
+                ++actionable;
+        const QDateTime close = QDateTime::fromString(market.end_date_iso, Qt::ISODate);
+        const qint64 seconds_left = close.isValid()
+            ? std::max<qint64>(0, (close.toMSecsSinceEpoch() - now_ms) / 1000) : -1;
+        QJsonObject decision{{QStringLiteral("schema"), 1},
+                             {QStringLiteral("ticker"), ticker},
+                             {QStringLiteral("observed_at_ms"), QString::number(now_ms)},
+                             {QStringLiteral("advisory_only"), true},
+                             {QStringLiteral("underlying"), QJsonObject{{QStringLiteral("price"), latest_independent_spot_},
+                                 {QStringLiteral("source"), latest_independent_spot_source_},
+                                 {QStringLiteral("observed_at_ms"), QString::number(latest_independent_spot_ms_)},
+                                 {QStringLiteral("change_30s_bps"), spot_change_bps}}},
+                             {QStringLiteral("contract"), QJsonObject{{QStringLiteral("question"), market.question},
+                                 {QStringLiteral("event_ticker"), market.key.event_id},
+                                 {QStringLiteral("close_time"), market.end_date_iso},
+                                 {QStringLiteral("seconds_left"), seconds_left},
+                                 {QStringLiteral("yes_mid"), yes_mid}, {QStringLiteral("yes_change_30s_cents"), contract_change_cents}}},
+                             {QStringLiteral("flow"), QJsonObject{{QStringLiteral("windows"), windows},
+                                 {QStringLiteral("divergence"), kalshi_flow_divergence_to_json(spot_change_bps, contract_change_cents, short_flow)}}},
+                             {QStringLiteral("execution"), kalshi_flow_execution_to_json(yes_quote, no_quote, yes_fee, no_fee)},
+                             {QStringLiteral("ladder"), QJsonObject{{QStringLiteral("event_ticker"), market.key.event_id},
+                                 {QStringLiteral("diagnostics"), diagnostics}, {QStringLiteral("actionable_count"), actionable}}}};
+        decision_snapshots_.insert(ticker, decision);
     }
 
     void observe_market_event(const QString& type, const QString& ticker,
@@ -984,11 +1139,12 @@ class KalshiLiveEventEngine final : public QObject {
 
     void write_book_snapshot() {
         const QJsonObject payload{
-            {QStringLiteral("schema"), 2},
+            {QStringLiteral("schema"), 3},
             {QStringLiteral("updated_at_ms"),
              QString::number(QDateTime::currentMSecsSinceEpoch())},
             {QStringLiteral("books"), top_book_snapshots_},
-            {QStringLiteral("flow"), flow_snapshots_}};
+            {QStringLiteral("flow"), flow_snapshots_},
+            {QStringLiteral("snapshots"), decision_snapshots_}};
         QSaveFile file(kalshi_evidence_path(QStringLiteral("kalshi-ws-books.json")));
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             last_error_ = QStringLiteral("Kalshi WebSocket book snapshot is not writable");
@@ -1154,11 +1310,15 @@ class KalshiLiveEventEngine final : public QObject {
     QString last_process_result_;
     QHash<QString, qint64> live_rejection_counts_;
     QHash<QString, qint64> independent_spot_persisted_ms_;
+    QHash<QString, services::prediction::PredictionMarket> tracked_markets_;
     QJsonObject top_book_snapshots_;
     QHash<QString, services::prediction::PredictionOrderBook> normalized_books_;
     QHash<QString, QVector<KalshiFlowTrade>> flow_trades_;
     QHash<QString, QVector<KalshiFlowDelta>> flow_deltas_;
+    QHash<QString, QVector<KalshiFlowPriceSample>> yes_mid_history_;
+    QVector<KalshiFlowPriceSample> independent_spot_history_;
     QJsonObject flow_snapshots_;
+    QJsonObject decision_snapshots_;
     QString last_live_status_;
     QString last_live_reason_;
     QString last_live_decision_id_;

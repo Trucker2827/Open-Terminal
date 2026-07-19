@@ -175,6 +175,7 @@ class KalshiScreen final : public QWidget {
     QLabel* shadow_status_ = nullptr;
     QLabel* ladder_status_ = nullptr;
     QLabel* flow_status_ = nullptr;
+    QLabel* flow_detail_ = nullptr;
     QTableWidget* ladder_table_ = nullptr;
     QLabel* live_automation_status_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;

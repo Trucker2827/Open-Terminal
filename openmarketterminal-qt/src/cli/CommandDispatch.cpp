@@ -476,6 +476,7 @@ static int command_help(const QString& topic) {
             "Kalshi paper automation commands:\n"
             "  kalshi auto status\n"
             "  kalshi auto flow [--ticker TICKER]\n"
+            "  kalshi auto snapshot --ticker TICKER [--model-probability P]\n"
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
             "  kalshi auto calibration\n"
@@ -21835,6 +21836,24 @@ static QString kalshi_auto_horizon(int seconds_left) {
     return QStringLiteral("daily");
 }
 
+static QString kalshi_auto_evidence_path(const QString& filename);
+
+// The daemon writes these atomically. A decision journal retains the exact
+// public-market context that existed when the plan was created, rather than
+// trying to reconstruct it from a later moving book.
+static QJsonObject kalshi_auto_current_snapshot(const QString& ticker, qint64 decision_ts_ms) {
+    QFile file(kalshi_auto_evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    const QJsonObject snapshot = root.value(QStringLiteral("snapshots")).toObject()
+        .value(ticker.trimmed().toUpper()).toObject();
+    const qint64 observed = snapshot.value(QStringLiteral("observed_at_ms")).toString().toLongLong();
+    if (snapshot.isEmpty() || observed <= 0 || observed > decision_ts_ms ||
+        decision_ts_ms - observed > 15'000)
+        return {};
+    return snapshot;
+}
+
 static Result<int> kalshi_auto_journal_plan(
     const services::edge_radar::KalshiAutoContext& context,
     const QVector<services::edge_radar::KalshiSurfacePoint>& surface,
@@ -22038,6 +22057,8 @@ static Result<int> kalshi_auto_journal_plan(
         const bool evidence_approved = is_selected && envelope_approved && micro_evidence.eligible;
         QJsonArray micro_blockers;
         for (const auto& blocker : micro_evidence.blockers) micro_blockers.append(blocker);
+        const QJsonObject execution_snapshot = kalshi_auto_current_snapshot(point.ticker,
+                                                                               context.decision_ts_ms);
         const QJsonObject features{
             {"signal", signal},
             {"portfolio", QJsonObject{{"verdict", plan.verdict},
@@ -22051,7 +22072,11 @@ static Result<int> kalshi_auto_journal_plan(
                                                                         : "bounded_micro_bootstrap"},
                                              {"required_edge", micro_evidence.required_edge},
                                              {"blockers", micro_blockers}}},
-            {"decision_envelope", envelope.to_json()}};
+            {"decision_envelope", envelope.to_json()},
+            {"execution_snapshot", execution_snapshot},
+            {"execution_snapshot_status", execution_snapshot.isEmpty()
+                                               ? QStringLiteral("unavailable")
+                                               : QStringLiteral("attached")}};
         const QString snapshot_reason = !point.causal_eligible
             ? QStringLiteral("supervised snapshot; causal timing diagnostic: %1")
                   .arg(point.causal_reason)
@@ -22359,6 +22384,67 @@ static int kalshi_auto_flow_command(const GlobalOpts& opts, QStringList args) {
                     row.value("combined_pressure").toDouble());
     }
     std::printf("Depth is resting contracts; taker is recent executed contract volume. No unique-trader count is available.\n");
+    return 0;
+}
+
+static int kalshi_auto_snapshot_command(const GlobalOpts& opts, QStringList args) {
+    QString ticker;
+    QString probability_raw;
+    if (!take_string_option(args, QStringLiteral("--ticker"), ticker) ||
+        !take_string_option(args, QStringLiteral("--model-probability"), probability_raw) ||
+        !args.isEmpty() || ticker.trimmed().isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto snapshot --ticker TICKER [--model-probability P]\n");
+        return 2;
+    }
+    bool ok = true;
+    const double model_probability = probability_raw.isEmpty() ? -1.0
+        : probability_raw.toDouble(&ok);
+    if (!ok || (!probability_raw.isEmpty() &&
+                (model_probability < 0.0 || model_probability > 1.0))) {
+        std::fprintf(stderr, "--model-probability must be 0..1\n");
+        return 2;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QJsonObject snapshot = kalshi_auto_current_snapshot(ticker, now);
+    if (snapshot.isEmpty()) {
+        const QJsonObject out{{"available", false}, {"read_only", true},
+                              {"reason", "No fresh daemon decision snapshot for this contract"}};
+        if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else std::printf("Kalshi snapshot unavailable: wait for a fresh daemon WebSocket snapshot for %s.\n",
+                         qUtf8Printable(ticker));
+        return 5;
+    }
+    QJsonObject out{{"available", true}, {"read_only", true}, {"snapshot", snapshot},
+                    {"interpretation", "Atomic local observation; advisory only and never an order instruction"}};
+    if (model_probability >= 0.0) {
+        const QJsonObject execution = snapshot.value("execution").toObject();
+        const QJsonObject yes = execution.value("yes").toObject();
+        const QJsonObject no = execution.value("no").toObject();
+        const double yes_entry = yes.value("entry_cash_cost").toDouble();
+        const double no_entry = no.value("entry_cash_cost").toDouble();
+        const double yes_ev = model_probability - yes_entry;
+        const double no_ev = (1.0 - model_probability) - no_entry;
+        out.insert("model_probability", model_probability);
+        out.insert("cost_net_edge", QJsonObject{{"yes", yes_ev}, {"no", no_ev},
+            {"best_side", yes_ev > no_ev ? "yes" : no_ev > yes_ev ? "no" : "none"},
+            {"best_edge", std::max(yes_ev, no_ev)},
+            {"gate", std::max(yes_ev, no_ev) > 0.0 ? "COST_CLEAR" : "COST_NOT_CLEAR"},
+            {"note", "Expected value before model uncertainty and exit timing; not an execution approval"}});
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonObject flow = snapshot.value("flow").toObject();
+    const QJsonObject thirty = flow.value("windows").toObject().value("30s").toObject();
+    const QJsonObject divergence = flow.value("divergence").toObject();
+    std::printf("KALSHI DECISION SNAPSHOT · READ ONLY\n%s\n30s flow: %s · %s · pressure %+0.2f · %s\n",
+                qUtf8Printable(ticker.toUpper()), qUtf8Printable(thirty.value("signal").toString()),
+                qUtf8Printable(thirty.value("confidence").toString()),
+                thirty.value("combined_pressure").toDouble(),
+                qUtf8Printable(divergence.value("label").toString()));
+    if (model_probability >= 0.0)
+        std::printf("Cost-net model context supplied; use --json for the exact calculations.\n");
     return 0;
 }
 
@@ -24846,6 +24932,7 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
     if (sub == QStringLiteral("status")) return kalshi_auto_status_command(opts, args);
     if (sub == QStringLiteral("flow")) return kalshi_auto_flow_command(opts, args);
+    if (sub == QStringLiteral("snapshot")) return kalshi_auto_snapshot_command(opts, args);
     if (sub == QStringLiteral("run") || sub == QStringLiteral("opportunities"))
         return kalshi_auto_run_command(opts, args);
     if (sub == QStringLiteral("audit")) return kalshi_auto_audit_command(opts, args);

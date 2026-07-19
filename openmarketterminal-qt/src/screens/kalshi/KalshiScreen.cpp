@@ -1023,6 +1023,15 @@ void KalshiScreen::build_ui() {
         "color:%1;background:%2;border:1px solid %3;padding:7px;font-weight:800;")
                                     .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
     auto_cockpit_layout->addWidget(flow_status_);
+    flow_detail_ = new QLabel(QStringLiteral("FLOW CONTEXT · waiting for multi-window, divergence, cost, and ladder evidence"),
+                              auto_cockpit);
+    flow_detail_->setWordWrap(true);
+    flow_detail_->setToolTip(QStringLiteral(
+        "Local decision evidence: several flow windows, spot/contract divergence, immediate taker cost, and ladder checks. Advisory only; it does not place or approve orders."));
+    flow_detail_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:6px;font-weight:700;")
+                                    .arg(colors::TEXT_SECONDARY(), colors::BG_BASE(), colors::BORDER_DIM()));
+    auto_cockpit_layout->addWidget(flow_detail_);
     ladder_table_ = new CompactTableWidget(0, 8, auto_cockpit);
     ladder_table_->setHorizontalHeaderLabels({QStringLiteral("CONTRACT"), QStringLiteral("SIDE"),
                                                QStringLiteral("ASK"), QStringLiteral("MARKET"),
@@ -2974,20 +2983,26 @@ void KalshiScreen::refresh_flow_meter() {
     if (!flow_status_) return;
     if (!has_selection_ || selected_.key.market_id.isEmpty()) {
         flow_status_->setText(QStringLiteral("FLOW METER · select a contract to view its public book and trade flow"));
+        if (flow_detail_) flow_detail_->setText(QStringLiteral("FLOW CONTEXT · select a contract"));
         return;
     }
     QFile file(evidence_path(QStringLiteral("kalshi-ws-books.json")));
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         flow_status_->setText(QStringLiteral("FLOW METER · waiting for the local daemon WebSocket snapshot"));
+        if (flow_detail_) flow_detail_->setText(QStringLiteral("FLOW CONTEXT · daemon snapshot unavailable"));
         return;
     }
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
-    const QJsonObject row = document.object().value(QStringLiteral("flow")).toObject()
+    const QJsonObject root = document.object();
+    const QJsonObject snapshot = root.value(QStringLiteral("snapshots")).toObject()
+        .value(selected_.key.market_id).toObject();
+    const QJsonObject row = snapshot.isEmpty() ? root.value(QStringLiteral("flow")).toObject()
                                .value(selected_.key.market_id).toObject();
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const qint64 observed = row.value(QStringLiteral("observed_at_ms")).toString().toLongLong();
     if (row.isEmpty() || observed <= 0 || observed > now || now - observed > 30'000) {
         flow_status_->setText(QStringLiteral("FLOW METER · no fresh 30s snapshot for this contract"));
+        if (flow_detail_) flow_detail_->setText(QStringLiteral("FLOW CONTEXT · waiting for fresh WebSocket evidence"));
         return;
     }
     const QString signal = row.value(QStringLiteral("signal")).toString(QStringLiteral("MIXED"));
@@ -3010,6 +3025,30 @@ void KalshiScreen::refresh_flow_meter() {
     flow_status_->setStyleSheet(QStringLiteral(
         "color:%1;background:%2;border:1px solid %3;padding:7px;font-weight:800;")
                                     .arg(color.name(), colors::BG_RAISED(), colors::BORDER_DIM()));
+    if (!flow_detail_ || snapshot.isEmpty()) return;
+    const QJsonObject windows = snapshot.value(QStringLiteral("flow")).toObject()
+        .value(QStringLiteral("windows")).toObject();
+    const auto compact_window = [&windows](const QString& key) {
+        const QJsonObject window = windows.value(key).toObject();
+        const double pressure = window.value(QStringLiteral("combined_pressure")).toDouble();
+        return QStringLiteral("%1 %2 %3%4")
+            .arg(key, window.value(QStringLiteral("signal")).toString(QStringLiteral("MIXED")))
+            .arg(pressure >= 0.0 ? QStringLiteral("+") : QString())
+            .arg(pressure, 0, 'f', 2);
+    };
+    const QJsonObject divergence = snapshot.value(QStringLiteral("flow")).toObject()
+        .value(QStringLiteral("divergence")).toObject();
+    const QJsonObject execution = snapshot.value(QStringLiteral("execution")).toObject();
+    const QJsonObject yes = execution.value(QStringLiteral("yes")).toObject();
+    const QJsonObject no = execution.value(QStringLiteral("no")).toObject();
+    const QJsonObject ladder = snapshot.value(QStringLiteral("ladder")).toObject();
+    flow_detail_->setText(QStringLiteral(
+        "FLOW CONTEXT · %1 · %2 · %3 · %4 · YES immediate loss %5c · NO %6c · ladder opportunities %7 · advisory only")
+        .arg(compact_window(QStringLiteral("2s")), compact_window(QStringLiteral("30s")),
+             compact_window(QStringLiteral("5m")), divergence.value(QStringLiteral("label")).toString(QStringLiteral("QUIET")))
+        .arg(yes.value(QStringLiteral("immediate_round_trip_loss")).toDouble() * 100.0, 0, 'f', 1)
+        .arg(no.value(QStringLiteral("immediate_round_trip_loss")).toDouble() * 100.0, 0, 'f', 1)
+        .arg(ladder.value(QStringLiteral("actionable_count")).toInt()));
 }
 
 void KalshiScreen::render_ladder_surface(
