@@ -2996,8 +2996,9 @@ void KalshiScreen::refresh_flow_meter() {
     const QJsonObject root = document.object();
     const QJsonObject snapshot = root.value(QStringLiteral("snapshots")).toObject()
         .value(selected_.key.market_id).toObject();
-    const QJsonObject row = snapshot.isEmpty() ? root.value(QStringLiteral("flow")).toObject()
-                               .value(selected_.key.market_id).toObject();
+    const QJsonObject row = snapshot.isEmpty()
+        ? root.value(QStringLiteral("flow")).toObject().value(selected_.key.market_id).toObject()
+        : snapshot;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const qint64 observed = row.value(QStringLiteral("observed_at_ms")).toString().toLongLong();
     if (row.isEmpty() || observed <= 0 || observed > now || now - observed > 30'000) {
