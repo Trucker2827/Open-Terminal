@@ -1231,6 +1231,43 @@ private slots:
         settings.set(QStringLiteral("cli.allowed_venues"), QString(), QStringLiteral("test"));
     }
 
+    void kalshi_flow_and_snapshot_explain_legacy_daemon_evidence() {
+        const QString home = sandbox_test_home();
+        const QString path = QDir(home).filePath(
+            QStringLiteral("kalshi-evidence/kalshi-ws-books.json"));
+        QFile evidence(path);
+        QVERIFY(evidence.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        const QJsonObject legacy{{"schema", 1},
+                                  {"updated_at_ms", QStringLiteral("2026-07-19T12:00:00.000Z")},
+                                  {"books", QJsonObject{{"KXBTC-TEST:yes", QJsonObject{}},
+                                                        {"KXBTC-TEST:no", QJsonObject{}}}}};
+        QCOMPARE(evidence.write(QJsonDocument(legacy).toJson(QJsonDocument::Compact)),
+                 QJsonDocument(legacy).toJson(QJsonDocument::Compact).size());
+        evidence.close();
+
+        int rc = -1;
+        const QJsonObject flow = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("flow")}, &rc);
+        QCOMPARE(rc, 5);
+        QCOMPARE(flow.value(QStringLiteral("schema")).toInt(), 1);
+        QCOMPARE(flow.value(QStringLiteral("required_schema")).toInt(), 3);
+        QVERIFY(flow.value(QStringLiteral("reason")).toString().contains(
+            QStringLiteral("upgrade to schema 3")));
+        QCOMPARE(json_strings(flow.value(QStringLiteral("available_tickers")).toArray()),
+                 QStringList{QStringLiteral("KXBTC-TEST")});
+
+        const QJsonObject snapshot = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("snapshot"), QStringLiteral("--ticker"), QStringLiteral("KXBTC-TEST")},
+            &rc);
+        QCOMPARE(rc, 5);
+        QVERIFY(snapshot.value(QStringLiteral("reason")).toString().contains(
+            QStringLiteral("upgrade to schema 3")));
+        QCOMPARE(snapshot.value(QStringLiteral("evidence")).toObject()
+                     .value(QStringLiteral("schema")).toInt(), 1);
+    }
+
     // Reconcile regression: when a producer drops OUT of sandbox_job_specs()
     // (e.g. the real-horizon reshape retiring crypto-universe-60, btc5m,
     // chronos-5m), install-jobs must disable the now-orphaned managed job in

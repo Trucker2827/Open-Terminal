@@ -938,8 +938,8 @@ static int command_help(const QString& topic) {
             "  crypto book <symbol> [--limit N]\n"
             "  crypto candles <symbol> [--timeframe 1h] [--limit N]\n"
             "  crypto balance\n"
-            "  crypto orders [symbol]\n"
-            "  crypto fills <symbol> [--limit N]\n"
+            "  crypto orders [symbol] [--raw]\n"
+            "  crypto fills <symbol> [--limit N] [--raw]\n"
             "  crypto fees [show|set|reset|tiers] [--venue VENUE]\n"
             "  crypto readiness [symbol|--symbol SYMBOL]\n"
             "  crypto buy <symbol> <qty> [--type market|limit] [--limit-price P] [--post-only]\n"
@@ -5877,13 +5877,46 @@ static QJsonArray crypto_rows(const QJsonObject& body, const QString& field) {
     return {};
 }
 
-static int emit_crypto_orders_like(const GlobalOpts& opts, const QJsonObject& body, const QString& field) {
+static QJsonObject crypto_concise_order_like(const QJsonObject& row) {
+    const QJsonObject fee = row.value(QStringLiteral("fee")).toObject();
+    QJsonObject concise{{"id", crypto_string_any(row, {"id", "order_id", "client_order_id"})},
+                        {"symbol", crypto_string_any(row, {"symbol"})},
+                        {"side", crypto_string_any(row, {"side"})},
+                        {"status", crypto_string_any(row, {"status"})},
+                        {"type", crypto_string_any(row, {"type"})},
+                        {"time_in_force", crypto_string_any(row, {"timeInForce", "time_in_force"})},
+                        {"post_only", row.value(QStringLiteral("postOnly")).toBool()},
+                        {"price", crypto_number_any(row, {"price"})},
+                        {"average", crypto_number_any(row, {"average", "avg_price"})},
+                        {"amount", crypto_number_any(row, {"amount", "quantity"})},
+                        {"filled", crypto_number_any(row, {"filled"})},
+                        {"remaining", crypto_number_any(row, {"remaining"})},
+                        {"cost", crypto_number_any(row, {"cost", "notional"})},
+                        {"datetime", crypto_string_any(row, {"datetime", "time", "created_at"})},
+                        {"timestamp", crypto_number_any(row, {"timestamp"})}};
+    if (!fee.isEmpty())
+        concise.insert(QStringLiteral("fee"), QJsonObject{{"cost", fee.value(QStringLiteral("cost"))},
+                                                             {"currency", fee.value(QStringLiteral("currency"))}});
+    return concise;
+}
+
+static int emit_crypto_orders_like(const GlobalOpts& opts, const QJsonObject& body, const QString& field,
+                                   bool raw = false) {
     const QJsonValue data = tool_data(body);
     if (opts.json) {
-        if (data.isArray())
+        if (raw && data.isArray()) {
             std::printf("%s\n", QJsonDocument(data.toArray()).toJson(QJsonDocument::Compact).constData());
-        else
+        } else if (raw) {
             std::printf("%s\n", QJsonDocument(data.toObject()).toJson(QJsonDocument::Compact).constData());
+        } else {
+            QJsonArray concise_rows;
+            const QJsonArray rows = crypto_rows(body, field);
+            for (const QJsonValue& value : rows)
+                concise_rows.append(crypto_concise_order_like(value.toObject()));
+            QJsonObject concise = data.isObject() ? data.toObject() : QJsonObject{};
+            concise.insert(field, concise_rows);
+            std::printf("%s\n", QJsonDocument(concise).toJson(QJsonDocument::Compact).constData());
+        }
         return 0;
     }
     const QJsonArray rows = crypto_rows(body, field);
@@ -6341,7 +6374,7 @@ static int emit_crypto_preview(const GlobalOpts& opts, const QJsonObject& p) {
 }
 
 static int crypto_call(const GlobalOpts& opts, const QString& tool, const QJsonObject& args,
-                       const QString& formatter = {}) {
+                       const QString& formatter = {}, bool raw = false) {
     QJsonObject body;
     const int rc = call_headless_tool_json(opts, tool, args, body);
     if (rc != 0)
@@ -6349,9 +6382,9 @@ static int crypto_call(const GlobalOpts& opts, const QString& tool, const QJsonO
     if (formatter == QLatin1String("balance"))
         return emit_crypto_balance(opts, body);
     if (formatter == QLatin1String("orders"))
-        return emit_crypto_orders_like(opts, body, QStringLiteral("orders"));
+        return emit_crypto_orders_like(opts, body, QStringLiteral("orders"), raw);
     if (formatter == QLatin1String("fills"))
-        return emit_crypto_orders_like(opts, body, QStringLiteral("trades"));
+        return emit_crypto_orders_like(opts, body, QStringLiteral("trades"), raw);
     if (formatter == QLatin1String("ticker"))
         return emit_crypto_ticker(opts, body);
     if (formatter == QLatin1String("book"))
@@ -8897,6 +8930,45 @@ static qint64 crypto_cockpit_age_ms(const QString& timestamp, const QDateTime& n
     return parsed.msecsTo(now);
 }
 
+static constexpr qint64 kCryptoCockpitStaleAfterMs = 15'000;
+
+static qint64 crypto_cockpit_source_age_ms(const QJsonObject& source, bool* known = nullptr) {
+    const QJsonValue value = source.value("age_ms");
+    bool ok = false;
+    const qint64 age = value.isDouble() ? static_cast<qint64>(value.toDouble())
+                                        : value.toString().toLongLong(&ok);
+    if (value.isDouble())
+        ok = true;
+    if (known)
+        *known = ok;
+    return age;
+}
+
+static QJsonArray crypto_cockpit_feed_health(const QJsonArray& sources) {
+    QJsonArray health;
+    for (const QJsonValue& value : sources) {
+        QJsonObject source = value.toObject();
+        const QString reported_status = source.value("status").toString().trimmed().toLower();
+        bool age_known = false;
+        const qint64 age_ms = crypto_cockpit_source_age_ms(source, &age_known);
+
+        QString status = reported_status;
+        if (reported_status == "error" || !age_known || age_ms < 0)
+            status = "error";
+        else if (age_ms >= kCryptoCockpitStaleAfterMs)
+            status = "stale";
+        else if (status.isEmpty())
+            status = "live";
+
+        source.insert("reported_status", reported_status);
+        source.insert("status", status);
+        source.insert("fresh", status == "live");
+        source.insert("stale_after_ms", QString::number(kCryptoCockpitStaleAfterMs));
+        health.append(source);
+    }
+    return health;
+}
+
 static QJsonObject crypto_cockpit_decision(const QJsonArray& decisions, const QString& requested_symbol) {
     const QString wanted = requested_symbol.trimmed().toUpper();
     for (const QJsonValue& value : decisions) {
@@ -8933,7 +9005,7 @@ static int crypto_cockpit_command(const GlobalOpts& opts, QStringList args) {
     const QJsonValue pid_value = state.value("pid");
     const QString pid = pid_value.isDouble() ? QString::number(static_cast<qint64>(pid_value.toDouble()))
                                               : pid_value.toString();
-    const QJsonArray sources = microstructure.value("sources").toArray();
+    const QJsonArray sources = crypto_cockpit_feed_health(microstructure.value("sources").toArray());
     const QJsonArray configured_symbols = config.value("symbols").toArray();
     const QJsonArray paper_amounts = config.value("paper_amounts_usd").toArray();
     const QJsonArray blockers = decision.value("blockers").toArray();
@@ -9037,7 +9109,7 @@ static int crypto_cockpit_command(const GlobalOpts& opts, QStringList args) {
         std::printf("%-14s %-8s %10s %12s %10s\n", "SOURCE", "STATUS", "AGE", "PRICE", "SPREAD");
         for (const QJsonValue& value : sources) {
             const QJsonObject source = value.toObject();
-            const qint64 age = source.value("age_ms").toString().toLongLong();
+            const qint64 age = crypto_cockpit_source_age_ms(source);
             const QString age_label = age >= 0 ? QString::number(age) + QStringLiteral("ms") : QStringLiteral("n/a");
             std::printf("%-14s %-8s %10s %12.2f %9.3fbps\n",
                         qUtf8Printable(source.value("source").toString()),
@@ -9114,20 +9186,22 @@ static int crypto_command(const GlobalOpts& opts, QStringList args) {
         return crypto_call(opts, QStringLiteral("get_crypto_balance"), {}, QStringLiteral("balance"));
 
     if (sub == "orders" || sub == "open-orders" || sub == "open") {
+        const bool raw = take_bool_flag(args, QStringLiteral("--raw"));
         if (args.size() > 1) {
-            std::fprintf(stderr, "usage: crypto orders [symbol]\n");
+            std::fprintf(stderr, "usage: crypto orders [symbol] [--raw]\n");
             return 2;
         }
         QJsonObject a;
         if (!args.isEmpty())
             a["symbol"] = args.first().toUpper();
-        return crypto_call(opts, QStringLiteral("get_crypto_open_orders"), a, QStringLiteral("orders"));
+        return crypto_call(opts, QStringLiteral("get_crypto_open_orders"), a, QStringLiteral("orders"), raw);
     }
 
     if (sub == "fills" || sub == "trades" || sub == "my-trades") {
         QString limit_s;
+        const bool raw = take_bool_flag(args, QStringLiteral("--raw"));
         if (!take_string_option(args, QStringLiteral("--limit"), limit_s) || args.size() != 1) {
-            std::fprintf(stderr, "usage: crypto fills <symbol> [--limit N]\n");
+            std::fprintf(stderr, "usage: crypto fills <symbol> [--limit N] [--raw]\n");
             return 2;
         }
         bool ok = true;
@@ -9138,7 +9212,7 @@ static int crypto_command(const GlobalOpts& opts, QStringList args) {
         }
         return crypto_call(opts, QStringLiteral("get_crypto_trades"),
                            QJsonObject{{"symbol", args.first().toUpper()}, {"limit", limit}},
-                           QStringLiteral("fills"));
+                           QStringLiteral("fills"), raw);
     }
 
     if (sub == "fees" || sub == "fee")
@@ -22332,6 +22406,42 @@ static QString kalshi_auto_evidence_path(const QString& filename) {
            QStringLiteral("/Open Terminal/Open Terminal/") + filename;
 }
 
+// Evidence schema 3 introduced the immutable snapshot/flow payload.  Older
+// daemons still provide subscribed books, so expose that fact instead of
+// making an operator guess why a read-only inspection command is empty.
+static QStringList kalshi_auto_evidence_tickers(const QJsonObject& root) {
+    QSet<QString> tickers;
+    const auto collect = [&tickers](const QJsonObject& rows) {
+        for (auto it = rows.constBegin(); it != rows.constEnd(); ++it) {
+            const QString key = it.key().trimmed().toUpper();
+            if (key.isEmpty())
+                continue;
+            const int outcome_separator = key.lastIndexOf(QLatin1Char(':'));
+            tickers.insert(outcome_separator > 0 ? key.left(outcome_separator) : key);
+        }
+    };
+    collect(root.value(QStringLiteral("books")).toObject());
+    collect(root.value(QStringLiteral("flow")).toObject());
+    collect(root.value(QStringLiteral("snapshots")).toObject());
+    QStringList result = tickers.values();
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+static QJsonObject kalshi_auto_evidence_metadata() {
+    QFile file(kalshi_auto_evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !document.isObject())
+        return {};
+    const QJsonObject root = document.object();
+    return QJsonObject{{"schema", root.value(QStringLiteral("schema")).toInt()},
+                       {"updated_at_ms", root.value(QStringLiteral("updated_at_ms")).toString()},
+                       {"available_tickers", QJsonArray::fromStringList(kalshi_auto_evidence_tickers(root))}};
+}
+
 static int kalshi_auto_flow_command(const GlobalOpts& opts, QStringList args) {
     QString ticker;
     if (!take_string_option(args, QStringLiteral("--ticker"), ticker) || !args.isEmpty()) {
@@ -22349,25 +22459,47 @@ static int kalshi_auto_flow_command(const GlobalOpts& opts, QStringList args) {
     QJsonParseError parse_error;
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parse_error);
     const QJsonObject root = document.object();
+    const int schema = root.value(QStringLiteral("schema")).toInt();
+    const QStringList available_tickers = kalshi_auto_evidence_tickers(root);
     QJsonObject rows = root.value(QStringLiteral("flow")).toObject();
     if (!ticker.trimmed().isEmpty()) {
         const QString normalized = ticker.trimmed().toUpper();
         const QJsonObject row = rows.value(normalized).toObject();
         rows = row.isEmpty() ? QJsonObject{} : QJsonObject{{normalized, row}};
     }
-    QJsonObject out{{"available", parse_error.error == QJsonParseError::NoError && !rows.isEmpty()},
-                    {"schema", root.value(QStringLiteral("schema")).toInt()},
+    const bool available = parse_error.error == QJsonParseError::NoError && !rows.isEmpty();
+    QString reason;
+    if (!available) {
+        if (parse_error.error != QJsonParseError::NoError) {
+            reason = QStringLiteral("Kalshi evidence file is not valid JSON");
+        } else if (schema > 0 && schema < 3) {
+            reason = QStringLiteral("Daemon evidence schema %1 predates flow snapshots; rebuild and restart the GUI or daemon to upgrade to schema 3")
+                         .arg(schema);
+        } else if (!ticker.trimmed().isEmpty()) {
+            reason = QStringLiteral("No current flow snapshot exists for %1").arg(ticker.trimmed().toUpper());
+        } else {
+            reason = QStringLiteral("No current flow snapshot exists for subscribed contracts");
+        }
+    }
+    QJsonObject out{{"available", available},
+                    {"schema", schema},
+                    {"required_schema", 3},
                     {"updated_at_ms", root.value(QStringLiteral("updated_at_ms")).toString()},
+                    {"available_tickers", QJsonArray::fromStringList(available_tickers)},
                     {"flow", rows},
                     {"read_only", true},
                     {"interpretation", "Contract quantities and public book changes; not unique people and never an execution signal"}};
+    if (!reason.isEmpty())
+        out.insert(QStringLiteral("reason"), reason);
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
         return out.value(QStringLiteral("available")).toBool() ? 0 : 5;
     }
     if (!out.value(QStringLiteral("available")).toBool()) {
-        std::printf("Kalshi flow unavailable: no current flow snapshot for %s.\n",
-                    ticker.isEmpty() ? "subscribed contracts" : qUtf8Printable(ticker));
+        std::printf("Kalshi flow unavailable: %s.\n", qUtf8Printable(reason));
+        if (!available_tickers.isEmpty())
+            std::printf("Subscribed contracts in local evidence: %s\n",
+                        qUtf8Printable(available_tickers.join(QStringLiteral(", "))));
         return 5;
     }
     std::printf("KALSHI FLOW METER · 30s · ADVISORY ONLY\n");
@@ -22407,11 +22539,25 @@ static int kalshi_auto_snapshot_command(const GlobalOpts& opts, QStringList args
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const QJsonObject snapshot = kalshi_auto_current_snapshot(ticker, now);
     if (snapshot.isEmpty()) {
-        const QJsonObject out{{"available", false}, {"read_only", true},
-                              {"reason", "No fresh daemon decision snapshot for this contract"}};
+        const QJsonObject metadata = kalshi_auto_evidence_metadata();
+        const int schema = metadata.value(QStringLiteral("schema")).toInt();
+        const QString reason = schema > 0 && schema < 3
+            ? QStringLiteral("Daemon evidence schema %1 predates decision snapshots; rebuild and restart the GUI or daemon to upgrade to schema 3").arg(schema)
+            : QStringLiteral("No fresh daemon decision snapshot for this contract");
+        QJsonObject out{{"available", false}, {"read_only", true}, {"reason", reason}};
+        if (!metadata.isEmpty())
+            out.insert(QStringLiteral("evidence"), metadata);
         if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
-        else std::printf("Kalshi snapshot unavailable: wait for a fresh daemon WebSocket snapshot for %s.\n",
-                         qUtf8Printable(ticker));
+        else {
+            std::printf("Kalshi snapshot unavailable: %s.\n", qUtf8Printable(reason));
+            const QJsonArray tickers = metadata.value(QStringLiteral("available_tickers")).toArray();
+            QStringList ticker_names;
+            for (const QJsonValue& value : tickers)
+                ticker_names.append(value.toString());
+            if (!ticker_names.isEmpty())
+                std::printf("Subscribed contracts in local evidence: %s\n",
+                            qUtf8Printable(ticker_names.join(QStringLiteral(", "))));
+        }
         return 5;
     }
     QJsonObject out{{"available", true}, {"read_only", true}, {"snapshot", snapshot},
