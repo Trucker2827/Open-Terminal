@@ -3709,7 +3709,8 @@ static int news_command(const GlobalOpts& opts, QStringList args) {
             std::printf("%-20s %-16s %8s %8s %8s %s\n", "AS OF", "VERDICT", "SCORE", "CONF", "STORIES", "CATALYSTS");
             for (const auto& value : rows) {
                 const QJsonObject row = value.toObject();
-                const QDateTime as_of = QDateTime::fromMSecsSinceEpoch(row.value("as_of_ms").toString().toLongLong(), Qt::UTC);
+                const QDateTime as_of = QDateTime::fromMSecsSinceEpoch(
+                    row.value("as_of_ms").toString().toLongLong(), QTimeZone::UTC);
                 QStringList catalysts;
                 for (const auto& catalyst : row.value("catalysts").toArray()) catalysts.append(catalyst.toString());
                 std::printf("%-20s %-16s %+7.1f %7.0f%% %8d %s\n",
