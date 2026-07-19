@@ -182,7 +182,7 @@ void EquityTradingScreen::on_account_changed(const QString& account_id) {
         dsm.refresh_portfolio(account_id);
 
     // Each account's order book opens on today's session.
-    orders_view_day_ = QDate::currentDate();
+    orders_view_day_ = trading::pt_us_session_date();
 
     // Load paper portfolio orders into matcher
     if (!account.paper_portfolio_id.isEmpty() && account.trading_mode == "paper") {
@@ -813,7 +813,7 @@ void EquityTradingScreen::on_convert_position(const QString& position_id, const 
     const auto reply = QMessageBox::question(
         this, tr("Convert to %1").arg(new_product),
         tr("Convert %1 to %2 (delivery)?\n\nThis locks the full position value as cash and carries it overnight "
-           "instead of auto-squaring at 15:30.")
+           "instead of auto-squaring at 4:00 PM ET.")
             .arg(symbol, new_product),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes)

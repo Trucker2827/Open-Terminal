@@ -66,6 +66,36 @@ private slots:
         QVERIFY(!kalshi_universe_request_timed_out(true, 15000, 15000));
         QVERIFY(kalshi_universe_request_timed_out(true, 15001, 15000));
     }
+
+    void kalshi_watchdog_bounds_planner_processes() {
+        QVERIFY(!kalshi_planner_process_timed_out(false, 60000, 25000));
+        QVERIFY(!kalshi_planner_process_timed_out(true, -1, 25000));
+        QVERIFY(!kalshi_planner_process_timed_out(true, 25000, 25000));
+        QVERIFY(kalshi_planner_process_timed_out(true, 25001, 25000));
+    }
+
+    void kalshi_watchdog_bounds_non_execution_processes() {
+        QVERIFY(!kalshi_non_execution_process_timed_out(false, 60000, 25000));
+        QVERIFY(!kalshi_non_execution_process_timed_out(true, -1, 25000));
+        QVERIFY(!kalshi_non_execution_process_timed_out(true, 25000, 25000));
+        QVERIFY(kalshi_non_execution_process_timed_out(true, 25001, 25000));
+    }
+
+    void kalshi_event_cycle_paces_paper_but_not_armed_live() {
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 1000LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 1000), 0LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 0), 15000LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 14999), 1LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 15000), 0LL);
+    }
+
+    void kalshi_persists_fresh_independent_spot_without_raw_socket_flooding() {
+        QVERIFY(kalshi_should_persist_independent_spot_tick("coinbase", 64000.0, 1000, 0, 1000));
+        QVERIFY(kalshi_should_persist_independent_spot_tick("kraken", 64000.0, 2000, 1000, 1000));
+        QVERIFY(!kalshi_should_persist_independent_spot_tick("coinbase", 64000.0, 1999, 1000, 1000));
+        QVERIFY(!kalshi_should_persist_independent_spot_tick("binanceperp", 64000.0, 2000, 0, 1000));
+        QVERIFY(!kalshi_should_persist_independent_spot_tick("coinbase", 0.0, 2000, 0, 1000));
+    }
 };
 QTEST_MAIN(TstServeCommand)
 #include "tst_serve_command.moc"

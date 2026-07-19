@@ -1,7 +1,6 @@
 // src/screens/code_editor/CodeEditorScreen.h
-// OpenMarketTerminal Notebook — two-view workspace (Library + Editor) on the Obsidian
-// design system. Library lists prebuilt finance notebooks as cards; the editor
-// runs responsive notebook cells with markdown rendering and collapsible output.
+// OpenTerminal Research Lab — a project-connected research workspace backed by
+// the local strategy sandbox, decision journal, fills, reports, and notebook editor.
 #pragma once
 
 #include "screens/common/IStatefulScreen.h"
@@ -22,6 +21,7 @@
 #include <QStackedWidget>
 #include <QTextBrowser>
 #include <QTextEdit>
+#include <QTableWidget>
 #include <QVBoxLayout>
 #include <QVector>
 #include <QWidget>
@@ -217,7 +217,7 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     void on_rename_cell(const QString& cell_id);
 
     // Header / Library
-    void on_view_changed(int index);          // 0 = Library, 1 = Editor
+    void on_view_changed(int index);
     void on_library_search(const QString& text);
     void on_open_library_entry(int catalog_index);
 
@@ -228,6 +228,16 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QWidget* build_library_page();            // CodeEditorScreen_Library.cpp
     void populate_library();                  // CodeEditorScreen_Library.cpp
     void relayout_library_cards();            // CodeEditorScreen_Library.cpp
+    void refresh_research_overview();         // CodeEditorScreen_Library.cpp
+    QWidget* build_experiments_page();        // CodeEditorScreen_ResearchLab.cpp
+    QWidget* build_trade_reviews_page();      // CodeEditorScreen_ResearchLab.cpp
+    QWidget* build_reports_page();            // CodeEditorScreen_ResearchLab.cpp
+    void refresh_experiments();               // CodeEditorScreen_ResearchLab.cpp
+    void refresh_trade_reviews();             // CodeEditorScreen_ResearchLab.cpp
+    void refresh_reports();                   // CodeEditorScreen_ResearchLab.cpp
+    void create_research_notebook(const QString& type, const QString& reference = {});
+    void open_strategy_workspace();
+    void open_automation_workspace();
     void set_view(int index);
     bool load_notebook_from_path(const QString& path);
     QWidget* build_toolbar();
@@ -276,27 +286,38 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     void refresh_kernel_label();
     void query_python_version();
 
-    // ── Header + two-view stack ──────────────────────────────────────────────
+    enum ViewIndex {
+        ResearchView = 0,
+        ExperimentsView = 1,
+        TradeReviewsView = 2,
+        ReportsView = 3,
+        EditorView = 4,
+    };
+
+    // ── Header + Research Lab stack ──────────────────────────────────────────
     QStackedWidget* view_stack_ = nullptr;
-    int active_view_ = 0; // 0 = Library, 1 = Editor
+    int active_view_ = ResearchView;
     QLabel* header_title_ = nullptr;
-    QVector<QPushButton*> view_btns_;          // [LIBRARY, EDITOR]
+    QVector<QPushButton*> view_btns_;
     QLineEdit* lib_search_input_ = nullptr;
     QPushButton* header_new_btn_ = nullptr;
 
     // ── Library view ─────────────────────────────────────────────────────────
     QWidget* library_page_ = nullptr;
-    QLabel* lib_toolbar_lbl_ = nullptr;
-    QLabel* lib_count_lbl_ = nullptr;
-    QScrollArea* lib_scroll_ = nullptr;
-    QWidget* cards_container_ = nullptr;
-    QGridLayout* cards_layout_ = nullptr;
-    QVector<QPushButton*> cat_chips_;
-    QVector<QPushButton*> diff_chips_;
-    QString lib_category_filter_ = "All";
-    QString lib_difficulty_filter_ = "All";
+    QVector<QLabel*> research_metric_values_;
+    QTableWidget* research_books_table_ = nullptr;
+    QTableWidget* research_decisions_table_ = nullptr;
+    QTableWidget* research_outputs_table_ = nullptr;
+    QLabel* research_status_summary_ = nullptr;
     QString lib_search_text_;
-    int lib_columns_ = 0; // last computed column count (re-flow guard)
+
+    // ── Project-connected Research Lab pages ────────────────────────────────
+    QTableWidget* experiments_table_ = nullptr;
+    QTableWidget* trade_reviews_table_ = nullptr;
+    QTableWidget* reports_table_ = nullptr;
+    QLabel* experiments_summary_ = nullptr;
+    QLabel* reviews_summary_ = nullptr;
+    QLabel* reports_summary_ = nullptr;
 };
 
 } // namespace openmarketterminal::screens

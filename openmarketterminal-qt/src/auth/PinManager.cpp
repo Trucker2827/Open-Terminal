@@ -140,8 +140,13 @@ void PinManager::load_state() {
         stored_hash_ = QByteArray::fromHex(hash_r.value().toUtf8());
         stored_salt_ = QByteArray::fromHex(salt_r.value().toUtf8());
         has_pin_ = true;
+        // Existing users predate this setting, so preserve the secure default:
+        // a configured PIN remains required unless the user explicitly opts out.
+        const auto enabled_r = ss.retrieve("pin_lock_enabled");
+        lock_enabled_ = !enabled_r.is_ok() || enabled_r.value() != QLatin1String("false");
     } else {
         has_pin_ = false;
+        lock_enabled_ = false;
         stored_hash_.clear();
         stored_salt_.clear();
     }
@@ -229,12 +234,33 @@ bool PinManager::has_pin() const {
     return has_pin_;
 }
 
+bool PinManager::is_lock_enabled() const {
+    return has_pin_ && lock_enabled_;
+}
+
+Result<void> PinManager::set_lock_enabled(bool enabled) {
+    if (enabled && !has_pin_)
+        return Result<void>::err("Configure a PIN before enabling PIN lock");
+
+    auto result = SecureStorage::instance().store("pin_lock_enabled", enabled ? "true" : "false");
+    if (result.is_err())
+        return Result<void>::err("Failed to store PIN lock preference: " + result.error());
+
+    lock_enabled_ = enabled && has_pin_;
+    LOG_INFO("Auth", QString("PIN launch lock %1").arg(lock_enabled_ ? "enabled" : "disabled"));
+    SecurityAuditLog::instance().record("pin_lock_changed",
+                                        QString("enabled=%1").arg(lock_enabled_ ? "true" : "false"));
+    return Result<void>::ok();
+}
+
 Result<void> PinManager::set_pin(const QString& pin) {
     // Centralized weak-PIN rejection — every caller goes through this, so the
     // UI cannot be bypassed by a scripted flow or a future companion-setup path.
     const QString weak = weak_pin_reason(pin);
     if (!weak.isEmpty())
         return Result<void>::err(weak.toStdString());
+
+    const bool was_configured = has_pin_;
 
     // Generate cryptographically random salt
     QByteArray salt(kSaltLength, '\0');
@@ -259,6 +285,17 @@ Result<void> PinManager::set_pin(const QString& pin) {
     stored_hash_ = hash;
     stored_salt_ = salt;
     has_pin_ = true;
+    if (!was_configured) {
+        // New PINs protect the terminal by default. A later PIN change keeps
+        // the user's existing enable/disable preference intact.
+        auto enabled_r = ss.store("pin_lock_enabled", "true");
+        if (enabled_r.is_err())
+            LOG_WARN("Auth", QString("Could not persist default PIN lock preference: %1")
+                                 .arg(QString::fromStdString(enabled_r.error())));
+        // A missing preference is treated as enabled on next launch, so a
+        // transient preference write failure cannot create an unlocked PIN.
+        lock_enabled_ = true;
+    }
 
     // Reset lockout on new PIN
     failed_attempts_ = 0;
@@ -377,6 +414,7 @@ void PinManager::clear_pin() {
     auto& ss = SecureStorage::instance();
     ss.remove("pin_hash");
     ss.remove("pin_salt");
+    ss.remove("pin_lock_enabled");
     ss.remove("pin_failed_attempts");
     ss.remove("pin_lockout_until");
     ss.remove("pin_lockout_stamp");
@@ -384,6 +422,7 @@ void PinManager::clear_pin() {
     stored_hash_.clear();
     stored_salt_.clear();
     has_pin_ = false;
+    lock_enabled_ = false;
     failed_attempts_ = 0;
     lockout_until_ = QDateTime();
 

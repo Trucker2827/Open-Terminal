@@ -18,6 +18,7 @@
 
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 
+#include "screens/crypto_trading/CryptoAutomationCockpit.h"
 #include "screens/crypto_trading/CryptoDepthChart.h"
 #include "screens/crypto_trading/CryptoTimeSales.h"
 #include "ui/theme/Theme.h"
@@ -193,6 +194,18 @@ CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     tabs_->tabBar()->setUsesScrollButtons(true);
     tabs_->setUsesScrollButtons(true);
 
+    // This is the default lower-panel view: the selected venue, current
+    // spot/scalp decision and the cost gate belong ahead of the blotter tabs.
+    cockpit_ = new CryptoAutomationCockpit;
+    cockpit_tab_idx_ = tabs_->addTab(cockpit_, tr("SPOT / SCALP"));
+    tabs_->setTabToolTip(cockpit_tab_idx_, tr("Selected crypto account and spot/scalp automation"));
+    connect(cockpit_, &CryptoAutomationCockpit::positions_requested, this, [this]() {
+        if (positions_tab_idx_ >= 0) tabs_->setCurrentIndex(positions_tab_idx_);
+    });
+    connect(cockpit_, &CryptoAutomationCockpit::orders_requested, this, [this]() {
+        if (orders_tab_idx_ >= 0) tabs_->setCurrentIndex(orders_tab_idx_);
+    });
+
     setup_positions_tab();
     setup_orders_tab();
     setup_trades_tab();
@@ -212,6 +225,8 @@ CryptoBottomPanel::CryptoBottomPanel(QWidget* parent) : QWidget(parent) {
     setup_market_info_tab();
     setup_stats_tab();
 
+    tabs_->setCurrentIndex(cockpit_tab_idx_);
+
     layout->addWidget(tabs_);
 }
 
@@ -224,6 +239,7 @@ void CryptoBottomPanel::changeEvent(QEvent* event) {
 void CryptoBottomPanel::retranslateUi() {
     // Tab labels
     if (tabs_) {
+        if (cockpit_tab_idx_ >= 0)   tabs_->setTabText(cockpit_tab_idx_, tr("SPOT / SCALP"));
         if (positions_tab_idx_ >= 0) tabs_->setTabText(positions_tab_idx_, tr("POS"));
         if (orders_tab_idx_ >= 0)    tabs_->setTabText(orders_tab_idx_, tr("ORDERS"));
         if (trades_tab_idx_ >= 0)    tabs_->setTabText(trades_tab_idx_, tr("HIST"));
@@ -897,6 +913,8 @@ void CryptoBottomPanel::update_my_trades_empty_text() {
 
 void CryptoBottomPanel::set_mode(bool is_paper) {
     is_paper_ = is_paper;
+    if (cockpit_)
+        cockpit_->set_exchange_context(exchange_id_, is_paper_);
     update_my_trades_empty_text();
     if (!is_paper_)
         update_live_stats();
@@ -904,6 +922,14 @@ void CryptoBottomPanel::set_mode(bool is_paper) {
 
 void CryptoBottomPanel::set_account_id(const QString& account_id) {
     account_id_ = account_id;
+}
+
+void CryptoBottomPanel::set_exchange_context(const QString& exchange_id, bool is_paper) {
+    if (!exchange_id.isEmpty())
+        exchange_id_ = exchange_id;
+    is_paper_ = is_paper;
+    if (cockpit_)
+        cockpit_->set_exchange_context(exchange_id_, is_paper_);
 }
 
 void CryptoBottomPanel::set_live_positions(const QJsonArray& positions) {

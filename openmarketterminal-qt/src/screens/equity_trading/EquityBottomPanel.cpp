@@ -2,6 +2,7 @@
 #include "screens/equity_trading/EquityBottomPanel.h"
 
 #include "core/logging/Logger.h"
+#include "trading/PaperTrading.h"
 #include "ui/theme/Theme.h"
 
 #include <QDate>
@@ -547,16 +548,18 @@ void EquityBottomPanel::setup_orders_tab() {
     bar_layout->setContentsMargins(12, 4, 12, 4);
     bar_layout->setSpacing(8);
 
-    // Per-day order book: pick a date to view that IST day's orders (default today,
-    // so each session starts empty instead of accumulating every past order).
-    auto* date_lbl = new QLabel(tr("DATE"));
+    // Per-day order book: pick a US/Eastern session day (default today ET so each
+    // session starts empty instead of accumulating every past order).
+    auto* date_lbl = new QLabel(tr("DATE (ET)"));
     date_lbl->setStyleSheet(
         QString("color:%1;font-size:10px;font-weight:600;letter-spacing:0.5px;").arg(openmarketterminal::ui::colors::TEXT_SECONDARY()));
-    orders_date_edit_ = new QDateEdit(QDate::currentDate());
+    const QDate et_today = trading::pt_us_session_date();
+    orders_date_edit_ = new QDateEdit(et_today);
     orders_date_edit_->setObjectName("eqOrdersDate");
     orders_date_edit_->setCalendarPopup(true);
     orders_date_edit_->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
-    orders_date_edit_->setMaximumDate(QDate::currentDate());
+    orders_date_edit_->setMaximumDate(et_today);
+    orders_date_edit_->setToolTip(tr("Paper order book day in US Eastern time"));
     orders_date_edit_->setStyleSheet(
         QString("QDateEdit{background:%1;color:%2;border:1px solid %3;padding:2px 6px;font-size:11px;border-radius:2px;}")
             .arg(openmarketterminal::ui::colors::BG_BASE(), openmarketterminal::ui::colors::TEXT_PRIMARY(), openmarketterminal::ui::colors::BORDER()));
@@ -912,6 +915,7 @@ void EquityBottomPanel::set_orders_date(const QDate& day) {
     if (!orders_date_edit_)
         return;
     suppress_orders_date_signal_ = true;
+    orders_date_edit_->setMaximumDate(trading::pt_us_session_date());
     orders_date_edit_->setDate(day);
     suppress_orders_date_signal_ = false;
 }

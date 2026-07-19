@@ -17,4 +17,18 @@ bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
                                         qint64 stale_after_ms);
 bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
                                       qint64 timeout_ms);
+bool kalshi_planner_process_timed_out(bool active, qint64 process_age_ms,
+                                      qint64 timeout_ms);
+bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
+                                            qint64 timeout_ms);
+qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
+                                   qint64 elapsed_ms);
+// Only independent exchange ticks are eligible to keep the Kalshi planner's
+// spot reference fresh. Persistence is rate-limited so the daemon gets a
+// current executable reference without turning the feature store into a raw
+// websocket dump.
+bool kalshi_should_persist_independent_spot_tick(const QString& source, double price,
+                                                 qint64 received_ts_ms,
+                                                 qint64 last_persisted_ts_ms,
+                                                 qint64 minimum_interval_ms);
 }

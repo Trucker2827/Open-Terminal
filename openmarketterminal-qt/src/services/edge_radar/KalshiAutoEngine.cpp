@@ -1081,9 +1081,8 @@ KalshiPortfolioPlan KalshiAutoEngine::optimize(const QVector<KalshiSurfacePoint>
         tickers.insert(ticker);
 
     QVector<KalshiSurfacePoint> ordered_surface = surface;
-    const auto clears_entry_gate = [&constraints, &context](const KalshiSurfacePoint& point) {
+    const auto clears_entry_gate = [&constraints](const KalshiSurfacePoint& point) {
         return point.valid && point.cross_horizon_consistent &&
-            (!context.causal_gate_enabled || point.causal_eligible) &&
             point.net_edge - constraints.exit_cost_reserve >= constraints.minimum_net_edge &&
             point.selected_ask > 0.0 && point.selected_ask <= constraints.maximum_entry_price;
     };
@@ -1099,7 +1098,6 @@ KalshiPortfolioPlan KalshiAutoEngine::optimize(const QVector<KalshiSurfacePoint>
 
     for (const auto& point : ordered_surface) {
         if (!point.valid || !point.cross_horizon_consistent ||
-            (context.causal_gate_enabled && !point.causal_eligible) ||
             point.net_edge - constraints.exit_cost_reserve < constraints.minimum_net_edge)
             continue;
         if (point.selected_ask <= 0.0 || point.selected_ask > constraints.maximum_entry_price)
@@ -1181,8 +1179,12 @@ KalshiMicroEvidenceResult KalshiAutoEngine::evaluate_micro_evidence(
     double minimum_edge,
     qint64 maximum_quote_age_ms) {
     KalshiMicroEvidenceResult result;
-    result.required_edge = input.seconds_left > 30 * 60 ? std::max(minimum_edge, 0.08)
-        : input.seconds_left > 5 * 60 ? std::max(minimum_edge, 0.05)
+    // Cautious live discovery still requires a positive edge after costs, but
+    // the old 8% early-window hurdle made bounded $2 experiments inert. The
+    // time allowance remains stricter early in the contract without turning a
+    // research threshold into a permanent no-trade switch.
+    result.required_edge = input.seconds_left > 30 * 60 ? std::max(minimum_edge, 0.05)
+        : input.seconds_left > 5 * 60 ? std::max(minimum_edge, 0.03)
                                      : minimum_edge;
     const QString side = input.side.trimmed().toLower();
     if (side != QStringLiteral("yes") && side != QStringLiteral("no"))

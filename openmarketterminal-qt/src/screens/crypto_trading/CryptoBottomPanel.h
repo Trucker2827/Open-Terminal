@@ -18,6 +18,7 @@ namespace openmarketterminal::screens::crypto {
 
 class CryptoTimeSales;
 class CryptoDepthChart;
+class CryptoAutomationCockpit;
 
 class CryptoBottomPanel : public QWidget {
     Q_OBJECT
@@ -53,6 +54,7 @@ class CryptoBottomPanel : public QWidget {
     void update_position_prices(const QHash<QString, double>& last_prices);
 
     void set_account_id(const QString& account_id);
+    void set_exchange_context(const QString& exchange_id, bool is_paper);
 
   signals:
     void cancel_order_requested(const QString& order_id);
@@ -112,6 +114,7 @@ class CryptoBottomPanel : public QWidget {
     int depth_tab_idx_ = -1;
     int market_tab_idx_ = -1;
     int stats_tab_idx_ = -1;
+    int cockpit_tab_idx_ = -1;
 
     // Market Info
     QLabel* funding_label_ = nullptr;
@@ -145,8 +148,10 @@ class CryptoBottomPanel : public QWidget {
     // New widgets
     CryptoTimeSales* time_sales_ = nullptr;
     CryptoDepthChart* depth_chart_ = nullptr;
+    CryptoAutomationCockpit* cockpit_ = nullptr;
 
     QString account_id_;
+    QString exchange_id_ = QStringLiteral("coinbase");
     bool is_paper_ = true;
     QJsonObject live_trades_json_;
     QJsonArray live_positions_json_;

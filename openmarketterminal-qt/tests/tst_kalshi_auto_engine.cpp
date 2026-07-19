@@ -300,7 +300,7 @@ class TstKalshiAutoEngine : public QObject {
         QVERIFY(point.net_edge < 0.0);
     }
 
-    void causal_gate_rejects_quotes_that_did_not_precede_the_price_move() {
+    void causal_timing_is_recorded_but_does_not_veto_an_otherwise_valid_entry() {
         const qint64 now = 1'800'000'000'000LL;
         auto ctx = context(now);
         ctx.causal_gate_enabled = true;
@@ -319,8 +319,24 @@ class TstKalshiAutoEngine : public QObject {
         QVERIFY(rejected.valid);
         QVERIFY(!rejected.causal_eligible);
         QVERIFY(rejected.causal_reason.contains(QStringLiteral("precede")));
-        const auto rejected_plan = KalshiAutoEngine::optimize({rejected}, ctx);
-        QVERIFY(rejected_plan.legs.isEmpty());
+
+        // Lead/lag did not demonstrate predictive skill in the independent
+        // cohort analysis. It remains an auditable diagnostic, not a veto on
+        // a candidate that clears executable economics and portfolio limits.
+        auto candidate = rejected;
+        candidate.selected_side = QStringLiteral("yes");
+        candidate.selected_ask = 0.20;
+        candidate.selected_bid = 0.19;
+        candidate.selected_fair = 0.60;
+        candidate.net_edge = 0.40;
+        candidate.cross_horizon_consistent = true;
+        KalshiPortfolioConstraints limits;
+        limits.unit_notional = 1.0;
+        limits.max_total_cost = 2.0;
+        limits.max_worst_case_loss = 2.0;
+        const auto diagnostic_plan = KalshiAutoEngine::optimize({candidate}, ctx, limits);
+        QCOMPARE(diagnostic_plan.legs.size(), 1);
+        QCOMPARE(diagnostic_plan.legs.first().ticker, QStringLiteral("CAUSAL"));
 
         yes.last_update_ms = now - 400;
         no.last_update_ms = now - 400;
@@ -566,9 +582,9 @@ class TstKalshiAutoEngine : public QObject {
                                        0.08, 250, 31 * 60};
         auto result = KalshiAutoEngine::evaluate_micro_evidence(input);
         QVERIFY(result.eligible);
-        QCOMPARE(result.required_edge, 0.08);
+        QCOMPARE(result.required_edge, 0.05);
 
-        input.edge_after_cost = 0.079;
+        input.edge_after_cost = 0.049;
         result = KalshiAutoEngine::evaluate_micro_evidence(input);
         QVERIFY(!result.eligible);
         QVERIFY(result.blockers.join(QLatin1Char(' ')).contains(QStringLiteral("time-conditioned")));

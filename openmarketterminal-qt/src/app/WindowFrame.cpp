@@ -264,7 +264,7 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
     // a cache so on_auth_state_changed() can skip re-prompting.
     pin_gate_cleared_ = !auth::InactivityGuard::instance().is_terminal_locked()
                         && auth::AuthManager::instance().is_authenticated()
-                        && auth::PinManager::instance().has_pin();
+                        && auth::PinManager::instance().is_lock_enabled();
 
     auto* master_stack = new QStackedWidget;
 
@@ -859,14 +859,14 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
         // InactivityGuard flag (which is the single source of truth for
         // "is the terminal locked?"); skipping the prompt here just
         // mirrors the unlocked state into the new frame.
-        if (auth_mgr.is_authenticated() && auth::PinManager::instance().has_pin()
+        if (auth_mgr.is_authenticated() && auth::PinManager::instance().is_lock_enabled()
             && !pin_gate_cleared_) {
             LOG_INFO("WindowFrame", "Session restored — showing PIN unlock");
             lock_screen_->show_unlock();
             locked_ = true;
             set_shell_visible(false);
             stack_->setCurrentIndex(3);
-        } else if (auth_mgr.is_authenticated() && auth::PinManager::instance().has_pin()) {
+        } else if (auth_mgr.is_authenticated() && auth::PinManager::instance().is_lock_enabled()) {
             LOG_INFO("WindowFrame",
                      "Session already unlocked — skipping PIN prompt for additional window");
             set_shell_visible(true);
@@ -1230,7 +1230,7 @@ void WindowFrame::changeEvent(QEvent* event) {
     // Only lock if the user opted in and we are actually in an authenticated
     // session with a configured PIN — otherwise there is nothing to lock.
     auto& auth = auth::AuthManager::instance();
-    if (!auth.is_authenticated() || !auth::PinManager::instance().has_pin())
+    if (!auth.is_authenticated() || !auth::PinManager::instance().is_lock_enabled())
         return;
     auto r = SettingsRepository::instance().get("security.lock_on_minimize");
     const bool lock_on_min = r.is_ok() && r.value() == "true";
