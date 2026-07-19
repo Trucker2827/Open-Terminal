@@ -105,6 +105,33 @@ private slots:
         QVERIFY(!kalshi_should_persist_independent_spot_tick("binanceperp", 64000.0, 2000, 0, 1000));
         QVERIFY(!kalshi_should_persist_independent_spot_tick("coinbase", 0.0, 2000, 0, 1000));
     }
+
+    void kalshi_flow_meter_reports_confirmed_yes_pressure_from_live_contract_flow() {
+        const qint64 now = 1'000'000;
+        const auto metrics = kalshi_flow_metrics(
+            {{0.60, 20.0}, {0.59, 15.0}}, {{0.40, 5.0}, {0.39, 5.0}},
+            {{now - 1'000, "yes", 12.0}, {now - 2'000, "yes", 8.0},
+             {now - 3'000, "yes", 6.0}},
+            {{now - 1'500, "yes", 10.0}, {now - 2'500, "yes", 5.0},
+             {now - 3'500, "no", -4.0}, {now - 4'000, "yes", 2.0},
+             {now - 4'500, "yes", 2.0}, {now - 5'000, "yes", 2.0}}, now);
+        QCOMPARE(metrics.signal, QStringLiteral("YES PRESSURE"));
+        QVERIFY(metrics.combined_pressure >= 0.25);
+        QCOMPARE(metrics.recent_trade_count, 3);
+        QCOMPARE(kalshi_flow_to_json(metrics).value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_flow_meter_excludes_stale_or_one_sided_activity() {
+        const qint64 now = 1'000'000;
+        const auto metrics = kalshi_flow_metrics(
+            {{0.60, 10.0}}, {{0.40, 10.0}},
+            {{now - 31'000, "yes", 999.0}},
+            {{now - 31'000, "yes", 999.0}}, now);
+        QCOMPARE(metrics.signal, QStringLiteral("MIXED"));
+        QCOMPARE(metrics.recent_trade_count, 0);
+        QCOMPARE(metrics.recent_delta_count, 0);
+        QCOMPARE(metrics.confidence, QStringLiteral("LOW"));
+    }
 };
 QTEST_MAIN(TstServeCommand)
 #include "tst_serve_command.moc"

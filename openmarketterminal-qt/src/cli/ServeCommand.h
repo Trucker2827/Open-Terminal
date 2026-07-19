@@ -2,6 +2,7 @@
 #include <QString>
 #include <QStringList>
 #include <QJsonObject>
+#include <QVector>
 namespace openmarketterminal::cli {
 // Run the daemon for `profile`. Blocks in the event loop until SIGTERM/SIGINT
 // or a fatal init error. Returns a process exit code (0 clean, 3 already-owned,
@@ -36,6 +37,54 @@ bool kalshi_should_persist_independent_spot_tick(const QString& source, double p
                                                  qint64 received_ts_ms,
                                                  qint64 last_persisted_ts_ms,
                                                  qint64 minimum_interval_ms);
+
+// A compact, advisory-only view of the public Kalshi event stream. These are
+// contract quantities, never a count of distinct people or an execution signal.
+struct KalshiFlowLevel {
+    double price = 0.0;
+    double quantity = 0.0;
+};
+
+struct KalshiFlowTrade {
+    qint64 ts_ms = 0;
+    QString outcome; // yes or no
+    double quantity = 0.0;
+};
+
+struct KalshiFlowDelta {
+    qint64 ts_ms = 0;
+    QString outcome; // yes or no
+    double quantity_delta = 0.0; // positive = added, negative = removed
+};
+
+struct KalshiFlowMetrics {
+    qint64 observed_at_ms = 0;
+    double yes_bid_depth = 0.0;
+    double no_bid_depth = 0.0;
+    double yes_taker_quantity = 0.0;
+    double no_taker_quantity = 0.0;
+    double yes_added_quantity = 0.0;
+    double no_added_quantity = 0.0;
+    double yes_removed_quantity = 0.0;
+    double no_removed_quantity = 0.0;
+    int recent_trade_count = 0;
+    int recent_delta_count = 0;
+    double depth_imbalance = 0.0;
+    double taker_imbalance = 0.0;
+    double wall_imbalance = 0.0;
+    double combined_pressure = 0.0;
+    QString signal = QStringLiteral("MIXED");
+    QString confidence = QStringLiteral("LOW");
+};
+
+KalshiFlowMetrics kalshi_flow_metrics(const QVector<KalshiFlowLevel>& yes_bid_levels,
+                                      const QVector<KalshiFlowLevel>& no_bid_levels,
+                                      const QVector<KalshiFlowTrade>& trades,
+                                      const QVector<KalshiFlowDelta>& deltas,
+                                      qint64 now_ms,
+                                      qint64 lookback_ms = 30000,
+                                      int depth_levels = 5);
+QJsonObject kalshi_flow_to_json(const KalshiFlowMetrics& metrics);
 
 // Pure daemon-job-spec -> CLI-args builder, kept public for deterministic
 // regression tests.

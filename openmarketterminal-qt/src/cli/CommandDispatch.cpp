@@ -475,6 +475,7 @@ static int command_help(const QString& topic) {
         std::printf(
             "Kalshi paper automation commands:\n"
             "  kalshi auto status\n"
+            "  kalshi auto flow [--ticker TICKER]\n"
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
             "  kalshi auto calibration\n"
@@ -496,6 +497,8 @@ static int command_help(const QString& topic) {
             "compares executable YES/NO prices after fees, enforces portfolio limits, records\n"
             "timestamped no-lookahead evidence, and labels uncalibrated output explicitly.\n"
             "queue is authenticated but read-only; it shows contracts ahead of resting orders.\n"
+            "flow is read-only public contract flow: resting YES/NO depth, recent\n"
+            "taker contracts, and liquidity added or pulled. It is advisory only.\n"
             "prepare-next creates a reviewable draft. execute-next works only inside a human-armed\n"
             "bounded session and re-checks the rolling 10/hour limit, $2 stake, $120 experiment\n"
             "cap, GUI risk controls, credentials, quote freshness, duplicate exposure, and kill switch.\n");
@@ -22304,6 +22307,61 @@ static QString kalshi_auto_evidence_path(const QString& filename) {
            QStringLiteral("/Open Terminal/Open Terminal/") + filename;
 }
 
+static int kalshi_auto_flow_command(const GlobalOpts& opts, QStringList args) {
+    QString ticker;
+    if (!take_string_option(args, QStringLiteral("--ticker"), ticker) || !args.isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto flow [--ticker TICKER]\n");
+        return 2;
+    }
+    QFile file(kalshi_auto_evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QJsonObject out{{"available", false}, {"read_only", true},
+                              {"reason", "Kalshi WebSocket flow evidence is not available yet"}};
+        if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else std::printf("Kalshi flow unavailable: start the local daemon and wait for subscribed market events.\n");
+        return 5;
+    }
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parse_error);
+    const QJsonObject root = document.object();
+    QJsonObject rows = root.value(QStringLiteral("flow")).toObject();
+    if (!ticker.trimmed().isEmpty()) {
+        const QString normalized = ticker.trimmed().toUpper();
+        const QJsonObject row = rows.value(normalized).toObject();
+        rows = row.isEmpty() ? QJsonObject{} : QJsonObject{{normalized, row}};
+    }
+    QJsonObject out{{"available", parse_error.error == QJsonParseError::NoError && !rows.isEmpty()},
+                    {"schema", root.value(QStringLiteral("schema")).toInt()},
+                    {"updated_at_ms", root.value(QStringLiteral("updated_at_ms")).toString()},
+                    {"flow", rows},
+                    {"read_only", true},
+                    {"interpretation", "Contract quantities and public book changes; not unique people and never an execution signal"}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return out.value(QStringLiteral("available")).toBool() ? 0 : 5;
+    }
+    if (!out.value(QStringLiteral("available")).toBool()) {
+        std::printf("Kalshi flow unavailable: no current flow snapshot for %s.\n",
+                    ticker.isEmpty() ? "subscribed contracts" : qUtf8Printable(ticker));
+        return 5;
+    }
+    std::printf("KALSHI FLOW METER · 30s · ADVISORY ONLY\n");
+    std::printf("%-30s %-15s %-12s %10s %10s %10s %10s %8s\n",
+                "CONTRACT", "SIGNAL", "CONFIDENCE", "YES DEPTH", "NO DEPTH",
+                "YES TAKER", "NO TAKER", "PRESSURE");
+    for (auto it = rows.constBegin(); it != rows.constEnd(); ++it) {
+        const QJsonObject row = it.value().toObject();
+        std::printf("%-30s %-15s %-12s %10.1f %10.1f %10.1f %10.1f %+8.2f\n",
+                    qUtf8Printable(it.key()), qUtf8Printable(row.value("signal").toString()),
+                    qUtf8Printable(row.value("confidence").toString()),
+                    row.value("yes_bid_depth").toDouble(), row.value("no_bid_depth").toDouble(),
+                    row.value("yes_taker_quantity").toDouble(), row.value("no_taker_quantity").toDouble(),
+                    row.value("combined_pressure").toDouble());
+    }
+    std::printf("Depth is resting contracts; taker is recent executed contract volume. No unique-trader count is available.\n");
+    return 0;
+}
+
 static int kalshi_auto_replay_command(const GlobalOpts& opts, QStringList args) {
     QString path = kalshi_auto_evidence_path(QStringLiteral("kalshi-ladders.jsonl"));
     QString event;
@@ -24783,10 +24841,11 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     if (!init_headless_for_cli(opts, init_code)) return init_code;
     const QString group = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     if (group != QStringLiteral("auto")) {
-        std::fprintf(stderr, "usage: kalshi auto status|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper\n"); return 2;
+        std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper\n"); return 2;
     }
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
     if (sub == QStringLiteral("status")) return kalshi_auto_status_command(opts, args);
+    if (sub == QStringLiteral("flow")) return kalshi_auto_flow_command(opts, args);
     if (sub == QStringLiteral("run") || sub == QStringLiteral("opportunities"))
         return kalshi_auto_run_command(opts, args);
     if (sub == QStringLiteral("audit")) return kalshi_auto_audit_command(opts, args);
@@ -24830,7 +24889,7 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
                                            ? QStringLiteral("install-jobs") : QStringLiteral("remove-jobs")});
         return rc;
     }
-    std::fprintf(stderr, "usage: kalshi auto status|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper\n");
+    std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper\n");
     return 2;
 }
 

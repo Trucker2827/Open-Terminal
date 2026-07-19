@@ -494,6 +494,7 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
     connect(clock_timer_, &QTimer::timeout, this, [this]() {
         update_observation_strip();
         update_market_health();
+        refresh_flow_meter();
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (auto* a = adapter(); a && a->has_credentials() &&
             now - last_account_activity_fetch_ms_ >= 30'000) {
@@ -1013,6 +1014,15 @@ void KalshiScreen::build_ui() {
     live_automation_status_->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::TEXT_SECONDARY()));
     live_controls->addWidget(live_automation_status_, 1);
     auto_cockpit_layout->addLayout(live_controls);
+    flow_status_ = new QLabel(QStringLiteral("FLOW METER · waiting for local Kalshi WebSocket evidence"),
+                              auto_cockpit);
+    flow_status_->setWordWrap(true);
+    flow_status_->setToolTip(QStringLiteral(
+        "Read-only public contract flow: resting YES/NO depth, recent taker contracts, and liquidity added or pulled. It is not a count of people and never submits an order."));
+    flow_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:7px;font-weight:800;")
+                                    .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+    auto_cockpit_layout->addWidget(flow_status_);
     ladder_table_ = new CompactTableWidget(0, 8, auto_cockpit);
     ladder_table_->setHorizontalHeaderLabels({QStringLiteral("CONTRACT"), QStringLiteral("SIDE"),
                                                QStringLiteral("ASK"), QStringLiteral("MARKET"),
@@ -2958,6 +2968,48 @@ void KalshiScreen::record_ladder_evidence() {
                                       .arg(opportunities > 0 ? colors::GREEN() : colors::TEXT_SECONDARY(),
                                            colors::BORDER_DIM()));
     render_ladder_surface(auto_surface, auto_plan, diagnostics);
+}
+
+void KalshiScreen::refresh_flow_meter() {
+    if (!flow_status_) return;
+    if (!has_selection_ || selected_.key.market_id.isEmpty()) {
+        flow_status_->setText(QStringLiteral("FLOW METER · select a contract to view its public book and trade flow"));
+        return;
+    }
+    QFile file(evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        flow_status_->setText(QStringLiteral("FLOW METER · waiting for the local daemon WebSocket snapshot"));
+        return;
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    const QJsonObject row = document.object().value(QStringLiteral("flow")).toObject()
+                               .value(selected_.key.market_id).toObject();
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 observed = row.value(QStringLiteral("observed_at_ms")).toString().toLongLong();
+    if (row.isEmpty() || observed <= 0 || observed > now || now - observed > 30'000) {
+        flow_status_->setText(QStringLiteral("FLOW METER · no fresh 30s snapshot for this contract"));
+        return;
+    }
+    const QString signal = row.value(QStringLiteral("signal")).toString(QStringLiteral("MIXED"));
+    const QString confidence = row.value(QStringLiteral("confidence")).toString(QStringLiteral("LOW"));
+    const double pressure = row.value(QStringLiteral("combined_pressure")).toDouble();
+    const QString pressure_text = QStringLiteral("%1%2")
+        .arg(pressure >= 0.0 ? QStringLiteral("+") : QString())
+        .arg(pressure, 0, 'f', 2);
+    const QColor color = signal.startsWith(QStringLiteral("YES")) ? QColor(colors::GREEN())
+                        : signal.startsWith(QStringLiteral("NO")) ? QColor(colors::RED())
+                                                                     : QColor(colors::TEXT_SECONDARY());
+    flow_status_->setText(QStringLiteral(
+        "FLOW METER · %1 · %2 · 30s · resting YES %3 / NO %4 · taker YES %5 / NO %6 · pressure %7")
+                              .arg(signal, confidence)
+                              .arg(row.value(QStringLiteral("yes_bid_depth")).toDouble(), 0, 'f', 1)
+                              .arg(row.value(QStringLiteral("no_bid_depth")).toDouble(), 0, 'f', 1)
+                              .arg(row.value(QStringLiteral("yes_taker_quantity")).toDouble(), 0, 'f', 1)
+                              .arg(row.value(QStringLiteral("no_taker_quantity")).toDouble(), 0, 'f', 1)
+                              .arg(pressure_text));
+    flow_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:7px;font-weight:800;")
+                                    .arg(color.name(), colors::BG_RAISED(), colors::BORDER_DIM()));
 }
 
 void KalshiScreen::render_ladder_surface(
