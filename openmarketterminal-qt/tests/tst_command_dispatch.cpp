@@ -246,15 +246,19 @@ private slots:
         QVERIFY(capabilities.size() >= 6);
 
         bool has_snapshot = false;
+        bool has_trading_brief = false;
         bool has_guarded_prediction = false;
         for (const QJsonValue& value : capabilities) {
             const QJsonObject capability = value.toObject();
             has_snapshot = has_snapshot || capability.value("id").toString() == QStringLiteral("observe.snapshot");
+            has_trading_brief = has_trading_brief ||
+                               capability.value("id").toString() == QStringLiteral("observe.trading_brief");
             has_guarded_prediction = has_guarded_prediction ||
                 (capability.value("id").toString() == QStringLiteral("execute.prediction") &&
                  capability.value("mode").toString() == QStringLiteral("guarded-live"));
         }
         QVERIFY(has_snapshot);
+        QVERIFY(has_trading_brief);
         QVERIFY(has_guarded_prediction);
         bool has_external_context = false;
         for (const QJsonValue& value : manifest.value("capabilities").toArray()) {
@@ -325,6 +329,79 @@ private slots:
         // tests still exercise an actually empty journal.
         QVERIFY(Database::instance().execute(
             "DELETE FROM edge_decision_journal WHERE id='pulse-yes'").is_ok());
+    }
+    void control_trading_brief_is_compact_and_read_only() {
+        sandbox_test_home();
+        const qint64 now = recent_ms(1000);
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id,created_at,updated_at,venue,symbol,horizon,market_id,question,"
+            "direction,side,call,gate,market_probability,model_probability,raw_edge,edge_after_cost,spread_cost,"
+            "fee_cost,liquidity_score,confidence,seconds_left,data_status,freshness_json,features_json,reasons,source) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("brief-final-window"), now, now, QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+             QStringLiteral("15m"), QStringLiteral("KXBRIEF-60"), QStringLiteral("BTC final minute"),
+             QStringLiteral("above"), QStringLiteral("yes"), QStringLiteral("WATCH"), QStringLiteral("hold"),
+             0.50, 0.52, 0.02, 0.01, 0.005, 0.002, 4.0, 0.7, 45,
+             QStringLiteral("watch"), QStringLiteral("{}"), QStringLiteral("{}"),
+             QStringLiteral("test brief"), QStringLiteral("kalshi auto-plan")}).is_ok());
+
+        const QStringList settings_before = cli_settings_fingerprint();
+        const int drafts_before = table_row_count(QStringLiteral("order_drafts"));
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "control", "brief", "--symbol", "BTC-USD", "--limit", "1"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(out.value("read_only").toBool());
+        QVERIFY(out.value("data_contract").toString().contains(QStringLiteral("Freshness")));
+        QVERIFY(out.value("tournament").toObject().value("paper_only").toBool());
+        const QJsonObject lanes = out.value("lanes").toObject();
+        const QJsonObject crypto = lanes.value("crypto").toObject();
+        QVERIFY(crypto.contains(QStringLiteral("feed_quality")));
+        QCOMPARE(crypto.value("symbol").toString(), QStringLiteral("BTC-USD"));
+        const QJsonObject prediction = lanes.value("prediction").toObject();
+        QCOMPARE(prediction.value("candidate_count").toInt(), 1);
+        QCOMPARE(prediction.value("settlement_bands").toObject().value("final_60s").toInt(), 1);
+        QVERIFY(prediction.value("mandate").toObject().contains(QStringLiteral("kill_switch")));
+        QCOMPARE(out.value("timeline").toArray().size(), 3);
+        QCOMPARE(cli_settings_fingerprint(), settings_before);
+        QCOMPARE(table_row_count(QStringLiteral("order_drafts")), drafts_before);
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id='brief-final-window'").is_ok());
+    }
+    void control_plan_watch_and_audit_are_read_only() {
+        sandbox_test_home();
+        const qint64 now = recent_ms(1000);
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id,created_at,updated_at,venue,symbol,horizon,market_id,question,"
+            "direction,side,call,gate,market_probability,model_probability,raw_edge,edge_after_cost,spread_cost,"
+            "fee_cost,liquidity_score,confidence,seconds_left,data_status,freshness_json,features_json,reasons,source) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("control-plan-audit"), now, now, QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+             QStringLiteral("1h"), QStringLiteral("KXPLAN"), QStringLiteral("BTC plan test"),
+             QStringLiteral("above"), QStringLiteral("yes"), QStringLiteral("WATCH"), QStringLiteral("hold"),
+             0.50, 0.52, 0.02, 0.01, 0.005, 0.002, 4.0, 0.7, 120,
+             QStringLiteral("watch"), QStringLiteral("{}"), QStringLiteral("{}"),
+             QStringLiteral("control test"), QStringLiteral("kalshi auto-plan")}).is_ok());
+        const int drafts_before = table_row_count(QStringLiteral("order_drafts"));
+        int rc = -1;
+        const QJsonObject plan = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "control", "plan", "--symbol", "BTC-USD", "--limit", "1"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(plan.value("read_only").toBool());
+        QVERIFY(plan.value("execution").toObject().value("requires_human_gate").toBool());
+        const QJsonObject audit = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "control", "audit", "--limit", "1"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(audit.value("decision_count").toInt(), 1);
+        QCOMPARE(audit.value("decisions").toArray().first().toObject().value("decision_id").toString(),
+                 QStringLiteral("control-plan-audit"));
+        const QString watch = capture_stdout([&]() {
+            return dispatch(QStringList{"--headless", "control", "watch", "--iterations", "1", "--interval-sec", "1"});
+        });
+        QVERIFY(watch.contains(QStringLiteral("NO_ACTION")) || watch.contains(QStringLiteral("REVIEW_")));
+        QCOMPARE(table_row_count(QStringLiteral("order_drafts")), drafts_before);
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id='control-plan-audit'").is_ok());
     }
     void control_snapshot_includes_symbol_specific_spot_research_read_only() {
         sandbox_test_home();

@@ -1,8 +1,9 @@
 import importlib.util
+import io
 import pathlib
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
@@ -14,6 +15,18 @@ SPEC.loader.exec_module(MODULE)
 
 
 class QueuePositionsTest(unittest.TestCase):
+    def test_stdin_payload_mode_does_not_need_payload_in_argv(self):
+        emitted = []
+        handler = Mock()
+        with patch.dict(MODULE.COMMANDS, {"fee_quote": handler}), \
+             patch.object(MODULE, "_emit", emitted.append), \
+             patch.object(sys, "argv", ["prediction_kalshi.py", "fee_quote", "--stdin-json"]), \
+             patch.object(sys, "stdin", io.StringIO('{"price": 0.50, "count": 1}')):
+            self.assertEqual(MODULE.main(), 0)
+
+        handler.assert_called_once_with({"price": 0.50, "count": 1})
+        self.assertEqual(emitted, [])
+
     def test_discovers_resting_markets_and_joins_order(self):
         requests = []
 

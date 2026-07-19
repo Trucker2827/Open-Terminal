@@ -83,9 +83,23 @@ qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
     // An armed live session gets the next fresh decision immediately. Paper
     // evidence is deliberately paced: every websocket delta is not an
     // independent experiment, and re-planning on each one starves the worker.
-    const qint64 minimum_interval_ms = live_session_active ? 1000
+    const qint64 minimum_interval_ms = live_session_active ? 3000
         : paper_active ? 15000 : 60000;
     return std::max<qint64>(0, minimum_interval_ms - std::max<qint64>(0, elapsed_ms));
+}
+
+QStringList kalshi_event_planner_args() {
+    return {QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
+            QStringLiteral("--category"), QStringLiteral("Crypto#BTC@live"),
+            // Live websocket events already select the nearest settlement cohort.
+            // Twelve contracts keeps planning inside the executable-quote window;
+            // an exhaustive surface scan belongs to the explicit CLI planner.
+            QStringLiteral("--limit"), QStringLiteral("12"),
+            QStringLiteral("--timeout-ms"), QStringLiteral("12000"),
+            QStringLiteral("--max-positions"), QStringLiteral("5"),
+            QStringLiteral("--unit-notional"), QStringLiteral("2"),
+            QStringLiteral("--max-cost"), QStringLiteral("10"),
+            QStringLiteral("--min-edge"), QStringLiteral("0.03")};
 }
 
 bool kalshi_should_persist_independent_spot_tick(const QString& source, double price,
@@ -637,18 +651,7 @@ class KalshiLiveEventEngine final : public QObject {
         decision_pending_ = false;
         last_cycle_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         ++decision_cycles_;
-        start_process({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
-                       QStringLiteral("--category"), QStringLiteral("Crypto#BTC@live"),
-                       // The WebSocket already narrowed the trigger surface to the
-                       // nearest settlement cohorts. Keep the child planner equally
-                       // bounded: a 100-contract REST scan cannot make a useful
-                       // decision inside an executable-quote lifetime.
-                       QStringLiteral("--limit"), QStringLiteral("32"),
-                       QStringLiteral("--timeout-ms"), QStringLiteral("7500"),
-                       QStringLiteral("--max-positions"), QStringLiteral("5"),
-                       QStringLiteral("--unit-notional"), QStringLiteral("2"),
-                       QStringLiteral("--max-cost"), QStringLiteral("10"),
-                       QStringLiteral("--min-edge"), QStringLiteral("0.03")}, Work::Plan);
+        start_process(kalshi_event_planner_args(), Work::Plan);
     }
 
     enum class Work { Plan, Paper, Execute, AccountReconcile };
@@ -863,7 +866,7 @@ class KalshiLiveEventEngine final : public QObject {
             {QStringLiteral("paper_cycles"), QString::number(paper_cycles_)},
             {QStringLiteral("parallel_paper_enabled"), parallel_paper_active()},
             {QStringLiteral("cycle_min_interval_ms"), QString::number(
-                session_active() ? 1000 : parallel_paper_active() ? 15000 : 60000)},
+                kalshi_event_cycle_delay_ms(session_active(), parallel_paper_active(), 0))},
             // Compatibility alias retained for older status readers. It now
             // means candidate checks, not claimed order submissions.
             {QStringLiteral("execution_attempts"), QString::number(live_candidate_checks_)},
@@ -1454,15 +1457,24 @@ bool job_has_current_failure(const QJsonObject& job) {
 QJsonObject jobs_summary(const QString& profile) {
     const QJsonArray jobs = load_jobs_doc(profile).value("jobs").toArray();
     int enabled = 0, running = 0, failed = 0, failed_history = 0, interval = 0, stale = 0;
+    int disabled_current_failures = 0, historical_only = 0;
     QJsonArray by_kind;
     QJsonObject counts;
     const QDateTime now = QDateTime::currentDateTimeUtc();
     for (const auto& v : jobs) {
         const QJsonObject j = v.toObject();
-        if (j.value("enabled").toBool()) ++enabled;
+        const bool is_enabled = j.value("enabled").toBool();
+        if (is_enabled) ++enabled;
         if (j.value("running").toBool()) ++running;
         if (j.value("fail_count").toInt() > 0) ++failed_history;
-        if (job_has_current_failure(j)) ++failed;
+        if (job_has_current_failure(j)) {
+            if (is_enabled)
+                ++failed;
+            else
+                ++disabled_current_failures;
+        } else if (j.value("fail_count").toInt() > 0) {
+            ++historical_only;
+        }
         if (j.value("schedule").toString() == QStringLiteral("interval")) ++interval;
         if (j.value("running").toBool()) {
             const QDateTime started = parse_utc(j.value("last_started_at").toString());
@@ -1479,6 +1491,8 @@ QJsonObject jobs_summary(const QString& profile) {
                        {"running", running},
                        {"failed", failed},
                        {"failed_history", failed_history},
+                       {"historical_only", historical_only},
+                       {"disabled_current_failures", disabled_current_failures},
                        {"stale", stale},
                        {"interval", interval},
                        {"by_kind", by_kind}};
@@ -2488,10 +2502,11 @@ int emit_daemon_health(const QString& profile, bool json) {
     if (o.contains("uptime_sec"))
         std::printf("uptime       %llds\n", static_cast<long long>(o.value("uptime_sec").toDouble()));
     const QJsonObject j = o.value("jobs").toObject();
-    std::printf("jobs         total=%d enabled=%d running=%d failed=%d stale=%d history=%d interval=%d\n",
+    std::printf("jobs         total=%d enabled=%d running=%d failed=%d stale=%d history=%d historical_only=%d disabled_failed=%d interval=%d\n",
                 j.value("total").toInt(), j.value("enabled").toInt(), j.value("running").toInt(),
                 j.value("failed").toInt(), j.value("stale").toInt(),
-                j.value("failed_history").toInt(), j.value("interval").toInt());
+                j.value("failed_history").toInt(), j.value("historical_only").toInt(),
+                j.value("disabled_current_failures").toInt(), j.value("interval").toInt());
     std::printf("endpoint     %s\n", qUtf8Printable(o.value("endpoint").toString("(none)")));
     if (o.contains("daemon_blocked_by"))
         std::printf("note         bridge %s; daemon scheduler %s\n",
@@ -4029,6 +4044,53 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
     if (sub == "list" || sub == "ls")
         return emit_jobs_list(profile, json);
+    if (sub == "diagnose" || sub == "health") {
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: daemon jobs diagnose\n");
+            return 2;
+        }
+        const QJsonObject summary = jobs_summary(profile);
+        QJsonArray current_failures;
+        QJsonArray stale_jobs;
+        QJsonArray historical;
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        for (const QJsonValue& value : load_jobs_doc(profile).value("jobs").toArray()) {
+            const QJsonObject job = value.toObject();
+            const bool enabled = job.value("enabled").toBool();
+            const bool current_failure = job_has_current_failure(job);
+            const QDateTime started = parse_utc(job.value("last_started_at").toString());
+            const bool stale = job.value("running").toBool() && started.isValid() &&
+                               started.addSecs(job_timeout_sec(job) + 15) < now;
+            const QJsonObject row{{"id", job.value("id").toString()}, {"name", job.value("name").toString()},
+                                  {"kind", job.value("kind").toString()}, {"enabled", enabled},
+                                  {"last_status", job.value("last_status").toString()},
+                                  {"fail_count", job.value("fail_count").toInt()}};
+            if (enabled && current_failure)
+                current_failures.append(row);
+            else if (enabled && stale)
+                stale_jobs.append(row);
+            else if (job.value("fail_count").toInt() > 0)
+                historical.append(row);
+        }
+        const QString state = !current_failures.isEmpty() || !stale_jobs.isEmpty()
+                                  ? QStringLiteral("attention")
+                                  : QStringLiteral("healthy");
+        const QJsonObject out{{"state", state}, {"summary", summary},
+                              {"current_failures", current_failures}, {"stale_jobs", stale_jobs},
+                              {"historical_failures", historical},
+                              {"rule", "Only enabled current failures and stale jobs affect daemon readiness. Historical and disabled failures remain visible for cleanup but do not block a healthy execution path."},
+                              {"next_command", current_failures.isEmpty() && stale_jobs.isEmpty()
+                                   ? QStringLiteral("daemon jobs clear-failures --all")
+                                   : QStringLiteral("daemon jobs list")}};
+        if (json)
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("DAEMON JOB DIAGNOSIS: %s\ncurrent enabled failures=%d stale=%d historical/disabled=%d\n%s\n",
+                        qUtf8Printable(state.toUpper()), static_cast<int>(current_failures.size()),
+                        static_cast<int>(stale_jobs.size()), static_cast<int>(historical.size()),
+                        qUtf8Printable(out.value("rule").toString()));
+        return 0;
+    }
     if (sub == "history" || sub == "hist" || sub == "runs")
         return emit_jobs_history(profile, json, args);
     if (sub == "failures" || sub == "failed")
@@ -4206,7 +4268,7 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
         }
         return 0;
     }
-    std::fprintf(stderr, "usage: daemon jobs list|history|failures|stats|add|show|run|enable|disable|remove|repair|clear-failures\n");
+    std::fprintf(stderr, "usage: daemon jobs list|diagnose|history|failures|stats|add|show|run|enable|disable|remove|repair|clear-failures\n");
     return 2;
 }
 

@@ -82,11 +82,20 @@ private slots:
     }
 
     void kalshi_event_cycle_paces_paper_but_not_armed_live() {
-        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 1000LL);
-        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 1000), 0LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 3000LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 2999), 1LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 3000), 0LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 0), 15000LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 14999), 1LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 15000), 0LL);
+    }
+
+    void kalshi_event_planner_is_bounded_to_executable_cohorts() {
+        const QStringList args = kalshi_event_planner_args();
+        QCOMPARE(args.mid(0, 3), QStringList({"kalshi", "auto", "run"}));
+        QCOMPARE(args.at(args.indexOf("--category") + 1), QStringLiteral("Crypto#BTC@live"));
+        QCOMPARE(args.at(args.indexOf("--limit") + 1), QStringLiteral("12"));
+        QCOMPARE(args.at(args.indexOf("--timeout-ms") + 1), QStringLiteral("12000"));
     }
 
     void kalshi_persists_fresh_independent_spot_without_raw_socket_flooding() {

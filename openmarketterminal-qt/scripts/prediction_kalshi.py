@@ -3,6 +3,7 @@
 
 Invocation:
     python prediction_kalshi.py <command> <json_payload>
+    python prediction_kalshi.py <command> --stdin-json
 
 Commands:
     fee_quote         — local fee/cost estimate using Kalshi-style fees
@@ -905,7 +906,11 @@ def main() -> int:
         _fail("usage: prediction_kalshi.py <command> [<json_payload>]")
         return 2
     command = sys.argv[1]
-    payload_str = sys.argv[2] if len(sys.argv) > 2 else "{}"
+    # Credential-bearing payloads arrive over stdin. The legacy argv form is
+    # retained for standalone compatibility, but app callers must use stdin so
+    # private keys never appear in process listings.
+    payload_str = sys.stdin.read() if len(sys.argv) > 2 and sys.argv[2] == "--stdin-json" \
+        else (sys.argv[2] if len(sys.argv) > 2 else "{}")
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as exc:

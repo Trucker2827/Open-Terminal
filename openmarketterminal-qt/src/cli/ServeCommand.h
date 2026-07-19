@@ -24,6 +24,10 @@ bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
                                             qint64 timeout_ms);
 qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
                                    qint64 elapsed_ms);
+// The event engine operates on the nearest live crypto settlement cohorts. Keep
+// the child planner bounded enough to finish before another quote snapshot ages
+// out; this is deliberately separate from the broader manual CLI planner.
+QStringList kalshi_event_planner_args();
 // Only independent exchange ticks are eligible to keep the Kalshi planner's
 // spot reference fresh. Persistence is rate-limited so the daemon gets a
 // current executable reference without turning the feature store into a raw
