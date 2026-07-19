@@ -1956,7 +1956,7 @@ void KalshiScreen::update_live_positions_summary() {
             {QStringLiteral("stake"), cost},
             {QStringLiteral("fees"), position.fees_paid},
             {QStringLiteral("current_value"), has_mark ? exit_value : -1.0},
-            {QStringLiteral("pnl"), has_mark ? marked_pnl : QJsonValue::Null},
+            {QStringLiteral("pnl"), has_mark ? QJsonValue(marked_pnl) : QJsonValue(QJsonValue::Null)},
             {QStringLiteral("realized_pnl"), position.realized_pnl},
             {QStringLiteral("rationale"), rationale},
             {QStringLiteral("decision_at"), audit_timestamp}});
@@ -2047,7 +2047,7 @@ void KalshiScreen::update_live_positions_summary() {
                 {QStringLiteral("stake"), cost},
                 {QStringLiteral("fees"), entry_fee},
                 {QStringLiteral("current_value"), has_mark ? exit_value : -1.0},
-                {QStringLiteral("pnl"), has_mark ? marked_pnl : QJsonValue::Null},
+                {QStringLiteral("pnl"), has_mark ? QJsonValue(marked_pnl) : QJsonValue(QJsonValue::Null)},
                 {QStringLiteral("position_id"), position_id},
                 {QStringLiteral("strategy_id"), strategy_id},
                 {QStringLiteral("decision_id"), decision_id},
