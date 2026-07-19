@@ -11,6 +11,7 @@
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
+#include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 #include "services/sandbox/MakerQuotes.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -83,9 +84,23 @@ qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
     // An armed live session gets the next fresh decision immediately. Paper
     // evidence is deliberately paced: every websocket delta is not an
     // independent experiment, and re-planning on each one starves the worker.
-    const qint64 minimum_interval_ms = live_session_active ? 1000
+    const qint64 minimum_interval_ms = live_session_active ? 3000
         : paper_active ? 15000 : 60000;
     return std::max<qint64>(0, minimum_interval_ms - std::max<qint64>(0, elapsed_ms));
+}
+
+QStringList kalshi_event_planner_args() {
+    return {QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
+            QStringLiteral("--category"), QStringLiteral("Crypto#BTC@live"),
+            // Live websocket events already select the nearest settlement cohort.
+            // Twelve contracts keeps planning inside the executable-quote window;
+            // an exhaustive surface scan belongs to the explicit CLI planner.
+            QStringLiteral("--limit"), QStringLiteral("12"),
+            QStringLiteral("--timeout-ms"), QStringLiteral("12000"),
+            QStringLiteral("--max-positions"), QStringLiteral("5"),
+            QStringLiteral("--unit-notional"), QStringLiteral("2"),
+            QStringLiteral("--max-cost"), QStringLiteral("10"),
+            QStringLiteral("--min-edge"), QStringLiteral("0.03")};
 }
 
 bool kalshi_should_persist_independent_spot_tick(const QString& source, double price,
@@ -99,6 +114,169 @@ bool kalshi_should_persist_independent_spot_tick(const QString& source, double p
         return false;
     return last_persisted_ts_ms <= 0 ||
            received_ts_ms - last_persisted_ts_ms >= std::max<qint64>(1, minimum_interval_ms);
+}
+
+KalshiFlowMetrics kalshi_flow_metrics(const QVector<KalshiFlowLevel>& yes_bid_levels,
+                                      const QVector<KalshiFlowLevel>& no_bid_levels,
+                                      const QVector<KalshiFlowTrade>& trades,
+                                      const QVector<KalshiFlowDelta>& deltas,
+                                      qint64 now_ms,
+                                      qint64 lookback_ms,
+                                      int depth_levels) {
+    KalshiFlowMetrics out;
+    out.observed_at_ms = now_ms;
+    const qint64 cutoff_ms = now_ms - std::max<qint64>(1, lookback_ms);
+    const int levels = std::max(1, depth_levels);
+    for (int i = 0; i < yes_bid_levels.size() && i < levels; ++i)
+        out.yes_bid_depth += std::max(0.0, yes_bid_levels[i].quantity);
+    for (int i = 0; i < no_bid_levels.size() && i < levels; ++i)
+        out.no_bid_depth += std::max(0.0, no_bid_levels[i].quantity);
+    for (const auto& trade : trades) {
+        if (trade.ts_ms < cutoff_ms || trade.ts_ms > now_ms || trade.quantity <= 0.0) continue;
+        if (trade.outcome.compare(QStringLiteral("yes"), Qt::CaseInsensitive) == 0)
+            out.yes_taker_quantity += trade.quantity;
+        else if (trade.outcome.compare(QStringLiteral("no"), Qt::CaseInsensitive) == 0)
+            out.no_taker_quantity += trade.quantity;
+        else
+            continue;
+        ++out.recent_trade_count;
+    }
+    for (const auto& delta : deltas) {
+        if (delta.ts_ms < cutoff_ms || delta.ts_ms > now_ms || delta.quantity_delta == 0.0) continue;
+        const bool yes = delta.outcome.compare(QStringLiteral("yes"), Qt::CaseInsensitive) == 0;
+        const bool no = delta.outcome.compare(QStringLiteral("no"), Qt::CaseInsensitive) == 0;
+        if (!yes && !no) continue;
+        const double quantity = std::abs(delta.quantity_delta);
+        if (yes && delta.quantity_delta > 0.0) out.yes_added_quantity += quantity;
+        if (yes && delta.quantity_delta < 0.0) out.yes_removed_quantity += quantity;
+        if (no && delta.quantity_delta > 0.0) out.no_added_quantity += quantity;
+        if (no && delta.quantity_delta < 0.0) out.no_removed_quantity += quantity;
+        ++out.recent_delta_count;
+    }
+    const auto imbalance = [](double left, double right) {
+        const double total = left + right;
+        return total > 0.0 ? (left - right) / total : 0.0;
+    };
+    out.depth_imbalance = imbalance(out.yes_bid_depth, out.no_bid_depth);
+    out.taker_imbalance = imbalance(out.yes_taker_quantity, out.no_taker_quantity);
+    const double yes_wall_change = out.yes_added_quantity - out.yes_removed_quantity;
+    const double no_wall_change = out.no_added_quantity - out.no_removed_quantity;
+    out.wall_imbalance = imbalance(std::max(0.0, yes_wall_change),
+                                   std::max(0.0, no_wall_change));
+    // Resting depth is useful context, while prints are the stronger signal.
+    // This remains advisory: market microstructure can change faster than a
+    // one-window summary and it must never grant execution authority.
+    out.combined_pressure = 0.55 * out.taker_imbalance + 0.35 * out.depth_imbalance
+                          + 0.10 * out.wall_imbalance;
+    const bool active = out.recent_trade_count >= 3 || out.recent_delta_count >= 6;
+    const bool two_sided = out.yes_bid_depth > 0.0 && out.no_bid_depth > 0.0;
+    if (active && two_sided && out.combined_pressure >= 0.25) {
+        out.signal = QStringLiteral("YES PRESSURE");
+        out.confidence = std::abs(out.combined_pressure) >= 0.50
+            ? QStringLiteral("HIGH") : QStringLiteral("CONFIRMING");
+    } else if (active && two_sided && out.combined_pressure <= -0.25) {
+        out.signal = QStringLiteral("NO PRESSURE");
+        out.confidence = std::abs(out.combined_pressure) >= 0.50
+            ? QStringLiteral("HIGH") : QStringLiteral("CONFIRMING");
+    } else if (active) {
+        out.confidence = QStringLiteral("MIXED");
+    }
+    return out;
+}
+
+QJsonObject kalshi_flow_to_json(const KalshiFlowMetrics& metrics) {
+    return QJsonObject{
+        {QStringLiteral("observed_at_ms"), QString::number(metrics.observed_at_ms)},
+        {QStringLiteral("window_ms"), 30000},
+        {QStringLiteral("yes_bid_depth"), metrics.yes_bid_depth},
+        {QStringLiteral("no_bid_depth"), metrics.no_bid_depth},
+        {QStringLiteral("yes_taker_quantity"), metrics.yes_taker_quantity},
+        {QStringLiteral("no_taker_quantity"), metrics.no_taker_quantity},
+        {QStringLiteral("yes_added_quantity"), metrics.yes_added_quantity},
+        {QStringLiteral("no_added_quantity"), metrics.no_added_quantity},
+        {QStringLiteral("yes_removed_quantity"), metrics.yes_removed_quantity},
+        {QStringLiteral("no_removed_quantity"), metrics.no_removed_quantity},
+        {QStringLiteral("trade_count"), metrics.recent_trade_count},
+        {QStringLiteral("delta_count"), metrics.recent_delta_count},
+        {QStringLiteral("depth_imbalance"), metrics.depth_imbalance},
+        {QStringLiteral("taker_imbalance"), metrics.taker_imbalance},
+        {QStringLiteral("wall_imbalance"), metrics.wall_imbalance},
+        {QStringLiteral("combined_pressure"), metrics.combined_pressure},
+        {QStringLiteral("signal"), metrics.signal},
+        {QStringLiteral("confidence"), metrics.confidence},
+        {QStringLiteral("advisory_only"), true},
+        {QStringLiteral("interpretation"),
+         QStringLiteral("Public contract flow; not unique traders and never an execution signal")}};
+}
+
+QJsonObject kalshi_flow_windows_to_json(const QVector<KalshiFlowLevel>& yes_bid_levels,
+                                        const QVector<KalshiFlowLevel>& no_bid_levels,
+                                        const QVector<KalshiFlowTrade>& trades,
+                                        const QVector<KalshiFlowDelta>& deltas,
+                                        qint64 now_ms) {
+    const QList<QPair<QString, qint64>> windows{{QStringLiteral("2s"), 2'000},
+                                                 {QStringLiteral("10s"), 10'000},
+                                                 {QStringLiteral("30s"), 30'000},
+                                                 {QStringLiteral("2m"), 120'000},
+                                                 {QStringLiteral("5m"), 300'000}};
+    QJsonObject out;
+    for (const auto& window : windows) {
+        QJsonObject row = kalshi_flow_to_json(kalshi_flow_metrics(
+            yes_bid_levels, no_bid_levels, trades, deltas, now_ms, window.second));
+        row.insert(QStringLiteral("window_ms"), QString::number(window.second));
+        out.insert(window.first, row);
+    }
+    return out;
+}
+
+QJsonObject kalshi_flow_divergence_to_json(double spot_change_bps,
+                                           double contract_change_cents,
+                                           const KalshiFlowMetrics& short_window) {
+    const bool spot_up = spot_change_bps > 0.5;
+    const bool spot_down = spot_change_bps < -0.5;
+    const bool contract_up = contract_change_cents > 0.1;
+    const bool contract_down = contract_change_cents < -0.1;
+    const bool flow_yes = short_window.combined_pressure >= 0.25;
+    const bool flow_no = short_window.combined_pressure <= -0.25;
+    const bool price_diverges = (spot_up && contract_down) || (spot_down && contract_up);
+    const bool flow_diverges = (spot_up && flow_no) || (spot_down && flow_yes);
+    QString label = QStringLiteral("ALIGNED");
+    if (price_diverges || flow_diverges) label = QStringLiteral("DIVERGENCE");
+    else if (!spot_up && !spot_down && !contract_up && !contract_down)
+        label = QStringLiteral("QUIET");
+    return QJsonObject{{QStringLiteral("spot_change_bps"), spot_change_bps},
+                       {QStringLiteral("contract_change_cents"), contract_change_cents},
+                       {QStringLiteral("short_flow_pressure"), short_window.combined_pressure},
+                       {QStringLiteral("label"), label},
+                       {QStringLiteral("price_diverges"), price_diverges},
+                       {QStringLiteral("flow_diverges"), flow_diverges},
+                       {QStringLiteral("advisory_only"), true},
+                       {QStringLiteral("interpretation"),
+                        QStringLiteral("A divergence is a research condition, not a trade instruction")}};
+}
+
+QJsonObject kalshi_flow_execution_to_json(const KalshiFlowQuote& yes,
+                                          const KalshiFlowQuote& no,
+                                          double yes_fee_per_contract,
+                                          double no_fee_per_contract) {
+    const auto side = [](const KalshiFlowQuote& quote, double fee) {
+        const double entry = std::max(0.0, quote.ask) + std::max(0.0, fee);
+        const double exit = std::max(0.0, quote.bid) - std::max(0.0, fee);
+        return QJsonObject{{QStringLiteral("bid"), quote.bid},
+                           {QStringLiteral("ask"), quote.ask},
+                           {QStringLiteral("bid_size"), quote.bid_size},
+                           {QStringLiteral("ask_size"), quote.ask_size},
+                           {QStringLiteral("fee_per_contract"), std::max(0.0, fee)},
+                           {QStringLiteral("entry_cash_cost"), entry},
+                           {QStringLiteral("immediate_exit_proceeds"), std::max(0.0, exit)},
+                           {QStringLiteral("immediate_round_trip_loss"), std::max(0.0, entry - exit)},
+                           {QStringLiteral("spread_cents"), std::max(0.0, quote.ask - quote.bid) * 100.0}};
+    };
+    return QJsonObject{{QStringLiteral("yes"), side(yes, yes_fee_per_contract)},
+                       {QStringLiteral("no"), side(no, no_fee_per_contract)},
+                       {QStringLiteral("advisory_only"), true},
+                       {QStringLiteral("interpretation"),
+                        QStringLiteral("Immediate taker economics only; it is not an execution recommendation")}};
 }
 
 namespace {
@@ -266,6 +444,7 @@ class KalshiLiveEventEngine final : public QObject {
         });
         connect(adapter_, &KalshiAdapter::ws_trade_event, this,
                 [this](const QString& ticker, const QJsonObject& payload) {
+                    record_flow_trade(ticker, payload);
                     observe_market_event(QStringLiteral("trade"), ticker, payload);
                 });
         connect(adapter_, &KalshiAdapter::ws_ticker_event, this,
@@ -276,12 +455,14 @@ class KalshiLiveEventEngine final : public QObject {
                 [this](const QString& type, const QString& ticker, qint64 sequence,
                        const QJsonObject& payload) {
                     last_sequence_ = sequence;
+                    record_flow_delta(ticker, type, payload);
                     observe_market_event(type, ticker, payload);
                 });
         connect(adapter_, &services::prediction::PredictionExchangeAdapter::ws_orderbook_updated,
                 this, [this](const QString& asset_id,
                              const services::prediction::PredictionOrderBook& book) {
                     if (!subscribed_asset_ids_.contains(asset_id)) return;
+                    normalized_books_.insert(asset_id, book);
                     const double bid = book.bids.isEmpty() ? 0.0 : book.bids.first().price;
                     const double ask = book.asks.isEmpty() ? 0.0 : book.asks.first().price;
                     const bool bid_usable = !book.bids.isEmpty() && book.bids.first().size >= 1.0;
@@ -307,6 +488,9 @@ class KalshiLiveEventEngine final : public QObject {
                         {QStringLiteral("exchange_observed_at_ms"),
                          QString::number(exchange_observed_at_ms)},
                         {QStringLiteral("source"), QStringLiteral("kalshi_websocket")}});
+            const int asset_separator = asset_id.lastIndexOf(':');
+            if (asset_separator > 0)
+                update_flow_snapshot(asset_id.left(asset_separator), observed_at_ms);
                     book_snapshot_flush_.start();
                     schedule_decision(QStringLiteral("top_of_book_change"));
                 });
@@ -425,6 +609,8 @@ class KalshiLiveEventEngine final : public QObject {
         latest_independent_spot_ = tick.price;
         latest_independent_spot_source_ = source;
         latest_independent_spot_ms_ = received;
+        independent_spot_history_.append({received, tick.price});
+        trim_price_history(independent_spot_history_, received);
         ++independent_spot_events_;
         status_dirty_ = true;
         schedule_decision(QStringLiteral("independent_spot_change"));
@@ -514,6 +700,7 @@ class KalshiLiveEventEngine final : public QObject {
         QVector<Candidate> candidates;
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         QSet<QString> next;
+        QHash<QString, services::prediction::PredictionMarket> next_markets;
         for (const auto& market : markets) {
             const QString ticker = market.key.market_id.trimmed().toUpper();
             if (!ticker.startsWith(QStringLiteral("KXBTC")) || market.closed || !market.active)
@@ -548,6 +735,7 @@ class KalshiLiveEventEngine final : public QObject {
                 continue;
             for (const QString& asset_id : candidate.market->key.asset_ids)
                 if (!asset_id.trimmed().isEmpty()) next.insert(asset_id);
+            next_markets.insert(candidate.market->key.market_id.trimmed().toUpper(), *candidate.market);
             cohort_counts[candidate.close_ms] += 1;
         }
         QSet<QString> added = next;
@@ -558,10 +746,12 @@ class KalshiLiveEventEngine final : public QObject {
             adapter_->unsubscribe_market(QStringList(removed.begin(), removed.end()));
         for (const QString& asset_id : removed) top_book_signatures_.remove(asset_id);
         for (const QString& asset_id : removed) top_book_snapshots_.remove(asset_id);
+        for (const QString& asset_id : removed) normalized_books_.remove(asset_id);
         if (!removed.isEmpty()) book_snapshot_flush_.start();
         if (!added.isEmpty())
             adapter_->subscribe_market(QStringList(added.begin(), added.end()));
         subscribed_asset_ids_ = next;
+        tracked_markets_ = next_markets;
         if (!next.isEmpty() && subscription_started_ms_ <= 0)
             subscription_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         last_universe_refresh_ = now_utc();
@@ -585,6 +775,160 @@ class KalshiLiveEventEngine final : public QObject {
                 return;
             }
         }
+    }
+
+    static qint64 payload_timestamp_ms(const QJsonObject& payload, qint64 fallback_ms) {
+        for (const QString& key : {QStringLiteral("ts_ms"), QStringLiteral("timestamp"),
+                                   QStringLiteral("created_time")}) {
+            const QJsonValue value = payload.value(key);
+            if (value.isUndefined() || value.isNull()) continue;
+            bool ok = false;
+            qint64 ts = value.isString() ? value.toString().toLongLong(&ok)
+                                         : static_cast<qint64>(value.toDouble());
+            if (!ok && value.isString()) continue;
+            if (ts > 0 && ts < 10'000'000'000LL) ts *= 1000;
+            if (ts > 0) return ts;
+        }
+        return fallback_ms;
+    }
+
+    static QString flow_outcome(const QJsonObject& payload) {
+        const QString side = payload.value(QStringLiteral("taker_outcome_side")).toString(
+            payload.value(QStringLiteral("outcome_side")).toString(
+                payload.value(QStringLiteral("side")).toString())).trimmed().toLower();
+        return side == QStringLiteral("yes") || side == QStringLiteral("no") ? side : QString{};
+    }
+
+    static void trim_price_history(QVector<KalshiFlowPriceSample>& samples, qint64 now_ms) {
+        constexpr qint64 kRetainMs = 5 * 60'000;
+        while (!samples.isEmpty() && samples.first().ts_ms < now_ms - kRetainMs)
+            samples.removeFirst();
+    }
+
+    static double historical_price(const QVector<KalshiFlowPriceSample>& samples,
+                                   qint64 target_ms) {
+        double value = 0.0;
+        for (const auto& sample : samples) {
+            if (sample.ts_ms > target_ms) break;
+            if (sample.price > 0.0) value = sample.price;
+        }
+        return value;
+    }
+
+    void trim_flow_buffers(const QString& ticker, qint64 now_ms) {
+        constexpr qint64 kRetainMs = 5 * 60'000;
+        auto& trades = flow_trades_[ticker];
+        while (!trades.isEmpty() && trades.first().ts_ms < now_ms - kRetainMs)
+            trades.removeFirst();
+        auto& deltas = flow_deltas_[ticker];
+        while (!deltas.isEmpty() && deltas.first().ts_ms < now_ms - kRetainMs)
+            deltas.removeFirst();
+    }
+
+    void record_flow_trade(const QString& ticker, const QJsonObject& payload) {
+        if (!tracks(ticker)) return;
+        const QString outcome = flow_outcome(payload);
+        const double quantity = payload.value(QStringLiteral("count_fp")).toDouble(
+            payload.value(QStringLiteral("count")).toDouble());
+        if (outcome.isEmpty() || quantity <= 0.0) return;
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        flow_trades_[ticker].append({payload_timestamp_ms(payload, now_ms), outcome, quantity});
+        trim_flow_buffers(ticker, now_ms);
+        update_flow_snapshot(ticker, now_ms);
+        book_snapshot_flush_.start();
+    }
+
+    void record_flow_delta(const QString& ticker, const QString& type,
+                           const QJsonObject& payload) {
+        if (!tracks(ticker) || type != QStringLiteral("orderbook_delta")) return;
+        const QString outcome = flow_outcome(payload);
+        const double quantity_delta = payload.value(QStringLiteral("delta_fp")).toDouble();
+        if (outcome.isEmpty() || quantity_delta == 0.0) return;
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        flow_deltas_[ticker].append(
+            {payload_timestamp_ms(payload, now_ms), outcome, quantity_delta});
+        trim_flow_buffers(ticker, now_ms);
+        update_flow_snapshot(ticker, now_ms);
+        book_snapshot_flush_.start();
+    }
+
+    void update_flow_snapshot(const QString& ticker, qint64 now_ms) {
+        const auto yes_book = normalized_books_.value(ticker + QStringLiteral(":yes"));
+        const auto no_book = normalized_books_.value(ticker + QStringLiteral(":no"));
+        if (yes_book.asset_id.isEmpty() || no_book.asset_id.isEmpty()) return;
+        QVector<KalshiFlowLevel> yes_levels;
+        QVector<KalshiFlowLevel> no_levels;
+        for (const auto& level : yes_book.bids) yes_levels.append({level.price, level.size});
+        for (const auto& level : no_book.bids) no_levels.append({level.price, level.size});
+        trim_flow_buffers(ticker, now_ms);
+        const QJsonObject windows = kalshi_flow_windows_to_json(
+            yes_levels, no_levels, flow_trades_.value(ticker), flow_deltas_.value(ticker), now_ms);
+        QJsonObject snapshot = windows.value(QStringLiteral("30s")).toObject();
+        snapshot.insert(QStringLiteral("ticker"), ticker);
+        snapshot.insert(QStringLiteral("source"), QStringLiteral("kalshi_websocket"));
+        flow_snapshots_.insert(ticker, snapshot);
+
+        const double yes_mid = yes_book.bids.isEmpty() || yes_book.asks.isEmpty() ? 0.0
+            : (yes_book.bids.first().price + yes_book.asks.first().price) / 2.0;
+        if (yes_mid > 0.0) {
+            yes_mid_history_[ticker].append({now_ms, yes_mid});
+            trim_price_history(yes_mid_history_[ticker], now_ms);
+        }
+        const double prior_spot = historical_price(independent_spot_history_, now_ms - 30'000);
+        const double prior_yes_mid = historical_price(yes_mid_history_.value(ticker), now_ms - 30'000);
+        const double spot_change_bps = prior_spot > 0.0 && latest_independent_spot_ > 0.0
+            ? (latest_independent_spot_ / prior_spot - 1.0) * 10000.0 : 0.0;
+        const double contract_change_cents = prior_yes_mid > 0.0 && yes_mid > 0.0
+            ? (yes_mid - prior_yes_mid) * 100.0 : 0.0;
+        const auto short_flow = kalshi_flow_metrics(
+            yes_levels, no_levels, flow_trades_.value(ticker), flow_deltas_.value(ticker), now_ms, 30'000);
+        const auto market = tracked_markets_.value(ticker);
+        const auto yes_quote = KalshiFlowQuote{yes_book.bids.isEmpty() ? 0.0 : yes_book.bids.first().price,
+                                                yes_book.asks.isEmpty() ? 0.0 : yes_book.asks.first().price,
+                                                yes_book.bids.isEmpty() ? 0.0 : yes_book.bids.first().size,
+                                                yes_book.asks.isEmpty() ? 0.0 : yes_book.asks.first().size};
+        const auto no_quote = KalshiFlowQuote{no_book.bids.isEmpty() ? 0.0 : no_book.bids.first().price,
+                                               no_book.asks.isEmpty() ? 0.0 : no_book.asks.first().price,
+                                               no_book.bids.isEmpty() ? 0.0 : no_book.bids.first().size,
+                                               no_book.asks.isEmpty() ? 0.0 : no_book.asks.first().size};
+        const double yes_fee = services::prediction::kalshi_ns::KalshiEvidenceEngine::conservative_taker_fee(
+            market, yes_quote.ask);
+        const double no_fee = services::prediction::kalshi_ns::KalshiEvidenceEngine::conservative_taker_fee(
+            market, no_quote.ask);
+        QVector<services::prediction::PredictionMarket> cohort_markets;
+        for (const auto& candidate : tracked_markets_) {
+            if (!market.key.event_id.isEmpty() && candidate.key.event_id == market.key.event_id)
+                cohort_markets.append(candidate);
+        }
+        const QJsonArray diagnostics = market.key.event_id.isEmpty() ? QJsonArray{}
+            : services::prediction::kalshi_ns::KalshiEvidenceEngine::analyze_ladder(
+                  cohort_markets, normalized_books_, market.key.event_id);
+        int actionable = 0;
+        for (const auto& value : diagnostics)
+            if (value.toObject().value(QStringLiteral("severity")).toString() == QStringLiteral("opportunity"))
+                ++actionable;
+        const QDateTime close = QDateTime::fromString(market.end_date_iso, Qt::ISODate);
+        const qint64 seconds_left = close.isValid()
+            ? std::max<qint64>(0, (close.toMSecsSinceEpoch() - now_ms) / 1000) : -1;
+        QJsonObject decision{{QStringLiteral("schema"), 1},
+                             {QStringLiteral("ticker"), ticker},
+                             {QStringLiteral("observed_at_ms"), QString::number(now_ms)},
+                             {QStringLiteral("advisory_only"), true},
+                             {QStringLiteral("underlying"), QJsonObject{{QStringLiteral("price"), latest_independent_spot_},
+                                 {QStringLiteral("source"), latest_independent_spot_source_},
+                                 {QStringLiteral("observed_at_ms"), QString::number(latest_independent_spot_ms_)},
+                                 {QStringLiteral("change_30s_bps"), spot_change_bps}}},
+                             {QStringLiteral("contract"), QJsonObject{{QStringLiteral("question"), market.question},
+                                 {QStringLiteral("event_ticker"), market.key.event_id},
+                                 {QStringLiteral("close_time"), market.end_date_iso},
+                                 {QStringLiteral("seconds_left"), seconds_left},
+                                 {QStringLiteral("yes_mid"), yes_mid}, {QStringLiteral("yes_change_30s_cents"), contract_change_cents}}},
+                             {QStringLiteral("flow"), QJsonObject{{QStringLiteral("windows"), windows},
+                                 {QStringLiteral("divergence"), kalshi_flow_divergence_to_json(spot_change_bps, contract_change_cents, short_flow)}}},
+                             {QStringLiteral("execution"), kalshi_flow_execution_to_json(yes_quote, no_quote, yes_fee, no_fee)},
+                             {QStringLiteral("ladder"), QJsonObject{{QStringLiteral("event_ticker"), market.key.event_id},
+                                 {QStringLiteral("diagnostics"), diagnostics}, {QStringLiteral("actionable_count"), actionable}}}};
+        decision_snapshots_.insert(ticker, decision);
     }
 
     void observe_market_event(const QString& type, const QString& ticker,
@@ -637,18 +981,7 @@ class KalshiLiveEventEngine final : public QObject {
         decision_pending_ = false;
         last_cycle_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         ++decision_cycles_;
-        start_process({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
-                       QStringLiteral("--category"), QStringLiteral("Crypto#BTC@live"),
-                       // The WebSocket already narrowed the trigger surface to the
-                       // nearest settlement cohorts. Keep the child planner equally
-                       // bounded: a 100-contract REST scan cannot make a useful
-                       // decision inside an executable-quote lifetime.
-                       QStringLiteral("--limit"), QStringLiteral("32"),
-                       QStringLiteral("--timeout-ms"), QStringLiteral("7500"),
-                       QStringLiteral("--max-positions"), QStringLiteral("5"),
-                       QStringLiteral("--unit-notional"), QStringLiteral("2"),
-                       QStringLiteral("--max-cost"), QStringLiteral("10"),
-                       QStringLiteral("--min-edge"), QStringLiteral("0.03")}, Work::Plan);
+        start_process(kalshi_event_planner_args(), Work::Plan);
     }
 
     enum class Work { Plan, Paper, Execute, AccountReconcile };
@@ -806,10 +1139,12 @@ class KalshiLiveEventEngine final : public QObject {
 
     void write_book_snapshot() {
         const QJsonObject payload{
-            {QStringLiteral("schema"), 1},
+            {QStringLiteral("schema"), 3},
             {QStringLiteral("updated_at_ms"),
              QString::number(QDateTime::currentMSecsSinceEpoch())},
-            {QStringLiteral("books"), top_book_snapshots_}};
+            {QStringLiteral("books"), top_book_snapshots_},
+            {QStringLiteral("flow"), flow_snapshots_},
+            {QStringLiteral("snapshots"), decision_snapshots_}};
         QSaveFile file(kalshi_evidence_path(QStringLiteral("kalshi-ws-books.json")));
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             last_error_ = QStringLiteral("Kalshi WebSocket book snapshot is not writable");
@@ -863,7 +1198,7 @@ class KalshiLiveEventEngine final : public QObject {
             {QStringLiteral("paper_cycles"), QString::number(paper_cycles_)},
             {QStringLiteral("parallel_paper_enabled"), parallel_paper_active()},
             {QStringLiteral("cycle_min_interval_ms"), QString::number(
-                session_active() ? 1000 : parallel_paper_active() ? 15000 : 60000)},
+                kalshi_event_cycle_delay_ms(session_active(), parallel_paper_active(), 0))},
             // Compatibility alias retained for older status readers. It now
             // means candidate checks, not claimed order submissions.
             {QStringLiteral("execution_attempts"), QString::number(live_candidate_checks_)},
@@ -975,7 +1310,15 @@ class KalshiLiveEventEngine final : public QObject {
     QString last_process_result_;
     QHash<QString, qint64> live_rejection_counts_;
     QHash<QString, qint64> independent_spot_persisted_ms_;
+    QHash<QString, services::prediction::PredictionMarket> tracked_markets_;
     QJsonObject top_book_snapshots_;
+    QHash<QString, services::prediction::PredictionOrderBook> normalized_books_;
+    QHash<QString, QVector<KalshiFlowTrade>> flow_trades_;
+    QHash<QString, QVector<KalshiFlowDelta>> flow_deltas_;
+    QHash<QString, QVector<KalshiFlowPriceSample>> yes_mid_history_;
+    QVector<KalshiFlowPriceSample> independent_spot_history_;
+    QJsonObject flow_snapshots_;
+    QJsonObject decision_snapshots_;
     QString last_live_status_;
     QString last_live_reason_;
     QString last_live_decision_id_;
@@ -1454,15 +1797,24 @@ bool job_has_current_failure(const QJsonObject& job) {
 QJsonObject jobs_summary(const QString& profile) {
     const QJsonArray jobs = load_jobs_doc(profile).value("jobs").toArray();
     int enabled = 0, running = 0, failed = 0, failed_history = 0, interval = 0, stale = 0;
+    int disabled_current_failures = 0, historical_only = 0;
     QJsonArray by_kind;
     QJsonObject counts;
     const QDateTime now = QDateTime::currentDateTimeUtc();
     for (const auto& v : jobs) {
         const QJsonObject j = v.toObject();
-        if (j.value("enabled").toBool()) ++enabled;
+        const bool is_enabled = j.value("enabled").toBool();
+        if (is_enabled) ++enabled;
         if (j.value("running").toBool()) ++running;
         if (j.value("fail_count").toInt() > 0) ++failed_history;
-        if (job_has_current_failure(j)) ++failed;
+        if (job_has_current_failure(j)) {
+            if (is_enabled)
+                ++failed;
+            else
+                ++disabled_current_failures;
+        } else if (j.value("fail_count").toInt() > 0) {
+            ++historical_only;
+        }
         if (j.value("schedule").toString() == QStringLiteral("interval")) ++interval;
         if (j.value("running").toBool()) {
             const QDateTime started = parse_utc(j.value("last_started_at").toString());
@@ -1479,6 +1831,8 @@ QJsonObject jobs_summary(const QString& profile) {
                        {"running", running},
                        {"failed", failed},
                        {"failed_history", failed_history},
+                       {"historical_only", historical_only},
+                       {"disabled_current_failures", disabled_current_failures},
                        {"stale", stale},
                        {"interval", interval},
                        {"by_kind", by_kind}};
@@ -2488,10 +2842,11 @@ int emit_daemon_health(const QString& profile, bool json) {
     if (o.contains("uptime_sec"))
         std::printf("uptime       %llds\n", static_cast<long long>(o.value("uptime_sec").toDouble()));
     const QJsonObject j = o.value("jobs").toObject();
-    std::printf("jobs         total=%d enabled=%d running=%d failed=%d stale=%d history=%d interval=%d\n",
+    std::printf("jobs         total=%d enabled=%d running=%d failed=%d stale=%d history=%d historical_only=%d disabled_failed=%d interval=%d\n",
                 j.value("total").toInt(), j.value("enabled").toInt(), j.value("running").toInt(),
                 j.value("failed").toInt(), j.value("stale").toInt(),
-                j.value("failed_history").toInt(), j.value("interval").toInt());
+                j.value("failed_history").toInt(), j.value("historical_only").toInt(),
+                j.value("disabled_current_failures").toInt(), j.value("interval").toInt());
     std::printf("endpoint     %s\n", qUtf8Printable(o.value("endpoint").toString("(none)")));
     if (o.contains("daemon_blocked_by"))
         std::printf("note         bridge %s; daemon scheduler %s\n",
@@ -4029,6 +4384,53 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("list") : args.takeFirst().trimmed().toLower();
     if (sub == "list" || sub == "ls")
         return emit_jobs_list(profile, json);
+    if (sub == "diagnose" || sub == "health") {
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: daemon jobs diagnose\n");
+            return 2;
+        }
+        const QJsonObject summary = jobs_summary(profile);
+        QJsonArray current_failures;
+        QJsonArray stale_jobs;
+        QJsonArray historical;
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        for (const QJsonValue& value : load_jobs_doc(profile).value("jobs").toArray()) {
+            const QJsonObject job = value.toObject();
+            const bool enabled = job.value("enabled").toBool();
+            const bool current_failure = job_has_current_failure(job);
+            const QDateTime started = parse_utc(job.value("last_started_at").toString());
+            const bool stale = job.value("running").toBool() && started.isValid() &&
+                               started.addSecs(job_timeout_sec(job) + 15) < now;
+            const QJsonObject row{{"id", job.value("id").toString()}, {"name", job.value("name").toString()},
+                                  {"kind", job.value("kind").toString()}, {"enabled", enabled},
+                                  {"last_status", job.value("last_status").toString()},
+                                  {"fail_count", job.value("fail_count").toInt()}};
+            if (enabled && current_failure)
+                current_failures.append(row);
+            else if (enabled && stale)
+                stale_jobs.append(row);
+            else if (job.value("fail_count").toInt() > 0)
+                historical.append(row);
+        }
+        const QString state = !current_failures.isEmpty() || !stale_jobs.isEmpty()
+                                  ? QStringLiteral("attention")
+                                  : QStringLiteral("healthy");
+        const QJsonObject out{{"state", state}, {"summary", summary},
+                              {"current_failures", current_failures}, {"stale_jobs", stale_jobs},
+                              {"historical_failures", historical},
+                              {"rule", "Only enabled current failures and stale jobs affect daemon readiness. Historical and disabled failures remain visible for cleanup but do not block a healthy execution path."},
+                              {"next_command", current_failures.isEmpty() && stale_jobs.isEmpty()
+                                   ? QStringLiteral("daemon jobs clear-failures --all")
+                                   : QStringLiteral("daemon jobs list")}};
+        if (json)
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("DAEMON JOB DIAGNOSIS: %s\ncurrent enabled failures=%d stale=%d historical/disabled=%d\n%s\n",
+                        qUtf8Printable(state.toUpper()), static_cast<int>(current_failures.size()),
+                        static_cast<int>(stale_jobs.size()), static_cast<int>(historical.size()),
+                        qUtf8Printable(out.value("rule").toString()));
+        return 0;
+    }
     if (sub == "history" || sub == "hist" || sub == "runs")
         return emit_jobs_history(profile, json, args);
     if (sub == "failures" || sub == "failed")
@@ -4206,7 +4608,7 @@ int daemon_jobs_command(const QString& profile, bool json, QStringList args) {
         }
         return 0;
     }
-    std::fprintf(stderr, "usage: daemon jobs list|history|failures|stats|add|show|run|enable|disable|remove|repair|clear-failures\n");
+    std::fprintf(stderr, "usage: daemon jobs list|diagnose|history|failures|stats|add|show|run|enable|disable|remove|repair|clear-failures\n");
     return 2;
 }
 

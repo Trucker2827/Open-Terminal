@@ -419,9 +419,12 @@ void KalshiAdapter::run_py(const QString& command, const QJsonObject& extra,
     const QString payload_str =
         QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
     QPointer<KalshiAdapter> self = this;
-    openmarketterminal::python::PythonRunner::instance().run(
+    // Credentials remain in the local secure store until this hand-off. Send
+    // the merged bridge payload over stdin so PEM material never appears in a
+    // child process command line or local process listing.
+    openmarketterminal::python::PythonRunner::instance().run_with_stdin(
         QStringLiteral("prediction_kalshi.py"),
-        {command, payload_str},
+        {command, QStringLiteral("--stdin-json")}, payload_str.toUtf8(),
         [self, on_ok, ctx](openmarketterminal::python::PythonResult r) {
             if (!self) return;
             if (!r.success) {

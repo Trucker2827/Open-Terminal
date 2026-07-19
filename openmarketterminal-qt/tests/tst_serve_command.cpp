@@ -82,11 +82,20 @@ private slots:
     }
 
     void kalshi_event_cycle_paces_paper_but_not_armed_live() {
-        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 1000LL);
-        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 1000), 0LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 0), 3000LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 2999), 1LL);
+        QCOMPARE(kalshi_event_cycle_delay_ms(true, true, 3000), 0LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 0), 15000LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 14999), 1LL);
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 15000), 0LL);
+    }
+
+    void kalshi_event_planner_is_bounded_to_executable_cohorts() {
+        const QStringList args = kalshi_event_planner_args();
+        QCOMPARE(args.mid(0, 3), QStringList({"kalshi", "auto", "run"}));
+        QCOMPARE(args.at(args.indexOf("--category") + 1), QStringLiteral("Crypto#BTC@live"));
+        QCOMPARE(args.at(args.indexOf("--limit") + 1), QStringLiteral("12"));
+        QCOMPARE(args.at(args.indexOf("--timeout-ms") + 1), QStringLiteral("12000"));
     }
 
     void kalshi_persists_fresh_independent_spot_without_raw_socket_flooding() {
@@ -95,6 +104,70 @@ private slots:
         QVERIFY(!kalshi_should_persist_independent_spot_tick("coinbase", 64000.0, 1999, 1000, 1000));
         QVERIFY(!kalshi_should_persist_independent_spot_tick("binanceperp", 64000.0, 2000, 0, 1000));
         QVERIFY(!kalshi_should_persist_independent_spot_tick("coinbase", 0.0, 2000, 0, 1000));
+    }
+
+    void kalshi_flow_meter_reports_confirmed_yes_pressure_from_live_contract_flow() {
+        const qint64 now = 1'000'000;
+        const auto metrics = kalshi_flow_metrics(
+            {{0.60, 20.0}, {0.59, 15.0}}, {{0.40, 5.0}, {0.39, 5.0}},
+            {{now - 1'000, "yes", 12.0}, {now - 2'000, "yes", 8.0},
+             {now - 3'000, "yes", 6.0}},
+            {{now - 1'500, "yes", 10.0}, {now - 2'500, "yes", 5.0},
+             {now - 3'500, "no", -4.0}, {now - 4'000, "yes", 2.0},
+             {now - 4'500, "yes", 2.0}, {now - 5'000, "yes", 2.0}}, now);
+        QCOMPARE(metrics.signal, QStringLiteral("YES PRESSURE"));
+        QVERIFY(metrics.combined_pressure >= 0.25);
+        QCOMPARE(metrics.recent_trade_count, 3);
+        QCOMPARE(kalshi_flow_to_json(metrics).value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_flow_meter_excludes_stale_or_one_sided_activity() {
+        const qint64 now = 1'000'000;
+        const auto metrics = kalshi_flow_metrics(
+            {{0.60, 10.0}}, {{0.40, 10.0}},
+            {{now - 31'000, "yes", 999.0}},
+            {{now - 31'000, "yes", 999.0}}, now);
+        QCOMPARE(metrics.signal, QStringLiteral("MIXED"));
+        QCOMPARE(metrics.recent_trade_count, 0);
+        QCOMPARE(metrics.recent_delta_count, 0);
+        QCOMPARE(metrics.confidence, QStringLiteral("LOW"));
+    }
+
+    void kalshi_flow_meter_provides_consistent_multi_window_context() {
+        const qint64 now = 1'000'000;
+        const auto windows = kalshi_flow_windows_to_json(
+            {{0.60, 20.0}}, {{0.40, 10.0}},
+            {{now - 1'000, "yes", 4.0}, {now - 45'000, "no", 90.0}},
+            {{now - 1'000, "yes", 2.0}, {now - 45'000, "no", 30.0}}, now);
+        QVERIFY(windows.contains(QStringLiteral("2s")));
+        QVERIFY(windows.contains(QStringLiteral("30s")));
+        QVERIFY(windows.contains(QStringLiteral("5m")));
+        QCOMPARE(windows.value(QStringLiteral("2s")).toObject().value("trade_count").toInt(), 1);
+        QCOMPARE(windows.value(QStringLiteral("30s")).toObject().value("trade_count").toInt(), 1);
+        QCOMPARE(windows.value(QStringLiteral("5m")).toObject().value("trade_count").toInt(), 2);
+        QCOMPARE(windows.value(QStringLiteral("5m")).toObject().value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_flow_meter_marks_flow_price_divergence_as_advisory() {
+        KalshiFlowMetrics pressure;
+        pressure.combined_pressure = -0.4;
+        const auto row = kalshi_flow_divergence_to_json(12.0, -1.2, pressure);
+        QCOMPARE(row.value("label").toString(), QStringLiteral("DIVERGENCE"));
+        QVERIFY(row.value("price_diverges").toBool());
+        QVERIFY(row.value("flow_diverges").toBool());
+        QCOMPARE(row.value("advisory_only").toBool(), true);
+    }
+
+    void kalshi_flow_meter_shows_real_immediate_taker_cost() {
+        const auto economics = kalshi_flow_execution_to_json(
+            {0.55, 0.57, 12.0, 8.0}, {0.43, 0.45, 10.0, 9.0}, 0.01, 0.01);
+        const auto yes = economics.value("yes").toObject();
+        const auto no = economics.value("no").toObject();
+        QCOMPARE(yes.value("entry_cash_cost").toDouble(), 0.58);
+        QCOMPARE(yes.value("immediate_exit_proceeds").toDouble(), 0.54);
+        QCOMPARE(yes.value("immediate_round_trip_loss").toDouble(), 0.04);
+        QCOMPARE(no.value("immediate_round_trip_loss").toDouble(), 0.04);
+        QCOMPARE(economics.value("advisory_only").toBool(), true);
     }
 };
 QTEST_MAIN(TstServeCommand)

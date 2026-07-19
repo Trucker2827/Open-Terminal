@@ -93,6 +93,7 @@ class KalshiScreen final : public QWidget {
     void update_observation_strip();
     void update_market_health();
     void update_strike_overlay();
+    void refresh_flow_meter();
     void record_ladder_evidence();
     void render_ladder_surface(
         const QVector<services::edge_radar::KalshiSurfacePoint>& surface,
@@ -173,6 +174,8 @@ class KalshiScreen final : public QWidget {
     QLabel* gate_label_ = nullptr;
     QLabel* shadow_status_ = nullptr;
     QLabel* ladder_status_ = nullptr;
+    QLabel* flow_status_ = nullptr;
+    QLabel* flow_detail_ = nullptr;
     QTableWidget* ladder_table_ = nullptr;
     QLabel* live_automation_status_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
