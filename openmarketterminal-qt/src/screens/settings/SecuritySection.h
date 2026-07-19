@@ -34,6 +34,7 @@ class SecuritySection : public QWidget {
     void retranslateUi();
 
     QLabel*      sec_pin_status_       = nullptr;
+    QCheckBox*   sec_pin_lock_toggle_  = nullptr;
     QComboBox*   sec_lock_timeout_     = nullptr;
     QCheckBox*   sec_autolock_toggle_  = nullptr;
     QCheckBox*   sec_lock_on_minimize_ = nullptr;
@@ -79,6 +80,7 @@ class SecuritySection : public QWidget {
     QPushButton* refresh_audit_btn_ = nullptr;
 
     QLabel* row_pin_status_lbl_  = nullptr;  QLabel* row_pin_status_desc_  = nullptr;
+    QLabel* row_pin_lock_lbl_    = nullptr;  QLabel* row_pin_lock_desc_    = nullptr;
     QLabel* row_attempts_lbl_    = nullptr;  QLabel* row_attempts_desc_    = nullptr;
     QLabel* row_current_lbl_     = nullptr;
     QLabel* row_new_lbl_         = nullptr;

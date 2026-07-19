@@ -228,12 +228,136 @@ private slots:
         const QList<QString> topics = {
             "doctor", "setup", "research", "macro", "trade", "data", "files", "notes", "report", "notify",
             "excel", "workspace", "scanner", "watchlist", "portfolio", "profile", "settings", "security", "ai",
-            "notebook", "strategy", "serve", "daemon",
+            "notebook", "strategy", "serve", "daemon", "control",
         };
         for (const QString& topic : topics) {
             QCOMPARE(dispatch(QStringList{"help", topic}), 0);
             QCOMPARE(dispatch(QStringList{"--help", topic}), 0);
         }
+    }
+    void control_manifest_is_machine_readable_and_secrets_free() {
+        int rc = -1;
+        const QJsonObject manifest = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "control", "manifest"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(manifest.value("schema_version").toInt(), 1);
+        QCOMPARE(manifest.value("name").toString(), QStringLiteral("openterminal-control-plane"));
+        const QJsonArray capabilities = manifest.value("capabilities").toArray();
+        QVERIFY(capabilities.size() >= 6);
+
+        bool has_snapshot = false;
+        bool has_guarded_prediction = false;
+        for (const QJsonValue& value : capabilities) {
+            const QJsonObject capability = value.toObject();
+            has_snapshot = has_snapshot || capability.value("id").toString() == QStringLiteral("observe.snapshot");
+            has_guarded_prediction = has_guarded_prediction ||
+                (capability.value("id").toString() == QStringLiteral("execute.prediction") &&
+                 capability.value("mode").toString() == QStringLiteral("guarded-live"));
+        }
+        QVERIFY(has_snapshot);
+        QVERIFY(has_guarded_prediction);
+        bool has_external_context = false;
+        for (const QJsonValue& value : manifest.value("capabilities").toArray()) {
+            has_external_context = has_external_context ||
+                                   value.toObject().value("id").toString() == QStringLiteral("observe.external_context");
+        }
+        QVERIFY(has_external_context);
+        const QByteArray serialized = QJsonDocument(manifest).toJson(QJsonDocument::Compact).toLower();
+        QVERIFY(!serialized.contains("api_key"));
+        QVERIFY(!serialized.contains("private_key"));
+        QVERIFY(!serialized.contains("secret_value"));
+    }
+    void control_prediction_pulse_is_compact_and_read_only() {
+        sandbox_test_home();
+        const qint64 now = recent_ms(1000);
+        const QString features = QStringLiteral(
+            "{\"signal\":{\"kind\":\"above\",\"floor\":64000,\"spot\":64100,"
+            "\"yes_bid\":0.54,\"yes_ask\":0.56,\"yes_depth\":12,\"no_bid\":0.43,"
+            "\"no_ask\":0.45,\"no_depth\":10,\"selected_bid\":0.54,\"selected_ask\":0.56,"
+            "\"selected_depth\":12,\"quote_observed_at_ms\":\"%1\",\"context_up_probability\":0.61,"
+            "\"calibration_samples\":31},\"micro_evidence\":{\"eligible\":true,\"tier\":\"calibrated\"},"
+            "\"news_context\":{\"as_of_ms\":\"%1\",\"verdict\":\"UP\",\"score\":2.5,"
+            "\"confidence\":0.7,\"distinct_sources\":2,\"catalysts\":[\"ETF flow\"],\"stories\":["
+            "{\"source\":\"Reuters\",\"headline\":\"BTC demand rises\",\"summary\":\"Test context\","
+            "\"direction\":\"UP\",\"published_ts\":\"%1\"}]}}")
+            .arg(now);
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id,created_at,updated_at,venue,symbol,horizon,market_id,question,"
+            "direction,side,call,gate,market_probability,model_probability,raw_edge,edge_after_cost,spread_cost,"
+            "fee_cost,liquidity_score,confidence,seconds_left,data_status,freshness_json,features_json,reasons,source) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("pulse-yes"), now, now, QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+             QStringLiteral("1h"), QStringLiteral("KXPULSE-YES"), QStringLiteral("BTC above"),
+             QStringLiteral("above"), QStringLiteral("yes"), QStringLiteral("MICRO EVIDENCE LEG"),
+             QStringLiteral("pass"), 0.56, 0.63, 0.07, 0.05, 0.02, 0.01, 12.0, 0.8, 900,
+             QStringLiteral("trade_candidate"), QStringLiteral("{}"), features,
+             QStringLiteral("test pulse"), QStringLiteral("kalshi auto-plan")}).is_ok());
+
+        const QStringList settings_before = cli_settings_fingerprint();
+        const int drafts_before = table_row_count(QStringLiteral("order_drafts"));
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "control", "pulse", "prediction", "--limit", "1"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("lane").toString(), QStringLiteral("prediction"));
+        QVERIFY(out.value("read_only").toBool());
+        QCOMPARE(out.value("external_context").toObject().value("mode").toString(),
+                 QStringLiteral("cached_external_research"));
+        const QJsonArray markets = out.value("markets").toArray();
+        QCOMPARE(markets.size(), 1);
+        const QJsonObject market = markets.first().toObject();
+        QCOMPARE(market.value("market_id").toString(), QStringLiteral("KXPULSE-YES"));
+        QCOMPARE(market.value("yes").toObject().value("ask").toDouble(), 0.56);
+        QCOMPARE(market.value("no").toObject().value("ask").toDouble(), 0.45);
+        QCOMPARE(market.value("selected_quote").toObject().value("depth").toDouble(), 12.0);
+        const QJsonObject external = market.value("external_context").toObject();
+        QVERIFY(external.value("advisory_only").toBool());
+        QCOMPARE(external.value("role").toString(), QStringLiteral("weighted_context"));
+        QVERIFY(external.value("fresh_for_horizon").toBool());
+        QCOMPARE(external.value("headlines").toArray().first().toObject().value("source").toString(),
+                 QStringLiteral("Reuters"));
+        QCOMPARE(out.value("external_context_policy").toObject().value("15m").toString(),
+                 QStringLiteral("context only; maximum 10% advisory weight when <=5m old"));
+        QCOMPARE(cli_settings_fingerprint(), settings_before);
+        QCOMPARE(table_row_count(QStringLiteral("order_drafts")), drafts_before);
+        // This binary deliberately shares one profile-local sandbox DB across
+        // its slots. Remove the synthetic pulse row so later sandbox-cycle
+        // tests still exercise an actually empty journal.
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id='pulse-yes'").is_ok());
+    }
+    void control_snapshot_includes_symbol_specific_spot_research_read_only() {
+        sandbox_test_home();
+        const qint64 now_s = QDateTime::currentSecsSinceEpoch();
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO news_articles (id,headline,summary,source,region,category,link,sort_ts,priority,"
+            "sentiment,impact,tickers,tier,lang,threat_level,threat_cat,threat_conf,source_flag) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("control-spot-news"), QStringLiteral("Bitcoin demand test"),
+             QStringLiteral("A local advisory-only test article."), QStringLiteral("TestWire"),
+             QStringLiteral("US"), QStringLiteral("market"), QStringLiteral("https://example.test/btc"), now_s,
+             QStringLiteral("BREAKING"), QStringLiteral("BULLISH"), QStringLiteral("HIGH"),
+             QStringLiteral("[\"BTC\"]"), 1, QStringLiteral("en"), QStringLiteral("INFO"),
+             QString(), 0.0, 0}).is_ok());
+
+        const QStringList settings_before = cli_settings_fingerprint();
+        const int drafts_before = table_row_count(QStringLiteral("order_drafts"));
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "control", "snapshot", "--symbol", "BTC-USD"}, &rc);
+        QCOMPARE(rc, 0);
+        const QJsonObject external = out.value("crypto").toObject().value("external_context").toObject();
+        QVERIFY(external.value("advisory_only").toBool());
+        QCOMPARE(external.value("symbol").toString(), QStringLiteral("BTC-USD"));
+        QVERIFY(external.value("article_count").toInt() >= 1);
+        const QJsonArray headlines = external.value("headlines").toArray();
+        QVERIFY(!headlines.isEmpty());
+        QCOMPARE(headlines.first().toObject().value("source").toString(), QStringLiteral("TestWire"));
+        QCOMPARE(external.value("review_action").toString(), QStringLiteral("BUY_CONTEXT_ONLY"));
+        QCOMPARE(cli_settings_fingerprint(), settings_before);
+        QCOMPARE(table_row_count(QStringLiteral("order_drafts")), drafts_before);
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM news_articles WHERE id='control-spot-news'").is_ok());
     }
     void macro_help_advertises_direct_aliases() {
         int rc = -1;
@@ -746,6 +870,7 @@ private slots:
         bool has_chronos_15m = false;
         bool has_chronos_1h = false;
         bool has_chronos_1d = false;
+        bool has_local_model_publisher = false;
         bool has_spot_swing_1h = false;
         bool has_spot_swing_4h = false;
         bool has_spot_swing_1d = false;
@@ -782,14 +907,19 @@ private slots:
                 // 5m chronos forecast -- unreal, no venue, retired kind.
                 has_chronos_5m = true;
             } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "15m",
-                                             "--journal", "--min-journal-edge-bps", "15"}) {
+                                             "--publish", "--journal", "--min-journal-edge-bps", "15"}) {
                 has_chronos_15m = true;
             } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "1h",
-                                             "--journal", "--min-journal-edge-bps", "35"}) {
+                                             "--publish", "--journal", "--min-journal-edge-bps", "35"}) {
                 has_chronos_1h = true;
             } else if (command == QStringList{"edge", "chronos2", "forecast", "BTC-USD", "--horizon", "1d",
-                                             "--journal", "--min-journal-edge-bps", "75"}) {
+                                             "--publish", "--journal", "--min-journal-edge-bps", "75"}) {
                 has_chronos_1d = true;
+            } else if (command == QStringList{"edge", "publish-horizons", "--symbol", "BTC", "--market-prob",
+                                               "0.50", "--spread", "0.03", "--min-samples", "30"}) {
+                has_local_model_publisher = true;
+                QCOMPARE(job.value("interval_sec").toInt(), 60);
+                QCOMPARE(job.value("timeout_sec").toInt(), 30);
             } else if (starts_with(command, QStringList{"edge", "spot-swing-gate"})) {
                 // Real-horizon reshape (task 3): the spot feed emits >=1h
                 // horizons via spot-swing-gate, not crypto-universe
@@ -816,7 +946,11 @@ private slots:
                 if (category == QStringLiteral("Crypto#BTC@live") ||
                     category == QStringLiteral("Crypto#BTC@hourly")) {
                     QCOMPARE(job.value("interval_sec").toInt(), 60);
-                    QCOMPARE(job.value("timeout_sec").toInt(), 30);
+                    // The recovery watchdog may need a full WebSocket/API
+                    // recovery window; ordinary hourly planning remains
+                    // bounded by the shorter timeout.
+                    QCOMPARE(job.value("timeout_sec").toInt(),
+                             category == QStringLiteral("Crypto#BTC@live") ? 60 : 30);
                 }
             } else if (starts_with(command, QStringList{"kalshi", "auto", "live", "execute-next"})) {
                 has_kalshi_live_autonomous_pulse = command.contains(QStringLiteral("--require-session"));
@@ -836,8 +970,8 @@ private slots:
                 has_btc5m_producer = true;
             } else if (command == QStringList{"sandbox", "tick"}) {
                 has_tick = true;
-                QCOMPARE(job.value("interval_sec").toInt(), 30);
-                QCOMPARE(job.value("timeout_sec").toInt(), 25);
+                QCOMPARE(job.value("interval_sec").toInt(), 45);
+                QCOMPARE(job.value("timeout_sec").toInt(), 45);
             } else if (command == QStringList{"sandbox", "score-now"}) {
                 has_score = true;
                 QCOMPARE(job.value("interval_sec").toInt(), 21600);
@@ -850,6 +984,8 @@ private slots:
         QVERIFY2(has_chronos_15m, "install-jobs must create the Chronos BTC 15m producer");
         QVERIFY2(has_chronos_1h, "install-jobs must create the Chronos BTC 1h producer");
         QVERIFY2(has_chronos_1d, "install-jobs must create the Chronos BTC 1d producer");
+        QVERIFY2(has_local_model_publisher,
+                 "install-jobs must keep timestamped local BTC model outputs fresh for all horizons");
         QVERIFY2(has_spot_swing_1h,
                  "install-jobs must create the spot-swing-gate 1h producer feeding the spot_1h book");
         QVERIFY2(has_spot_swing_4h,

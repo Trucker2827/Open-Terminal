@@ -31,6 +31,16 @@ class PinManager : public QObject {
     /// True if user has configured a PIN (hash exists in SecureStorage).
     bool has_pin() const;
 
+    /// True when the locally stored PIN is required to open the terminal and
+    /// to enable automatic locking. A disabled lock keeps the PIN securely
+    /// stored so the user can re-enable protection later without creating a
+    /// new one.
+    bool is_lock_enabled() const;
+
+    /// Enable or disable the startup/inactivity PIN gate without deleting the
+    /// configured PIN. Enabling requires a configured PIN.
+    Result<void> set_lock_enabled(bool enabled);
+
     /// Set or update the PIN. Returns error if hash/storage fails or the PIN
     /// is trivially weak (all-same digits, ascending/descending sequence).
     /// Note: this does NOT require the old PIN — use change_pin() for that.
@@ -104,6 +114,7 @@ class PinManager : public QObject {
 
     // Cached state loaded from SecureStorage
     bool has_pin_ = false;
+    bool lock_enabled_ = false;
     QByteArray stored_hash_;
     QByteArray stored_salt_;
 

@@ -79,6 +79,7 @@
 #include <QDate>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QHash>
@@ -139,6 +140,7 @@ static int usage(FILE* stream = stderr, int code = 2) {
         "  doctor                               Diagnose local CLI/profile setup\n"
         "  security network-audit               Audit local MCP/AI/network exposure\n"
         "  setup [status|profile|ai|doctor]     Local profile and AI onboarding\n"
+        "  control snapshot|manifest|explain|execute  Stable local control plane for an LLM or operator\n"
         "  demo trading-system                  Prove daemon + data + broker + gate readiness\n"
         "  sync status                          Show GUI/daemon/CLI ownership alignment\n"
         "  serve [--status|--stop]              Run or manage a read-only headless daemon\n"
@@ -149,7 +151,7 @@ static int usage(FILE* stream = stderr, int code = 2) {
         "  news latest|search|status|monitors    Read/manage market news from CLI\n"
         "  research quote|company|insiders       Equity research, SEC filings, ownership\n"
         "  macro dbnomics|gov                    Macro, DB.NOMICS, and gov data\n"
-        "  crypto balance|fees|buy|sell          Crypto account reads, costs, and gated orders\n"
+        "  crypto cockpit|balance|fees|buy|sell  Crypto engine, account reads, costs, and gated orders\n"
         "  trade accounts|paper|live|fast         Trading accounts, paper books, live state\n"
         "  tradeviz flow --reporter USA --year 2024 --commodity 85\n"
         "                                         Trade-flow intelligence via UN Comtrade/fallback\n"
@@ -256,6 +258,29 @@ static int command_help(const QString& topic) {
             "  mcp call <tool> -                 # JSON object from stdin\n"
             "  tools status [--gaps]             # Tools menu health/parity matrix\n"
             "  tools health [query]              # Alias for tools status\n");
+        return 0;
+    }
+    if (topic == "control" || topic == "agent-control" || topic == "control-plane") {
+        std::printf(
+            "LLM control plane (local, versioned, and safe by default):\n"
+            "  control snapshot [--symbol BTC-USD] [--json]\n"
+            "      Read the current crypto engine, Kalshi session, feed health, cost floor,\n"
+            "      guard state, latest decision, and symbol-specific external research. This command never sends an order.\n"
+            "  control pulse prediction [--limit N] [--json]\n"
+            "      Read a compact, local Kalshi decision packet: executable YES/NO quotes,\n"
+            "      depth, target, time left, model-vs-market edge, and mandate state.\n"
+            "  control manifest [--json]\n"
+            "      Describe the machine-readable command contract, safety boundaries, and\n"
+            "      existing planning/execution commands an agent may use.\n"
+            "  control explain <decision-id> [--json]\n"
+            "      Read the stored evidence behind one decision.\n\n"
+            "  control execute prediction [--decision DECISION_ID]\n"
+            "  control execute spot [--symbol BTC-USD]\n"
+            "      Send one real execution request only when the human has already armed\n"
+            "      the relevant local session. No per-order popup is required.\n\n"
+            "Use an LLM for research, policy, and explanations. The local daemon owns\n"
+            "event-driven timing and can execute only inside a human-armed risk mandate.\n"
+            "Credentials are never emitted by this control plane.\n");
         return 0;
     }
     if (topic == "doctor") {
@@ -894,6 +919,7 @@ static int command_help(const QString& topic) {
     if (topic == "crypto") {
         std::printf(
             "Crypto commands:\n"
+            "  crypto cockpit [--symbol BTC-USD]  Read-only spot/scalp engine, decision, cost, and feed status\n"
             "  crypto info\n"
             "  crypto ticker <symbol>\n"
             "  crypto book <symbol> [--limit N]\n"
@@ -8301,12 +8327,17 @@ static int sandbox_tick_command(const GlobalOpts& opts) {
         return code;
     const QString daemon_dir = profile_root_for(opts.profile) + QStringLiteral("/daemon");
     auto rep = sandboxsvc::run_cycle(opts.profile, daemon_dir, QDateTime::currentMSecsSinceEpoch());
-    for (int retry = 0; rep.is_err() && retry < 2; ++retry) {
+    // Scheduled collectors can commit to the same SQLite database at the
+    // same moment. A sandbox cycle is accounting work, so wait through a
+    // bounded lock window instead of marking a short writer collision as a
+    // failed proof-book tick.
+    constexpr int kMaxLockRetries = 5;
+    for (int retry = 0; rep.is_err() && retry < kMaxLockRetries; ++retry) {
         const QString error = QString::fromStdString(rep.error());
         if (!error.contains(QStringLiteral("database is locked"), Qt::CaseInsensitive) &&
             !error.contains(QStringLiteral("database table is locked"), Qt::CaseInsensitive))
             break;
-        QThread::msleep(static_cast<unsigned long>((retry + 1) * 750));
+        QThread::msleep(static_cast<unsigned long>(250 * (1 << retry)));
         rep = sandboxsvc::run_cycle(opts.profile, daemon_dir, QDateTime::currentMSecsSinceEpoch());
     }
     if (rep.is_err()) {
@@ -8837,8 +8868,183 @@ static int sandbox_command(const GlobalOpts& opts, QStringList args) {
     return 2;
 }
 
+static QString crypto_cockpit_venue_label(QString venue) {
+    venue = venue.trimmed();
+    if (venue.isEmpty())
+        return QStringLiteral("not configured");
+    return venue.replace(QLatin1Char('_'), QLatin1Char(' ')).toUpper();
+}
+
+static qint64 crypto_cockpit_age_ms(const QString& timestamp, const QDateTime& now) {
+    const QDateTime parsed = QDateTime::fromString(timestamp, Qt::ISODateWithMs);
+    if (!parsed.isValid())
+        return -1;
+    return parsed.msecsTo(now);
+}
+
+static QJsonObject crypto_cockpit_decision(const QJsonArray& decisions, const QString& requested_symbol) {
+    const QString wanted = requested_symbol.trimmed().toUpper();
+    for (const QJsonValue& value : decisions) {
+        const QJsonObject decision = value.toObject();
+        if (wanted.isEmpty() || decision.value("symbol").toString().trimmed().toUpper() == wanted)
+            return decision;
+    }
+    return {};
+}
+
+static int crypto_cockpit_command(const GlobalOpts& opts, QStringList args) {
+    QString symbol;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol) ||
+        !take_string_option(args, QStringLiteral("--sym"), symbol) || !args.isEmpty()) {
+        std::fprintf(stderr, "usage: crypto cockpit [--symbol BTC-USD]\n");
+        return 2;
+    }
+
+    const QString state_dir = automation::state_dir(opts.profile);
+    const QJsonObject state = automation::read_json_object(state_dir + QStringLiteral("/scalp_state.json"));
+    const QJsonObject guard = automation::read_json_object(automation::live_guard_path(opts.profile));
+    const QJsonObject config = state.value("config").toObject();
+    const QJsonObject decision = crypto_cockpit_decision(state.value("decisions").toArray(), symbol);
+    const QJsonObject microstructure = decision.value("microstructure").toObject();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    const QString heartbeat = state.value("heartbeat_at").toString();
+    const qint64 heartbeat_age_ms = crypto_cockpit_age_ms(heartbeat, now);
+    const QString expires_at = guard.value("expires_at").toString();
+    const QDateTime expires = QDateTime::fromString(expires_at, Qt::ISODateWithMs);
+    const bool guard_enabled = guard.value("enabled").toBool() &&
+                               (!expires.isValid() || expires > now);
+    const bool paper = config.value("paper").toBool(true);
+    const QString venue = config.value("venue").toString();
+    const QJsonValue pid_value = state.value("pid");
+    const QString pid = pid_value.isDouble() ? QString::number(static_cast<qint64>(pid_value.toDouble()))
+                                              : pid_value.toString();
+    const QJsonArray sources = microstructure.value("sources").toArray();
+    const QJsonArray configured_symbols = config.value("symbols").toArray();
+    const QJsonArray paper_amounts = config.value("paper_amounts_usd").toArray();
+    const QJsonArray blockers = decision.value("blockers").toArray();
+    const double entry_fee_bps = decision.value("entry_fee_bps").toDouble(config.value("fee_bps").toDouble());
+    const double exit_fee_bps = decision.value("exit_fee_bps").toDouble(config.value("fee_bps").toDouble());
+    const double slippage_bps = decision.value("slippage_bps").toDouble(config.value("slippage_bps").toDouble());
+    const double safety_bps = decision.value("safety_bps").toDouble(config.value("safety_bps").toDouble());
+    const double minimum_profit_bps =
+        decision.value("minimum_profit_bps").toDouble(config.value("minimum_profit_bps").toDouble());
+    const double round_trip_cost_bps = decision.value("round_trip_cost_bps").toDouble(entry_fee_bps + exit_fee_bps + slippage_bps);
+    const double required_edge_bps =
+        decision.value("required_edge_bps").toDouble(round_trip_cost_bps + safety_bps + minimum_profit_bps);
+
+    QJsonObject output{{"read_only", true},
+                       {"profile", opts.profile},
+                       {"engine", QJsonObject{{"name", "daemon-scalp-ms"},
+                                               {"status", state.value("status").toString("not running")},
+                                               {"enabled", state.value("enabled").toBool()},
+                                               {"heartbeat_at", heartbeat},
+                                               {"heartbeat_age_ms", heartbeat_age_ms},
+                                               {"pid", pid},
+                                               {"mode", paper ? "paper" : "live"},
+                                               {"venue", venue},
+                                               {"cadence_ms", config.value("cadence_ms").toInt()},
+                                               {"symbols", configured_symbols},
+                                               {"sources", config.value("sources").toArray()},
+                                               {"paper_amounts_usd", paper_amounts}}},
+                       {"live_guard", QJsonObject{{"armed", guard_enabled},
+                                                    {"configured", !guard.isEmpty()},
+                                                    {"expires_at", expires_at},
+                                                    {"max_daily_orders", guard.value("max_daily_orders").toInt()},
+                                                    {"max_order_usd", guard.value("max_order_usd").toDouble()},
+                                                    {"submitted_today", automation::submitted_today_count(opts.profile)}}},
+                       {"cost_floor", QJsonObject{{"entry_fee_bps", entry_fee_bps},
+                                                    {"exit_fee_bps", exit_fee_bps},
+                                                    {"slippage_bps", slippage_bps},
+                                                    {"safety_bps", safety_bps},
+                                                    {"minimum_profit_bps", minimum_profit_bps},
+                                                    {"required_edge_bps", required_edge_bps},
+                                                    {"round_trip_cost_bps", round_trip_cost_bps}}},
+                       {"latest_decision", decision},
+                       {"feed_health", sources},
+                       {"next_read_only_commands",
+                        QJsonArray{QStringLiteral("crypto balance"), QStringLiteral("crypto orders"),
+                                   QStringLiteral("crypto fills BTC-USD"), QStringLiteral("crypto readiness BTC-USD"),
+                                   QStringLiteral("automation status"), QStringLiteral("edge decision-cockpit")}}};
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(output).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+
+    std::printf("CRYPTO SPOT / SCALP COCKPIT — READ ONLY\n");
+    std::printf("profile        %s\n", qUtf8Printable(opts.profile));
+    std::printf("engine         %s · %s · %s\n",
+                qUtf8Printable(crypto_cockpit_venue_label(venue)),
+                paper ? "PAPER" : "LIVE",
+                state.value("status").toString("not running").toUpper().toUtf8().constData());
+    std::printf("heartbeat      %s", heartbeat.isEmpty() ? "never" : qUtf8Printable(heartbeat));
+    if (heartbeat_age_ms >= 0)
+        std::printf(" · %.1fs ago", heartbeat_age_ms / 1000.0);
+    std::printf(" · cadence %dms\n", config.value("cadence_ms").toInt());
+    std::printf("live guard     %s", guard_enabled ? "ARMED" : "DISARMED");
+    if (guard_enabled && expires.isValid())
+        std::printf(" · expires %s", qUtf8Printable(expires.toString(Qt::ISODate)));
+    std::printf(" · submitted today %d\n", automation::submitted_today_count(opts.profile));
+    std::printf("cost floor     entry %.1fbps + exit %.1fbps + safety %.1fbps + profit %.1fbps = %.1fbps required\n",
+                output.value("cost_floor").toObject().value("entry_fee_bps").toDouble(),
+                output.value("cost_floor").toObject().value("exit_fee_bps").toDouble(),
+                output.value("cost_floor").toObject().value("safety_bps").toDouble(),
+                output.value("cost_floor").toObject().value("minimum_profit_bps").toDouble(),
+                output.value("cost_floor").toObject().value("required_edge_bps").toDouble());
+
+    if (decision.isEmpty()) {
+        std::printf("\nLATEST DECISION  no decision recorded%s\n",
+                    symbol.isEmpty() ? "" : qUtf8Printable(QStringLiteral(" for ") + symbol.toUpper()));
+    } else {
+        std::printf("\nLATEST DECISION\n");
+        std::printf("%s  %s · %s · %s\n",
+                    qUtf8Printable(decision.value("symbol").toString()),
+                    qUtf8Printable(decision.value("verdict").toString()),
+                    qUtf8Printable(decision.value("direction").toString()),
+                    qUtf8Printable(decision.value("ts").toString()));
+        std::printf("reference      $%.2f · confidence %.1f%% · net %.1fbps · surplus %.1fbps\n",
+                    decision.value("reference_price").toDouble(),
+                    decision.value("confidence").toDouble() * 100.0,
+                    decision.value("net_after_cost_bps").toDouble(),
+                    decision.value("edge_surplus_bps").toDouble());
+        if (!blockers.isEmpty()) {
+            QStringList labels;
+            for (const QJsonValue& blocker : blockers)
+                labels << blocker.toString();
+            std::printf("blockers       %s\n", qUtf8Printable(labels.join(QStringLiteral("; "))));
+        }
+    }
+
+    std::printf("\nFEED HEALTH\n");
+    if (sources.isEmpty()) {
+        std::printf("no source snapshot recorded\n");
+    } else {
+        std::printf("%-14s %-8s %10s %12s %10s\n", "SOURCE", "STATUS", "AGE", "PRICE", "SPREAD");
+        for (const QJsonValue& value : sources) {
+            const QJsonObject source = value.toObject();
+            const qint64 age = source.value("age_ms").toString().toLongLong();
+            const QString age_label = age >= 0 ? QString::number(age) + QStringLiteral("ms") : QStringLiteral("n/a");
+            std::printf("%-14s %-8s %10s %12.2f %9.3fbps\n",
+                        qUtf8Printable(source.value("source").toString()),
+                        qUtf8Printable(source.value("status").toString()),
+                        qUtf8Printable(age_label),
+                        source.value("price").toDouble(),
+                        source.value("spread_bps").toDouble());
+        }
+    }
+    const QString next_symbol = decision.value("symbol").toString(
+        symbol.trimmed().isEmpty() ? QStringLiteral("BTC-USD") : symbol.trimmed().toUpper());
+    std::printf("\nNext reads: crypto balance · crypto orders · crypto fills %s · crypto readiness %s\n",
+                qUtf8Printable(next_symbol), qUtf8Printable(next_symbol));
+    std::printf("This command never places, cancels, arms, or disarms orders.\n");
+    return 0;
+}
+
 static int crypto_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("info") : args.takeFirst().trimmed().toLower();
+
+    if (sub == "cockpit" || sub == "desk" || sub == "status")
+        return crypto_cockpit_command(opts, args);
 
     if (sub == "info" || sub == "exchange")
         return crypto_call(opts, QStringLiteral("get_exchange_info"), {});
@@ -8958,7 +9164,7 @@ static int crypto_command(const GlobalOpts& opts, QStringList args) {
         return crypto_call(opts, tool, a);
     }
 
-    std::fprintf(stderr, "usage: crypto info|ticker|book|candles|balance|orders|fills|fees|readiness|buy|sell|order|cancel|tool\n");
+    std::fprintf(stderr, "usage: crypto cockpit|info|ticker|book|candles|balance|orders|fills|fees|readiness|buy|sell|order|cancel|tool\n");
     return 2;
 }
 
@@ -21833,7 +22039,7 @@ static Result<int> kalshi_auto_journal_plan(
                                              {"blockers", micro_blockers}}},
             {"decision_envelope", envelope.to_json()}};
         const QString snapshot_reason = !point.causal_eligible
-            ? QStringLiteral("supervised snapshot; causal gate blocked: %1")
+            ? QStringLiteral("supervised snapshot; causal timing diagnostic: %1")
                   .arg(point.causal_reason)
             : !point.cross_horizon_consistent
                 ? QStringLiteral("supervised snapshot; cross-horizon conflict: %1")
@@ -21918,8 +22124,21 @@ static int kalshi_auto_run_command(const GlobalOpts& opts, QStringList args) {
     if (!ok || limit < 1 || limit > 500) { std::fprintf(stderr, "--limit must be 1..500\n"); return 2; }
     const int timeout_ms = timeout_raw.isEmpty() ? 12000 : timeout_raw.toInt(&ok);
     if (!ok || timeout_ms < 1000 || timeout_ms > 60000) { std::fprintf(stderr, "--timeout-ms must be 1000..60000\n"); return 2; }
+    // This is a total planning budget, not a budget for every sequential
+    // network call. The daemon must be able to skip a slow cycle and observe
+    // the next quote instead of blocking until its process watchdog intervenes.
+    QElapsedTimer planning_timer;
+    planning_timer.start();
+    const auto remaining_timeout_ms = [&]() {
+        return timeout_ms - static_cast<int>(planning_timer.elapsed());
+    };
     QString error;
-    auto markets = edge_fetch_kalshi_markets(category, limit, timeout_ms, &error);
+    int request_timeout_ms = remaining_timeout_ms();
+    if (request_timeout_ms < 1000) {
+        std::fprintf(stderr, "Kalshi planner budget exhausted before market discovery\n");
+        return 5;
+    }
+    auto markets = edge_fetch_kalshi_markets(category, limit, request_timeout_ms, &error);
     if (markets.isEmpty()) { std::fprintf(stderr, "Kalshi markets unavailable: %s\n", qUtf8Printable(error)); return 5; }
     const QStringList events = event.isEmpty()
         ? kalshi_auto_default_events(markets) : QStringList{event};
@@ -21929,7 +22148,12 @@ static int kalshi_auto_run_command(const GlobalOpts& opts, QStringList args) {
     }), markets.end());
     const QString event_scope = events.join(QLatin1Char(','));
     if (markets.isEmpty()) { std::fprintf(stderr, "no contracts found for event scope %s\n", qUtf8Printable(event_scope)); return 5; }
-    auto books = kalshi_auto_fetch_books(markets, timeout_ms, &error);
+    request_timeout_ms = remaining_timeout_ms();
+    if (request_timeout_ms < 1000) {
+        std::fprintf(stderr, "Kalshi planner budget exhausted before order-book discovery\n");
+        return 5;
+    }
+    auto books = kalshi_auto_fetch_books(markets, request_timeout_ms, &error);
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     auto context = kalshi_auto_context(QStringLiteral("BTC"), spot, now, 30'000);
     if (context.spot <= 0.0) {
@@ -22273,7 +22497,7 @@ static int kalshi_auto_backfill_command(const GlobalOpts& opts, QStringList args
     return markets.isEmpty() ? 5 : 0;
 }
 
-static QJsonObject kalshi_live_experiment_status() {
+static QJsonObject kalshi_live_experiment_status(bool expire_stale_drafts = true) {
     constexpr auto kExperiment = "kalshi-micro-live-v1";
     const QDateTime now = QDateTime::currentDateTimeUtc();
     const QString now_iso = now.toString(Qt::ISODate);
@@ -22281,11 +22505,13 @@ static QJsonObject kalshi_live_experiment_status() {
     // Older builds gave these quote-sensitive drafts five minutes. Expire any
     // micro-live approval after 30 seconds based on both its explicit expiry
     // and creation time so an upgrade immediately drains an accumulated queue.
-    Database::instance().execute(
-        "UPDATE order_drafts SET status='expired' WHERE status='prepared' "
-        "AND json_extract(intent_json,'$.experiment_id')=? "
-        "AND (expires_at<=? OR created_at<=?)",
-        {QString::fromLatin1(kExperiment), now_iso, stale_created_iso});
+    if (expire_stale_drafts) {
+        Database::instance().execute(
+            "UPDATE order_drafts SET status='expired' WHERE status='prepared' "
+            "AND json_extract(intent_json,'$.experiment_id')=? "
+            "AND (expires_at<=? OR created_at<=?)",
+            {QString::fromLatin1(kExperiment), now_iso, stale_created_iso});
+    }
     auto result = Database::instance().execute(
         "SELECT COUNT(*), "
         "COALESCE(SUM(CAST(json_extract(risk_snapshot_json,'$.order_value') AS REAL)),0) "
@@ -22399,15 +22625,22 @@ static QJsonObject kalshi_live_experiment_status() {
         ? websocket_engine.value(QStringLiteral("stream_healthy")).toBool()
         : websocket_engine.value(QStringLiteral("connected")).toBool() &&
               engine_event_age_ms >= 0 && engine_event_age_ms <= 15000;
+    const qint64 engine_process_age_ms = websocket_engine.value(
+        QStringLiteral("process_age_ms")).toString().toLongLong();
+    const bool engine_planner_stalled = websocket_engine.value(
+        QStringLiteral("process_active")).toBool() && engine_process_age_ms > 25000;
     const bool engine_operational = !session_active ||
         (engine_status_fresh && engine_stream_healthy &&
-         websocket_engine.value(QStringLiteral("subscribed_assets")).toInt() > 0);
+         websocket_engine.value(QStringLiteral("subscribed_assets")).toInt() > 0 &&
+         !engine_planner_stalled);
     QString engine_fault;
     if (session_active && !engine_operational) {
         if (!engine_status_fresh)
             engine_fault = QStringLiteral("decision engine heartbeat is stale");
         else if (!websocket_engine.value(QStringLiteral("connected")).toBool())
             engine_fault = QStringLiteral("Kalshi event stream is disconnected");
+        else if (engine_planner_stalled)
+            engine_fault = QStringLiteral("Kalshi planner process is stalled");
         else
             engine_fault = QStringLiteral("Kalshi event stream is stale or unsubscribed");
     }
@@ -22438,6 +22671,481 @@ static QJsonObject kalshi_live_experiment_status() {
                        {"submission_unknown_count", submission_unknown_count},
                        {"latest_submission_unknown", latest_submission_unknown},
                        {"pending_approvals", pending_count}, {"latest_pending_draft", pending_draft}};
+}
+
+// `control snapshot` intentionally exposes only operational state and decision
+// evidence. It never reads credential values and never mutates an arm, order,
+// draft, or daemon setting. The separate `control execute` verb is deliberately
+// narrow: it forwards only into an already human-armed execution mandate.
+static QJsonObject control_spot_external_context(const QString& symbol, qint64 now_ms);
+
+static QJsonObject control_crypto_snapshot(const GlobalOpts& opts, const QString& symbol) {
+    const QString state_dir = automation::state_dir(opts.profile);
+    const QJsonObject state = automation::read_json_object(state_dir + QStringLiteral("/scalp_state.json"));
+    const QJsonObject guard = automation::read_json_object(automation::live_guard_path(opts.profile));
+    const QJsonObject config = state.value("config").toObject();
+    const QJsonObject decision = crypto_cockpit_decision(state.value("decisions").toArray(), symbol);
+    const QJsonObject microstructure = decision.value("microstructure").toObject();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    const QDateTime expires = QDateTime::fromString(guard.value("expires_at").toString(), Qt::ISODateWithMs);
+    const bool guard_armed = guard.value("enabled").toBool() && (!expires.isValid() || expires > now);
+    const double entry_fee_bps = decision.value("entry_fee_bps").toDouble(config.value("fee_bps").toDouble());
+    const double exit_fee_bps = decision.value("exit_fee_bps").toDouble(config.value("fee_bps").toDouble());
+    const double slippage_bps = decision.value("slippage_bps").toDouble(config.value("slippage_bps").toDouble());
+    const double safety_bps = decision.value("safety_bps").toDouble(config.value("safety_bps").toDouble());
+    const double minimum_profit_bps =
+        decision.value("minimum_profit_bps").toDouble(config.value("minimum_profit_bps").toDouble());
+    const double required_edge_bps = decision.value("required_edge_bps").toDouble(
+        entry_fee_bps + exit_fee_bps + slippage_bps + safety_bps + minimum_profit_bps);
+    const QJsonObject external_context = control_spot_external_context(symbol, now.toMSecsSinceEpoch());
+
+    return QJsonObject{
+        {"engine", QJsonObject{{"status", state.value("status").toString("not running")},
+                                {"mode", config.value("paper").toBool(true) ? "paper" : "live"},
+                                {"venue", config.value("venue").toString()},
+                                {"heartbeat_at", state.value("heartbeat_at").toString()},
+                                {"heartbeat_age_ms", crypto_cockpit_age_ms(state.value("heartbeat_at").toString(), now)},
+                                {"cadence_ms", config.value("cadence_ms").toInt()},
+                                {"symbols", config.value("symbols").toArray()}}},
+        {"guard", QJsonObject{{"armed", guard_armed},
+                               {"expires_at", guard.value("expires_at").toString()},
+                               {"max_daily_orders", guard.value("max_daily_orders").toInt()},
+                               {"max_order_usd", guard.value("max_order_usd").toDouble()},
+                               {"submitted_today", automation::submitted_today_count(opts.profile)}}},
+        {"cost_floor", QJsonObject{{"entry_fee_bps", entry_fee_bps},
+                                    {"exit_fee_bps", exit_fee_bps},
+                                    {"slippage_bps", slippage_bps},
+                                    {"safety_bps", safety_bps},
+                                    {"minimum_profit_bps", minimum_profit_bps},
+                                    {"required_edge_bps", required_edge_bps}}},
+        {"external_context", external_context},
+        {"latest_decision", decision},
+        {"feed_health", microstructure.value("sources").toArray()}};
+}
+
+static QJsonObject control_external_context(const QJsonObject& news_context, const QString& horizon,
+                                            qint64 now_ms) {
+    const qint64 as_of_ms = news_context.value(QStringLiteral("as_of_ms")).toString().toLongLong();
+    const qint64 age_ms = as_of_ms > 0 ? std::max<qint64>(0, now_ms - as_of_ms) : -1;
+    const qint64 max_age_ms = horizon == QLatin1String("15m") ? 5 * 60 * 1000LL
+                             : horizon == QLatin1String("1h") ? 30 * 60 * 1000LL
+                                                                : 2 * 60 * 60 * 1000LL;
+    const bool fresh_for_horizon = age_ms >= 0 && age_ms <= max_age_ms;
+    const QString role = horizon == QLatin1String("15m")
+                             ? QStringLiteral("context_only")
+                             : QStringLiteral("weighted_context");
+    const double maximum_weight = horizon == QLatin1String("15m") ? 0.10
+                                : horizon == QLatin1String("1h") ? 0.35
+                                                                   : 0.50;
+    QJsonArray headlines;
+    for (const QJsonValue& value : news_context.value(QStringLiteral("stories")).toArray()) {
+        if (headlines.size() == 3)
+            break;
+        const QJsonObject story = value.toObject();
+        const QString headline = story.value(QStringLiteral("headline")).toString();
+        if (headline.isEmpty())
+            continue;
+        headlines.append(QJsonObject{{"source", story.value(QStringLiteral("source")).toString()},
+                                    {"headline", headline},
+                                    {"summary", story.value(QStringLiteral("summary")).toString()},
+                                    {"direction", story.value(QStringLiteral("direction")).toString()},
+                                    {"published_ts", story.value(QStringLiteral("published_ts")).toString()}});
+    }
+    return QJsonObject{{"available", !news_context.isEmpty()},
+                       {"mode", QStringLiteral("cached_external_research")},
+                       {"advisory_only", true},
+                       {"role", role},
+                       {"maximum_weight", maximum_weight},
+                       {"as_of_ms", QString::number(as_of_ms)},
+                       {"age_ms", QString::number(age_ms)},
+                       {"max_age_ms", QString::number(max_age_ms)},
+                       {"fresh_for_horizon", fresh_for_horizon},
+                       {"verdict", news_context.value(QStringLiteral("verdict")).toString()},
+                       {"score", news_context.value(QStringLiteral("score")).toDouble()},
+                       {"confidence", news_context.value(QStringLiteral("confidence")).toDouble()},
+                       {"source_count", news_context.value(QStringLiteral("distinct_sources")).toInt()},
+                       {"catalysts", news_context.value(QStringLiteral("catalysts")).toArray()},
+                       {"headlines", headlines},
+                       {"rule", QStringLiteral("External research informs context only; a fresh executable local quote remains required.")}};
+}
+
+static QJsonObject control_spot_external_context(const QString& symbol, qint64 now_ms) {
+    const QString normalized = edge_context_normalized_symbol(symbol, true);
+    const QStringList keywords = edge_context_news_keywords(normalized, true);
+    const QJsonObject news = edge_context_news_summary(keywords, 1, 3);
+    const QString base = edge_context_symbol_base(normalized);
+    const int bullish = news.value(QStringLiteral("bullish")).toInt();
+    const int bearish = news.value(QStringLiteral("bearish")).toInt();
+    const int urgent = news.value(QStringLiteral("urgent")).toInt();
+    const QString review_action = urgent > 0 && bearish > bullish
+                                      ? QStringLiteral("EXIT_REVIEW")
+                                  : bearish > bullish
+                                      ? QStringLiteral("TRIM_REVIEW")
+                                  : bullish > bearish
+                                      ? QStringLiteral("BUY_CONTEXT_ONLY")
+                                      : QStringLiteral("HOLD_AND_WAIT");
+    QJsonObject out{{"available", news.value(QStringLiteral("available")).toBool()},
+                    {"mode", QStringLiteral("cached_external_research")},
+                    {"advisory_only", true},
+                    {"symbol", normalized}, {"keywords", QJsonArray::fromStringList(keywords)},
+                    {"lookback_hours", 24},
+                    {"article_count", news.value(QStringLiteral("articles")).toInt()},
+                    {"bullish", bullish}, {"bearish", bearish}, {"urgent", urgent},
+                    {"latest_at", news.value(QStringLiteral("latest_at")).toString()},
+                    {"headlines", news.value(QStringLiteral("recent")).toArray()},
+                    {"review_action", review_action},
+                    {"entry_use", QStringLiteral("Regime confirmation only. Fresh local quote, spread, and cost gate remain required.")},
+                    {"hold_trim_exit_use", QStringLiteral("Use relevant urgent/bearish news to review exposure or stop adding; local risk and executable price decide any exit.")},
+                    {"scalp_weight", 0.10}, {"spot_swing_weight", 0.35},
+                    {"rule", QStringLiteral("External research may propose BUY, HOLD, TRIM, or EXIT for review; it cannot bypass local execution gates.")}};
+    if (base == QLatin1String("BTC")) {
+        out.insert(QStringLiteral("btc_news_pulse"),
+                   control_external_context(kalshi_auto_latest_news_pulse(now_ms), QStringLiteral("1h"), now_ms));
+    }
+    return out;
+}
+
+static QJsonObject control_prediction_pulse(int limit) {
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const QJsonObject experiment = kalshi_live_experiment_status(false);
+    const QJsonObject engine = experiment.value(QStringLiteral("decision_engine")).toObject();
+    const bool stream_healthy = engine.value(QStringLiteral("stream_healthy")).toBool();
+    const bool session_active = experiment.value(QStringLiteral("session_active")).toBool();
+    const bool venue_allowed = experiment.value(QStringLiteral("venue_allowed")).toBool();
+    const bool live_armed = experiment.value(QStringLiteral("live_armed")).toBool();
+    const bool kill_switch = experiment.value(QStringLiteral("kill_switch")).toBool();
+    const QJsonObject latest_external_context = control_external_context(
+        kalshi_auto_latest_news_pulse(now_ms), QStringLiteral("1h"), now_ms);
+    const qint64 max_age_ms = 30'000;
+    QJsonArray markets;
+    QSet<QString> seen;
+    auto rows = Database::instance().execute(
+        "SELECT id,created_at,market_id,question,horizon,direction,side,gate,market_probability,"
+        "model_probability,raw_edge,edge_after_cost,spread_cost,fee_cost,liquidity_score,confidence,"
+        "seconds_left,data_status,features_json,reasons "
+        "FROM edge_decision_journal WHERE source='kalshi auto-plan' "
+        "AND horizon IN ('15m','1h') AND created_at>=? "
+        "ORDER BY created_at DESC LIMIT 80",
+        {now_ms - 2 * 60 * 1000LL});
+    if (rows.is_ok()) {
+        QSqlQuery& q = rows.value();
+        while (q.next() && markets.size() < limit) {
+            const QString market_id = q.value(2).toString();
+            const QString side = q.value(6).toString().trimmed().toLower();
+            const QString dedupe_key = market_id + QLatin1Char(':') + side;
+            if (market_id.isEmpty() || seen.contains(dedupe_key))
+                continue;
+            seen.insert(dedupe_key);
+            const QJsonObject features = QJsonDocument::fromJson(q.value(18).toString().toUtf8()).object();
+            const QJsonObject signal = features.value(QStringLiteral("signal")).toObject();
+            const QJsonObject evidence = features.value(QStringLiteral("micro_evidence")).toObject();
+            const QJsonObject external_context = control_external_context(
+                features.value(QStringLiteral("news_context")).toObject(), q.value(4).toString(), now_ms);
+            const qint64 quote_at_ms = signal.value(QStringLiteral("quote_observed_at_ms")).toString().toLongLong();
+            const qint64 quote_age_ms = quote_at_ms > 0 ? now_ms - quote_at_ms : -1;
+            const double yes_bid = signal.value(QStringLiteral("yes_bid")).toDouble();
+            const double yes_ask = signal.value(QStringLiteral("yes_ask")).toDouble();
+            const double no_bid = signal.value(QStringLiteral("no_bid")).toDouble();
+            const double no_ask = signal.value(QStringLiteral("no_ask")).toDouble();
+            const double selected_ask = signal.value(QStringLiteral("selected_ask")).toDouble(q.value(8).toDouble());
+            const double selected_bid = signal.value(QStringLiteral("selected_bid")).toDouble();
+            const double selected_depth = signal.value(QStringLiteral("selected_depth")).toDouble(q.value(14).toDouble());
+            const int seconds_left = q.value(16).toInt();
+            const bool executable = selected_bid > 0.0 && selected_ask > 0.0 && selected_depth >= 1.0;
+            const bool candidate = q.value(17).toString() == QLatin1String("trade_candidate") &&
+                                   q.value(7).toString() == QLatin1String("pass") &&
+                                   evidence.value(QStringLiteral("eligible")).toBool();
+            const bool fresh = quote_age_ms >= 0 && quote_age_ms <= max_age_ms;
+            const bool eligible_now = candidate && executable && fresh && seconds_left >= 30 &&
+                                      stream_healthy && session_active && venue_allowed && live_armed && !kill_switch;
+            const QString kind = signal.value(QStringLiteral("kind")).toString();
+            QJsonObject market{{"decision_id", q.value(0).toString()},
+                               {"decision_age_ms", QString::number(std::max<qint64>(0, now_ms - q.value(1).toLongLong()))},
+                               {"market_id", market_id}, {"question", q.value(3).toString()},
+                               {"horizon", q.value(4).toString()}, {"contract_kind", kind},
+                               {"floor", signal.value(QStringLiteral("floor")).toDouble()},
+                               {"cap", signal.value(QStringLiteral("cap")).toDouble()},
+                               {"side", side}, {"seconds_left", seconds_left},
+                               {"spot", signal.value(QStringLiteral("spot")).toDouble()},
+                               {"settlement_mean", signal.value(QStringLiteral("settlement_mean")).toDouble()},
+                               {"settlement_stddev", signal.value(QStringLiteral("settlement_stddev")).toDouble()},
+                               {"yes", QJsonObject{{"bid", yes_bid}, {"ask", yes_ask},
+                                                    {"depth", signal.value(QStringLiteral("yes_depth")).toDouble()}}},
+                               {"no", QJsonObject{{"bid", no_bid}, {"ask", no_ask},
+                                                   {"depth", signal.value(QStringLiteral("no_depth")).toDouble()}}},
+                               {"selected_quote", QJsonObject{{"bid", selected_bid}, {"ask", selected_ask},
+                                                                {"depth", selected_depth}, {"age_ms", QString::number(quote_age_ms)},
+                                                                {"fresh", fresh}, {"executable", executable}}},
+                               {"model_probability", q.value(9).toDouble()},
+                               {"market_probability", q.value(8).toDouble()},
+                               {"raw_edge", q.value(10).toDouble()}, {"net_edge", q.value(11).toDouble()},
+                               {"spread_cost", q.value(12).toDouble()}, {"fee_per_contract", q.value(13).toDouble()},
+                               {"confidence", q.value(15).toDouble()},
+                               {"context_up_probability", signal.value(QStringLiteral("context_up_probability")).toDouble()},
+                               {"calibration_samples", signal.value(QStringLiteral("calibration_samples")).toInt()},
+                               {"evidence_tier", evidence.value(QStringLiteral("tier")).toString()},
+                               {"external_context", external_context},
+                               {"candidate", candidate}, {"eligible_now", eligible_now},
+                               {"reason", q.value(19).toString()}};
+            markets.append(market);
+        }
+    }
+
+    QJsonArray blockers;
+    if (!stream_healthy) blockers.append(QStringLiteral("Kalshi event stream is stale"));
+    if (!session_active) blockers.append(QStringLiteral("human-bounded Kalshi session is not active"));
+    if (!live_armed) blockers.append(QStringLiteral("live trading gate is disarmed"));
+    if (!venue_allowed) blockers.append(QStringLiteral("Kalshi venue is not enabled"));
+    if (kill_switch) blockers.append(QStringLiteral("kill switch is engaged"));
+    if (markets.isEmpty()) blockers.append(QStringLiteral("no fresh 15m/1h local contract snapshots"));
+
+    return QJsonObject{{"schema_version", 1}, {"generated_at_ms", QString::number(now_ms)},
+                       {"read_only", true}, {"lane", "prediction"},
+                       {"data_contract", "fresh local executable snapshots plus timestamped cached external research; no REST request is made"},
+                       {"external_context_policy", QJsonObject{{"15m", "context only; maximum 10% advisory weight when <=5m old"},
+                                                                   {"1h", "weighted context; maximum 35% advisory weight when <=30m old"},
+                                                                   {"execution_truth", "fresh local Kalshi quote, depth, and session gates"}}},
+                       {"execution_mandate", QJsonObject{{"session_active", session_active},
+                                                            {"live_armed", live_armed},
+                                                            {"venue_allowed", venue_allowed},
+                                                            {"kill_switch", kill_switch},
+                                                            {"orders_remaining_this_hour", experiment.value(QStringLiteral("orders_remaining_this_hour")).toInt()}}},
+                       {"feed", QJsonObject{{"stream_healthy", stream_healthy},
+                                               {"event_age_ms", engine.value(QStringLiteral("event_age_ms")).toString()},
+                                               {"independent_spot", engine.value(QStringLiteral("latest_independent_spot")).toDouble()},
+                                               {"independent_spot_age_ms", engine.value(QStringLiteral("latest_independent_spot_age_ms")).toString()},
+                                               {"independent_spot_source", engine.value(QStringLiteral("latest_independent_spot_source")).toString()}}},
+                       {"external_context", latest_external_context},
+                       {"candidate_count", markets.size()}, {"markets", markets}, {"blockers", blockers},
+                       {"next_action", QStringLiteral("LLM may inspect this packet and call control execute prediction only when eligible_now is true.")}};
+}
+
+static QJsonObject control_manifest() {
+    const QJsonArray capabilities{
+        QJsonObject{{"id", "observe.snapshot"}, {"mode", "read"},
+                    {"command", "control snapshot --json"},
+                    {"purpose", "Whole-system state for an operator or LLM."}},
+        QJsonObject{{"id", "observe.spot_external_context"}, {"mode", "read"},
+                    {"command", "control snapshot --symbol BTC-USD --json"},
+                    {"purpose", "Symbol-specific cached research for spot entry, hold, trim, and exit review. Advisory only."}},
+        QJsonObject{{"id", "observe.prediction_pulse"}, {"mode", "read"},
+                    {"command", "control pulse prediction --json"},
+                    {"purpose", "Compact 15m/1h local execution facts plus timestamped cached external research."}},
+        QJsonObject{{"id", "observe.external_context"}, {"mode", "read"},
+                    {"command", "control pulse prediction --json"},
+                    {"purpose", "Source-labelled news and macro context. Advisory only; never an executable quote."}},
+        QJsonObject{{"id", "observe.evidence"}, {"mode", "read"},
+                    {"command", "control explain <decision-id> --json"},
+                    {"purpose", "Stored features, gate, and outcome evidence for one decision."}},
+        QJsonObject{{"id", "plan.prediction"}, {"mode", "plan"},
+                    {"command", "kalshi auto run --json"},
+                    {"purpose", "Create local paper candidates; never submits a live order."}},
+        QJsonObject{{"id", "plan.spot"}, {"mode", "plan"},
+                    {"command", "crypto cockpit --json"},
+                    {"purpose", "Read cost-net spot/scalp decision state."}},
+        QJsonObject{{"id", "execute.prediction"}, {"mode", "guarded-live"},
+                    {"command", "control execute prediction --decision <decision-id>"},
+                    {"requires", QJsonArray{"human-armed session", "kill switch off", "fresh executable quote",
+                                               "venue credentials stored locally", "risk limits pass"}}},
+        QJsonObject{{"id", "execute.spot"}, {"mode", "guarded-live"},
+                    {"command", "control execute spot [--symbol BTC-USD]"},
+                    {"requires", QJsonArray{"human live guard", "venue allowed", "cost/risk checks", "local credentials"}}}
+    };
+    return QJsonObject{
+        {"schema_version", 1},
+        {"name", "openterminal-control-plane"},
+        {"purpose", "Machine-readable local interface for LLM research, planning, auditing, and guarded execution."},
+        {"execution_model", QJsonObject{{"llm", "research, policy proposals, and explanations"},
+                                          {"daemon", "event-driven evaluation, external-context collection, and bounded execution"},
+                                          {"human", "controls venue access, live arm duration, and kill switch"}}},
+        {"safety_invariants", QJsonArray{"No credential values are emitted.",
+                                          "An LLM cannot arm, disarm, or clear the kill switch through this interface.",
+                                          "A bounded LLM execution request is rechecked by the local daemon at submit time.",
+                                          "External research cannot replace a fresh executable local quote, depth, or risk gate.",
+                                          "Every decision and order is journaled for replay and attribution."}},
+        {"capabilities", capabilities}};
+}
+
+static int control_forward_command(const GlobalOpts& opts, QStringList command) {
+    QStringList forwarded;
+    if (opts.json)
+        forwarded << QStringLiteral("--json");
+    if (opts.headless)
+        forwarded << QStringLiteral("--headless");
+    if (!opts.profile.isEmpty())
+        forwarded << QStringLiteral("--profile") << opts.profile;
+    forwarded += command;
+    return dispatch(forwarded);
+}
+
+static int control_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("snapshot") : args.takeFirst().trimmed().toLower();
+    if (sub == "manifest" || sub == "capabilities") {
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: control manifest\n");
+            return 2;
+        }
+        const QJsonObject out = control_manifest();
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Indented).constData());
+        return 0;
+    }
+    if (sub == "explain") {
+        if (args.size() != 1) {
+            std::fprintf(stderr, "usage: control explain <decision-id>\n");
+            return 2;
+        }
+        args.prepend(QStringLiteral("show"));
+        return edge_journal_command(opts, args);
+    }
+    if (sub == "pulse") {
+        if (args.isEmpty() || args.takeFirst().trimmed().toLower() != QLatin1String("prediction")) {
+            std::fprintf(stderr, "usage: control pulse prediction [--limit N]\n");
+            return 2;
+        }
+        QString limit_raw;
+        if (!take_string_option(args, QStringLiteral("--limit"), limit_raw) || !args.isEmpty()) {
+            std::fprintf(stderr, "usage: control pulse prediction [--limit N]\n");
+            return 2;
+        }
+        bool ok = false;
+        const int limit = limit_raw.isEmpty() ? 8 : limit_raw.toInt(&ok);
+        if ((!limit_raw.isEmpty() && !ok) || limit < 1 || limit > 20) {
+            std::fprintf(stderr, "--limit must be between 1 and 20\n");
+            return 2;
+        }
+        const QJsonObject out = control_prediction_pulse(limit);
+        if (opts.json) {
+            std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+            return 0;
+        }
+        const QJsonObject mandate = out.value(QStringLiteral("execution_mandate")).toObject();
+        const QJsonObject feed = out.value(QStringLiteral("feed")).toObject();
+        std::printf("PREDICTION PULSE — LOCAL DAEMON SNAPSHOT\n");
+        std::printf("feed           %s · spot $%.2f via %s · event age %sms\n",
+                    feed.value(QStringLiteral("stream_healthy")).toBool() ? "HEALTHY" : "STALE",
+                    feed.value(QStringLiteral("independent_spot")).toDouble(),
+                    qUtf8Printable(feed.value(QStringLiteral("independent_spot_source")).toString()),
+                    qUtf8Printable(feed.value(QStringLiteral("event_age_ms")).toString()));
+        std::printf("mandate        %s · %d orders remaining this hour\n",
+                    mandate.value(QStringLiteral("session_active")).toBool() &&
+                            mandate.value(QStringLiteral("live_armed")).toBool() &&
+                            mandate.value(QStringLiteral("venue_allowed")).toBool() &&
+                            !mandate.value(QStringLiteral("kill_switch")).toBool()
+                        ? "LIVE-READY" : "NOT EXECUTABLE",
+                    mandate.value(QStringLiteral("orders_remaining_this_hour")).toInt());
+        const QJsonObject external = out.value(QStringLiteral("external_context")).toObject();
+        if (external.value(QStringLiteral("available")).toBool()) {
+            std::printf("research       %s · %s · %.0f%% conf · %llds old · hourly context\n",
+                        qUtf8Printable(external.value(QStringLiteral("verdict")).toString()),
+                        qUtf8Printable(external.value(QStringLiteral("fresh_for_horizon")).toBool()
+                                           ? QStringLiteral("fresh") : QStringLiteral("aging")),
+                        external.value(QStringLiteral("confidence")).toDouble() * 100.0,
+                        static_cast<long long>(external.value(QStringLiteral("age_ms")).toString().toLongLong() / 1000));
+        } else {
+            std::printf("research       unavailable · no cached external context\n");
+        }
+        std::printf("%-20s %-4s %6s %8s %8s %8s %8s %s\n", "MARKET", "SIDE", "LEFT", "ASK", "MODEL", "EDGE", "DEPTH", "STATE");
+        for (const QJsonValue& value : out.value(QStringLiteral("markets")).toArray()) {
+            const QJsonObject market = value.toObject();
+            const QJsonObject quote = market.value(QStringLiteral("selected_quote")).toObject();
+            std::printf("%-20s %-4s %5ds %7.1fc %7.1f%% %7.1fc %8.0f %s\n",
+                        qUtf8Printable(market.value(QStringLiteral("market_id")).toString()),
+                        qUtf8Printable(market.value(QStringLiteral("side")).toString().toUpper()),
+                        market.value(QStringLiteral("seconds_left")).toInt(), quote.value(QStringLiteral("ask")).toDouble() * 100.0,
+                        market.value(QStringLiteral("model_probability")).toDouble() * 100.0,
+                        market.value(QStringLiteral("net_edge")).toDouble() * 100.0,
+                        quote.value(QStringLiteral("depth")).toDouble(),
+                        market.value(QStringLiteral("eligible_now")).toBool() ? "ELIGIBLE" : "WATCH");
+        }
+        if (!out.value(QStringLiteral("blockers")).toArray().isEmpty()) {
+            QStringList labels;
+            for (const QJsonValue& value : out.value(QStringLiteral("blockers")).toArray()) labels << value.toString();
+            std::printf("blockers       %s\n", qUtf8Printable(labels.join(QStringLiteral("; "))));
+        }
+        return 0;
+    }
+    if (sub == "execute" || sub == "act") {
+        if (args.isEmpty()) {
+            std::fprintf(stderr, "usage: control execute prediction [--decision ID] | spot [--symbol BTC-USD]\n");
+            return 2;
+        }
+        const QString lane = args.takeFirst().trimmed().toLower();
+        if (lane == QStringLiteral("prediction") || lane == QStringLiteral("kalshi")) {
+            QString decision_id;
+            if (!take_string_option(args, QStringLiteral("--decision"), decision_id) || !args.isEmpty()) {
+                std::fprintf(stderr, "usage: control execute prediction [--decision ID]\n");
+                return 2;
+            }
+            // This does not arm a session. It can submit only through the
+            // already-autonomous, human-bounded Kalshi session.
+            QStringList command{QStringLiteral("kalshi"), QStringLiteral("auto"),
+                                QStringLiteral("live"), QStringLiteral("execute-next"),
+                                QStringLiteral("--require-session")};
+            if (!decision_id.trimmed().isEmpty())
+                command << QStringLiteral("--decision") << decision_id.trimmed();
+            return control_forward_command(opts, command);
+        }
+        if (lane == QStringLiteral("spot") || lane == QStringLiteral("scalp") || lane == QStringLiteral("crypto")) {
+            QString symbol;
+            if (!take_string_option(args, QStringLiteral("--symbol"), symbol) ||
+                !take_string_option(args, QStringLiteral("--sym"), symbol) || !args.isEmpty()) {
+                std::fprintf(stderr, "usage: control execute spot [--symbol BTC-USD]\n");
+                return 2;
+            }
+            QStringList command{QStringLiteral("automation"), QStringLiteral("execute-next"), QStringLiteral("--yes")};
+            if (!symbol.trimmed().isEmpty())
+                command << QStringLiteral("--symbol") << symbol.trimmed().toUpper();
+            return control_forward_command(opts, command);
+        }
+        std::fprintf(stderr, "control execute supports prediction or spot\n");
+        return 2;
+    }
+    if (sub != "snapshot" && sub != "status") {
+        std::fprintf(stderr, "usage: control snapshot [--symbol BTC-USD]|pulse prediction [--limit N]|manifest|explain <decision-id>|execute prediction|spot\n");
+        return 2;
+    }
+    QString symbol;
+    if (!take_string_option(args, QStringLiteral("--symbol"), symbol) ||
+        !take_string_option(args, QStringLiteral("--sym"), symbol) || !args.isEmpty()) {
+        std::fprintf(stderr, "usage: control snapshot [--symbol BTC-USD]\n");
+        return 2;
+    }
+    const QJsonObject out{{"schema_version", 1},
+                          {"generated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+                          {"read_only", true},
+                          {"profile", opts.profile},
+                          {"control_manifest", "control manifest --json"},
+                          {"crypto", control_crypto_snapshot(opts, symbol)},
+                          // Disable the legacy draft-expiry write here. A control snapshot must be safe to poll.
+                          {"kalshi", kalshi_live_experiment_status(false)}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    const QJsonObject crypto = out.value("crypto").toObject();
+    const QJsonObject engine = crypto.value("engine").toObject();
+    const QJsonObject guard = crypto.value("guard").toObject();
+    const QJsonObject research = crypto.value("external_context").toObject();
+    const QJsonObject kalshi = out.value("kalshi").toObject();
+    std::printf("OPENTERMINAL CONTROL SNAPSHOT — READ ONLY\n");
+    std::printf("crypto  %s · %s · guard %s\n",
+                qUtf8Printable(engine.value("venue").toString("not configured")),
+                qUtf8Printable(engine.value("status").toString("not running")),
+                guard.value("armed").toBool() ? "ARMED" : "DISARMED");
+    std::printf("research %s · %d articles / 24h · bull %d bear %d urgent %d · advisory only\n",
+                qUtf8Printable(research.value("review_action").toString("HOLD_AND_WAIT")),
+                research.value("article_count").toInt(), research.value("bullish").toInt(),
+                research.value("bearish").toInt(), research.value("urgent").toInt());
+    std::printf("kalshi  session %s · live arm %s · engine %s · %d orders/hour remaining\n",
+                kalshi.value("session_active").toBool() ? "ACTIVE" : "OFF",
+                kalshi.value("live_armed").toBool() ? "ARMED" : "DISARMED",
+                kalshi.value("decision_engine_operational").toBool() ? "HEALTHY" : "NOT READY",
+                kalshi.value("orders_remaining_this_hour").toInt());
+    std::printf("Next: control manifest --json · control explain <decision-id> --json\n");
+    return 0;
 }
 
 static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList args,
@@ -27580,6 +28288,10 @@ int dispatch(QStringList args) {
     if (group == "automation" || group == "auto" || group == "bot" || group == "trade-bot") {
         if (opts.help) return command_help("automation");
         return automation_command(opts, args);
+    }
+    if (group == "control" || group == "control-plane" || group == "agent-control") {
+        if (opts.help) return command_help("control");
+        return control_command(opts, args);
     }
     if (group == "sandbox") {
         if (opts.help) return command_help("sandbox");

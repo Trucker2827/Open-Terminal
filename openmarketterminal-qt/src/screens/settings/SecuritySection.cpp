@@ -76,9 +76,17 @@ void SecuritySection::build_ui() {
 
     sec_pin_status_ = new QLabel;
     sec_pin_status_->setStyleSheet(QString("color:%1;background:transparent;").arg(ui::colors::TEXT_PRIMARY()));
-    auto* row_pin_status = make_row(tr("PIN Status"), sec_pin_status_, tr("A 6-digit PIN is required to unlock the terminal."));
+    auto* row_pin_status = make_row(tr("PIN Status"), sec_pin_status_, tr("Configure a 6-digit PIN, then enable it whenever you want startup protection."));
     capture_row_labels(row_pin_status, &row_pin_status_lbl_, &row_pin_status_desc_);
     vl->addWidget(row_pin_status);
+
+    sec_pin_lock_toggle_ = new QCheckBox(tr("Require PIN at app launch"));
+    sec_pin_lock_toggle_->setStyleSheet(QString("color:%1;background:transparent;").arg(ui::colors::TEXT_PRIMARY()));
+    auto* row_pin_lock = make_row(
+        tr("PIN Lock"), sec_pin_lock_toggle_,
+        tr("Turn this off while working to open the app without a PIN. Your PIN remains stored locally and can be re-enabled here."));
+    capture_row_labels(row_pin_lock, &row_pin_lock_lbl_, &row_pin_lock_desc_);
+    vl->addWidget(row_pin_lock);
 
     sec_lockout_status_ = new QLabel;
     sec_lockout_status_->setStyleSheet(QString("color:%1;background:transparent;").arg(ui::colors::TEXT_SECONDARY()));
@@ -406,6 +414,16 @@ void SecuritySection::build_ui() {
                      sec_lock_on_minimize_->isChecked() ? "true" : "false", "security");
         }
 
+        if (sec_pin_lock_toggle_) {
+            const auto pin_lock = pm.set_lock_enabled(sec_pin_lock_toggle_->isChecked());
+            if (pin_lock.is_err()) {
+                LOG_ERROR("Settings", QString("Failed to update PIN lock preference: %1")
+                                          .arg(QString::fromStdString(pin_lock.error())));
+                reload();
+                return;
+            }
+        }
+
         // CLI capability gates — canonical, human-owned. Persisted under the
         // exact keys the CLI/headless runtime reads (default-deny on absence).
         if (cli_settings_write_toggle_) {
@@ -461,15 +479,16 @@ void SecuritySection::build_ui() {
         // mechanism was removed; the toggles are now the authoritative gate).
         EventBus::instance().publish("settings.changed", QVariantMap{{"key", "cli.*"}});
 
-        // Always update interval; only flip enabled if a PIN is configured
+        // Always update interval; only flip enabled if the user has a PIN
+        // and has chosen to require it for automatic locking.
         // (otherwise the timer fires but show_lock_screen suppresses the
         // request, leaving an invisible churning timer).
         guard.set_timeout_minutes(minutes);
-        guard.set_enabled(autolock && pm.has_pin());
+        guard.set_enabled(autolock && pm.is_lock_enabled());
 
         LOG_INFO("Settings",
-                 QString("Security settings saved: autolock=%1, timeout=%2min, has_pin=%3")
-                     .arg(autolock).arg(minutes).arg(pm.has_pin()));
+                 QString("Security settings saved: autolock=%1, timeout=%2min, pin_lock=%3")
+                     .arg(autolock).arg(minutes).arg(pm.is_lock_enabled()));
     });
     vl->addWidget(save_btn_);
 
@@ -537,7 +556,9 @@ void SecuritySection::retranslateUi() {
 
     // Row labels + descriptions.
     if (row_pin_status_lbl_)  row_pin_status_lbl_->setText(tr("PIN Status"));
-    if (row_pin_status_desc_) row_pin_status_desc_->setText(tr("A 6-digit PIN is required to unlock the terminal."));
+    if (row_pin_status_desc_) row_pin_status_desc_->setText(tr("Configure a 6-digit PIN, then enable it whenever you want startup protection."));
+    if (row_pin_lock_lbl_)    row_pin_lock_lbl_->setText(tr("PIN Lock"));
+    if (row_pin_lock_desc_)   row_pin_lock_desc_->setText(tr("Turn this off while working to open the app without a PIN. Your PIN remains stored locally and can be re-enabled here."));
     if (row_attempts_lbl_)    row_attempts_lbl_->setText(tr("Failed Attempts"));
     if (row_attempts_desc_)   row_attempts_desc_->setText(tr("PIN lockout engages after 5 consecutive failures."));
     if (row_current_lbl_)     row_current_lbl_->setText(tr("Current PIN"));
@@ -573,6 +594,7 @@ void SecuritySection::retranslateUi() {
     if (row_cli_ordval_desc_) row_cli_ordval_desc_->setText(tr("Maximum notional value (USD) of any single order the AI agent may place. Unset = 25000."));
 
     // Checkbox texts.
+    if (sec_pin_lock_toggle_)  sec_pin_lock_toggle_->setText(tr("Require PIN at app launch"));
     if (sec_autolock_toggle_)  sec_autolock_toggle_->setText(tr("Enable auto-lock on inactivity"));
     if (sec_lock_on_minimize_) sec_lock_on_minimize_->setText(tr("Lock when the window is minimized"));
     if (cli_settings_write_toggle_) cli_settings_write_toggle_->setText(tr("Allow CLI to write settings"));
@@ -622,9 +644,14 @@ void SecuritySection::reload() {
     auto& repo = SettingsRepository::instance();
 
     if (sec_pin_status_) {
-        sec_pin_status_->setText(pm.has_pin() ? tr("CONFIGURED") : tr("NOT SET"));
+        const bool configured = pm.has_pin();
+        const bool enabled = pm.is_lock_enabled();
+        sec_pin_status_->setText(!configured ? tr("NOT SET")
+                                              : enabled ? tr("ENABLED") : tr("DISABLED"));
         sec_pin_status_->setStyleSheet(QString("color:%1;font-weight:700;background:transparent;")
-                                           .arg(pm.has_pin() ? ui::colors::POSITIVE() : ui::colors::NEGATIVE()));
+                                           .arg(!configured ? ui::colors::NEGATIVE()
+                                                            : enabled ? ui::colors::POSITIVE()
+                                                                      : ui::colors::WARNING()));
     }
 
     if (sec_lockout_status_) {
@@ -636,6 +663,11 @@ void SecuritySection::reload() {
     }
 
     if (sec_change_pin_btn_) sec_change_pin_btn_->setEnabled(pm.has_pin());
+    if (sec_pin_lock_toggle_) {
+        const QSignalBlocker b(sec_pin_lock_toggle_);
+        sec_pin_lock_toggle_->setEnabled(pm.has_pin());
+        sec_pin_lock_toggle_->setChecked(pm.is_lock_enabled());
+    }
 
     if (sec_autolock_toggle_ && sec_lock_timeout_) {
         const QSignalBlocker b1(sec_autolock_toggle_);

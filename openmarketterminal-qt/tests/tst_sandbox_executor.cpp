@@ -1120,7 +1120,7 @@ class TstSandboxExecutor : public QObject {
                            QStringLiteral("BTC-USD"), QStringLiteral("yes"), QStringLiteral("candidate"),
                            QStringLiteral("pass"), 0.9, t0 + 23, QStringLiteral("parallel-test"),
                            signal(20.0, 0.90, t0), QJsonObject{}, 0.40,
-                           QStringLiteral("PARALLEL-LOW-EDGE"), 600, 0.01, 0.049);
+                           QStringLiteral("PARALLEL-LOW-EDGE"), 600, 0.01, 0.029);
 
         QTemporaryDir daemon;
         QVERIFY(daemon.isValid());

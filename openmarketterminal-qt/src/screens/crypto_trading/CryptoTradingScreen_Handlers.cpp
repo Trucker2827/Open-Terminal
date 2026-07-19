@@ -135,6 +135,8 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     exchange_btn_->setText(exchange_display_name(exchange));
     if (order_entry_)
         order_entry_->set_exchange_id(exchange_id_);
+    if (bottom_panel_)
+        bottom_panel_->set_exchange_context(exchange_id_, trading_mode_ != TradingMode::Live);
 
     if (ws_transport_) {
         ws_transport_->setText(tr("DAEMON"));
@@ -287,6 +289,7 @@ void CryptoTradingScreen::on_mode_toggled() {
     mode_btn_->style()->polish(mode_btn_);
     order_entry_->set_mode(!is_live);
     bottom_panel_->set_mode(!is_live);
+    bottom_panel_->set_exchange_context(exchange_id_, !is_live);
 
     if (is_live) {
         live_data_timer_->start(5000);

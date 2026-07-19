@@ -68,6 +68,39 @@ bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
     return pending && request_age_ms >= 0 && request_age_ms > timeout_ms;
 }
 
+bool kalshi_planner_process_timed_out(bool active, qint64 process_age_ms,
+                                      qint64 timeout_ms) {
+    return active && process_age_ms >= 0 && process_age_ms > timeout_ms;
+}
+
+bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
+                                            qint64 timeout_ms) {
+    return active && process_age_ms >= 0 && process_age_ms > timeout_ms;
+}
+
+qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
+                                   qint64 elapsed_ms) {
+    // An armed live session gets the next fresh decision immediately. Paper
+    // evidence is deliberately paced: every websocket delta is not an
+    // independent experiment, and re-planning on each one starves the worker.
+    const qint64 minimum_interval_ms = live_session_active ? 1000
+        : paper_active ? 15000 : 60000;
+    return std::max<qint64>(0, minimum_interval_ms - std::max<qint64>(0, elapsed_ms));
+}
+
+bool kalshi_should_persist_independent_spot_tick(const QString& source, double price,
+                                                 qint64 received_ts_ms,
+                                                 qint64 last_persisted_ts_ms,
+                                                 qint64 minimum_interval_ms) {
+    const QString normalized = source.trimmed().toLower();
+    if (price <= 0.0 || received_ts_ms <= 0 ||
+        (!normalized.contains(QStringLiteral("coinbase")) &&
+         !normalized.contains(QStringLiteral("kraken"))))
+        return false;
+    return last_persisted_ts_ms <= 0 ||
+           received_ts_ms - last_persisted_ts_ms >= std::max<qint64>(1, minimum_interval_ms);
+}
+
 namespace {
 #ifndef _WIN32
 int g_sigfd[2] = {-1, -1};                       // self-pipe: handler writes, notifier reads
@@ -163,8 +196,9 @@ QString kalshi_evidence_path(const QString& filename) {
 // session, limits, quote freshness, duplicate contract and experiment cap.
 class KalshiLiveEventEngine final : public QObject {
   public:
-    explicit KalshiLiveEventEngine(QString profile, QObject* parent = nullptr)
-        : QObject(parent), profile_(std::move(profile)) {
+    explicit KalshiLiveEventEngine(QString profile, CryptoFeedHub* crypto_feed_hub,
+                                   QObject* parent = nullptr)
+        : QObject(parent), profile_(std::move(profile)), crypto_feed_hub_(crypto_feed_hub) {
         using services::prediction::PredictionExchangeRegistry;
         using services::prediction::kalshi_ns::KalshiAdapter;
 
@@ -194,6 +228,26 @@ class KalshiLiveEventEngine final : public QObject {
         book_snapshot_flush_.setInterval(25);
         connect(&book_snapshot_flush_, &QTimer::timeout, this,
                 [this]() { write_book_snapshot(); });
+
+        // The Kalshi socket knows the contract price, not the independent BTC
+        // reference used by the planner. Keep that reference fresh from the
+        // daemon's already-shared Coinbase/Kraken hub; this avoids a second
+        // WebSocket connection and removes the old dependency on a separate
+        // scheduled `edge collect` process.
+        if (crypto_feed_hub_) {
+            crypto_feed_hub_->ensure_symbol(QStringLiteral("BTC-USD"),
+                                             {QStringLiteral("coinbase"),
+                                              QStringLiteral("kraken")});
+            spot_feed_connection_ = connect(
+                crypto_feed_hub_, &CryptoFeedHub::tick_received, this,
+                [this](const QString& symbol,
+                       const services::crypto_latency::CryptoLatencyTick& tick) {
+                    if (symbol != QStringLiteral("BTC-USD")) return;
+                    persist_independent_spot_tick(tick);
+                });
+        } else {
+            last_error_ = QStringLiteral("Kalshi independent spot feed hub unavailable");
+        }
 
         if (!adapter_) {
             last_error_ = QStringLiteral("Kalshi adapter unavailable");
@@ -306,6 +360,7 @@ class KalshiLiveEventEngine final : public QObject {
     }
 
     ~KalshiLiveEventEngine() override {
+        QObject::disconnect(spot_feed_connection_);
         if (adapter_ && !subscribed_asset_ids_.isEmpty())
             adapter_->unsubscribe_market(QStringList(subscribed_asset_ids_.begin(),
                                                       subscribed_asset_ids_.end()));
@@ -339,13 +394,54 @@ class KalshiLiveEventEngine final : public QObject {
         return event_time.isValid() ? std::max<qint64>(0, now_ms - event_time.toMSecsSinceEpoch()) : -1;
     }
 
+    void persist_independent_spot_tick(
+        const services::crypto_latency::CryptoLatencyTick& tick) {
+        static constexpr qint64 kPersistIntervalMs = 1000;
+        const qint64 received = tick.received_ts_ms > 0
+            ? tick.received_ts_ms : QDateTime::currentMSecsSinceEpoch();
+        const QString source = tick.source.trimmed().toLower();
+        const qint64 last_persisted = independent_spot_persisted_ms_.value(source, 0);
+        if (!kalshi_should_persist_independent_spot_tick(source, tick.price, received,
+                                                         last_persisted, kPersistIntervalMs))
+            return;
+
+        EdgePredictionRawTick raw;
+        raw.id = QStringLiteral("kalshi-spot:%1:%2:%3")
+                     .arg(source, QString::number(received), QString::number(tick.sequence));
+        raw.symbol = QStringLiteral("BTC");
+        raw.source = source;
+        raw.price = tick.price;
+        raw.exchange_ts = tick.exchange_ts_ms > 0 ? tick.exchange_ts_ms : received;
+        raw.received_ts = received;
+        const auto stored = EdgePredictionModelRepository::instance().add_raw_tick(raw);
+        if (stored.is_err()) {
+            last_error_ = QStringLiteral("independent BTC spot persistence failed: %1")
+                              .arg(QString::fromStdString(stored.error()));
+            status_dirty_ = true;
+            return;
+        }
+
+        independent_spot_persisted_ms_.insert(source, received);
+        latest_independent_spot_ = tick.price;
+        latest_independent_spot_source_ = source;
+        latest_independent_spot_ms_ = received;
+        ++independent_spot_events_;
+        status_dirty_ = true;
+        schedule_decision(QStringLiteral("independent_spot_change"));
+    }
+
     void check_health() {
         static constexpr qint64 kUniverseTimeoutMs = 15000;
         static constexpr qint64 kEventStaleMs = 10000;
         static constexpr qint64 kReconnectCooldownMs = 15000;
         static constexpr qint64 kRecoveryDecisionMs = 5000;
+        static constexpr qint64 kPlannerTimeoutMs = 25000;
+        static constexpr qint64 kPaperTimeoutMs = 25000;
+        static constexpr qint64 kAccountReadTimeoutMs = 15000;
 
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        check_process_timeout(now_ms, kPlannerTimeoutMs, kPaperTimeoutMs,
+                              kAccountReadTimeoutMs);
         const bool live_active = session_active();
         const bool workload_active = live_active || parallel_paper_active();
 
@@ -516,9 +612,8 @@ class KalshiLiveEventEngine final : public QObject {
         if (process_) return;
         const qint64 elapsed = last_cycle_started_ms_ > 0
             ? QDateTime::currentMSecsSinceEpoch() - last_cycle_started_ms_ : 10000;
-        // Start on the event immediately; only coalesce a burst arriving while
-        // the preceding planner process is still finishing.
-        debounce_.start(static_cast<int>(std::max<qint64>(0, 1000 - elapsed)));
+        debounce_.start(static_cast<int>(kalshi_event_cycle_delay_ms(
+            session_active(), parallel_paper_active(), elapsed)));
     }
 
     void maybe_start_work() {
@@ -532,7 +627,8 @@ class KalshiLiveEventEngine final : public QObject {
         if (decision_pending_) {
             const qint64 elapsed = last_cycle_started_ms_ > 0
                 ? QDateTime::currentMSecsSinceEpoch() - last_cycle_started_ms_ : 10000;
-            debounce_.start(static_cast<int>(std::max<qint64>(0, 1000 - elapsed)));
+            debounce_.start(static_cast<int>(kalshi_event_cycle_delay_ms(
+                session_active(), parallel_paper_active(), elapsed)));
         }
     }
 
@@ -543,6 +639,12 @@ class KalshiLiveEventEngine final : public QObject {
         ++decision_cycles_;
         start_process({QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
                        QStringLiteral("--category"), QStringLiteral("Crypto#BTC@live"),
+                       // The WebSocket already narrowed the trigger surface to the
+                       // nearest settlement cohorts. Keep the child planner equally
+                       // bounded: a 100-contract REST scan cannot make a useful
+                       // decision inside an executable-quote lifetime.
+                       QStringLiteral("--limit"), QStringLiteral("32"),
+                       QStringLiteral("--timeout-ms"), QStringLiteral("7500"),
                        QStringLiteral("--max-positions"), QStringLiteral("5"),
                        QStringLiteral("--unit-notional"), QStringLiteral("2"),
                        QStringLiteral("--max-cost"), QStringLiteral("10"),
@@ -555,16 +657,22 @@ class KalshiLiveEventEngine final : public QObject {
         if (process_) return;
         process_ = new QProcess(this);
         active_work_ = work;
+        process_started_ms_ = QDateTime::currentMSecsSinceEpoch();
+        process_timed_out_ = false;
         QStringList args{QStringLiteral("--profile"), profile_, QStringLiteral("--json")};
         args.append(command);
         connect(process_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
                 [this](int exit_code, QProcess::ExitStatus status) {
                     const QByteArray standard_out = process_->readAllStandardOutput().trimmed();
                     const QByteArray standard_error = process_->readAllStandardError().trimmed();
+                    const bool timed_out = process_timed_out_;
                     last_process_exit_ = exit_code;
                     last_process_at_ = now_utc();
-                    const QJsonObject result = QJsonDocument::fromJson(standard_out).object();
-                    if (!result.isEmpty()) {
+                    const QJsonObject result = timed_out
+                        ? QJsonObject{} : QJsonDocument::fromJson(standard_out).object();
+                    if (timed_out) {
+                        last_process_result_ = QStringLiteral("planner timed out; execution skipped");
+                    } else if (!result.isEmpty()) {
                         const QString state = result.value(QStringLiteral("status")).toString(
                             result.value(QStringLiteral("event")).toString(QStringLiteral("ok")));
                         const QJsonObject portfolio = result.value(QStringLiteral("portfolio")).toObject();
@@ -583,7 +691,16 @@ class KalshiLiveEventEngine final : public QObject {
                     const Work completed = active_work_;
                     process_->deleteLater();
                     process_ = nullptr;
+                    process_started_ms_ = 0;
+                    process_timed_out_ = false;
                     status_dirty_ = true;
+
+                    // A timed-out planner has no trustworthy candidate snapshot.
+                    // Never let its completion fall through into live execution.
+                    if (timed_out) {
+                        maybe_start_work();
+                        return;
+                    }
 
                     if (completed == Work::Execute) {
                         record_live_result(result);
@@ -620,6 +737,40 @@ class KalshiLiveEventEngine final : public QObject {
         });
         process_->start(QCoreApplication::applicationFilePath(), args);
         status_dirty_ = true;
+    }
+
+    QString work_name(Work work) const {
+        switch (work) {
+        case Work::Plan: return QStringLiteral("plan");
+        case Work::Paper: return QStringLiteral("paper_tick");
+        case Work::Execute: return QStringLiteral("live_execute");
+        case Work::AccountReconcile: return QStringLiteral("account_reconcile");
+        }
+        return QStringLiteral("unknown");
+    }
+
+    void check_process_timeout(qint64 now_ms, qint64 planner_timeout_ms,
+                               qint64 paper_timeout_ms, qint64 account_timeout_ms) {
+        if (!process_ || process_timed_out_) return;
+        // An execution process may have reached the broker before it can report
+        // the result. Do not kill it: reconciliation owns that uncertainty.
+        qint64 timeout_ms = -1;
+        if (active_work_ == Work::Plan) timeout_ms = planner_timeout_ms;
+        else if (active_work_ == Work::Paper) timeout_ms = paper_timeout_ms;
+        else if (active_work_ == Work::AccountReconcile) timeout_ms = account_timeout_ms;
+        if (timeout_ms <= 0) return;
+        const qint64 age_ms = process_started_ms_ > 0 ? now_ms - process_started_ms_ : -1;
+        const bool timed_out = active_work_ == Work::Plan
+            ? kalshi_planner_process_timed_out(true, age_ms, timeout_ms)
+            : kalshi_non_execution_process_timed_out(true, age_ms, timeout_ms);
+        if (!timed_out) return;
+        process_timed_out_ = true;
+        if (active_work_ == Work::Plan) ++planner_timeouts_;
+        else ++non_execution_timeouts_;
+        last_error_ = QStringLiteral("Kalshi %1 timed out after %2 ms; execution skipped")
+                          .arg(work_name(active_work_)).arg(age_ms);
+        status_dirty_ = true;
+        process_->kill();
     }
 
     void record_live_result(const QJsonObject& result) {
@@ -703,9 +854,16 @@ class KalshiLiveEventEngine final : public QObject {
             {QStringLiteral("cf_benchmark_events"), QString::number(cf_benchmark_events_)},
             {QStringLiteral("latest_cf_benchmark"), latest_cf_benchmark_},
             {QStringLiteral("latest_cf_benchmark_ms"), QString::number(latest_cf_benchmark_ms_)},
+            {QStringLiteral("independent_spot_events"), QString::number(independent_spot_events_)},
+            {QStringLiteral("latest_independent_spot"), latest_independent_spot_},
+            {QStringLiteral("latest_independent_spot_source"), latest_independent_spot_source_},
+            {QStringLiteral("latest_independent_spot_age_ms"), QString::number(
+                latest_independent_spot_ms_ > 0 ? std::max<qint64>(0, now_ms - latest_independent_spot_ms_) : -1)},
             {QStringLiteral("decision_cycles"), QString::number(decision_cycles_)},
             {QStringLiteral("paper_cycles"), QString::number(paper_cycles_)},
             {QStringLiteral("parallel_paper_enabled"), parallel_paper_active()},
+            {QStringLiteral("cycle_min_interval_ms"), QString::number(
+                session_active() ? 1000 : parallel_paper_active() ? 15000 : 60000)},
             // Compatibility alias retained for older status readers. It now
             // means candidate checks, not claimed order submissions.
             {QStringLiteral("execution_attempts"), QString::number(live_candidate_checks_)},
@@ -734,6 +892,12 @@ class KalshiLiveEventEngine final : public QObject {
             {QStringLiteral("session_wakeups"), QString::number(session_wakeups_)},
             {QStringLiteral("session_active"), session_active()},
             {QStringLiteral("process_active"), process_ != nullptr},
+            {QStringLiteral("process_work"), process_ ? work_name(active_work_) : QString()},
+            {QStringLiteral("process_age_ms"), QString::number(
+                process_ && process_started_ms_ > 0
+                    ? std::max<qint64>(0, now_ms - process_started_ms_) : -1)},
+            {QStringLiteral("planner_timeouts"), QString::number(planner_timeouts_)},
+            {QStringLiteral("non_execution_timeouts"), QString::number(non_execution_timeouts_)},
             {QStringLiteral("last_process_at"), last_process_at_},
             {QStringLiteral("last_process_exit"), last_process_exit_},
             {QStringLiteral("last_process_result"), last_process_result_},
@@ -747,7 +911,9 @@ class KalshiLiveEventEngine final : public QObject {
     }
 
     QString profile_;
+    CryptoFeedHub* crypto_feed_hub_ = nullptr;
     KalshiAdapter* adapter_ = nullptr;
+    QMetaObject::Connection spot_feed_connection_;
     QSet<QString> subscribed_asset_ids_;
     QHash<QString, QString> top_book_signatures_;
     QTimer debounce_;
@@ -766,6 +932,7 @@ class KalshiLiveEventEngine final : public QObject {
     bool account_reconcile_pending_ = false;
     bool status_dirty_ = true;
     qint64 last_cycle_started_ms_ = 0;
+    qint64 process_started_ms_ = 0;
     qint64 universe_request_started_ms_ = 0;
     qint64 subscription_started_ms_ = 0;
     qint64 last_reconnect_attempt_ms_ = 0;
@@ -776,8 +943,11 @@ class KalshiLiveEventEngine final : public QObject {
     qint64 ticker_events_ = 0;
     qint64 account_events_ = 0;
     qint64 cf_benchmark_events_ = 0;
+    qint64 independent_spot_events_ = 0;
     qint64 latest_cf_benchmark_ms_ = 0;
+    qint64 latest_independent_spot_ms_ = 0;
     double latest_cf_benchmark_ = 0.0;
+    double latest_independent_spot_ = 0.0;
     qint64 decision_cycles_ = 0;
     qint64 paper_cycles_ = 0;
     qint64 live_candidate_checks_ = 0;
@@ -790,8 +960,11 @@ class KalshiLiveEventEngine final : public QObject {
     qint64 reconnect_attempts_ = 0;
     qint64 recovery_decisions_ = 0;
     qint64 session_wakeups_ = 0;
+    qint64 planner_timeouts_ = 0;
+    qint64 non_execution_timeouts_ = 0;
     qint64 last_sequence_ = 0;
     int last_process_exit_ = 0;
+    bool process_timed_out_ = false;
     QString last_event_at_;
     QString last_event_type_;
     QString last_event_ticker_;
@@ -801,10 +974,12 @@ class KalshiLiveEventEngine final : public QObject {
     QString last_process_at_;
     QString last_process_result_;
     QHash<QString, qint64> live_rejection_counts_;
+    QHash<QString, qint64> independent_spot_persisted_ms_;
     QJsonObject top_book_snapshots_;
     QString last_live_status_;
     QString last_live_reason_;
     QString last_live_decision_id_;
+    QString latest_independent_spot_source_;
     QString last_error_;
 };
 
@@ -2710,7 +2885,7 @@ int serve_run(const QString& profile) {
     auto* maker_engine = new DaemonMakerEngine(profile, crypto_feed_hub);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [maker_engine]() { delete maker_engine; });
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp, [crypto_feed_hub]() { delete crypto_feed_hub; });
-    auto* kalshi_event_engine = new KalshiLiveEventEngine(profile, qApp);
+    auto* kalshi_event_engine = new KalshiLiveEventEngine(profile, crypto_feed_hub, qApp);
     QObject::connect(qApp, &QCoreApplication::aboutToQuit, qApp,
                      [kalshi_event_engine]() { delete kalshi_event_engine; });
 
@@ -3224,8 +3399,12 @@ QJsonObject build_daemon_readiness(const QString& profile, const DaemonReadiness
         scheduler_reasons << QStringLiteral("no enabled daemon jobs");
     }
     if (jobs.value(QStringLiteral("failed")).toInt() > 0 || jobs.value(QStringLiteral("stale")).toInt() > 0) {
-        scheduler_status = merge_readiness_status(scheduler_status, QStringLiteral("not_safe"));
-        scheduler_reasons << QStringLiteral("one or more daemon jobs currently failed or stale");
+        // Job outcomes are diagnostic, not a substitute for the concrete
+        // tick/snapshot/model checks below. Optional research and long-horizon
+        // jobs may fail independently; their failures stay visible without
+        // incorrectly blocking a healthy BTC signal path.
+        scheduler_status = merge_readiness_status(scheduler_status, QStringLiteral("watch"));
+        scheduler_reasons << QStringLiteral("one or more daemon jobs currently failed or stale; inspect job health");
     } else if (jobs.value(QStringLiteral("failed_history")).toInt() > 0) {
         scheduler_status = merge_readiness_status(scheduler_status, QStringLiteral("watch"));
         scheduler_reasons << QStringLiteral("daemon has acknowledged historical job failures");
@@ -3360,7 +3539,12 @@ QJsonObject build_daemon_readiness(const QString& profile, const DaemonReadiness
 
     auto models_result = EdgePredictionModelRepository::instance().list_models(opt.symbol);
     auto outputs_result = EdgePredictionModelRepository::instance().list_model_outputs(opt.symbol, now, 64);
-    const QStringList horizons{QStringLiteral("5m"), QStringLiteral("15m"), QStringLiteral("1h"), QStringLiteral("daily")};
+    // The managed Chronos books publish these three horizons. The former 5m
+    // book is deliberately retired, so treating it as a required model makes
+    // readiness report a permanent false alarm.
+    // EdgePredictionModel canonicalizes the daily horizon as "daily". The
+    // Chronos CLI accepts "1d", but readiness queries the local model store.
+    const QStringList horizons{QStringLiteral("15m"), QStringLiteral("1h"), QStringLiteral("daily")};
     QJsonArray model_rows;
     QString model_status = QStringLiteral("ready");
     QStringList model_reasons;
@@ -4156,17 +4340,37 @@ void scan_daemon_jobs(const QString& profile) {
     const QDateTime now = QDateTime::currentDateTimeUtc();
     reconcile_stale_running_jobs(profile, now);
     const QJsonArray jobs = load_jobs_doc(profile).value("jobs").toArray();
+    // Every scheduled command opens the same local profile database. Starting
+    // the full due set together creates lock storms that make short accounting
+    // jobs appear unhealthy. Keep a bounded queue and let overdue work drain
+    // oldest-first over later scheduler scans.
+    constexpr int kMaxConcurrentScheduledJobs = 4;
+    int running = 0;
+    QVector<QPair<QDateTime, QJsonObject>> due_jobs;
     for (const auto& v : jobs) {
         const QJsonObject job = v.toObject();
-        if (!job.value("enabled").toBool() || job.value("running").toBool())
+        if (!job.value("enabled").toBool())
             continue;
+        if (job.value("running").toBool()) {
+            ++running;
+            continue;
+        }
         if (job.value("schedule").toString() != QStringLiteral("interval"))
             continue;
         QDateTime due = parse_utc(job.value("next_run_at").toString());
         if (!due.isValid())
             due = now;
         if (due <= now)
-            launch_scheduled_job(profile, job);
+            due_jobs.append(qMakePair(due, job));
+    }
+    std::sort(due_jobs.begin(), due_jobs.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.first < rhs.first;
+    });
+    for (const auto& due_job : due_jobs) {
+        if (running >= kMaxConcurrentScheduledJobs)
+            break;
+        launch_scheduled_job(profile, due_job.second);
+        ++running;
     }
 }
 
@@ -5454,7 +5658,7 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
               QStringLiteral("--max-positions"), QStringLiteral("5"),
               QStringLiteral("--max-cost"), QStringLiteral("125"),
               QStringLiteral("--min-edge"), QStringLiteral("0.03")},
-             60, 30},
+             60, 60},
             {QStringLiteral("kalshi-auto-daily-plan"), QStringLiteral("Kalshi daily auto cockpit plan"),
              QStringLiteral("Build the coherent BTC daily surface and journal early, middle, and late paper evidence separately."),
              {QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
@@ -5462,11 +5666,11 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
               QStringLiteral("--max-positions"), QStringLiteral("5"),
               QStringLiteral("--max-cost"), QStringLiteral("125"),
               QStringLiteral("--min-edge"), QStringLiteral("0.03")},
-             300, 30},
+             300, 60},
             {QStringLiteral("kalshi-live-account-reconcile"), QStringLiteral("Kalshi live account evidence"),
              QStringLiteral("Read authenticated Kalshi positions and fills into the local evidence ledger; never submits an order."),
              {QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("positions")},
-             30, 30},
+             30, 60},
             {QStringLiteral("btc-news-hourly-pulse"), QStringLiteral("Bitcoin hourly narrative pulse"),
              QStringLiteral("Scan local RSS sources, deduplicate Bitcoin stories, create one-paragraph summaries, and record advisory UP/DOWN/NEUTRAL context."),
              {QStringLiteral("news"), QStringLiteral("bitcoin-pulse"),
@@ -5500,29 +5704,40 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
             // registers it) -- its forecast producer job is removed too, so
             // no installed job spends a Chronos-2 call on a 5m horizon.
             {QStringLiteral("chronos2-btc-15m"), QStringLiteral("Strategy sandbox Chronos BTC 15m"),
-             QStringLiteral("Run Chronos-2 BTC forecast and journal price-forecast candidates for sandbox proofing."),
+             QStringLiteral("Run and publish the current Chronos-2 BTC forecast while journaling price-forecast candidates for sandbox proofing."),
              {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
               QStringLiteral("BTC-USD"),
               QStringLiteral("--horizon"), QStringLiteral("15m"),
+              QStringLiteral("--publish"),
               QStringLiteral("--journal"),
               QStringLiteral("--min-journal-edge-bps"), QStringLiteral("15")},
              900, 300},
             {QStringLiteral("chronos2-btc-1h"), QStringLiteral("Strategy sandbox Chronos BTC 1h"),
-             QStringLiteral("Run Chronos-2 BTC hourly forecast and journal price-forecast candidates."),
+             QStringLiteral("Run and publish the current Chronos-2 BTC hourly forecast while journaling price-forecast candidates."),
              {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
               QStringLiteral("BTC-USD"),
               QStringLiteral("--horizon"), QStringLiteral("1h"),
+              QStringLiteral("--publish"),
               QStringLiteral("--journal"),
               QStringLiteral("--min-journal-edge-bps"), QStringLiteral("35")},
              3600, 420},
             {QStringLiteral("chronos2-btc-1d"), QStringLiteral("Strategy sandbox Chronos BTC 1d"),
-             QStringLiteral("Run Chronos-2 BTC daily forecast and journal price-forecast candidates."),
+             QStringLiteral("Run and publish the current Chronos-2 BTC daily forecast while journaling price-forecast candidates."),
              {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("forecast"),
               QStringLiteral("BTC-USD"),
               QStringLiteral("--horizon"), QStringLiteral("1d"),
+              QStringLiteral("--publish"),
               QStringLiteral("--journal"),
               QStringLiteral("--min-journal-edge-bps"), QStringLiteral("75")},
              86400, 600},
+            {QStringLiteral("local-model-btc-publish"), QStringLiteral("Local BTC model output publisher"),
+             QStringLiteral("Publish fresh timestamped local BTC forecasts for every supported horizon; advisory evidence only and never submits an order."),
+             {QStringLiteral("edge"), QStringLiteral("publish-horizons"),
+              QStringLiteral("--symbol"), QStringLiteral("BTC"),
+              QStringLiteral("--market-prob"), QStringLiteral("0.50"),
+              QStringLiteral("--spread"), QStringLiteral("0.03"),
+              QStringLiteral("--min-samples"), QStringLiteral("30")},
+             60, 30},
             {QStringLiteral("chronos2-equity-spy-1d"), QStringLiteral("Strategy sandbox Chronos SPY 1d"),
              QStringLiteral("Run Chronos-2 SPY daily forecast and journal equity price-forecast candidates."),
              {QStringLiteral("edge"), QStringLiteral("chronos2"), QStringLiteral("equity"),
@@ -5534,7 +5749,7 @@ QVector<SandboxJobSpec> sandbox_job_specs() {
              86400, 600},
             {QStringLiteral("tick"), QStringLiteral("Strategy sandbox tick"),
              QStringLiteral("Fills/expires hypothetical sandbox positions off the latest tick tail."),
-             {QStringLiteral("sandbox"), QStringLiteral("tick")}, 30, 25},
+             {QStringLiteral("sandbox"), QStringLiteral("tick")}, 45, 45},
             {QStringLiteral("score-now"), QStringLiteral("Strategy sandbox score"),
              QStringLiteral("Scores resolved sandbox outcomes and refreshes the strategy leaderboard."),
              {QStringLiteral("sandbox"), QStringLiteral("score-now")}, 21600, 120}};

@@ -77,7 +77,10 @@ double observation_feature(const EdgePredictionObservation& o, const QString& ke
     f.liquidity_score = o.liquidity_score;
     f.seconds_left = o.seconds_left;
     f.decision_ts = o.observed_at;
-    f = EdgePredictionModel::build_features(f, o.observed_at);
+    // Offline observations do not carry timestamped cross-horizon model
+    // snapshots. Looking them up here would be both an invalid substitute
+    // for historical context and millions of avoidable SQLite reads during a
+    // backfill. Live estimates still build their context at decision time.
     return feature_value(f, key);
 }
 
@@ -203,7 +206,6 @@ EdgePredictionModel::train(const QString& symbol, const QString& horizon, int mi
         f.liquidity_score = r.liquidity_score;
         f.seconds_left = r.seconds_left;
         f.decision_ts = r.observed_at;
-        f = build_features(f, r.observed_at);
         double score = weight_value(weights, QStringLiteral("intercept"));
         for (const QString& key : {QStringLiteral("anchor"), QStringLiteral("move_5s"),
                                    QStringLiteral("move_15s"), QStringLiteral("move_60s"),

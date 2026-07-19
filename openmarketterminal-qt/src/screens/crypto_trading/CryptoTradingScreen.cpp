@@ -304,6 +304,7 @@ void CryptoTradingScreen::setup_ui() {
     center_splitter->addWidget(chart_);
 
     bottom_panel_ = new CryptoBottomPanel;
+    bottom_panel_->set_exchange_context(exchange_id_, trading_mode_ != TradingMode::Live);
     center_splitter->addWidget(bottom_panel_);
 
     center_splitter->setStretchFactor(0, 5); // chart 75%

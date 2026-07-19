@@ -5,6 +5,7 @@
 #include "trading/TradingTypes.h"
 
 #include <QDate>
+#include <QDateTime>
 
 #include <optional>
 #include <vector>
@@ -51,10 +52,17 @@ double pt_calculate_required_margin(const QString& portfolio_id, const QString& 
                                     const QString& product, double quantity, double price, const QString& side);
 
 // --- Exchange hours (Phase 3 §4) ---
-// Exchange-local session hours. Known equity venues use a simple local-day
-// regular-session check; crypto/forex/unknown venues remain always open until a
-// venue calendar is wired. Opt-in per portfolio via pt_set_enforce_market_hours().
+// US equity venues use America/New_York regular session (09:30–16:00 ET).
+// Crypto/forex/unknown venues remain always open until a venue calendar is wired.
+// Opt-in per portfolio via pt_set_enforce_market_hours().
 bool pt_is_market_open(const QString& exchange);
+
+// US equity session calendar (America/New_York). Paper day books, today-PnL, and
+// MIS auto-square at regular close (16:00 ET) all use this zone — not host local
+// time and not IST.
+QDate pt_us_session_date();
+QDateTime pt_us_session_day_start_utc(const QDate& session_day);
+QDateTime pt_us_session_close_utc(const QDate& session_day);
 
 // --- Orders ---
 // NOTE (Phase 3 §4): `exchange` and `product` are NEW trailing params with
@@ -78,8 +86,8 @@ void pt_cancel_order(const QString& order_id);
 QVector<PtOrder> pt_get_orders(const QString& portfolio_id, const QString& status = "");
 
 // --- Day-scoped order/trade queries (v040) ---
-// Orders / executions whose timestamp falls on the given local calendar day.
-// Backs the order book's per-day view.
+// Orders / executions whose timestamp falls on the given US session calendar day
+// (America/New_York midnight→midnight). Backs the order book's per-day view.
 QVector<PtOrder> pt_get_orders_for_day(const QString& portfolio_id, const QDate& day);
 QVector<PtTrade> pt_get_trades_for_day(const QString& portfolio_id, const QDate& day);
 
@@ -88,16 +96,16 @@ QVector<PtTrade> pt_get_trades_for_day(const QString& portfolio_id, const QDate&
 // the locked margin to the new product (CNC/delivery needs full notional vs MIS
 // notional/leverage) and locks the extra from available balance; throws
 // std::runtime_error if the balance is insufficient. After an MIS->CNC convert the
-// position carries overnight (skipped by the 15:30 auto-square) and the Equity
+// position carries overnight (skipped by the 4:00 PM ET auto-square) and the Equity
 // screen renders it in the Holdings tab.
 void pt_convert_position_product(const QString& position_id, const QString& new_product);
 
 // --- Intraday settlement / auto square-off (v040) ---
 // Square off every open MIS (intraday) position at its last known price when the
-// exchange session close is reached, OR when the
-// position was opened on an earlier session day (catch-up when the app was closed
-// at the cutoff). Also cancels stale pending DAY orders left from prior sessions.
-// CNC/NRML carry-forward positions are untouched. Returns the number squared off.
+// US regular session close is reached (16:00 ET), OR when the position was opened
+// on an earlier US session day (catch-up when the app was closed at the cutoff).
+// Also cancels stale pending DAY orders left from prior sessions. CNC/NRML
+// carry-forward positions are untouched. Returns the number squared off.
 int pt_settle_intraday(const QString& portfolio_id);
 int pt_settle_intraday_all();
 

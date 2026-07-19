@@ -95,7 +95,7 @@ struct PtPosition {
     QString opened_at;
 
     // NEW (v040): broker product type ("MIS"/"CNC"/"NRML") so the engine can tell
-    // intraday from delivery (15:30 MIS auto-square, MIS->CNC convert), and the
+    // intraday from delivery (16:00 ET MIS auto-square, MIS->CNC convert), and the
     // margin locked from available balance while this position is open (released on
     // close). Persisted in pt_positions. Defaults preserve pre-v040 behavior.
     //
@@ -136,7 +136,7 @@ struct PtStats {
     double profit_factor = 0.0; // gross_profit / |gross_loss|
     double total_fees = 0.0;    // sum of trade fees / charges
     double turnover = 0.0;      // sum of price * quantity across trades
-    double today_pnl = 0.0;     // realized P&L from trades dated today (local)
+    double today_pnl = 0.0;     // realized P&L from trades dated today (US/Eastern session)
 };
 
 struct PriceData {
