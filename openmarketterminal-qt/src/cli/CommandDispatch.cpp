@@ -510,7 +510,9 @@ static int command_help(const QString& topic) {
             "  kalshi auto status\n"
             "  kalshi auto flow [--ticker TICKER]\n"
             "  kalshi auto snapshot --ticker TICKER [--model-probability P]\n"
-            "  kalshi auto advise open --ticker TICKER [--daemon-probability P]\n"
+            "  kalshi auto advise open --ticker TICKER [--horizon H] [--settlement-def S]\n"
+            "    [--market-id ID] [--provider P] [--model M] [--prompt-version V]\n"
+            "    [--agent-id A] [--run-id R] [--temperature T] [--daemon-probability P]\n"
             "  kalshi auto advise commit-blind --challenge ID --commit-id K --probability P\n"
             "  kalshi auto advise reveal --challenge ID\n"
             "  kalshi auto advise commit-post --challenge ID --commit-id K --probability P\n"
@@ -22820,11 +22822,56 @@ static int kalshi_auto_snapshot_command(const GlobalOpts& opts, QStringList args
 //   spot                      <- contract.horizon.spot
 //   realized_move_bps         <- contract.horizon.realized_move_30s_bps
 //   spot_microstructure       <- snapshot.spot_microstructure, copied whole
-//                                (CryptoMicrostructureRadar::to_json's fields
-//                                traced -- none collide with a forbidden key
-//                                name)
+//                                but run through
+//                                kalshi_advise_strip_forbidden_keys_deep()
+//                                first. CryptoMicrostructureRadar::to_json()'s
+//                                CURRENT fields were traced and none collide
+//                                with a forbidden key name, but this is a
+//                                wholesale object copy with no per-field
+//                                allowlist of its own -- the deep strip is
+//                                defense in depth against a future field
+//                                addition there leaking a probability/price
+//                                conclusion through unchanged.
 // realized_vol has no source in this snapshot and is intentionally omitted
 // rather than fabricated.
+//
+// Defense in depth for wholesale-object allowlist keys (currently just
+// "spot_microstructure"): unlike the individually-extracted fields above,
+// a wholesale copy has no per-field allowlist of its own, so a forbidden
+// key added inside that object by a future change elsewhere in the
+// codebase (e.g. CryptoMicrostructureRadar::to_json() growing a
+// probability-shaped field) would otherwise ride straight through
+// adv::build_blind_packet()'s top-level allowlist check into the blind
+// context. kalshi_advise_strip_forbidden_keys_deep() removes any key named
+// in adv::kBlindForbiddenKeys() at ANY nesting depth (objects and arrays of
+// objects) before such an object is ever placed in `flat`.
+static QJsonValue kalshi_advise_strip_forbidden_keys_deep(const QJsonValue& value) {
+    if (value.isObject()) {
+        // NOTE: kBlindForbiddenKeys() must be materialized into a single
+        // named QStringList before taking begin()/end() -- calling it twice
+        // inline creates two independent temporaries, so begin() from one
+        // and end() from the other is a dangling-iterator range (this
+        // crashed with std::bad_alloc the first time round).
+        static const QStringList kForbiddenList = adv::kBlindForbiddenKeys();
+        static const QSet<QString> forbidden(kForbiddenList.begin(), kForbiddenList.end());
+        const QJsonObject src = value.toObject();
+        QJsonObject out;
+        for (auto it = src.constBegin(); it != src.constEnd(); ++it) {
+            if (forbidden.contains(it.key()))
+                continue;
+            out.insert(it.key(), kalshi_advise_strip_forbidden_keys_deep(it.value()));
+        }
+        return out;
+    }
+    if (value.isArray()) {
+        QJsonArray out;
+        for (const QJsonValue& v : value.toArray())
+            out.append(kalshi_advise_strip_forbidden_keys_deep(v));
+        return out;
+    }
+    return value;
+}
+
 static QJsonObject kalshi_advise_flatten_snapshot(const QJsonObject& snapshot,
                                                   const QString& horizon_label) {
     const QJsonObject contract = snapshot.value(QStringLiteral("contract")).toObject();
@@ -22854,7 +22901,9 @@ static QJsonObject kalshi_advise_flatten_snapshot(const QJsonObject& snapshot,
     if (horizon.contains(QStringLiteral("realized_move_30s_bps")))
         flat.insert(QStringLiteral("realized_move_bps"), horizon.value(QStringLiteral("realized_move_30s_bps")));
     if (snapshot.contains(QStringLiteral("spot_microstructure")))
-        flat.insert(QStringLiteral("spot_microstructure"), snapshot.value(QStringLiteral("spot_microstructure")));
+        flat.insert(QStringLiteral("spot_microstructure"),
+                    kalshi_advise_strip_forbidden_keys_deep(
+                        snapshot.value(QStringLiteral("spot_microstructure"))));
     return flat;
 }
 

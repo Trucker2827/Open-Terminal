@@ -2933,7 +2933,15 @@ private slots:
             {"schema_version", 1}, {"event", "crypto_microstructure_snapshot"},
             {"call", "TRADE CANDIDATE"}, {"direction", "up"},
             {"reference_price", 65000.0}, {"microprice", 65001.5},
-            {"best_bid", 64999.0}, {"best_ask", 65003.0}, {"confidence", "HIGH"}};
+            {"best_bid", 64999.0}, {"best_ask", 65003.0}, {"confidence", "HIGH"},
+            // Decoys inside spot_microstructure -- this object is copied
+            // WHOLESALE into the blind context (it's on adv::kAllowlist as a
+            // whole key), so unlike "horizon" (flattened to a plain label) it
+            // has no per-field extraction to guard it. A future
+            // CryptoMicrostructureRadar::to_json() field addition could leak
+            // straight through unless the wholesale copy is itself sanitized.
+            {"model_weight", 0.9},
+            {"divergence", QJsonObject{{"label", "DIVERGENCE"}, {"price_diverges", true}}}};
         const QJsonObject snapshot{
             {"schema", 3}, {"ticker", "KXBTC-TEST"}, {"observed_at_ms", QString::number(recent_ms())},
             {"contract", contract}, {"flow", flow}, {"execution", execution},
