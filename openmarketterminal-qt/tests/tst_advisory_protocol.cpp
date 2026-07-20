@@ -8,6 +8,11 @@ private slots:
         QJsonObject a{{"b",2},{"a",1}}; QJsonObject b{{"a",1},{"b",2}};
         QCOMPARE(adv::canonical_json(a), adv::canonical_json(b));
     }
+    void canonical_json_is_nested_key_order_stable() {
+        QJsonObject a{{"z", QJsonObject{{"b",2},{"a",1}}}, {"m", 3}};
+        QJsonObject b{{"m", 3}, {"z", QJsonObject{{"a",1},{"b",2}}}};
+        QCOMPARE(adv::canonical_json(a), adv::canonical_json(b));
+    }
     void sha256_detects_mutation() {
         QJsonObject o{{"x",1}};
         const QString h1 = adv::sha256_hex(adv::canonical_json(o));

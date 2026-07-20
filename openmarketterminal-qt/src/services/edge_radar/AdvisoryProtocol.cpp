@@ -57,11 +57,17 @@ QByteArray canonical_value(const QJsonValue& value) {
     switch (value.type()) {
     case QJsonValue::Bool:
         return value.toBool() ? "true" : "false";
-    case QJsonValue::Double:
+    case QJsonValue::Double: {
         // Fixed 6-decimal-place formatting: deterministic across locales and
         // across re-serialization, so equal numeric values always hash the
         // same regardless of how they were originally typed (int vs double).
-        return QString::number(value.toDouble(), 'f', 6).toUtf8();
+        // Normalize signed zero (-0.0 == 0.0 numerically, but Qt would print
+        // "-0.000000" for the former) so logically-equal snapshots always
+        // hash identically.
+        double d = value.toDouble();
+        if (d == 0.0) d = 0.0;
+        return QString::number(d, 'f', 6).toUtf8();
+    }
     case QJsonValue::String:
         return canonical_escaped_string(value.toString());
     case QJsonValue::Array:
@@ -104,7 +110,7 @@ TtlPolicy ttl_for(qint64 seconds_left, qint64 configured_max_ms) {
     // Horizon -> base prediction TTL: shorter horizons get shorter TTLs
     // (predictions decay faster the closer to settlement), longer horizons
     // get progressively longer TTLs, capped by configured_max_ms.
-    qint64 base_ms;
+    qint64 base_ms = 0;
     if (seconds_left <= 300) {          // 1-5 minutes
         base_ms = 15000;
     } else if (seconds_left <= 900) {   // 5-15 minutes
