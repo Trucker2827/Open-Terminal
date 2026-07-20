@@ -33,6 +33,7 @@
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/edge_radar/BitcoinEvidenceEngine.h"
 #include "services/decision/DecisionOrchestrator.h"
+#include "services/ai_decision/DecisionContext.h"
 #include "services/file_manager/FileManagerService.h"
 #include "services/gov_data/GovDataService.h"
 #include "services/llm/AnalysisSkillLoader.h"
@@ -141,6 +142,7 @@ static int usage(FILE* stream = stderr, int code = 2) {
         "  security network-audit               Audit local MCP/AI/network exposure\n"
         "  setup [status|profile|ai|doctor]     Local profile and AI onboarding\n"
         "  control snapshot|brief|plan|watch|audit|execute  Stable local control plane for an LLM or operator\n"
+        "  mission manifest|context|plan|explain|reconcile|watch|replay|execute  Timestamped LLM mission protocol\n"
         "  demo trading-system                  Prove daemon + data + broker + gate readiness\n"
         "  sync status                          Show GUI/daemon/CLI ownership alignment\n"
         "  serve [--status|--stop]              Run or manage a read-only headless daemon\n"
@@ -290,6 +292,34 @@ static int command_help(const QString& topic) {
             "Use an LLM for research, policy, and explanations. The local daemon owns\n"
             "event-driven timing and can execute only inside a human-armed risk mandate.\n"
             "Credentials are never emitted by this control plane.\n");
+        return 0;
+    }
+    if (topic == "mission" || topic == "llm-mission") {
+        std::printf(
+            "LLM mission protocol (a local, timestamped operating contract):\n"
+            "  mission manifest [--json]\n"
+            "      Describe the protocol, information tiers, and execution boundaries.\n"
+            "  mission context --symbol BTC-USD --market crypto|prediction|equity [--limit N] [--days N] [--json]\n"
+            "      Read one machine-ready packet: fresh local facts, decision evidence, cached\n"
+            "      advisory research, a scoped AI decision packet, and any immutable envelope.\n"
+            "  mission plan --symbol BTC-USD --market crypto|prediction|equity [--limit N] [--days N] [--json]\n"
+            "      Create a read-only plan. Kalshi plans may reference an exact immutable\n"
+            "      envelope; crypto plans always require a fresh submit-time recheck.\n"
+            "  mission explain <decision-id> [--json]\n"
+            "      Show stored journal and immutable-envelope evidence for one decision.\n"
+            "  mission reconcile --symbol BTC-USD --market crypto|prediction|equity [--json]\n"
+            "      Compare current local state with the most recent frozen decision evidence.\n"
+            "  mission watch --symbol BTC-USD --market crypto|prediction|equity [--iterations N] [--interval-sec N] [--json]\n"
+            "      Emit bounded NDJSON plan snapshots for an LLM/operator loop.\n"
+            "  mission replay crypto|prediction ...\n"
+            "      Forward to the existing no-lookahead replay tools.\n\n"
+            "  mission execute prediction <decision-id>\n"
+            "  mission execute crypto --symbol BTC-USD\n"
+            "      Requests existing guarded execution only. A model cannot arm a venue,\n"
+            "      disable a kill switch, bypass risk checks, or read credentials.\n\n"
+            "Information tiers: fresh local market/venue evidence is execution-relevant;\n"
+            "cached news and external research are advisory only. Every plan names its\n"
+            "timestamp and evidence source so an LLM can reason without inventing state.\n");
         return 0;
     }
     if (topic == "doctor") {
@@ -23862,6 +23892,296 @@ static int control_command(const GlobalOpts& opts, QStringList args) {
     return 0;
 }
 
+// Defined below with the Kalshi command group. The mission replay alias keeps
+// one implementation of Kalshi replay rather than duplicating it here.
+static int kalshi_command(const GlobalOpts& opts, QStringList args);
+
+// `mission` is deliberately a protocol facade over the existing read-only
+// evidence stores and guarded executors. It gives an LLM one stable object to
+// reason from without creating a parallel bot, database, or authority path.
+struct MissionRequest {
+    QString symbol;
+    QString market;
+    int limit = 8;
+    int days = 14;
+};
+
+static bool mission_parse_market(const QString& value, QString& market) {
+    market = value.trimmed().toLower();
+    return market == QLatin1String("crypto") || market == QLatin1String("prediction") ||
+           market == QLatin1String("equity");
+}
+
+static bool mission_parse_request(QStringList& args, MissionRequest& request, bool require_market = true) {
+    QString raw_market;
+    QString limit_raw;
+    QString days_raw;
+    if (!take_string_option(args, QStringLiteral("--symbol"), request.symbol) ||
+        !take_string_option(args, QStringLiteral("--sym"), request.symbol) ||
+        !take_string_option(args, QStringLiteral("--market"), raw_market) ||
+        !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--days"), days_raw) || !args.isEmpty()) {
+        return false;
+    }
+    if (request.symbol.trimmed().isEmpty()) request.symbol = QStringLiteral("BTC-USD");
+    if (require_market && raw_market.trimmed().isEmpty()) return false;
+    if (!raw_market.trimmed().isEmpty() && !mission_parse_market(raw_market, request.market)) return false;
+    if (request.market.isEmpty()) request.market = QStringLiteral("crypto");
+    bool ok = false;
+    if (!limit_raw.isEmpty()) {
+        request.limit = limit_raw.toInt(&ok);
+        if (!ok || request.limit < 1 || request.limit > 50) return false;
+    }
+    if (!days_raw.isEmpty()) {
+        request.days = days_raw.toInt(&ok);
+        if (!ok || request.days < 1 || request.days > 3650) return false;
+    }
+    request.symbol = edge_context_normalized_symbol(request.symbol, request.market != QLatin1String("equity"));
+    return !request.symbol.trimmed().isEmpty();
+}
+
+static bool mission_venue_matches_market(const QString& raw_venue, const QString& market) {
+    const QString venue = raw_venue.trimmed().toLower();
+    if (market == QLatin1String("prediction"))
+        return venue.contains(QStringLiteral("kalshi")) || venue.contains(QStringLiteral("polymarket"));
+    if (market == QLatin1String("crypto"))
+        return venue.contains(QStringLiteral("coinbase")) || venue.contains(QStringLiteral("kraken")) ||
+               venue.contains(QStringLiteral("binance")) || venue.contains(QStringLiteral("crypto"));
+    return venue.contains(QStringLiteral("alpaca")) || venue.contains(QStringLiteral("equity")) ||
+           venue.contains(QStringLiteral("stock"));
+}
+
+static QJsonObject mission_latest_envelope(const QString& symbol, const QString& market) {
+    auto rows = Database::instance().execute(
+        "SELECT envelope_json FROM decision_envelopes WHERE symbol=? ORDER BY decision_ts DESC LIMIT 40", {symbol});
+    if (rows.is_err())
+        return QJsonObject{{"state", "unavailable"}, {"reason", QString::fromStdString(rows.error())}};
+    while (rows.value().next()) {
+        const QJsonDocument document = QJsonDocument::fromJson(rows.value().value(0).toString().toUtf8());
+        if (!document.isObject()) continue;
+        const QJsonObject envelope = document.object();
+        if (!mission_venue_matches_market(envelope.value(QStringLiteral("venue")).toString(), market)) continue;
+        return QJsonObject{{"state", "available"},
+                           {"immutable", true},
+                           {"decision_id", envelope.value(QStringLiteral("decision_id")).toString()},
+                           {"decision_ts_ms", envelope.value(QStringLiteral("decision_ts_ms")).toString()},
+                           {"venue", envelope.value(QStringLiteral("venue")).toString()},
+                           {"market_id", envelope.value(QStringLiteral("market_id")).toString()},
+                           {"horizon", envelope.value(QStringLiteral("horizon")).toString()},
+                           {"side", envelope.value(QStringLiteral("side")).toString()},
+                           {"verdict", envelope.value(QStringLiteral("verdict")).toString()},
+                           {"content_hash", envelope.value(QStringLiteral("content_hash")).toString()},
+                           {"envelope", envelope}};
+    }
+    return QJsonObject{{"state", "missing"}, {"immutable", true},
+                       {"reason", "No immutable envelope matches this symbol and market scope."}};
+}
+
+static QJsonObject mission_advisory_context(const MissionRequest& request) {
+    const bool crypto = request.market != QLatin1String("equity");
+    const QStringList keywords = edge_context_news_keywords(request.symbol, crypto);
+    return QJsonObject{{"tier", "slow_advisory"},
+                       {"executable", false},
+                       {"source_mode", "local cached and public research summaries"},
+                       {"lookback_days", request.days},
+                       {"news", edge_context_news_summary(keywords, request.days, request.limit)},
+                       {"decision_history", edge_context_decision_summary(request.symbol, request.days)},
+                       {"model_outputs", edge_context_model_summary(request.symbol, request.limit)},
+                       {"broker_events", edge_context_broker_summary(request.symbol, request.days)},
+                       {"public_sources", edge_context_public_sources(crypto, request.symbol)},
+                       {"rule", "Advisory context can explain, veto, or request a review. It cannot replace a fresh executable quote, order-book depth, or local risk gate."}};
+}
+
+static QJsonObject mission_context_packet(const GlobalOpts& opts, const MissionRequest& request) {
+    const QJsonObject brief = control_trading_brief(opts, request.symbol, std::min(request.limit, 20));
+    const QJsonObject lanes = brief.value(QStringLiteral("lanes")).toObject();
+    const QJsonObject selected_lane = request.market == QLatin1String("prediction")
+        ? lanes.value(QStringLiteral("prediction")).toObject()
+        : request.market == QLatin1String("crypto") ? lanes.value(QStringLiteral("crypto")).toObject()
+                                                       : QJsonObject{};
+    const auto decision = ai_decision::assess(request.symbol, request.market);
+    const QJsonObject decision_packet = ai_decision::to_json(decision);
+    const QJsonObject envelope = mission_latest_envelope(request.symbol, request.market);
+    return QJsonObject{{"schema_version", 1},
+                       {"protocol", "openterminal-mission"},
+                       {"generated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+                       {"read_only", true},
+                       {"profile", opts.profile},
+                       {"symbol", request.symbol},
+                       {"market", request.market},
+                       {"fast_local_execution_facts", QJsonObject{{"tier", "fast_local"},
+                           {"execution_relevant", true}, {"control_brief", brief}, {"selected_lane", selected_lane},
+                           {"rule", "Only fresh local venue facts and the local risk/execution gate are execution-relevant."}}},
+                       {"slow_advisory_research", mission_advisory_context(request)},
+                       {"decision_packet", decision_packet},
+                       {"frozen_evidence", envelope},
+                       {"operating_loop", QJsonArray{
+                           QJsonObject{{"step", "observe"}, {"command", QStringLiteral("mission context --symbol %1 --market %2 --json").arg(request.symbol, request.market)}},
+                           QJsonObject{{"step", "assess"}, {"command", QStringLiteral("ai ctx %1 --market %2 --json").arg(request.symbol, request.market)}},
+                           QJsonObject{{"step", "plan"}, {"command", QStringLiteral("mission plan --symbol %1 --market %2 --json").arg(request.symbol, request.market)}},
+                           QJsonObject{{"step", "reconcile"}, {"command", QStringLiteral("mission reconcile --symbol %1 --market %2 --json").arg(request.symbol, request.market)}},
+                           QJsonObject{{"step", "learn"}, {"command", QStringLiteral("mission replay %1 --symbol %2").arg(request.market == QLatin1String("prediction") ? "prediction" : "crypto", request.symbol)}}}},
+                       {"safety_boundary", QJsonObject{{"llm", "may interpret facts and request a guarded execution"},
+                           {"human", "alone arms venues, selects duration, and can kill trading"},
+                           {"executor", "rechecks current freshness, cost, risk, credentials, session arm, and kill switch at submit time"}}},
+                       {"no_lookahead", QJsonObject{{"rule", "Use only timestamps at or before the decision timestamp. Immutable envelopes record the evidence cutoff."},
+                           {"replay_command", QStringLiteral("mission replay %1 --symbol %2").arg(request.market == QLatin1String("prediction") ? "prediction" : "crypto", request.symbol)}}}};
+}
+
+static QJsonObject mission_plan_packet(const GlobalOpts& opts, const MissionRequest& request) {
+    const QJsonObject context = mission_context_packet(opts, request);
+    const QJsonObject frozen = context.value(QStringLiteral("frozen_evidence")).toObject();
+    const QJsonObject decision = context.value(QStringLiteral("decision_packet")).toObject();
+    const bool frozen_available = frozen.value(QStringLiteral("state")).toString() == QLatin1String("available");
+    const bool edge_ready = decision.value(QStringLiteral("has_edge_signal")).toBool() &&
+                            decision.value(QStringLiteral("recommendation_hint")).toString() == QLatin1String("all gates pass");
+    QString action = QStringLiteral("NO_ACTION");
+    QString reason = decision.value(QStringLiteral("recommendation_hint")).toString();
+    QJsonObject execution{{"supported", false}, {"requires_human_arm", true}, {"requires_submit_recheck", true}};
+    if (request.market == QLatin1String("prediction") && frozen_available) {
+        execution.insert(QStringLiteral("supported"), true);
+        execution.insert(QStringLiteral("exact_envelope"), true);
+        execution.insert(QStringLiteral("command"), QStringLiteral("mission execute prediction %1").arg(frozen.value(QStringLiteral("decision_id")).toString()));
+        if (edge_ready) {
+            action = QStringLiteral("REVIEW_GUARDED_PREDICTION");
+            reason = QStringLiteral("A scoped immutable Kalshi decision exists. The guarded executor will independently validate the current quote and live mandate.");
+        }
+    } else if (request.market == QLatin1String("crypto")) {
+        execution.insert(QStringLiteral("supported"), true);
+        execution.insert(QStringLiteral("exact_envelope"), false);
+        execution.insert(QStringLiteral("command"), QStringLiteral("mission execute crypto --symbol %1").arg(request.symbol));
+        execution.insert(QStringLiteral("rule"), QStringLiteral("Crypto execution uses the current local engine decision and always rechecks at submit time; it never trades a stale frozen quote."));
+        if (edge_ready) {
+            action = QStringLiteral("REVIEW_GUARDED_CRYPTO");
+            reason = QStringLiteral("A scoped crypto decision clears its recorded cost and freshness gates. Current venue conditions still decide whether execution is allowed.");
+        }
+    } else {
+        execution.insert(QStringLiteral("reason"), QStringLiteral("No equity broker execution route is exposed through mission yet."));
+    }
+    return QJsonObject{{"schema_version", 1}, {"protocol", "openterminal-mission"}, {"generated_at", context.value(QStringLiteral("generated_at"))},
+                       {"read_only", true}, {"symbol", request.symbol}, {"market", request.market},
+                       {"action", action}, {"reason", reason}, {"execution", execution},
+                       {"frozen_evidence", frozen}, {"current_assessment", decision},
+                       {"pre_submit_rechecks", QJsonArray{"fresh local quote and depth", "fee/spread/slippage cost", "venue credentials", "human arm and expiry", "kill switch", "position and aggregate exposure limits"}},
+                       {"context", context}};
+}
+
+static QJsonObject mission_explain_packet(const QString& decision_id) {
+    auto rows = Database::instance().execute(
+        "SELECT id,created_at,venue,symbol,horizon,market_id,question,direction,side,call,gate,market_probability,model_probability,raw_edge,edge_after_cost,spread_cost,fee_cost,liquidity_score,confidence,seconds_left,data_status,freshness_json,features_json,reasons,source FROM edge_decision_journal WHERE id=?",
+        {decision_id});
+    QJsonObject journal{{"state", "missing"}};
+    if (rows.is_err()) journal = QJsonObject{{"state", "unavailable"}, {"reason", QString::fromStdString(rows.error())}};
+    else if (rows.value().next()) {
+        QSqlQuery& q = rows.value();
+        auto parsed_object = [](const QString& text) { const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8()); return doc.isObject() ? doc.object() : QJsonObject{}; };
+        journal = QJsonObject{{"state", "available"}, {"decision_id", q.value(0).toString()}, {"created_at_ms", q.value(1).toString()},
+            {"venue", q.value(2).toString()}, {"symbol", q.value(3).toString()}, {"horizon", q.value(4).toString()}, {"market_id", q.value(5).toString()},
+            {"question", q.value(6).toString()}, {"direction", q.value(7).toString()}, {"side", q.value(8).toString()}, {"call", q.value(9).toString()}, {"gate", q.value(10).toString()},
+            {"market_probability", q.value(11).toDouble()}, {"model_probability", q.value(12).toDouble()}, {"raw_edge", q.value(13).toDouble()}, {"edge_after_cost", q.value(14).toDouble()},
+            {"spread_cost", q.value(15).toDouble()}, {"fee_cost", q.value(16).toDouble()}, {"liquidity_score", q.value(17).toDouble()}, {"confidence", q.value(18).toDouble()},
+            {"seconds_left", q.value(19).toLongLong()}, {"data_status", q.value(20).toString()}, {"freshness", parsed_object(q.value(21).toString())},
+            {"features", parsed_object(q.value(22).toString())}, {"reasons", q.value(23).toString()}, {"source", q.value(24).toString()}};
+    }
+    auto envelope_rows = Database::instance().execute("SELECT envelope_json FROM decision_envelopes WHERE id=?", {decision_id});
+    QJsonObject envelope{{"state", "missing"}};
+    if (envelope_rows.is_ok() && envelope_rows.value().next()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(envelope_rows.value().value(0).toString().toUtf8());
+        envelope = doc.isObject() ? QJsonObject{{"state", "available"}, {"immutable", true}, {"envelope", doc.object()}}
+                                  : QJsonObject{{"state", "invalid"}};
+    }
+    return QJsonObject{{"schema_version", 1}, {"protocol", "openterminal-mission"}, {"generated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+                       {"read_only", true}, {"decision_id", decision_id}, {"journal", journal}, {"frozen_evidence", envelope},
+                       {"rule", "This report contains stored decision-time evidence only. It never reconstructs a decision using later market information."}};
+}
+
+static int mission_emit(const GlobalOpts& opts, const QJsonObject& out, const QString& title) {
+    if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+    else std::printf("%s\n%s\n", qUtf8Printable(title), QJsonDocument(out).toJson(QJsonDocument::Indented).constData());
+    return 0;
+}
+
+static int mission_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QStringLiteral("manifest") : args.takeFirst().trimmed().toLower();
+    if (sub == QLatin1String("manifest")) {
+        if (!args.isEmpty()) { std::fprintf(stderr, "usage: mission manifest\n"); return 2; }
+        return mission_emit(opts, QJsonObject{{"schema_version", 1}, {"protocol", "openterminal-mission"},
+            {"purpose", "A timestamped CLI contract for LLM observation, planning, auditing, replay, and guarded execution."},
+            {"commands", QJsonArray{"mission context --symbol BTC-USD --market crypto --json", "mission plan --symbol BTC-USD --market prediction --json", "mission explain <decision-id> --json", "mission reconcile --symbol BTC-USD --market crypto --json", "mission watch --symbol BTC-USD --market crypto --json", "mission replay crypto|prediction", "mission execute prediction <decision-id>", "mission execute crypto --symbol BTC-USD"}},
+            {"information_tiers", QJsonObject{{"fast_local", "fresh local price, order-book, account, and risk state; execution-relevant"}, {"slow_advisory", "cached/public research and history; explanatory only"}, {"frozen", "immutable decision-time envelope; auditable but still rechecked before execution"}}},
+            {"safety", QJsonArray{"Mission cannot arm a venue or clear a kill switch.", "Execution uses existing human-armed local commands.", "No credential values are emitted.", "Market scope is required for context and plan commands."}}}, "MISSION MANIFEST");
+    }
+    if (sub == QLatin1String("explain")) {
+        if (args.size() != 1) { std::fprintf(stderr, "usage: mission explain <decision-id>\n"); return 2; }
+        int code = 0; if (!init_headless_for_cli(opts, code)) return code;
+        return mission_emit(opts, mission_explain_packet(args.first()), "MISSION EXPLAIN — STORED EVIDENCE");
+    }
+    if (sub == QLatin1String("replay")) {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: mission replay crypto|prediction ...\n"); return 2; }
+        const QString lane = args.takeFirst().trimmed().toLower();
+        if (lane == QLatin1String("crypto")) { args.prepend(QStringLiteral("replay")); return edge_journal_command(opts, args); }
+        if (lane == QLatin1String("prediction") || lane == QLatin1String("kalshi")) { args.prepend(QStringLiteral("replay")); args.prepend(QStringLiteral("auto")); return kalshi_command(opts, args); }
+        std::fprintf(stderr, "mission replay supports crypto or prediction\n"); return 2;
+    }
+    if (sub == QLatin1String("execute")) {
+        if (args.isEmpty()) { std::fprintf(stderr, "usage: mission execute prediction <decision-id> | crypto [--symbol BTC-USD]\n"); return 2; }
+        const QString lane = args.takeFirst().trimmed().toLower();
+        if (lane == QLatin1String("prediction") || lane == QLatin1String("kalshi")) {
+            if (args.size() != 1) { std::fprintf(stderr, "usage: mission execute prediction <decision-id>\n"); return 2; }
+            return control_forward_command(opts, {QStringLiteral("control"), QStringLiteral("execute"), QStringLiteral("prediction"), QStringLiteral("--decision"), args.first()});
+        }
+        if (lane == QLatin1String("crypto") || lane == QLatin1String("spot") || lane == QLatin1String("scalp")) {
+            QString symbol;
+            if (!take_string_option(args, QStringLiteral("--symbol"), symbol) || !take_string_option(args, QStringLiteral("--sym"), symbol) || !args.isEmpty()) { std::fprintf(stderr, "usage: mission execute crypto [--symbol BTC-USD]\n"); return 2; }
+            if (symbol.trimmed().isEmpty()) symbol = QStringLiteral("BTC-USD");
+            return control_forward_command(opts, {QStringLiteral("control"), QStringLiteral("execute"), QStringLiteral("spot"), QStringLiteral("--symbol"), edge_context_normalized_symbol(symbol, true)});
+        }
+        std::fprintf(stderr, "mission execute supports prediction or crypto\n"); return 2;
+    }
+
+    MissionRequest request;
+    if (sub != QLatin1String("context") && sub != QLatin1String("brief") && sub != QLatin1String("plan") &&
+        sub != QLatin1String("reconcile") && sub != QLatin1String("watch")) {
+        std::fprintf(stderr, "usage: mission manifest|context|plan|explain|reconcile|watch|replay|execute\n"); return 2;
+    }
+    QString iterations_raw;
+    QString interval_raw;
+    if (sub == QLatin1String("watch")) {
+        if (!take_string_option(args, QStringLiteral("--iterations"), iterations_raw) ||
+            !take_string_option(args, QStringLiteral("--interval-sec"), interval_raw)) {
+            std::fprintf(stderr, "usage: mission watch --symbol BTC-USD --market crypto [--iterations N] [--interval-sec N]\n"); return 2;
+        }
+    }
+    if (!mission_parse_request(args, request)) {
+        std::fprintf(stderr, "usage: mission %s --symbol BTC-USD --market crypto|prediction|equity [--limit N] [--days N]\n", qUtf8Printable(sub)); return 2;
+    }
+    int code = 0; if (!init_headless_for_cli(opts, code)) return code;
+    if (sub == QLatin1String("context") || sub == QLatin1String("brief"))
+        return mission_emit(opts, mission_context_packet(opts, request), "MISSION CONTEXT — READ ONLY");
+    if (sub == QLatin1String("plan"))
+        return mission_emit(opts, mission_plan_packet(opts, request), "MISSION PLAN — READ ONLY");
+    if (sub == QLatin1String("reconcile")) {
+        const QJsonObject context = mission_context_packet(opts, request);
+        return mission_emit(opts, QJsonObject{{"schema_version", 1}, {"protocol", "openterminal-mission"}, {"read_only", true},
+            {"generated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"symbol", request.symbol}, {"market", request.market},
+            {"current_decision", context.value("decision_packet")}, {"frozen_evidence", context.value("frozen_evidence")},
+            {"audit", control_audit_summary(request.limit)}, {"rule", "Reconciliation compares stored evidence to the current read-only snapshot. It never changes an order, session, or model."}}, "MISSION RECONCILE — READ ONLY");
+    }
+    bool ok = false;
+    const int iterations = iterations_raw.isEmpty() ? 30 : iterations_raw.toInt(&ok);
+    if ((!iterations_raw.isEmpty() && !ok) || iterations < 1 || iterations > 3600) { std::fprintf(stderr, "--iterations must be between 1 and 3600\n"); return 2; }
+    const int interval = interval_raw.isEmpty() ? 2 : interval_raw.toInt(&ok);
+    if ((!interval_raw.isEmpty() && !ok) || interval < 1 || interval > 60) { std::fprintf(stderr, "--interval-sec must be between 1 and 60\n"); return 2; }
+    for (int i = 0; i < iterations; ++i) {
+        const QJsonObject row{{"sequence", i + 1}, {"watch", true}, {"plan", mission_plan_packet(opts, request)}};
+        if (opts.json) std::printf("%s\n", QJsonDocument(row).toJson(QJsonDocument::Compact).constData());
+        else std::printf("%02d %s\n", i + 1, qUtf8Printable(row.value("plan").toObject().value("action").toString()));
+        std::fflush(stdout);
+        if (i + 1 < iterations) QThread::sleep(static_cast<unsigned long>(interval));
+    }
+    return 0;
+}
+
 static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList args,
                                             bool auto_submit = false) {
     QString decision_id;
@@ -29009,6 +29329,10 @@ int dispatch(QStringList args) {
         if (opts.help) return command_help("control");
         return control_command(opts, args);
     }
+    if (group == "mission" || group == "llm-mission") {
+        if (opts.help) return command_help("mission");
+        return mission_command(opts, args);
+    }
     if (group == "sandbox") {
         if (opts.help) return command_help("sandbox");
         return sandbox_command(opts, args);
@@ -29516,7 +29840,7 @@ int dispatch(QStringList args) {
                      "usage: ai providers | ai use <provider> | ai test [prompt...] | ai recipes | "
                      "ai recipe show|run ... | "
                      "ai ask <prompt...> | ai <brief|risk|thesis|radar> <target> | "
-                     "ai ctx <symbol> [--json] [--market prediction|equity] | "
+                     "ai ctx <symbol> [--json] [--market crypto|prediction|equity] | "
                      "ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H] [--json] | "
                      "ai screen [--market prediction|equity|crypto] [--limit N] [--json] | "
                      "ai positions [--handler H] [--json] | "
