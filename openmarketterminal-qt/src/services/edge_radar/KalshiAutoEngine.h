@@ -111,6 +111,9 @@ struct KalshiAutoContext {
     int calibration_sample_count = 0;
     double learned_model_weight = 0.0;
     bool calibration_gate_enabled = false;
+    // Evidence collection may continue while this remains false. A calibrated
+    // bucket only affects executable fair value after an explicit promotion.
+    bool model_authority_enabled = false;
     int minimum_calibration_samples = 30;
     double spot_index_basis = 0.0;
     int basis_sample_count = 0;

@@ -16,6 +16,7 @@
 #include "mcp/McpProvider.h"
 #include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
+#include "mcp/tools/LivePnl.h"
 #include "python/NotebookKernel.h"
 #include "python/PythonSetupManager.h"
 #include "screens/ai_chat/AnalysisSlashCommands.h"
@@ -347,9 +348,9 @@ static int command_help(const QString& topic) {
     if (topic == "crypto-latency" || topic == "latency" || topic == "feed-race") {
         std::printf(
             "Crypto latency feed race:\n"
-            "  crypto-latency sample [BTC-USD] [--sources coinbase,kraken,binanceus,bitcointicker] [--duration-ms N]\n"
+            "  crypto-latency sample [BTC-USD] [--sources coinbase,kraken,gemini,binanceus,bitcointicker] [--duration-ms N]\n"
             "                          [--min-live-sources N] [--min-ticks N]\n"
-            "  crypto-latency watch  [BTC-USD] [--sources coinbase,kraken,binanceus,bitcointicker] [--duration-ms N]\n"
+            "  crypto-latency watch  [BTC-USD] [--sources coinbase,kraken,gemini,binanceus,bitcointicker] [--duration-ms N]\n"
             "Uses public exchange WebSockets and local receive timestamps to show which source is freshest,\n"
             "how old each source's last tick is, and the cross-source price spread in bps. No API keys.\n");
         return 0;
@@ -544,6 +545,7 @@ static int command_help(const QString& topic) {
             "  data test <connection-id>\n"
             "  data lake status\n"
             "  data lake ensure\n"
+            "  data lake cleanup-interrupted [--yes]\n"
             "  data lake mirror-edge [--symbol BTC]\n"
             "  data lake mirror-decisions [--limit N]\n"
             "  data lake mirror-broker-events [--limit N]\n"
@@ -618,7 +620,7 @@ static int command_help(const QString& topic) {
         std::printf(
             "Edge Radar commands:\n"
             "  edge evaluate --market-prob P --model-prob P [--spread P] [--fee P]\n"
-            "  edge microstructure [BTC-USD] [--sources coinbase,kraken,bitcointicker] [--duration-ms N] [--watch]\n"
+            "  edge flow [BTC-USD] [--sources coinbase,kraken,gemini] [--duration-ms N] [--watch] [--jsonl] [--interval-ms N]\n"
             "  edge scalp-gate [BTC-USD] [--horizon-sec N] [--watch] [--iterations N] [--maker]\n"
             "  edge spot-swing-gate [--symbols BTC,ETH,SOL] [--horizon 1h|4h|1d]\n"
             "                       [--venue coinbase_advanced|coinbase_tier2] [--target-move-pct P]\n"
@@ -6680,6 +6682,31 @@ static int crypto_readiness_command(const GlobalOpts& opts, QStringList args) {
     const bool trade_allowed = openmarketterminal::mcp::cli_trading_allowed();
     const bool live_armed = openmarketterminal::mcp::cli_live_armed();
     const bool fast_armed = openmarketterminal::mcp::cli_fast_live_armed();
+    const auto venue_role = [](const QString& candidate) {
+        const QString normalized = candidate.trimmed().toLower();
+        const bool executable = normalized == QStringLiteral("coinbase") ||
+                                normalized == QStringLiteral("coinbase_advanced") ||
+                                normalized == QStringLiteral("alpaca");
+        const bool reference_only = normalized == QStringLiteral("kraken");
+        const QString role = reference_only
+            ? QStringLiteral("reference_only")
+            : executable ? QStringLiteral("execution_adapter_available")
+                         : QStringLiteral("data_only");
+        const QString note = reference_only
+            ? QStringLiteral("Independent live price/depth reference; no authenticated Kraken order execution adapter is enabled.")
+            : executable
+                ? QStringLiteral("Execution adapter available; credentials and live gates still control submission.")
+                : QStringLiteral("Not executable through the current crypto trading surface.");
+        return QJsonObject{{"venue", candidate},
+                           {"execution_role", role},
+                           {"execution_adapter_available", executable},
+                           {"execution_note", note}};
+    };
+    const QJsonObject active_venue_role = venue_role(venue);
+    const QString execution_role = active_venue_role.value(QStringLiteral("execution_role")).toString();
+    const bool execution_adapter_available = active_venue_role.value(
+        QStringLiteral("execution_adapter_available")).toBool();
+    const QString execution_note = active_venue_role.value(QStringLiteral("execution_note")).toString();
 
     if (opts.json) {
         QJsonObject out{{"exchange", venue},
@@ -6696,7 +6723,15 @@ static int crypto_readiness_command(const GlobalOpts& opts, QStringList args) {
                         {"cli_live_armed", live_armed},
                         {"cli_fast_live_armed", fast_armed},
                         {"venue_allowed", venue_allowed},
+                        {"execution_role", execution_role},
+                        {"execution_adapter_available", execution_adapter_available},
+                        {"execution_note", execution_note},
                         {"fee_profile", crypto_fee_profile_json(venue, fee_profile)}};
+        QJsonArray venue_roles;
+        venue_roles.append(venue_role(QStringLiteral("coinbase_advanced")));
+        venue_roles.append(venue_role(QStringLiteral("kraken")));
+        venue_roles.append(venue_role(QStringLiteral("alpaca")));
+        out["venue_roles"] = venue_roles;
         QJsonArray allowed_json;
         for (const QString& v : allowed)
             allowed_json.append(v);
@@ -6721,6 +6756,9 @@ static int crypto_readiness_command(const GlobalOpts& opts, QStringList args) {
     if (!balance_error.isEmpty()) std::printf("balance error  %s\n", qUtf8Printable(balance_error));
     std::printf("fee profile    %s maker %.4f bps / taker %.4f bps\n",
                 qUtf8Printable(fee_profile.profile), fee_profile.maker_bps, fee_profile.taker_bps);
+    std::printf("venue role     %s\n", qUtf8Printable(execution_role));
+    std::printf("execution      %s\n", qUtf8Printable(execution_note));
+    std::printf("Kraken role    reference-only data/depth feed; not executable in this build\n");
     std::printf("live gates     kill=%s trading=%s live=%s fast=%s venue_allowed=%s\n",
                 yn(kill), yn(trade_allowed), yn(live_armed), yn(fast_armed), yn(venue_allowed));
     std::printf("allowed venues %s\n", qUtf8Printable(allowed.join(',')));
@@ -9602,6 +9640,18 @@ static int data_lake_command(const GlobalOpts& opts, QStringList args) {
         QJsonObject out = lake.status();
         out["duckdb"] = duckdb_path();
         out["duckdb_database"] = lake.root_dir() + QStringLiteral("/openterminal.duckdb");
+        return data_lake_emit(opts, out);
+    }
+    if (sub == "cleanup-interrupted" || sub == "cleanup_interrupted") {
+        const bool confirmed = args.removeAll(QStringLiteral("--yes")) > 0;
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: data lake cleanup-interrupted [--yes]\n");
+            return 2;
+        }
+        QString error;
+        QJsonObject out = lake.cleanup_interrupted_artifacts(confirmed, &error);
+        if (!error.isEmpty())
+            out["error"] = error;
         return data_lake_emit(opts, out);
     }
     if (sub == "ensure" || sub == "init") {
@@ -13212,7 +13262,7 @@ static int crypto_latency_command(const GlobalOpts& opts, QStringList args) {
     using services::crypto_latency::CryptoLatencyService;
     const QString sub = args.isEmpty() ? QStringLiteral("sample") : args.takeFirst().trimmed().toLower();
     if (sub != QStringLiteral("sample") && sub != QStringLiteral("snapshot") && sub != QStringLiteral("watch")) {
-        std::fprintf(stderr, "usage: crypto-latency sample BTC-USD [--sources coinbase,kraken,binanceus,bitcointicker] [--duration-ms N] [--min-live-sources N]\n");
+        std::fprintf(stderr, "usage: crypto-latency sample BTC-USD [--sources coinbase,kraken,gemini,binanceus,bitcointicker] [--duration-ms N] [--min-live-sources N]\n");
         return 2;
     }
 
@@ -13531,15 +13581,14 @@ static int edge_emit_impulse(const GlobalOpts& opts,
 }
 
 static services::edge_radar::CryptoMicrostructureSnapshot
-edge_capture_microstructure(const QString& symbol,
+edge_capture_microstructure(services::edge_radar::CryptoMicrostructureRadar& radar,
+                            const QString& symbol,
                             const QStringList& sources,
                             int duration_ms,
                             bool store_raw_ticks = false) {
     using services::crypto_latency::CryptoLatencyService;
-    using services::edge_radar::CryptoMicrostructureRadar;
 
     CryptoLatencyService service;
-    CryptoMicrostructureRadar radar;
     QEventLoop loop;
     QTimer timeout;
     timeout.setSingleShot(true);
@@ -13570,6 +13619,15 @@ edge_capture_microstructure(const QString& symbol,
     return snapshot;
 }
 
+static services::edge_radar::CryptoMicrostructureSnapshot
+edge_capture_microstructure(const QString& symbol,
+                            const QStringList& sources,
+                            int duration_ms,
+                            bool store_raw_ticks = false) {
+    services::edge_radar::CryptoMicrostructureRadar radar;
+    return edge_capture_microstructure(radar, symbol, sources, duration_ms, store_raw_ticks);
+}
+
 static QString edge_price_or_dash(double price) {
     return price > 0.0 ? QString::number(price, 'f', price < 10.0 ? 4 : 2)
                        : QStringLiteral("-");
@@ -13594,35 +13652,49 @@ static int edge_emit_microstructure(const GlobalOpts& opts,
                 static_cast<long long>(snapshot.freshest_age_ms),
                 snapshot.live_sources,
                 snapshot.cross_source_spread_bps);
-    std::printf("pressure     tape=%+.2f book=%+.2f ticks=%d\n",
+    std::printf("flow         tick_direction=%+.2f top_book_imbalance=%+.2f book_sources=%d ticks=%d\n",
                 snapshot.tape_pressure,
                 snapshot.book_pressure,
+                snapshot.top_book_sources,
                 snapshot.tick_count);
+    std::printf("microprice   %s (top-of-book quantity weighted)\n",
+                qUtf8Printable(edge_price_or_dash(snapshot.microprice)));
+    std::printf("aggressor    %s pressure=%+.2f coverage=%.0f%% buy=%.4f sell=%.4f trades=%d\n",
+                qUtf8Printable(snapshot.aggressive_trade_flow_status),
+                snapshot.aggressor_pressure,
+                snapshot.aggressor_coverage * 100.0,
+                snapshot.aggressor_buy_volume,
+                snapshot.aggressor_sell_volume,
+                snapshot.classified_trades);
 
     std::printf("\nSOURCES\n");
-    std::printf("%-13s %-11s %12s %12s %12s %9s %8s %s\n",
-                "SOURCE", "STATUS", "BID", "ASK", "PRICE", "SPREAD", "AGE", "MSG");
+    std::printf("%-13s %-11s %12s %9s %12s %9s %12s %8s %8s %8s %s\n",
+                "SOURCE", "STATUS", "BID", "BID SZ", "ASK", "ASK SZ", "MICRO", "BOOK", "AGE", "Q AGE", "MSG");
     for (const auto& s : snapshot.sources) {
-        std::printf("%-13s %-11s %12s %12s %12s %8.2f %7lldms %s\n",
+        std::printf("%-13s %-11s %12s %9.4f %12s %9.4f %12s %+7.2f %7lldms %7lldms %s\n",
                     qUtf8Printable(s.source),
                     qUtf8Printable(s.status),
                     qUtf8Printable(edge_price_or_dash(s.best_bid)),
+                    s.bid_size,
                     qUtf8Printable(edge_price_or_dash(s.best_ask)),
-                    qUtf8Printable(edge_price_or_dash(s.price)),
-                    s.spread_bps,
+                    s.ask_size,
+                    qUtf8Printable(edge_price_or_dash(s.microprice)),
+                    s.top_book_imbalance,
                     static_cast<long long>(s.age_ms),
+                    static_cast<long long>(s.quote_age_ms),
                     qUtf8Printable(s.message.left(32)));
     }
 
     std::printf("\nWINDOWS\n");
-    std::printf("%-8s %8s %8s %8s %10s %12s %12s\n",
-                "WINDOW", "UP", "DOWN", "FLAT", "PRESSURE", "MOVE", "PRICE");
+    std::printf("%-8s %8s %8s %8s %10s %10s %12s %12s\n",
+                "WINDOW", "UP", "DOWN", "FLAT", "COVERAGE", "TICK PRESS", "MOVE", "PRICE");
     for (const auto& w : snapshot.windows) {
-        std::printf("%-8s %8d %8d %8d %10.2f %11s %12s\n",
+        std::printf("%-8s %8d %8d %8d %8lldms %10.2f %11s %12s\n",
                     qUtf8Printable(QStringLiteral("%1s").arg(w.seconds)),
                     w.upticks,
                     w.downticks,
                     w.flat_ticks,
+                    static_cast<long long>(w.coverage_ms),
                     w.tape_pressure,
                     qUtf8Printable(w.available ? QStringLiteral("%1%").arg(w.move_pct, 0, 'f', 3)
                                                 : QStringLiteral("-")),
@@ -13640,10 +13712,13 @@ static int edge_microstructure_command(const GlobalOpts& opts, QStringList args)
     QString sources_raw;
     QString interval_raw;
     QString iterations_raw;
+    QString interval_ms_raw;
     const bool watch = take_bool_flag(args, QStringLiteral("--watch"));
+    const bool jsonl = take_bool_flag(args, QStringLiteral("--jsonl"));
     if (!take_string_option(args, QStringLiteral("--duration-ms"), duration_raw) ||
         !take_string_option(args, QStringLiteral("--sources"), sources_raw) ||
         !take_string_option(args, QStringLiteral("--interval-sec"), interval_raw) ||
+        !take_string_option(args, QStringLiteral("--interval-ms"), interval_ms_raw) ||
         !take_string_option(args, QStringLiteral("--iterations"), iterations_raw))
         return 2;
 
@@ -13656,6 +13731,15 @@ static int edge_microstructure_command(const GlobalOpts& opts, QStringList args)
         interval_sec = interval_raw.toInt(&ok);
         if (!ok || interval_sec < 1 || interval_sec > 3600) {
             std::fprintf(stderr, "--interval-sec must be 1..3600\n");
+            return 2;
+        }
+    }
+    int interval_ms = interval_sec * 1000;
+    if (!interval_ms_raw.isEmpty()) {
+        bool ok = false;
+        interval_ms = interval_ms_raw.toInt(&ok);
+        if (!ok || interval_ms < 100 || interval_ms > 3'600'000) {
+            std::fprintf(stderr, "--interval-ms must be 100..3600000\n");
             return 2;
         }
     }
@@ -13676,23 +13760,31 @@ static int edge_microstructure_command(const GlobalOpts& opts, QStringList args)
     }
 
     int rendered = 0;
+    services::edge_radar::CryptoMicrostructureRadar radar;
     while (iterations == 0 || rendered < iterations) {
-        if (watch && !opts.json)
+        if (watch && !opts.json && !jsonl)
             std::printf("\033[2J\033[H");
         const auto snapshot = edge_capture_microstructure(
+            radar,
             services::crypto_latency::CryptoLatencyService::normalize_symbol(symbol),
             edge_parse_latency_sources(sources_raw),
             duration_ms);
-        const int rc = edge_emit_microstructure(opts, snapshot);
+        int rc = 0;
+        if (jsonl) {
+            const QJsonObject row = services::edge_radar::CryptoMicrostructureRadar::to_json(snapshot);
+            std::printf("%s\n", QJsonDocument(row).toJson(QJsonDocument::Compact).constData());
+        } else {
+            rc = edge_emit_microstructure(opts, snapshot);
+        }
         std::fflush(stdout);
-        if (rc != 0 || opts.json)
+        if (rc != 0 || (opts.json && !jsonl))
             return rc;
         ++rendered;
         if (iterations > 0 && rendered >= iterations)
             break;
-        if (watch)
+        if (watch && !jsonl)
             std::printf("\nwatch        refreshing every %ds; press Ctrl-C to stop\n", interval_sec);
-        QThread::sleep(static_cast<unsigned long>(interval_sec));
+        QThread::msleep(static_cast<unsigned long>(interval_ms));
     }
     return 0;
 }
@@ -14873,9 +14965,10 @@ static int edge_emit_crypto_recommendation(
                 qUtf8Printable(edge_pct(decision.raw_edge)),
                 qUtf8Printable(edge_pct(decision.edge_after_cost)),
                 qUtf8Printable(edge_pct(decision.gate_edge)));
-    std::printf("pressure     tape=%+.2f book=%+.2f ticks=%d divergence=%.2fbps\n",
+    std::printf("flow         tick_direction=%+.2f top_book_imbalance=%+.2f book_sources=%d ticks=%d divergence=%.2fbps\n",
                 snapshot.tape_pressure,
                 snapshot.book_pressure,
+                snapshot.top_book_sources,
                 snapshot.tick_count,
                 snapshot.cross_source_spread_bps);
     std::printf("rationale    %s\n", qUtf8Printable(decision.rationale));
@@ -16372,7 +16465,7 @@ static int edge_journal_evidence_command(const GlobalOpts& opts, QStringList arg
                 cost.value("slippage_bps").toDouble(),
                 cost.value("cross_source_spread_bps").toDouble(),
                 cost.value("min_edge_bps").toDouble());
-    std::printf("micro        live=%d freshest=%s age=%.0fms tape=%+.2f book=%+.2f ticks=%d\n",
+    std::printf("micro        live=%d freshest=%s age=%.0fms tick_direction=%+.2f top_book_imbalance=%+.2f ticks=%d\n",
                 micro.value("live_sources").toInt(),
                 qUtf8Printable(micro.value("freshest_source").toString()),
                 micro.value("freshest_age_ms").toDouble(),
@@ -16653,9 +16746,10 @@ static int edge_emit_scalp_gate(const GlobalOpts& opts, const EdgeScalpGate& gat
                 gate.trust.resolved,
                 qUtf8Printable(gate.trust.buy_resolved ? edge_pct(edge_rate(gate.trust.buy_wins, gate.trust.buy_resolved))
                                                         : QStringLiteral("-")));
-    std::printf("pressure     tape=%+.2f book=%+.2f ticks=%d divergence=%.2fbps\n",
+    std::printf("flow         tick_direction=%+.2f top_book_imbalance=%+.2f book_sources=%d ticks=%d divergence=%.2fbps\n",
                 gate.snapshot.tape_pressure,
                 gate.snapshot.book_pressure,
+                gate.snapshot.top_book_sources,
                 gate.snapshot.tick_count,
                 gate.snapshot.cross_source_spread_bps);
     if (!gate.blockers.isEmpty())
@@ -21704,6 +21798,10 @@ static services::edge_radar::KalshiAutoContext kalshi_auto_context(
                                                 model.learned_model_weight);
     }
     context.calibration_gate_enabled = true;
+    // Do not convert calibration samples into live model authority yet. The
+    // CLI keeps recording independent evidence but prices every Kalshi plan at
+    // the executable market until a human promotion path is introduced.
+    context.model_authority_enabled = false;
     context.causal_gate_enabled = true;
 
     const QString event_clock_path =
@@ -21870,6 +21968,9 @@ static int kalshi_auto_emit(const GlobalOpts& opts, const QString& event,
                     {"calibration_samples", context.calibration_sample_count},
                     {"learned_model_weight", context.learned_model_weight},
                     {"calibration_gate_enabled", context.calibration_gate_enabled},
+                    {"model_authority_enabled", context.model_authority_enabled},
+                    {"model_authority", context.model_authority_enabled
+                        ? QStringLiteral("enabled") : QStringLiteral("market_only")},
                     {"causal_gate_enabled", context.causal_gate_enabled},
                     {"surface", KalshiAutoEngine::surface_to_json(surface)},
                     {"portfolio", KalshiAutoEngine::plan_to_json(plan)},
@@ -22083,6 +22184,10 @@ static Result<int> kalshi_auto_journal_plan(
             {"evidence_tier", fully_calibrated ? QStringLiteral("calibrated")
                                                 : QStringLiteral("bounded_micro_bootstrap")},
             {"required_edge", micro_evidence.required_edge}};
+        const QJsonObject execution_snapshot = kalshi_auto_current_snapshot(
+            point.ticker, context.decision_ts_ms);
+        const auto spot_confirmation = kalshi_spot_microstructure_confirmation(
+            execution_snapshot, point.selected_side, context.decision_ts_ms);
         services::decision::DecisionRequest envelope_request;
         envelope_request.decision_id = id;
         envelope_request.decision_ts_ms = context.decision_ts_ms;
@@ -22106,6 +22211,26 @@ static Result<int> kalshi_auto_journal_plan(
         model_signal.max_age_ms = 2 * 60 * 60 * 1000;
         model_signal.features = signal;
         envelope_request.model_signals.append(model_signal);
+        if (!execution_snapshot.value(QStringLiteral("spot_microstructure")).toObject().isEmpty()) {
+            services::decision::DecisionSignal spot_signal;
+            spot_signal.name = QStringLiteral("cross_exchange_spot_microstructure");
+            spot_signal.source = QStringLiteral("coinbase_kraken_gemini");
+            spot_signal.model_version = QStringLiteral("crypto-microstructure-v1");
+            spot_signal.as_of_ms = execution_snapshot.value(QStringLiteral("observed_at_ms"))
+                                    .toVariant().toLongLong();
+            spot_signal.probability = spot_confirmation.direction == QStringLiteral("up")
+                ? 0.5 + 0.5 * spot_confirmation.confidence
+                : spot_confirmation.direction == QStringLiteral("down")
+                    ? 0.5 - 0.5 * spot_confirmation.confidence : 0.5;
+            spot_signal.confidence = spot_confirmation.confidence;
+            spot_signal.max_age_ms = 5000;
+            // The deterministic confirmation below owns the veto. Marking this
+            // advisory prevents it from manufacturing probability-model edge.
+            spot_signal.advisory_only = true;
+            spot_signal.features = execution_snapshot.value(
+                QStringLiteral("spot_microstructure")).toObject();
+            envelope_request.model_signals.append(spot_signal);
+        }
         if (!news_pulse.isEmpty()) {
             services::decision::DecisionSignal news_signal;
             news_signal.name = QStringLiteral("btc_news_pulse");
@@ -22158,11 +22283,10 @@ static Result<int> kalshi_auto_journal_plan(
             {"news_role", QStringLiteral("advisory_only")}};
         const auto envelope = services::decision::DecisionOrchestrator::evaluate(envelope_request);
         const bool envelope_approved = envelope.verdict == QStringLiteral("TRADE_CANDIDATE");
-        const bool evidence_approved = is_selected && envelope_approved && micro_evidence.eligible;
+        const bool evidence_approved = is_selected && envelope_approved && micro_evidence.eligible &&
+                                       spot_confirmation.eligible;
         QJsonArray micro_blockers;
         for (const auto& blocker : micro_evidence.blockers) micro_blockers.append(blocker);
-        const QJsonObject execution_snapshot = kalshi_auto_current_snapshot(point.ticker,
-                                                                               context.decision_ts_ms);
         const QJsonObject features{
             {"signal", signal},
             {"portfolio", QJsonObject{{"verdict", plan.verdict},
@@ -22176,6 +22300,7 @@ static Result<int> kalshi_auto_journal_plan(
                                                                         : "bounded_micro_bootstrap"},
                                              {"required_edge", micro_evidence.required_edge},
                                              {"blockers", micro_blockers}}},
+            {"spot_microstructure_confirmation", spot_confirmation.to_json()},
             {"decision_envelope", envelope.to_json()},
             {"execution_snapshot", execution_snapshot},
             {"execution_snapshot_status", execution_snapshot.isEmpty()
@@ -22196,8 +22321,12 @@ static Result<int> kalshi_auto_journal_plan(
                   .arg(fully_calibrated ? QStringLiteral("calibrated model")
                                         : QStringLiteral("bounded bootstrap evidence"))
             : is_selected
-                ? QStringLiteral("micro-evidence gate rejected: %1%2")
+                ? QStringLiteral("execution confirmation rejected: %1%2%3")
                       .arg(micro_evidence.blockers.join(QStringLiteral("; ")),
+                           spot_confirmation.blockers.isEmpty()
+                               ? QString()
+                               : QStringLiteral("; spot microstructure: %1")
+                                     .arg(spot_confirmation.blockers.join(QStringLiteral("; "))),
                            envelope.risk_blockers.isEmpty()
                                ? QString()
                                : QStringLiteral("; unified risk: %1")
@@ -22417,12 +22546,41 @@ static int kalshi_auto_status_command(const GlobalOpts& opts, const QStringList&
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) while (!file.atEnd()) { file.readLine(); ++snapshots; }
     auto outputs = EdgePredictionModelRepository::instance().list_model_outputs(QStringLiteral("BTC"),
                                                                                  QDateTime::currentMSecsSinceEpoch(), 40);
-    const QJsonObject out{{"paper_only", true}, {"ladder_evidence_path", path}, {"snapshots", snapshots},
+    QJsonObject engine;
+    QFile engine_file(kalshi_auto_evidence_path(QStringLiteral("kalshi-ws-engine.json")));
+    if (engine_file.open(QIODevice::ReadOnly | QIODevice::Text))
+        engine = QJsonDocument::fromJson(engine_file.readAll()).object();
+    QJsonObject session;
+    QFile session_file(kalshi_auto_evidence_path(QStringLiteral("kalshi-live-session.json")));
+    if (session_file.open(QIODevice::ReadOnly | QIODevice::Text))
+        session = QJsonDocument::fromJson(session_file.readAll()).object();
+    const QDateTime ends_at = QDateTime::fromString(
+        session.value(QStringLiteral("ends_at")).toString(), Qt::ISODateWithMs);
+    const bool session_active = session.value(QStringLiteral("enabled")).toBool() &&
+        session.value(QStringLiteral("autonomous")).toBool() &&
+        (!ends_at.isValid() || ends_at > QDateTime::currentDateTimeUtc());
+    const QJsonObject out{{"schema_version", 2},
+                          {"command_is_read_only", true},
+                          {"legacy_paper_evidence", true},
+                          {"ladder_evidence_path", path}, {"snapshots", snapshots},
                           {"model_outputs", outputs.is_ok() ? outputs.value().size() : 0},
-                          {"live_submission_capability", false}};
+                          {"live_session", QJsonObject{{"active", session_active},
+                              {"ends_at", session.value(QStringLiteral("ends_at")).toString()},
+                              {"max_stake", session.value(QStringLiteral("max_stake")).toDouble()}}},
+                          {"decision_engine", QJsonObject{{"connected", engine.value(QStringLiteral("connected")).toBool()},
+                              {"stream_healthy", engine.value(QStringLiteral("stream_healthy")).toBool()},
+                              {"transport_age_ms", engine.value(QStringLiteral("transport_age_ms")).toString()},
+                              {"book_update_age_ms", engine.value(QStringLiteral("book_update_age_ms")).toString()},
+                              {"last_error", engine.value(QStringLiteral("last_error")).toString()}}},
+                          {"status_command_can_submit", false},
+                          {"guarded_execution_path", "control execute prediction"},
+                          {"rule", "This status command is intentionally read-only. An active live session may submit only through the guarded execution path."}};
     if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
-    else std::printf("Kalshi auto: PAPER ONLY\nsnapshots %d\nmodels %d\nevidence %s\nlive submission: structurally unavailable\n",
-                     snapshots, out.value("model_outputs").toInt(), qUtf8Printable(path));
+    else std::printf("Kalshi auto evidence\nsnapshots %d\nmodels %d\nlive session: %s\nstream: %s\nevidence %s\n",
+                     snapshots, out.value("model_outputs").toInt(),
+                     session_active ? "active" : "inactive",
+                     engine.value(QStringLiteral("stream_healthy")).toBool() ? "healthy" : "unhealthy",
+                     qUtf8Printable(path));
     return 0;
 }
 
@@ -22621,6 +22779,51 @@ static int kalshi_auto_snapshot_command(const GlobalOpts& opts, QStringList args
                 qUtf8Printable(divergence.value("label").toString()));
     if (model_probability >= 0.0)
         std::printf("Cost-net model context supplied; use --json for the exact calculations.\n");
+    return 0;
+}
+
+static int kalshi_auto_decisions_command(const GlobalOpts& opts, QStringList args,
+                                         bool candidates_only) {
+    QString ticker;
+    if (!take_string_option(args, QStringLiteral("--ticker"), ticker) || !args.isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto %s [--ticker TICKER]\n",
+                     candidates_only ? "candidates" : "decisions");
+        return 2;
+    }
+    QFile file(kalshi_auto_evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    QJsonObject root;
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text))
+        root = QJsonDocument::fromJson(file.readAll()).object();
+    const QJsonObject snapshots = root.value(QStringLiteral("snapshots")).toObject();
+    QJsonArray rows;
+    for (auto it = snapshots.constBegin(); it != snapshots.constEnd(); ++it) {
+        if (!ticker.isEmpty() && it.key().compare(ticker, Qt::CaseInsensitive) != 0) continue;
+        QJsonObject row = it.value().toObject();
+        const QString state = row.value(QStringLiteral("automation_state")).toObject()
+                                  .value(QStringLiteral("state")).toString();
+        if (candidates_only && !state.startsWith(QStringLiteral("CONFIRMED_"))) continue;
+        row.insert(QStringLiteral("ticker"), it.key());
+        rows.append(row);
+    }
+    const QJsonObject out{{QStringLiteral("schema_version"), 1},
+                          {QStringLiteral("read_only"), true},
+                          {QStringLiteral("candidate_filter"), candidates_only},
+                          {QStringLiteral("decisions"), rows},
+                          {QStringLiteral("count"), rows.size()},
+                          {QStringLiteral("execution_authority"), QStringLiteral("deterministic_daemon_only")}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+    } else {
+        std::printf("Kalshi %s: %lld (read-only; deterministic daemon owns execution)\n",
+                    candidates_only ? "candidates" : "decisions",
+                    static_cast<long long>(rows.size()));
+        for (const auto& value : rows) {
+            const QJsonObject row = value.toObject();
+            std::printf("%-32s %-18s %s\n", qUtf8Printable(row.value("ticker").toString()),
+                        qUtf8Printable(row.value("automation_state").toObject().value("state").toString()),
+                        qUtf8Printable(row.value("spot_microstructure").toObject().value("direction").toString()));
+        }
+    }
     return 0;
 }
 
@@ -23230,7 +23433,7 @@ static QJsonObject control_prediction_pulse(int limit) {
     if (kill_switch) blockers.append(QStringLiteral("kill switch is engaged"));
     if (markets.isEmpty()) blockers.append(QStringLiteral("no fresh 15m/1h local contract snapshots"));
 
-    return QJsonObject{{"schema_version", 1}, {"generated_at_ms", QString::number(now_ms)},
+    return QJsonObject{{"schema_version", 2}, {"generated_at_ms", QString::number(now_ms)},
                        {"read_only", true}, {"lane", "prediction"},
                        {"data_contract", "fresh local executable snapshots plus timestamped cached external research; no REST request is made"},
                        {"external_context_policy", QJsonObject{{"15m", "context only; maximum 10% advisory weight when <=5m old"},
@@ -23243,6 +23446,9 @@ static QJsonObject control_prediction_pulse(int limit) {
                                                             {"orders_remaining_this_hour", experiment.value(QStringLiteral("orders_remaining_this_hour")).toInt()}}},
                        {"feed", QJsonObject{{"stream_healthy", stream_healthy},
                                                {"event_age_ms", engine.value(QStringLiteral("event_age_ms")).toString()},
+                                               {"transport_age_ms", engine.value(QStringLiteral("transport_age_ms")).toString()},
+                                               {"book_update_age_ms", engine.value(QStringLiteral("book_update_age_ms")).toString()},
+                                               {"transport_stale_after_ms", engine.value(QStringLiteral("transport_stale_after_ms")).toString()},
                                                {"independent_spot", engine.value(QStringLiteral("latest_independent_spot")).toDouble()},
                                                {"independent_spot_age_ms", engine.value(QStringLiteral("latest_independent_spot_age_ms")).toString()},
                                                {"independent_spot_source", engine.value(QStringLiteral("latest_independent_spot_source")).toString()}}},
@@ -23476,24 +23682,45 @@ static QJsonObject control_trading_plan(const GlobalOpts& opts, const QString& s
 
 static QJsonObject control_audit_summary(int limit) {
     auto rows = Database::instance().execute(
-        "SELECT id,created_at,source,market_id,side,gate,call,edge_after_cost,seconds_left "
+        "SELECT id,created_at,source,market_id,side,gate,call,edge_after_cost,seconds_left,reasons "
         "FROM edge_decision_journal ORDER BY created_at DESC LIMIT ?", {limit});
     if (rows.is_err())
         return QJsonObject{{"state", "unavailable"}, {"reason", QString::fromStdString(rows.error())}};
     QJsonArray decisions;
     while (rows.value().next()) {
+        const QString source = rows.value().value(2).toString();
+        const QString side = rows.value().value(4).toString();
+        const QString gate = rows.value().value(5).toString();
+        const QString call = rows.value().value(6).toString();
+        const bool approved_spot_candidate =
+            source == QLatin1String("edge crypto-recommend") &&
+            side == QLatin1String("buy") &&
+            call == QLatin1String("BUY CANDIDATE") && gate == QLatin1String("pass");
+        const QString decision_state = approved_spot_candidate
+                                           ? QStringLiteral("approved_spot_candidate")
+                                           : gate == QLatin1String("pass")
+                                                 ? QStringLiteral("stored_evidence_only")
+                                                 : QStringLiteral("rejected");
+        const QString edge_semantics =
+            source == QLatin1String("edge crypto-recommend")
+                ? QStringLiteral("directional confidence proxy (model probability minus 0.5) after estimated costs; NOT expected spot return")
+                : QStringLiteral("producer-specific diagnostic value; NOT an order instruction without a current plan and execution recheck");
         decisions.append(QJsonObject{{"decision_id", rows.value().value(0).toString()},
                                      {"created_at", rows.value().value(1).toLongLong()},
-                                     {"source", rows.value().value(2).toString()},
+                                     {"source", source},
                                      {"market_id", rows.value().value(3).toString()},
-                                     {"side", rows.value().value(4).toString()},
-                                     {"gate", rows.value().value(5).toString()},
-                                     {"call", rows.value().value(6).toString()},
+                                     {"side", side},
+                                     {"gate", gate},
+                                     {"call", call},
                                      {"edge_after_cost", rows.value().value(7).toDouble()},
-                                     {"seconds_left", rows.value().value(8).toInt()}});
+                                     {"seconds_left", rows.value().value(8).toInt()},
+                                     {"decision_state", decision_state},
+                                     {"approved_spot_candidate", approved_spot_candidate},
+                                     {"edge_semantics", edge_semantics},
+                                     {"reasons", rows.value().value(9).toString()}});
     }
     return QJsonObject{{"state", "ready"}, {"decision_count", decisions.size()}, {"decisions", decisions},
-                       {"rule", "This audit is read-only. Decision records are evidence, not proof of profitability."}};
+                       {"rule", "This audit is read-only. Decision records are evidence, not proof of profitability or a current order instruction. Use a fresh plan and the guarded execution command before trading."}};
 }
 
 static QJsonObject control_manifest() {
@@ -24419,6 +24646,7 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
         {"market_id", market_id}, {"asset_id", market_id + QLatin1Char(':') + side},
         {"outcome", side == QStringLiteral("yes") ? QStringLiteral("Yes") : QStringLiteral("No")},
         {"side", "buy"}, {"contracts", contracts}, {"limit_price", observed_ask},
+        {"order_type", "fak"}, {"post_only", false}, {"cancel_order_on_pause", true},
         {"max_live_stake", max_stake}, {"experiment_loss_cap", experiment_cap},
         {"experiment_id", "kalshi-micro-live-v1"}, {"evidence_decision_id", id},
         {"autonomous", auto_submit},
@@ -24462,6 +24690,8 @@ static int kalshi_auto_live_prepare_command(const GlobalOpts& opts, QStringList 
     }
     return automation_emit_object(opts, out);
 }
+
+static int kalshi_auto_cancel_orders_command(const GlobalOpts& opts, QStringList args);
 
 static int kalshi_auto_live_session_command(const GlobalOpts& opts, QStringList args) {
     const bool paper_flag = take_bool_flag(args, QStringLiteral("--paper"));
@@ -24595,8 +24825,106 @@ static int kalshi_auto_live_command(const GlobalOpts& opts, QStringList args) {
     return 2;
 }
 
+static int kalshi_auto_cancel_orders_command(const GlobalOpts& opts, QStringList args) {
+    const bool confirmed = args.removeAll(QStringLiteral("--yes")) > 0;
+    if (!confirmed || !args.isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto cancel-orders --yes\n");
+        return 2;
+    }
+    using services::prediction::kalshi_ns::KalshiAdapter;
+    QStringList ids;
+    auto rows = Database::instance().execute(
+        "SELECT order_id FROM kalshi_live_orders WHERE order_id<>'' AND state IN "
+        "('submitting','submission_unknown','accepted','resting','partially_filled')", {});
+    if (rows.is_err()) {
+        std::fprintf(stderr, "%s\n", rows.error().c_str());
+        return 5;
+    }
+    while (rows.value().next()) ids.append(rows.value().value(0).toString());
+    if (ids.isEmpty())
+        return automation_emit_object(opts, QJsonObject{{"requested", 0}, {"verified", true},
+            {"still_open", QJsonArray{}}, {"orders", QJsonArray{}}});
+    const auto credentials = services::prediction::PredictionCredentialStore::load_kalshi();
+    if (!credentials || !credentials->is_valid()) {
+        std::fprintf(stderr, "valid Kalshi credentials are required to cancel %d bot-owned orders\n",
+                     static_cast<int>(ids.size()));
+        return 4;
+    }
+
+    KalshiAdapter adapter;
+    adapter.set_credentials(*credentials);
+    QJsonArray outcomes;
+    for (const QString& id : ids) {
+        QEventLoop loop;
+        QTimer timeout;
+        timeout.setSingleShot(true);
+        bool ok = false;
+        QString error;
+        QObject::connect(&adapter, &KalshiAdapter::order_cancelled, &loop,
+                         [&](const QString& oid, bool cancelled, const QString& message) {
+                             if (oid != id) return;
+                             ok = cancelled;
+                             error = message;
+                             loop.quit();
+                         });
+        QObject::connect(&adapter, &KalshiAdapter::error_occurred, &loop,
+                         [&](const QString& context, const QString& message) {
+                             error = context + QStringLiteral(": ") + message;
+                             loop.quit();
+                         });
+        QObject::connect(&timeout, &QTimer::timeout, &loop, [&] {
+            error = QStringLiteral("cancel timed out; reconciliation required");
+            loop.quit();
+        });
+        timeout.start(20000);
+        adapter.cancel_order(id);
+        loop.exec();
+        if (ok) {
+            const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+            Database::instance().execute(
+                "UPDATE kalshi_live_orders SET state=CASE WHEN filled_count>0 THEN "
+                "'partially_filled_cancelled' ELSE 'cancelled' END,remaining_count=0,updated_at=? "
+                "WHERE order_id=?", {now, id});
+        }
+        outcomes.append(QJsonObject{{"order_id", id}, {"ok", ok}, {"error", error}});
+    }
+
+    // Verification is separate from DELETE acknowledgements: the command only
+    // reports success after none of the bot-owned order IDs remains RESTING.
+    QVector<services::prediction::OpenOrder> open;
+    QString verify_error;
+    QEventLoop verify_loop;
+    QTimer verify_timeout;
+    verify_timeout.setSingleShot(true);
+    QObject::connect(&adapter, &KalshiAdapter::open_orders_ready, &verify_loop,
+                     [&](const auto& value) { open = value; verify_loop.quit(); });
+    QObject::connect(&adapter, &KalshiAdapter::error_occurred, &verify_loop,
+                     [&](const QString& context, const QString& message) {
+                         verify_error = context + QStringLiteral(": ") + message;
+                         verify_loop.quit();
+                     });
+    QObject::connect(&verify_timeout, &QTimer::timeout, &verify_loop, [&] {
+        verify_error = QStringLiteral("cancel verification timed out");
+        verify_loop.quit();
+    });
+    verify_timeout.start(20000);
+    adapter.fetch_open_orders();
+    verify_loop.exec();
+    QSet<QString> still_open;
+    for (const auto& order : open)
+        if (ids.contains(order.order_id)) still_open.insert(order.order_id);
+    const bool verified = verify_error.isEmpty() && still_open.isEmpty();
+    return automation_emit_object(opts, QJsonObject{{"requested", ids.size()},
+        {"verified", verified}, {"still_open", QJsonArray::fromStringList(still_open.values())},
+        {"verification_error", verify_error}, {"orders", outcomes}});
+}
+
 static int kalshi_auto_positions_command(const GlobalOpts& opts, const QStringList& args) {
-    if (!args.isEmpty()) { std::fprintf(stderr, "usage: kalshi auto positions\n"); return 2; }
+    const bool snapshot_only = args == QStringList{QStringLiteral("--snapshot-only")};
+    if (!args.isEmpty() && !snapshot_only) {
+        std::fprintf(stderr, "usage: kalshi auto positions [--snapshot-only]\n");
+        return 2;
+    }
     QJsonArray paper;
     auto query = Database::instance().execute(
         "SELECT p.position_id, p.strategy_id, j.market_id, p.side, p.state, p.limit_price, "
@@ -24686,6 +25014,7 @@ static int kalshi_auto_positions_command(const GlobalOpts& opts, const QStringLi
     QJsonArray live_orders;
     for (const auto& order : live_order_rows) {
         live_orders.append(QJsonObject{{"order_id", order.order_id},
+                                       {"client_order_id", order.client_order_id},
                                        {"asset_id", order.asset_id},
                                        {"market_id", order.market_id},
                                        {"outcome", order.outcome},
@@ -24695,6 +25024,64 @@ static int kalshi_auto_positions_command(const GlobalOpts& opts, const QStringLi
                                        {"size", order.size},
                                        {"filled", order.filled},
                                        {"status", order.status}});
+    }
+    QJsonArray reconcile_orders;
+    if (credentials && credentials->is_valid() && account_error.isEmpty()) {
+        QEventLoop reconcile_loop;
+        QTimer reconcile_timeout;
+        reconcile_timeout.setSingleShot(true);
+        QObject::connect(&adapter, &KalshiAdapter::reconcile_orders_ready, &reconcile_loop,
+                         [&](const QJsonArray& rows, const QString&) {
+                             reconcile_orders = rows;
+                             reconcile_loop.quit();
+                         });
+        QObject::connect(&adapter, &KalshiAdapter::error_occurred, &reconcile_loop,
+                         [&](const QString& ctx, const QString& msg) {
+                             account_error = ctx + QStringLiteral(": ") + msg;
+                             reconcile_loop.quit();
+                         });
+        QObject::connect(&reconcile_timeout, &QTimer::timeout, &reconcile_loop, [&]() {
+            account_error = QStringLiteral("account order reconciliation timed out");
+            reconcile_loop.quit();
+        });
+        reconcile_timeout.start(20000);
+        adapter.fetch_reconcile_orders(500);
+        reconcile_loop.exec();
+    }
+    const QString order_reconcile_at = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    for (const auto& value : reconcile_orders) {
+        const QJsonObject order = value.toObject();
+        const QString client_id = order.value(QStringLiteral("client_order_id")).toString();
+        const QString order_id = order.value(QStringLiteral("order_id")).toString();
+        if (client_id.isEmpty() && order_id.isEmpty()) continue;
+        const double initial = order.value(QStringLiteral("initial_count_fp")).toString().toDouble();
+        const double remaining = order.value(QStringLiteral("remaining_count_fp")).toString().toDouble();
+        double filled = order.value(QStringLiteral("fill_count_fp")).toString().toDouble();
+        if (filled <= 0.0 && initial > 0.0) filled = std::max(0.0, initial - remaining);
+        const QString remote = order.value(QStringLiteral("status")).toString().trimmed().toLower();
+        QString state;
+        if (remote == QLatin1String("resting"))
+            state = filled > 0.0 ? QStringLiteral("partially_filled") : QStringLiteral("resting");
+        else if (remote == QLatin1String("executed") || remote == QLatin1String("filled"))
+            state = QStringLiteral("filled");
+        else if (remote == QLatin1String("canceled") || remote == QLatin1String("cancelled"))
+            state = filled > 0.0 ? QStringLiteral("partially_filled_cancelled") : QStringLiteral("cancelled");
+        else if (remote == QLatin1String("rejected"))
+            state = QStringLiteral("rejected");
+        else if (remote == QLatin1String("expired"))
+            state = filled > 0.0 ? QStringLiteral("partially_filled_expired") : QStringLiteral("expired");
+        else
+            state = QStringLiteral("accepted");
+        Database::instance().execute(
+            "UPDATE kalshi_live_orders SET order_id=CASE WHEN ?<>'' THEN ? ELSE order_id END,state=?,"
+            "filled_count=?,remaining_count=?,last_reconciled_at=?,updated_at=?,raw_json=? "
+            "WHERE order_id=? OR client_order_id=?",
+            {order_id, order_id, state, filled, remaining, order_reconcile_at, order_reconcile_at,
+             QString::fromUtf8(QJsonDocument(order).toJson(QJsonDocument::Compact)), order_id, client_id});
+        Database::instance().execute(
+            "UPDATE order_drafts SET status=? WHERE draft_id IN (SELECT draft_id FROM kalshi_live_orders "
+            "WHERE order_id=? OR client_order_id=?)",
+            {state, order_id, client_id});
     }
     {
         const QString snapshot_path = kalshi_auto_evidence_path(
@@ -24713,6 +25100,12 @@ static int kalshi_auto_positions_command(const GlobalOpts& opts, const QStringLi
                 snapshot_file.commit())
                 QFile::setPermissions(snapshot_path, QFile::ReadOwner | QFile::WriteOwner);
         }
+    }
+    if (snapshot_only) {
+        return automation_emit_object(opts, QJsonObject{
+            {"schema_version", 1}, {"snapshot_only", true},
+            {"account_error", account_error}, {"positions", live},
+            {"open_orders", live_orders}, {"credentials_exposed", false}});
     }
     QJsonArray active_positions;
     for (const auto& value : live) {
@@ -24744,6 +25137,107 @@ static int kalshi_auto_positions_command(const GlobalOpts& opts, const QStringLi
     QJsonArray activity_json;
     for (const QVariant& value : account_activity)
         activity_json.append(QJsonObject::fromVariantMap(value.toMap()));
+
+    // Bind exchange order IDs to locally persisted client IDs first. This is
+    // what resolves a create-request timeout without ever resubmitting it.
+    const QString bind_at = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    for (const auto& order : live_order_rows) {
+        if (order.client_order_id.isEmpty()) continue;
+        Database::instance().execute(
+            "UPDATE kalshi_live_orders SET order_id=?,state=?,filled_count=?,remaining_count=?,"
+            "last_reconciled_at=?,updated_at=? WHERE client_order_id=?",
+            {order.order_id, order.filled > 0.0 ? QStringLiteral("partially_filled")
+                                                : QStringLiteral("resting"),
+             order.filled, order.size, bind_at, bind_at, order.client_order_id});
+    }
+
+    // Reconcile venue-authoritative fills before reporting account state. Fill
+    // IDs are idempotency keys, so WebSocket replay, REST overlap, and daemon
+    // restarts cannot double-book a position. Only newly inserted fills touch
+    // the local P&L ledger.
+    int reconciled_fills = 0;
+    for (const auto& value : activity_json) {
+        const QJsonObject fill = value.toObject();
+        if (fill.value(QStringLiteral("type")).toString() != QLatin1String("FILL")) continue;
+        const QString order_id = fill.value(QStringLiteral("order_id")).toString();
+        auto local = Database::instance().execute(
+            "SELECT client_order_id,market_id,asset_id,action,outcome FROM kalshi_live_orders WHERE order_id=?",
+            {order_id});
+        if (local.is_err() || !local.value().next()) continue; // human/non-bot fill
+        const QString client_id = local.value().value(0).toString();
+        const QString market_id = local.value().value(1).toString();
+        const QString asset_id = local.value().value(2).toString();
+        const QString action = local.value().value(3).toString().toLower();
+        const QString outcome = local.value().value(4).toString();
+        QString fill_key = fill.value(QStringLiteral("fill_id")).toString();
+        if (fill_key.isEmpty()) fill_key = fill.value(QStringLiteral("trade_id")).toString();
+        if (fill_key.isEmpty()) {
+            fill_key = QStringLiteral("rest:%1:%2:%3:%4")
+                           .arg(order_id)
+                           .arg(fill.value(QStringLiteral("ts_ms")).toVariant().toLongLong())
+                           .arg(fill.value(QStringLiteral("size")).toDouble(), 0, 'f', 8)
+                           .arg(fill.value(QStringLiteral("price")).toDouble(), 0, 'f', 8);
+        }
+        const double count = fill.value(QStringLiteral("size")).toDouble();
+        const double price = fill.value(QStringLiteral("price")).toDouble();
+        const double fee = fill.value(QStringLiteral("fee_cost")).toDouble();
+        if (count <= 0.0 || price <= 0.0) continue;
+        const QString raw = QString::fromUtf8(QJsonDocument(fill).toJson(QJsonDocument::Compact));
+        auto inserted = Database::instance().execute(
+            "INSERT OR IGNORE INTO kalshi_live_fills(fill_key,trade_id,order_id,client_order_id,market_id,asset_id,"
+            "action,outcome,count,price,fee,exchange_ts_ms,received_ts_ms,source,raw_json) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {fill_key, fill.value(QStringLiteral("trade_id")).toString(), order_id, client_id,
+             market_id, asset_id, action, outcome, count, price, fee,
+             fill.value(QStringLiteral("ts_ms")).toVariant().toLongLong(),
+             QDateTime::currentMSecsSinceEpoch(), QStringLiteral("rest_fill_reconcile"), raw});
+        if (inserted.is_err() || inserted.value().numRowsAffected() != 1) continue;
+        if (action == QLatin1String("buy"))
+            mcp::tools::record_open(QString(), QStringLiteral("kalshi"), asset_id, count, price);
+        else
+            mcp::tools::record_close(QString(), QStringLiteral("kalshi"), asset_id, count, price);
+        ++reconciled_fills;
+    }
+
+    const QString reconciled_at = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    for (const auto& order : live_order_rows) {
+        const QString state = order.filled > 0.0 ? QStringLiteral("partially_filled")
+                                                 : QStringLiteral("resting");
+        Database::instance().execute(
+            "UPDATE kalshi_live_orders SET order_id=CASE WHEN order_id='' THEN ? ELSE order_id END,"
+            "state=?,filled_count=?,remaining_count=?,last_reconciled_at=?,updated_at=? "
+            "WHERE order_id=? OR client_order_id=?",
+            {order.order_id, state, order.filled, order.size, reconciled_at, reconciled_at,
+             order.order_id, order.client_order_id});
+        Database::instance().execute(
+            "UPDATE order_drafts SET status=? WHERE draft_id IN "
+            "(SELECT draft_id FROM kalshi_live_orders WHERE order_id=? OR client_order_id=?)",
+            {state, order.order_id, order.client_order_id});
+    }
+    // Recompute cumulative quantities from the deduplicated fill ledger. A
+    // create response and a later REST fill may describe the same cumulative
+    // execution; cap at requested_count and retain resting status if quantity
+    // remains on the venue.
+    Database::instance().execute(
+        "UPDATE kalshi_live_orders SET filled_count=CASE WHEN EXISTS(SELECT 1 FROM kalshi_live_fills f "
+        "WHERE f.client_order_id=kalshi_live_orders.client_order_id) THEN min(requested_count,(SELECT SUM(f.count) "
+        "FROM kalshi_live_fills f WHERE f.client_order_id=kalshi_live_orders.client_order_id)) ELSE filled_count END,"
+        "remaining_count=CASE WHEN EXISTS(SELECT 1 FROM kalshi_live_fills f WHERE "
+        "f.client_order_id=kalshi_live_orders.client_order_id) THEN max(0,requested_count-min(requested_count,"
+        "(SELECT SUM(f.count) FROM kalshi_live_fills f WHERE f.client_order_id=kalshi_live_orders.client_order_id))) "
+        "ELSE remaining_count END,"
+        "average_fill_price=COALESCE((SELECT SUM(f.count*f.price)/NULLIF(SUM(f.count),0) FROM kalshi_live_fills f "
+        "WHERE f.client_order_id=kalshi_live_orders.client_order_id),average_fill_price),"
+        "fees_paid=COALESCE((SELECT SUM(f.fee) FROM kalshi_live_fills f "
+        "WHERE f.client_order_id=kalshi_live_orders.client_order_id),fees_paid),"
+        "last_reconciled_at=?,updated_at=? WHERE state NOT IN ('cancelled','rejected','expired','settled')",
+        {reconciled_at, reconciled_at});
+    Database::instance().execute(
+        "UPDATE kalshi_live_orders SET state='filled',remaining_count=0 WHERE requested_count>0 "
+        "AND filled_count>=requested_count-0.000000001");
+    Database::instance().execute(
+        "UPDATE order_drafts SET status='filled' WHERE draft_id IN "
+        "(SELECT draft_id FROM kalshi_live_orders WHERE state='filled')");
     QJsonArray closed_bets;
     double closed_pnl = 0.0;
     int closed_pnl_pending = 0;
@@ -24796,7 +25290,8 @@ static int kalshi_auto_positions_command(const GlobalOpts& opts, const QStringLi
                           {"account_activity", activity_json}, {"account_error", account_error},
                           {"closed_bets", closed_bets}, {"closed_realized_pnl", closed_pnl},
                           {"closed_pnl_pending_reconciliation", closed_pnl_pending},
-                          {"automation_mode", "live evidence reconciliation; no order submission"}};
+                          {"reconciled_new_fills", reconciled_fills},
+                          {"automation_mode", "live order/fill reconciliation; no order submission"}};
     if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
     else std::printf("Kalshi positions: paper=%lld account=%lld closed=%lld realized=%+.2f%s\n",
                      static_cast<long long>(paper.size()), static_cast<long long>(live.size()),
@@ -25399,6 +25894,8 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("status")) return kalshi_auto_status_command(opts, args);
     if (sub == QStringLiteral("flow")) return kalshi_auto_flow_command(opts, args);
     if (sub == QStringLiteral("snapshot")) return kalshi_auto_snapshot_command(opts, args);
+    if (sub == QStringLiteral("decisions")) return kalshi_auto_decisions_command(opts, args, false);
+    if (sub == QStringLiteral("candidates")) return kalshi_auto_decisions_command(opts, args, true);
     if (sub == QStringLiteral("run") || sub == QStringLiteral("opportunities"))
         return kalshi_auto_run_command(opts, args);
     if (sub == QStringLiteral("audit")) return kalshi_auto_audit_command(opts, args);
@@ -25409,6 +25906,7 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("backfill")) return kalshi_auto_backfill_command(opts, args);
     if (sub == QStringLiteral("replay")) return kalshi_auto_replay_command(opts, args);
     if (sub == QStringLiteral("positions")) return kalshi_auto_positions_command(opts, args);
+    if (sub == QStringLiteral("cancel-orders")) return kalshi_auto_cancel_orders_command(opts, args);
     if (sub == QStringLiteral("queue")) return kalshi_auto_queue_command(opts, args);
     if (sub == QStringLiteral("live")) return kalshi_auto_live_command(opts, args);
     if (sub == QStringLiteral("paper")) {
@@ -26317,7 +26815,7 @@ static int edge_command(const GlobalOpts& opts, QStringList args) {
     }
 
     if (sub == "microstructure" || sub == "micro" || sub == "btc-microstructure" ||
-        sub == "tape") {
+        sub == "tape" || sub == "flow" || sub == "order-flow") {
         return edge_microstructure_command(opts, args);
     }
 

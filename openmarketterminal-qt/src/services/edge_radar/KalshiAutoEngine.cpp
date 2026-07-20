@@ -597,10 +597,22 @@ KalshiCalibrationModel KalshiAutoEngine::fit_isotonic_calibration(
             int count = 0;
         };
         QVector<Block> blocks;
-        for (const auto& sample : training) {
-            blocks.append(Block{sample.predicted * sample.weight,
-                                sample.outcome * sample.weight,
-                                sample.weight, 1});
+        // Aggregate equal predictor values before PAVA. QHash event iteration
+        // is intentionally unordered; feeding tied x-values one-by-one made the
+        // fitted curve and authority decision depend on process hash seeds.
+        // Isotonic regression defines ties as one weighted observation.
+        for (int begin = 0; begin < training.size();) {
+            int end = begin;
+            Block tied;
+            while (end < training.size() &&
+                   std::abs(training[end].predicted - training[begin].predicted) <= 1e-12) {
+                tied.x_sum += training[end].predicted * training[end].weight;
+                tied.y_sum += training[end].outcome * training[end].weight;
+                tied.weight += training[end].weight;
+                ++tied.count;
+                ++end;
+            }
+            blocks.append(tied);
             while (blocks.size() > 1) {
                 const auto& left = blocks[blocks.size() - 2];
                 const auto& right = blocks.last();
@@ -611,6 +623,7 @@ KalshiCalibrationModel KalshiAutoEngine::fit_isotonic_calibration(
                 blocks.removeLast();
                 blocks.last() = merged;
             }
+            begin = end;
         }
         QVector<KalshiCalibrationPoint> curve;
         for (const auto& block : blocks) {
@@ -830,6 +843,8 @@ QVector<KalshiSurfacePoint> KalshiAutoEngine::build_surface(
     KalshiAutoContext context = input_context;
     if (context.decision_ts_ms <= 0)
         context.decision_ts_ms = QDateTime::currentMSecsSinceEpoch();
+    const bool authority_enabled = context.calibration_gate_enabled &&
+                                   context.model_authority_enabled;
     const double cross_horizon_up = context_up_probability(context);
     QVector<KalshiSurfacePoint> surface;
     for (const auto& market : markets) {
@@ -918,8 +933,10 @@ QVector<KalshiSurfacePoint> KalshiAutoEngine::build_surface(
                 (point.calibrated_probability - point.market_implied_probability));
         point.fair_no = 1.0 - point.fair_yes;
         point.probability_source = context.calibration_gate_enabled
-            ? (point.model_weight > 0.0 ? QStringLiteral("market_shrunk_calibrated_model")
-                                       : QStringLiteral("market_only_unproven_model"))
+            ? (authority_enabled && point.model_weight > 0.0
+                   ? QStringLiteral("market_shrunk_calibrated_model")
+                   : authority_enabled ? QStringLiteral("market_only_unproven_model")
+                                       : QStringLiteral("market_only_authority_disabled"))
             : QStringLiteral("settlement_average_model");
         const double reference = context.settlement_average.available
             ? context.settlement_average.latest_index : context.spot;
@@ -949,7 +966,7 @@ QVector<KalshiSurfacePoint> KalshiAutoEngine::build_surface(
             point.calibration_samples = bucket_it->sample_count;
             point.calibrated_probability = calibrated_probability(
                 point.model_probability_raw, bucket_it->points);
-            point.model_weight = context.calibration_gate_enabled && bucket_it->ready
+            point.model_weight = authority_enabled && bucket_it->ready
                 ? bucket_it->learned_model_weight : (context.calibration_gate_enabled ? 0.0 : 1.0);
             point.fair_yes = clamp_probability(
                 point.market_implied_probability + point.model_weight *
@@ -957,7 +974,8 @@ QVector<KalshiSurfacePoint> KalshiAutoEngine::build_surface(
             point.fair_no = 1.0 - point.fair_yes;
             point.probability_source = point.model_weight > 0.0
                 ? QStringLiteral("bucket_calibrated_market_shrink")
-                : QStringLiteral("market_only_unproven_bucket");
+                : authority_enabled ? QStringLiteral("market_only_unproven_bucket")
+                                    : QStringLiteral("market_only_authority_disabled");
         }
 
         const qint64 informative_ts = std::max(
@@ -1158,18 +1176,22 @@ KalshiPortfolioPlan KalshiAutoEngine::optimize(const QVector<KalshiSurfacePoint>
         plan.verdict = QStringLiteral("NO TRADE");
         plan.blockers << QStringLiteral("no distinct executable contracts clear edge and risk constraints");
     } else {
-        const bool calibrated_context = context.calibration_gate_enabled
+        const bool authority_enabled = context.calibration_gate_enabled &&
+                                       context.model_authority_enabled;
+        const bool calibrated_context = authority_enabled
             ? std::any_of(surface.cbegin(), surface.cend(), [&context](const auto& point) {
                   return point.calibration_samples >= context.minimum_calibration_samples &&
                          point.model_weight > 0.0;
               })
-            : std::any_of(surface.cbegin(), surface.cend(), [](const auto& point) {
+            : !context.calibration_gate_enabled && std::any_of(surface.cbegin(), surface.cend(), [](const auto& point) {
                   return point.context_sample_count >= 30 && point.context_calibration_score > 0.0;
               });
         plan.verdict = calibrated_context ? QStringLiteral("PAPER PORTFOLIO CANDIDATE")
                                           : QStringLiteral("UNCALIBRATED PAPER EXPERIMENT");
         if (!calibrated_context)
-            plan.blockers << QStringLiteral("no calibrated cross-horizon model with at least 30 samples");
+            plan.blockers << (context.calibration_gate_enabled && !context.model_authority_enabled
+                ? QStringLiteral("Kalshi model authority is disabled; use market pricing while evidence is collected")
+                : QStringLiteral("no calibrated cross-horizon model with at least 30 samples"));
     }
     return plan;
 }

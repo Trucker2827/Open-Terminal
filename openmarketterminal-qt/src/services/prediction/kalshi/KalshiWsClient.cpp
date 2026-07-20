@@ -237,9 +237,10 @@ void KalshiWsClient::send_subscribe(const QStringList& tickers) {
     QJsonArray tarr;
     for (const auto& t : tickers) tarr.append(t);
     params.insert("market_tickers", tarr);
-    // Keep each side on its native contract-price scale. We then construct
-    // the complementary asks locally, matching the REST orderbook parser.
-    params.insert("use_yes_price", false);
+    // Kalshi is migrating order-book streams to a unified YES-price scale.
+    // Request it explicitly, then convert NO levels back to native NO prices
+    // at the parser boundary so the rest of OpenTerminal remains unchanged.
+    params.insert("use_yes_price", true);
 
     QJsonObject msg;
     msg.insert("id", next_msg_id_++);
@@ -458,12 +459,15 @@ void KalshiWsClient::on_message(const QString& msg) {
     if (ts_ms <= 0) ts_ms = QDateTime::currentMSecsSinceEpoch();
     auto& state = books_[ticker];
 
-    const auto parse_levels = [](const QJsonArray& levels, QMap<int, double>* out) {
+    const auto parse_levels = [](const QJsonArray& levels, QMap<int, double>* out,
+                                 bool yes_price_to_no_price = false) {
         out->clear();
         for (const auto& value : levels) {
             const auto level = value.toArray();
             if (level.size() < 2) continue;
-            const int price = qRound(kalshi_fp_to_double(level[0]) * 10000.0);
+            double parsed_price = kalshi_fp_to_double(level[0]);
+            if (yes_price_to_no_price) parsed_price = 1.0 - parsed_price;
+            const int price = qRound(parsed_price * 10000.0);
             const double size = kalshi_fp_to_double(level[1]);
             if (price > 0 && size > 0.0) out->insert(price, size);
         }
@@ -475,7 +479,7 @@ void KalshiWsClient::on_message(const QString& msg) {
         if (yes.isEmpty()) yes = payload.value("yes_dollars").toArray();
         if (no.isEmpty()) no = payload.value("no_dollars").toArray();
         parse_levels(yes, &state.yes_bids);
-        parse_levels(no, &state.no_bids);
+        parse_levels(no, &state.no_bids, true);
         if (seq > 0) orderbook_sequence_ = seq;
         state.has_snapshot = true;
         publish_books(ticker, ts_ms);
@@ -494,7 +498,9 @@ void KalshiWsClient::on_message(const QString& msg) {
     }
 
     const QString side = payload.value("side").toString().toLower();
-    const int price = qRound(kalshi_fp_to_double(payload.value("price_dollars")) * 10000.0);
+    double parsed_price = kalshi_fp_to_double(payload.value("price_dollars"));
+    if (side == QStringLiteral("no")) parsed_price = 1.0 - parsed_price;
+    const int price = qRound(parsed_price * 10000.0);
     const double delta = kalshi_fp_to_double(payload.value("delta_fp"));
     QMap<int, double>& levels = side == QStringLiteral("no") ? state.no_bids : state.yes_bids;
     const double next = levels.value(price) + delta;

@@ -781,9 +781,9 @@ class TstPmPaper : public QObject {
     }
 
     // HAPPY PATH: armed + venue allowed + credentials → the adapter is fired
-    // through the timed bridge and FILLS. The recorded OrderRequest carries the
-    // RESOLVED best_ask (0.45) and contracts (10) — NOT the AI's limit — a live
-    // ledger row is opened at 0.45, and the fill is audited under mode "live".
+    // through the timed bridge and reports FILLED. The submit response is an
+    // order-state acknowledgement, not a durable fill event, so P&L remains
+    // unchanged until account reconciliation observes a uniquely identified fill.
     void pm_submit_live_happy_fills_via_adapter() {
         set_setting("cli.allowed_venues", "polymarket");
         set_setting("cli.allow_paper_trading", "true");
@@ -814,15 +814,15 @@ class TstPmPaper : public QObject {
         QCOMPARE(req.key.exchange_id, QStringLiteral("polymarket"));
         QCOMPARE(req.client_order_id, draft_id);
 
-        // A live ledger row opened at the resolved price (NOT the AI's limit).
+        // Never book P&L from an order acknowledgement. Doing so would duplicate
+        // the later authenticated fill stream and made accepted/resting orders
+        // look executed.
         auto pos = LivePnlRepository::instance().get_open("", "polymarket", "live-happy");
-        QVERIFY2(pos.is_ok() && pos.value().has_value(),
-                 "the live fill must record an OPEN live_positions row");
-        QCOMPARE(pos.value()->qty, 10.0);
-        QVERIFY2(qFuzzyCompare(pos.value()->avg_cost, 0.45), "recorded at resolved price 0.45");
+        QVERIFY2(pos.is_ok() && !pos.value().has_value(),
+                 "an order acknowledgement must not create a live position");
 
         QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
-                 QStringLiteral("submitted"));
+                 QStringLiteral("filled"));
         QVERIFY2(find_submit_audit("filled", "live"), "the live fill must be audited mode 'live'");
     }
 

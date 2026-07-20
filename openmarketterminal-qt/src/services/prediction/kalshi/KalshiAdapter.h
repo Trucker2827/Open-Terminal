@@ -105,6 +105,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void fetch_queue_positions(const QString& market_tickers = QString(),
                                const QString& event_ticker = QString(),
                                int subaccount = 0);
+    void fetch_reconcile_orders(int limit = 500, const QString& cursor = QString());
 
     // ── Kalshi-specific trading (pass through to Python bridge) ─────────
 
@@ -153,6 +154,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
         const QString& next_cursor);
     void settlements_ready(const QJsonArray& settlements);
     void queue_positions_ready(const QJsonArray& positions, int resting_orders);
+    void reconcile_orders_ready(const QJsonArray& orders, const QString& cursor);
 
     void order_amended(const QString& order_id, bool ok, const QString& error);
     void single_order_ready(const QJsonObject& order);

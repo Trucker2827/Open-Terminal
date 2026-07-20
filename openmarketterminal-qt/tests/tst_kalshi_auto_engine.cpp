@@ -300,6 +300,30 @@ class TstKalshiAutoEngine : public QObject {
         QVERIFY(point.net_edge < 0.0);
     }
 
+    void calibration_evidence_cannot_gain_authority_until_explicitly_enabled() {
+        const qint64 now = 1'800'000'000'000LL;
+        auto ctx = context(now);
+        ctx.calibration_gate_enabled = true;
+        KalshiCalibrationModel proven;
+        proven.ready = true;
+        proven.sample_count = 40;
+        proven.learned_model_weight = 0.75;
+        proven.points = {{0.2, 0.1, 20}, {0.8, 0.9, 20}};
+        const auto market = above_market(QStringLiteral("AUTH"), QStringLiteral("EV"),
+                                         64'000.0, 0.49, 0.51, now + 3'600'000);
+        const auto unproven = KalshiAutoEngine::build_surface({market}, {}, ctx).first();
+        QVERIFY(!unproven.calibration_bucket.isEmpty());
+        ctx.calibration_models.insert(unproven.calibration_bucket, proven);
+        const auto disabled = KalshiAutoEngine::build_surface({market}, {}, ctx).first();
+        QCOMPARE(disabled.model_weight, 0.0);
+        QCOMPARE(disabled.probability_source, QStringLiteral("market_only_authority_disabled"));
+
+        ctx.model_authority_enabled = true;
+        const auto enabled = KalshiAutoEngine::build_surface({market}, {}, ctx).first();
+        QCOMPARE(enabled.model_weight, 0.75);
+        QCOMPARE(enabled.probability_source, QStringLiteral("bucket_calibrated_market_shrink"));
+    }
+
     void causal_timing_is_recorded_but_does_not_veto_an_otherwise_valid_entry() {
         const qint64 now = 1'800'000'000'000LL;
         auto ctx = context(now);
