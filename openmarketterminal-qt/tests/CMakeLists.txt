@@ -701,3 +701,8 @@ add_executable(tst_advisory_protocol tst_advisory_protocol.cpp)
 target_include_directories(tst_advisory_protocol PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_advisory_protocol PRIVATE openterminal_core Qt6::Test)
 add_test(NAME tst_advisory_protocol COMMAND tst_advisory_protocol)
+
+add_executable(tst_advisory_scoring tst_advisory_scoring.cpp)
+target_include_directories(tst_advisory_scoring PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisory_scoring PRIVATE openterminal_core Qt6::Test)
+add_test(NAME tst_advisory_scoring COMMAND tst_advisory_scoring)

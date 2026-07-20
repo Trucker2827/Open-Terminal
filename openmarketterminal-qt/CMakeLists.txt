@@ -1005,6 +1005,7 @@ set(LLM_SERVICE_SOURCES
     src/services/edge_radar/KalshiAutoEngine.cpp
     src/services/edge_radar/BitcoinEvidenceEngine.cpp
     src/services/edge_radar/AdvisoryProtocol.cpp
+    src/services/edge_radar/AdvisoryScoring.cpp
     src/services/edge_radar/AdvisoryChallengeRepository.cpp
     src/services/decision/DecisionOrchestrator.cpp
     src/services/llm/LlmService.cpp
