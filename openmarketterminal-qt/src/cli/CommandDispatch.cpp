@@ -23376,7 +23376,18 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
         row.scored.p_pre = p_pre;
         row.scored.p_post = p_post >= 0.0 ? p_post : p_pre;
         row.scored.market = market_at_open;
-        row.scored.outcome = outcome;
+        // edge_decision_journal.outcome is written SIDE-RELATIVE by the
+        // shared settlement resolver (outcome = decision.side == result ?
+        // 1 : 0 -- see edge_resolve_kalshi_decisions_command() above), but
+        // p_pre/market/daemon are all P(yes). Normalize to yes-relative
+        // here using the same side determination the net-of-fees block
+        // below and AdvisoryChallengeRepository::commit_blind() both use
+        // (p_pre>=market_at_open => side 'yes'), or a NO-side row's Brier
+        // silently sign-inverts against a P(yes) probability. daemon_scored
+        // reuses this same row.scored below, so this one normalization
+        // covers the daemon comparison too -- no second fix needed there.
+        const bool side_yes = (p_pre >= market_at_open);
+        row.scored.outcome = side_yes ? outcome : (1 - outcome);
         // settlement-band x distance-to-strike cohorting is not present in
         // this journal schema's features_json (only horizon/settlement_def
         // are -- see AdvisoryChallengeRepository::commit_blind()'s features

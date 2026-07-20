@@ -3142,6 +3142,27 @@ private slots:
         const QJsonObject net = out.value("net_value_after_fees").toObject();
         QCOMPARE(net.value("rows_covered").toInt(), 1); // only row 1 has market_at_post
 
+        // Regression: edge_decision_journal.outcome is written SIDE-RELATIVE
+        // by the shared settlement resolver (outcome = decision.side ==
+        // result ? 1 : 0 -- see edge_resolve_kalshi_decisions_command()),
+        // but p_pre/market/daemon are all P(yes). Row 2 ("adv-score-t2") is
+        // a NO-side row (side='no', p_pre=0.35 < market_at_open=0.40) whose
+        // side-relative outcome column is 0 -- meaning side != result, i.e.
+        // the settlement actually resolved 'yes' (yes-relative outcome=1).
+        // Row 1 is YES-side, where side-relative and yes-relative coincide
+        // (unaffected either way). Hand-computed brier_pre over both rows
+        // AFTER normalizing to yes-relative:
+        //   row1: (p_pre=0.70 - yes_outcome=1)^2 = 0.09
+        //   row2: (p_pre=0.35 - yes_outcome=1)^2 = 0.4225
+        //   mean = (0.09 + 0.4225) / 2 = 0.25625
+        // Before normalizing (the bug: scoring p_pre against the raw
+        // side-relative outcome column), row2 would contribute
+        // (0.35 - 0)^2 = 0.1225 instead, giving a buggy mean of
+        // (0.09 + 0.1225) / 2 = 0.10625. This assertion is RED against
+        // `row.scored.outcome = outcome;` (unnormalized) and GREEN once the
+        // side_yes ? outcome : (1 - outcome) normalization is applied.
+        QVERIFY(qAbs(out.value("brier_pre").toDouble() - 0.25625) < 1e-9);
+
         QVERIFY(Database::instance().execute(
             "DELETE FROM edge_decision_journal WHERE id IN "
             "('adv-score-t1','adv-score-t2','adv-score-plan-1')").is_ok());
