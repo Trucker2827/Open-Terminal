@@ -50,3 +50,112 @@ Rollout remains staged and visible in the snapshot: shadow observations are alwa
 - Kalshi REST reads and idempotent writes retry 429 and transient 5xx responses with bounded exponential backoff. Non-idempotent writes are never retried.
 
 Never validate production execution by sending an unbounded or economically meaningful order. Use Kalshi demo first; a live smoke test requires explicit credentials and human arming and is intentionally not part of the automated test suite.
+
+## LLM advisory scoring (`kalshi auto advise`)
+
+This surface answers one question only: **does an LLM forecaster have predictive skill on Kalshi
+crypto settlement, independent of the market and marginal over the deterministic daemon?** It is a
+measurement instrument, not a trading path. The daemon retains sole and exclusive ownership of
+`execute-next -> prepare_order -> submit_order`; nothing in this surface can create, modify, or
+influence an order.
+
+### The six verbs
+
+```
+openterminalcli --json --headless kalshi auto advise open --ticker T [--horizon H] [--settlement-def S]
+openterminalcli --json --headless kalshi auto advise commit-blind --challenge ID --commit-id K --probability P
+openterminalcli --json --headless kalshi auto advise reveal --challenge ID
+openterminalcli --json --headless kalshi auto advise commit-post --challenge ID --commit-id K2 --probability P2
+openterminalcli --json --headless kalshi auto advise score [--forecaster-id ID | --provider P --model M] [--horizon H]
+openterminalcli --json --headless kalshi auto advise ledger [--limit N]
+```
+
+The flow is a strict five-state pipeline per challenge:
+
+1. **`open`** snapshots the current contract, computes the horizon-aware TTL, and returns a
+   price-free blind `context` plus its `context_hash`. State: `OPENED`.
+2. **`commit-blind`** records the forecaster's probability (`p_pre`) against that blind context,
+   before anything about the market has been revealed. State: `COMMITTED_BLIND`.
+3. **`reveal`** discloses the contemporaneous market quote, the daemon's own probability estimate
+   (when one is available), and the sealed hash of the full transcript. State: `REVEALED`.
+4. **`commit-post`** records a second probability (`p_post`) now that price is visible — this
+   measures whether seeing the market helps or hurts the forecaster. State: `COMMITTED_POST`.
+5. **`resolve-by-settlement`** happens automatically as part of ordinary settlement backfill (the
+   same widened resolver that resolves deterministic daemon rows also resolves
+   `source='llm-advisory'` rows) once the contract settles — there is no separate operator verb for
+   it.
+6. **`score`** is a read-only report over every resolved, paired row: Brier score against the
+   pre-reveal probability, the post-reveal probability, the market, and the daemon; the confidence
+   interval on improvement over the daemon; net realized value after Kalshi's taker fee; and a
+   coverage breakdown of how many rows were daemon-comparable. `ledger` is the companion read-only
+   participation report (opened/committed/revealed/expired counts and rates) — useful for spotting
+   selection bias (e.g. a forecaster that commits only when confident, or expires disproportionately
+   often on one horizon).
+
+### The firewall guarantee — and its honest limit
+
+`open`'s blind `context` is built by `adv::build_blind_packet()` from a private, per-field
+**allowlist**, not a stripped copy: only the handful of fields it names (horizon label, distance,
+seconds-left, settlement band/def, spot, realized-move — never a quote or probability field) are
+ever copied into the packet, so a new field added anywhere upstream (e.g.
+`CryptoMicrostructureRadar` growing a new column) can never leak by default — it simply isn't
+copied until someone deliberately allowlists it. `adv::kBlindForbiddenKeys()` is a separate,
+independent list — it does not feed `build_blind_packet`'s allowlist at all. It backs a second
+layer of defense: the one wholesale sub-object copied into the packet (`spot_microstructure`) is
+run through a recursive deep-strip (`kalshi_advise_strip_forbidden_keys_deep`, `CommandDispatch.cpp`)
+that removes any of `kBlindForbiddenKeys()`'s names at any nesting depth, and the same list is what
+both the e2e smoke and `tst_advisory_protocol`/`tst_command_dispatch` assert never leaked. Two
+independent lists catching the same class of leak by construction, rather than one list serving
+both jobs.
+
+Withheld until `reveal`: Kalshi `yes/no` bid/ask/depth, `market_implied_probability`, `fair_yes`/
+`fair_no`, `divergence`, the daemon's `daemon_probability`/`calibrated_probability`/
+`model_probability`/`model_weight`, and any cost/edge figure derived from the quote
+(`cost_net_edge`). None of these keys can appear in an `open` response's `context` object under any
+circumstances — the e2e smoke (`tests/e2e_headless_smoke.sh`) greps every `advise open` response for
+all of them and fails the whole suite if even one appears.
+
+**Honest limit (documented, not enforced):** the protocol firewalls *within a single transaction*
+and timestamps commit-before-reveal — `commit-blind` is always written and sealed before `reveal`
+can execute, so within this pipeline the forecaster mechanically cannot have seen the withheld data
+before committing. What it **cannot** stop is an operator (human or agent) who separately ran
+`kalshi auto snapshot`, `edge flow`, or any other price-revealing command moments earlier and then
+fed that context into the forecaster out of band. That residual is *logged, not blocked*: every
+commit carries forecaster identity (`provider`/`model`/`prompt_version`/`agent_id`/`run_id`) and
+precise timestamps, so a suspiciously well-informed pre-reveal commit is visible in the ledger and
+in `score`'s output after the fact — this is the tradeoff accepted by choosing an in-process
+protocol firewall over a fully separate-credential architecture.
+
+### TTL table (horizon-aware, `adv::ttl_for(seconds_left, configured_max_ms)`)
+
+`configured_max_ms` defaults to 60000 (60 s) and every call site (`advise open`'s handler, the
+repository's own re-derivation at commit time) uses that default — there is no separate, larger
+absolute-max override anywhere in the current implementation:
+
+| Settlement remaining | Challenge TTL (`prediction_ttl_ms`, before the `configured_max` cap) |
+|---|---|
+| ≤ 60 s | do not open (`may_open=false`, `prediction_ttl_ms=0`) |
+| 1–5 min | 15 s |
+| 5–15 min | 30 s |
+| 15–60 min | 45 s |
+| > 60 min | 60 s |
+
+`prediction_ttl_ms` is `min(bucket_value, configured_max_ms)` — with the 60 s default this only
+ever binds on the `>60 min` bucket, which already equals the cap. `execution_relevance_ms` is a
+second, independently-derived clock: `min(prediction_ttl_ms / 2, 15000)` — never longer than 15 s
+and never longer than half of `prediction_ttl_ms`. A prediction committed after execution
+relevance has expired is still journaled and scored — it contributes to `score`'s academic
+evidence — but is flagged as never trade-influencing, because by construction nothing downstream
+of the daemon acts on advisory output regardless of timing.
+
+### Advisory output can never place an order
+
+Every row this surface writes to `edge_decision_journal` carries `source='llm-advisory'` and three
+fixed fields: `"authority": "advisory_only"`, `"execution_eligible": false`, and
+`"gate": "measurement_only"`. These are not configuration toggles — there is no flag that promotes
+an advisory row to execution authority. The deterministic daemon's own
+`execute-next -> prepare_order -> submit_order` path never reads `source='llm-advisory'` rows, and
+`kalshi auto advise score`/`ledger` are both read-only reports with no side effect on live trading
+state. Any future promotion of LLM output to influence execution (even a bounded weighting or veto)
+is out of scope for this feature and would require a separate, explicitly gated, deterministic
+design — never an implicit consequence of running `advise`.
