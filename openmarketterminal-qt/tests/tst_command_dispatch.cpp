@@ -3015,6 +3015,29 @@ private slots:
         QCOMPARE(blind.value(QStringLiteral("state")).toString(), QStringLiteral("COMMITTED_BLIND"));
         QVERIFY(!blind.contains(QStringLiteral("market_implied_probability")));
 
+        // End-to-end proof (not just a repository-level unit test) that the
+        // REAL `advise open` -> build_advise_open -> kalshi_advise_flatten_snapshot
+        // -> adv::build_blind_packet allowlist chain actually carries
+        // settlement_band/distance_bps through into the immutable
+        // features_json written by commit_blind, driven via this fixture's
+        // horizon (spot=65000, distance_from_strike=1000 ->
+        // distance_bps=1000/65000*10000=153.846..., settlement_band=
+        // "final_15m"). If build_blind_packet's allowlist ever stopped
+        // naming these two keys, this assertion would go RED even though
+        // the AdvisoryChallengeRepository-level unit tests (which set
+        // blind_context directly) would still pass.
+        auto journal_query = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE source='llm-advisory'"
+            " AND market_id=? ORDER BY created_at DESC LIMIT 1",
+            {ticker});
+        QVERIFY(journal_query.is_ok() && journal_query.value().next());
+        const QJsonObject journal_features = QJsonDocument::fromJson(
+            journal_query.value().value(0).toString().toUtf8()).object();
+        QCOMPARE(journal_features.value(QStringLiteral("settlement_band")).toString(),
+                 QStringLiteral("final_15m"));
+        QVERIFY(journal_features.contains(QStringLiteral("distance_bps")));
+        QVERIFY(qAbs(journal_features.value(QStringLiteral("distance_bps")).toDouble() - 153.846154) < 1e-3);
+
         const QJsonObject revealed = json_object_from_dispatch(
             {"--json", "--headless", "kalshi", "auto", "advise", "reveal",
              "--challenge", challenge_id}, &rc);
@@ -3166,6 +3189,98 @@ private slots:
         QVERIFY(Database::instance().execute(
             "DELETE FROM edge_decision_journal WHERE id IN "
             "('adv-score-t1','adv-score-t2','adv-score-plan-1')").is_ok());
+    }
+
+    // `kalshi auto advise score` cohorting: settlement_band/distance_bps now
+    // ride along in features_json (persisted at commit_blind -- see
+    // AdvisoryChallengeRepository::commit_blind()), so `advise score` must
+    // group resolved rows by a real cohort key instead of the single "all"
+    // bucket. Seeds three resolved rows sharing a distinguishing agent_id:
+    // row 1 settlement_band="final_5m" distance_bps=10 (|10|<25 -> "atm")
+    // should land in cohort "final_5m|atm"; row 2 distance_bps=250
+    // (100<=|250|<300 -> "mid") with settlement_band="final_5m" should land
+    // in "final_5m|mid"; row 3 has neither field -> cohort "unknown" (never
+    // dropped). Asserts the `cohorts` JSON array carries exactly these three
+    // distinct keys with the right per-cohort sample counts.
+    void advise_score_json_groups_rows_into_settlement_band_distance_cohorts() {
+        sandbox_test_home();
+        const qint64 t1 = recent_ms(120000);
+        const qint64 t2 = recent_ms(90000);
+        const qint64 t3 = recent_ms(60000);
+        const QJsonObject forecaster{{"provider", "anthropic"}, {"model", "claude-test"},
+                                     {"agent_id", "adv-cohort-test-1"}};
+        const QJsonObject features1{
+            {"p_pre", 0.70}, {"p_post", 0.72}, {"market_at_open", 0.55},
+            {"market_at_post", 0.60}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"settlement_band", "final_5m"}, {"distance_bps", 10.0},
+            {"forecaster", forecaster}};
+        const QJsonObject features2{
+            {"p_pre", 0.60}, {"p_post", 0.58}, {"market_at_open", 0.50},
+            {"market_at_post", 0.52}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"settlement_band", "final_5m"}, {"distance_bps", 250.0},
+            {"forecaster", forecaster}};
+        const QJsonObject features3{
+            {"p_pre", 0.35}, {"p_post", -1}, {"market_at_open", 0.40},
+            {"market_at_post", -1}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"forecaster", forecaster}}; // no settlement_band/distance_bps -> "unknown"
+
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-cohort-t1', ?, ?, 'kalshi', 'KXCOHORTTEST1', '15m',"
+            " 'KXCOHORTTEST-1', 'yes', 'LLM_ADVISORY', 'measurement_only', 0.55, 0.70, 0.6,"
+            " 900, ?, 'llm-advisory', 1)",
+            {t1, t1, QString::fromUtf8(QJsonDocument(features1).toJson(QJsonDocument::Compact))}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-cohort-t2', ?, ?, 'kalshi', 'KXCOHORTTEST2', '15m',"
+            " 'KXCOHORTTEST-2', 'yes', 'LLM_ADVISORY', 'measurement_only', 0.50, 0.60, 0.6,"
+            " 900, ?, 'llm-advisory', 1)",
+            {t2, t2, QString::fromUtf8(QJsonDocument(features2).toJson(QJsonDocument::Compact))}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-cohort-t3', ?, ?, 'kalshi', 'KXCOHORTTEST3', '15m',"
+            " 'KXCOHORTTEST-3', 'no', 'LLM_ADVISORY', 'measurement_only', 0.40, 0.35, 0.5,"
+            " 900, ?, 'llm-advisory', 0)",
+            {t3, t3, QString::fromUtf8(QJsonDocument(features3).toJson(QJsonDocument::Compact))}).is_ok());
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "score",
+             "--forecaster-id", "adv-cohort-test-1"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("n_resolved").toInt(), 3);
+
+        const QJsonArray cohorts = out.value("cohorts").toArray();
+        QMap<QString, int> samples_by_cohort;
+        for (const QJsonValue& v : cohorts) {
+            const QJsonObject c = v.toObject();
+            samples_by_cohort.insert(c.value("cohort").toString(), c.value("samples").toInt());
+            QVERIFY(c.contains("brier_pre"));
+            QVERIFY(c.contains("improvement_vs_market_pre"));
+            QVERIFY(c.contains("improvement_vs_daemon_pre"));
+            QVERIFY(c.contains("ci_low"));
+            QVERIFY(c.contains("ci_high"));
+            QVERIFY(c.contains("evidence"));
+        }
+        QCOMPARE(samples_by_cohort.value("final_5m|atm", -1), 1);
+        QCOMPARE(samples_by_cohort.value("final_5m|mid", -1), 1);
+        QCOMPARE(samples_by_cohort.value("unknown", -1), 1);
+        QCOMPARE(samples_by_cohort.size(), 3); // no fabricated cohorts, no dropped rows
+
+        // Overall (all-rows) figures are still reported alongside the
+        // per-cohort breakdown -- the per-cohort split is additive.
+        QVERIFY(out.contains("headline_improvement_vs_daemon"));
+        QVERIFY(out.contains("brier_pre"));
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id IN "
+            "('adv-cohort-t1','adv-cohort-t2','adv-cohort-t3')").is_ok());
     }
 
     // `kalshi auto advise ledger` (Task 7): the shared sqlite file already

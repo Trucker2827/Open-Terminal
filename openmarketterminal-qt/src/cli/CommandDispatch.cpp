@@ -23283,6 +23283,32 @@ static double kalshi_advise_score_daemon_probability(const QString& market_id, q
 // pre-trade edge gating; here the figure is reported as realized net
 // economics after the fact, so it is rounded to the nearest cent like a real
 // fee would be. C=1 for a per-contract figure.
+// Cohort key for `advise score`: settlement_band x distance-to-strike
+// bucket, both read from a resolved row's (immutable) features_json --
+// settlement_band was persisted verbatim at commit_blind()
+// (AdvisoryChallengeRepository::commit_blind()), distance_bps likewise (a
+// signed (spot-strike)/spot*10000 figure -- see
+// kalshi_advise_flatten_snapshot's comment above). Bucketed on |distance_bps|
+// since sign only indicates strike side, not proximity. A row missing
+// EITHER field goes to cohort "unknown" -- it is never dropped from
+// n_resolved/coverage, just not attributable to a real band x distance cell.
+static QString kalshi_advise_distance_bucket(double distance_bps) {
+    const double abs_bps = std::abs(distance_bps);
+    if (abs_bps < 25.0) return QStringLiteral("atm");
+    if (abs_bps < 100.0) return QStringLiteral("near");
+    if (abs_bps < 300.0) return QStringLiteral("mid");
+    return QStringLiteral("far");
+}
+
+static QString kalshi_advise_score_cohort(const QJsonObject& features) {
+    const QString band = features.value(QStringLiteral("settlement_band")).toString();
+    const bool has_distance = features.contains(QStringLiteral("distance_bps"));
+    if (band.isEmpty() || !has_distance)
+        return QStringLiteral("unknown");
+    const double distance_bps = features.value(QStringLiteral("distance_bps")).toDouble();
+    return band + QStringLiteral("|") + kalshi_advise_distance_bucket(distance_bps);
+}
+
 static double kalshi_advise_score_fee_dollars(double entry_price) {
     const double p = std::clamp(entry_price, 0.0, 1.0);
     const double fee_cents = std::ceil(0.07 * 1.0 * p * (1.0 - p) * 100.0);
@@ -23388,13 +23414,11 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
         // covers the daemon comparison too -- no second fix needed there.
         const bool side_yes = (p_pre >= market_at_open);
         row.scored.outcome = side_yes ? outcome : (1 - outcome);
-        // settlement-band x distance-to-strike cohorting is not present in
-        // this journal schema's features_json (only horizon/settlement_def
-        // are -- see AdvisoryChallengeRepository::commit_blind()'s features
-        // object) -- reporting a fabricated cohort split off absent fields
-        // would violate "don't invent data", so every row is the single
-        // "all" cohort.
-        row.scored.cohort = QStringLiteral("all");
+        // settlement-band x distance-to-strike cohort, derived from this
+        // row's own features_json -- see kalshi_advise_score_cohort() above.
+        // Rows opened before this field was persisted (features_json is
+        // immutable) fall into "unknown", not a fabricated band/bucket.
+        row.scored.cohort = kalshi_advise_score_cohort(features);
         row.has_post_market = market_at_post >= 0.0;
         row.market_at_open = market_at_open;
 
@@ -23451,8 +23475,39 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
     const adv::PairedResult daemon_result = adv::score_paired(daemon_scored);
     const int n_resolved = rows.size();
 
+    // Per-cohort breakdown (settlement_band x distance-to-strike, or
+    // "unknown" for rows opened before those fields were persisted --
+    // see kalshi_advise_score_cohort() above). Mirrors the ALL-rows/
+    // daemon-comparable-subset split used for the overall figures above:
+    // brier_pre/improvement_vs_market_pre come from every resolved row in
+    // the cohort, improvement_vs_daemon_pre/ci_low/ci_high from only the
+    // daemon-comparable rows within that same cohort. This is additive to
+    // the overall headline_improvement_vs_daemon/brier_* fields below, not
+    // a replacement for them.
+    QMap<QString, QVector<adv::ScoredRow>> cohort_all_scored;
+    QMap<QString, QVector<adv::ScoredRow>> cohort_daemon_scored;
+    for (const Row& row : rows) {
+        cohort_all_scored[row.scored.cohort].append(row.scored);
+        if (row.daemon_comparable)
+            cohort_daemon_scored[row.scored.cohort].append(row.scored);
+    }
     QJsonArray cohorts;
-    cohorts.append(QJsonObject{{"cohort", "all"}, {"samples", n_resolved}});
+    for (auto it = cohort_all_scored.constBegin(); it != cohort_all_scored.constEnd(); ++it) {
+        const QString& cohort_key = it.key();
+        const int samples = it.value().size();
+        const adv::PairedResult cohort_all_result = adv::score_paired(it.value());
+        const adv::PairedResult cohort_daemon_result =
+            adv::score_paired(cohort_daemon_scored.value(cohort_key));
+        cohorts.append(QJsonObject{
+            {"cohort", cohort_key},
+            {"samples", samples},
+            {"brier_pre", cohort_all_result.brier_pre},
+            {"improvement_vs_market_pre", cohort_all_result.improvement_vs_market_pre},
+            {"improvement_vs_daemon_pre", cohort_daemon_result.improvement_vs_daemon_pre},
+            {"ci_low", cohort_daemon_result.ci_low},
+            {"ci_high", cohort_daemon_result.ci_high},
+            {"evidence", samples >= 30 ? "measured" : "exploratory"}});
+    }
 
     QJsonObject filter{{"forecaster_id", forecaster_id}, {"provider", provider_filter},
                        {"model", model_filter}, {"horizon", horizon_filter}};

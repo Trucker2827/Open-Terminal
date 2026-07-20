@@ -284,6 +284,16 @@ Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp
                         {"gate", "measurement_only"},
                         {"call", "LLM_ADVISORY"}};
 
+    // Cohort fields for advise-score grouping. Sourced from the blind
+    // context (kalshi_advise_flatten_snapshot in CommandDispatch.cpp inserts
+    // both under these exact key names) and copied here ONLY when present --
+    // features_json is immutable once written, so a challenge opened without
+    // them can never be re-cohorted; never fabricate a value it didn't carry.
+    if (blind_context.contains(QStringLiteral("settlement_band")))
+        features.insert(QStringLiteral("settlement_band"), blind_context.value(QStringLiteral("settlement_band")));
+    if (blind_context.contains(QStringLiteral("distance_bps")))
+        features.insert(QStringLiteral("distance_bps"), blind_context.value(QStringLiteral("distance_bps")));
+
     auto bt = db.begin_transaction();
     if (bt.is_err())
         return Result<QString>::err(bt.error());
