@@ -110,6 +110,111 @@ class TstAdvisoryRepository : public QObject {
         adv::CommitParams c; c.challenge_id=o.value().challenge_id; c.commit_id="K"; c.probability=0.6; c.now_ms=o.value().prediction_ttl_at + 2;
         QVERIFY(repo.commit_blind(c).is_err());
     }
+
+    void commit_post_finalizes_journal_without_clobbering_pre_fields() {
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams p; p.ticker="KXBTC"; p.market_id="M4"; p.horizon="hourly";
+        p.blind_context=QJsonObject{{"strike_floor",61000}};
+        p.withheld_market=QJsonObject{{"market_implied_probability",0.5}};
+        p.daemon_prob=0.5; p.seconds_left=900; p.now_ms=1000; p.model="opus";
+        auto o = repo.open(p); QVERIFY(o.is_ok());
+
+        adv::CommitParams cb; cb.challenge_id=o.value().challenge_id; cb.commit_id="B1";
+        cb.probability=0.6; cb.confidence=0.7; cb.now_ms=1500;
+        auto jb = repo.commit_blind(cb); QVERIFY(jb.is_ok());
+
+        // reveal() supplies a fresh reveal-time snapshot, distinct from open.
+        const QJsonObject fresh_reveal_market{{"market_implied_probability", 0.58}};
+        auto rv = repo.reveal(o.value().challenge_id, 1800, fresh_reveal_market, 0.57);
+        QVERIFY(rv.is_ok());
+
+        // commit_post() supplies a fresh post-time snapshot, distinct again.
+        adv::CommitParams cp; cp.challenge_id=o.value().challenge_id; cp.commit_id="P1";
+        cp.probability=0.53; cp.confidence=0.65; cp.now_ms=2000;
+        cp.market_json = QJsonObject{{"market_implied_probability", 0.56}};
+        auto post1 = repo.commit_post(cp); QVERIFY(post1.is_ok());
+
+        auto jr = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE id=?", {jb.value()});
+        QVERIFY(jr.is_ok() && jr.value().next());
+        const QString features_text_1 = jr.value().value(0).toString();
+        const QJsonObject features = QJsonDocument::fromJson(features_text_1.toUtf8()).object();
+
+        // Post fields finalized with the fresh values supplied.
+        QCOMPARE(features.value("p_post").toDouble(), 0.53);
+        QCOMPARE(features.value("market_at_post").toDouble(), 0.56);
+        QCOMPARE(features.value("ts_post").toDouble(), 2000.0);
+
+        // Immutable pre fields untouched by commit_post.
+        QCOMPARE(features.value("p_pre").toDouble(), 0.6);
+        QCOMPARE(features.value("market_at_open").toDouble(), 0.5);
+        QVERIFY(!features.value("context_hash").toString().isEmpty());
+        QVERIFY(!features.value("sealed_hash").toString().isEmpty());
+        QCOMPARE(features.value("challenge_id").toString(), o.value().challenge_id);
+        QCOMPARE(features.value("authority").toString(), QStringLiteral("advisory_only"));
+        QCOMPARE(features.value("gate").toString(), QStringLiteral("measurement_only"));
+        QCOMPARE(features.value("call").toString(), QStringLiteral("LLM_ADVISORY"));
+        QVERIFY(features.value("forecaster").isObject());
+
+        // Idempotent replay: same commit_id finalizes once, no double-update.
+        auto post2 = repo.commit_post(cp); QVERIFY(post2.is_ok());
+        auto jr2 = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE id=?", {jb.value()});
+        QVERIFY(jr2.is_ok() && jr2.value().next());
+        QCOMPARE(jr2.value().value(0).toString(), features_text_1); // byte-identical, not rewritten
+
+        // The challenge ledger's reveal/post baselines hold the DISTINCT
+        // fresh snapshots supplied at each transition, not a copy of open.
+        auto crow = Database::instance().execute(
+            "SELECT market_at_reveal_json, market_at_post_json, daemon_prob_at_reveal"
+            " FROM edge_advisory_challenge WHERE challenge_id=?",
+            {o.value().challenge_id});
+        QVERIFY(crow.is_ok() && crow.value().next());
+        const QJsonObject reveal_json =
+            QJsonDocument::fromJson(crow.value().value(0).toString().toUtf8()).object();
+        const QJsonObject post_json =
+            QJsonDocument::fromJson(crow.value().value(1).toString().toUtf8()).object();
+        QCOMPARE(reveal_json.value("market_implied_probability").toDouble(), 0.58);
+        QCOMPARE(post_json.value("market_implied_probability").toDouble(), 0.56);
+        QCOMPARE(crow.value().value(2).toDouble(), 0.57); // daemon_prob_at_reveal
+    }
+
+    void commit_post_without_fresh_data_leaves_honest_defaults() {
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams p; p.ticker="KXBTC"; p.market_id="M5"; p.horizon="hourly";
+        p.blind_context=QJsonObject{}; p.withheld_market=QJsonObject{{"market_implied_probability",0.5}};
+        p.daemon_prob=0.5; p.seconds_left=900; p.now_ms=1000;
+        auto o = repo.open(p); QVERIFY(o.is_ok());
+
+        adv::CommitParams cb; cb.challenge_id=o.value().challenge_id; cb.commit_id="B2";
+        cb.probability=0.6; cb.now_ms=1500;
+        auto jb = repo.commit_blind(cb); QVERIFY(jb.is_ok());
+
+        auto rv = repo.reveal(o.value().challenge_id, 1800); // no fresh data supplied
+        QVERIFY(rv.is_ok());
+
+        adv::CommitParams cp; cp.challenge_id=o.value().challenge_id; cp.commit_id="P2";
+        cp.probability=0.55; cp.now_ms=2000; // no market_json supplied
+        auto post = repo.commit_post(cp); QVERIFY(post.is_ok());
+
+        auto crow = Database::instance().execute(
+            "SELECT market_at_blind_json, market_at_reveal_json, market_at_post_json, daemon_prob_at_reveal"
+            " FROM edge_advisory_challenge WHERE challenge_id=?",
+            {o.value().challenge_id});
+        QVERIFY(crow.is_ok() && crow.value().next());
+        QCOMPARE(crow.value().value(0).toString(), QStringLiteral("{}")); // honest default, not copied
+        QCOMPARE(crow.value().value(1).toString(), QStringLiteral("{}"));
+        QCOMPARE(crow.value().value(2).toString(), QStringLiteral("{}"));
+        QCOMPARE(crow.value().value(3).toDouble(), -1.0);
+
+        auto jr = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE id=?", {jb.value()});
+        QVERIFY(jr.is_ok() && jr.value().next());
+        const QJsonObject features =
+            QJsonDocument::fromJson(jr.value().value(0).toString().toUtf8()).object();
+        QVERIFY(!features.contains("market_at_post")); // absent, not fabricated from an earlier snapshot
+        QCOMPARE(features.value("p_post").toDouble(), 0.55);
+    }
 };
 
 QTEST_MAIN(TstAdvisoryRepository)

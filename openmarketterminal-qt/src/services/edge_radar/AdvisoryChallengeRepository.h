@@ -29,11 +29,25 @@ struct OpenResult {
 // Parameters shared by commit_blind() and commit_post(). `commit_id` is a
 // client-supplied idempotency key: replaying the same (challenge_id,
 // commit_id) pair returns the original result without a second write.
+// Leaving `commit_id` empty disables idempotency — a replay call is then
+// indistinguishable from a genuine second commit and hits the state guard,
+// returning a wrong-state error instead of the original result.
 struct CommitParams {
     QString challenge_id, commit_id;
     double probability = 0.0, confidence = 0.0;
     QString rationale;
     qint64 now_ms = 0;
+    // Optional fresh market snapshot at commit_post time (JSON object; empty
+    // = "not provided"). Only meaningful to commit_post(); commit_blind()
+    // ignores it. When non-empty, stored into market_at_post_json and used
+    // as the market_at_post value merged into the journal's features_json.
+    // When empty, the honest table default ('{}') is left alone rather than
+    // fabricating a value by copying an earlier snapshot.
+    QJsonObject market_json = {};
+    // Optional fresh daemon probability at commit_post time; -1 = "not
+    // provided". Reserved for parity with reveal()'s fresh_daemon_prob;
+    // commit_post does not currently persist a daemon-at-post column.
+    double daemon_prob = -1;
 };
 
 // DB-backed CRUD + atomic, idempotent state transitions over
@@ -57,11 +71,19 @@ class AdvisoryChallengeRepository {
     Result<QString> commit_blind(const CommitParams& params);
 
     // COMMITTED_BLIND -> REVEALED. Returns {sealed_hash, withheld_market}.
-    Result<QJsonObject> reveal(const QString& challenge_id, qint64 now_ms);
+    // `fresh_market_json`/`fresh_daemon_prob` are the contemporaneous market
+    // snapshot and daemon probability AT REVEAL TIME (distinct from the
+    // open-time baseline) — when supplied (non-empty JSON / prob >= 0) they
+    // are stored into market_at_reveal_json/daemon_prob_at_reveal; when
+    // omitted, those columns are left at their honest table defaults ('{}'/
+    // -1) rather than fabricated by copying the open-time snapshot.
+    Result<QJsonObject> reveal(const QString& challenge_id, qint64 now_ms,
+                              const QJsonObject& fresh_market_json = {}, double fresh_daemon_prob = -1);
 
     // REVEALED -> COMMITTED_POST. Finalizes the journal row's features_json
-    // (appends p_post/market_at_post/ts_post) without touching pre fields.
-    // Idempotent on (challenge_id, commit_id).
+    // (appends p_post/ts_post, and market_at_post only if params.market_json
+    // was supplied) without touching pre fields. Idempotent on
+    // (challenge_id, commit_id).
     Result<void> commit_post(const CommitParams& params);
 
     // OPEN rows past prediction_ttl_at -> EXPIRED. Returns rows affected.

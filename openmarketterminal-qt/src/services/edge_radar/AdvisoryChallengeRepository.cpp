@@ -191,8 +191,10 @@ Result<OpenResult> AdvisoryChallengeRepository::open(const OpenParams& p) {
     }
 
     auto ct = db.commit();
-    if (ct.is_err())
+    if (ct.is_err()) {
+        db.rollback();
         return Result<OpenResult>::err(ct.error());
+    }
 
     OpenResult out;
     out.challenge_id = challenge_id;
@@ -232,8 +234,10 @@ Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp
             return Result<QString>::err(upd.error());
         }
         auto ct = db.commit();
-        if (ct.is_err())
+        if (ct.is_err()) {
+            db.rollback();
             return Result<QString>::err(ct.error());
+        }
         return Result<QString>::err("commit_blind rejected: challenge expired");
     }
 
@@ -296,10 +300,13 @@ Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp
         return Result<QString>::err(ins.error());
     }
 
+    // market_at_blind_json is left at its honest table default ('{}') here:
+    // no fresh blind-time market snapshot distinct from the open-time one is
+    // available through this interface, so we do not fabricate a copy.
     auto upd = db.execute(
         "UPDATE edge_advisory_challenge SET state='COMMITTED_BLIND', commit_id_blind=?,"
-        " p_pre=?, confidence_pre=?, rationale_pre=?, ts_blind=?, journal_id=?,"
-        " market_at_blind_json=market_at_open_json WHERE challenge_id=?",
+        " p_pre=?, confidence_pre=?, rationale_pre=?, ts_blind=?, journal_id=?"
+        " WHERE challenge_id=?",
         {cp.commit_id, cp.probability, cp.confidence, nn(cp.rationale), cp.now_ms, journal_id,
          cp.challenge_id});
     if (upd.is_err()) {
@@ -308,12 +315,16 @@ Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp
     }
 
     auto ct = db.commit();
-    if (ct.is_err())
+    if (ct.is_err()) {
+        db.rollback();
         return Result<QString>::err(ct.error());
+    }
     return Result<QString>::ok(journal_id);
 }
 
-Result<QJsonObject> AdvisoryChallengeRepository::reveal(const QString& challenge_id, qint64 now_ms) {
+Result<QJsonObject> AdvisoryChallengeRepository::reveal(const QString& challenge_id, qint64 now_ms,
+                                                        const QJsonObject& fresh_market_json,
+                                                        double fresh_daemon_prob) {
     auto rr = read_challenge(challenge_id);
     if (rr.is_err())
         return Result<QJsonObject>::err(rr.error());
@@ -331,19 +342,45 @@ Result<QJsonObject> AdvisoryChallengeRepository::reveal(const QString& challenge
     if (bt.is_err())
         return Result<QJsonObject>::err(bt.error());
 
-    auto upd = db.execute(
-        "UPDATE edge_advisory_challenge SET state='REVEALED', ts_reveal=?,"
-        " market_at_reveal_json=market_at_open_json, daemon_prob_at_reveal=daemon_prob_at_open"
-        " WHERE challenge_id=?",
-        {now_ms, challenge_id});
+    // market_at_reveal_json/daemon_prob_at_reveal are meant to hold a DISTINCT
+    // reveal-time snapshot, not a copy of the open-time baseline. Only write
+    // them when the caller actually supplied fresh data; otherwise leave the
+    // honest table defaults ('{}' / -1) rather than fabricating a
+    // fresh-looking value. Built as a dynamic SET clause rather than nested
+    // ternaries for clarity.
+    const bool has_fresh_market = !fresh_market_json.isEmpty();
+    const bool has_fresh_daemon = fresh_daemon_prob >= 0.0;
+    QString sql = QStringLiteral("UPDATE edge_advisory_challenge SET state='REVEALED', ts_reveal=?");
+    QVariantList params{now_ms};
+    if (has_fresh_market) {
+        sql += QStringLiteral(", market_at_reveal_json=?");
+        params << to_json_text(fresh_market_json);
+    }
+    if (has_fresh_daemon) {
+        sql += QStringLiteral(", daemon_prob_at_reveal=?");
+        params << fresh_daemon_prob;
+    }
+    sql += QStringLiteral(" WHERE challenge_id=?");
+    params << challenge_id;
+
+    auto upd = db.execute(sql, params);
     if (upd.is_err()) {
         db.rollback();
         return Result<QJsonObject>::err(upd.error());
     }
 
     auto ct = db.commit();
-    if (ct.is_err())
+    if (ct.is_err()) {
+        db.rollback();
         return Result<QJsonObject>::err(ct.error());
+    }
+
+    // reveal_result() surfaces the withheld market baseline captured AT OPEN
+    // (row.market_at_open_json) — that's the data that was hidden from the
+    // forecaster during the blind phase and is being revealed to it now.
+    // fresh_market_json/fresh_daemon_prob above are a SEPARATE internal
+    // ledger concern (the reveal-time snapshot for later scoring), not part
+    // of what's handed back to the caller here.
     return Result<QJsonObject>::ok(reveal_result(row));
 }
 
@@ -376,19 +413,22 @@ Result<void> AdvisoryChallengeRepository::commit_post(const CommitParams& cp) {
                                  row.journal_id.toStdString());
     QJsonObject features = parse_object(jr.value().value(0).toString());
 
-    // No fresh market snapshot is passed into commit_post's interface; reuse
-    // the most recent contemporaneous baseline captured at reveal() (falling
-    // back to the open-time baseline) as the "market_at_post" proxy. Pre
-    // fields (p_pre, market_at_open, ts_blind, challenge/context/sealed
-    // hashes, forecaster, authority/gate/call) are left untouched below.
-    const QString reveal_market_json =
-        row.market_at_reveal_json.trimmed().isEmpty() || row.market_at_reveal_json == QStringLiteral("{}")
-            ? row.market_at_open_json
-            : row.market_at_reveal_json;
-    const double market_at_post = market_probability_of(parse_object(reveal_market_json));
-
+    // market_at_post_json / features_json.market_at_post are only populated
+    // from a genuinely fresh post-time snapshot supplied by the caller
+    // (cp.market_json). Absent that, both are left at their honest defaults
+    // ('{}' on the table; the features_json key is omitted rather than
+    // fabricated from an earlier snapshot). Pre fields (p_pre, market_at_open,
+    // ts_blind, challenge/context/sealed hashes, forecaster,
+    // authority/gate/call) are left untouched below.
+    const bool has_fresh_market = !cp.market_json.isEmpty();
+    QString market_at_post_json;
+    if (has_fresh_market) {
+        market_at_post_json = to_json_text(cp.market_json);
+        features["market_at_post"] = market_probability_of(cp.market_json);
+    } else {
+        features.remove("market_at_post");
+    }
     features["p_post"] = cp.probability;
-    features["market_at_post"] = market_at_post;
     features["ts_post"] = cp.now_ms;
 
     auto bt = db.begin_transaction();
@@ -403,20 +443,28 @@ Result<void> AdvisoryChallengeRepository::commit_post(const CommitParams& cp) {
         return Result<void>::err(upd_journal.error());
     }
 
-    auto upd_challenge = db.execute(
+    QString sql = QStringLiteral(
         "UPDATE edge_advisory_challenge SET state='COMMITTED_POST', commit_id_post=?,"
-        " p_post=?, confidence_post=?, rationale_post=?, ts_post=?,"
-        " market_at_post_json=? WHERE challenge_id=?",
-        {cp.commit_id, cp.probability, cp.confidence, nn(cp.rationale), cp.now_ms,
-         reveal_market_json, cp.challenge_id});
+        " p_post=?, confidence_post=?, rationale_post=?, ts_post=?");
+    QVariantList params{cp.commit_id, cp.probability, cp.confidence, nn(cp.rationale), cp.now_ms};
+    if (has_fresh_market) {
+        sql += QStringLiteral(", market_at_post_json=?");
+        params << market_at_post_json;
+    }
+    sql += QStringLiteral(" WHERE challenge_id=?");
+    params << cp.challenge_id;
+
+    auto upd_challenge = db.execute(sql, params);
     if (upd_challenge.is_err()) {
         db.rollback();
         return Result<void>::err(upd_challenge.error());
     }
 
     auto ct = db.commit();
-    if (ct.is_err())
+    if (ct.is_err()) {
+        db.rollback();
         return Result<void>::err(ct.error());
+    }
     return Result<void>::ok();
 }
 
@@ -436,8 +484,10 @@ Result<int> AdvisoryChallengeRepository::expire_stale(qint64 now_ms) {
     const int affected = upd.value().numRowsAffected();
 
     auto ct = db.commit();
-    if (ct.is_err())
+    if (ct.is_err()) {
+        db.rollback();
         return Result<int>::err(ct.error());
+    }
     return Result<int>::ok(affected);
 }
 
