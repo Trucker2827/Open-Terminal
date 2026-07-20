@@ -3067,6 +3067,140 @@ private slots:
         QVERIFY(Database::instance().execute(
             "DELETE FROM edge_decision_journal WHERE id='adv-resolve-gate-1'").is_ok());
     }
+
+    // `kalshi auto advise score` (Task 7): seeds two RESOLVED (outcome in
+    // {0,1}) source='llm-advisory' rows sharing a distinguishing
+    // forecaster agent_id (so --forecaster-id isolates exactly these two
+    // rows regardless of whatever other advisory rows other tests/prior
+    // runs have left in the shared sqlite file -- the existing
+    // resolve_kalshi_decisions_checked_count_gates_on_advisory_rows test
+    // above establishes this file's DB persists across test methods, so
+    // absolute-count assertions without a distinguishing filter would be
+    // flaky). Row 1 has a matching source='kalshi auto-plan' row on the
+    // same market_id at/just before its created_at -- the daemon-join row;
+    // row 2 has no such row on its market_id, so it must be counted
+    // daemon-UNAVAILABLE, not silently dropped. Row 1 also carries a real
+    // market_at_post (net-of-fees eligible); row 2's is the untouched -1
+    // sentinel (net-of-fees ineligible).
+    void advise_score_json_reports_daemon_comparable_coverage_and_ci() {
+        sandbox_test_home();
+        const qint64 t1 = recent_ms(120000);
+        const qint64 t2 = recent_ms(60000);
+        const QJsonObject forecaster{{"provider", "anthropic"}, {"model", "claude-test"},
+                                     {"agent_id", "adv-score-test-1"}};
+        const QJsonObject features1{
+            {"p_pre", 0.70}, {"p_post", 0.72}, {"market_at_open", 0.55},
+            {"market_at_post", 0.60}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"forecaster", forecaster}};
+        const QJsonObject features2{
+            {"p_pre", 0.35}, {"p_post", -1}, {"market_at_open", 0.40},
+            {"market_at_post", -1}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"forecaster", forecaster}};
+
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-score-t1', ?, ?, 'kalshi', 'KXSCORETEST1', '15m',"
+            " 'KXSCORETEST-1', 'yes', 'LLM_ADVISORY', 'measurement_only', 0.55, 0.70, 0.6,"
+            " 900, ?, 'llm-advisory', 1)",
+            {t1, t1, QString::fromUtf8(QJsonDocument(features1).toJson(QJsonDocument::Compact))}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-score-t2', ?, ?, 'kalshi', 'KXSCORETEST2', '15m',"
+            " 'KXSCORETEST-2', 'no', 'LLM_ADVISORY', 'measurement_only', 0.40, 0.35, 0.5,"
+            " 900, ?, 'llm-advisory', 0)",
+            {t2, t2, QString::fromUtf8(QJsonDocument(features2).toJson(QJsonDocument::Compact))}).is_ok());
+        // Daemon-join row for KXSCORETEST-1 only, at/just before t1.
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-score-plan-1', ?, ?, 'kalshi', 'KXSCORETEST1', '15m',"
+            " 'KXSCORETEST-1', 'yes', 'DIRECTIONAL', 'pass', 0.55, 0.58, 0.6,"
+            " 905, '{}', 'kalshi auto-plan', -1)",
+            {t1 - 5000, t1 - 5000}).is_ok());
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "score",
+             "--forecaster-id", "adv-score-test-1"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("n_resolved").toInt(), 2);
+        QCOMPARE(out.value("daemon_comparable").toInt(), 1);
+        QVERIFY(out.contains("headline_improvement_vs_daemon"));
+        QVERIFY(out.contains("ci_low"));
+        QVERIFY(out.contains("ci_high"));
+        QVERIFY(out.contains("improvement_vs_market_pre"));
+        QCOMPARE(out.value("evidence").toString(), QStringLiteral("exploratory"));
+        QVERIFY(out.value("read_only").toBool());
+        const QJsonObject coverage = out.value("coverage").toObject();
+        QCOMPARE(coverage.value("resolved").toInt(), 2);
+        QCOMPARE(coverage.value("daemon_comparable").toInt(), 1);
+        const QJsonObject net = out.value("net_value_after_fees").toObject();
+        QCOMPARE(net.value("rows_covered").toInt(), 1); // only row 1 has market_at_post
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id IN "
+            "('adv-score-t1','adv-score-t2','adv-score-plan-1')").is_ok());
+    }
+
+    // `kalshi auto advise ledger` (Task 7): the shared sqlite file already
+    // carries challenge rows from other tests in this binary (e.g. the
+    // open/commit-blind/reveal/commit-post round trip above), so this
+    // asserts a BEFORE/AFTER delta across a known set of inserted states --
+    // the same idiom resolve_kalshi_decisions_checked_count_gates_on_advisory_rows
+    // uses above -- rather than an absolute count, which would be flaky.
+    void advise_ledger_json_reports_open_to_commit_rate() {
+        sandbox_test_home();
+        const auto ledger = [&]() -> QJsonObject {
+            int rc = -1;
+            const QJsonObject out = json_object_from_dispatch(
+                {"--json", "--headless", "kalshi", "auto", "advise", "ledger"}, &rc);
+            return rc == 0 ? out : QJsonObject{};
+        };
+        const QJsonObject before = ledger();
+        QVERIFY(!before.isEmpty());
+        QVERIFY(before.contains("open_to_commit_rate"));
+
+        const qint64 now = recent_ms();
+        const auto insert_challenge = [&](const QString& id, const QString& state) {
+            return Database::instance().execute(
+                "INSERT INTO edge_advisory_challenge (challenge_id, state, created_at,"
+                " prediction_ttl_at, execution_relevance_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                {id, state, now, now + 60000, now + 60000}).is_ok();
+        };
+        QVERIFY(insert_challenge("adv-ledger-t-open", "OPEN"));
+        QVERIFY(insert_challenge("adv-ledger-t-blind", "COMMITTED_BLIND"));
+        QVERIFY(insert_challenge("adv-ledger-t-revealed", "REVEALED"));
+        QVERIFY(insert_challenge("adv-ledger-t-post", "COMMITTED_POST"));
+        QVERIFY(insert_challenge("adv-ledger-t-expired", "EXPIRED"));
+        QVERIFY(insert_challenge("adv-ledger-t-abandoned", "ABANDONED"));
+
+        const QJsonObject after = ledger();
+        QVERIFY(!after.isEmpty());
+        QCOMPARE(after.value("opened").toInt(), before.value("opened").toInt() + 6);
+        QCOMPARE(after.value("committed_blind").toInt(), before.value("committed_blind").toInt() + 1);
+        QCOMPARE(after.value("revealed").toInt(), before.value("revealed").toInt() + 1);
+        QCOMPARE(after.value("committed_post").toInt(), before.value("committed_post").toInt() + 1);
+        QCOMPARE(after.value("expired").toInt(), before.value("expired").toInt() + 1);
+        QCOMPARE(after.value("abandoned").toInt(), before.value("abandoned").toInt() + 1);
+        const double expected_rate =
+            static_cast<double>(before.value("committed_blind").toInt() +
+                                before.value("revealed").toInt() +
+                                before.value("committed_post").toInt() + 3) /
+            static_cast<double>(before.value("opened").toInt() + 6);
+        QVERIFY(qAbs(after.value("open_to_commit_rate").toDouble() - expected_rate) < 1e-9);
+        QVERIFY(after.value("read_only").toBool());
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_advisory_challenge WHERE challenge_id IN "
+            "('adv-ledger-t-open','adv-ledger-t-blind','adv-ledger-t-revealed',"
+            "'adv-ledger-t-post','adv-ledger-t-expired','adv-ledger-t-abandoned')").is_ok());
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"
