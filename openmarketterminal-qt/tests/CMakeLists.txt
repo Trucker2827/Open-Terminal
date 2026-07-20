@@ -664,6 +664,11 @@ target_include_directories(tst_typed_action PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_typed_action PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_typed_action COMMAND tst_typed_action)
 
+add_executable(tst_advisory_repository tst_advisory_repository.cpp)
+target_include_directories(tst_advisory_repository PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisory_repository PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_advisory_repository COMMAND tst_advisory_repository)
+
 # Strategy Sandbox Task 11 — power-boundary check: the sandbox service
 # object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/
 # SandboxEligibility/SandboxRegistry/TickTail, under
