@@ -693,3 +693,11 @@ add_test(NAME sandbox_boundary_check
 add_test(NAME e2e_sandbox_smoke
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_sandbox_smoke.sh)
+
+# LLM advisory scoring Task 2 — protocol primitives (canonical JSON hash,
+# horizon-aware TTL policy, allowlist-only blind-packet builder). Pure
+# functions in services/edge_radar/AdvisoryProtocol, no DB/Widgets.
+add_executable(tst_advisory_protocol tst_advisory_protocol.cpp)
+target_include_directories(tst_advisory_protocol PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisory_protocol PRIVATE openterminal_core Qt6::Test)
+add_test(NAME tst_advisory_protocol COMMAND tst_advisory_protocol)
