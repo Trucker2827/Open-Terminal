@@ -110,7 +110,7 @@ int ai_usage() {
 }
 
 int ai_ctx_usage() {
-    std::fprintf(stderr, "usage: ai ctx <symbol> [--json] [--market prediction|equity]\n");
+    std::fprintf(stderr, "usage: ai ctx <symbol> [--json] [--market crypto|prediction|equity]\n");
     return 2;
 }
 
@@ -865,8 +865,9 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
                 return 2;
             }
             market = args.takeFirst();
-            if (market != QLatin1String("prediction") && market != QLatin1String("equity")) {
-                std::fprintf(stderr, "error: --market must be 'prediction' or 'equity'\n");
+            if (market != QLatin1String("crypto") && market != QLatin1String("prediction") &&
+                market != QLatin1String("equity")) {
+                std::fprintf(stderr, "error: --market must be 'crypto', 'prediction', or 'equity'\n");
                 return 2;
             }
         } else {

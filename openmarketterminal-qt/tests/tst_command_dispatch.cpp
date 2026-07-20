@@ -228,7 +228,7 @@ private slots:
         const QList<QString> topics = {
             "doctor", "setup", "research", "macro", "trade", "data", "files", "notes", "report", "notify",
             "excel", "workspace", "scanner", "watchlist", "portfolio", "profile", "settings", "security", "ai",
-            "notebook", "strategy", "serve", "daemon", "control",
+            "notebook", "strategy", "serve", "daemon", "control", "mission",
         };
         for (const QString& topic : topics) {
             QCOMPARE(dispatch(QStringList{"help", topic}), 0);
@@ -270,6 +270,60 @@ private slots:
         QVERIFY(!serialized.contains("api_key"));
         QVERIFY(!serialized.contains("private_key"));
         QVERIFY(!serialized.contains("secret_value"));
+    }
+    void mission_protocol_is_scoped_machine_readable_and_read_only() {
+        sandbox_test_home();
+        const qint64 now = recent_ms(1000);
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id,created_at,updated_at,venue,symbol,horizon,market_id,question,"
+            "direction,side,call,gate,market_probability,model_probability,raw_edge,edge_after_cost,spread_cost,"
+            "fee_cost,liquidity_score,confidence,seconds_left,data_status,freshness_json,features_json,reasons,source) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {QStringLiteral("mission-prediction"), now, now, QStringLiteral("kalshi"), QStringLiteral("BTC-USD"),
+             QStringLiteral("1h"), QStringLiteral("KXMISSION"), QStringLiteral("BTC above test"),
+             QStringLiteral("above"), QStringLiteral("yes"), QStringLiteral("WATCH"), QStringLiteral("hold"),
+             0.50, 0.52, 0.02, 0.01, 0.005, 0.002, 4.0, 0.7, 120,
+             QStringLiteral("watch"), QStringLiteral("{}"),
+             QStringLiteral("{\"reference_price\":64000,\"quote_observed_at_ms\":\"%1\"}").arg(now),
+             QStringLiteral("mission test"), QStringLiteral("kalshi auto-plan")}).is_ok());
+
+        const QStringList settings_before = cli_settings_fingerprint();
+        const int drafts_before = table_row_count(QStringLiteral("order_drafts"));
+        int rc = -1;
+        const QJsonObject manifest = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "mission", "manifest"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(manifest.value("protocol").toString(), QStringLiteral("openterminal-mission"));
+
+        const QJsonObject context = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "mission", "context", "--symbol", "BTC-USD", "--market", "prediction", "--limit", "1"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(context.value("read_only").toBool());
+        QCOMPARE(context.value("market").toString(), QStringLiteral("prediction"));
+        QVERIFY(context.value("fast_local_execution_facts").toObject().value("execution_relevant").toBool());
+        QVERIFY(!context.value("slow_advisory_research").toObject().value("executable").toBool());
+
+        const QJsonObject plan = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "mission", "plan", "--symbol", "BTC-USD", "--market", "prediction", "--limit", "1"}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(plan.value("read_only").toBool());
+        QVERIFY(plan.value("execution").toObject().value("requires_human_arm").toBool());
+
+        const QJsonObject explain = json_object_from_dispatch(
+            QStringList{"--json", "--headless", "mission", "explain", "mission-prediction"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(explain.value("journal").toObject().value("decision_id").toString(), QStringLiteral("mission-prediction"));
+        QVERIFY(explain.value("rule").toString().contains(QStringLiteral("decision-time evidence")));
+
+        const QString missing_scope = capture_stdout([&]() {
+            return dispatch(QStringList{"--headless", "mission", "context", "--symbol", "BTC-USD"});
+        }, &rc);
+        QCOMPARE(rc, 2);
+        QVERIFY(missing_scope.isEmpty());
+        QCOMPARE(cli_settings_fingerprint(), settings_before);
+        QCOMPARE(table_row_count(QStringLiteral("order_drafts")), drafts_before);
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id='mission-prediction'").is_ok());
     }
     void control_prediction_pulse_is_compact_and_read_only() {
         sandbox_test_home();
@@ -1229,6 +1283,43 @@ private slots:
         settings.set(QStringLiteral("cli.allow_trading"), QStringLiteral("false"), QStringLiteral("test"));
         settings.set(QStringLiteral("cli.live_trading_armed"), QStringLiteral("false"), QStringLiteral("test"));
         settings.set(QStringLiteral("cli.allowed_venues"), QString(), QStringLiteral("test"));
+    }
+
+    void kalshi_flow_and_snapshot_explain_legacy_daemon_evidence() {
+        const QString home = sandbox_test_home();
+        const QString path = QDir(home).filePath(
+            QStringLiteral("kalshi-evidence/kalshi-ws-books.json"));
+        QFile evidence(path);
+        QVERIFY(evidence.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        const QJsonObject legacy{{"schema", 1},
+                                  {"updated_at_ms", QStringLiteral("2026-07-19T12:00:00.000Z")},
+                                  {"books", QJsonObject{{"KXBTC-TEST:yes", QJsonObject{}},
+                                                        {"KXBTC-TEST:no", QJsonObject{}}}}};
+        QCOMPARE(evidence.write(QJsonDocument(legacy).toJson(QJsonDocument::Compact)),
+                 QJsonDocument(legacy).toJson(QJsonDocument::Compact).size());
+        evidence.close();
+
+        int rc = -1;
+        const QJsonObject flow = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("flow")}, &rc);
+        QCOMPARE(rc, 5);
+        QCOMPARE(flow.value(QStringLiteral("schema")).toInt(), 1);
+        QCOMPARE(flow.value(QStringLiteral("required_schema")).toInt(), 3);
+        QVERIFY(flow.value(QStringLiteral("reason")).toString().contains(
+            QStringLiteral("upgrade to schema 3")));
+        QCOMPARE(json_strings(flow.value(QStringLiteral("available_tickers")).toArray()),
+                 QStringList{QStringLiteral("KXBTC-TEST")});
+
+        const QJsonObject snapshot = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("snapshot"), QStringLiteral("--ticker"), QStringLiteral("KXBTC-TEST")},
+            &rc);
+        QCOMPARE(rc, 5);
+        QVERIFY(snapshot.value(QStringLiteral("reason")).toString().contains(
+            QStringLiteral("upgrade to schema 3")));
+        QCOMPARE(snapshot.value(QStringLiteral("evidence")).toObject()
+                     .value(QStringLiteral("schema")).toInt(), 1);
     }
 
     // Reconcile regression: when a producer drops OUT of sandbox_job_specs()
