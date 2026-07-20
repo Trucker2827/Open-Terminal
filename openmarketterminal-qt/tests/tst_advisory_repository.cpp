@@ -7,6 +7,8 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "core/config/AppPaths.h"
 #include "core/config/ProfileManager.h"
@@ -61,6 +63,36 @@ class TstAdvisoryRepository : public QObject {
         auto n = Database::instance().execute(
             "SELECT COUNT(*) FROM edge_decision_journal WHERE source='llm-advisory'", {});
         QVERIFY(n.is_ok() && n.value().next()); QCOMPARE(n.value().value(0).toInt(), 1);
+
+        // Verify the journal row's *content* was mapped correctly, not just that
+        // exactly one row exists -- a count-only assertion would pass even if
+        // side/market_probability/model_probability/outcome/gate/call were wrong.
+        auto row = Database::instance().execute(
+            "SELECT side, market_probability, model_probability, confidence, outcome, gate, call,"
+            " venue, symbol, market_id, horizon, features_json"
+            " FROM edge_decision_journal WHERE source='llm-advisory'", {});
+        QVERIFY(row.is_ok() && row.value().next());
+        auto& rq = row.value();
+        QCOMPARE(rq.value(0).toString(), QStringLiteral("yes"));              // 0.62 >= 0.55 market@open
+        QCOMPARE(rq.value(1).toDouble(), 0.55);                              // market_probability = market@open
+        QCOMPARE(rq.value(2).toDouble(), 0.62);                              // model_probability = p_pre
+        QCOMPARE(rq.value(3).toDouble(), 0.7);                               // confidence
+        QCOMPARE(rq.value(4).toInt(), -1);                                   // outcome (settlement resolves later)
+        QCOMPARE(rq.value(5).toString(), QStringLiteral("measurement_only")); // gate
+        QCOMPARE(rq.value(6).toString(), QStringLiteral("LLM_ADVISORY"));     // call
+        QCOMPARE(rq.value(7).toString(), QStringLiteral("kalshi"));           // venue
+        QCOMPARE(rq.value(8).toString(), QStringLiteral("KXBTC"));           // symbol = ticker
+        QCOMPARE(rq.value(9).toString(), QStringLiteral("M1"));               // market_id
+        QCOMPARE(rq.value(10).toString(), QStringLiteral("hourly"));         // horizon
+        const QJsonObject features =
+            QJsonDocument::fromJson(rq.value(11).toString().toUtf8()).object();
+        QCOMPARE(features.value("p_pre").toDouble(), 0.62);
+        QCOMPARE(features.value("market_at_open").toDouble(), 0.55);
+        QCOMPARE(features.value("challenge_id").toString(), o.value().challenge_id);
+        QCOMPARE(features.value("gate").toString(), QStringLiteral("measurement_only"));
+        QCOMPARE(features.value("call").toString(), QStringLiteral("LLM_ADVISORY"));
+        QCOMPARE(features.value("execution_eligible").toBool(), false);
+        QVERIFY(features.value("ts_blind").toDouble() > features.value("ts_opened").toDouble()); // 1500 > 1000
     }
     void reveal_before_blind_is_rejected() {
         adv::AdvisoryChallengeRepository repo;
