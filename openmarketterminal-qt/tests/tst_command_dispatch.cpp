@@ -3030,6 +3030,43 @@ private slots:
         QCOMPARE(rc, 0);
         QCOMPARE(posted.value(QStringLiteral("state")).toString(), QStringLiteral("COMMITTED_POST"));
     }
+
+    // Drives the REAL edge_resolve_kalshi_decisions_command via dispatch()
+    // (not a copy of its SQL) to prove `source='llm-advisory'` rows enter
+    // its resolvable set. `checked` in its JSON output is pending.size(),
+    // read straight off the SELECT before any Kalshi network fetch runs
+    // (see CommandDispatch.cpp), so this needs no live settlement data --
+    // only the before/after delta from adding one qualifying advisory row.
+    // If the widened SELECT in CommandDispatch.cpp were reverted, this
+    // would fail: the advisory row would no longer be counted (delta 0).
+    void resolve_kalshi_decisions_checked_count_gates_on_advisory_rows() {
+        sandbox_test_home();
+        const qint64 created_at = QDateTime::currentMSecsSinceEpoch() - 60000; // already past due
+        const auto checked_count = [&]() -> int {
+            int rc = -1;
+            const QJsonObject out = json_object_from_dispatch(
+                {"--json", "--headless", "edge", "resolve-kalshi-decisions",
+                 "--limit", "500", "--timeout-ms", "1000"}, &rc);
+            return rc == 0 ? out.value("checked").toInt() : -1;
+        };
+        const int before = checked_count();
+        QVERIFY(before >= 0);
+
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-resolve-gate-1', ?, ?, 'kalshi', 'KXRESOLVEGATE', 'hourly',"
+            " 'KXRESOLVEGATE-TEST', 'yes', 'LLM_ADVISORY', 'measurement_only', 0.5, 0.6, 0.7,"
+            " 0, '{}', 'llm-advisory', -1)",
+            {created_at, created_at}).is_ok());
+
+        const int after = checked_count();
+        QCOMPARE(after, before + 1);
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id='adv-resolve-gate-1'").is_ok());
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

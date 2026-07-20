@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 
 #include "core/config/AppPaths.h"
 #include "core/config/ProfileManager.h"
@@ -214,6 +215,84 @@ class TstAdvisoryRepository : public QObject {
             QJsonDocument::fromJson(jr.value().value(0).toString().toUtf8()).object();
         QVERIFY(!features.contains("market_at_post")); // absent, not fabricated from an earlier snapshot
         QCOMPARE(features.value("p_post").toDouble(), 0.55);
+    }
+
+    // Mirrors edge_resolve_kalshi_decisions_command's SELECT in
+    // src/cli/CommandDispatch.cpp. Kept in sync by hand: the full command
+    // drives a live Kalshi network fetch (KalshiAdapter::fetch_market) to
+    // resolve outcomes, which a unit test cannot exercise deterministically,
+    // so this proves the widened SELECT admits 'llm-advisory' rows into the
+    // resolvable set instead of driving the whole command.
+    void kalshi_settlement_select_widens_to_include_advisory_rows() {
+        // Old (pre-Task-5) SELECT: proven RED against this test's advisory
+        // row before CommandDispatch.cpp was widened -- see task-5-report.md
+        // for the failing run. Kept here only to prove the widening is
+        // additive (still excludes what it always excluded).
+        static const QString kOldSelect =
+            "SELECT id, market_id, side FROM edge_decision_journal "
+            "WHERE source IN ('edge journal-kalshi-scan','kalshi auto-plan') "
+            "AND (gate='pass' OR source='kalshi auto-plan') "
+            "AND outcome=-1 AND market_id<>'' "
+            "AND seconds_left>=0 AND created_at + seconds_left * 1000 <= ? "
+            "ORDER BY created_at ASC LIMIT ?";
+        // Current production SELECT (edge_resolve_kalshi_decisions_command).
+        static const QString kNewSelect =
+            "SELECT id, market_id, side FROM edge_decision_journal "
+            "WHERE source IN ('edge journal-kalshi-scan','kalshi auto-plan','llm-advisory') "
+            "AND (gate='pass' OR source='kalshi auto-plan' OR source='llm-advisory') "
+            "AND outcome=-1 AND market_id<>'' "
+            "AND seconds_left>=0 AND created_at + seconds_left * 1000 <= ? "
+            "ORDER BY created_at ASC LIMIT ?";
+
+        // Advisory row: written the same way Task 4's CLI verbs write it.
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams p; p.ticker="KXTEST"; p.market_id="M_RESOLVE"; p.horizon="hourly";
+        p.blind_context=QJsonObject{{"seconds_left", 0}};
+        p.withheld_market=QJsonObject{{"market_implied_probability",0.5}};
+        p.daemon_prob=0.5; p.seconds_left=900; p.now_ms=1000; p.model="opus";
+        auto o = repo.open(p); QVERIFY(o.is_ok());
+        adv::CommitParams c; c.challenge_id=o.value().challenge_id; c.commit_id="RESOLVE1";
+        c.probability=0.6; c.confidence=0.7; c.now_ms=1500;
+        auto jb = repo.commit_blind(c); QVERIFY(jb.is_ok());
+        const QString advisory_id = jb.value();
+
+        // Deterministic sibling rows, inserted directly in the same shape the
+        // auto-plan/scan writers produce, to prove the widening is additive:
+        // a 'kalshi auto-plan' row (gate != 'pass') must still resolve under
+        // both queries, and an 'edge journal-kalshi-scan' row with a failing
+        // gate must still be excluded from both.
+        auto ins1 = Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, market_id, side, gate, source, seconds_left, outcome)"
+            " VALUES ('DET_AUTOPLAN', 1500, 1500, 'M_DET', 'yes', 'n/a', 'kalshi auto-plan', 0, -1)", {});
+        QVERIFY(ins1.is_ok());
+        auto ins2 = Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, market_id, side, gate, source, seconds_left, outcome)"
+            " VALUES ('DET_SCAN_FAILGATE', 1500, 1500, 'M_SCAN', 'no', 'fail', 'edge journal-kalshi-scan', 0, -1)", {});
+        QVERIFY(ins2.is_ok());
+
+        auto ids_from = [](const QString& sql) {
+            QSet<QString> ids;
+            auto r = Database::instance().execute(sql, {2000, 500});
+            if (r.is_ok()) {
+                auto& q = r.value();
+                while (q.next()) ids.insert(q.value(0).toString());
+            }
+            return ids;
+        };
+
+        const QSet<QString> old_ids = ids_from(kOldSelect);
+        const QSet<QString> new_ids = ids_from(kNewSelect);
+
+        // The advisory row is excluded by the old select, included by the
+        // widened one.
+        QVERIFY(!old_ids.contains(advisory_id));
+        QVERIFY(new_ids.contains(advisory_id));
+
+        // No regression: deterministic sources resolve exactly as before.
+        QVERIFY(old_ids.contains(QStringLiteral("DET_AUTOPLAN")));
+        QVERIFY(new_ids.contains(QStringLiteral("DET_AUTOPLAN")));
+        QVERIFY(!old_ids.contains(QStringLiteral("DET_SCAN_FAILGATE")));
+        QVERIFY(!new_ids.contains(QStringLiteral("DET_SCAN_FAILGATE")));
     }
 };
 

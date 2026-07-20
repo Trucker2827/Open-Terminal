@@ -26958,8 +26958,8 @@ static int edge_resolve_kalshi_decisions_command(const GlobalOpts& opts, QString
     QVector<PendingDecision> pending;
     auto selected = Database::instance().execute(
         "SELECT id, market_id, side FROM edge_decision_journal "
-        "WHERE source IN ('edge journal-kalshi-scan','kalshi auto-plan') "
-        "AND (gate='pass' OR source='kalshi auto-plan') "
+        "WHERE source IN ('edge journal-kalshi-scan','kalshi auto-plan','llm-advisory') "
+        "AND (gate='pass' OR source='kalshi auto-plan' OR source='llm-advisory') "
         "AND outcome=-1 AND market_id<>'' "
         "AND seconds_left>=0 AND created_at + seconds_left * 1000 <= ? "
         "ORDER BY created_at ASC LIMIT ?",
