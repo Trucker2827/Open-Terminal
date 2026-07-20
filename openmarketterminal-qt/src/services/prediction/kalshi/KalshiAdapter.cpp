@@ -516,6 +516,18 @@ void KalshiAdapter::fetch_queue_positions(const QString& market_tickers,
            }, QStringLiteral("fetch_queue_positions"));
 }
 
+void KalshiAdapter::fetch_reconcile_orders(int limit, const QString& cursor) {
+    QPointer<KalshiAdapter> self = this;
+    run_py(QStringLiteral("reconcile_orders"),
+           QJsonObject{{QStringLiteral("limit"), qBound(1, limit, 1000)},
+                       {QStringLiteral("cursor"), cursor}},
+           [self](const QJsonObject& response) {
+               if (!self) return;
+               emit self->reconcile_orders_ready(response.value(QStringLiteral("orders")).toArray(),
+                                                  response.value(QStringLiteral("cursor")).toString());
+           }, QStringLiteral("fetch_reconcile_orders"));
+}
+
 void KalshiAdapter::fetch_open_orders() {
     QPointer<KalshiAdapter> self = this;
     run_py(QStringLiteral("open_orders"), {},
@@ -528,6 +540,7 @@ void KalshiAdapter::fetch_open_orders() {
                    const auto o = v.toObject();
                    pr::OpenOrder ord;
                    ord.order_id = o.value("order_id").toString();
+                   ord.client_order_id = o.value("client_order_id").toString();
                    ord.asset_id = o.value("asset_id").toString();
                    ord.market_id = o.value("market_id").toString();
                    ord.outcome = o.value("outcome").toString();
@@ -597,6 +610,13 @@ void KalshiAdapter::place_order(const pr::OrderRequest& req) {
                out.ok = resp.value("ok").toBool();
                out.order_id = resp.value("order_id").toString();
                out.status = resp.value("status").toString();
+               out.client_order_id = resp.value("client_order_id").toString();
+               out.filled = resp.value("fill_count").toDouble();
+               out.remaining = resp.value("remaining_count").toDouble();
+               out.average_fill_price = resp.value("average_fill_price").toDouble();
+               out.average_fee_paid = resp.value("average_fee_paid").toDouble();
+               out.exchange_ts_ms = qint64(resp.value("ts_ms").toDouble());
+               out.raw = resp.value("raw").toObject();
                emit self->order_placed(out);
            },
            QStringLiteral("place_order"));

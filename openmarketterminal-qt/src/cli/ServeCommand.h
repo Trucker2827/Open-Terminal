@@ -17,6 +17,9 @@ int sync_command(const QString& profile, bool json, QStringList args);
 bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
                                         int subscribed_assets, qint64 event_age_ms,
                                         qint64 stale_after_ms);
+bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
+                                       qint64 last_completed_ms, qint64 now_ms,
+                                       qint64 interval_ms);
 bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
                                       qint64 timeout_ms);
 bool kalshi_planner_process_timed_out(bool active, qint64 process_age_ms,
@@ -112,6 +115,48 @@ QJsonObject kalshi_flow_execution_to_json(const KalshiFlowQuote& yes,
                                           const KalshiFlowQuote& no,
                                           double yes_fee_per_contract,
                                           double no_fee_per_contract);
+
+// Cross-exchange spot microstructure is a confirmation/abstention layer for a
+// Kalshi candidate. It can veto a proposed side but can never create trading
+// authority or manufacture model edge on its own.
+struct KalshiSpotConfirmation {
+    bool eligible = false;
+    QString side;
+    QString direction;
+    double confidence = 0.0;
+    double book_pressure = 0.0;
+    double tape_pressure = 0.0;
+    double aggressor_pressure = 0.0;
+    double aggressor_coverage = 0.0;
+    int classified_trades = 0;
+    double cross_source_spread_bps = 0.0;
+    int live_sources = 0;
+    int top_book_sources = 0;
+    QStringList blockers;
+
+    QJsonObject to_json() const;
+};
+
+KalshiSpotConfirmation kalshi_spot_microstructure_confirmation(
+    const QJsonObject& execution_snapshot, const QString& selected_side,
+    qint64 decision_ts_ms, qint64 maximum_snapshot_age_ms = 5000);
+
+// Hysteresis prevents a single noisy snapshot from flipping autonomous state.
+struct KalshiSignalTransition {
+    QString state = QStringLiteral("WARMING");
+    QString pending_state;
+    int consecutive = 0;
+    bool changed = false;
+    QJsonObject to_json() const;
+};
+KalshiSignalTransition kalshi_signal_transition(const QString& current_state,
+                                                const QString& pending_state,
+                                                int consecutive,
+                                                const QString& observation,
+                                                int confirmations_required = 3);
+QJsonObject kalshi_contract_horizon(double spot, double floor_strike, double cap_strike,
+                                    qint64 seconds_left, double realized_move_30s_bps,
+                                    const QString& settlement_source);
 
 // Pure daemon-job-spec -> CLI-args builder, kept public for deterministic
 // regression tests.

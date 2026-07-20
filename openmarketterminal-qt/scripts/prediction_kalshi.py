@@ -56,7 +56,9 @@ from __future__ import annotations
 import base64
 import datetime
 import json
+import random
 import sys
+import time
 import traceback
 import uuid
 
@@ -150,8 +152,26 @@ def _request(payload: dict, method: str, path: str, *, params=None, body=None):
     base = _base_url(bool(payload.get("use_demo")))
     url = base + path
     signing_path = _API_PREFIX + path  # full path under host, no query string
-    headers = _auth_headers(payload, method, signing_path)
-    resp = requests.request(method, url, headers=headers, params=params, json=body, timeout=30)
+    # GET/DELETE are naturally retryable. A create-order POST is also safe to
+    # retry only when it carries Kalshi's client_order_id idempotency key.
+    retryable = method.upper() in ("GET", "DELETE") or (
+        method.upper() == "POST" and isinstance(body, dict) and body.get("client_order_id")
+    )
+    resp = None
+    for attempt in range(4):
+        # Sign every attempt with a fresh timestamp; replaying stale headers can
+        # turn a recoverable rate limit into an authentication failure.
+        headers = _auth_headers(payload, method, signing_path)
+        resp = requests.request(method, url, headers=headers, params=params, json=body, timeout=30)
+        if not retryable or resp.status_code not in (429, 500, 502, 503, 504) or attempt == 3:
+            break
+        retry_after = resp.headers.get("Retry-After", "")
+        try:
+            delay = min(8.0, max(0.05, float(retry_after)))
+        except (TypeError, ValueError):
+            delay = min(8.0, 0.25 * (2 ** attempt) + random.uniform(0.0, 0.10))
+        time.sleep(delay)
+    assert resp is not None
     ok = resp.status_code in (200, 201)
     try:
         data = resp.json()
@@ -163,7 +183,18 @@ def _request(payload: dict, method: str, path: str, *, params=None, body=None):
 def _public_request(payload: dict, method: str, path: str, *, params=None):
     import requests
     base = _base_url(bool(payload.get("use_demo")))
-    resp = requests.request(method, base + path, params=params, timeout=30)
+    resp = None
+    for attempt in range(4):
+        resp = requests.request(method, base + path, params=params, timeout=30)
+        if resp.status_code not in (429, 500, 502, 503, 504) or attempt == 3:
+            break
+        retry_after = resp.headers.get("Retry-After", "")
+        try:
+            delay = min(8.0, max(0.05, float(retry_after)))
+        except (TypeError, ValueError):
+            delay = min(8.0, 0.25 * (2 ** attempt) + random.uniform(0.0, 0.10))
+        time.sleep(delay)
+    assert resp is not None
     ok = resp.status_code in (200, 201)
     try:
         data = resp.json()
@@ -465,6 +496,19 @@ def cmd_open_orders(payload: dict) -> None:
     _emit({"ok": True, "orders": orders})
 
 
+def cmd_reconcile_orders(payload: dict) -> None:
+    """Return recent account orders, including terminal states, for recovery."""
+    params = {"limit": min(max(int(payload.get("limit", 500)), 1), 1000)}
+    if payload.get("cursor"):
+        params["cursor"] = str(payload["cursor"])
+    ok, code, data = _request(payload, "GET", "/portfolio/orders", params=params)
+    if not ok:
+        _fail(f"HTTP {code}", detail=data)
+        return
+    _emit({"ok": True, "orders": data.get("orders", []) or [],
+           "cursor": data.get("cursor", "")})
+
+
 def cmd_queue_positions(payload: dict) -> None:
     """Return resting orders joined with their price-time queue positions.
 
@@ -701,11 +745,18 @@ def cmd_place_order(payload: dict) -> None:
         _fail(f"HTTP {code}", detail=data)
         return
     order = data.get("order", data) or {}
+    filled = _to_float(order.get("fill_count", order.get("fill_count_fp")))
+    remaining = _to_float(order.get("remaining_count", order.get("remaining_count_fp")))
     _emit({
         "ok": True,
         "order_id": order.get("order_id", data.get("order_id", "")),
         "status": _order_status_from_event_order(order),
         "client_order_id": order.get("client_order_id", body["client_order_id"]),
+        "fill_count": filled,
+        "remaining_count": remaining,
+        "average_fill_price": _to_float(order.get("average_fill_price")),
+        "average_fee_paid": _to_float(order.get("average_fee_paid")),
+        "ts_ms": int(_to_float(order.get("ts_ms", data.get("ts_ms", 0)))),
         "raw": data,
     })
 
@@ -868,6 +919,7 @@ COMMANDS = {
     "balance": cmd_balance,
     "positions": cmd_positions,
     "open_orders": cmd_open_orders,
+    "reconcile_orders": cmd_reconcile_orders,
     "queue_positions": cmd_queue_positions,
     "fills": cmd_fills,
     "settlements": cmd_settlements,
@@ -886,6 +938,7 @@ AUTH_COMMANDS = {
     "balance",
     "positions",
     "open_orders",
+    "reconcile_orders",
     "queue_positions",
     "fills",
     "settlements",

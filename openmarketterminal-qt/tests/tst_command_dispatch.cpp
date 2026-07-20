@@ -174,6 +174,40 @@ static QString sandbox_test_home() {
 class TstCommandDispatch : public QObject {
     Q_OBJECT
 private slots:
+    void kalshi_execution_ledger_is_durable_and_fill_idempotent() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute("DELETE FROM kalshi_live_fills").is_ok());
+        QVERIFY(Database::instance().execute("DELETE FROM kalshi_live_orders").is_ok());
+        const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO kalshi_live_orders(client_order_id,order_id,market_id,asset_id,action,outcome,state,"
+            "requested_count,filled_count,remaining_count,limit_price,created_at,updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            {"client-1", "order-1", "KXTEST", "KXTEST:yes", "buy", "YES", "partially_filled",
+             10.0, 4.0, 6.0, 0.42, now, now}).is_ok());
+        const auto insert_fill = [&] {
+            return Database::instance().execute(
+                "INSERT OR IGNORE INTO kalshi_live_fills(fill_key,order_id,client_order_id,market_id,asset_id,"
+                "action,outcome,count,price,received_ts_ms,source) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                {"fill-1", "order-1", "client-1", "KXTEST", "KXTEST:yes", "buy", "YES",
+                 4.0, 0.41, QDateTime::currentMSecsSinceEpoch(), "test"});
+        };
+        QVERIFY(insert_fill().is_ok());
+        QVERIFY(insert_fill().is_ok());
+        QCOMPARE(table_row_count(QStringLiteral("kalshi_live_fills")), 1);
+    }
+
+    void kalshi_cancel_orders_empty_scope_is_safe_without_credentials() {
+        sandbox_test_home();
+        QVERIFY(Database::instance().execute("DELETE FROM kalshi_live_orders").is_ok());
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "cancel-orders", "--yes"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("requested").toInt(), 0);
+        QVERIFY(out.value("verified").toBool());
+    }
+
     void strips_global_flags() {
         QStringList args{"--json", "--headless", "--profile", "alice", "mcp", "list"};
         GlobalOpts o;
@@ -1007,10 +1041,7 @@ private slots:
         bool has_spot_swing_1d = false;
         bool has_stale_crypto_universe_60 = false;
         bool has_btc5m_producer = false;
-        bool has_kalshi_auto_15m = false;
-        bool has_kalshi_auto_1h = false;
-        bool has_kalshi_auto_daily = false;
-        bool has_kalshi_recovery_watchdog = false;
+        bool has_legacy_kalshi_auto_plan = false;
         bool has_kalshi_live_autonomous_pulse = false;
         bool has_kalshi_live_reconcile = false;
         bool has_legacy_kalshi_scan = false;
@@ -1065,24 +1096,7 @@ private slots:
                 else if (hz == QStringLiteral("1d"))
                     has_spot_swing_1d = true;
             } else if (starts_with(command, QStringList{"kalshi", "auto", "run"})) {
-                const int cidx = command.indexOf(QStringLiteral("--category"));
-                const QString category = cidx >= 0 && cidx + 1 < command.size()
-                    ? command.at(cidx + 1) : QString();
-                if (category == QStringLiteral("Crypto#BTC@live"))
-                    has_kalshi_auto_15m = has_kalshi_recovery_watchdog = true;
-                else if (category == QStringLiteral("Crypto#BTC@hourly"))
-                    has_kalshi_auto_1h = true;
-                else if (category == QStringLiteral("Crypto#BTC@daily"))
-                    has_kalshi_auto_daily = true;
-                if (category == QStringLiteral("Crypto#BTC@live") ||
-                    category == QStringLiteral("Crypto#BTC@hourly")) {
-                    QCOMPARE(job.value("interval_sec").toInt(), 60);
-                    // The recovery watchdog may need a full WebSocket/API
-                    // recovery window; ordinary hourly planning remains
-                    // bounded by the shorter timeout.
-                    QCOMPARE(job.value("timeout_sec").toInt(),
-                             category == QStringLiteral("Crypto#BTC@live") ? 60 : 30);
-                }
+                has_legacy_kalshi_auto_plan = true;
             } else if (starts_with(command, QStringList{"kalshi", "auto", "live", "execute-next"})) {
                 has_kalshi_live_autonomous_pulse = command.contains(QStringLiteral("--require-session"));
                 QCOMPARE(job.value("interval_sec").toInt(), 2);
@@ -1128,12 +1142,9 @@ private slots:
         QVERIFY2(!has_btc5m_producer,
                  "install-jobs must not install a btc5m producer job -- the btc5m book is retired, so its "
                  "'edge journal-evaluate-btc5m-live' rows have no consumer");
-        QVERIFY2(has_kalshi_auto_15m, "install-jobs must feed Kalshi v2 15m cohorts");
-        QVERIFY2(!has_kalshi_auto_1h,
-                 "the persistent event engine must replace the duplicate hourly polling producer");
-        QVERIFY2(has_kalshi_auto_daily, "install-jobs must feed Kalshi v2 daily cohorts");
-        QVERIFY2(has_kalshi_recovery_watchdog,
-                 "install-jobs must retain one slow WebSocket recovery watchdog");
+        QVERIFY2(!has_legacy_kalshi_auto_plan,
+                 "the persistent Kalshi WebSocket engine owns decision and recovery work; "
+                 "install-jobs must not recreate scheduled REST auto-plan jobs");
         QVERIFY2(!has_kalshi_live_autonomous_pulse,
                  "install-jobs must retire the two-second autonomous polling pulse");
         QVERIFY2(has_kalshi_live_reconcile,
@@ -1322,10 +1333,10 @@ private slots:
                      .value(QStringLiteral("schema")).toInt(), 1);
     }
 
-    // Reconcile regression: when a producer drops OUT of sandbox_job_specs()
-    // (e.g. the real-horizon reshape retiring crypto-universe-60, btc5m,
-    // chronos-5m), install-jobs must disable the now-orphaned managed job in
-    // jobs.json rather than leaving it enabled with no consumer forever.
+    // Reconcile regression: when a producer drops OUT of sandbox_job_specs(),
+    // install-jobs must disable its stale managed job rather than leaving it
+    // enabled forever. The retired Kalshi REST watchdog is a concrete case:
+    // the persistent WebSocket engine owns that work now.
     void sandbox_install_jobs_retires_dropped_spec_jobs() {
         sandbox_test_home();
         int rc = -1;
@@ -1343,13 +1354,12 @@ private slots:
         QVERIFY(doc.isObject());
         QJsonArray jobs = doc.object().value("jobs").toArray();
 
-        // Inject a stale managed job whose sandbox_job key is NOT (and never
-        // will be) in sandbox_job_specs() -- simulates a producer that just
-        // got dropped from the spec by a reshape.
+        // Inject the old REST watchdog as if it predated this install. Its
+        // sandbox_job key is intentionally absent from sandbox_job_specs().
         const QString now = QStringLiteral("2020-01-01T00:00:00Z");
         QJsonObject stale{
-            {"id", QStringLiteral("job_obsolete")},
-            {"name", QStringLiteral("Strategy sandbox obsolete feed")},
+            {"id", QStringLiteral("job_legacy_kalshi_rest")},
+            {"name", QStringLiteral("Kalshi auto recovery watchdog")},
             {"kind", QStringLiteral("command")},
             {"enabled", true},
             {"schedule", QStringLiteral("interval")},
@@ -1362,12 +1372,12 @@ private slots:
             {"created_at", now},
             {"updated_at", now},
             {"managed_by", QStringLiteral("strategy-sandbox")},
-            {"sandbox_job", QStringLiteral("obsolete-feed")},
-            {"description", QStringLiteral("stale producer left over from a dropped spec entry")},
-            {"command", QJsonArray{QStringLiteral("edge"), QStringLiteral("journal"),
-                                    QStringLiteral("evaluate-btc5m-live")}},
-            {"spec", QJsonObject{{"command", QJsonArray{QStringLiteral("edge"), QStringLiteral("journal"),
-                                                         QStringLiteral("evaluate-btc5m-live")}}}}};
+            {"sandbox_job", QStringLiteral("kalshi-auto-recovery-watchdog")},
+            {"description", QStringLiteral("retired REST Kalshi auto-plan watchdog")},
+            {"command", QJsonArray{QStringLiteral("kalshi"), QStringLiteral("auto"),
+                                    QStringLiteral("run")}},
+            {"spec", QJsonObject{{"command", QJsonArray{QStringLiteral("kalshi"), QStringLiteral("auto"),
+                                                         QStringLiteral("run")}}}}};
         jobs.append(stale);
         QJsonObject out_doc = doc.object();
         out_doc["jobs"] = jobs;
@@ -1376,9 +1386,8 @@ private slots:
         jobs_file.write(QJsonDocument(out_doc).toJson(QJsonDocument::Compact));
         jobs_file.close();
 
-        // Run install-jobs again -- it must reconcile: disable the stale
-        // 'obsolete-feed' job (its key is no longer in the spec) while
-        // leaving current spec jobs (e.g. 'tick') enabled.
+        // Run install-jobs again -- it must reconcile: disable the old REST
+        // watchdog while leaving current spec jobs (e.g. 'tick') enabled.
         const QJsonObject second = json_object_from_dispatch(
             QStringList{"--json", "sandbox", "install-jobs"}, &rc);
         QCOMPARE(rc, 0);
@@ -1390,16 +1399,16 @@ private slots:
         const QJsonDocument doc2 = QJsonDocument::fromJson(jobs_file2.readAll());
         jobs_file2.close();
         QVERIFY(doc2.isObject());
-        bool found_obsolete = false;
-        bool obsolete_disabled = false;
+        bool found_legacy_watchdog = false;
+        bool legacy_watchdog_disabled = false;
         bool found_tick_enabled = false;
         QJsonArray jobs_without_obsolete;
         for (const QJsonValue& v : doc2.object().value("jobs").toArray()) {
             const QJsonObject job = v.toObject();
             if (job.value("managed_by").toString() == QStringLiteral("strategy-sandbox") &&
-                job.value("sandbox_job").toString() == QStringLiteral("obsolete-feed")) {
-                found_obsolete = true;
-                obsolete_disabled = !job.value("enabled").toBool();
+                job.value("sandbox_job").toString() == QStringLiteral("kalshi-auto-recovery-watchdog")) {
+                found_legacy_watchdog = true;
+                legacy_watchdog_disabled = !job.value("enabled").toBool();
                 continue;  // drop the synthetic stale job so it doesn't pollute shared
                            // test-process state (sandbox_test_home() reuses one HOME/
                            // jobs.json across every slot in this binary).
@@ -1420,8 +1429,10 @@ private slots:
             jobs_file3.close();
         }
 
-        QVERIFY2(found_obsolete, "the injected stale job must still be present in jobs.json (disabled, not deleted)");
-        QVERIFY2(obsolete_disabled, "install-jobs must disable a managed job whose spec key was dropped");
+        QVERIFY2(found_legacy_watchdog,
+                 "the retired REST watchdog must remain recorded in jobs.json as disabled, not deleted");
+        QVERIFY2(legacy_watchdog_disabled,
+                 "install-jobs must disable the retired Kalshi REST watchdog");
         QVERIFY2(found_tick_enabled, "a still-current spec job (tick) must remain enabled after reconcile");
     }
 

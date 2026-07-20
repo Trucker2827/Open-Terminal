@@ -449,7 +449,11 @@ Result<void> EdgePredictionModel::publish_estimate(const EdgePredictionEstimate&
     out.calibration_score = 0.0;
     out.sample_count = estimate.sample_count;
     out.as_of = estimate.decision_ts > 0 ? estimate.decision_ts : QDateTime::currentMSecsSinceEpoch();
-    out.trained_at = out.as_of;
+    // A fresh publication is not a fresh training run.  Preserve the fitted
+    // model's timestamp so readiness can distinguish current predictions from
+    // an old model being republished every minute.
+    const auto model = EdgePredictionModelRepository::instance().get_model(out.symbol, out.horizon);
+    out.trained_at = model.is_ok() ? model.value().trained_at : 0;
     auto saved = EdgePredictionModelRepository::instance().publish_model_output(out);
     if (saved.is_err())
         return Result<void>::err(saved.error());
