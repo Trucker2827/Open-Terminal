@@ -11,6 +11,7 @@
 #include "cli/CommandDispatch.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/automation/AutomationState.h"
+#include "services/edge_radar/AdvisoryProtocol.h"
 #include "storage/sqlite/Database.h"
 #include "storage/repositories/AiHandlerRepository.h"
 #include "storage/repositories/SettingsRepository.h"
@@ -107,6 +108,37 @@ static QStringList json_strings(const QJsonArray& arr) {
     for (const QJsonValue& v : arr)
         out << v.toString();
     return out;
+}
+
+// Recursive key-name scan used by the advisory-firewall leak test: `key` must
+// not appear ANYWHERE in `value`, at any nesting depth, inside any object
+// (arrays are walked too, in case a forbidden field ever ends up inside an
+// array of objects). This is deliberately name-based, not value-based --
+// the firewall's job is to guarantee a forbidden field is never even
+// present, regardless of what it would contain.
+static bool json_contains_key_deep(const QJsonValue& value, const QString& key) {
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        if (obj.contains(key))
+            return true;
+        for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+            if (json_contains_key_deep(it.value(), key))
+                return true;
+        }
+        return false;
+    }
+    if (value.isArray()) {
+        for (const QJsonValue& v : value.toArray()) {
+            if (json_contains_key_deep(v, key))
+                return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+static bool json_contains_key_deep(const QJsonObject& obj, const QString& key) {
+    return json_contains_key_deep(QJsonValue(obj), key);
 }
 
 // ai ctx decision-packet Task 3 read-only invariant helpers -- fingerprint
@@ -2862,6 +2894,333 @@ private slots:
             return rc_meanrev;
         });
         QCOMPARE(rc_meanrev, 0);
+    }
+
+    // LOAD-BEARING: the firewalled advisory challenge's blind context must
+    // NEVER leak market pricing / model-conclusion fields. build_advise_open()
+    // is a pure (no-DB) function so this test asserts on the emitted object
+    // directly, without process/stdout capture -- see CommandDispatch.h.
+    //
+    // The fixture mirrors kalshi_auto_current_snapshot()'s real nested shape
+    // (contract/horizon/execution/flow/spot_microstructure) and additionally
+    // plants decoy forbidden-named fields at every level the open-handler's
+    // extraction logic actually reads from (top level, inside "contract",
+    // inside "execution", inside "flow") -- exactly the places a sloppy
+    // "copy everything except a denylist" implementation would leak from.
+    void advise_open_json_never_leaks_price() {
+        const QJsonObject horizon{
+            {"spot", 65000.0}, {"floor_strike", 64000.0}, {"cap_strike", 66000.0},
+            {"reference_strike", 64000.0}, {"distance_from_strike", 1000.0},
+            {"required_move_bps", 153.8}, {"realized_move_30s_bps", 12.0},
+            {"seconds_left", QStringLiteral("900")}, {"settlement_band", "final_15m"},
+            {"settlement_source", "CF Benchmarks BRTI"}, {"eligible_context", true}};
+        const QJsonObject contract{
+            {"question", "BTC above $64,000?"}, {"event_ticker", "KXBTC-TEST"},
+            {"close_time", "2026-07-20T13:00:00Z"}, {"seconds_left", 900},
+            {"horizon", horizon}, {"yes_mid", 0.62}, {"yes_change_30s_cents", 1.0},
+            // Decoys directly inside "contract" -- a sibling of the fields the
+            // handler legitimately reads (seconds_left, horizon, yes_mid).
+            {"fair_yes", 0.63}, {"fair_no", 0.37}, {"model_weight", 0.5}};
+        const QJsonObject flow{
+            {"windows", QJsonObject{}},
+            {"divergence", QJsonObject{{"label", "ALIGNED"}, {"spot_change_bps", 0.1}}}};
+        const QJsonObject execution{
+            {"yes", QJsonObject{{"bid", 0.60}, {"ask", 0.63}, {"bid_size", 120.0},
+                                {"ask_size", 80.0}, {"fee_per_contract", 0.01}}},
+            {"no", QJsonObject{{"bid", 0.37}, {"ask", 0.40}, {"bid_size", 90.0},
+                               {"ask_size", 110.0}, {"fee_per_contract", 0.01}}}};
+        const QJsonObject spot_microstructure{
+            {"schema_version", 1}, {"event", "crypto_microstructure_snapshot"},
+            {"call", "TRADE CANDIDATE"}, {"direction", "up"},
+            {"reference_price", 65000.0}, {"microprice", 65001.5},
+            {"best_bid", 64999.0}, {"best_ask", 65003.0}, {"confidence", "HIGH"},
+            // Decoys inside spot_microstructure -- this object is copied
+            // WHOLESALE into the blind context (it's on adv::kAllowlist as a
+            // whole key), so unlike "horizon" (flattened to a plain label) it
+            // has no per-field extraction to guard it. A future
+            // CryptoMicrostructureRadar::to_json() field addition could leak
+            // straight through unless the wholesale copy is itself sanitized.
+            {"model_weight", 0.9},
+            {"divergence", QJsonObject{{"label", "DIVERGENCE"}, {"price_diverges", true}}}};
+        const QJsonObject snapshot{
+            {"schema", 3}, {"ticker", "KXBTC-TEST"}, {"observed_at_ms", QString::number(recent_ms())},
+            {"contract", contract}, {"flow", flow}, {"execution", execution},
+            {"spot_microstructure", spot_microstructure},
+            // Decoys at the snapshot top level, siblings of "contract"/"execution".
+            {"market_implied_probability", 0.777}, {"market_curve_probability", 0.8},
+            {"daemon_probability", 0.71}, {"calibrated_probability", 0.65},
+            {"cost_net_edge", 0.09}};
+
+        const QJsonObject built = build_advise_open(snapshot, QStringLiteral("KXBTC-TEST"),
+                                                     recent_ms(0));
+        QVERIFY2(!built.contains(QStringLiteral("error")),
+                 qUtf8Printable(built.value(QStringLiteral("error")).toString()));
+        QVERIFY(built.value(QStringLiteral("PRICE_WITHHELD")).toBool());
+        const QJsonObject context = built.value(QStringLiteral("context")).toObject();
+        QVERIFY(!context.isEmpty());
+        for (const QString& key : openmarketterminal::adv::kBlindForbiddenKeys())
+            QVERIFY2(!json_contains_key_deep(context, key), qUtf8Printable("leaked " + key));
+    }
+
+    // End-to-end wiring: `kalshi auto advise open|commit-blind|reveal|
+    // commit-post` through the real router/dispatch() path (catches wiring
+    // bugs the pure build_advise_open() test above cannot -- argument
+    // parsing, repository persistence, state-machine transitions). Writes a
+    // real kalshi-ws-books.json fixture into the sandboxed HOME's evidence
+    // dir exactly like the daemon would.
+    void kalshi_advise_open_commit_blind_reveal_commit_post_round_trip() {
+        const QString home = sandbox_test_home();
+        const QString ticker = QStringLiteral("KXBTC-RT");
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const QJsonObject horizon{
+            {"spot", 65000.0}, {"floor_strike", 64000.0}, {"cap_strike", 66000.0},
+            {"distance_from_strike", 1000.0}, {"required_move_bps", 153.8},
+            {"realized_move_30s_bps", 12.0}, {"seconds_left", QStringLiteral("900")},
+            {"settlement_band", "final_15m"}, {"settlement_source", "CF Benchmarks BRTI"},
+            {"eligible_context", true}};
+        const QJsonObject contract{
+            {"question", "BTC above $64,000?"}, {"event_ticker", "KXBTC-RT-EVT"},
+            {"seconds_left", 900}, {"horizon", horizon}, {"yes_mid", 0.62}};
+        const QJsonObject execution{
+            {"yes", QJsonObject{{"bid", 0.60}, {"ask", 0.63}, {"bid_size", 120.0}}},
+            {"no", QJsonObject{{"bid", 0.37}, {"ask", 0.40}, {"bid_size", 90.0}}}};
+        const QJsonObject flow{{"divergence", QJsonObject{{"label", "ALIGNED"}}}};
+        const QJsonObject snapshot{
+            {"schema", 3}, {"ticker", ticker}, {"observed_at_ms", QString::number(now)},
+            {"contract", contract}, {"execution", execution}, {"flow", flow}};
+        const QJsonObject payload{
+            {"schema", 3}, {"updated_at_ms", QString::number(now)},
+            {"snapshots", QJsonObject{{ticker, snapshot}}}};
+        QFile evidence(QDir(home).filePath(QStringLiteral("kalshi-evidence/kalshi-ws-books.json")));
+        QVERIFY(evidence.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QCOMPARE(evidence.write(QJsonDocument(payload).toJson(QJsonDocument::Compact)),
+                 QJsonDocument(payload).toJson(QJsonDocument::Compact).size());
+        evidence.close();
+
+        int rc = -1;
+        const QJsonObject opened = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "open", "--ticker", ticker}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(opened.value(QStringLiteral("PRICE_WITHHELD")).toBool());
+        const QString challenge_id = opened.value(QStringLiteral("challenge_id")).toString();
+        QVERIFY(!challenge_id.isEmpty());
+        const QJsonObject context = opened.value(QStringLiteral("context")).toObject();
+        for (const QString& key : openmarketterminal::adv::kBlindForbiddenKeys())
+            QVERIFY2(!json_contains_key_deep(context, key), qUtf8Printable("leaked " + key));
+
+        const QJsonObject blind = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "commit-blind",
+             "--challenge", challenge_id, "--commit-id", "rt-1", "--probability", "0.7"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(blind.value(QStringLiteral("state")).toString(), QStringLiteral("COMMITTED_BLIND"));
+        QVERIFY(!blind.contains(QStringLiteral("market_implied_probability")));
+
+        const QJsonObject revealed = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "reveal",
+             "--challenge", challenge_id}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(revealed.value(QStringLiteral("state")).toString(), QStringLiteral("REVEALED"));
+        QVERIFY(revealed.contains(QStringLiteral("withheld_market")));
+        QCOMPARE(revealed.value(QStringLiteral("withheld_market")).toObject()
+                     .value(QStringLiteral("market_implied_probability")).toDouble(), 0.62);
+
+        const QJsonObject posted = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "commit-post",
+             "--challenge", challenge_id, "--commit-id", "rt-2", "--probability", "0.68"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(posted.value(QStringLiteral("state")).toString(), QStringLiteral("COMMITTED_POST"));
+    }
+
+    // Drives the REAL edge_resolve_kalshi_decisions_command via dispatch()
+    // (not a copy of its SQL) to prove `source='llm-advisory'` rows enter
+    // its resolvable set. `checked` in its JSON output is pending.size(),
+    // read straight off the SELECT before any Kalshi network fetch runs
+    // (see CommandDispatch.cpp), so this needs no live settlement data --
+    // only the before/after delta from adding one qualifying advisory row.
+    // If the widened SELECT in CommandDispatch.cpp were reverted, this
+    // would fail: the advisory row would no longer be counted (delta 0).
+    void resolve_kalshi_decisions_checked_count_gates_on_advisory_rows() {
+        sandbox_test_home();
+        const qint64 created_at = QDateTime::currentMSecsSinceEpoch() - 60000; // already past due
+        const auto checked_count = [&]() -> int {
+            int rc = -1;
+            const QJsonObject out = json_object_from_dispatch(
+                {"--json", "--headless", "edge", "resolve-kalshi-decisions",
+                 "--limit", "500", "--timeout-ms", "1000"}, &rc);
+            return rc == 0 ? out.value("checked").toInt() : -1;
+        };
+        const int before = checked_count();
+        QVERIFY(before >= 0);
+
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-resolve-gate-1', ?, ?, 'kalshi', 'KXRESOLVEGATE', 'hourly',"
+            " 'KXRESOLVEGATE-TEST', 'yes', 'LLM_ADVISORY', 'measurement_only', 0.5, 0.6, 0.7,"
+            " 0, '{}', 'llm-advisory', -1)",
+            {created_at, created_at}).is_ok());
+
+        const int after = checked_count();
+        QCOMPARE(after, before + 1);
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id='adv-resolve-gate-1'").is_ok());
+    }
+
+    // `kalshi auto advise score` (Task 7): seeds two RESOLVED (outcome in
+    // {0,1}) source='llm-advisory' rows sharing a distinguishing
+    // forecaster agent_id (so --forecaster-id isolates exactly these two
+    // rows regardless of whatever other advisory rows other tests/prior
+    // runs have left in the shared sqlite file -- the existing
+    // resolve_kalshi_decisions_checked_count_gates_on_advisory_rows test
+    // above establishes this file's DB persists across test methods, so
+    // absolute-count assertions without a distinguishing filter would be
+    // flaky). Row 1 has a matching source='kalshi auto-plan' row on the
+    // same market_id at/just before its created_at -- the daemon-join row;
+    // row 2 has no such row on its market_id, so it must be counted
+    // daemon-UNAVAILABLE, not silently dropped. Row 1 also carries a real
+    // market_at_post (net-of-fees eligible); row 2's is the untouched -1
+    // sentinel (net-of-fees ineligible).
+    void advise_score_json_reports_daemon_comparable_coverage_and_ci() {
+        sandbox_test_home();
+        const qint64 t1 = recent_ms(120000);
+        const qint64 t2 = recent_ms(60000);
+        const QJsonObject forecaster{{"provider", "anthropic"}, {"model", "claude-test"},
+                                     {"agent_id", "adv-score-test-1"}};
+        const QJsonObject features1{
+            {"p_pre", 0.70}, {"p_post", 0.72}, {"market_at_open", 0.55},
+            {"market_at_post", 0.60}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"forecaster", forecaster}};
+        const QJsonObject features2{
+            {"p_pre", 0.35}, {"p_post", -1}, {"market_at_open", 0.40},
+            {"market_at_post", -1}, {"daemon_probability", -1}, {"horizon", "15m"},
+            {"forecaster", forecaster}};
+
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-score-t1', ?, ?, 'kalshi', 'KXSCORETEST1', '15m',"
+            " 'KXSCORETEST-1', 'yes', 'LLM_ADVISORY', 'measurement_only', 0.55, 0.70, 0.6,"
+            " 900, ?, 'llm-advisory', 1)",
+            {t1, t1, QString::fromUtf8(QJsonDocument(features1).toJson(QJsonDocument::Compact))}).is_ok());
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-score-t2', ?, ?, 'kalshi', 'KXSCORETEST2', '15m',"
+            " 'KXSCORETEST-2', 'no', 'LLM_ADVISORY', 'measurement_only', 0.40, 0.35, 0.5,"
+            " 900, ?, 'llm-advisory', 0)",
+            {t2, t2, QString::fromUtf8(QJsonDocument(features2).toJson(QJsonDocument::Compact))}).is_ok());
+        // Daemon-join row for KXSCORETEST-1 only, at/just before t1.
+        QVERIFY(Database::instance().execute(
+            "INSERT INTO edge_decision_journal (id, created_at, updated_at, venue, symbol, horizon,"
+            " market_id, side, call, gate, market_probability, model_probability, confidence,"
+            " seconds_left, features_json, source, outcome)"
+            " VALUES ('adv-score-plan-1', ?, ?, 'kalshi', 'KXSCORETEST1', '15m',"
+            " 'KXSCORETEST-1', 'yes', 'DIRECTIONAL', 'pass', 0.55, 0.58, 0.6,"
+            " 905, '{}', 'kalshi auto-plan', -1)",
+            {t1 - 5000, t1 - 5000}).is_ok());
+
+        int rc = -1;
+        const QJsonObject out = json_object_from_dispatch(
+            {"--json", "--headless", "kalshi", "auto", "advise", "score",
+             "--forecaster-id", "adv-score-test-1"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(out.value("n_resolved").toInt(), 2);
+        QCOMPARE(out.value("daemon_comparable").toInt(), 1);
+        QVERIFY(out.contains("headline_improvement_vs_daemon"));
+        QVERIFY(out.contains("ci_low"));
+        QVERIFY(out.contains("ci_high"));
+        QVERIFY(out.contains("improvement_vs_market_pre"));
+        QCOMPARE(out.value("evidence").toString(), QStringLiteral("exploratory"));
+        QVERIFY(out.value("read_only").toBool());
+        const QJsonObject coverage = out.value("coverage").toObject();
+        QCOMPARE(coverage.value("resolved").toInt(), 2);
+        QCOMPARE(coverage.value("daemon_comparable").toInt(), 1);
+        const QJsonObject net = out.value("net_value_after_fees").toObject();
+        QCOMPARE(net.value("rows_covered").toInt(), 1); // only row 1 has market_at_post
+
+        // Regression: edge_decision_journal.outcome is written SIDE-RELATIVE
+        // by the shared settlement resolver (outcome = decision.side ==
+        // result ? 1 : 0 -- see edge_resolve_kalshi_decisions_command()),
+        // but p_pre/market/daemon are all P(yes). Row 2 ("adv-score-t2") is
+        // a NO-side row (side='no', p_pre=0.35 < market_at_open=0.40) whose
+        // side-relative outcome column is 0 -- meaning side != result, i.e.
+        // the settlement actually resolved 'yes' (yes-relative outcome=1).
+        // Row 1 is YES-side, where side-relative and yes-relative coincide
+        // (unaffected either way). Hand-computed brier_pre over both rows
+        // AFTER normalizing to yes-relative:
+        //   row1: (p_pre=0.70 - yes_outcome=1)^2 = 0.09
+        //   row2: (p_pre=0.35 - yes_outcome=1)^2 = 0.4225
+        //   mean = (0.09 + 0.4225) / 2 = 0.25625
+        // Before normalizing (the bug: scoring p_pre against the raw
+        // side-relative outcome column), row2 would contribute
+        // (0.35 - 0)^2 = 0.1225 instead, giving a buggy mean of
+        // (0.09 + 0.1225) / 2 = 0.10625. This assertion is RED against
+        // `row.scored.outcome = outcome;` (unnormalized) and GREEN once the
+        // side_yes ? outcome : (1 - outcome) normalization is applied.
+        QVERIFY(qAbs(out.value("brier_pre").toDouble() - 0.25625) < 1e-9);
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id IN "
+            "('adv-score-t1','adv-score-t2','adv-score-plan-1')").is_ok());
+    }
+
+    // `kalshi auto advise ledger` (Task 7): the shared sqlite file already
+    // carries challenge rows from other tests in this binary (e.g. the
+    // open/commit-blind/reveal/commit-post round trip above), so this
+    // asserts a BEFORE/AFTER delta across a known set of inserted states --
+    // the same idiom resolve_kalshi_decisions_checked_count_gates_on_advisory_rows
+    // uses above -- rather than an absolute count, which would be flaky.
+    void advise_ledger_json_reports_open_to_commit_rate() {
+        sandbox_test_home();
+        const auto ledger = [&]() -> QJsonObject {
+            int rc = -1;
+            const QJsonObject out = json_object_from_dispatch(
+                {"--json", "--headless", "kalshi", "auto", "advise", "ledger"}, &rc);
+            return rc == 0 ? out : QJsonObject{};
+        };
+        const QJsonObject before = ledger();
+        QVERIFY(!before.isEmpty());
+        QVERIFY(before.contains("open_to_commit_rate"));
+
+        const qint64 now = recent_ms();
+        const auto insert_challenge = [&](const QString& id, const QString& state) {
+            return Database::instance().execute(
+                "INSERT INTO edge_advisory_challenge (challenge_id, state, created_at,"
+                " prediction_ttl_at, execution_relevance_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                {id, state, now, now + 60000, now + 60000}).is_ok();
+        };
+        QVERIFY(insert_challenge("adv-ledger-t-open", "OPEN"));
+        QVERIFY(insert_challenge("adv-ledger-t-blind", "COMMITTED_BLIND"));
+        QVERIFY(insert_challenge("adv-ledger-t-revealed", "REVEALED"));
+        QVERIFY(insert_challenge("adv-ledger-t-post", "COMMITTED_POST"));
+        QVERIFY(insert_challenge("adv-ledger-t-expired", "EXPIRED"));
+        QVERIFY(insert_challenge("adv-ledger-t-abandoned", "ABANDONED"));
+
+        const QJsonObject after = ledger();
+        QVERIFY(!after.isEmpty());
+        QCOMPARE(after.value("opened").toInt(), before.value("opened").toInt() + 6);
+        QCOMPARE(after.value("committed_blind").toInt(), before.value("committed_blind").toInt() + 1);
+        QCOMPARE(after.value("revealed").toInt(), before.value("revealed").toInt() + 1);
+        QCOMPARE(after.value("committed_post").toInt(), before.value("committed_post").toInt() + 1);
+        QCOMPARE(after.value("expired").toInt(), before.value("expired").toInt() + 1);
+        QCOMPARE(after.value("abandoned").toInt(), before.value("abandoned").toInt() + 1);
+        const double expected_rate =
+            static_cast<double>(before.value("committed_blind").toInt() +
+                                before.value("revealed").toInt() +
+                                before.value("committed_post").toInt() + 3) /
+            static_cast<double>(before.value("opened").toInt() + 6);
+        QVERIFY(qAbs(after.value("open_to_commit_rate").toDouble() - expected_rate) < 1e-9);
+        QVERIFY(after.value("read_only").toBool());
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_advisory_challenge WHERE challenge_id IN "
+            "('adv-ledger-t-open','adv-ledger-t-blind','adv-ledger-t-revealed',"
+            "'adv-ledger-t-post','adv-ledger-t-expired','adv-ledger-t-abandoned')").is_ok());
     }
 };
 QTEST_MAIN(TstCommandDispatch)

@@ -33,6 +33,9 @@
 #include "services/edge_radar/KalshiUniversalEdgeModel.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/edge_radar/BitcoinEvidenceEngine.h"
+#include "services/edge_radar/AdvisoryProtocol.h"
+#include "services/edge_radar/AdvisoryChallengeRepository.h"
+#include "services/edge_radar/AdvisoryScoring.h"
 #include "services/decision/DecisionOrchestrator.h"
 #include "services/ai_decision/DecisionContext.h"
 #include "services/file_manager/FileManagerService.h"
@@ -508,6 +511,15 @@ static int command_help(const QString& topic) {
             "  kalshi auto status\n"
             "  kalshi auto flow [--ticker TICKER]\n"
             "  kalshi auto snapshot --ticker TICKER [--model-probability P]\n"
+            "  kalshi auto advise open --ticker TICKER [--horizon H] [--settlement-def S]\n"
+            "    [--market-id ID] [--provider P] [--model M] [--prompt-version V]\n"
+            "    [--agent-id A] [--run-id R] [--temperature T] [--daemon-probability P]\n"
+            "  kalshi auto advise commit-blind --challenge ID --commit-id K --probability P\n"
+            "  kalshi auto advise reveal --challenge ID\n"
+            "  kalshi auto advise commit-post --challenge ID --commit-id K --probability P\n"
+            "  kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
+            "    [--horizon H] [--limit N]\n"
+            "  kalshi auto advise ledger [--limit N]\n"
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
             "  kalshi auto calibration\n"
@@ -22782,6 +22794,785 @@ static int kalshi_auto_snapshot_command(const GlobalOpts& opts, QStringList args
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// `kalshi auto advise open|commit-blind|reveal|commit-post` -- firewalled LLM
+// advisory scoring (see docs/adr design spec + AdvisoryProtocol.h /
+// AdvisoryChallengeRepository.h). The forecaster only ever sees a
+// price-free "blind context"; the contemporaneous market quote and the
+// daemon's own probability are withheld until reveal().
+//
+// kalshi_auto_current_snapshot()'s decision-snapshot JSON is deeply nested
+// (contract/horizon/execution/flow/spot_microstructure) and does not match
+// adv::build_blind_packet()'s flat allowlist field names one-for-one, so it
+// must be flattened into that shape first. The mapping below is traced
+// directly from ServeCommand.cpp's write_book_snapshot()/update_flow_snapshot
+// (the writer of kalshi-ws-books.json), not guessed:
+//   strike_floor/strike_cap  <- contract.horizon.{floor_strike,cap_strike}
+//   distance_bps             <- signed (spot-strike)/spot*10000, computed from
+//                                contract.horizon.{spot,distance_from_strike}
+//   required_move_bps        <- contract.horizon.required_move_bps
+//   seconds_left              <- contract.seconds_left (NUMERIC; NOT
+//                                contract.horizon.seconds_left, which is a
+//                                STRING there and would make ttl_for() always
+//                                reject opens if used by mistake)
+//   settlement_band           <- contract.horizon.settlement_band
+//   settlement_def            <- contract.horizon.settlement_source
+//   horizon                   <- kalshi_auto_horizon(seconds_left) ("15m"/
+//                                "1h"/"daily" cadence label -- NOT the nested
+//                                horizon object; that object is never copied
+//                                wholesale, precisely to avoid a future field
+//                                added there silently leaking through the
+//                                allowlist)
+//   spot                      <- contract.horizon.spot
+//   realized_move_bps         <- contract.horizon.realized_move_30s_bps
+//   spot_microstructure       <- snapshot.spot_microstructure, copied whole
+//                                but run through
+//                                kalshi_advise_strip_forbidden_keys_deep()
+//                                first. CryptoMicrostructureRadar::to_json()'s
+//                                CURRENT fields were traced and none collide
+//                                with a forbidden key name, but this is a
+//                                wholesale object copy with no per-field
+//                                allowlist of its own -- the deep strip is
+//                                defense in depth against a future field
+//                                addition there leaking a probability/price
+//                                conclusion through unchanged.
+// realized_vol has no source in this snapshot and is intentionally omitted
+// rather than fabricated.
+//
+// Defense in depth for wholesale-object allowlist keys (currently just
+// "spot_microstructure"): unlike the individually-extracted fields above,
+// a wholesale copy has no per-field allowlist of its own, so a forbidden
+// key added inside that object by a future change elsewhere in the
+// codebase (e.g. CryptoMicrostructureRadar::to_json() growing a
+// probability-shaped field) would otherwise ride straight through
+// adv::build_blind_packet()'s top-level allowlist check into the blind
+// context. kalshi_advise_strip_forbidden_keys_deep() removes any key named
+// in adv::kBlindForbiddenKeys() at ANY nesting depth (objects and arrays of
+// objects) before such an object is ever placed in `flat`.
+static QJsonValue kalshi_advise_strip_forbidden_keys_deep(const QJsonValue& value) {
+    if (value.isObject()) {
+        // NOTE: kBlindForbiddenKeys() must be materialized into a single
+        // named QStringList before taking begin()/end() -- calling it twice
+        // inline creates two independent temporaries, so begin() from one
+        // and end() from the other is a dangling-iterator range (this
+        // crashed with std::bad_alloc the first time round).
+        static const QStringList kForbiddenList = adv::kBlindForbiddenKeys();
+        static const QSet<QString> forbidden(kForbiddenList.begin(), kForbiddenList.end());
+        const QJsonObject src = value.toObject();
+        QJsonObject out;
+        for (auto it = src.constBegin(); it != src.constEnd(); ++it) {
+            if (forbidden.contains(it.key()))
+                continue;
+            out.insert(it.key(), kalshi_advise_strip_forbidden_keys_deep(it.value()));
+        }
+        return out;
+    }
+    if (value.isArray()) {
+        QJsonArray out;
+        for (const QJsonValue& v : value.toArray())
+            out.append(kalshi_advise_strip_forbidden_keys_deep(v));
+        return out;
+    }
+    return value;
+}
+
+static QJsonObject kalshi_advise_flatten_snapshot(const QJsonObject& snapshot,
+                                                  const QString& horizon_label) {
+    const QJsonObject contract = snapshot.value(QStringLiteral("contract")).toObject();
+    const QJsonObject horizon = contract.value(QStringLiteral("horizon")).toObject();
+    const double spot = horizon.value(QStringLiteral("spot")).toDouble();
+    const double distance = horizon.value(QStringLiteral("distance_from_strike")).toDouble();
+
+    QJsonObject flat;
+    if (horizon.contains(QStringLiteral("floor_strike")))
+        flat.insert(QStringLiteral("strike_floor"), horizon.value(QStringLiteral("floor_strike")));
+    if (horizon.contains(QStringLiteral("cap_strike")))
+        flat.insert(QStringLiteral("strike_cap"), horizon.value(QStringLiteral("cap_strike")));
+    if (spot > 0.0)
+        flat.insert(QStringLiteral("distance_bps"), (distance / spot) * 10000.0);
+    if (horizon.contains(QStringLiteral("required_move_bps")))
+        flat.insert(QStringLiteral("required_move_bps"), horizon.value(QStringLiteral("required_move_bps")));
+    if (contract.contains(QStringLiteral("seconds_left")))
+        flat.insert(QStringLiteral("seconds_left"), contract.value(QStringLiteral("seconds_left")));
+    if (horizon.contains(QStringLiteral("settlement_band")))
+        flat.insert(QStringLiteral("settlement_band"), horizon.value(QStringLiteral("settlement_band")));
+    if (horizon.contains(QStringLiteral("settlement_source")))
+        flat.insert(QStringLiteral("settlement_def"), horizon.value(QStringLiteral("settlement_source")));
+    if (!horizon_label.isEmpty())
+        flat.insert(QStringLiteral("horizon"), horizon_label);
+    if (spot > 0.0)
+        flat.insert(QStringLiteral("spot"), spot);
+    if (horizon.contains(QStringLiteral("realized_move_30s_bps")))
+        flat.insert(QStringLiteral("realized_move_bps"), horizon.value(QStringLiteral("realized_move_30s_bps")));
+    if (snapshot.contains(QStringLiteral("spot_microstructure")))
+        flat.insert(QStringLiteral("spot_microstructure"),
+                    kalshi_advise_strip_forbidden_keys_deep(
+                        snapshot.value(QStringLiteral("spot_microstructure"))));
+    return flat;
+}
+
+// The contemporaneous market baseline that stays hidden from the forecaster
+// until reveal() -- OpenParams.withheld_market / CommitParams.market_json.
+// AdvisoryChallengeRepository reads "market_implied_probability" out of this
+// object specifically (see market_probability_of() in
+// AdvisoryChallengeRepository.cpp), so that key is load-bearing; the rest is
+// diagnostic context surfaced only at reveal time.
+static QJsonObject kalshi_advise_withheld_market(const QJsonObject& snapshot) {
+    const QJsonObject contract = snapshot.value(QStringLiteral("contract")).toObject();
+    const QJsonObject flow = snapshot.value(QStringLiteral("flow")).toObject();
+    const QJsonObject execution = snapshot.value(QStringLiteral("execution")).toObject();
+    const QJsonObject yes = execution.value(QStringLiteral("yes")).toObject();
+    const QJsonObject no = execution.value(QStringLiteral("no")).toObject();
+    return QJsonObject{
+        {QStringLiteral("market_implied_probability"), contract.value(QStringLiteral("yes_mid"))},
+        {QStringLiteral("yes_bid"), yes.value(QStringLiteral("bid"))},
+        {QStringLiteral("yes_ask"), yes.value(QStringLiteral("ask"))},
+        {QStringLiteral("no_bid"), no.value(QStringLiteral("bid"))},
+        {QStringLiteral("no_ask"), no.value(QStringLiteral("ask"))},
+        {QStringLiteral("yes_depth"), yes.value(QStringLiteral("bid_size"))},
+        {QStringLiteral("no_depth"), no.value(QStringLiteral("bid_size"))},
+        {QStringLiteral("divergence"), flow.value(QStringLiteral("divergence"))}};
+}
+
+QJsonObject build_advise_open(const QJsonObject& snapshot, const QString& ticker, qint64 now_ms) {
+    const QJsonObject contract = snapshot.value(QStringLiteral("contract")).toObject();
+    const qint64 seconds_left = contract.value(QStringLiteral("seconds_left")).toVariant().toLongLong();
+    const adv::TtlPolicy policy = adv::ttl_for(seconds_left);
+    if (!policy.may_open)
+        return QJsonObject{{QStringLiteral("error"), QStringLiteral("settlement too near — do not open")}};
+
+    const QString horizon_label = kalshi_auto_horizon(static_cast<int>(seconds_left));
+    const QJsonObject context = adv::build_blind_packet(
+        kalshi_advise_flatten_snapshot(snapshot, horizon_label));
+    const QString context_hash = adv::sha256_hex(adv::canonical_json(context));
+    return QJsonObject{
+        {QStringLiteral("ticker"), ticker},
+        {QStringLiteral("context"), context},
+        {QStringLiteral("context_hash"), context_hash},
+        {QStringLiteral("prediction_ttl_ms"), QString::number(policy.prediction_ttl_ms)},
+        {QStringLiteral("execution_relevance_ms"), QString::number(policy.execution_relevance_ms)},
+        {QStringLiteral("ts_opened"), QString::number(now_ms)},
+        {QStringLiteral("PRICE_WITHHELD"), true}};
+}
+
+static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList args) {
+    QString ticker, horizon_opt, settlement_def_opt, market_id_opt;
+    QString provider, model, prompt_version, agent_id, run_id;
+    QString temperature_raw, daemon_probability_raw;
+    if (!take_string_option(args, QStringLiteral("--ticker"), ticker) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon_opt) ||
+        !take_string_option(args, QStringLiteral("--settlement-def"), settlement_def_opt) ||
+        !take_string_option(args, QStringLiteral("--market-id"), market_id_opt) ||
+        !take_string_option(args, QStringLiteral("--provider"), provider) ||
+        !take_string_option(args, QStringLiteral("--model"), model) ||
+        !take_string_option(args, QStringLiteral("--prompt-version"), prompt_version) ||
+        !take_string_option(args, QStringLiteral("--agent-id"), agent_id) ||
+        !take_string_option(args, QStringLiteral("--run-id"), run_id) ||
+        !take_string_option(args, QStringLiteral("--temperature"), temperature_raw) ||
+        !take_string_option(args, QStringLiteral("--daemon-probability"), daemon_probability_raw) ||
+        !args.isEmpty() || ticker.trimmed().isEmpty()) {
+        std::fprintf(stderr,
+            "usage: kalshi auto advise open --ticker TICKER [--horizon H] [--settlement-def S]\n"
+            "       [--market-id ID] [--provider P] [--model M] [--prompt-version V]\n"
+            "       [--agent-id A] [--run-id R] [--temperature T] [--daemon-probability P]\n");
+        return 2;
+    }
+    bool ok = true;
+    const double temperature = temperature_raw.isEmpty() ? 0.0 : temperature_raw.toDouble(&ok);
+    if (!ok) { std::fprintf(stderr, "--temperature must be numeric\n"); return 2; }
+    // -1 = "no daemon estimate supplied" (same sentinel convention as
+    // CommitParams::daemon_prob / reveal()'s fresh_daemon_prob) -- this
+    // evidence snapshot carries no daemon-computed probability of its own to
+    // extract, so fabricating one here would defeat the whole point of an
+    // independently-scored baseline. Optional by design.
+    double daemon_probability = -1.0;
+    if (!daemon_probability_raw.isEmpty()) {
+        daemon_probability = daemon_probability_raw.toDouble(&ok);
+        if (!ok || daemon_probability < 0.0 || daemon_probability > 1.0) {
+            std::fprintf(stderr, "--daemon-probability must be 0..1\n");
+            return 2;
+        }
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QJsonObject snapshot = kalshi_auto_current_snapshot(ticker, now);
+    if (snapshot.isEmpty()) {
+        // Same unavailable-data shape as `kalshi auto snapshot`.
+        const QJsonObject metadata = kalshi_auto_evidence_metadata();
+        const int schema = metadata.value(QStringLiteral("schema")).toInt();
+        const QString reason = schema > 0 && schema < 3
+            ? QStringLiteral("Daemon evidence schema %1 predates decision snapshots; rebuild and restart the GUI or daemon to upgrade to schema 3").arg(schema)
+            : QStringLiteral("No fresh daemon decision snapshot for this contract");
+        QJsonObject out{{"available", false}, {"read_only", true}, {"reason", reason}};
+        if (!metadata.isEmpty())
+            out.insert(QStringLiteral("evidence"), metadata);
+        if (opts.json) std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        else std::printf("Kalshi advise open unavailable: %s.\n", qUtf8Printable(reason));
+        return 5;
+    }
+
+    const QString ticker_upper = ticker.trimmed().toUpper();
+    const QJsonObject built = build_advise_open(snapshot, ticker_upper, now);
+    if (built.contains(QStringLiteral("error"))) {
+        const QString reason = built.value(QStringLiteral("error")).toString();
+        if (opts.json)
+            std::printf("%s\n", QJsonDocument(QJsonObject{{"error", reason}}).toJson(QJsonDocument::Compact).constData());
+        else
+            std::fprintf(stderr, "%s\n", qUtf8Printable(reason));
+        return 5;
+    }
+
+    const QJsonObject contract = snapshot.value(QStringLiteral("contract")).toObject();
+    const qint64 seconds_left = contract.value(QStringLiteral("seconds_left")).toVariant().toLongLong();
+    const QJsonObject horizon_obj = contract.value(QStringLiteral("horizon")).toObject();
+
+    adv::OpenParams params;
+    params.ticker = ticker_upper;
+    params.market_id = market_id_opt.isEmpty() ? ticker_upper : market_id_opt;
+    params.horizon = horizon_opt.isEmpty() ? kalshi_auto_horizon(static_cast<int>(seconds_left)) : horizon_opt;
+    params.settlement_def = settlement_def_opt.isEmpty()
+        ? horizon_obj.value(QStringLiteral("settlement_source")).toString() : settlement_def_opt;
+    params.blind_context = built.value(QStringLiteral("context")).toObject();
+    params.withheld_market = kalshi_advise_withheld_market(snapshot);
+    params.daemon_prob = daemon_probability;
+    params.seconds_left = seconds_left;
+    params.now_ms = now;
+    params.provider = provider;
+    params.model = model;
+    params.prompt_version = prompt_version;
+    params.agent_id = agent_id;
+    params.run_id = run_id;
+    params.temperature = temperature;
+
+    adv::AdvisoryChallengeRepository repo;
+    auto opened = repo.open(params);
+    if (opened.is_err()) {
+        std::fprintf(stderr, "advise open failed: %s\n", opened.error().c_str());
+        return 5;
+    }
+
+    QJsonObject out = built;
+    out.insert(QStringLiteral("challenge_id"), opened.value().challenge_id);
+    // Authoritative context_hash is the one the repository actually
+    // persisted (computed from the identical canonical_json formula over the
+    // identical blind_context, so this is a consistency belt, not a
+    // divergence).
+    out.insert(QStringLiteral("context_hash"), opened.value().context_hash);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Advisory challenge opened: %s (%s)\n", qUtf8Printable(opened.value().challenge_id),
+               qUtf8Printable(params.ticker));
+    return 0;
+}
+
+static int kalshi_auto_advise_commit_blind_command(const GlobalOpts& opts, QStringList args) {
+    QString challenge_id, commit_id, probability_raw, confidence_raw, rationale;
+    if (!take_string_option(args, QStringLiteral("--challenge"), challenge_id) ||
+        !take_string_option(args, QStringLiteral("--commit-id"), commit_id) ||
+        !take_string_option(args, QStringLiteral("--probability"), probability_raw) ||
+        !take_string_option(args, QStringLiteral("--confidence"), confidence_raw) ||
+        !take_string_option(args, QStringLiteral("--rationale"), rationale) ||
+        !args.isEmpty() || challenge_id.trimmed().isEmpty() || commit_id.trimmed().isEmpty() ||
+        probability_raw.isEmpty()) {
+        std::fprintf(stderr,
+            "usage: kalshi auto advise commit-blind --challenge ID --commit-id K --probability P\n"
+            "       [--confidence C] [--rationale TEXT]\n");
+        return 2;
+    }
+    bool ok = true;
+    const double probability = probability_raw.toDouble(&ok);
+    if (!ok || probability < 0.0 || probability > 1.0) {
+        std::fprintf(stderr, "--probability must be 0..1\n");
+        return 2;
+    }
+    double confidence = 0.0;
+    if (!confidence_raw.isEmpty()) {
+        confidence = confidence_raw.toDouble(&ok);
+        if (!ok) { std::fprintf(stderr, "--confidence must be numeric\n"); return 2; }
+    }
+
+    adv::CommitParams params;
+    params.challenge_id = challenge_id;
+    params.commit_id = commit_id;
+    params.probability = probability;
+    params.confidence = confidence;
+    params.rationale = rationale;
+    params.now_ms = QDateTime::currentMSecsSinceEpoch();
+
+    adv::AdvisoryChallengeRepository repo;
+    auto committed = repo.commit_blind(params);
+    if (committed.is_err()) {
+        std::fprintf(stderr, "commit-blind failed: %s\n", committed.error().c_str());
+        return 5;
+    }
+    const QJsonObject out{{"state", "COMMITTED_BLIND"}, {"id", committed.value()},
+                          {"ts_committed", QString::number(params.now_ms)}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Committed blind prediction %s for challenge %s\n", qUtf8Printable(committed.value()),
+               qUtf8Printable(challenge_id));
+    return 0;
+}
+
+// Resolves the ticker for a challenge so reveal()/commit-post can fetch a
+// FRESH kalshi_auto_current_snapshot() (a baseline distinct from the
+// open-time one). AdvisoryChallengeRepository intentionally exposes no
+// getter for this (its interface is scoped to state transitions only), so
+// this is a direct, read-only lookup against the same table.
+static QString kalshi_advise_challenge_ticker(const QString& challenge_id) {
+    auto row = Database::instance().execute(
+        "SELECT ticker FROM edge_advisory_challenge WHERE challenge_id=?", {challenge_id});
+    if (row.is_err() || !row.value().next())
+        return {};
+    return row.value().value(0).toString();
+}
+
+static int kalshi_auto_advise_reveal_command(const GlobalOpts& opts, QStringList args) {
+    QString challenge_id;
+    if (!take_string_option(args, QStringLiteral("--challenge"), challenge_id) ||
+        !args.isEmpty() || challenge_id.trimmed().isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto advise reveal --challenge ID\n");
+        return 2;
+    }
+
+    const QString ticker = kalshi_advise_challenge_ticker(challenge_id);
+    if (ticker.isEmpty()) {
+        std::fprintf(stderr, "reveal failed: challenge not found: %s\n", qUtf8Printable(challenge_id));
+        return 5;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QJsonObject fresh_snapshot = kalshi_auto_current_snapshot(ticker, now);
+    // A fresh reveal-time baseline is only passed when genuinely available;
+    // absent that, reveal() leaves market_at_reveal_json/daemon_prob_at_reveal
+    // at their honest '{}'/-1 defaults rather than fabricating a
+    // reveal-time-looking value out of stale or missing data.
+    const QJsonObject fresh_market = fresh_snapshot.isEmpty()
+        ? QJsonObject{} : kalshi_advise_withheld_market(fresh_snapshot);
+    const double fresh_daemon_prob = -1.0; // no daemon re-score available via this evidence path
+
+    adv::AdvisoryChallengeRepository repo;
+    auto revealed = repo.reveal(challenge_id, now, fresh_market, fresh_daemon_prob);
+    if (revealed.is_err()) {
+        std::fprintf(stderr, "reveal failed: %s\n", revealed.error().c_str());
+        return 5;
+    }
+    QJsonObject out = revealed.value();
+    out.insert(QStringLiteral("state"), QStringLiteral("REVEALED"));
+    out.insert(QStringLiteral("challenge_id"), challenge_id);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Revealed challenge %s\n", qUtf8Printable(challenge_id));
+    return 0;
+}
+
+static int kalshi_auto_advise_commit_post_command(const GlobalOpts& opts, QStringList args) {
+    QString challenge_id, commit_id, probability_raw, confidence_raw, rationale;
+    if (!take_string_option(args, QStringLiteral("--challenge"), challenge_id) ||
+        !take_string_option(args, QStringLiteral("--commit-id"), commit_id) ||
+        !take_string_option(args, QStringLiteral("--probability"), probability_raw) ||
+        !take_string_option(args, QStringLiteral("--confidence"), confidence_raw) ||
+        !take_string_option(args, QStringLiteral("--rationale"), rationale) ||
+        !args.isEmpty() || challenge_id.trimmed().isEmpty() || commit_id.trimmed().isEmpty() ||
+        probability_raw.isEmpty()) {
+        std::fprintf(stderr,
+            "usage: kalshi auto advise commit-post --challenge ID --commit-id K --probability P\n"
+            "       [--confidence C] [--rationale TEXT]\n");
+        return 2;
+    }
+    bool ok = true;
+    const double probability = probability_raw.toDouble(&ok);
+    if (!ok || probability < 0.0 || probability > 1.0) {
+        std::fprintf(stderr, "--probability must be 0..1\n");
+        return 2;
+    }
+    double confidence = 0.0;
+    if (!confidence_raw.isEmpty()) {
+        confidence = confidence_raw.toDouble(&ok);
+        if (!ok) { std::fprintf(stderr, "--confidence must be numeric\n"); return 2; }
+    }
+
+    const QString ticker = kalshi_advise_challenge_ticker(challenge_id);
+    if (ticker.isEmpty()) {
+        std::fprintf(stderr, "commit-post failed: challenge not found: %s\n", qUtf8Printable(challenge_id));
+        return 5;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QJsonObject fresh_snapshot = kalshi_auto_current_snapshot(ticker, now);
+
+    adv::CommitParams params;
+    params.challenge_id = challenge_id;
+    params.commit_id = commit_id;
+    params.probability = probability;
+    params.confidence = confidence;
+    params.rationale = rationale;
+    params.now_ms = now;
+    if (!fresh_snapshot.isEmpty())
+        params.market_json = kalshi_advise_withheld_market(fresh_snapshot);
+    // params.daemon_prob is left at its default -1 sentinel: no genuinely
+    // fresh daemon re-score is available through this evidence path either.
+
+    adv::AdvisoryChallengeRepository repo;
+    auto committed = repo.commit_post(params);
+    if (committed.is_err()) {
+        std::fprintf(stderr, "commit-post failed: %s\n", committed.error().c_str());
+        return 5;
+    }
+    const QJsonObject out{{"state", "COMMITTED_POST"}, {"id", challenge_id}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Committed post-reveal prediction for challenge %s\n", qUtf8Printable(challenge_id));
+    return 0;
+}
+
+// `kalshi auto advise score` -- read-only paired scoring report over
+// resolved (outcome in {0,1}) source='llm-advisory' rows. This handler's own
+// job is the read + parse + join + aggregate + emit plumbing (mirroring
+// kalshi_auto_attribution_command()'s shape above); the actual Brier/
+// log-loss/bootstrap-CI math is adv::score_paired() (Task 6).
+//
+// DAEMON PROBABILITY -- the carried cross-task problem, resolved here:
+// advisory rows' features_json.daemon_probability is usually -1
+// (OpenParams::daemon_prob's "no daemon estimate supplied" sentinel; most
+// open-time evidence snapshots carry no daemon-computed probability of
+// their own -- see kalshi_auto_advise_open_command()'s comment), though
+// `advise open --daemon-probability P` CAN populate it. We look up the
+// daemon's own probability here regardless of that, because the nearest
+// kalshi-auto-plan decision AT OR BEFORE the advisory row's created_at is a
+// strictly more contemporaneous daemon estimate than whatever (if anything)
+// was captured once at open time. The deterministic daemon's own
+// probability for the same market at that time exists as source='kalshi
+// auto-plan' rows' model_probability column. Rows with no such match are
+// daemon-unavailable and excluded from the daemon-vs-pre comparison (but
+// never dropped from the market-vs-pre comparison or from n_resolved) --
+// their exclusion is always reported via `coverage`, never silent.
+static double kalshi_advise_score_daemon_probability(const QString& market_id, qint64 created_at) {
+    if (market_id.isEmpty())
+        return -1.0;
+    auto row = Database::instance().execute(
+        "SELECT model_probability FROM edge_decision_journal WHERE source='kalshi auto-plan' "
+        "AND market_id=? AND created_at<=? ORDER BY created_at DESC LIMIT 1",
+        {market_id, created_at});
+    if (row.is_err()) {
+        // A genuine SQL execution failure must be visible, not folded into
+        // the same sentinel as "no matching daemon row" -- otherwise a
+        // broken join query silently reads as collapsing daemon coverage
+        // ("0 of N daemon-comparable") instead of an error.
+        std::fprintf(stderr, "advise score: daemon-probability lookup failed: %s\n",
+                     row.error().c_str());
+        return -1.0;
+    }
+    if (!row.value().next())
+        return -1.0; // no matching daemon row -- the quiet, expected path
+    return row.value().value(0).toDouble();
+}
+
+// Kalshi's published taker fee schedule rounds UP to the nearest cent:
+// fee_cents = ceil(0.07 * C * P * (1-P) * 100) for a contract priced at P
+// (0..1, dollars) with C contracts. KalshiAutoEngine.cpp's fee_per_contract()
+// uses the same 0.07*P*(1-P) curve as an UNROUNDED soft cost estimate for
+// pre-trade edge gating; here the figure is reported as realized net
+// economics after the fact, so it is rounded to the nearest cent like a real
+// fee would be. C=1 for a per-contract figure.
+static double kalshi_advise_score_fee_dollars(double entry_price) {
+    const double p = std::clamp(entry_price, 0.0, 1.0);
+    const double fee_cents = std::ceil(0.07 * 1.0 * p * (1.0 - p) * 100.0);
+    return fee_cents / 100.0;
+}
+
+static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList args) {
+    QString forecaster_id, provider_filter, model_filter, horizon_filter, limit_raw;
+    if (!take_string_option(args, QStringLiteral("--forecaster-id"), forecaster_id) ||
+        !take_string_option(args, QStringLiteral("--provider"), provider_filter) ||
+        !take_string_option(args, QStringLiteral("--model"), model_filter) ||
+        !take_string_option(args, QStringLiteral("--horizon"), horizon_filter) ||
+        !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !args.isEmpty()) {
+        std::fprintf(stderr,
+            "usage: kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
+            "       [--horizon H] [--limit N] [--json]\n");
+        return 2;
+    }
+    int limit = 1000;
+    if (!limit_raw.isEmpty()) {
+        bool ok = false;
+        limit = limit_raw.toInt(&ok);
+        if (!ok || limit < 1 || limit > 100000) {
+            std::fprintf(stderr, "--limit must be 1..100000\n");
+            return 2;
+        }
+    }
+
+    QString sql = QStringLiteral(
+        "SELECT market_id, created_at, features_json, outcome FROM edge_decision_journal "
+        "WHERE source='llm-advisory' AND outcome IN (0,1)");
+    QVariantList sql_params;
+    if (!horizon_filter.isEmpty()) {
+        sql += QStringLiteral(" AND horizon=?");
+        sql_params << horizon_filter;
+    }
+    sql += QStringLiteral(" ORDER BY created_at DESC LIMIT ?");
+    // Forecaster filtering happens in C++ below (parsed out of features_json,
+    // not a journal column), so the SQL side cannot LIMIT to the caller's N
+    // ahead of that filter -- when a forecaster filter is active we pull a
+    // wider window and stop collecting once N post-filter matches are found,
+    // instead of truncating before the filter runs (which would silently
+    // undercount matching rows).
+    const bool forecaster_filter_active =
+        !forecaster_id.isEmpty() || !provider_filter.isEmpty() || !model_filter.isEmpty();
+    sql_params << (forecaster_filter_active ? std::max(limit * 20, 5000) : limit);
+
+    auto result = Database::instance().execute(sql, sql_params);
+    if (result.is_err()) {
+        std::fprintf(stderr, "%s\n", result.error().c_str());
+        return 5;
+    }
+
+    struct Row {
+        adv::ScoredRow scored;
+        bool daemon_comparable = false;
+        bool has_post_market = false;
+        double market_at_open = 0.0;
+    };
+    QVector<Row> rows;
+    auto& query = result.value();
+    while (query.next() && rows.size() < limit) {
+        const QString market_id = query.value(0).toString();
+        const qint64 created_at = query.value(1).toLongLong();
+        const QJsonObject features = QJsonDocument::fromJson(
+            query.value(2).toString().toUtf8()).object();
+        const int outcome = query.value(3).toInt();
+
+        const QJsonObject forecaster = features.value(QStringLiteral("forecaster")).toObject();
+        const QString row_provider = forecaster.value(QStringLiteral("provider")).toString();
+        const QString row_model = forecaster.value(QStringLiteral("model")).toString();
+        const QString row_agent_id = forecaster.value(QStringLiteral("agent_id")).toString();
+        const QString row_forecaster_id = !row_agent_id.isEmpty()
+            ? row_agent_id : (row_provider + QStringLiteral("/") + row_model);
+        if (!forecaster_id.isEmpty() && row_forecaster_id != forecaster_id)
+            continue;
+        if (!provider_filter.isEmpty() && row_provider != provider_filter)
+            continue;
+        if (!model_filter.isEmpty() && row_model != model_filter)
+            continue;
+
+        const double p_pre = features.value(QStringLiteral("p_pre")).toDouble(-1.0);
+        const double p_post = features.value(QStringLiteral("p_post")).toDouble(-1.0);
+        const double market_at_open = features.value(QStringLiteral("market_at_open")).toDouble(-1.0);
+        if (p_pre < 0.0 || market_at_open < 0.0)
+            continue; // never fabricate a missing pre/market value
+        const double market_at_post = features.value(QStringLiteral("market_at_post")).toDouble(-1.0);
+
+        Row row;
+        row.scored.p_pre = p_pre;
+        row.scored.p_post = p_post >= 0.0 ? p_post : p_pre;
+        row.scored.market = market_at_open;
+        // edge_decision_journal.outcome is written SIDE-RELATIVE by the
+        // shared settlement resolver (outcome = decision.side == result ?
+        // 1 : 0 -- see edge_resolve_kalshi_decisions_command() above), but
+        // p_pre/market/daemon are all P(yes). Normalize to yes-relative
+        // here using the same side determination the net-of-fees block
+        // below and AdvisoryChallengeRepository::commit_blind() both use
+        // (p_pre>=market_at_open => side 'yes'), or a NO-side row's Brier
+        // silently sign-inverts against a P(yes) probability. daemon_scored
+        // reuses this same row.scored below, so this one normalization
+        // covers the daemon comparison too -- no second fix needed there.
+        const bool side_yes = (p_pre >= market_at_open);
+        row.scored.outcome = side_yes ? outcome : (1 - outcome);
+        // settlement-band x distance-to-strike cohorting is not present in
+        // this journal schema's features_json (only horizon/settlement_def
+        // are -- see AdvisoryChallengeRepository::commit_blind()'s features
+        // object) -- reporting a fabricated cohort split off absent fields
+        // would violate "don't invent data", so every row is the single
+        // "all" cohort.
+        row.scored.cohort = QStringLiteral("all");
+        row.has_post_market = market_at_post >= 0.0;
+        row.market_at_open = market_at_open;
+
+        const double daemon_prob = kalshi_advise_score_daemon_probability(market_id, created_at);
+        row.daemon_comparable = daemon_prob >= 0.0;
+        row.scored.daemon = row.daemon_comparable ? daemon_prob : 0.0;
+
+        rows.append(row);
+    }
+
+    QVector<adv::ScoredRow> all_scored;
+    QVector<adv::ScoredRow> daemon_scored;
+    int daemon_comparable = 0;
+    int net_of_fees_rows = 0;
+    double net_of_fees_sum = 0.0;
+    for (const Row& row : rows) {
+        all_scored.append(row.scored);
+        if (row.daemon_comparable) {
+            ++daemon_comparable;
+            daemon_scored.append(row.scored);
+        }
+        if (row.has_post_market) {
+            // Net realized value: the challenge's own commit_blind side
+            // (yes if p_pre>=market_at_open, else no -- see
+            // AdvisoryChallengeRepository::commit_blind()) priced at
+            // market_at_open, minus the Kalshi taker fee on that entry
+            // price, scored against the REALIZED settlement outcome (this
+            // is a resolved row's actual payout, not a paper mark against
+            // market_at_post -- market_at_post's own value is deliberately
+            // unused here). Gating on market_at_post's presence is a
+            // per-spec completeness filter (it also happens to mean "the
+            // challenge reached commit_post", i.e. the full firewalled
+            // cycle actually completed) -- it is NOT used as an exit price.
+            const bool side_yes = row.scored.p_pre >= row.market_at_open;
+            const double entry_price = side_yes ? row.market_at_open : (1.0 - row.market_at_open);
+            const double payout = side_yes ? static_cast<double>(row.scored.outcome)
+                                            : (1.0 - static_cast<double>(row.scored.outcome));
+            const double fee = kalshi_advise_score_fee_dollars(entry_price);
+            net_of_fees_sum += (payout - entry_price) - fee;
+            ++net_of_fees_rows;
+        }
+    }
+
+    // Per the brief: brier_market/improvement_vs_market_pre are computed
+    // over ALL resolved rows (all_result); brier_daemon/
+    // improvement_vs_daemon_pre/ci_low/ci_high are computed over ONLY the
+    // daemon-comparable subset (daemon_result). Consequence: the flat
+    // brier_pre reported below is the ALL-rows brier_pre, so
+    // `brier_daemon - brier_pre` computed from the two flat fields will NOT
+    // equal `headline_improvement_vs_daemon` when the subsets differ --
+    // that field is the subset-only improvement_vs_daemon_pre, not a
+    // recomputation from the flat brier_pre/brier_daemon pair.
+    const adv::PairedResult all_result = adv::score_paired(all_scored);
+    const adv::PairedResult daemon_result = adv::score_paired(daemon_scored);
+    const int n_resolved = rows.size();
+
+    QJsonArray cohorts;
+    cohorts.append(QJsonObject{{"cohort", "all"}, {"samples", n_resolved}});
+
+    QJsonObject filter{{"forecaster_id", forecaster_id}, {"provider", provider_filter},
+                       {"model", model_filter}, {"horizon", horizon_filter}};
+    QJsonObject coverage{{"resolved", n_resolved}, {"daemon_comparable", daemon_comparable},
+                        {"net_of_fees_rows", net_of_fees_rows},
+                        {"daemon_comparable_summary",
+                         QStringLiteral("%1 of %2 rows").arg(daemon_comparable).arg(n_resolved)}};
+    QJsonObject net_value{
+        {"value", net_of_fees_rows > 0 ? net_of_fees_sum / net_of_fees_rows : 0.0},
+        {"rows_covered", net_of_fees_rows},
+        {"note", "excludes rows with no recorded market_at_post"}};
+
+    const QJsonObject out{
+        {"filter", filter},
+        {"n_resolved", n_resolved},
+        {"daemon_comparable", daemon_comparable},
+        {"headline_improvement_vs_daemon", daemon_result.improvement_vs_daemon_pre},
+        {"ci_low", daemon_result.ci_low},
+        {"ci_high", daemon_result.ci_high},
+        {"improvement_vs_market_pre", all_result.improvement_vs_market_pre},
+        {"brier_pre", all_result.brier_pre},
+        {"brier_post", all_result.brier_post},
+        {"brier_market", all_result.brier_market},
+        {"brier_daemon", daemon_result.brier_daemon},
+        {"coverage", coverage},
+        {"net_value_after_fees", net_value},
+        {"cohorts", cohorts},
+        {"evidence", n_resolved >= 30 ? "measured" : "exploratory"},
+        {"read_only", true}};
+
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Advisory score: %d resolved (%s daemon-comparable), evidence=%s\n",
+               n_resolved, qUtf8Printable(coverage.value("daemon_comparable_summary").toString()),
+               qUtf8Printable(out.value("evidence").toString()));
+    std::printf("  brier: pre=%.4f post=%.4f market=%.4f daemon=%.4f\n",
+               all_result.brier_pre, all_result.brier_post, all_result.brier_market,
+               daemon_result.brier_daemon);
+    std::printf("  improvement vs market(pre)=%+.4f vs daemon(pre)=%+.4f [%.4f, %.4f]\n",
+               all_result.improvement_vs_market_pre, daemon_result.improvement_vs_daemon_pre,
+               daemon_result.ci_low, daemon_result.ci_high);
+    std::printf("  net value after fees: %.4f (%d rows covered)\n",
+               net_value.value("value").toDouble(), net_of_fees_rows);
+    return 0;
+}
+
+// `kalshi auto advise ledger` -- read-only participation report over
+// edge_advisory_challenge.state, via adv::participation() (Task 6).
+//
+// Deliberately no --state filter: adv::participation() defines
+// opened = states.size() over whatever population it's handed, and derives
+// open_to_commit_rate/expiration_rate as fractions of THAT population. A
+// --state filter would pass in a state-homogeneous subset, making those
+// rates read as a degenerate 100%/0% for whichever state was selected,
+// regardless of the true ledger-wide rate -- numerically wrong, not just
+// differently scoped. --limit still bounds how many (unfiltered, newest
+// first) rows are read.
+static int kalshi_auto_advise_ledger_command(const GlobalOpts& opts, QStringList args) {
+    QString limit_raw;
+    if (!take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !args.isEmpty()) {
+        std::fprintf(stderr, "usage: kalshi auto advise ledger [--limit N] [--json]\n");
+        return 2;
+    }
+    int limit = 10000;
+    if (!limit_raw.isEmpty()) {
+        bool ok = false;
+        limit = limit_raw.toInt(&ok);
+        if (!ok || limit < 1 || limit > 100000) {
+            std::fprintf(stderr, "--limit must be 1..100000\n");
+            return 2;
+        }
+    }
+
+    QString sql = QStringLiteral("SELECT state FROM edge_advisory_challenge"
+                                 " ORDER BY created_at DESC LIMIT ?");
+    QVariantList sql_params{limit};
+
+    auto result = Database::instance().execute(sql, sql_params);
+    if (result.is_err()) {
+        std::fprintf(stderr, "%s\n", result.error().c_str());
+        return 5;
+    }
+    QVector<QString> states;
+    while (result.value().next())
+        states.append(result.value().value(0).toString());
+
+    const adv::Participation p = adv::participation(states);
+    const QJsonObject out{
+        {"opened", p.opened}, {"committed_blind", p.committed_blind},
+        {"revealed", p.revealed}, {"committed_post", p.committed_post},
+        {"expired", p.expired}, {"abandoned", p.abandoned},
+        {"open_to_commit_rate", p.open_to_commit_rate},
+        {"expiration_rate", p.expiration_rate},
+        {"read_only", true}};
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("Advisory ledger: %d opened, %.1f%% open->commit, %.1f%% expired\n",
+               p.opened, p.open_to_commit_rate * 100.0, p.expiration_rate * 100.0);
+    std::printf("  committed_blind=%d revealed=%d committed_post=%d abandoned=%d\n",
+               p.committed_blind, p.revealed, p.committed_post, p.abandoned);
+    return 0;
+}
+
+static int kalshi_auto_advise_command(const GlobalOpts& opts, QStringList args) {
+    const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    if (sub == QStringLiteral("open")) return kalshi_auto_advise_open_command(opts, args);
+    if (sub == QStringLiteral("commit-blind")) return kalshi_auto_advise_commit_blind_command(opts, args);
+    if (sub == QStringLiteral("reveal")) return kalshi_auto_advise_reveal_command(opts, args);
+    if (sub == QStringLiteral("commit-post")) return kalshi_auto_advise_commit_post_command(opts, args);
+    if (sub == QStringLiteral("score")) return kalshi_auto_advise_score_command(opts, args);
+    if (sub == QStringLiteral("ledger")) return kalshi_auto_advise_ledger_command(opts, args);
+    std::fprintf(stderr, "usage: kalshi auto advise open|commit-blind|reveal|commit-post|score|ledger\n");
+    return 2;
+}
+
 static int kalshi_auto_decisions_command(const GlobalOpts& opts, QStringList args,
                                          bool candidates_only) {
     QString ticker;
@@ -25888,12 +26679,13 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     if (!init_headless_for_cli(opts, init_code)) return init_code;
     const QString group = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     if (group != QStringLiteral("auto")) {
-        std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper\n"); return 2;
+        std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n"); return 2;
     }
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
     if (sub == QStringLiteral("status")) return kalshi_auto_status_command(opts, args);
     if (sub == QStringLiteral("flow")) return kalshi_auto_flow_command(opts, args);
     if (sub == QStringLiteral("snapshot")) return kalshi_auto_snapshot_command(opts, args);
+    if (sub == QStringLiteral("advise")) return kalshi_auto_advise_command(opts, args);
     if (sub == QStringLiteral("decisions")) return kalshi_auto_decisions_command(opts, args, false);
     if (sub == QStringLiteral("candidates")) return kalshi_auto_decisions_command(opts, args, true);
     if (sub == QStringLiteral("run") || sub == QStringLiteral("opportunities"))
@@ -25940,7 +26732,7 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
                                            ? QStringLiteral("install-jobs") : QStringLiteral("remove-jobs")});
         return rc;
     }
-    std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper\n");
+    std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n");
     return 2;
 }
 
@@ -26499,8 +27291,8 @@ static int edge_resolve_kalshi_decisions_command(const GlobalOpts& opts, QString
     QVector<PendingDecision> pending;
     auto selected = Database::instance().execute(
         "SELECT id, market_id, side FROM edge_decision_journal "
-        "WHERE source IN ('edge journal-kalshi-scan','kalshi auto-plan') "
-        "AND (gate='pass' OR source='kalshi auto-plan') "
+        "WHERE source IN ('edge journal-kalshi-scan','kalshi auto-plan','llm-advisory') "
+        "AND (gate='pass' OR source='kalshi auto-plan' OR source='llm-advisory') "
         "AND outcome=-1 AND market_id<>'' "
         "AND seconds_left>=0 AND created_at + seconds_left * 1000 <= ? "
         "ORDER BY created_at ASC LIMIT ?",
