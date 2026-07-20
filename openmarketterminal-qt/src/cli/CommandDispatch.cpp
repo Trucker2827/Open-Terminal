@@ -519,7 +519,7 @@ static int command_help(const QString& topic) {
             "  kalshi auto advise commit-post --challenge ID --commit-id K --probability P\n"
             "  kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
             "    [--horizon H] [--limit N]\n"
-            "  kalshi auto advise ledger [--state S] [--limit N]\n"
+            "  kalshi auto advise ledger [--limit N]\n"
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
             "  kalshi auto calibration\n"
@@ -23241,19 +23241,20 @@ static int kalshi_auto_advise_commit_post_command(const GlobalOpts& opts, QStrin
 // log-loss/bootstrap-CI math is adv::score_paired() (Task 6).
 //
 // DAEMON PROBABILITY -- the carried cross-task problem, resolved here:
-// advisory rows carry features_json.daemon_probability=-1 (OpenParams::
-// daemon_prob's "no daemon estimate supplied" sentinel -- see
-// kalshi_auto_advise_open_command()'s comment: the live evidence snapshot
-// this CLI can see has no daemon-computed probability of its own to extract).
-// The deterministic daemon's OWN probability for the same market at a
-// contemporaneous time DOES exist, as source='kalshi auto-plan' rows'
-// model_probability column. So for each advisory row we look up the nearest
-// kalshi auto-plan decision at or before the advisory row's created_at on
-// the same market_id, and use THAT as the daemon probability. Rows with no
-// such match are daemon-unavailable and excluded from the daemon-vs-pre
-// comparison (but never dropped from the market-vs-pre comparison or from
-// n_resolved) -- their exclusion is always reported via `coverage`, never
-// silent.
+// advisory rows' features_json.daemon_probability is usually -1
+// (OpenParams::daemon_prob's "no daemon estimate supplied" sentinel; most
+// open-time evidence snapshots carry no daemon-computed probability of
+// their own -- see kalshi_auto_advise_open_command()'s comment), though
+// `advise open --daemon-probability P` CAN populate it. We look up the
+// daemon's own probability here regardless of that, because the nearest
+// kalshi-auto-plan decision AT OR BEFORE the advisory row's created_at is a
+// strictly more contemporaneous daemon estimate than whatever (if anything)
+// was captured once at open time. The deterministic daemon's own
+// probability for the same market at that time exists as source='kalshi
+// auto-plan' rows' model_probability column. Rows with no such match are
+// daemon-unavailable and excluded from the daemon-vs-pre comparison (but
+// never dropped from the market-vs-pre comparison or from n_resolved) --
+// their exclusion is always reported via `coverage`, never silent.
 static double kalshi_advise_score_daemon_probability(const QString& market_id, qint64 created_at) {
     if (market_id.isEmpty())
         return -1.0;
@@ -23261,8 +23262,17 @@ static double kalshi_advise_score_daemon_probability(const QString& market_id, q
         "SELECT model_probability FROM edge_decision_journal WHERE source='kalshi auto-plan' "
         "AND market_id=? AND created_at<=? ORDER BY created_at DESC LIMIT 1",
         {market_id, created_at});
-    if (row.is_err() || !row.value().next())
+    if (row.is_err()) {
+        // A genuine SQL execution failure must be visible, not folded into
+        // the same sentinel as "no matching daemon row" -- otherwise a
+        // broken join query silently reads as collapsing daemon coverage
+        // ("0 of N daemon-comparable") instead of an error.
+        std::fprintf(stderr, "advise score: daemon-probability lookup failed: %s\n",
+                     row.error().c_str());
         return -1.0;
+    }
+    if (!row.value().next())
+        return -1.0; // no matching daemon row -- the quiet, expected path
     return row.value().value(0).toDouble();
 }
 
@@ -23482,12 +23492,20 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
 
 // `kalshi auto advise ledger` -- read-only participation report over
 // edge_advisory_challenge.state, via adv::participation() (Task 6).
+//
+// Deliberately no --state filter: adv::participation() defines
+// opened = states.size() over whatever population it's handed, and derives
+// open_to_commit_rate/expiration_rate as fractions of THAT population. A
+// --state filter would pass in a state-homogeneous subset, making those
+// rates read as a degenerate 100%/0% for whichever state was selected,
+// regardless of the true ledger-wide rate -- numerically wrong, not just
+// differently scoped. --limit still bounds how many (unfiltered, newest
+// first) rows are read.
 static int kalshi_auto_advise_ledger_command(const GlobalOpts& opts, QStringList args) {
-    QString state_filter, limit_raw;
-    if (!take_string_option(args, QStringLiteral("--state"), state_filter) ||
-        !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+    QString limit_raw;
+    if (!take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
         !args.isEmpty()) {
-        std::fprintf(stderr, "usage: kalshi auto advise ledger [--state S] [--limit N] [--json]\n");
+        std::fprintf(stderr, "usage: kalshi auto advise ledger [--limit N] [--json]\n");
         return 2;
     }
     int limit = 10000;
@@ -23500,14 +23518,9 @@ static int kalshi_auto_advise_ledger_command(const GlobalOpts& opts, QStringList
         }
     }
 
-    QString sql = QStringLiteral("SELECT state FROM edge_advisory_challenge");
-    QVariantList sql_params;
-    if (!state_filter.isEmpty()) {
-        sql += QStringLiteral(" WHERE state=?");
-        sql_params << state_filter.trimmed().toUpper();
-    }
-    sql += QStringLiteral(" ORDER BY created_at DESC LIMIT ?");
-    sql_params << limit;
+    QString sql = QStringLiteral("SELECT state FROM edge_advisory_challenge"
+                                 " ORDER BY created_at DESC LIMIT ?");
+    QVariantList sql_params{limit};
 
     auto result = Database::instance().execute(sql, sql_params);
     if (result.is_err()) {
