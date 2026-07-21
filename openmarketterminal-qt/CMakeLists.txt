@@ -1578,6 +1578,7 @@ set(SCREEN_SOURCES
     src/screens/dashboard/widgets/StockQuoteWidget.cpp
     src/screens/dashboard/widgets/DashboardCandleWidget.cpp
     src/screens/dashboard/widgets/DineroNetworkWidget.cpp
+    src/screens/common/DineroNetworkGadget.cpp
     src/services/dinero/DineroRpcClient.cpp
     src/screens/dinero/DineroScreen.cpp
     src/screens/dashboard/widgets/WatchlistWidget.cpp

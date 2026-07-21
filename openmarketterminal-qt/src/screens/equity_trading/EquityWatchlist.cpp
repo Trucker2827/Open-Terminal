@@ -4,6 +4,7 @@
 #include "screens/equity_trading/EquityTypes.h"
 #include "core/symbol/SymbolDragSource.h"
 #include "core/symbol/SymbolRef.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "trading/AccountManager.h"
 #include "trading/BrokerRegistry.h"
 #include "trading/instruments/InstrumentNormalize.h"
@@ -238,6 +239,9 @@ EquityWatchlist::EquityWatchlist(QWidget* parent) : QWidget(parent) {
     connect(table_, &QTableWidget::customContextMenuRequested, this,
             &EquityWatchlist::on_table_context_menu);
     layout->addWidget(table_, 1);
+    // Occupies the deliberately empty lower-left rail, immediately above the
+    // global version/feed status strip.
+    layout->addWidget(new DineroNetworkGadget(this));
 
     // Drag-out: hold-and-drag a symbol row to ship the ticker to any drop
     // target — drop it on the pushpin bar at the top to pin + broadcast it,

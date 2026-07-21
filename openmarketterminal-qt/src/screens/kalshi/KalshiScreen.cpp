@@ -14,6 +14,7 @@
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "screens/polymarket/PredictionAccountDialog.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSessionManager.h"
@@ -1259,6 +1260,7 @@ void KalshiScreen::build_ui() {
     dom_layout->addWidget(dom_status_);
     spot_dom_ = new crypto::CryptoOrderBook(dom_panel_);
     dom_layout->addWidget(spot_dom_, 1);
+    dom_layout->addWidget(new DineroNetworkGadget(dom_panel_));
 
     workspace_splitter_->addWidget(market_list_);
     workspace_splitter_->addWidget(center);

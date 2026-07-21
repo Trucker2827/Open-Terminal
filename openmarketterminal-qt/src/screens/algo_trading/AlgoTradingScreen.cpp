@@ -8,10 +8,11 @@
 #include "screens/algo_trading/StrategyOpsMapPanel.h"
 #include "screens/algo_trading/StrategyCockpitNavigation.h"
 #include "screens/algo_trading/StrategyWorkspacePanels.h"
-#include "screens/dashboard/widgets/DineroNetworkWidget.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "ui/theme/Theme.h"
 
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QVBoxLayout>
 
 namespace openmarketterminal::screens {
@@ -66,20 +67,18 @@ void AlgoTradingScreen::build_ui() {
             this, [this]() { on_tab_changed(0); });
 
     auto* cockpit = new QWidget(this);
-    auto* cockpit_layout = new QHBoxLayout(cockpit);
+    auto* cockpit_layout = new QGridLayout(cockpit);
     cockpit_layout->setContentsMargins(0, 0, 0, 0);
-    cockpit_layout->setSpacing(8);
-    cockpit_layout->addWidget(ops_map_, 1);
+    cockpit_layout->setSpacing(0);
+    cockpit_layout->addWidget(ops_map_, 0, 0);
 
-    dinero_widget_ = new widgets::DineroNetworkWidget({}, cockpit);
-    dinero_widget_->setObjectName(QStringLiteral("strategyCockpitDineroNetwork"));
-    dinero_widget_->set_close_button_visible(false);
-    dinero_widget_->setMinimumWidth(260);
-    dinero_widget_->setMaximumWidth(320);
-    dinero_widget_->setToolTip(
-        tr("Live, read-only Dinero network telemetry. Use GET DINERO or Open Block Explorer "
-           "to continue in your default browser."));
-    cockpit_layout->addWidget(dinero_widget_);
+    // Compact overlay: preserve the full strategy map instead of dedicating a
+    // tall side column to the same telemetry.
+    dinero_gadget_ = new DineroNetworkGadget(cockpit);
+    dinero_gadget_->setObjectName(QStringLiteral("strategyCockpitDineroGadget"));
+    dinero_gadget_->setFixedWidth(270);
+    cockpit_layout->addWidget(dinero_gadget_, 0, 0, Qt::AlignRight | Qt::AlignBottom);
+    dinero_gadget_->raise();
 
     content_stack_->addWidget(cockpit);      // 0
     content_stack_->addWidget(handlers_);    // 1
