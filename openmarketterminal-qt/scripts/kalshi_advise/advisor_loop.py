@@ -257,7 +257,7 @@ def main():
         "install","uninstall","safety-observe","evaluate","pause","resume","canary-configure","canary-enable","canary-disable","canary-pulse"])
     ap.add_argument("--profile",default="default");ap.add_argument("--cli",default=DEFAULT_CLI)
     ap.add_argument("--forecaster");ap.add_argument("--opponent-forecaster");ap.add_argument("--evidence",default=DEFAULT_EVIDENCE)
-    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=48)
+    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=52)
     ap.add_argument("--maximum-failures",type=int,default=5)
     ap.add_argument("--safety-margin-ms",type=int,default=6000);ap.add_argument("--auto-min-secs-left",type=int,default=901)
     ap.add_argument("--auto-max-age-s",type=float,default=11.0)

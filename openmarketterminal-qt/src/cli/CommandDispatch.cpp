@@ -23096,6 +23096,14 @@ static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList a
     // identical blind_context, so this is a consistency belt, not a
     // divergence).
     out.insert(QStringLiteral("context_hash"), opened.value().context_hash);
+    // The repository owns the authoritative TTL policy (including the
+    // competition-only latency-neutral cap). Do not return the generic
+    // pre-open estimate from build_advise_open().
+    out.insert(QStringLiteral("prediction_ttl_ms"),
+               QString::number(opened.value().prediction_ttl_at - opened.value().created_at));
+    out.insert(QStringLiteral("execution_relevance_ms"),
+               QString::number(opened.value().execution_relevance_at - opened.value().created_at));
+    out.insert(QStringLiteral("ts_opened"), QString::number(opened.value().created_at));
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
         return 0;
