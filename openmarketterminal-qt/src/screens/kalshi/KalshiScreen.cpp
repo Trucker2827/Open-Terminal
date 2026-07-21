@@ -2838,24 +2838,10 @@ void KalshiScreen::record_ladder_evidence() {
     auto_context.spot_observed_at_ms = official_fresh_for_auto
         ? official_settlement_reference_ms_ : reference_spot_last_update_ms_;
     const QString volatility_symbol = asset_.trimmed().toUpper();
-    const auto estimate_for = [now](const QString& series_symbol) {
-        QVector<services::edge_radar::KalshiTimedPrice> prices;
-        const auto series = EdgePredictionModelRepository::instance().list_price_series_since(
-            series_symbol, now - 14LL * 24 * 60 * 60 * 1000, 21'000);
-        if (series.is_ok()) {
-            prices.reserve(series.value().size());
-            for (const auto& tick : series.value())
-                prices.append(services::edge_radar::KalshiTimedPrice{tick.exchange_ts, tick.price});
-        }
-        return services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(prices, now);
-    };
-    auto volatility = estimate_for(volatility_symbol);
-    if ((!volatility.ready || volatility.sample_count < 30) &&
-        !volatility_symbol.endsWith(QStringLiteral("-USD"))) {
-        const auto usd_volatility = estimate_for(volatility_symbol + QStringLiteral("-USD"));
-        if (usd_volatility.ready || usd_volatility.sample_count > volatility.sample_count)
-            volatility = usd_volatility;
-    }
+    refresh_volatility_estimate(volatility_symbol, now);
+    auto volatility = volatility_cache_.value(volatility_symbol);
+    if (!volatility_cache_.contains(volatility_symbol))
+        volatility.reason = QStringLiteral("background volatility refresh pending");
     auto_context.annual_volatility = volatility.annual_volatility;
     auto_context.volatility_ready = volatility.ready;
     auto_context.volatility_time_of_day_multiplier = volatility.time_of_day_multiplier;
@@ -3055,6 +3041,47 @@ void KalshiScreen::record_ladder_evidence() {
                                       .arg(opportunities > 0 ? colors::GREEN() : colors::TEXT_SECONDARY(),
                                            colors::BORDER_DIM()));
     render_ladder_surface(auto_surface, auto_plan, diagnostics);
+}
+
+void KalshiScreen::refresh_volatility_estimate(const QString& symbol, qint64 decision_ts_ms) {
+    const QString normalized = symbol.trimmed().toUpper();
+    if (normalized.isEmpty() || decision_ts_ms <= 0) return;
+    constexpr qint64 kRefreshIntervalMs = 60'000;
+    if (decision_ts_ms - volatility_cache_refreshed_ms_.value(normalized) < kRefreshIntervalMs)
+        return;
+    bool expected = false;
+    if (!volatility_fetching_.compare_exchange_strong(expected, true)) return;
+
+    QPointer<KalshiScreen> self(this);
+    (void)QtConcurrent::run([self, normalized, decision_ts_ms]() {
+        const auto estimate_for = [decision_ts_ms](const QString& series_symbol) {
+            QVector<services::edge_radar::KalshiTimedPrice> prices;
+            const auto series = EdgePredictionModelRepository::instance().list_recent_price_series_since(
+                series_symbol, decision_ts_ms - 24LL * 60 * 60 * 1000, 1'500);
+            if (series.is_ok()) {
+                prices.reserve(series.value().size());
+                for (const auto& tick : series.value())
+                    prices.append({tick.exchange_ts, tick.price});
+            }
+            return services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(
+                prices, decision_ts_ms);
+        };
+
+        auto estimate = estimate_for(normalized);
+        if ((!estimate.ready || estimate.sample_count < 30) &&
+            !normalized.endsWith(QStringLiteral("-USD"))) {
+            const auto usd_estimate = estimate_for(normalized + QStringLiteral("-USD"));
+            if (usd_estimate.ready || usd_estimate.sample_count > estimate.sample_count)
+                estimate = usd_estimate;
+        }
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, normalized, decision_ts_ms, estimate]() {
+            if (!self) return;
+            self->volatility_cache_.insert(normalized, estimate);
+            self->volatility_cache_refreshed_ms_.insert(normalized, decision_ts_ms);
+            self->volatility_fetching_ = false;
+        }, Qt::QueuedConnection);
+    });
 }
 
 void KalshiScreen::refresh_flow_meter() {

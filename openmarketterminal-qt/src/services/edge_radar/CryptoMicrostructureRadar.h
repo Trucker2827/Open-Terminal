@@ -84,6 +84,7 @@ class CryptoMicrostructureRadar {
   private:
     CryptoMicrostructureWindow window(int seconds) const;
     QVector<openmarketterminal::services::crypto_latency::CryptoLatencyTick> ticks_;
+    qint64 last_prune_newest_ms_ = 0;
 };
 
 } // namespace openmarketterminal::services::edge_radar

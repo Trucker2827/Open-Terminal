@@ -108,6 +108,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void send_account_subscribe();
     void send_cf_subscribe();
     void request_orderbook_snapshot(const QString& ticker);
+    void schedule_book_publish(const QString& ticker, qint64 ts_ms);
     void publish_books(const QString& ticker, qint64 ts_ms);
     void publish_price(const QString& asset_id, double price);
     void publish_orderbook(const QString& asset_id,
@@ -115,6 +116,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
 
     openmarketterminal::WebSocketClient* ws_ = nullptr;
     QTimer* ping_timer_ = nullptr;
+    QTimer* book_publish_timer_ = nullptr;
 
     KalshiCredentials creds_;
     QSet<QString> subscribed_tickers_;
@@ -131,6 +133,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
         bool has_snapshot = false;
     };
     QHash<QString, BookState> books_;
+    QHash<QString, qint64> pending_book_publishes_;
     qint64 orderbook_sequence_ = 0;
 
     static constexpr const char* kProdWs = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";

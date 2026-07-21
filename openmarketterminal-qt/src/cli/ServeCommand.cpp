@@ -66,6 +66,13 @@ bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
     return !connected || liveness_age_ms < 0 || liveness_age_ms > dead_after_ms;
 }
 
+bool daemon_tick_sample_due(qint64 received_at_ms, qint64 last_sampled_ms,
+                            qint64 minimum_interval_ms) {
+    if (received_at_ms <= 0 || minimum_interval_ms <= 0) return true;
+    return last_sampled_ms <= 0 || received_at_ms < last_sampled_ms ||
+           received_at_ms - last_sampled_ms >= minimum_interval_ms;
+}
+
 bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
                                        qint64 last_completed_ms, qint64 now_ms,
                                        qint64 interval_ms) {
@@ -616,6 +623,16 @@ class KalshiLiveEventEngine final : public QObject {
         connect(&book_snapshot_flush_, &QTimer::timeout, this,
                 [this]() { write_book_snapshot(); });
 
+        flow_refresh_.setSingleShot(true);
+        flow_refresh_.setInterval(50);
+        connect(&flow_refresh_, &QTimer::timeout, this, [this]() {
+            const auto dirty = dirty_flow_tickers_;
+            dirty_flow_tickers_.clear();
+            const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+            for (const QString& ticker : dirty) update_flow_snapshot(ticker, now_ms);
+            book_snapshot_flush_.start();
+        });
+
         // The Kalshi socket knows the contract price, not the independent BTC
         // reference used by the planner. Keep that reference fresh from the
         // daemon's already-shared Coinbase/Kraken hub; this avoids a second
@@ -1013,9 +1030,10 @@ class KalshiLiveEventEngine final : public QObject {
         const bool wake_planner = kalshi_accept_book_receipt(
             top_book_snapshots_, top_book_signatures_, asset_id, receipt, authority);
         const int asset_separator = asset_id.lastIndexOf(':');
-        if (asset_separator > 0)
-            update_flow_snapshot(asset_id.left(asset_separator), observed_at_ms);
-        book_snapshot_flush_.start();
+        if (asset_separator > 0) {
+            dirty_flow_tickers_.insert(asset_id.left(asset_separator));
+            if (!flow_refresh_.isActive()) flow_refresh_.start();
+        }
         if (wake_planner)
             schedule_decision(QStringLiteral("top_of_book_change"));
     }
@@ -1056,8 +1074,10 @@ class KalshiLiveEventEngine final : public QObject {
 
     static void trim_price_history(QVector<KalshiFlowPriceSample>& samples, qint64 now_ms) {
         constexpr qint64 kRetainMs = 5 * 60'000;
-        while (!samples.isEmpty() && samples.first().ts_ms < now_ms - kRetainMs)
-            samples.removeFirst();
+        const qint64 cutoff = now_ms - kRetainMs;
+        int expired = 0;
+        while (expired < samples.size() && samples.at(expired).ts_ms < cutoff) ++expired;
+        if (expired > 0) samples.remove(0, expired);
     }
 
     static double historical_price(const QVector<KalshiFlowPriceSample>& samples,
@@ -1072,12 +1092,23 @@ class KalshiLiveEventEngine final : public QObject {
 
     void trim_flow_buffers(const QString& ticker, qint64 now_ms) {
         constexpr qint64 kRetainMs = 5 * 60'000;
+        // Delta bursts can contain thousands of messages. Prune at most once
+        // per second and erase the expired prefix in one move; repeated
+        // removeFirst() calls otherwise turn a normal burst into quadratic
+        // event-loop work and starve the daemon heartbeat timer.
+        if (now_ms - last_flow_prune_ms_.value(ticker, 0) < 1000) return;
+        last_flow_prune_ms_.insert(ticker, now_ms);
+        const qint64 cutoff = now_ms - kRetainMs;
         auto& trades = flow_trades_[ticker];
-        while (!trades.isEmpty() && trades.first().ts_ms < now_ms - kRetainMs)
-            trades.removeFirst();
+        int expired_trades = 0;
+        while (expired_trades < trades.size() && trades.at(expired_trades).ts_ms < cutoff)
+            ++expired_trades;
+        if (expired_trades > 0) trades.remove(0, expired_trades);
         auto& deltas = flow_deltas_[ticker];
-        while (!deltas.isEmpty() && deltas.first().ts_ms < now_ms - kRetainMs)
-            deltas.removeFirst();
+        int expired_deltas = 0;
+        while (expired_deltas < deltas.size() && deltas.at(expired_deltas).ts_ms < cutoff)
+            ++expired_deltas;
+        if (expired_deltas > 0) deltas.remove(0, expired_deltas);
     }
 
     void record_flow_trade(const QString& ticker, const QJsonObject& payload) {
@@ -1089,8 +1120,8 @@ class KalshiLiveEventEngine final : public QObject {
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         flow_trades_[ticker].append({payload_timestamp_ms(payload, now_ms), outcome, quantity});
         trim_flow_buffers(ticker, now_ms);
-        update_flow_snapshot(ticker, now_ms);
-        book_snapshot_flush_.start();
+        dirty_flow_tickers_.insert(ticker);
+        if (!flow_refresh_.isActive()) flow_refresh_.start();
     }
 
     void record_flow_delta(const QString& ticker, const QString& type,
@@ -1103,8 +1134,8 @@ class KalshiLiveEventEngine final : public QObject {
         flow_deltas_[ticker].append(
             {payload_timestamp_ms(payload, now_ms), outcome, quantity_delta});
         trim_flow_buffers(ticker, now_ms);
-        update_flow_snapshot(ticker, now_ms);
-        book_snapshot_flush_.start();
+        dirty_flow_tickers_.insert(ticker);
+        if (!flow_refresh_.isActive()) flow_refresh_.start();
     }
 
     void update_flow_snapshot(const QString& ticker, qint64 now_ms) {
@@ -1583,6 +1614,7 @@ class KalshiLiveEventEngine final : public QObject {
     QTimer health_watchdog_;
     QTimer book_refresh_;
     QTimer book_snapshot_flush_;
+    QTimer flow_refresh_;
     QProcess* process_ = nullptr;
     Work active_work_ = Work::Plan;
     bool credentials_ = false;
@@ -1593,6 +1625,8 @@ class KalshiLiveEventEngine final : public QObject {
     bool decision_pending_ = false;
     bool account_reconcile_pending_ = false;
     bool status_dirty_ = true;
+    QSet<QString> dirty_flow_tickers_;
+    QHash<QString, qint64> last_flow_prune_ms_;
     qint64 last_cycle_started_ms_ = 0;
     qint64 process_started_ms_ = 0;
     qint64 universe_request_started_ms_ = 0;
@@ -2594,6 +2628,15 @@ class DaemonScalpEngine {
                     return;
                 if (!scalp_sources_for_symbol(sources_, symbol).contains(tick.source))
                     return;
+                const QString stream = symbol + QLatin1Char(':') + tick.source;
+                const qint64 received = tick.received_ts_ms > 0
+                    ? tick.received_ts_ms : QDateTime::currentMSecsSinceEpoch();
+                // Fifty milliseconds still preserves dense 250ms/500ms
+                // microstructure windows across independent venues while
+                // guaranteeing timers a chance to run under burst traffic.
+                if (!daemon_tick_sample_due(received, last_ingested_ms_.value(stream), 50))
+                    return;
+                last_ingested_ms_.insert(stream, received);
                 ingest_tick(symbol, tick);
             });
         config_timer_ = new QTimer(qApp);
@@ -2795,23 +2838,34 @@ class DaemonScalpEngine {
         last_decisions_.clear();
         last_decision_hash_.clear();
         last_journal_ms_.clear();
+        last_ingested_ms_.clear();
+        last_tick_log_ms_.clear();
     }
 
     void ingest_tick(const QString& symbol, const CryptoLatencyTick& tick) {
         auto& rows = recent_[symbol];
-        rows << tick;
-        std::stable_sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
+        const auto before = [](const auto& a, const auto& b) {
             if (a.received_ts_ms != b.received_ts_ms)
                 return a.received_ts_ms < b.received_ts_ms;
             return a.sequence < b.sequence;
-        });
-        const qint64 newest = rows.isEmpty() ? 0 : rows.last().received_ts_ms;
-        while (!rows.isEmpty() && newest - rows.first().received_ts_ms > 300000)
-            rows.removeFirst();
-        while (rows.size() > 5000)
-            rows.removeFirst();
+        };
+        if (rows.isEmpty() || !before(tick, rows.last())) {
+            rows.append(tick);
+        } else {
+            rows.insert(std::lower_bound(rows.begin(), rows.end(), tick, before), tick);
+        }
+        // Prune in batches. Removing the first QVector element on every tick
+        // shifts thousands of records and can starve the daemon event loop.
+        if (rows.size() > 5'500)
+            rows.remove(0, rows.size() - 5'000);
         radars_[symbol].add_tick(tick);
-        automation::append_jsonl_rotating(ticks_path_, CryptoLatencyService::tick_to_json(tick));
+        const QString stream = symbol + QLatin1Char(':') + tick.source;
+        const qint64 received = tick.received_ts_ms > 0
+            ? tick.received_ts_ms : QDateTime::currentMSecsSinceEpoch();
+        if (daemon_tick_sample_due(received, last_tick_log_ms_.value(stream), 250)) {
+            last_tick_log_ms_.insert(stream, received);
+            automation::append_jsonl_rotating(ticks_path_, CryptoLatencyService::tick_to_json(tick));
+        }
     }
 
     QJsonObject evaluate_symbol(const QString& symbol) {
@@ -3006,6 +3060,8 @@ class DaemonScalpEngine {
     QHash<QString, QJsonObject> last_decisions_;
     QHash<QString, QString> last_decision_hash_;
     QHash<QString, qint64> last_journal_ms_;
+    QHash<QString, qint64> last_ingested_ms_;
+    QHash<QString, qint64> last_tick_log_ms_;
 };
 
 // Paper maker-spread producer. On a timer it reads each venue's own BBO/last
@@ -3068,6 +3124,12 @@ class DaemonMakerEngine {
         const QString venue = venue_for_source(tick.source);
         if (venue.isEmpty())
             return;
+        const qint64 received = tick.received_ts_ms > 0
+            ? tick.received_ts_ms : QDateTime::currentMSecsSinceEpoch();
+        const QString stream = tick.symbol + QLatin1Char(':') + tick.source;
+        if (!daemon_tick_sample_due(received, last_tick_log_ms_.value(stream), 250))
+            return;
+        last_tick_log_ms_.insert(stream, received);
         QJsonObject row = CryptoLatencyService::tick_to_json(tick);
         row.insert(QStringLiteral("venue"), venue);
         automation::append_jsonl_rotating(ticks_path_, row);
@@ -3118,6 +3180,7 @@ class DaemonMakerEngine {
     QString profile_;
     CryptoFeedHub* hub_ = nullptr;
     QMetaObject::Connection hub_connection_;
+    QHash<QString, qint64> last_tick_log_ms_;
     QString decisions_path_;
     QString ticks_path_;
     QTimer* decision_timer_ = nullptr;

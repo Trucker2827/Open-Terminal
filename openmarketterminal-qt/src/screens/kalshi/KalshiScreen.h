@@ -95,6 +95,7 @@ class KalshiScreen final : public QWidget {
     void update_strike_overlay();
     void refresh_flow_meter();
     void record_ladder_evidence();
+    void refresh_volatility_estimate(const QString& symbol, qint64 decision_ts_ms);
     void render_ladder_surface(
         const QVector<services::edge_radar::KalshiSurfacePoint>& surface,
         const services::edge_radar::KalshiPortfolioPlan& plan,
@@ -240,6 +241,9 @@ class KalshiScreen final : public QWidget {
     std::atomic<bool> consensus_fetching_{false};
     std::atomic<bool> chart_fetching_{false};
     std::atomic<bool> spot_chart_fetching_{false};
+    std::atomic<bool> volatility_fetching_{false};
+    QHash<QString, services::edge_radar::KalshiVolatilityEstimate> volatility_cache_;
+    QHash<QString, qint64> volatility_cache_refreshed_ms_;
     QString chart_timeframe_ = QStringLiteral("live");
     QString chart_asset_id_;
     qint64 last_chart_fetch_ms_ = 0;

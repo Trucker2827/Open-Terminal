@@ -57,20 +57,38 @@ int source_status_rank(const CryptoMicrostructureSource& row) {
 
 void CryptoMicrostructureRadar::clear() {
     ticks_.clear();
+    last_prune_newest_ms_ = 0;
 }
 
 void CryptoMicrostructureRadar::add_tick(const latency::CryptoLatencyTick& tick) {
     if (tick.price <= 0.0 || tick.received_ts_ms <= 0)
         return;
-    ticks_.push_back(tick);
-    std::stable_sort(ticks_.begin(), ticks_.end(), [](const auto& a, const auto& b) {
+    const auto before = [](const auto& a, const auto& b) {
         if (a.received_ts_ms != b.received_ts_ms)
             return a.received_ts_ms < b.received_ts_ms;
         return a.sequence < b.sequence;
-    });
+    };
+    if (ticks_.isEmpty() || !before(tick, ticks_.last()))
+        ticks_.append(tick);
+    else
+        ticks_.insert(std::lower_bound(ticks_.begin(), ticks_.end(), tick, before), tick);
+
     const qint64 newest = ticks_.isEmpty() ? 0 : ticks_.last().received_ts_ms;
-    while (!ticks_.isEmpty() && newest - ticks_.first().received_ts_ms > 180000)
-        ticks_.removeFirst();
+    // Incoming feeds are normally chronological. A full stable_sort and
+    // removeFirst on every tick made this O(n log n)+O(n) in the hottest
+    // daemon callback and could starve all timers for tens of seconds. Prune
+    // the already-ordered vector once per second in one batch instead.
+    if (newest - last_prune_newest_ms_ >= 1'000 || ticks_.size() > 100'000) {
+        const qint64 cutoff = newest - 180'000;
+        const auto first_kept = std::lower_bound(
+            ticks_.cbegin(), ticks_.cend(), cutoff,
+            [](const latency::CryptoLatencyTick& row, qint64 timestamp) {
+                return row.received_ts_ms < timestamp;
+            });
+        const qsizetype remove_count = std::distance(ticks_.cbegin(), first_kept);
+        if (remove_count > 0) ticks_.remove(0, remove_count);
+        last_prune_newest_ms_ = newest;
+    }
 }
 
 CryptoMicrostructureWindow CryptoMicrostructureRadar::window(int seconds) const {
