@@ -11,6 +11,7 @@
 #include "screens/polymarket/PolymarketPriceChart.h"
 #include "screens/polymarket/PolymarketStatusBar.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "screens/polymarket/PredictionAccountDialog.h"
 #include "services/polymarket/PolymarketService.h"
 #include "services/prediction/PredictionCredentialStore.h"
@@ -371,9 +372,15 @@ void PolymarketScreen::build_ui() {
 
     // Browse panel: slightly wider for readability, fixed range so it
     // never squeezes so small cards become unreadable.
-    browse_panel_ = new PolymarketBrowsePanel;
-    browse_panel_->setMinimumWidth(300);
-    browse_panel_->setMaximumWidth(460);
+    auto* browse_rail = new QWidget(splitter);
+    browse_rail->setMinimumWidth(300);
+    browse_rail->setMaximumWidth(460);
+    auto* browse_rail_layout = new QVBoxLayout(browse_rail);
+    browse_rail_layout->setContentsMargins(0, 0, 0, 0);
+    browse_rail_layout->setSpacing(0);
+    browse_panel_ = new PolymarketBrowsePanel(browse_rail);
+    browse_rail_layout->addWidget(browse_panel_, 1);
+    browse_rail_layout->addWidget(new DineroNetworkGadget(browse_rail));
 
     detail_panel_ = new PolymarketDetailPanel;
 
@@ -414,7 +421,7 @@ void PolymarketScreen::build_ui() {
     crypto_dom_->setMinimumHeight(360);
     dom_layout->addWidget(crypto_dom_, 1);
 
-    splitter->addWidget(browse_panel_);
+    splitter->addWidget(browse_rail);
     splitter->addWidget(detail_splitter);
     splitter->addWidget(crypto_dom_panel_);
     splitter->addWidget(leaderboard_);

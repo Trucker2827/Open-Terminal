@@ -14,6 +14,7 @@
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "screens/polymarket/PredictionAccountDialog.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSessionManager.h"
@@ -774,9 +775,15 @@ void KalshiScreen::build_ui() {
         "background:%1;border-left:1px solid %2;border-right:1px solid %2;}"
         "QSplitter#ksWorkspaceSplitter::handle:horizontal:hover{background:%3;}"
     ).arg(colors::BG_RAISED(), colors::BORDER_BRIGHT(), colors::CYAN()));
-    market_list_ = new QListWidget(workspace_splitter_);
-    market_list_->setMinimumWidth(260);
-    market_list_->setMaximumWidth(340);
+    auto* market_rail = new QWidget(workspace_splitter_);
+    market_rail->setMinimumWidth(260);
+    market_rail->setMaximumWidth(340);
+    auto* market_rail_layout = new QVBoxLayout(market_rail);
+    market_rail_layout->setContentsMargins(0, 0, 0, 0);
+    market_rail_layout->setSpacing(0);
+    market_list_ = new QListWidget(market_rail);
+    market_rail_layout->addWidget(market_list_, 1);
+    market_rail_layout->addWidget(new DineroNetworkGadget(market_rail));
 
     auto* center = new QWidget(workspace_splitter_);
     center->setMinimumWidth(0);
@@ -1260,7 +1267,7 @@ void KalshiScreen::build_ui() {
     spot_dom_ = new crypto::CryptoOrderBook(dom_panel_);
     dom_layout->addWidget(spot_dom_, 1);
 
-    workspace_splitter_->addWidget(market_list_);
+    workspace_splitter_->addWidget(market_rail);
     workspace_splitter_->addWidget(center);
     workspace_splitter_->addWidget(dom_panel_);
     workspace_splitter_->setStretchFactor(0, 0);
