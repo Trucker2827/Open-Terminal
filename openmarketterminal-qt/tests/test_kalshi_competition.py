@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPTS = os.path.join(ROOT, "scripts", "kalshi_advise")
@@ -61,6 +62,16 @@ class CompetitionTest(unittest.TestCase):
         self.assertEqual(parsed["decision"], "predict")
         self.assertEqual(parsed["probability"], 0.61)
 
+    def test_claude_internal_timeout_has_honest_reason_code(self):
+        claude = load("claude_cli_forecaster")
+        with mock.patch.object(claude, "run_locked",
+                side_effect=subprocess.TimeoutExpired(["claude"], 50)):
+            with mock.patch("sys.stdin.read", return_value='{"spot":1}'):
+                with mock.patch("sys.argv", ["claude_cli_forecaster.py", "predict"]):
+                    with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as output:
+                        self.assertEqual(claude.main(), 0)
+        self.assertEqual(json.loads(output.getvalue())["reason_code"], "FORECAST_TIMEOUT")
+
     def test_result_states_are_mechanical(self):
         self.assertEqual(compute_result_state(0, 1, 1, -.1, -.01), "INSUFFICIENT_PAIRED_DATA")
         self.assertEqual(compute_result_state(200, .79, 1, -.1, -.01), "INSUFFICIENT_PAIRED_DATA")
@@ -71,7 +82,7 @@ class CompetitionTest(unittest.TestCase):
 
     def test_prompt_divergence_invalidates_epoch(self):
         lanes = [
-            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v3-latency-neutral"},"status":"ABSTAINED",
+            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v4-production"},"status":"ABSTAINED",
              "context_hash":"same","forecast":{"prompt_hash":"left"}},
             {"forecaster":{"provider":"openai-codex-cli", "epoch_id":"kalshi-blind-codex-v3-zero-capability"},"status":"ABSTAINED",
              "context_hash":"same","forecast":{"prompt_hash":"right"}},
