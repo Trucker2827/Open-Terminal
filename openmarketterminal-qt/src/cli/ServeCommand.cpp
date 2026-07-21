@@ -97,6 +97,49 @@ qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
     return std::max<qint64>(0, minimum_interval_ms - std::max<qint64>(0, elapsed_ms));
 }
 
+KalshiBookReceipt kalshi_book_receipt(const QString& previous_signature,
+                                     const QString& asset_id,
+                                     double bid, double ask,
+                                     double bid_size, double ask_size,
+                                     qint64 exchange_observed_at_ms,
+                                     qint64 received_at_ms,
+                                     const QString& source) {
+    KalshiBookReceipt out;
+    const bool bid_usable = bid > 0.0 && bid_size >= 1.0;
+    const bool ask_usable = ask > 0.0 && ask_size >= 1.0;
+    out.signature = QStringLiteral("%1|%2|%3|%4")
+        .arg(bid, 0, 'f', 4).arg(ask, 0, 'f', 4)
+        .arg(bid_usable ? 1 : 0).arg(ask_usable ? 1 : 0);
+    out.meaningful_change = previous_signature != out.signature;
+    if (exchange_observed_at_ms > 0 && exchange_observed_at_ms < 10'000'000'000LL)
+        exchange_observed_at_ms *= 1000;
+    out.snapshot = QJsonObject{
+        {QStringLiteral("asset_id"), asset_id},
+        {QStringLiteral("bid"), bid},
+        {QStringLiteral("ask"), ask},
+        {QStringLiteral("bid_size"), bid_size},
+        {QStringLiteral("ask_size"), ask_size},
+        {QStringLiteral("observed_at_ms"), QString::number(received_at_ms)},
+        {QStringLiteral("exchange_observed_at_ms"), QString::number(exchange_observed_at_ms)},
+        {QStringLiteral("source"), source}};
+    return out;
+}
+
+bool kalshi_accept_book_receipt(QJsonObject& snapshots,
+                                QHash<QString, QString>& signatures,
+                                const QString& asset_id,
+                                const KalshiBookReceipt& receipt,
+                                KalshiBookReceiptAuthority authority) {
+    // This write deliberately precedes every early return. A confirmed parsed
+    // receipt is freshness evidence even when it is not a planner event.
+    snapshots.insert(asset_id, receipt.snapshot);
+    if (authority != KalshiBookReceiptAuthority::PlannerTrigger ||
+        !receipt.meaningful_change)
+        return false;
+    signatures.insert(asset_id, receipt.signature);
+    return true;
+}
+
 QStringList kalshi_event_planner_args() {
     return {QStringLiteral("kalshi"), QStringLiteral("auto"), QStringLiteral("run"),
             QStringLiteral("--category"), QStringLiteral("Crypto#BTC@live"),
@@ -554,6 +597,18 @@ class KalshiLiveEventEngine final : public QObject {
         connect(&health_watchdog_, &QTimer::timeout, this, [this]() { check_health(); });
         health_watchdog_.start();
 
+        // Quiet contracts can have no deltas for longer than the advisory
+        // freshness budget. Ask the authenticated socket for a full snapshot;
+        // only the confirmed response callback below advances freshness.
+        book_refresh_.setInterval(5000);
+        connect(&book_refresh_, &QTimer::timeout, this, [this]() {
+            if (!adapter_ || !connected_ || tracked_markets_.isEmpty()) return;
+            const QStringList tickers = tracked_markets_.keys();
+            adapter_->request_orderbook_snapshots(tickers);
+            adapter_->fetch_batch_order_books(tickers);
+        });
+        book_refresh_.start();
+
         book_snapshot_flush_.setSingleShot(true);
         book_snapshot_flush_.setInterval(25);
         connect(&book_snapshot_flush_, &QTimer::timeout, this,
@@ -615,42 +670,16 @@ class KalshiLiveEventEngine final : public QObject {
                 this, [this](const QString& asset_id,
                              const services::prediction::PredictionOrderBook& book) {
                     if (!subscribed_asset_ids_.contains(asset_id)) return;
-                    const qint64 observed_at_ms = QDateTime::currentMSecsSinceEpoch();
-                    // A quiet book can legitimately retain the same best bid/ask for
-                    // seconds. Receipt of the normalized update proves the transport
-                    // is alive, even when it does not warrant a new planner cycle.
-                    last_book_update_ms_ = observed_at_ms;
-                    last_transport_activity_ms_ = observed_at_ms;
-                    normalized_books_.insert(asset_id, book);
-                    const double bid = book.bids.isEmpty() ? 0.0 : book.bids.first().price;
-                    const double ask = book.asks.isEmpty() ? 0.0 : book.asks.first().price;
-                    const bool bid_usable = !book.bids.isEmpty() && book.bids.first().size >= 1.0;
-                    const bool ask_usable = !book.asks.isEmpty() && book.asks.first().size >= 1.0;
-                    const QString signature = QStringLiteral("%1|%2|%3|%4")
-                        .arg(bid, 0, 'f', 4).arg(ask, 0, 'f', 4)
-                        .arg(bid_usable ? 1 : 0).arg(ask_usable ? 1 : 0);
-                    if (top_book_signatures_.value(asset_id) == signature) return;
-                    top_book_signatures_.insert(asset_id, signature);
-                    qint64 exchange_observed_at_ms = book.last_update_ms;
-                    if (exchange_observed_at_ms > 0 && exchange_observed_at_ms < 10'000'000'000LL)
-                        exchange_observed_at_ms *= 1000;
-                    top_book_snapshots_.insert(asset_id, QJsonObject{
-                        {QStringLiteral("asset_id"), asset_id},
-                        {QStringLiteral("bid"), bid},
-                        {QStringLiteral("ask"), ask},
-                        {QStringLiteral("bid_size"), book.bids.isEmpty()
-                             ? 0.0 : book.bids.first().size},
-                        {QStringLiteral("ask_size"), book.asks.isEmpty()
-                             ? 0.0 : book.asks.first().size},
-                        {QStringLiteral("observed_at_ms"), QString::number(observed_at_ms)},
-                        {QStringLiteral("exchange_observed_at_ms"),
-                         QString::number(exchange_observed_at_ms)},
-                        {QStringLiteral("source"), QStringLiteral("kalshi_websocket")}});
-            const int asset_separator = asset_id.lastIndexOf(':');
-            if (asset_separator > 0)
-                update_flow_snapshot(asset_id.left(asset_separator), observed_at_ms);
-                    book_snapshot_flush_.start();
-                    schedule_decision(QStringLiteral("top_of_book_change"));
+                    accept_book_receipt(asset_id, book, QStringLiteral("kalshi_websocket"),
+                                        KalshiBookReceiptAuthority::PlannerTrigger);
+                });
+        connect(adapter_, &KalshiAdapter::batch_order_books_ready, this,
+                [this](const auto& books) {
+                    for (auto it = books.cbegin(); it != books.cend(); ++it) {
+                        if (subscribed_asset_ids_.contains(it.key()))
+                            accept_book_receipt(it.key(), it.value(), QStringLiteral("kalshi_rest"),
+                                                KalshiBookReceiptAuthority::FreshnessOnly);
+                    }
                 });
         connect(adapter_, &KalshiAdapter::ws_market_lifecycle_event, this,
                 [this](const QString& ticker, const QString&, const QJsonObject& payload) {
@@ -949,6 +978,34 @@ class KalshiLiveEventEngine final : public QObject {
     bool tracks(const QString& ticker) const {
         return subscribed_asset_ids_.contains(ticker + QStringLiteral(":yes")) ||
                subscribed_asset_ids_.contains(ticker + QStringLiteral(":no"));
+    }
+
+    void accept_book_receipt(
+        const QString& asset_id,
+        const services::prediction::PredictionOrderBook& book,
+        const QString& source,
+        KalshiBookReceiptAuthority authority) {
+        const qint64 observed_at_ms = QDateTime::currentMSecsSinceEpoch();
+        // Receipt of a parsed book proves the source answered, even when the
+        // executable top is unchanged and does not warrant a planner cycle.
+        last_book_update_ms_ = observed_at_ms;
+        last_transport_activity_ms_ = observed_at_ms;
+        normalized_books_.insert(asset_id, book);
+        const double bid = book.bids.isEmpty() ? 0.0 : book.bids.first().price;
+        const double ask = book.asks.isEmpty() ? 0.0 : book.asks.first().price;
+        const auto receipt = kalshi_book_receipt(
+            top_book_signatures_.value(asset_id), asset_id, bid, ask,
+            book.bids.isEmpty() ? 0.0 : book.bids.first().size,
+            book.asks.isEmpty() ? 0.0 : book.asks.first().size,
+            book.last_update_ms, observed_at_ms, source);
+        const bool wake_planner = kalshi_accept_book_receipt(
+            top_book_snapshots_, top_book_signatures_, asset_id, receipt, authority);
+        const int asset_separator = asset_id.lastIndexOf(':');
+        if (asset_separator > 0)
+            update_flow_snapshot(asset_id.left(asset_separator), observed_at_ms);
+        book_snapshot_flush_.start();
+        if (wake_planner)
+            schedule_decision(QStringLiteral("top_of_book_change"));
     }
 
     void capture_exchange_timestamp(const QJsonObject& payload) {
@@ -1510,6 +1567,7 @@ class KalshiLiveEventEngine final : public QObject {
     QTimer status_flush_;
     QTimer universe_refresh_;
     QTimer health_watchdog_;
+    QTimer book_refresh_;
     QTimer book_snapshot_flush_;
     QProcess* process_ = nullptr;
     Work active_work_ = Work::Plan;

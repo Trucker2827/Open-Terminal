@@ -30,7 +30,7 @@ import os
 import sys
 
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-8")
-PROMPT_VERSION = os.environ.get("KALSHI_FORECASTER_PROMPT_VER", "kalshi-blind-v1")
+PROMPT_VERSION = os.environ.get("KALSHI_FORECASTER_PROMPT_VER", "kalshi-blind-v2-abstain")
 EFFORT = os.environ.get("KALSHI_FORECASTER_EFFORT", "low")
 FAST = os.environ.get("KALSHI_FORECASTER_FAST", "0") == "1"
 
@@ -48,19 +48,20 @@ SYSTEM_PROMPT = (
     "roughly driftless short-horizon random walk, a contract far from its strike "
     "with little time left is unlikely to cross; one near its strike is closer "
     "to a coin flip. Do not anchor to 0.5 out of caution — commit to the "
-    "estimate the evidence supports. Return your probability that the contract "
-    "settles YES, a confidence in your own estimate, and one sentence of "
-    "rationale. Do not ask for the price; you will never receive it."
+    "estimate the evidence supports. If the supplied evidence is insufficient "
+    "for a defensible estimate, explicitly abstain. Do not ask for the price."
 )
 
 SCHEMA = {
     "type": "object",
     "properties": {
+        "decision": {"type": "string", "enum": ["predict", "abstain"]},
         "probability": {"type": "number", "description": "P(contract settles YES), 0..1"},
         "confidence": {"type": "number", "description": "Your confidence in this estimate, 0..1"},
         "rationale": {"type": "string", "description": "One sentence, no price references"},
+        "reason_code": {"type": "string", "description": "Required when decision=abstain"},
     },
-    "required": ["probability", "confidence", "rationale"],
+    "required": ["decision", "confidence", "rationale"],
     "additionalProperties": False,
 }
 
@@ -116,7 +117,13 @@ def predict(blind_ctx: dict) -> dict:
     if not text:
         raise SystemExit("forecaster: empty model response")
     parsed = json.loads(text)
+    if parsed.get("decision") == "abstain":
+        return {"decision": "abstain",
+                "reason_code": str(parsed.get("reason_code", "INSUFFICIENT_EVIDENCE")),
+                "confidence": _clamp01(parsed.get("confidence")),
+                "rationale": str(parsed.get("rationale", ""))[:500]}
     return {
+        "decision": "predict",
         "probability": _clamp01(parsed.get("probability")),
         "confidence": _clamp01(parsed.get("confidence")),
         "rationale": str(parsed.get("rationale", ""))[:500],

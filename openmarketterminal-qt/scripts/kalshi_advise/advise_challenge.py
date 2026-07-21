@@ -33,6 +33,7 @@ import subprocess
 import sys
 import time
 import uuid
+from advisor_core import validate_forecast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CLI = os.path.abspath(os.path.join(HERE, "..", "..", "build", "openterminalcli"))
@@ -200,7 +201,12 @@ def main():
                           "reason": "forecaster failed",
                           "detail": (pred_r.stderr.strip() or pred_r.stdout.strip())[:400]}))
         return 4
-    pred = json.loads(pred_r.stdout)
+    pred = validate_forecast(json.loads(pred_r.stdout))
+    if pred["decision"] == "abstain":
+        print(json.dumps({"ok": True, "committed": False, "challenge_id": challenge_id,
+                          "ticker": ticker, "forecaster": identity, "forecast": pred,
+                          "reason": "forecaster abstained; challenge left to expire"}))
+        return 0
     p_pre = float(pred["probability"])
     conf = float(pred.get("confidence", -1))
     rationale = pred.get("rationale", "")
