@@ -38,6 +38,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
 
   private slots:
     void on_tab_changed(int index);
+    void on_cockpit_drilldown(int view, const QString& book_kind);
 
   private:
     void build_ui();

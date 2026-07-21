@@ -650,6 +650,11 @@ target_include_directories(tst_strategy_evidence_presentation PRIVATE ${CMAKE_SO
 target_link_libraries(tst_strategy_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_strategy_evidence_presentation COMMAND tst_strategy_evidence_presentation)
 
+add_executable(tst_strategy_cockpit_navigation tst_strategy_cockpit_navigation.cpp)
+target_include_directories(tst_strategy_cockpit_navigation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_strategy_cockpit_navigation PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME tst_strategy_cockpit_navigation COMMAND tst_strategy_cockpit_navigation)
+
 # AI pre-trade guardrail Task 1 — evaluate_pretrade: pure, no DB/settings/I-O.
 # Takes a TradeIntent + GateInputs + GatePolicy and returns a GateVerdict.
 add_executable(tst_pretrade_gate tst_pretrade_gate.cpp)

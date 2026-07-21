@@ -1,4 +1,5 @@
 #include "screens/algo_trading/SandboxBooksPanel.h"
+#include "screens/algo_trading/StrategyCockpitNavigation.h"
 #include "screens/algo_trading/StrategyEvidencePresentation.h"
 
 #include "core/config/ProfileManager.h"
@@ -80,6 +81,14 @@ qint64 scalar_query_i64(const QString& sql, const QVariantList& args) {
     return r.value().value(0).toLongLong();
 }
 
+class NumericTableItem final : public QTableWidgetItem {
+  public:
+    using QTableWidgetItem::QTableWidgetItem;
+    bool operator<(const QTableWidgetItem& other) const override {
+        return data(Qt::UserRole).toDouble() < other.data(Qt::UserRole).toDouble();
+    }
+};
+
 } // namespace
 
 SandboxBooksPanel::SandboxBooksPanel(QWidget* parent) : QWidget(parent) {
@@ -106,6 +115,28 @@ void SandboxBooksPanel::build_ui() {
     auto* top_l = new QHBoxLayout(top);
     top_l->setContentsMargins(12, 6, 12, 6);
     top_l->setSpacing(8);
+
+    back_button_ = new QPushButton(tr("← COCKPIT"), top);
+    back_button_->setCursor(Qt::PointingHandCursor);
+    back_button_->setStyleSheet(button_style(ui::colors::AMBER()));
+    back_button_->setVisible(false);
+    connect(back_button_, &QPushButton::clicked, this, &SandboxBooksPanel::returnToCockpit);
+    top_l->addWidget(back_button_);
+
+    drilldown_badge_ = new QLabel(top);
+    drilldown_badge_->setStyleSheet(QString("color:%1;border:1px solid %1;padding:4px 8px;font-size:10px;font-weight:800;%2")
+                                        .arg(ui::colors::CYAN(), MF));
+    drilldown_badge_->setVisible(false);
+    top_l->addWidget(drilldown_badge_);
+
+    show_all_button_ = new QPushButton(tr("SHOW ALL"), top);
+    show_all_button_->setCursor(Qt::PointingHandCursor);
+    show_all_button_->setStyleSheet(button_style(ui::colors::CYAN()));
+    show_all_button_->setVisible(false);
+    connect(show_all_button_, &QPushButton::clicked, this, [this]() {
+        apply_cockpit_drilldown(static_cast<int>(StrategyCockpitView::EvidenceAll));
+    });
+    top_l->addWidget(show_all_button_);
 
     status_label_ = new QLabel(tr("Every row below is an immutable paper experiment. No result can place a live order."), top);
     status_label_->setWordWrap(true);
@@ -309,7 +340,93 @@ void SandboxBooksPanel::refresh() {
     populate_leaderboard();
 }
 
+void SandboxBooksPanel::apply_cockpit_drilldown(int view, const QString& book_kind) {
+    drilldown_view_ = view;
+    drilldown_book_kind_ = book_kind;
+    populate_leaderboard();
+}
+
+void SandboxBooksPanel::apply_current_drilldown() {
+    const auto view = static_cast<StrategyCockpitView>(drilldown_view_);
+    leaderboard_table_->setSortingEnabled(false);
+    if (view == StrategyCockpitView::None || view == StrategyCockpitView::EvidenceAll) {
+        for (int row = 0; row < leaderboard_table_->rowCount(); ++row)
+            leaderboard_table_->setRowHidden(row, false);
+        back_button_->setVisible(view != StrategyCockpitView::None);
+        show_all_button_->setVisible(false);
+        drilldown_badge_->setVisible(view != StrategyCockpitView::None);
+        if (view != StrategyCockpitView::None)
+            drilldown_badge_->setText(tr("ALL PROOF BOOKS"));
+        return;
+    }
+
+    QString title;
+    int first_visible = -1;
+    for (int row = 0; row < leaderboard_table_->rowCount(); ++row) {
+        const QString kind = leaderboard_table_->item(row, 0)->data(Qt::UserRole + 2).toString();
+        const QString source = leaderboard_table_->item(row, 4)->text();
+        const int samples = leaderboard_table_->item(row, 5)->text().toInt();
+        const int open = leaderboard_table_->item(row, 6)->text().toInt();
+        const QString proof = leaderboard_table_->item(row, 0)->data(Qt::UserRole + 3).toString();
+        const bool show = strategy_evidence_matches(view, kind, source, samples, open, proof,
+                                                    drilldown_book_kind_);
+        switch (view) {
+        case StrategyCockpitView::EvidenceChronos: title = tr("CHRONOS FORECAST COHORTS"); break;
+        case StrategyCockpitView::EvidenceOpen: title = tr("OPEN PAPER POSITIONS BY BOOK"); break;
+        case StrategyCockpitView::EvidenceResolved: title = tr("RESOLVED EVIDENCE COHORTS"); break;
+        case StrategyCockpitView::EvidenceEligible: title = tr("PROMOTION-READY BOOKS"); break;
+        case StrategyCockpitView::EvidenceNoEdge: title = tr("NO-EDGE BOOKS · REVISE OR RETIRE"); break;
+        case StrategyCockpitView::EvidencePnl: title = tr("COST-NET P&L BY IMMUTABLE BOOK"); break;
+        case StrategyCockpitView::EvidenceCoinbase: title = tr("COINBASE-DERIVED EVIDENCE"); break;
+        case StrategyCockpitView::EvidenceKalshi: title = tr("KALSHI / ODDS EVIDENCE"); break;
+        case StrategyCockpitView::EvidenceBook: title = tr("PROOF BOOK · %1").arg(drilldown_book_kind_.toUpper()); break;
+        default: break;
+        }
+        leaderboard_table_->setRowHidden(row, !show);
+        if (show && first_visible < 0)
+            first_visible = row;
+    }
+    back_button_->setVisible(true);
+    show_all_button_->setVisible(true);
+    drilldown_badge_->setVisible(true);
+    int visible_count = 0;
+    for (int row = 0; row < leaderboard_table_->rowCount(); ++row)
+        if (!leaderboard_table_->isRowHidden(row)) ++visible_count;
+    drilldown_badge_->setText(tr("%1 · %2 BOOK%3")
+                                  .arg(title).arg(visible_count).arg(visible_count == 1 ? QString() : QStringLiteral("S")));
+    set_status(first_visible >= 0
+        ? tr("Contextual cockpit drill-down. Metrics remain cost-net, immutable, and paper-only.")
+        : tr("No rows currently match this cockpit cohort."),
+        first_visible >= 0 ? ui::colors::CYAN() : ui::colors::AMBER());
+    if (first_visible >= 0) {
+        if (view == StrategyCockpitView::EvidencePnl) {
+            leaderboard_table_->setSortingEnabled(true);
+            leaderboard_table_->sortItems(7, Qt::AscendingOrder);
+            first_visible = 0;
+        }
+        leaderboard_table_->selectRow(first_visible);
+        leaderboard_table_->scrollToItem(leaderboard_table_->item(first_visible, 0));
+    } else {
+        QString requirement;
+        switch (view) {
+        case StrategyCockpitView::EvidenceEligible:
+            requirement = tr("No book has cleared every promotion requirement yet. Continue collecting resolved, cost-net evidence."); break;
+        case StrategyCockpitView::EvidenceOpen:
+            requirement = tr("No paper position is open. This is healthy when current proposals fail deterministic entry gates."); break;
+        case StrategyCockpitView::EvidenceCoinbase:
+            requirement = tr("No proof book currently declares Coinbase provenance. Inspect all books or verify the journal_source metadata."); break;
+        case StrategyCockpitView::EvidenceKalshi:
+            requirement = tr("No Kalshi proof book currently matches. Prepare the default books or inspect all immutable experiments."); break;
+        default:
+            requirement = tr("This cohort is empty under the current evidence snapshot. Use SHOW ALL or return to the cockpit."); break;
+        }
+        detail_label_->setText(tr("EMPTY COHORT — NOT A DEAD END\n%1\n\nAvailable actions: SHOW ALL preserves context; ← COCKPIT returns to the map.")
+                                   .arg(requirement));
+    }
+}
+
 void SandboxBooksPanel::populate_leaderboard() {
+    leaderboard_table_->setSortingEnabled(false);
     const QString profile = ProfileManager::instance().active();
     auto board = services::sandbox::leaderboard(profile);
     if (board.is_err()) {
@@ -337,8 +454,13 @@ void SandboxBooksPanel::populate_leaderboard() {
     int resolved_total = 0;
     int eligible_total = 0;
     int no_edge_total = 0;
-    auto add = [&](int row, int col, const QString& text, const QString& color = {}) {
-        auto* item = new QTableWidgetItem(text);
+    auto add = [&](int row, int col, const QString& text, const QString& color = {},
+                   const QVariant& numeric_sort = {}) {
+        QTableWidgetItem* item = numeric_sort.isValid()
+            ? static_cast<QTableWidgetItem*>(new NumericTableItem(text))
+            : new QTableWidgetItem(text);
+        if (numeric_sort.isValid())
+            item->setData(Qt::UserRole, numeric_sort);
         if (!color.isEmpty())
             item->setData(Qt::ForegroundRole, QColor(color));
         leaderboard_table_->setItem(row, col, item);
@@ -388,21 +510,27 @@ void SandboxBooksPanel::populate_leaderboard() {
         const QString source = params.value(QStringLiteral("journal_source")).toString(
             params.value(QStringLiteral("source")).toString(QStringLiteral("-")));
         QString proof_status;
+        QString proof_code;
         QString proof_color;
         if (proof_state == StrategyProofState::Hypothetical) {
             proof_status = tr("HYPOTHETICAL");
+            proof_code = QStringLiteral("HYPOTHETICAL");
             proof_color = ui::colors::TEXT_SECONDARY();
         } else if (proof_state == StrategyProofState::PromotionReady) {
             proof_status = tr("PROMOTION READY");
+            proof_code = QStringLiteral("PROMOTION READY");
             proof_color = ui::colors::POSITIVE();
         } else if (proof_state == StrategyProofState::NoEdge) {
             proof_status = tr("NO EDGE");
+            proof_code = QStringLiteral("NO EDGE");
             proof_color = ui::colors::NEGATIVE();
         } else if (proof_state == StrategyProofState::Blocked) {
             proof_status = tr("BLOCKED");
+            proof_code = QStringLiteral("BLOCKED");
             proof_color = ui::colors::AMBER();
         } else {
             proof_status = tr("COLLECTING");
+            proof_code = QStringLiteral("COLLECTING");
             proof_color = ui::colors::CYAN();
         }
         QString next_requirement;
@@ -433,7 +561,8 @@ void SandboxBooksPanel::populate_leaderboard() {
         add(i, 5, QString::number(row.resolved));
         add(i, 6, QString::number(open_count));
         add(i, 7, fmt_money(row.net_pnl),
-            row.net_pnl > 0.0 ? ui::colors::POSITIVE() : (row.net_pnl < 0.0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY()));
+            row.net_pnl > 0.0 ? ui::colors::POSITIVE() : (row.net_pnl < 0.0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY()),
+            row.net_pnl);
         add(i, 8, fmt_pct(row.hit_rate));
         add(i, 9, fmt_money(row.max_drawdown), row.max_drawdown > 0.0 ? ui::colors::NEGATIVE() : ui::colors::TEXT_SECONDARY());
         add(i, 10, proof_status, proof_color);
@@ -450,6 +579,8 @@ void SandboxBooksPanel::populate_leaderboard() {
                            {QStringLiteral("blockers"), QJsonArray::fromStringList(verdict.blockers)}};
         leaderboard_table_->item(i, 0)->setData(Qt::UserRole, row.strategy_id);
         leaderboard_table_->item(i, 0)->setData(Qt::UserRole + 1, detail);
+        leaderboard_table_->item(i, 0)->setData(Qt::UserRole + 2, row.kind);
+        leaderboard_table_->item(i, 0)->setData(Qt::UserRole + 3, proof_code);
     }
     if (active_count_)
         active_count_->setText(QString::number(active_total));
@@ -476,6 +607,7 @@ void SandboxBooksPanel::populate_leaderboard() {
                    ui::colors::NEGATIVE());
     else
         set_status(tr("Paper evidence is accumulating. Promotion remains report-only and requires manual review."));
+    apply_current_drilldown();
 }
 
 void SandboxBooksPanel::populate_position_counts() {
