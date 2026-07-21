@@ -4,7 +4,7 @@ ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0,os.path.join(ROOT,"scripts","kalshi_advise"))
 from advisor_core import *
 from advisor_loop import pid_alive
-from codex_forecaster import PROMPT_VERSION, tool_less_command
+from codex_forecaster import PROMPT_VERSION, FEATURE_REGISTRY_SHA256, locked_down_features, tool_less_command
 
 class AdvisorCoreTest(unittest.TestCase):
     def test_explicit_abstention_has_no_probability(self):
@@ -73,6 +73,9 @@ class AdvisorCoreTest(unittest.TestCase):
         self.assertTrue({"shell_tool","unified_exec","code_mode_host","apps","browser_use","computer_use"} <= disabled)
         self.assertIn("--ephemeral",cmd);self.assertIn("--ignore-user-config",cmd)
         self.assertEqual(cmd[cmd.index("--cd")+1],"/tmp/empty")
-        self.assertIn("tool-less",PROMPT_VERSION)
+        self.assertIn("zero-capability",PROMPT_VERSION)
+        self.assertGreater(len(disabled),40)
+        self.assertEqual(len(disabled)*2,len(locked_down_features()))
+        self.assertEqual(len(FEATURE_REGISTRY_SHA256),64)
 
 if __name__=="__main__":unittest.main()

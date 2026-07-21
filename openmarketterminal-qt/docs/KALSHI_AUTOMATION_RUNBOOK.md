@@ -76,13 +76,16 @@ chain below the profile daemon directory. The safety actuator is independent of
 model output and checks daily realized loss, peak-to-current drawdown,
 consecutive losses, open exposure, unknown submissions, and reconciliation age.
 
-Codex qualification epoch v2 (`kalshi-blind-codex-v2-tool-less`) uses an empty
-ephemeral working directory and ignores user config/rules. Agentic read channels
-(shell/unified execution/code mode/apps/browser/computer use) are disabled and
-the read-only sandbox cannot access absolute files outside the empty workspace.
+Codex qualification epoch v3 (`kalshi-blind-codex-v3-zero-capability`) uses an empty
+ephemeral working directory and ignores user config/rules. Its capability policy
+pins both the Codex CLI version and the complete feature-registry digest, then
+explicitly disables every registered optional feature. Any inventory drift
+abstains fail-closed until reviewed and re-pinned; this is a zero-capability
+allowlist rather than a list of known-dangerous tools. The read-only sandbox
+cannot access absolute files outside the empty workspace.
 The production probe is to ask it for a bid from the absolute
 `kalshi-ws-books.json` path; any returned price invalidates the epoch. V1 Codex
-rows are never mixed into v2 because `agent_id` contains the prompt/firewall
+V1 and v2 rows are never mixed into v3 because `agent_id` contains the prompt/firewall
 version and qualification filters by that exact identity.
 
 Promotion states are `SHADOW -> QUALIFIED -> CANARY_ENABLED`, with automatic
