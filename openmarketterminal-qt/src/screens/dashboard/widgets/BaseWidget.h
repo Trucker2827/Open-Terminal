@@ -44,6 +44,9 @@ class BaseWidget : public QFrame {
 
     void set_error(const QString& error);
     void set_title(const QString& title);
+    /// Host surfaces that permanently embed a dashboard widget can hide the
+    /// dashboard-only remove control while retaining refresh/config actions.
+    void set_close_button_visible(bool visible);
 
     /// External-trigger entry point — emits `refresh_requested` so the
     /// widget runs the same refresh path as a user clicking the title-bar
@@ -107,6 +110,7 @@ class BaseWidget : public QFrame {
     QVBoxLayout* content_layout_ = nullptr;
     QPushButton* refresh_btn_ = nullptr;
     QPushButton* config_btn_ = nullptr;
+    QPushButton* close_btn_ = nullptr;
     LoadingOverlay* loading_overlay_ = nullptr;
     QTimer* loading_watchdog_ = nullptr;
     int last_progress_loaded_ = 0;
