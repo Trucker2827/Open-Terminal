@@ -16,7 +16,7 @@ EFFORT = "medium"
 CLI_VERSION = "2.1.217"
 TIMEOUT_S = 50
 SCHEMA_VERSION = "kalshi-forecast-v1"
-EPOCH_ID = "kalshi-blind-claude-cli-v3-latency-neutral"
+EPOCH_ID = "kalshi-blind-claude-cli-v4-production"
 LOCKED_FLAGS = (
     "-p", "--output-format=json", "--model=" + MODEL, "--effort=" + EFFORT,
     "--system-prompt=", "--tools=", "--disallowedTools=*", "--strict-mcp-config", "--mcp-config={\"mcpServers\":{}}",
@@ -142,6 +142,8 @@ def main():
                 parsed.pop("probability", None)
             else:
                 parsed.pop("reason_code", None)
+    except subprocess.TimeoutExpired as exc:
+        parsed = abstain("FORECAST_TIMEOUT", f"Claude exceeded the {exc.timeout}s internal blind prediction budget", context)
     except RuntimeError as exc:
         parsed = abstain("CAPABILITY_LOCKDOWN_FAILED", exc, context)
     except Exception as exc:
