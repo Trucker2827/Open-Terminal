@@ -217,6 +217,77 @@ class TstAdvisoryRepository : public QObject {
         QCOMPARE(features.value("p_post").toDouble(), 0.55);
     }
 
+    // Cohort fields (settlement_band / distance_bps): these already exist in
+    // the blind context supplied at open() -- kalshi_advise_flatten_snapshot
+    // inserts them into the packet under those exact key names -- but
+    // commit_blind() was not copying them into features_json, so `advise
+    // score` had no per-cohort grouping data available in the (immutable)
+    // journal row. This asserts commit_blind() copies both fields into
+    // features_json when the blind context carries them, and that
+    // commit_post() (which rewrites features_json to add p_post/
+    // market_at_post/ts_post) does not clobber them.
+    void commit_blind_persists_settlement_band_and_distance_bps_when_present() {
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams p; p.ticker="KXBTC"; p.market_id="M6"; p.horizon="hourly";
+        p.blind_context=QJsonObject{{"settlement_band", "final_5m"}, {"distance_bps", 42.5}};
+        p.withheld_market=QJsonObject{{"market_implied_probability",0.5}};
+        p.daemon_prob=0.5; p.seconds_left=900; p.now_ms=1000;
+        auto o = repo.open(p); QVERIFY(o.is_ok());
+
+        adv::CommitParams cb; cb.challenge_id=o.value().challenge_id; cb.commit_id="B3";
+        cb.probability=0.6; cb.now_ms=1500;
+        auto jb = repo.commit_blind(cb); QVERIFY(jb.is_ok());
+
+        auto jr = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE id=?", {jb.value()});
+        QVERIFY(jr.is_ok() && jr.value().next());
+        const QJsonObject features_after_blind =
+            QJsonDocument::fromJson(jr.value().value(0).toString().toUtf8()).object();
+        QCOMPARE(features_after_blind.value("settlement_band").toString(), QStringLiteral("final_5m"));
+        QCOMPARE(features_after_blind.value("distance_bps").toDouble(), 42.5);
+
+        auto rv = repo.reveal(o.value().challenge_id, 1800);
+        QVERIFY(rv.is_ok());
+        adv::CommitParams cp; cp.challenge_id=o.value().challenge_id; cp.commit_id="P3";
+        cp.probability=0.55; cp.now_ms=2000;
+        cp.market_json = QJsonObject{{"market_implied_probability", 0.52}};
+        auto post = repo.commit_post(cp); QVERIFY(post.is_ok());
+
+        auto jr2 = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE id=?", {jb.value()});
+        QVERIFY(jr2.is_ok() && jr2.value().next());
+        const QJsonObject features_after_post =
+            QJsonDocument::fromJson(jr2.value().value(0).toString().toUtf8()).object();
+        // commit_post() must not clobber the immutable cohort fields set at
+        // commit_blind() -- it only merges p_post/market_at_post/ts_post.
+        QCOMPARE(features_after_post.value("settlement_band").toString(), QStringLiteral("final_5m"));
+        QCOMPARE(features_after_post.value("distance_bps").toDouble(), 42.5);
+        QCOMPARE(features_after_post.value("p_post").toDouble(), 0.55); // sanity: post merge still happened
+    }
+
+    void commit_blind_omits_settlement_band_and_distance_bps_when_absent() {
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams p; p.ticker="KXBTC"; p.market_id="M7"; p.horizon="hourly";
+        p.blind_context=QJsonObject{{"strike_floor", 61000}}; // no settlement_band/distance_bps
+        p.withheld_market=QJsonObject{{"market_implied_probability",0.5}};
+        p.daemon_prob=0.5; p.seconds_left=900; p.now_ms=1000;
+        auto o = repo.open(p); QVERIFY(o.is_ok());
+
+        adv::CommitParams cb; cb.challenge_id=o.value().challenge_id; cb.commit_id="B4";
+        cb.probability=0.6; cb.now_ms=1500;
+        auto jb = repo.commit_blind(cb); QVERIFY(jb.is_ok());
+
+        auto jr = Database::instance().execute(
+            "SELECT features_json FROM edge_decision_journal WHERE id=?", {jb.value()});
+        QVERIFY(jr.is_ok() && jr.value().next());
+        const QJsonObject features =
+            QJsonDocument::fromJson(jr.value().value(0).toString().toUtf8()).object();
+        // Absent from the blind context -> absent from features_json, never
+        // fabricated.
+        QVERIFY(!features.contains("settlement_band"));
+        QVERIFY(!features.contains("distance_bps"));
+    }
+
     // Mirrors edge_resolve_kalshi_decisions_command's SELECT in
     // src/cli/CommandDispatch.cpp. Kept in sync by hand: the full command
     // drives a live Kalshi network fetch (KalshiAdapter::fetch_market) to
