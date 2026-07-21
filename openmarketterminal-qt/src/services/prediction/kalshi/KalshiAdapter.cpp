@@ -297,6 +297,10 @@ void KalshiAdapter::fetch_batch_order_books(const QStringList& tickers) {
     rest_->fetch_batch_order_books(tickers);
 }
 
+void KalshiAdapter::request_orderbook_snapshots(const QStringList& tickers) {
+    ws_->request_orderbook_snapshots(tickers);
+}
+
 void KalshiAdapter::fetch_price_history(const QString& asset_id, const QString& interval, int /*fidelity*/) {
     const auto [ticker, side] = split_asset_id(asset_id);
     if (ticker.isEmpty()) {

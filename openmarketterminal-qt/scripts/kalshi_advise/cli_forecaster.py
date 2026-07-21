@@ -30,7 +30,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLI = os.environ.get("OT_CLI", os.path.abspath(os.path.join(HERE, "..", "..", "build", "openterminalcli")))
-PROMPT_VERSION = "kalshi-blind-cli-v1"
+PROMPT_VERSION = "kalshi-blind-cli-v2-abstain"
 
 # FROZEN prompt (prompt_version pins this; edit => bump the version at an epoch boundary)
 INSTR = (
@@ -41,8 +41,9 @@ INSTR = (
     "required move, time left, realized move/vol). Under a roughly driftless short-horizon "
     "random walk, a contract far from its strike with little time left rarely crosses; one "
     "near its strike is closer to a coin flip. Do not anchor to 0.5 out of caution. "
-    "Respond with ONLY a JSON object, no prose, no code fences: "
-    '{"probability": <0..1>, "confidence": <0..1>, "rationale": "<one sentence, no price references>"}'
+    "If evidence is insufficient, abstain explicitly. Respond with ONLY one JSON object: "
+    '{"decision":"predict","probability":<0..1>,"confidence":<0..1>,"rationale":"..."} '
+    'or {"decision":"abstain","reason_code":"INSUFFICIENT_EVIDENCE","confidence":<0..1>,"rationale":"..."}'
 )
 
 
@@ -94,7 +95,15 @@ def main() -> int:
                   file=sys.stderr)
             return 4
         parsed = json.loads(m.group(0))
+        decision = str(parsed.get("decision", "abstain")).lower()
+        if decision == "abstain":
+            print(json.dumps({"decision": "abstain",
+                              "reason_code": str(parsed.get("reason_code", "INSUFFICIENT_EVIDENCE")),
+                              "confidence": clamp01(parsed.get("confidence")),
+                              "rationale": str(parsed.get("rationale", ""))[:500]}))
+            return 0
         print(json.dumps({
+            "decision": "predict",
             "probability": clamp01(parsed.get("probability")),
             "confidence": clamp01(parsed.get("confidence")),
             "rationale": str(parsed.get("rationale", ""))[:500],

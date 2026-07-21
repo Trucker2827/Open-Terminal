@@ -86,3 +86,76 @@ advise_challenge.py --auto --forecaster ./cli_forecaster.py --auto-min-secs-left
 open → commit-blind only. The market-informed second estimate
 (`reveal → commit-post`) is a separate step; a `--post` mode that reveals the
 market and asks the forecaster for a revised probability is a natural follow-up.
+
+## Unattended shadow advisor loop
+
+`advisor_loop.py` runs the same firewalled challenge protocol continuously and
+can never submit an order. It adds explicit abstention, deterministic cost-net
+order proposals, a hash-chained append-only opportunity journal, atomic
+restart state, and a frozen qualification policy. The proposal schema and gate
+result are the interface a future canary adapter must consume; today the only
+adapter is `ShadowExecutionAdapter`, which always records `submitted:false`.
+
+```bash
+# One opportunity (useful for smoke testing)
+scripts/kalshi_advise/advisor_loop.py once --profile default \
+  --forecaster scripts/kalshi_advise/cli_forecaster.py
+
+# Persistent unattended process
+scripts/kalshi_advise/advisor_loop.py start --profile default \
+  --forecaster scripts/kalshi_advise/cli_forecaster.py --interval-seconds 60
+
+scripts/kalshi_advise/advisor_loop.py status --profile default
+scripts/kalshi_advise/advisor_loop.py report --profile default
+scripts/kalshi_advise/advisor_loop.py stop --profile default
+```
+
+For a supervised Codex epoch, use `codex_forecaster.py` and install the
+LaunchAgent. It is `RunAtLoad` and restarts only after abnormal exit; five
+consecutive loop failures transition the process to `PAUSED_ERROR` instead of
+creating a crash loop:
+
+The Codex v2 firewall is structural, not prompt-based. Each prediction runs
+ephemerally in a new empty temporary workspace with user configuration and
+rules ignored. Shell, unified execution, code-mode, apps, browser, computer-use,
+and image tools are disabled; the remaining read-only sandbox cannot read an
+absolute path outside that empty workspace. A direct probe against the live
+Kalshi book must return that it cannot access the file. Its frozen identity is
+`kalshi-blind-codex-v2-tool-less`; v1 rows are a separate, ineligible epoch.
+
+```bash
+advisor_loop.py install --profile default --forecaster ./codex_forecaster.py
+advisor_loop.py uninstall --profile default
+```
+
+Persistent safety, promotion, and canary controls are separate from the LLM:
+
+```bash
+advisor_loop.py safety-observe --reconciled --open-exposure 0
+advisor_loop.py evaluate
+advisor_loop.py canary-configure --max-order-dollars 2 \
+  --max-open-exposure 5 --daily-loss-limit 5
+advisor_loop.py canary-enable       # rejected unless qualified + safe
+advisor_loop.py canary-pulse        # rechecks everything, then uses execute-next
+advisor_loop.py canary-disable
+```
+
+`canary-pulse` is the only bridge to the pre-existing deterministic live path.
+It cannot run unless configuration is present, the frozen qualification report
+passes, promotion state is `CANARY_ENABLED`, reconciliation is current, no
+submission is unknown, and daily-loss/drawdown/consecutive-loss/exposure gates
+are clear. Any later failed qualification or safety evaluation automatically
+disables the canary.
+
+Daily loss and unresolved-accounting blockers remain whole-account conservative.
+Drawdown and consecutive-loss replay are scoped to `epoch_started_at_ms` written
+by `canary-configure`, so historical discretionary losses cannot make a fresh
+canary mathematically impossible. Reconfiguring deliberately starts a new
+canary safety epoch and leaves the immutable advisory/settlement history intact.
+
+State lives below the profile's `daemon/` directory. `advisor_opportunities.jsonl`
+is hash chained: later edits or deletions are reported by `journal_valid:false`.
+Qualification is fail-closed and versioned as `kalshi-qualification-v1`; it
+requires at least 200 resolved rows, 80% paired daemon coverage, positive
+improvement over market and daemon, a positive lower confidence bound, and
+positive value after fees. Passing this report does not arm live trading.

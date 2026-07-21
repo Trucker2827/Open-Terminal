@@ -53,6 +53,49 @@ Never validate production execution by sending an unbounded or economically mean
 
 ## LLM advisory scoring (`kalshi auto advise`)
 
+### Restart-safe shadow advisor loop
+
+The unattended shadow loop is `scripts/kalshi_advise/advisor_loop.py`. It uses
+the existing `open -> commit-blind -> reveal` firewall and writes every selected
+opportunity, explicit abstention, malformed response, deterministic gate result,
+and shadow proposal to a hash-chained JSONL ledger. It never calls
+`prepare_order`, `submit_order`, or any live adapter.
+
+The frozen interfaces are `kalshi-order-proposal-v1`, `kalshi-shadow-gate-v1`,
+and `kalshi-qualification-v1`. A future canary executor must consume that exact
+proposal/gate output rather than letting a forecaster construct order fields.
+Use `advisor_loop.py start|stop|status|report`; `report` combines journal
+integrity with the existing resolved `kalshi auto advise score` output and
+fails qualification closed until every policy check passes.
+
+The supervisor can be installed as
+`advisor_loop.py install --forecaster scripts/kalshi_advise/codex_forecaster.py`.
+Its LaunchAgent restarts abnormal exits and preserves heartbeat, pause reason,
+safety state, promotion state, canary configuration, and the opportunity hash
+chain below the profile daemon directory. The safety actuator is independent of
+model output and checks daily realized loss, peak-to-current drawdown,
+consecutive losses, open exposure, unknown submissions, and reconciliation age.
+
+Codex qualification epoch v2 (`kalshi-blind-codex-v2-tool-less`) uses an empty
+ephemeral working directory and ignores user config/rules. Agentic read channels
+(shell/unified execution/code mode/apps/browser/computer use) are disabled and
+the read-only sandbox cannot access absolute files outside the empty workspace.
+The production probe is to ask it for a bid from the absolute
+`kalshi-ws-books.json` path; any returned price invalidates the epoch. V1 Codex
+rows are never mixed into v2 because `agent_id` contains the prompt/firewall
+version and qualification filters by that exact identity.
+
+Promotion states are `SHADOW -> QUALIFIED -> CANARY_ENABLED`, with automatic
+`PAUSED`/`DEMOTED` transitions. A failing safety or qualification evaluation
+also writes `canary.enabled=false`. Canary v1 hard caps configuration at $2 per
+order, $5 aggregate exposure, and $5 daily loss; its pulse delegates only to
+the existing deterministic `kalshi auto live execute-next` path after all
+advisor gates pass, so it inherits quote freshness, credentials, session,
+order-rate, duplicate-contract, and final submission reconciliation checks.
+Whole-account daily loss and unresolved settlement accounting remain blockers;
+drawdown and consecutive losses replay only exact realized rows after the
+canary configuration's immutable `epoch_started_at_ms`.
+
 This surface answers one question only: **does an LLM forecaster have predictive skill on Kalshi
 crypto settlement, independent of the market and marginal over the deterministic daemon?** It is a
 measurement instrument, not a trading path. The daemon retains sole and exclusive ownership of

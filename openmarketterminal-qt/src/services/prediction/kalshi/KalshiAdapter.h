@@ -70,6 +70,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void set_credentials(const KalshiCredentials& creds);
     void subscribe_cf_benchmarks(const QStringList& index_ids);
     void restart_websocket();
+    void request_orderbook_snapshots(const QStringList& tickers);
 
     // ── Kalshi-specific public reads (pass through to REST client) ──────
 

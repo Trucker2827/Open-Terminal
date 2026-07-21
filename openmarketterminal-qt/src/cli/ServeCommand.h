@@ -2,6 +2,7 @@
 #include <QString>
 #include <QStringList>
 #include <QJsonObject>
+#include <QHash>
 #include <QVector>
 namespace openmarketterminal::cli {
 // Run the daemon for `profile`. Blocks in the event loop until SIGTERM/SIGINT
@@ -28,6 +29,30 @@ bool kalshi_non_execution_process_timed_out(bool active, qint64 process_age_ms,
                                             qint64 timeout_ms);
 qint64 kalshi_event_cycle_delay_ms(bool live_session_active, bool paper_active,
                                    qint64 elapsed_ms);
+struct KalshiBookReceipt {
+    QString signature;
+    QJsonObject snapshot;
+    bool meaningful_change = false;
+};
+KalshiBookReceipt kalshi_book_receipt(const QString& previous_signature,
+                                     const QString& asset_id,
+                                     double bid, double ask,
+                                     double bid_size, double ask_size,
+                                     qint64 exchange_observed_at_ms,
+                                     qint64 received_at_ms,
+                                     const QString& source = QStringLiteral("kalshi_websocket"));
+enum class KalshiBookReceiptAuthority {
+    FreshnessOnly,
+    PlannerTrigger,
+};
+// Applies the receipt to the same evidence/signature state used by the live
+// engine. REST is freshness-only; only WebSocket receipts may change trigger
+// state and request a planner wakeup.
+bool kalshi_accept_book_receipt(QJsonObject& snapshots,
+                                QHash<QString, QString>& signatures,
+                                const QString& asset_id,
+                                const KalshiBookReceipt& receipt,
+                                KalshiBookReceiptAuthority authority);
 // The event engine operates on the nearest live crypto settlement cohorts. Keep
 // the child planner bounded enough to finish before another quote snapshot ages
 // out; this is deliberately separate from the broader manual CLI planner.

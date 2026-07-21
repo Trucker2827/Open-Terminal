@@ -10,6 +10,9 @@ add_test(NAME test_prediction_kalshi_queue
 add_test(NAME test_kalshi_strategy
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_strategy.py -v)
+add_test(NAME test_kalshi_advisor_core
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_advisor_core.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp

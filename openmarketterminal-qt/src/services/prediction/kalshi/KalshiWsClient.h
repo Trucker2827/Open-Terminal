@@ -62,6 +62,10 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     /// but no market events have arrived within the freshness budget.
     void restart();
     bool is_connected() const { return connected_; }
+    /// Ask the authenticated socket to re-emit full books for subscribed
+    /// markets. The resulting orderbook_updated signals are the freshness
+    /// authority; sending this request alone never advances a timestamp.
+    void request_orderbook_snapshots(const QStringList& tickers);
 
     /// Register with the hub + install prediction:kalshi:* policies.
     void ensure_registered_with_hub();

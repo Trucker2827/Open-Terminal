@@ -252,10 +252,21 @@ void KalshiWsClient::send_subscribe(const QStringList& tickers) {
 }
 
 void KalshiWsClient::request_orderbook_snapshot(const QString& ticker) {
-    if (!connected_ || ticker.isEmpty() || orderbook_subscription_sid_ <= 0) return;
+    request_orderbook_snapshots({ticker});
+}
+
+void KalshiWsClient::request_orderbook_snapshots(const QStringList& tickers) {
+    if (!connected_ || tickers.isEmpty() || orderbook_subscription_sid_ <= 0) return;
+    QJsonArray market_tickers;
+    for (const QString& ticker : tickers) {
+        const QString normalized = ticker.trimmed().toUpper();
+        if (!normalized.isEmpty() && subscribed_tickers_.contains(normalized))
+            market_tickers.append(normalized);
+    }
+    if (market_tickers.isEmpty()) return;
     QJsonObject params{{QStringLiteral("sids"), QJsonArray{orderbook_subscription_sid_}},
                        {QStringLiteral("action"), QStringLiteral("get_snapshot")},
-                       {QStringLiteral("market_tickers"), QJsonArray{ticker}}};
+                       {QStringLiteral("market_tickers"), market_tickers}};
     QJsonObject msg{{QStringLiteral("id"), next_msg_id_++},
                     {QStringLiteral("cmd"), QStringLiteral("update_subscription")},
                     {QStringLiteral("params"), params}};

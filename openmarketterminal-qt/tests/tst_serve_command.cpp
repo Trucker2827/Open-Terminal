@@ -250,6 +250,50 @@ private slots:
         QCOMPARE(horizon.value("settlement_source").toString(),
                  QStringLiteral("CF Benchmarks BRTI"));
     }
+
+    void unchanged_kalshi_book_receipt_refreshes_evidence_without_waking_planner() {
+        QJsonObject snapshots;
+        QHash<QString, QString> signatures;
+        const auto first = kalshi_book_receipt({}, "KXBTC:YES", 0.51, 0.53,
+                                               12.0, 9.0, 1'700'000'000, 10'000);
+        QVERIFY(first.meaningful_change);
+        QVERIFY(kalshi_accept_book_receipt(
+            snapshots, signatures, "KXBTC:YES", first,
+            KalshiBookReceiptAuthority::PlannerTrigger));
+        QCOMPARE(snapshots.value("KXBTC:YES").toObject()
+                     .value("observed_at_ms").toString(), QStringLiteral("10000"));
+        QCOMPARE(snapshots.value("KXBTC:YES").toObject()
+                     .value("exchange_observed_at_ms").toString(),
+                 QStringLiteral("1700000000000"));
+        QCOMPARE(signatures.value("KXBTC:YES"), first.signature);
+
+        // Exact same executable signature received later: evidence freshness
+        // advances, but the deterministic planner is not woken again.
+        const auto repeated = kalshi_book_receipt(first.signature, "KXBTC:YES",
+                                                  0.51, 0.53, 12.0, 9.0,
+                                                  1'700'000'000, 25'000);
+        QVERIFY(!kalshi_accept_book_receipt(
+            snapshots, signatures, "KXBTC:YES", repeated,
+            KalshiBookReceiptAuthority::PlannerTrigger));
+        QCOMPARE(snapshots.value("KXBTC:YES").toObject()
+                     .value("observed_at_ms").toString(),
+                 QStringLiteral("25000"));
+        QCOMPARE(snapshots.value("KXBTC:YES").toObject().value("bid").toDouble(), 0.51);
+
+        // A conflicting REST fallback may refresh evidence, but it cannot
+        // mutate WebSocket trigger state or wake the planner.
+        const auto rest = kalshi_book_receipt(first.signature, "KXBTC:YES", 0.50, 0.54,
+                                              0.5, 0.5, 1'700'000'001, 30'000,
+                                              "kalshi_rest");
+        QVERIFY(rest.meaningful_change);
+        QVERIFY(!kalshi_accept_book_receipt(
+            snapshots, signatures, "KXBTC:YES", rest,
+            KalshiBookReceiptAuthority::FreshnessOnly));
+        QCOMPARE(signatures.value("KXBTC:YES"), first.signature);
+        const QJsonObject refreshed = snapshots.value("KXBTC:YES").toObject();
+        QCOMPARE(refreshed.value("observed_at_ms").toString(), QStringLiteral("30000"));
+        QCOMPARE(refreshed.value("source").toString(), QStringLiteral("kalshi_rest"));
+    }
 };
 QTEST_MAIN(TstServeCommand)
 #include "tst_serve_command.moc"
