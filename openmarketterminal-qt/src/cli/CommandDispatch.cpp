@@ -22958,7 +22958,7 @@ QJsonObject build_advise_open(const QJsonObject& snapshot, const QString& ticker
 static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList args) {
     QString ticker, horizon_opt, settlement_def_opt, market_id_opt;
     QString provider, model, prompt_version, agent_id, run_id;
-    QString temperature_raw, daemon_probability_raw;
+    QString temperature_raw, daemon_probability_raw, competition_pair_id, sibling_of;
     if (!take_string_option(args, QStringLiteral("--ticker"), ticker) ||
         !take_string_option(args, QStringLiteral("--horizon"), horizon_opt) ||
         !take_string_option(args, QStringLiteral("--settlement-def"), settlement_def_opt) ||
@@ -22970,11 +22970,14 @@ static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList a
         !take_string_option(args, QStringLiteral("--run-id"), run_id) ||
         !take_string_option(args, QStringLiteral("--temperature"), temperature_raw) ||
         !take_string_option(args, QStringLiteral("--daemon-probability"), daemon_probability_raw) ||
-        !args.isEmpty() || ticker.trimmed().isEmpty()) {
+        !take_string_option(args, QStringLiteral("--competition-pair-id"), competition_pair_id) ||
+        !take_string_option(args, QStringLiteral("--sibling-of"), sibling_of) ||
+        !args.isEmpty() || (ticker.trimmed().isEmpty() && sibling_of.trimmed().isEmpty())) {
         std::fprintf(stderr,
             "usage: kalshi auto advise open --ticker TICKER [--horizon H] [--settlement-def S]\n"
             "       [--market-id ID] [--provider P] [--model M] [--prompt-version V]\n"
-            "       [--agent-id A] [--run-id R] [--temperature T] [--daemon-probability P]\n");
+            "       [--agent-id A] [--run-id R] [--temperature T] [--daemon-probability P]\n"
+            "       [--competition-pair-id ID] [--sibling-of CHALLENGE]\n");
         return 2;
     }
     bool ok = true;
@@ -22992,6 +22995,38 @@ static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList a
             std::fprintf(stderr, "--daemon-probability must be 0..1\n");
             return 2;
         }
+    }
+
+    if (!sibling_of.isEmpty()) {
+        if (competition_pair_id.isEmpty()) {
+            std::fprintf(stderr, "--sibling-of requires --competition-pair-id\n");
+            return 2;
+        }
+        adv::OpenParams identity;
+        identity.provider = provider;
+        identity.model = model;
+        identity.prompt_version = prompt_version;
+        identity.agent_id = agent_id;
+        identity.run_id = run_id;
+        identity.temperature = temperature;
+        identity.competition_pair_id = competition_pair_id;
+        adv::AdvisoryChallengeRepository repo;
+        auto opened = repo.open_sibling(sibling_of, identity);
+        if (opened.is_err()) {
+            std::fprintf(stderr, "advise sibling open failed: %s\n", opened.error().c_str());
+            return 5;
+        }
+        const auto& result = opened.value();
+        QJsonObject out{{"challenge_id", result.challenge_id},
+                        {"competition_pair_id", competition_pair_id},
+                        {"context", result.blind_context},
+                        {"context_hash", result.context_hash},
+                        {"prediction_ttl_ms", QString::number(result.prediction_ttl_at - result.created_at)},
+                        {"execution_relevance_ms", QString::number(result.execution_relevance_at - result.created_at)},
+                        {"ts_opened", QString::number(result.created_at)},
+                        {"PRICE_WITHHELD", true}};
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
     }
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -23043,6 +23078,7 @@ static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList a
     params.agent_id = agent_id;
     params.run_id = run_id;
     params.temperature = temperature;
+    params.competition_pair_id = competition_pair_id;
 
     adv::AdvisoryChallengeRepository repo;
     auto opened = repo.open(params);
@@ -23053,11 +23089,21 @@ static int kalshi_auto_advise_open_command(const GlobalOpts& opts, QStringList a
 
     QJsonObject out = built;
     out.insert(QStringLiteral("challenge_id"), opened.value().challenge_id);
+    if (!competition_pair_id.isEmpty())
+        out.insert(QStringLiteral("competition_pair_id"), competition_pair_id);
     // Authoritative context_hash is the one the repository actually
     // persisted (computed from the identical canonical_json formula over the
     // identical blind_context, so this is a consistency belt, not a
     // divergence).
     out.insert(QStringLiteral("context_hash"), opened.value().context_hash);
+    // The repository owns the authoritative TTL policy (including the
+    // competition-only latency-neutral cap). Do not return the generic
+    // pre-open estimate from build_advise_open().
+    out.insert(QStringLiteral("prediction_ttl_ms"),
+               QString::number(opened.value().prediction_ttl_at - opened.value().created_at));
+    out.insert(QStringLiteral("execution_relevance_ms"),
+               QString::number(opened.value().execution_relevance_at - opened.value().created_at));
+    out.insert(QStringLiteral("ts_opened"), QString::number(opened.value().created_at));
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
         return 0;

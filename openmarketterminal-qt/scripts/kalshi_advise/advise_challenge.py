@@ -118,11 +118,17 @@ def pick_auto_ticker(evidence_path, min_secs_left, max_age_s):
     return cands[0][1] if cands else None
 
 
-def advise_open(cli, profile, ticker, identity):
+def advise_open(cli, profile, ticker, identity, competition_pair_id=None, sibling_of=None):
     cmd = [cli, "--json", "--headless"]
     if profile:
         cmd += ["--profile", profile]
-    cmd += ["kalshi", "auto", "advise", "open", "--ticker", ticker]
+    cmd += ["kalshi", "auto", "advise", "open"]
+    if ticker:
+        cmd += ["--ticker", ticker]
+    if competition_pair_id:
+        cmd += ["--competition-pair-id", competition_pair_id]
+    if sibling_of:
+        cmd += ["--sibling-of", sibling_of]
     for flag, key in (("--provider", "provider"), ("--model", "model"),
                       ("--prompt-version", "prompt_version"), ("--agent-id", "agent_id"),
                       ("--run-id", "run_id")):

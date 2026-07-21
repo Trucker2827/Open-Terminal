@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Restart-safe unattended Kalshi shadow advisor loop (never submits orders)."""
 from __future__ import annotations
-import argparse, calendar, fcntl, json, os, plistlib, signal, subprocess, sys, time, uuid
+import argparse, calendar, concurrent.futures, fcntl, json, os, plistlib, signal, subprocess, sys, time, uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -10,6 +10,7 @@ from advise_challenge import (DEFAULT_CLI, DEFAULT_EVIDENCE, DEFAULT_FORECASTER,
 from advisor_core import (GatePolicy, ImmutableJournal, ShadowExecutionAdapter,
     comparative_proposals, default_safety_state, evaluate_safety, promotion_transition,
     qualification, record_safety_observation, validate_forecast, write_state)
+from blind_prompt import competition_context, prompt_hash
 
 
 def paths(profile):
@@ -20,6 +21,8 @@ def paths(profile):
         "safety":"advisor_safety_state.json", "promotion":"advisor_promotion_state.json",
         "canary":"advisor_canary_config.json", "config":"advisor_loop_config.json",
         "qualification":"advisor_qualification_report.json",
+        "competition":"advisor_competition_report.json",
+        "competition_firewall":"advisor_competition_firewall.json",
         "lock":"advisor_loop.lock", "pid":"advisor_loop.pid", "log":"advisor_loop.log"}.items()}
 
 def launch_agent_path(profile):
@@ -42,6 +45,27 @@ def pid_alive(pid):
 def read_obj(path, default):
     try:return json.load(open(path))
     except (OSError,json.JSONDecodeError):return default
+
+def ensure_competition_firewall(args):
+    p=paths(args.profile)
+    identity=forecaster_identify(args.opponent_forecaster)
+    cached=read_obj(p["competition_firewall"],{})
+    if cached.get("safe") and cached.get("cli_version")==identity.get("cli_version") and \
+       cached.get("surface_hash")==identity.get("surface_hash"):
+        return cached
+    run=_run([sys.executable,args.opponent_forecaster,"probe"],timeout=200)
+    try:result=json.loads(run.stdout)
+    except Exception:result={"safe":False,"reason":(run.stderr or run.stdout)[:500]}
+    write_state(p["competition_firewall"],result)
+    return result
+
+def refresh_competition_report(args, journal):
+    p=paths(args.profile)
+    db=os.path.expanduser("~/Library/Application Support/org.openterminal.OpenTerminal/data/openmarketterminal.db")
+    script=os.path.join(HERE,"competition_report.py")
+    run=_run([sys.executable,script,"--journal",p["journal"],"--db",db,
+              "--firewall",p["competition_firewall"],"--output",p["competition"]],timeout=30)
+    if run.returncode: raise RuntimeError("competition report failed: "+(run.stderr or run.stdout)[-400:])
 
 def current_control(args):
     p=paths(args.profile); now=int(time.time()*1000)
@@ -115,46 +139,69 @@ def evaluate_and_persist(args):
     return next_state
 
 
+def _forecast_lane(script, context, timeout):
+    try:
+        result=_run([sys.executable,script,"predict"],stdin_text=json.dumps(context),timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"decision":"abstain","reason_code":"FORECAST_TIMEOUT","confidence":0,
+                "rationale":f"forecaster exceeded {timeout}s blind prediction budget",
+                "prompt_hash":prompt_hash(context)}
+    if result.returncode:
+        return {"decision":"abstain","reason_code":"FORECASTER_ERROR","confidence":0,
+                "rationale":(result.stderr or result.stdout)[:400]}
+    try:return validate_forecast(json.loads(result.stdout)) | {
+        k:v for k,v in json.loads(result.stdout).items() if k in ("prompt_hash","epoch_id")}
+    except Exception as exc:
+        return {"decision":"abstain","reason_code":"MALFORMED_FORECAST","confidence":0,
+                "rationale":str(exc)}
+
+
 def run_once(args, journal):
-    now=int(time.time()*1000); identity=forecaster_identify(args.forecaster)
+    now=int(time.time()*1000)
+    identities=[forecaster_identify(args.forecaster),forecaster_identify(args.opponent_forecaster)]
     ticker=pick_auto_ticker(args.evidence,args.auto_min_secs_left,args.auto_max_age_s)
     base={"event":"shadow_opportunity","opportunity_id":str(uuid.uuid4()),"opened_at_ms":now,
-          "ticker":ticker,"forecaster":identity,"loop_version":"kalshi-advisor-loop-v1"}
+          "ticker":ticker,"forecasters":identities,"loop_version":"kalshi-advisor-loop-v2-duel",
+          "authority":"advisory_only","execution_mode":"shadow","execution_eligible":False}
     if not ticker:
         return journal.append({**base,"status":"ABSTAINED","reason_code":"NO_FRESH_CONTRACT"})
-    opened=advise_open(args.cli,args.profile,ticker,identity)
+    pair_id=str(uuid.uuid4())
+    opened=advise_open(args.cli,args.profile,ticker,identities[0],pair_id)
     if opened.get("available") is False:
         return journal.append({**base,"status":"ABSTAINED","reason_code":"OPEN_UNAVAILABLE",
                                "detail":opened.get("reason")})
     ctx=opened.get("context") or {}; leak=contains_forbidden_deep(ctx)
     if leak: raise RuntimeError(f"FIREWALL_BREACH:{leak}")
-    challenge=opened["challenge_id"]; base.update(challenge_id=challenge,context_hash=opened["context_hash"])
-    r=_run([sys.executable,args.forecaster,"predict"],stdin_text=json.dumps(ctx),timeout=args.forecast_timeout)
-    if r.returncode: return journal.append({**base,"status":"ABSTAINED","reason_code":"FORECASTER_ERROR",
-                                            "detail":(r.stderr or r.stdout)[:400]})
-    try: forecast=validate_forecast(json.loads(r.stdout))
-    except Exception as exc:
-        return journal.append({**base,"status":"ABSTAINED","reason_code":"MALFORMED_FORECAST",
-                               "detail":str(exc)})
-    if forecast["decision"] == "abstain":
-        return journal.append({**base,"status":"ABSTAINED","forecast":forecast})
-    elapsed=int(time.time()*1000)-int(opened["ts_opened"])
-    if elapsed > int(opened["prediction_ttl_ms"])-args.safety_margin_ms:
-        return journal.append({**base,"status":"ABSTAINED","reason_code":"PREDICTION_TTL_EXPIRED",
-                               "forecast":forecast,"elapsed_ms":elapsed})
-    commit=str(uuid.uuid4())
-    committed=advise_commit_blind(args.cli,args.profile,challenge,commit,forecast["probability"],
-                                   forecast["confidence"],forecast["rationale"])
-    revealed=cli_json(args.cli,args.profile,["kalshi","auto","advise","reveal","--challenge",challenge])
-    market=revealed.get("withheld_market") or {}
-    proposals=comparative_proposals(challenge,ticker,forecast["probability"],None,forecast["confidence"],
-                                    market,int(time.time()*1000),int(opened["ts_opened"])+
-                                    int(opened["execution_relevance_ms"]))
-    proposal=proposals["advisor"]
-    execution=ShadowExecutionAdapter().execute(proposal)
-    return journal.append({**base,"status":"SHADOW_PROPOSED" if execution["simulated"] else "GATE_REJECTED",
-                           "forecast":forecast,"journal_id":committed.get("id"),
-                           "proposal":proposal,"comparative_proposals":proposals,"execution":execution})
+    sibling=advise_open(args.cli,args.profile,"",identities[1],pair_id,opened["challenge_id"])
+    if sibling.get("context_hash") != opened.get("context_hash"):
+        raise RuntimeError("PAIRING_CORRUPTION: sibling context differs")
+    challenges=[opened,sibling]
+    forecast_context=competition_context(ctx)
+    base.update(competition_pair_id=pair_id,context_hash=opened["context_hash"],
+                forecast_context_hash=prompt_hash(forecast_context),blind_context=forecast_context)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures=[pool.submit(_forecast_lane,script,forecast_context,args.forecast_timeout)
+                 for script in (args.forecaster,args.opponent_forecaster)]
+        forecasts=[future.result() for future in futures]
+    lanes=[]
+    for identity,challenge,forecast in zip(identities,challenges,forecasts):
+        lane={"forecaster":identity,"challenge_id":challenge["challenge_id"],"forecast":forecast,
+              "context_hash":challenge["context_hash"],"status":"ABSTAINED"}
+        elapsed=int(time.time()*1000)-int(challenge["ts_opened"])
+        if forecast["decision"] == "predict" and elapsed <= int(challenge["prediction_ttl_ms"])-args.safety_margin_ms:
+            committed=advise_commit_blind(args.cli,args.profile,challenge["challenge_id"],str(uuid.uuid4()),
+                forecast["probability"],forecast["confidence"],forecast["rationale"])
+            revealed=cli_json(args.cli,args.profile,["kalshi","auto","advise","reveal",
+                "--challenge",challenge["challenge_id"]])
+            lane.update(status="COMMITTED_BLIND",journal_id=committed.get("id"),elapsed_ms=elapsed,
+                market_at_open=revealed.get("withheld_market",{}),sealed_hash=revealed.get("sealed_hash",""))
+        elif forecast["decision"] == "predict":
+            lane.update(reason_code="PREDICTION_TTL_EXPIRED",elapsed_ms=elapsed)
+        else:
+            lane["reason_code"]=forecast.get("reason_code","ABSTAINED")
+        lanes.append(lane)
+    return journal.append({**base,"status":"PAIRED_COMMITTED" if all(x["status"]=="COMMITTED_BLIND" for x in lanes)
+                           else "PAIRED_PARTIAL","lanes":lanes})
 
 
 def report(args, journal):
@@ -166,6 +213,13 @@ def report(args, journal):
 
 def foreground(args):
     p=paths(args.profile); os.makedirs(os.path.dirname(p["lock"]),exist_ok=True)
+    firewall=ensure_competition_firewall(args)
+    if not firewall.get("safe"):
+        ImmutableJournal(p["journal"]).append({"event":"shadow_opportunity","opportunity_id":str(uuid.uuid4()),
+            "opened_at_ms":int(time.time()*1000),"status":"ABSTAINED","reason_code":"CAPABILITY_LOCKDOWN_FAILED",
+            "authority":"advisory_only","execution_eligible":False,"firewall":firewall})
+        refresh_competition_report(args,ImmutableJournal(p["journal"]))
+        return 7
     with open(p["lock"],"w") as lock:
         try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError: raise SystemExit("advisor loop already running")
@@ -175,6 +229,7 @@ def foreground(args):
             while True:
                 try:
                     row=run_once(args,journal); failures=0
+                    refresh_competition_report(args,journal)
                     promotion=evaluate_and_persist(args)
                     rows=journal.read()
                     state={"running":True,"pid":os.getpid(),"updated_at_ms":int(time.time()*1000),
@@ -201,10 +256,10 @@ def main():
     ap=argparse.ArgumentParser(); ap.add_argument("command",choices=["once","run","start","stop","status","report",
         "install","uninstall","safety-observe","evaluate","pause","resume","canary-configure","canary-enable","canary-disable","canary-pulse"])
     ap.add_argument("--profile",default="default");ap.add_argument("--cli",default=DEFAULT_CLI)
-    ap.add_argument("--forecaster");ap.add_argument("--evidence",default=DEFAULT_EVIDENCE)
-    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=50)
+    ap.add_argument("--forecaster");ap.add_argument("--opponent-forecaster");ap.add_argument("--evidence",default=DEFAULT_EVIDENCE)
+    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=52)
     ap.add_argument("--maximum-failures",type=int,default=5)
-    ap.add_argument("--safety-margin-ms",type=int,default=6000);ap.add_argument("--auto-min-secs-left",type=int,default=75)
+    ap.add_argument("--safety-margin-ms",type=int,default=6000);ap.add_argument("--auto-min-secs-left",type=int,default=901)
     ap.add_argument("--auto-max-age-s",type=float,default=11.0)
     ap.add_argument("--realized-pnl",type=float,default=0);ap.add_argument("--equity",type=float)
     ap.add_argument("--open-exposure",type=float);ap.add_argument("--submission-unknown-count",type=int)
@@ -214,18 +269,23 @@ def main():
     p=paths(args.profile)
     saved_config=read_obj(p["config"],{})
     args.forecaster=args.forecaster or saved_config.get("forecaster") or DEFAULT_FORECASTER
+    args.opponent_forecaster=args.opponent_forecaster or saved_config.get("opponent_forecaster") or os.path.join(HERE,"claude_cli_forecaster.py")
     journal=ImmutableJournal(p["journal"])
     if args.command in ("once","run"):return foreground(args)
     if args.command=="install":
         plist=launch_agent_path(args.profile);os.makedirs(os.path.dirname(plist),exist_ok=True)
         label=f"org.openterminal.kalshi-advisor.{args.profile}"
         spec={"Label":label,"ProgramArguments":[sys.executable,os.path.abspath(__file__),"run","--profile",args.profile,
-              "--cli",os.path.abspath(args.cli),"--forecaster",os.path.abspath(args.forecaster),"--evidence",args.evidence,
-              "--interval-seconds",str(args.interval_seconds),"--maximum-failures",str(args.maximum_failures)],
+              "--cli",os.path.abspath(args.cli),"--forecaster",os.path.abspath(args.forecaster),
+              "--opponent-forecaster",os.path.abspath(args.opponent_forecaster),"--evidence",args.evidence,
+              "--interval-seconds",str(args.interval_seconds),"--forecast-timeout",str(args.forecast_timeout),
+              "--safety-margin-ms",str(args.safety_margin_ms),"--maximum-failures",str(args.maximum_failures)],
               "RunAtLoad":True,"KeepAlive":{"SuccessfulExit":False},"ThrottleInterval":30,
+              "EnvironmentVariables":{"PATH":os.path.expanduser("~/.local/bin")+
+                  ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
               "StandardOutPath":p["log"],"StandardErrorPath":p["log"]}
         with open(plist,"wb") as f:plistlib.dump(spec,f)
-        write_state(p["config"],{"forecaster":os.path.abspath(args.forecaster),"cli":os.path.abspath(args.cli),
+        write_state(p["config"],{"forecaster":os.path.abspath(args.forecaster),"opponent_forecaster":os.path.abspath(args.opponent_forecaster),"cli":os.path.abspath(args.cli),
                                   "profile":args.profile,"installed_at_ms":int(time.time()*1000)})
         uid=str(os.getuid());subprocess.run(["launchctl","bootout",f"gui/{uid}/{label}"],capture_output=True)
         r=subprocess.run(["launchctl","bootstrap",f"gui/{uid}",plist],capture_output=True,text=True)

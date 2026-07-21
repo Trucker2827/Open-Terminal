@@ -4,7 +4,7 @@ ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0,os.path.join(ROOT,"scripts","kalshi_advise"))
 from advisor_core import *
 from advisor_loop import paths, pid_alive
-from codex_forecaster import PROMPT_VERSION, validate_capability_inventory, tool_less_command
+from codex_forecaster import EPOCH_ID, validate_capability_inventory, tool_less_command
 
 class AdvisorCoreTest(unittest.TestCase):
     def test_explicit_abstention_has_no_probability(self):
@@ -80,7 +80,7 @@ class AdvisorCoreTest(unittest.TestCase):
         self.assertTrue({"shell_tool","unified_exec","code_mode_host","apps","browser_use","computer_use"} <= disabled)
         self.assertIn("--ephemeral",cmd);self.assertIn("--ignore-user-config",cmd)
         self.assertEqual(cmd[cmd.index("--cd")+1],"/tmp/empty")
-        self.assertIn("zero-capability",PROMPT_VERSION)
+        self.assertIn("zero-capability",EPOCH_ID)
         self.assertNotIn("legacy",disabled)
 
     def test_codex_capability_inventory_drift_fails_closed(self):

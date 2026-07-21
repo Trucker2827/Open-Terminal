@@ -29,7 +29,7 @@ const char* kChallengeCols =
     " agent_id, run_id, temperature,"
     " p_pre, p_post, confidence_pre, confidence_post, rationale_pre, rationale_post,"
     " commit_id_blind, commit_id_post, journal_id,"
-    " ts_blind, ts_reveal, ts_post";
+    " ts_blind, ts_reveal, ts_post, competition_pair_id";
 
 struct ChallengeRow {
     QString challenge_id, state;
@@ -46,6 +46,7 @@ struct ChallengeRow {
     QString rationale_pre, rationale_post;
     QString commit_id_blind, commit_id_post, journal_id;
     qint64 ts_blind = 0, ts_reveal = 0, ts_post = 0;
+    QString competition_pair_id;
 };
 
 ChallengeRow map_challenge_row(QSqlQuery& q) {
@@ -90,6 +91,7 @@ ChallengeRow map_challenge_row(QSqlQuery& q) {
     r.ts_blind = q.value(i++).toLongLong();
     r.ts_reveal = q.value(i++).toLongLong();
     r.ts_post = q.value(i++).toLongLong();
+    r.competition_pair_id = q.value(i++).toString();
     return r;
 }
 
@@ -135,7 +137,15 @@ QJsonObject reveal_result(const ChallengeRow& row) {
 } // namespace
 
 Result<OpenResult> AdvisoryChallengeRepository::open(const OpenParams& p) {
-    const TtlPolicy policy = ttl_for(p.seconds_left);
+    TtlPolicy policy = ttl_for(p.seconds_left);
+    // Paired shadow measurements run two independent CLI forecasters. For
+    // contracts with >15m runway, use the full protocol cap so the shared
+    // 52s budget plus commit margin cannot select a winner on latency alone.
+    // Execution relevance stays short; this never grants execution authority.
+    if (!p.competition_pair_id.isEmpty() && p.seconds_left > 900) {
+        policy.prediction_ttl_ms = 60000;
+        policy.execution_relevance_ms = 15000;
+    }
     if (!policy.may_open)
         return Result<OpenResult>::err("too close to settlement to open an advisory challenge");
 
@@ -178,13 +188,14 @@ Result<OpenResult> AdvisoryChallengeRepository::open(const OpenParams& p) {
         " ticker, market_id, horizon, settlement_def,"
         " context_json, context_hash, sealed_hash, nonce,"
         " market_at_open_json, daemon_prob_at_open,"
-        " provider, model, prompt_version, agent_id, run_id, temperature)"
-        " VALUES (?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " provider, model, prompt_version, agent_id, run_id, temperature, competition_pair_id)"
+        " VALUES (?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         {challenge_id, p.now_ms, prediction_ttl_at, execution_relevance_at,
          nn(p.ticker), nn(p.market_id), nn(p.horizon), nn(p.settlement_def),
          QString::fromUtf8(canonical_json(p.blind_context)), context_hash, sealed_hash, nonce,
          to_json_text(p.withheld_market), p.daemon_prob,
-         nn(p.provider), nn(p.model), nn(p.prompt_version), nn(p.agent_id), nn(p.run_id), p.temperature});
+         nn(p.provider), nn(p.model), nn(p.prompt_version), nn(p.agent_id), nn(p.run_id), p.temperature,
+         nn(p.competition_pair_id)});
     if (ins.is_err()) {
         db.rollback();
         return Result<OpenResult>::err(ins.error());
@@ -199,9 +210,37 @@ Result<OpenResult> AdvisoryChallengeRepository::open(const OpenParams& p) {
     OpenResult out;
     out.challenge_id = challenge_id;
     out.context_hash = context_hash;
+    out.blind_context = p.blind_context;
+    out.created_at = p.now_ms;
     out.prediction_ttl_at = prediction_ttl_at;
     out.execution_relevance_at = execution_relevance_at;
     return Result<OpenResult>::ok(out);
+}
+
+Result<OpenResult> AdvisoryChallengeRepository::open_sibling(
+    const QString& source_challenge_id, const OpenParams& identity) {
+    auto source_result = read_challenge(source_challenge_id);
+    if (source_result.is_err()) return Result<OpenResult>::err(source_result.error());
+    const ChallengeRow source = source_result.value();
+    if (source.state != QStringLiteral("OPEN"))
+        return Result<OpenResult>::err("source challenge is not OPEN");
+    if (source.competition_pair_id.isEmpty() ||
+        source.competition_pair_id != identity.competition_pair_id)
+        return Result<OpenResult>::err("competition pair id does not match source challenge");
+
+    OpenParams sibling = identity;
+    sibling.ticker = source.ticker;
+    sibling.market_id = source.market_id;
+    sibling.horizon = source.horizon;
+    sibling.settlement_def = source.settlement_def;
+    sibling.blind_context = parse_object(source.context_json);
+    sibling.withheld_market = parse_object(source.market_at_open_json);
+    sibling.daemon_prob = source.daemon_prob_at_open;
+    sibling.seconds_left = sibling.blind_context.value(QStringLiteral("seconds_left")).toVariant().toLongLong();
+    // Both challenges share the same open instant and therefore the same TTL
+    // budget. The second forecaster is not penalized by repository call order.
+    sibling.now_ms = source.created_at;
+    return open(sibling);
 }
 
 Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp) {
@@ -265,6 +304,7 @@ Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp
                         {"protocol_version", row.protocol_version},
                         {"context_schema_version", row.context_schema_version},
                         {"challenge_id", row.challenge_id},
+                        {"competition_pair_id", row.competition_pair_id},
                         {"context_hash", row.context_hash},
                         {"sealed_hash", row.sealed_hash},
                         {"ts_opened", row.created_at},

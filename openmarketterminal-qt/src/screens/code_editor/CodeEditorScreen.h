@@ -22,6 +22,7 @@
 #include <QTextBrowser>
 #include <QTextEdit>
 #include <QTableWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QVector>
 #include <QWidget>
@@ -232,9 +233,12 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QWidget* build_experiments_page();        // CodeEditorScreen_ResearchLab.cpp
     QWidget* build_trade_reviews_page();      // CodeEditorScreen_ResearchLab.cpp
     QWidget* build_reports_page();            // CodeEditorScreen_ResearchLab.cpp
+    QWidget* build_forecast_arena_page();     // CodeEditorScreen_ForecastArena.cpp
     void refresh_experiments();               // CodeEditorScreen_ResearchLab.cpp
     void refresh_trade_reviews();             // CodeEditorScreen_ResearchLab.cpp
     void refresh_reports();                   // CodeEditorScreen_ResearchLab.cpp
+    void refresh_forecast_arena();            // CodeEditorScreen_ForecastArena.cpp
+    void open_forecast_comparison(int row);
     void create_research_notebook(const QString& type, const QString& reference = {});
     void open_strategy_workspace();
     void open_automation_workspace();
@@ -291,7 +295,8 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
         ExperimentsView = 1,
         TradeReviewsView = 2,
         ReportsView = 3,
-        EditorView = 4,
+        ForecastArenaView = 4,
+        EditorView = 5,
     };
 
     // ── Header + Research Lab stack ──────────────────────────────────────────
@@ -318,6 +323,16 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QLabel* experiments_summary_ = nullptr;
     QLabel* reviews_summary_ = nullptr;
     QLabel* reports_summary_ = nullptr;
+
+    // ── Read-only Claude vs Codex Forecast Arena ────────────────────────────
+    QLabel* arena_state_ = nullptr;
+    QLabel* arena_progress_ = nullptr;
+    QLabel* arena_delta_ = nullptr;
+    QLabel* arena_claude_coverage_ = nullptr;
+    QLabel* arena_codex_coverage_ = nullptr;
+    QLabel* arena_integrity_ = nullptr;
+    QTableWidget* arena_table_ = nullptr;
+    QTimer* arena_timer_ = nullptr;
 };
 
 } // namespace openmarketterminal::screens
