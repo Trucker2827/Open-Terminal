@@ -8,6 +8,7 @@
 #include "screens/algo_trading/StrategyOpsMapPanel.h"
 #include "screens/algo_trading/StrategyCockpitNavigation.h"
 #include "screens/algo_trading/StrategyWorkspacePanels.h"
+#include "screens/dashboard/widgets/DineroNetworkWidget.h"
 #include "ui/theme/Theme.h"
 
 #include <QHBoxLayout>
@@ -64,7 +65,23 @@ void AlgoTradingScreen::build_ui() {
     connect(proof_books_, &SandboxBooksPanel::returnToCockpit,
             this, [this]() { on_tab_changed(0); });
 
-    content_stack_->addWidget(ops_map_);     // 0
+    auto* cockpit = new QWidget(this);
+    auto* cockpit_layout = new QHBoxLayout(cockpit);
+    cockpit_layout->setContentsMargins(0, 0, 0, 0);
+    cockpit_layout->setSpacing(8);
+    cockpit_layout->addWidget(ops_map_, 1);
+
+    dinero_widget_ = new widgets::DineroNetworkWidget({}, cockpit);
+    dinero_widget_->setObjectName(QStringLiteral("strategyCockpitDineroNetwork"));
+    dinero_widget_->set_close_button_visible(false);
+    dinero_widget_->setMinimumWidth(260);
+    dinero_widget_->setMaximumWidth(320);
+    dinero_widget_->setToolTip(
+        tr("Live, read-only Dinero network telemetry. Use GET DINERO or Open Block Explorer "
+           "to continue in your default browser."));
+    cockpit_layout->addWidget(dinero_widget_);
+
+    content_stack_->addWidget(cockpit);      // 0
     content_stack_->addWidget(handlers_);    // 1
     content_stack_->addWidget(proof_books_); // 2
     content_stack_->addWidget(risk_);        // 3
