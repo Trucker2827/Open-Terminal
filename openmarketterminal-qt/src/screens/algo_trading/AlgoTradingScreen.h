@@ -18,9 +18,7 @@ class StrategyOpsMapPanel;
 class StrategyHandlersPanel;
 class StrategyRiskPanel;
 class StrategyRunHistoryPanel;
-namespace widgets {
-class DineroNetworkWidget;
-}
+class DineroNetworkGadget;
 
 /// Evidence-first strategy workspace. Every visible surface is backed by the
 /// sandbox registry, paper ledger, scorer, or the daemon jobs that feed them.
@@ -56,7 +54,7 @@ class AlgoTradingScreen : public QWidget, public IStatefulScreen {
     SandboxBooksPanel* proof_books_ = nullptr;
     StrategyRiskPanel* risk_ = nullptr;
     StrategyRunHistoryPanel* run_history_ = nullptr;
-    widgets::DineroNetworkWidget* dinero_widget_ = nullptr;
+    DineroNetworkGadget* dinero_gadget_ = nullptr;
 
     QVector<QPushButton*> tab_buttons_;
     int active_tab_ = 0;

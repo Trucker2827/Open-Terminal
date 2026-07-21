@@ -43,6 +43,7 @@ class CryptoWatchlist : public QWidget {
 
   private:
     void rebuild_table();
+    void fit_table_to_rows(int rows);
     void retranslateUi();
 
     QLineEdit* filter_edit_ = nullptr;
