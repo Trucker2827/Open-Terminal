@@ -429,22 +429,28 @@ void CodeEditorScreen::create_research_notebook(const QString& type, const QStri
                                        {QStringLiteral("cohort_analysis"), tr("Cohort Analysis")},
                                        {QStringLiteral("portfolio_research"), tr("Portfolio Research")},
                                        {QStringLiteral("kalshi_calibration"), tr("Kalshi Calibration & Cohorts")},
+                                       {QStringLiteral("kalshi_advisor_v3"), tr("Kalshi Codex-v3 Advisor Audit")},
                                        {QStringLiteral("coinbase_spot"), tr("Coinbase Spot Evidence")},
                                        {QStringLiteral("kraken_maker"), tr("Kraken Maker-Lane Evidence")},
                                        {QStringLiteral("chronos_horizons"), tr("Chronos-2 Horizon Audit")},
                                        {QStringLiteral("ai_decision_audit"), tr("AI Decision & Risk Audit")}};
     const QString title = titles.value(type, tr("Research Notebook"));
     const QString ref_line = reference.isEmpty() ? tr("all current project evidence") : reference;
+    const QString advisor_provenance = type == QStringLiteral("kalshi_advisor_v3")
+        ? QStringLiteral("**Forecaster epoch:** `kalshi-blind-codex-v3-zero-capability` only  \n"
+                         "**Authority:** advisory-only; qualification evidence cannot enable trading.  \n")
+        : QString();
     const QString markdown = QStringLiteral(
         "# %1\n\n"
         "**Research type:** `%2`  \n"
         "**Data cutoff:** %3  \n"
         "**Reference:** `%4`  \n"
         "**Sources:** local OpenTerminal SQLite evidence store  \n"
-        "**Execution policy:** read-only analysis; this notebook cannot submit live orders.\n\n"
+        "**Execution policy:** read-only analysis; this notebook cannot submit live orders.\n"
+        "%5\n"
         "The creation cutoff records when this notebook was authored. Each query run prints its own UTC runtime; "
         "re-running reads the latest local evidence without changing the stored creation metadata."
-    ).arg(title, type, cutoff, ref_line);
+    ).arg(title, type, cutoff, ref_line, advisor_provenance);
 
     const QString setup = QStringLiteral(
         "from pathlib import Path\n"
@@ -496,6 +502,17 @@ void CodeEditorScreen::create_research_notebook(const QString& type, const QStri
             "                   ORDER BY created_at DESC LIMIT 1000''', (REFERENCE, REFERENCE, REFERENCE))\n"
             "records.reverse()\n"
             "print(json.dumps(records, indent=2, default=str))");
+    } else if (type == QStringLiteral("kalshi_advisor_v3")) {
+        query_code = QStringLiteral(
+            "EPOCH = 'kalshi-blind-codex-v3-zero-capability'\n"
+            "records = query('''SELECT id,created_at,market_id,symbol,horizon,model_probability,\n"
+            "  market_probability,confidence,edge_after_cost,outcome,resolved_at,features_json,reasons\n"
+            "FROM edge_decision_journal WHERE source='llm-advisory'\n"
+            "  AND features_json LIKE ? ORDER BY created_at DESC LIMIT 2000''', ('%' + EPOCH + '%',))\n"
+            "resolved = [r for r in records if r['outcome'] in (0,1)]\n"
+            "print(json.dumps({'epoch': EPOCH, 'authority': 'advisory_only',\n"
+            "  'execution_eligible': False, 'rows': len(records), 'resolved': len(resolved),\n"
+            "  'records': records}, indent=2, default=str))");
     } else if (type == QStringLiteral("kalshi_calibration")) {
         query_code = QStringLiteral(
             "records = query('''SELECT source, venue, horizon,\n"

@@ -33,9 +33,11 @@ class StrategyAutomationPanel : public QWidget {
     QString selected_job_id() const;
     void populate(const QJsonObject& document);
     void update_selection_detail();
+    void refresh_kalshi_authority_status();
 
     QTableWidget* jobs_table_ = nullptr;
     QLabel* status_label_ = nullptr;
+    QLabel* kalshi_authority_status_ = nullptr;
     QLabel* detail_label_ = nullptr;
     QLabel* enabled_count_ = nullptr;
     QLabel* healthy_count_ = nullptr;

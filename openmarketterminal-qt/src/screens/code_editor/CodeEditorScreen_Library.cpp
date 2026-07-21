@@ -157,6 +157,7 @@ QWidget* CodeEditorScreen::build_library_page() {
     workflows->setContentsMargins(14, 5, 14, 5);
     workflows->setSpacing(5);
     const QList<QPair<QString, QString>> actions = {
+        {tr("KALSHI CODEX V3"), QStringLiteral("kalshi_advisor_v3")},
         {tr("KALSHI CALIBRATION"), QStringLiteral("kalshi_calibration")},
         {tr("COINBASE SPOT"), QStringLiteral("coinbase_spot")},
         {tr("KRAKEN MAKER"), QStringLiteral("kraken_maker")},

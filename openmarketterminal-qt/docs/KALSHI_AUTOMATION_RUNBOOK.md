@@ -108,6 +108,18 @@ files. Missing, malformed, stale, or unpinned state is displayed as
 legacy session cannot be mistaken for canary authority. Qualification is
 explicitly informational and cannot enable trading from the GUI.
 
+The **Strategies** automation panel repeats the authority boundary beside its
+live controls: those controls arm the legacy deterministic Kalshi session, not
+the Codex canary. Its legacy-session and Codex-canary states are displayed as
+independent badges so an armed legacy session cannot be mistaken for an enabled
+canary.
+
+The **Notebooks / Research Lab** `KALSHI CODEX V3` workflow is also read-only.
+Its generated query is pinned to the
+`kalshi-blind-codex-v3-zero-capability` forecaster epoch and labels the rows
+`advisory_only` / `execution_eligible=false`; older or compromised epochs are
+not silently mixed into qualification analysis.
+
 This surface answers one question only: **does an LLM forecaster have predictive skill on Kalshi
 crypto settlement, independent of the market and marginal over the deterministic daemon?** It is a
 measurement instrument, not a trading path. The daemon retains sole and exclusive ownership of
