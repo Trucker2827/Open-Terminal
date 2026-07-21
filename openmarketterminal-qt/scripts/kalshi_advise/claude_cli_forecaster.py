@@ -16,7 +16,7 @@ EFFORT = "medium"
 CLI_VERSION = "2.1.217"
 TIMEOUT_S = 50
 SCHEMA_VERSION = "kalshi-forecast-v1"
-EPOCH_ID = "kalshi-blind-claude-cli-v2"
+EPOCH_ID = "kalshi-blind-claude-cli-v3-latency-neutral"
 LOCKED_FLAGS = (
     "-p", "--output-format=json", "--model=" + MODEL, "--effort=" + EFFORT,
     "--system-prompt=", "--tools=", "--disallowedTools=*", "--strict-mcp-config", "--mcp-config={\"mcpServers\":{}}",

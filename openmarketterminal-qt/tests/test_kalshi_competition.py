@@ -71,7 +71,7 @@ class CompetitionTest(unittest.TestCase):
 
     def test_prompt_divergence_invalidates_epoch(self):
         lanes = [
-            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v2"},"status":"ABSTAINED",
+            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v3-latency-neutral"},"status":"ABSTAINED",
              "context_hash":"same","forecast":{"prompt_hash":"left"}},
             {"forecaster":{"provider":"openai-codex-cli", "epoch_id":"kalshi-blind-codex-v3-zero-capability"},"status":"ABSTAINED",
              "context_hash":"same","forecast":{"prompt_hash":"right"}},

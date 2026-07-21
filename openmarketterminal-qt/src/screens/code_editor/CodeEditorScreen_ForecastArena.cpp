@@ -154,7 +154,7 @@ void CodeEditorScreen::refresh_forecast_arena() {
     arena_codex_coverage_->setText(lane_text(QStringLiteral("codex")));
     const auto epochs = report.value(QStringLiteral("epoch_pair")).toObject();
     arena_integrity_->setText(tr("EPOCH PAIR  %1  ↔  %2\nFIREWALL %3 · %4 opportunities · prompt/context hashes enforced")
-        .arg(epochs.value(QStringLiteral("claude")).toString(QStringLiteral("kalshi-blind-claude-cli-v2")),
+        .arg(epochs.value(QStringLiteral("claude")).toString(QStringLiteral("kalshi-blind-claude-cli-v3-latency-neutral")),
              epochs.value(QStringLiteral("codex")).toString(QStringLiteral("kalshi-blind-codex-v3-zero-capability")),
              report.value(QStringLiteral("firewall_safe")).toBool(false) ? QStringLiteral("LOCKED") : QStringLiteral("NOT VERIFIED"))
         .arg(opportunities));
