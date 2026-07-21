@@ -501,6 +501,18 @@ void StrategyRiskPanel::refresh() {
     refresh_daemon();
 }
 
+void StrategyRiskPanel::focus_decision_envelopes() {
+    refresh();
+    status_label_->setText(tr("COCKPIT DRILL-DOWN · latest deterministic decision envelopes and named blockers"));
+    status_label_->setStyleSheet(
+        QStringLiteral("color:%1;font-size:9px;font-weight:800;%2")
+            .arg(ui::colors::CYAN(), QString::fromLatin1(kMono)));
+    if (blockers_table_->rowCount() > 0) {
+        blockers_table_->selectRow(0);
+        blockers_table_->scrollToItem(blockers_table_->item(0, 0));
+    }
+}
+
 void StrategyRiskPanel::refresh_daemon() {
     const QString cli = cli_path();
     if (cli.isEmpty()) {
@@ -657,21 +669,104 @@ void StrategyRunHistoryPanel::build_ui() {
 
     automation_ = new StrategyAutomationPanel(tabs_);
     tabs_->addTab(automation_, tr("DAEMON JOBS"));
+
+    auto* outcomes_page = new QWidget(tabs_);
+    auto* outcomes_layout = new QVBoxLayout(outcomes_page);
+    outcomes_layout->setContentsMargins(8, 8, 8, 8);
+    outcomes_layout->setSpacing(7);
+    outcomes_summary_ = new QLabel(tr("Loading immutable sandbox outcomes..."), outcomes_page);
+    outcomes_summary_->setStyleSheet(QStringLiteral("color:%1;font-size:10px;font-weight:700;%2")
+                                         .arg(ui::colors::CYAN(), QString::fromLatin1(kMono)));
+    outcomes_layout->addWidget(outcomes_summary_);
+    outcomes_table_ = new QTableWidget(outcomes_page);
+    outcomes_table_->setColumnCount(10);
+    outcomes_table_->setHorizontalHeaderLabels(
+        {tr("Closed"), tr("Book"), tr("Symbol"), tr("Side"), tr("Qty"), tr("Entry"),
+         tr("Exit"), tr("Net P/L"), tr("Reason"), tr("Data Quality")});
+    outcomes_table_->verticalHeader()->setVisible(false);
+    outcomes_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    outcomes_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    outcomes_table_->setAlternatingRowColors(true);
+    outcomes_table_->setStyleSheet(table_style());
+    for (int column = 0; column < 8; ++column)
+        outcomes_table_->horizontalHeader()->setSectionResizeMode(column, QHeaderView::ResizeToContents);
+    outcomes_table_->horizontalHeader()->setSectionResizeMode(8, QHeaderView::Stretch);
+    outcomes_table_->horizontalHeader()->setSectionResizeMode(9, QHeaderView::ResizeToContents);
+    outcomes_layout->addWidget(outcomes_table_, 1);
+    tabs_->addTab(outcomes_page, tr("SANDBOX OUTCOMES"));
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
         if (index == 0)
             refresh_fills();
-        else if (automation_)
+        else if (index == 1 && automation_)
             automation_->refresh();
+        else if (index == 2)
+            refresh_outcomes();
     });
     root->addWidget(tabs_);
     refresh_fills();
 }
 
+void StrategyRunHistoryPanel::focus_outcomes() {
+    if (!tabs_) return;
+    tabs_->setCurrentIndex(2);
+    refresh_outcomes();
+}
+
+void StrategyRunHistoryPanel::refresh_outcomes() {
+    if (!outcomes_table_ || !outcomes_summary_) return;
+    auto result = Database::instance().execute(QStringLiteral(
+        "SELECT p.closed_at,p.strategy_id,p.symbol,p.side,p.qty,p.limit_price,"
+        " (SELECT f.price FROM sandbox_fill f WHERE f.position_id=p.position_id ORDER BY f.ts DESC LIMIT 1),"
+        " p.realized_pnl,p.close_reason,p.data_quality"
+        " FROM sandbox_position p WHERE p.state='closed' ORDER BY p.closed_at DESC LIMIT 500"));
+    if (!result.is_ok()) {
+        outcomes_table_->setRowCount(0);
+        outcomes_summary_->setText(tr("Sandbox outcome ledger unavailable; no result was fabricated."));
+        return;
+    }
+    struct Outcome { QStringList cells; double pnl = 0.0; bool resolved = false; };
+    QVector<Outcome> rows;
+    double net = 0.0;
+    int gaps = 0;
+    while (result.value().next()) {
+        const bool resolved = !result.value().value(7).isNull();
+        const double pnl = resolved ? result.value().value(7).toDouble() : 0.0;
+        net += pnl;
+        if (!resolved) ++gaps;
+        const qint64 closed = result.value().value(0).toLongLong();
+        rows.push_back({{closed > 0 ? QDateTime::fromMSecsSinceEpoch(closed, QTimeZone::UTC).toString(QStringLiteral("MM-dd HH:mm:ss")) : QStringLiteral("-"),
+                         result.value().value(1).toString(), result.value().value(2).toString(),
+                         result.value().value(3).toString().toUpper(),
+                         QString::number(result.value().value(4).toDouble(), 'f', 4),
+                         QString::number(result.value().value(5).toDouble(), 'f', 4),
+                         resolved ? QString::number(result.value().value(6).toDouble(), 'f', 4) : QStringLiteral("-"),
+                         resolved ? QStringLiteral("$%1").arg(pnl, 0, 'f', 2) : tr("DATA GAP"),
+                         result.value().value(8).toString(), result.value().value(9).toString()}, pnl, resolved});
+    }
+    outcomes_table_->setRowCount(rows.size());
+    for (int row = 0; row < rows.size(); ++row) {
+        for (int column = 0; column < rows[row].cells.size(); ++column) {
+            auto* item = new QTableWidgetItem(rows[row].cells[column]);
+            if (column == 7)
+                item->setForeground(QColor(!rows[row].resolved ? ui::colors::AMBER()
+                                                : rows[row].pnl >= 0.0 ? ui::colors::POSITIVE()
+                                                                      : ui::colors::NEGATIVE()));
+            outcomes_table_->setItem(row, column, item);
+        }
+    }
+    outcomes_summary_->setText(
+        tr("%1 CLOSED · %2 RESOLVED · %3 DATA GAPS · COST-NET P/L %4$%5")
+            .arg(rows.size()).arg(rows.size() - gaps).arg(gaps)
+            .arg(net >= 0.0 ? QStringLiteral("+") : QString()).arg(net, 0, 'f', 2));
+}
+
 void StrategyRunHistoryPanel::refresh() {
     if (!tabs_ || tabs_->currentIndex() == 0)
         refresh_fills();
-    else if (automation_)
+    else if (tabs_->currentIndex() == 1 && automation_)
         automation_->refresh();
+    else
+        refresh_outcomes();
 }
 
 void StrategyRunHistoryPanel::refresh_fills() {

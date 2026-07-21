@@ -2,9 +2,11 @@
 #include "screens/algo_trading/AlgoTradingScreen.h"
 
 #include "core/logging/Logger.h"
+#include "core/events/EventBus.h"
 #include "core/session/ScreenStateManager.h"
 #include "screens/algo_trading/SandboxBooksPanel.h"
 #include "screens/algo_trading/StrategyOpsMapPanel.h"
+#include "screens/algo_trading/StrategyCockpitNavigation.h"
 #include "screens/algo_trading/StrategyWorkspacePanels.h"
 #include "ui/theme/Theme.h"
 
@@ -57,6 +59,10 @@ void AlgoTradingScreen::build_ui() {
     proof_books_ = new SandboxBooksPanel(this);
     risk_ = new StrategyRiskPanel(this);
     run_history_ = new StrategyRunHistoryPanel(this);
+    connect(ops_map_, &StrategyOpsMapPanel::drilldownRequested,
+            this, &AlgoTradingScreen::on_cockpit_drilldown);
+    connect(proof_books_, &SandboxBooksPanel::returnToCockpit,
+            this, [this]() { on_tab_changed(0); });
 
     content_stack_->addWidget(ops_map_);     // 0
     content_stack_->addWidget(handlers_);    // 1
@@ -169,6 +175,32 @@ void AlgoTradingScreen::on_tab_changed(int index) {
         risk_->refresh();
     if (index == 4 && run_history_)
         run_history_->refresh();
+}
+
+void AlgoTradingScreen::on_cockpit_drilldown(int raw_view, const QString& book_kind) {
+    const auto view = static_cast<StrategyCockpitView>(raw_view);
+    if (view == StrategyCockpitView::ResearchInputs) {
+        EventBus::instance().publish(QStringLiteral("nav.switch_screen"),
+                                     {{QStringLiteral("screen_id"), QStringLiteral("code_editor")}});
+        return;
+    }
+    if (view == StrategyCockpitView::RiskSafety || view == StrategyCockpitView::DecisionEnvelopes) {
+        on_tab_changed(3);
+        if (view == StrategyCockpitView::DecisionEnvelopes)
+            risk_->focus_decision_envelopes();
+        return;
+    }
+    if (view == StrategyCockpitView::PaperHandlers) {
+        on_tab_changed(1);
+        return;
+    }
+    if (view == StrategyCockpitView::Outcomes) {
+        on_tab_changed(4);
+        run_history_->focus_outcomes();
+        return;
+    }
+    proof_books_->apply_cockpit_drilldown(raw_view, book_kind);
+    on_tab_changed(2);
 }
 
 void AlgoTradingScreen::update_tab_buttons() {

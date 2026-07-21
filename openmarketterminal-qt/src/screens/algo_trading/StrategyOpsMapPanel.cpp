@@ -1,4 +1,5 @@
 #include "screens/algo_trading/StrategyOpsMapPanel.h"
+#include "screens/algo_trading/StrategyCockpitNavigation.h"
 #include "screens/algo_trading/StrategyEvidencePresentation.h"
 
 #include "core/config/ProfileManager.h"
@@ -12,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLinearGradient>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
@@ -61,12 +63,49 @@ StrategyOpsMapPanel::StrategyOpsMapPanel(QWidget* parent) : QWidget(parent) {
     setMinimumHeight(520);
     setObjectName(QStringLiteral("strategyOpsMapPanel"));
     setAutoFillBackground(false);
+    setMouseTracking(true);
 
     frame_timer_.setInterval(33);
     connect(&frame_timer_, &QTimer::timeout, this, &StrategyOpsMapPanel::animate);
 
     refresh_timer_.setInterval(5000);
     connect(&refresh_timer_, &QTimer::timeout, this, &StrategyOpsMapPanel::refresh);
+}
+
+void StrategyOpsMapPanel::mouseMoveEvent(QMouseEvent* event) {
+    hover_position_ = event->position();
+    const auto hit = strategy_cockpit_hit(hover_position_, size(), phase_, books_.size());
+    if (hit.view == StrategyCockpitView::None) {
+        unsetCursor();
+        setToolTip({});
+    } else {
+        setCursor(Qt::PointingHandCursor);
+        setToolTip(tr(hit.label));
+    }
+    update();
+    QWidget::mouseMoveEvent(event);
+}
+
+void StrategyOpsMapPanel::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        const auto hit = strategy_cockpit_hit(event->position(), size(), phase_, books_.size());
+        if (hit.view != StrategyCockpitView::None) {
+            const QString kind = hit.book_index >= 0 && hit.book_index < books_.size()
+                ? books_.at(hit.book_index).kind : QString();
+            emit drilldownRequested(static_cast<int>(hit.view), kind);
+            event->accept();
+            return;
+        }
+    }
+    QWidget::mousePressEvent(event);
+}
+
+void StrategyOpsMapPanel::leaveEvent(QEvent* event) {
+    hover_position_ = {-1.0, -1.0};
+    unsetCursor();
+    setToolTip({});
+    update();
+    QWidget::leaveEvent(event);
 }
 
 void StrategyOpsMapPanel::showEvent(QShowEvent* event) {
@@ -276,8 +315,9 @@ void StrategyOpsMapPanel::draw_hud(QPainter& p, const QRectF& r) {
     qreal x = 18;
     for (const auto& chip : chips) {
         QRectF box(x, 72, 126, 42);
-        p.setPen(QPen(QColor(ui::colors::BORDER_DIM()), 1));
-        p.setBrush(QColor(255, 255, 255, 8));
+        const bool hovered = box.contains(hover_position_);
+        p.setPen(QPen(hovered ? chip.color : QColor(ui::colors::BORDER_DIM()), hovered ? 2 : 1));
+        p.setBrush(QColor(255, 255, 255, hovered ? 18 : 8));
         p.drawRoundedRect(box, 2, 2);
         p.setPen(QColor(ui::colors::TEXT_TERTIARY()));
         p.setFont(QFont(ui::fonts::DATA_FAMILY(), 7, QFont::Bold));
@@ -370,11 +410,12 @@ void StrategyOpsMapPanel::draw_node(QPainter& p, const QPointF& c, qreal radius,
     p.drawEllipse(c, glow, glow);
 
     QRectF box(c.x() - radius, c.y() - radius * 0.58, radius * 2.0, radius * 1.16);
+    const bool hovered = box.contains(hover_position_);
     QLinearGradient lg(box.topLeft(), box.bottomRight());
     lg.setColorAt(0.0, QColor(255, 255, 255, active ? 22 : 10));
     lg.setColorAt(1.0, QColor(0, 0, 0, 40));
     p.setBrush(lg);
-    p.setPen(QPen(color, active ? 1.8 : 1.0));
+    p.setPen(QPen(color, hovered ? 2.8 : (active ? 1.8 : 1.0)));
     p.drawRoundedRect(box, 5, 5);
 
     p.setFont(QFont(ui::fonts::DATA_FAMILY(), qMax(7, static_cast<int>(radius / 5.0)), QFont::Bold));
