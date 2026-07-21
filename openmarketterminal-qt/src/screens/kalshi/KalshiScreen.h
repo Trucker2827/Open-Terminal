@@ -113,6 +113,7 @@ class KalshiScreen final : public QWidget {
     void show_live_automation_dialog();
     void kill_live_automation();
     void refresh_live_automation_status();
+    void refresh_advisor_canary_status();
     void refresh_daemon_status();
     void restart_daemon();
     void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
@@ -178,6 +179,13 @@ class KalshiScreen final : public QWidget {
     QLabel* flow_detail_ = nullptr;
     QTableWidget* ladder_table_ = nullptr;
     QLabel* live_automation_status_ = nullptr;
+    QLabel* advisor_separation_status_ = nullptr;
+    QLabel* legacy_live_badge_ = nullptr;
+    QLabel* canary_badge_ = nullptr;
+    QLabel* advisor_system_status_ = nullptr;
+    QLabel* advisor_qualification_status_ = nullptr;
+    QLabel* advisor_safety_status_ = nullptr;
+    QLabel* advisor_activity_status_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
     QTableWidget* active_positions_table_ = nullptr;
     QLabel* pnl_summary_ = nullptr;
@@ -249,6 +257,7 @@ class KalshiScreen final : public QWidget {
     qint64 last_account_activity_fetch_ms_ = 0;
     qint64 last_live_status_fetch_ms_ = 0;
     bool live_status_fetching_ = false;
+    QJsonObject latest_legacy_live_status_;
     bool shadow_enabled_ = true;
     QVector<services::prediction::PredictionPosition> positions_;
     int shadow_candidates_ = 0;

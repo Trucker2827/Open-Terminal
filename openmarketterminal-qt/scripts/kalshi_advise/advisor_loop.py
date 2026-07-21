@@ -19,6 +19,7 @@ def paths(profile):
         "state":"advisor_loop_state.json", "journal":"advisor_opportunities.jsonl",
         "safety":"advisor_safety_state.json", "promotion":"advisor_promotion_state.json",
         "canary":"advisor_canary_config.json", "config":"advisor_loop_config.json",
+        "qualification":"advisor_qualification_report.json",
         "lock":"advisor_loop.lock", "pid":"advisor_loop.pid", "log":"advisor_loop.log"}.items()}
 
 def launch_agent_path(profile):
@@ -101,7 +102,11 @@ def evaluate_and_persist(args):
     p=paths(args.profile)
     try:refresh_live_safety(args)
     except Exception:pass
-    _,_,safety,_,qual,current=current_control(args)
+    _,safety_state,safety,score,qual,current=current_control(args)
+    write_state(p["safety"],{**safety_state,"safe":safety["safe"],"blockers":safety["blockers"],
+        "evaluated_policy":safety["policy"],"evaluated_at_ms":int(time.time()*1000)})
+    write_state(p["qualification"],{"schema_version":"kalshi-qualification-snapshot-v1",
+        "updated_at_ms":int(time.time()*1000),"qualification":qual,"score":score})
     next_state=promotion_transition(current,qual,safety,"evaluate",int(time.time()*1000))
     write_state(p["promotion"],next_state)
     if next_state["state"] in ("PAUSED","DEMOTED"):
@@ -171,9 +176,13 @@ def foreground(args):
                 try:
                     row=run_once(args,journal); failures=0
                     promotion=evaluate_and_persist(args)
+                    rows=journal.read()
                     state={"running":True,"pid":os.getpid(),"updated_at_ms":int(time.time()*1000),
                            "last_event_hash":row["event_hash"],"last_status":row["status"],"failures":0,
-                           "promotion_state":promotion["state"],"heartbeat_at_ms":int(time.time()*1000)}
+                           "last_reason_code":row.get("reason_code",(row.get("forecast") or {}).get("reason_code","")),
+                           "loop_version":"kalshi-advisor-loop-v1","journal_valid":journal.verify(),
+                           "opportunities":len(rows),"promotion_state":promotion["state"],
+                           "heartbeat_at_ms":int(time.time()*1000)}
                 except Exception as exc:
                     failures+=1; state={"running":True,"pid":os.getpid(),"updated_at_ms":int(time.time()*1000),
                         "last_status":"ERROR","last_error":str(exc)[:500],"failures":failures}
