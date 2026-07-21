@@ -125,6 +125,15 @@ KalshiWsClient::KalshiWsClient(QObject* parent) : QObject(parent) {
     ping_timer_ = new QTimer(this);
     ping_timer_->setInterval(kPingIntervalMs);
     connect(ping_timer_, &QTimer::timeout, this, &KalshiWsClient::send_ping);
+    book_publish_timer_ = new QTimer(this);
+    book_publish_timer_->setSingleShot(true);
+    book_publish_timer_->setInterval(25);
+    connect(book_publish_timer_, &QTimer::timeout, this, [this]() {
+        const auto pending = pending_book_publishes_;
+        pending_book_publishes_.clear();
+        for (auto it = pending.cbegin(); it != pending.cend(); ++it)
+            publish_books(it.key(), it.value());
+    });
 }
 
 KalshiWsClient::~KalshiWsClient() = default;
@@ -327,6 +336,11 @@ void KalshiWsClient::publish_books(const QString& ticker, qint64 ts_ms) {
                       make_book(ticker + QStringLiteral(":no"), it->no_bids, it->yes_bids));
 }
 
+void KalshiWsClient::schedule_book_publish(const QString& ticker, qint64 ts_ms) {
+    pending_book_publishes_.insert(ticker, ts_ms);
+    if (!book_publish_timer_->isActive()) book_publish_timer_->start();
+}
+
 void KalshiWsClient::send_ping() {
     if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject ping;
@@ -502,7 +516,7 @@ void KalshiWsClient::on_message(const QString& msg) {
         parse_levels(no, &state.no_bids, true);
         if (seq > 0) orderbook_sequence_ = seq;
         state.has_snapshot = true;
-        publish_books(ticker, ts_ms);
+        schedule_book_publish(ticker, ts_ms);
         return;
     }
 
@@ -529,7 +543,7 @@ void KalshiWsClient::on_message(const QString& msg) {
         else levels.insert(price, next);
     }
     orderbook_sequence_ = seq > 0 ? seq : orderbook_sequence_ + 1;
-    publish_books(ticker, ts_ms);
+    schedule_book_publish(ticker, ts_ms);
 }
 
 // ── Hub publish helpers ─────────────────────────────────────────────────────

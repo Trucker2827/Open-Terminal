@@ -19,6 +19,8 @@ bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
                                         int subscribed_assets, qint64 liveness_age_ms,
                                         qint64 market_data_age_ms,
                                         qint64 dead_after_ms);
+bool daemon_tick_sample_due(qint64 received_at_ms, qint64 last_sampled_ms,
+                            qint64 minimum_interval_ms);
 bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
                                        qint64 last_completed_ms, qint64 now_ms,
                                        qint64 interval_ms);

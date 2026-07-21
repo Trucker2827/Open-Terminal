@@ -74,6 +74,14 @@ private slots:
             true, true, 20, dead_after_ms + 1, 1000, dead_after_ms));
     }
 
+    void daemon_tick_sampling_preserves_event_loop_fairness() {
+        QVERIFY(daemon_tick_sample_due(1'000, 0, 50));
+        QVERIFY(!daemon_tick_sample_due(1'049, 1'000, 50));
+        QVERIFY(daemon_tick_sample_due(1'050, 1'000, 50));
+        QVERIFY(daemon_tick_sample_due(900, 1'000, 50)); // clock/source reset
+        QVERIFY(daemon_tick_sample_due(1'001, 1'000, 0));
+    }
+
     void kalshi_watchdog_refreshes_live_account_state_without_account_events() {
         QVERIFY(!kalshi_account_reconciliation_due(false, false, 0, 30000, 30000));
         QVERIFY(!kalshi_account_reconciliation_due(true, true, 0, 30000, 30000));

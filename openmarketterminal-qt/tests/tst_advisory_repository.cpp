@@ -14,6 +14,7 @@
 #include "core/config/AppPaths.h"
 #include "core/config/ProfileManager.h"
 #include "services/edge_radar/AdvisoryChallengeRepository.h"
+#include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/sqlite/Database.h"
 #include "storage/sqlite/migrations/MigrationRunner.h"
 
@@ -48,6 +49,25 @@ class TstAdvisoryRepository : public QObject {
         QVERIFY(r.is_ok());
         QVERIFY(r.value().next());
         QCOMPARE(r.value().value(0).toString(), QStringLiteral("edge_advisory_challenge"));
+    }
+
+    void recent_price_series_uses_bounded_receipt_index_path() {
+        auto& repo = EdgePredictionModelRepository::instance();
+        for (int i = 0; i < 3; ++i) {
+            EdgePredictionRawTick tick;
+            tick.id = QStringLiteral("recent-%1").arg(i);
+            tick.symbol = QStringLiteral("BTC");
+            tick.source = QStringLiteral("test");
+            tick.price = 100.0 + i;
+            tick.exchange_ts = 60'000 + i * 10'000;
+            tick.received_ts = 100'000 + i;
+            QVERIFY(repo.add_raw_tick(tick).is_ok());
+        }
+        const auto recent = repo.list_recent_price_series_since(
+            QStringLiteral("BTC"), 100'000, 10);
+        QVERIFY(recent.is_ok());
+        QCOMPARE(recent.value().size(), 1);
+        QCOMPARE(recent.value().first().price, 101.0);
     }
 
     void open_then_commit_blind_is_idempotent() {
