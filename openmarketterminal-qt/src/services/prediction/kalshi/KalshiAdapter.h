@@ -135,6 +135,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void ws_account_event(const QString& type, const QJsonObject& payload);
     void ws_cf_benchmark_event(const QString& index_id, double value, qint64 ts_ms,
                                const QJsonObject& payload);
+    void ws_liveness_activity(qint64 received_at_ms);
 
     void exchange_status_ready(const QJsonObject& status);
     void exchange_schedule_ready(const QJsonObject& schedule);
