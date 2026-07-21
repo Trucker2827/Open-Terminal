@@ -70,6 +70,43 @@ class TstAdvisoryRepository : public QObject {
         QCOMPARE(recent.value().first().price, 101.0);
     }
 
+    void competition_sibling_reuses_exact_immutable_snapshot() {
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams source;
+        source.ticker = "KXPAIR"; source.market_id = "PAIR-M1"; source.horizon = "15m";
+        source.blind_context = QJsonObject{{"spot", 66180.0}, {"strike", 66250.0},
+                                           {"seconds_left", 320}};
+        source.withheld_market = QJsonObject{{"market_implied_probability", 0.44}};
+        source.daemon_prob = 0.47; source.seconds_left = 320; source.now_ms = 10'000;
+        source.provider = "openai-codex-cli"; source.model = "gpt-5.6-sol";
+        source.competition_pair_id = "pair-one";
+        auto left = repo.open(source); QVERIFY(left.is_ok());
+
+        adv::OpenParams identity;
+        identity.provider = "anthropic-claude-cli"; identity.model = "claude-opus-4-8";
+        identity.competition_pair_id = "pair-one";
+        auto right = repo.open_sibling(left.value().challenge_id, identity); QVERIFY(right.is_ok());
+        QCOMPARE(right.value().context_hash, left.value().context_hash);
+        QCOMPARE(right.value().blind_context, left.value().blind_context);
+        QCOMPARE(right.value().created_at, left.value().created_at);
+        QCOMPARE(right.value().prediction_ttl_at, left.value().prediction_ttl_at);
+
+        auto rows = Database::instance().execute(
+            "SELECT provider, context_json, context_hash, market_at_open_json, competition_pair_id "
+            "FROM edge_advisory_challenge WHERE competition_pair_id='pair-one' ORDER BY provider", {});
+        QVERIFY(rows.is_ok());
+        QStringList contexts, markets, providers;
+        while (rows.value().next()) {
+            providers << rows.value().value(0).toString();
+            contexts << rows.value().value(1).toString();
+            markets << rows.value().value(3).toString();
+            QCOMPARE(rows.value().value(4).toString(), QStringLiteral("pair-one"));
+        }
+        QCOMPARE(providers.size(), 2);
+        QCOMPARE(contexts.at(0), contexts.at(1));
+        QCOMPARE(markets.at(0), markets.at(1));
+    }
+
     void open_then_commit_blind_is_idempotent() {
         adv::AdvisoryChallengeRepository repo;
         adv::OpenParams p; p.ticker="KXBTC"; p.market_id="M1"; p.horizon="hourly";

@@ -18,11 +18,14 @@ struct OpenParams {
     double daemon_prob = 0.0;
     qint64 seconds_left = 0, now_ms = 0;
     QString provider, model, prompt_version, agent_id, run_id;
+    QString competition_pair_id;
     double temperature = 0.0;
 };
 
 struct OpenResult {
     QString challenge_id, context_hash;
+    QJsonObject blind_context;
+    qint64 created_at = 0;
     qint64 prediction_ttl_at = 0, execution_relevance_at = 0;
 };
 
@@ -65,6 +68,12 @@ class AdvisoryChallengeRepository {
   public:
     // Inserts state=OPEN, computes context_hash/sealed_hash + nonce.
     Result<OpenResult> open(const OpenParams& params);
+
+    // Opens a second independently-consumable challenge by copying the
+    // source challenge's immutable blind context and withheld baselines.
+    // Only forecaster identity changes. Both rows share competition_pair_id.
+    Result<OpenResult> open_sibling(const QString& source_challenge_id,
+                                    const OpenParams& sibling_identity);
 
     // OPEN -> COMMITTED_BLIND. Writes the resolvable edge_decision_journal
     // row and returns its id. Idempotent on (challenge_id, commit_id).

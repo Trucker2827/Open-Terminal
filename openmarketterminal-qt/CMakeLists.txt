@@ -977,6 +977,7 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v065_ai_handler_market.cpp
     src/storage/sqlite/migrations/v066_kalshi_execution_ledger.cpp
     src/storage/sqlite/migrations/v067_edge_advisory_challenge.cpp
+    src/storage/sqlite/migrations/v068_advisory_competition_pair.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -1706,6 +1707,7 @@ set(SCREEN_SOURCES
     src/screens/code_editor/CodeEditorScreen_Navigator.cpp
     src/screens/code_editor/CodeEditorScreen_Library.cpp
     src/screens/code_editor/CodeEditorScreen_ResearchLab.cpp
+    src/screens/code_editor/CodeEditorScreen_ForecastArena.cpp
 
     # Excel Spreadsheet
     src/screens/excel/ExcelScreen.cpp
@@ -2059,6 +2061,7 @@ set_source_files_properties(
     src/screens/code_editor/CodeEditorScreen_Navigator.cpp
     src/screens/code_editor/CodeEditorScreen_Library.cpp
     src/screens/code_editor/CodeEditorScreen_ResearchLab.cpp
+    src/screens/code_editor/CodeEditorScreen_ForecastArena.cpp
     src/services/notebooks/NotebookLibraryService.cpp
     src/screens/crypto_trading/CryptoBottomPanel.cpp
     src/screens/crypto_trading/CryptoAutomationCockpit.cpp
@@ -2422,6 +2425,7 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v065_ai_handler_market.cpp
     src/storage/sqlite/migrations/v066_kalshi_execution_ledger.cpp
     src/storage/sqlite/migrations/v067_edge_advisory_challenge.cpp
+    src/storage/sqlite/migrations/v068_advisory_competition_pair.cpp
     # DecisionContext.cpp — defines an anonymous-namespace `enum class
     # EdgeCol` (scoped enumerators, but the type name itself still lives in
     # the anon namespace); excluded defensively so a Release unity batch can
