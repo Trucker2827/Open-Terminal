@@ -372,15 +372,9 @@ void PolymarketScreen::build_ui() {
 
     // Browse panel: slightly wider for readability, fixed range so it
     // never squeezes so small cards become unreadable.
-    auto* browse_rail = new QWidget(splitter);
-    browse_rail->setMinimumWidth(300);
-    browse_rail->setMaximumWidth(460);
-    auto* browse_rail_layout = new QVBoxLayout(browse_rail);
-    browse_rail_layout->setContentsMargins(0, 0, 0, 0);
-    browse_rail_layout->setSpacing(0);
-    browse_panel_ = new PolymarketBrowsePanel(browse_rail);
-    browse_rail_layout->addWidget(browse_panel_, 1);
-    browse_rail_layout->addWidget(new DineroNetworkGadget(browse_rail));
+    browse_panel_ = new PolymarketBrowsePanel;
+    browse_panel_->setMinimumWidth(300);
+    browse_panel_->setMaximumWidth(460);
 
     detail_panel_ = new PolymarketDetailPanel;
 
@@ -420,8 +414,9 @@ void PolymarketScreen::build_ui() {
     crypto_dom_ = new crypto::CryptoOrderBook;
     crypto_dom_->setMinimumHeight(360);
     dom_layout->addWidget(crypto_dom_, 1);
+    dom_layout->addWidget(new DineroNetworkGadget(crypto_dom_panel_));
 
-    splitter->addWidget(browse_rail);
+    splitter->addWidget(browse_panel_);
     splitter->addWidget(detail_splitter);
     splitter->addWidget(crypto_dom_panel_);
     splitter->addWidget(leaderboard_);
