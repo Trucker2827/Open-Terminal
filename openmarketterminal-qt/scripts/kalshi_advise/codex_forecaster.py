@@ -11,21 +11,13 @@ PROMPT=("Estimate P(YES) for this Kalshi crypto contract using ONLY the supplied
 '{"decision":"predict","probability":0..1,"confidence":0..1,"rationale":"one sentence"} or '
 '{"decision":"abstain","reason_code":"INSUFFICIENT_EVIDENCE","confidence":0..1,"rationale":"one sentence"}.')
 
-def locked_down_features():
-    """Return an explicit zero-capability feature configuration or fail closed.
-
-    The registry digest turns this into an allowlist: a Codex upgrade that adds,
-    removes, renames, or changes the default of any optional capability cannot
-    forecast until this inventory is deliberately reviewed and re-pinned.
-    """
-    version=subprocess.run(["codex","--version"],capture_output=True,text=True,timeout=5)
-    if version.returncode or version.stdout.strip() != CODEX_VERSION:
+def validate_capability_inventory(version_text, listing_text, *, expected_version=CODEX_VERSION,
+                                  expected_digest=FEATURE_REGISTRY_SHA256):
+    """Validate a registry snapshot and return flags disabling every capability."""
+    if version_text.strip() != expected_version:
         raise RuntimeError("CODEX_CAPABILITY_INVENTORY_CHANGED:version")
-    listed=subprocess.run(["codex","features","list"],capture_output=True,text=True,timeout=5)
-    if listed.returncode:
-        raise RuntimeError("CODEX_CAPABILITY_INVENTORY_UNAVAILABLE")
-    normalized="\n".join(" ".join(line.split()) for line in listed.stdout.splitlines() if line.strip())+"\n"
-    if hashlib.sha256(normalized.encode()).hexdigest() != FEATURE_REGISTRY_SHA256:
+    normalized="\n".join(" ".join(line.split()) for line in listing_text.splitlines() if line.strip())+"\n"
+    if hashlib.sha256(normalized.encode()).hexdigest() != expected_digest:
         raise RuntimeError("CODEX_CAPABILITY_INVENTORY_CHANGED:features")
     disabled=[]
     for line in normalized.splitlines():
@@ -36,10 +28,22 @@ def locked_down_features():
         if status != "removed": disabled.extend(["--disable",name])
     return disabled
 
-def tool_less_command(schema_path, isolated_cwd):
+def locked_down_features():
+    """Query Codex and fail closed unless its complete capability inventory is pinned."""
+    try:
+        version=subprocess.run(["codex","--version"],capture_output=True,text=True,timeout=5)
+        listed=subprocess.run(["codex","features","list"],capture_output=True,text=True,timeout=5)
+    except (OSError,subprocess.SubprocessError) as exc:
+        raise RuntimeError("CODEX_CAPABILITY_INVENTORY_UNAVAILABLE") from exc
+    if version.returncode or listed.returncode:
+        raise RuntimeError("CODEX_CAPABILITY_INVENTORY_UNAVAILABLE")
+    return validate_capability_inventory(version.stdout,listed.stdout)
+
+def tool_less_command(schema_path, isolated_cwd, lockdown_flags=None):
+    if lockdown_flags is None:lockdown_flags=locked_down_features()
     return ["codex","exec","--ephemeral","--ignore-user-config","--ignore-rules",
             "--skip-git-repo-check","--sandbox","read-only","--model",MODEL,"--cd",isolated_cwd,
-            *locked_down_features(),"--output-schema",schema_path,"-"]
+            *lockdown_flags,"--output-schema",schema_path,"-"]
 
 def main():
     mode=sys.argv[1] if len(sys.argv)>1 else "predict"
