@@ -52,13 +52,26 @@ private slots:
         remove_bridge_file(root);
     }
 
-    void kalshi_watchdog_detects_stale_or_disconnected_stream() {
-        QVERIFY(!kalshi_event_stream_needs_recovery(false, true, 20, 60000, 45000));
-        QVERIFY(!kalshi_event_stream_needs_recovery(true, true, 0, 60000, 45000));
-        QVERIFY(!kalshi_event_stream_needs_recovery(true, true, 20, 30000, 45000));
-        QVERIFY(kalshi_event_stream_needs_recovery(true, false, 20, 1000, 45000));
-        QVERIFY(kalshi_event_stream_needs_recovery(true, true, 20, -1, 45000));
-        QVERIFY(kalshi_event_stream_needs_recovery(true, true, 20, 45001, 45000));
+    void kalshi_watchdog_distinguishes_liveness_from_market_quiet() {
+        constexpr qint64 dead_after_ms = 65000;
+        QVERIFY(!kalshi_event_stream_needs_recovery(
+            false, true, 20, 120000, 120000, dead_after_ms));
+        QVERIFY(!kalshi_event_stream_needs_recovery(
+            true, true, 0, 120000, 120000, dead_after_ms));
+
+        // Regression: a recent pong keeps a connected, quiet market healthy.
+        // Quote freshness remains an independent downstream execution gate.
+        QVERIFY(!kalshi_event_stream_needs_recovery(
+            true, true, 20, 10000, 120000, dead_after_ms));
+        QVERIFY(!kalshi_event_stream_needs_recovery(
+            true, true, 20, 10000, -1, dead_after_ms));
+
+        QVERIFY(kalshi_event_stream_needs_recovery(
+            true, false, 20, 1000, 1000, dead_after_ms));
+        QVERIFY(kalshi_event_stream_needs_recovery(
+            true, true, 20, -1, 1000, dead_after_ms));
+        QVERIFY(kalshi_event_stream_needs_recovery(
+            true, true, 20, dead_after_ms + 1, 1000, dead_after_ms));
     }
 
     void kalshi_watchdog_refreshes_live_account_state_without_account_events() {

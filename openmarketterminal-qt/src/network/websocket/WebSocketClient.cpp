@@ -158,7 +158,8 @@ void WebSocketClient::send(const QString& message) {
     QPointer<WebSocketClient> self(this);
     const QString m = message;
     run_on_owning_thread(this, [self, m]() {
-        if (!self)
+        if (!self || !self->socket_ ||
+            self->socket_->state() != QAbstractSocket::ConnectedState)
             return;
         self->socket_->sendTextMessage(m);
     });
@@ -168,7 +169,8 @@ void WebSocketClient::send_binary(const QByteArray& data) {
     QPointer<WebSocketClient> self(this);
     const QByteArray d = data;
     run_on_owning_thread(this, [self, d]() {
-        if (!self)
+        if (!self || !self->socket_ ||
+            self->socket_->state() != QAbstractSocket::ConnectedState)
             return;
         self->socket_->sendBinaryMessage(d);
     });

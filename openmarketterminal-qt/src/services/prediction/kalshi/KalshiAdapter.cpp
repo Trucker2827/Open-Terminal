@@ -932,6 +932,8 @@ void KalshiAdapter::wire() {
             this, &KalshiAdapter::ws_cf_benchmark_event);
     connect(ws_.get(), &KalshiWsClient::connection_status_changed,
             this, &KalshiAdapter::ws_connection_changed);
+    connect(ws_.get(), &KalshiWsClient::liveness_activity,
+            this, &KalshiAdapter::ws_liveness_activity);
 }
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

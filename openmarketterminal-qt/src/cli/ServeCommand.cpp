@@ -58,10 +58,12 @@
 namespace openmarketterminal::cli {
 
 bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
-                                        int subscribed_assets, qint64 event_age_ms,
-                                        qint64 stale_after_ms) {
+                                        int subscribed_assets, qint64 liveness_age_ms,
+                                        qint64 market_data_age_ms,
+                                        qint64 dead_after_ms) {
+    Q_UNUSED(market_data_age_ms);
     if (!workload_active || subscribed_assets <= 0) return false;
-    return !connected || event_age_ms < 0 || event_age_ms > stale_after_ms;
+    return !connected || liveness_age_ms < 0 || liveness_age_ms > dead_after_ms;
 }
 
 bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
@@ -647,9 +649,17 @@ class KalshiLiveEventEngine final : public QObject {
                 this, [this](const auto& markets) { accept_market_universe(markets); });
         connect(adapter_, &KalshiAdapter::ws_connection_changed, this, [this](bool connected) {
             connected_ = connected;
+            if (connected)
+                last_transport_liveness_ms_ = QDateTime::currentMSecsSinceEpoch();
             status_dirty_ = true;
             if (connected) schedule_decision(QStringLiteral("websocket_connected"));
         });
+        connect(adapter_, &KalshiAdapter::ws_liveness_activity, this,
+                [this](qint64 received_at_ms) {
+                    last_transport_liveness_ms_ = received_at_ms > 0
+                        ? received_at_ms : QDateTime::currentMSecsSinceEpoch();
+                    status_dirty_ = true;
+                });
         connect(adapter_, &KalshiAdapter::ws_trade_event, this,
                 [this](const QString& ticker, const QJsonObject& payload) {
                     record_flow_trade(ticker, payload);
@@ -769,10 +779,8 @@ class KalshiLiveEventEngine final : public QObject {
     }
 
     qint64 transport_age_ms(qint64 now_ms) const {
-        const qint64 last_activity_ms = std::max(last_transport_activity_ms_,
-                                                 last_book_update_ms_);
-        return last_activity_ms > 0
-            ? std::max<qint64>(0, now_ms - last_activity_ms) : -1;
+        return last_transport_liveness_ms_ > 0
+            ? std::max<qint64>(0, now_ms - last_transport_liveness_ms_) : -1;
     }
 
     qint64 book_update_age_ms(qint64 now_ms) const {
@@ -822,7 +830,9 @@ class KalshiLiveEventEngine final : public QObject {
         static constexpr qint64 kUniverseTimeoutMs = 15000;
         // Transport health must tolerate a quiet order book. Execution still
         // independently rejects stale quotes in the planner and live gate.
-        static constexpr qint64 kTransportStaleMs = 45000;
+        // Kalshi pings every 20s. Allow three missed pong intervals plus a
+        // small scheduling margin before declaring the connection dead.
+        static constexpr qint64 kTransportDeadMs = 65000;
         static constexpr qint64 kReconnectCooldownMs = 15000;
         static constexpr qint64 kRecoveryDecisionMs = 15000;
         static constexpr qint64 kPlannerTimeoutMs = 15000;
@@ -862,14 +872,16 @@ class KalshiLiveEventEngine final : public QObject {
             refresh_universe();
         }
 
-        const qint64 age = transport_age_ms(now_ms);
+        const qint64 liveness_age = transport_age_ms(now_ms);
+        const qint64 market_data_age = book_update_age_ms(now_ms);
         stream_healthy_ = !kalshi_event_stream_needs_recovery(
-            workload_active, connected_, subscribed_asset_ids_.size(), age, kTransportStaleMs);
+            workload_active, connected_, subscribed_asset_ids_.size(), liveness_age,
+            market_data_age, kTransportDeadMs);
         if (!stream_healthy_) {
             if (now_ms - last_reconnect_attempt_ms_ >= kReconnectCooldownMs) {
                 last_reconnect_attempt_ms_ = now_ms;
                 ++reconnect_attempts_;
-                last_error_ = QStringLiteral("Kalshi event stream stale; reconnecting");
+                last_error_ = QStringLiteral("Kalshi event stream liveness lost; reconnecting");
                 if (adapter_) adapter_->restart_websocket();
             }
             // REST planner/executor fallback keeps a bounded live session
@@ -880,7 +892,7 @@ class KalshiLiveEventEngine final : public QObject {
                 ++recovery_decisions_;
                 schedule_decision(QStringLiteral("stale_stream_recovery"));
             }
-        } else if (last_error_.startsWith(QStringLiteral("Kalshi event stream stale"))) {
+        } else if (last_error_.startsWith(QStringLiteral("Kalshi event stream liveness lost"))) {
             last_error_.clear();
         }
         // A quiet account socket must not leave live exposure stale. Start the
@@ -1487,7 +1499,9 @@ class KalshiLiveEventEngine final : public QObject {
             {QStringLiteral("event_age_ms"), QString::number(age_ms)},
             {QStringLiteral("transport_age_ms"), QString::number(transport_age)},
             {QStringLiteral("book_update_age_ms"), QString::number(book_age)},
-            {QStringLiteral("transport_stale_after_ms"), QString::number(45000)},
+            // Kept under the existing key for status-schema compatibility;
+            // this threshold now governs transport liveness, not book age.
+            {QStringLiteral("transport_stale_after_ms"), QString::number(65000)},
             {QStringLiteral("subscribed_assets"), subscribed_asset_ids_.size()},
             {QStringLiteral("subscribed_markets"), subscribed_asset_ids_.size() / 2},
             {QStringLiteral("market_events"), QString::number(market_events_)},
@@ -1586,6 +1600,7 @@ class KalshiLiveEventEngine final : public QObject {
     qint64 last_reconnect_attempt_ms_ = 0;
     qint64 last_recovery_decision_ms_ = 0;
     qint64 last_transport_activity_ms_ = 0;
+    qint64 last_transport_liveness_ms_ = 0;
     qint64 last_book_update_ms_ = 0;
     qint64 last_account_reconcile_ms_ = 0;
     qint64 market_events_ = 0;

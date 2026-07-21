@@ -58,8 +58,8 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void unsubscribe_all();
     void disconnect();
     /// Force a fresh authenticated socket while retaining subscriptions.
-    /// Used by the daemon watchdog when the transport still reports connected
-    /// but no market events have arrived within the freshness budget.
+    /// Used only when connection liveness is lost; quiet market data is not a
+    /// transport failure and is handled by downstream freshness gates.
     void restart();
     bool is_connected() const { return connected_; }
     /// Ask the authenticated socket to re-emit full books for subscribed
@@ -91,6 +91,9 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void cf_benchmark_event(const QString& index_id, double value, qint64 ts_ms,
                             const QJsonObject& payload);
     void connection_status_changed(bool connected);
+    /// A valid inbound frame (including pong) proves the authenticated socket
+    /// is alive even when every subscribed market is quiet.
+    void liveness_activity(qint64 received_at_ms);
 
   private slots:
     void on_connected();

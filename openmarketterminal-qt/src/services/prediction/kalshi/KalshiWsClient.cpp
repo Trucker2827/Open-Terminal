@@ -221,6 +221,7 @@ void KalshiWsClient::ensure_connected() {
 }
 
 void KalshiWsClient::send_subscribe(const QStringList& tickers) {
+    if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject params;
     QJsonArray channels;
     // Kalshi v2 (Apr 2026):
@@ -256,7 +257,8 @@ void KalshiWsClient::request_orderbook_snapshot(const QString& ticker) {
 }
 
 void KalshiWsClient::request_orderbook_snapshots(const QStringList& tickers) {
-    if (!connected_ || tickers.isEmpty() || orderbook_subscription_sid_ <= 0) return;
+    if (!connected_ || !ws_ || !ws_->is_connected() || tickers.isEmpty() ||
+        orderbook_subscription_sid_ <= 0) return;
     QJsonArray market_tickers;
     for (const QString& ticker : tickers) {
         const QString normalized = ticker.trimmed().toUpper();
@@ -274,6 +276,7 @@ void KalshiWsClient::request_orderbook_snapshots(const QStringList& tickers) {
 }
 
 void KalshiWsClient::send_account_subscribe() {
+    if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject params;
     params.insert(QStringLiteral("channels"),
                   QJsonArray{QStringLiteral("fill"), QStringLiteral("user_orders"),
@@ -285,7 +288,7 @@ void KalshiWsClient::send_account_subscribe() {
 }
 
 void KalshiWsClient::send_cf_subscribe() {
-    if (cf_indices_.isEmpty()) return;
+    if (!connected_ || !ws_ || !ws_->is_connected() || cf_indices_.isEmpty()) return;
     QJsonArray ids;
     for (const auto& id : cf_indices_) ids.append(id);
     QJsonObject params{{QStringLiteral("channels"), QJsonArray{QStringLiteral("cfbenchmarks_value")}},
@@ -325,7 +328,7 @@ void KalshiWsClient::publish_books(const QString& ticker, qint64 ts_ms) {
 }
 
 void KalshiWsClient::send_ping() {
-    if (!connected_) return;
+    if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject ping;
     ping.insert("id", next_msg_id_++);
     ping.insert("cmd", "ping");
@@ -341,6 +344,7 @@ void KalshiWsClient::on_connected() {
     orderbook_subscription_sid_ = 0;
     ping_timer_->start();
     LOG_INFO("KalshiWS", "Connected");
+    emit liveness_activity(QDateTime::currentMSecsSinceEpoch());
     emit connection_status_changed(true);
     if (!subscribed_tickers_.isEmpty()) {
         send_subscribe(QStringList(subscribed_tickers_.begin(), subscribed_tickers_.end()));
@@ -368,9 +372,14 @@ void KalshiWsClient::on_message(const QString& msg) {
     if (msg.isEmpty()) return;
     QJsonParseError perr;
     auto doc = QJsonDocument::fromJson(msg.toUtf8(), &perr);
-    if (doc.isNull()) return;
+    if (doc.isNull() || !doc.isObject()) return;
     const auto obj = doc.object();
     const QString type = obj.value("type").toString();
+    // Any valid inbound protocol frame proves that the socket is alive. Pong
+    // is deliberately handled before market payload parsing: quiet books must
+    // not be mistaken for a dead transport.
+    emit liveness_activity(QDateTime::currentMSecsSinceEpoch());
+    if (type == QStringLiteral("pong")) return;
     const auto payload = obj.value("msg").toObject();
     const QString ticker = payload.value("market_ticker").toString();
 

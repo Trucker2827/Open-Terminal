@@ -16,8 +16,9 @@ int sync_command(const QString& profile, bool json, QStringList args);
 
 // Pure watchdog predicates kept public for deterministic regression tests.
 bool kalshi_event_stream_needs_recovery(bool workload_active, bool connected,
-                                        int subscribed_assets, qint64 event_age_ms,
-                                        qint64 stale_after_ms);
+                                        int subscribed_assets, qint64 liveness_age_ms,
+                                        qint64 market_data_age_ms,
+                                        qint64 dead_after_ms);
 bool kalshi_account_reconciliation_due(bool live_session_active, bool pending,
                                        qint64 last_completed_ms, qint64 now_ms,
                                        qint64 interval_ms);
