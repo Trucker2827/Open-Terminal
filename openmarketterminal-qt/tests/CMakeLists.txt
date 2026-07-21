@@ -709,3 +709,8 @@ add_executable(tst_advisory_scoring tst_advisory_scoring.cpp)
 target_include_directories(tst_advisory_scoring PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_advisory_scoring PRIVATE openterminal_core Qt6::Test)
 add_test(NAME tst_advisory_scoring COMMAND tst_advisory_scoring)
+
+add_executable(tst_advisor_canary_presentation tst_advisor_canary_presentation.cpp)
+target_include_directories(tst_advisor_canary_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisor_canary_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_advisor_canary_presentation COMMAND tst_advisor_canary_presentation)

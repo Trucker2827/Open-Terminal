@@ -99,6 +99,15 @@ Whole-account daily loss and unresolved settlement accounting remain blockers;
 drawdown and consecutive losses replay only exact realized rows after the
 canary configuration's immutable `epoch_started_at_ms`.
 
+The Kalshi GUI's **Advisor & Canary** tab is read-only. It consumes the
+supervisor's atomic state, safety, promotion, canary, qualification, and
+opportunity-journal snapshots; it never recalculates gates or writes those
+files. Missing, malformed, stale, or unpinned state is displayed as
+`UNKNOWN / FAIL CLOSED`. Both that tab and Auto Cockpit show separate
+`LEGACY LIVE SESSION` and `CODEX CANARY` badges so an independently armed
+legacy session cannot be mistaken for canary authority. Qualification is
+explicitly informational and cannot enable trading from the GUI.
+
 This surface answers one question only: **does an LLM forecaster have predictive skill on Kalshi
 crypto settlement, independent of the market and marginal over the deterministic daemon?** It is a
 measurement instrument, not a trading path. The daemon retains sole and exclusive ownership of

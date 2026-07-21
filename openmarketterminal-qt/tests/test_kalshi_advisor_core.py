@@ -3,7 +3,7 @@ import hashlib, json, os, sys, tempfile, unittest
 ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0,os.path.join(ROOT,"scripts","kalshi_advise"))
 from advisor_core import *
-from advisor_loop import pid_alive
+from advisor_loop import paths, pid_alive
 from codex_forecaster import PROMPT_VERSION, validate_capability_inventory, tool_less_command
 
 class AdvisorCoreTest(unittest.TestCase):
@@ -39,6 +39,9 @@ class AdvisorCoreTest(unittest.TestCase):
 
     def test_missing_pid_is_not_running(self):
         self.assertFalse(pid_alive(0));self.assertFalse(pid_alive(-1))
+
+    def test_gui_qualification_snapshot_has_dedicated_path(self):
+        self.assertTrue(paths("default")["qualification"].endswith("advisor_qualification_report.json"))
 
     def test_safety_is_restart_safe_and_fail_closed(self):
         now=1_800_000_000_000

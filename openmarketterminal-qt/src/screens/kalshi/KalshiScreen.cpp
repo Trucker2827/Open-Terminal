@@ -1,4 +1,5 @@
 #include "screens/kalshi/KalshiScreen.h"
+#include "screens/kalshi/AdvisorCanaryPresentation.h"
 
 #include "core/config/ProfileManager.h"
 #include "core/events/EventBus.h"
@@ -238,6 +239,27 @@ void append_venue_feature_snapshot(const QJsonObject& row) {
     const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     kalshi_data::KalshiEvidenceEngine::append_jsonl(
         directory + QStringLiteral("/kalshi-venue-features.jsonl"), row);
+}
+
+QJsonObject read_json_object(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const auto document = QJsonDocument::fromJson(file.readAll());
+    return document.isObject() ? document.object() : QJsonObject{};
+}
+
+QJsonObject read_last_jsonl_object(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= 0) return {};
+    const qint64 window = qMin<qint64>(file.size(), 128 * 1024);
+    file.seek(file.size() - window);
+    const QList<QByteArray> lines = file.readAll().split('\n');
+    for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+        if (it->trimmed().isEmpty()) continue;
+        const auto document = QJsonDocument::fromJson(*it);
+        if (document.isObject()) return document.object();
+    }
+    return {};
 }
 
 QPushButton* segment(const QString& label, QWidget* parent) {
@@ -505,6 +527,7 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
             last_live_status_fetch_ms_ = now;
             refresh_live_automation_status();
             refresh_daemon_status();
+            refresh_advisor_canary_status();
         }
     });
 }
@@ -525,6 +548,7 @@ void KalshiScreen::showEvent(QShowEvent* event) {
     }
     refresh_account_status();
     refresh_daemon_status();
+    refresh_advisor_canary_status();
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
         kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
     dom_timer_->start();
@@ -1014,6 +1038,13 @@ void KalshiScreen::build_ui() {
     live_automation_status_->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::TEXT_SECONDARY()));
     live_controls->addWidget(live_automation_status_, 1);
     auto_cockpit_layout->addLayout(live_controls);
+    advisor_separation_status_ = new QLabel(QStringLiteral(
+        "LEGACY LIVE SESSION: UNKNOWN / FAIL CLOSED  |  CODEX CANARY: UNKNOWN / FAIL CLOSED"), auto_cockpit);
+    advisor_separation_status_->setWordWrap(true);
+    advisor_separation_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:2px solid %1;padding:8px;font-weight:900;")
+        .arg(colors::RED(), colors::BG_RAISED()));
+    auto_cockpit_layout->addWidget(advisor_separation_status_);
     flow_status_ = new QLabel(QStringLiteral("FLOW METER · waiting for local Kalshi WebSocket evidence"),
                               auto_cockpit);
     flow_status_->setWordWrap(true);
@@ -1053,6 +1084,51 @@ void KalshiScreen::build_ui() {
     ladder_table_->setToolTip(QStringLiteral("Timestamped paper-only probability surface and constrained portfolio plan. No live order can be submitted here."));
     auto_cockpit_layout->addWidget(ladder_table_, 1);
     tabs->addTab(auto_cockpit, QStringLiteral("AUTO COCKPIT"));
+
+    auto* advisor_scroll = new QScrollArea(tabs);
+    advisor_scroll->setWidgetResizable(true);
+    advisor_scroll->setFrameShape(QFrame::NoFrame);
+    auto* advisor_page = new QWidget(advisor_scroll);
+    auto* advisor_layout = new QVBoxLayout(advisor_page);
+    advisor_layout->setContentsMargins(10, 10, 10, 10);
+    advisor_layout->setSpacing(8);
+    auto* advisor_title = new QLabel(QStringLiteral("CODEX ADVISOR & CANARY · READ-ONLY CONTROL PLANE"), advisor_page);
+    advisor_title->setStyleSheet(QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
+    advisor_layout->addWidget(advisor_title);
+    auto* advisor_note = new QLabel(QStringLiteral(
+        "This panel displays authoritative persisted supervisor state. It cannot enable trading, edit safety state, or submit orders."), advisor_page);
+    advisor_note->setWordWrap(true);
+    advisor_note->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
+    advisor_layout->addWidget(advisor_note);
+    auto* badges = new QHBoxLayout;
+    legacy_live_badge_ = new QLabel(QStringLiteral("LEGACY LIVE SESSION: UNKNOWN / FAIL CLOSED"), advisor_page);
+    canary_badge_ = new QLabel(QStringLiteral("CODEX CANARY: UNKNOWN / FAIL CLOSED"), advisor_page);
+    for (auto* badge : {legacy_live_badge_, canary_badge_}) {
+        badge->setWordWrap(true);
+        badge->setStyleSheet(QStringLiteral("color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+                                 .arg(colors::RED(), colors::BG_RAISED()));
+        badges->addWidget(badge, 1);
+    }
+    advisor_layout->addLayout(badges);
+    auto add_advisor_card = [advisor_page, advisor_layout](const QString& title, QLabel*& value) {
+        auto* heading = new QLabel(title, advisor_page);
+        heading->setStyleSheet(QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
+        advisor_layout->addWidget(heading);
+        value = new QLabel(QStringLiteral("UNKNOWN / FAIL CLOSED"), advisor_page);
+        value->setWordWrap(true);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        value->setStyleSheet(QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+                                 .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+        advisor_layout->addWidget(value);
+    };
+    add_advisor_card(QStringLiteral("SYSTEM STATUS"), advisor_system_status_);
+    add_advisor_card(QStringLiteral("QUALIFICATION"), advisor_qualification_status_);
+    add_advisor_card(QStringLiteral("SAFETY & PROMOTION"), advisor_safety_status_);
+    add_advisor_card(QStringLiteral("LATEST ACTIVITY"), advisor_activity_status_);
+    advisor_layout->addStretch();
+    advisor_scroll->setWidget(advisor_page);
+    tabs->addTab(advisor_scroll, QStringLiteral("ADVISOR & CANARY"));
+
     auto* pnl_page = new QWidget(tabs);
     auto* pnl_layout = new QVBoxLayout(pnl_page);
     pnl_layout->setContentsMargins(8, 8, 8, 8);
@@ -3403,6 +3479,7 @@ void KalshiScreen::refresh_live_automation_status() {
             return;
         }
         const bool active = status.value(QStringLiteral("session_active")).toBool();
+        latest_legacy_live_status_ = status;
         const bool killed = status.value(QStringLiteral("kill_switch")).toBool();
         const bool autonomous = status.value(QStringLiteral("autonomous")).toBool();
         const bool paper = status.value(QStringLiteral("parallel_paper_enabled")).toBool();
@@ -3469,6 +3546,47 @@ void KalshiScreen::refresh_live_automation_status() {
             .arg(killed || (active && !engine_operational)
                      ? colors::RED() : active ? colors::GREEN() : colors::TEXT_SECONDARY()));
     });
+}
+
+void KalshiScreen::refresh_advisor_canary_status() {
+    if (!legacy_live_badge_ || !canary_badge_ || !advisor_system_status_ ||
+        !advisor_qualification_status_ || !advisor_safety_status_ || !advisor_activity_status_)
+        return;
+    const QString root = ProfileManager::instance().profile_root() + QStringLiteral("/daemon/");
+    const QJsonObject loop = read_json_object(root + QStringLiteral("advisor_loop_state.json"));
+    const QJsonObject qualification = read_json_object(root + QStringLiteral("advisor_qualification_report.json"));
+    const QJsonObject promotion = read_json_object(root + QStringLiteral("advisor_promotion_state.json"));
+    const QJsonObject safety = read_json_object(root + QStringLiteral("advisor_safety_state.json"));
+    const QJsonObject canary = read_json_object(root + QStringLiteral("advisor_canary_config.json"));
+    const QJsonObject latest = read_last_jsonl_object(root + QStringLiteral("advisor_opportunities.jsonl"));
+    const AdvisorCanaryView view = present_advisor_canary(loop, qualification, promotion, safety,
+        canary, latest, latest_legacy_live_status_, QDateTime::currentMSecsSinceEpoch());
+
+    legacy_live_badge_->setText(view.legacy_badge);
+    legacy_live_badge_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+        .arg(view.legacy_live ? colors::RED() : latest_legacy_live_status_.isEmpty()
+                  ? colors::WARNING() : colors::TEXT_SECONDARY(), colors::BG_RAISED()));
+    canary_badge_->setText(view.canary_badge);
+    canary_badge_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+        .arg(view.canary_live ? colors::RED() : view.canary_badge.contains(QStringLiteral("UNKNOWN"))
+                  ? colors::WARNING() : colors::CYAN(), colors::BG_RAISED()));
+    if (advisor_separation_status_) {
+        advisor_separation_status_->setText(view.legacy_badge + QStringLiteral("  |  ") + view.canary_badge);
+        advisor_separation_status_->setStyleSheet(QStringLiteral(
+            "color:%1;background:%2;border:2px solid %1;padding:8px;font-weight:900;")
+            .arg(view.legacy_live || view.canary_live ? colors::RED() : view.critical
+                      ? colors::WARNING() : colors::CYAN(), colors::BG_RAISED()));
+    }
+    advisor_system_status_->setText(view.system);
+    advisor_qualification_status_->setText(view.qualification);
+    advisor_safety_status_->setText(view.safety);
+    advisor_activity_status_->setText(view.activity);
+    advisor_system_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+        .arg(view.critical ? colors::WARNING() : colors::GREEN(), colors::BG_RAISED(),
+             view.critical ? colors::WARNING() : colors::BORDER_DIM()));
 }
 
 void KalshiScreen::refresh_daemon_status() {
