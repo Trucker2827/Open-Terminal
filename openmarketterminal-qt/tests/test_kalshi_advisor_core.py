@@ -1,10 +1,10 @@
-import json, os, sys, tempfile, unittest
+import hashlib, json, os, sys, tempfile, unittest
 
 ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0,os.path.join(ROOT,"scripts","kalshi_advise"))
 from advisor_core import *
 from advisor_loop import pid_alive
-from codex_forecaster import PROMPT_VERSION, tool_less_command
+from codex_forecaster import PROMPT_VERSION, validate_capability_inventory, tool_less_command
 
 class AdvisorCoreTest(unittest.TestCase):
     def test_explicit_abstention_has_no_probability(self):
@@ -68,11 +68,33 @@ class AdvisorCoreTest(unittest.TestCase):
         self.assertEqual(rows["advisor"]["schema_version"],rows["daemon"]["schema_version"])
 
     def test_codex_epoch_structurally_disables_agent_tools(self):
-        cmd=tool_less_command("/tmp/schema","/tmp/empty")
+        registry="shell_tool stable true\nunified_exec stable true\ncode_mode_host stable true\napps stable true\nbrowser_use stable true\ncomputer_use stable true\nlegacy removed false\n"
+        digest=hashlib.sha256(registry.encode()).hexdigest()
+        flags=validate_capability_inventory("test-codex 1.0",registry,
+            expected_version="test-codex 1.0",expected_digest=digest)
+        cmd=tool_less_command("/tmp/schema","/tmp/empty",flags)
         disabled={cmd[i+1] for i,x in enumerate(cmd[:-1]) if x=="--disable"}
         self.assertTrue({"shell_tool","unified_exec","code_mode_host","apps","browser_use","computer_use"} <= disabled)
         self.assertIn("--ephemeral",cmd);self.assertIn("--ignore-user-config",cmd)
         self.assertEqual(cmd[cmd.index("--cd")+1],"/tmp/empty")
-        self.assertIn("tool-less",PROMPT_VERSION)
+        self.assertIn("zero-capability",PROMPT_VERSION)
+        self.assertNotIn("legacy",disabled)
+
+    def test_codex_capability_inventory_drift_fails_closed(self):
+        registry="shell_tool stable true\n"
+        digest=hashlib.sha256(registry.encode()).hexdigest()
+        with self.assertRaisesRegex(RuntimeError,"version"):
+            validate_capability_inventory("test-codex 2.0",registry,
+                expected_version="test-codex 1.0",expected_digest=digest)
+        with self.assertRaisesRegex(RuntimeError,"features"):
+            validate_capability_inventory("test-codex 1.0",registry+"new_tool stable true\n",
+                expected_version="test-codex 1.0",expected_digest=digest)
+
+    def test_codex_malformed_pinned_registry_fails_closed(self):
+        registry="not a valid registry row\n"
+        digest=hashlib.sha256(registry.encode()).hexdigest()
+        with self.assertRaisesRegex(RuntimeError,"format"):
+            validate_capability_inventory("test-codex 1.0",registry,
+                expected_version="test-codex 1.0",expected_digest=digest)
 
 if __name__=="__main__":unittest.main()
