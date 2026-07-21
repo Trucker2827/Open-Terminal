@@ -60,6 +60,27 @@ version `kalshi-blind-v1`. Env overrides: `ANTHROPIC_MODEL`,
 is tight; premium pricing). Auth resolves `ANTHROPIC_API_KEY` /
 `ANTHROPIC_AUTH_TOKEN` / an `ant auth login` profile automatically.
 
+## App-LLM forecaster — `cli_forecaster.py` (no external key)
+
+Uses the app's OWN configured LLM via `openterminalcli ai test`, which runs a
+**pure completion with tools disabled** — so the model sees only the price-free
+prompt and cannot look up the market (blind firewall holds). No
+`ANTHROPIC_API_KEY` and no `anthropic` SDK required; it forecasts with whatever
+provider the app is set to (e.g. a local Ollama model). This is the recommended
+default when the app already has an LLM configured.
+
+Trade-off is latency. A local model can be slow relative to the tight crypto
+TTLs. Measured example: `llama3.3:latest` ≈ 23 s per forecast — fine for
+contracts with a 45–60 s TTL (> 15 min to settlement), too slow for the 15–30 s
+buckets. Keep it inside the window by constraining the picker to longer-dated
+contracts:
+
+```bash
+advise_challenge.py --auto --forecaster ./cli_forecaster.py --auto-min-secs-left 900
+```
+
+…or point the app at a faster model (`openterminalcli ai use <provider>`).
+
 ## Scope
 
 open → commit-blind only. The market-informed second estimate
