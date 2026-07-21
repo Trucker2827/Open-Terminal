@@ -257,7 +257,7 @@ def main():
         "install","uninstall","safety-observe","evaluate","pause","resume","canary-configure","canary-enable","canary-disable","canary-pulse"])
     ap.add_argument("--profile",default="default");ap.add_argument("--cli",default=DEFAULT_CLI)
     ap.add_argument("--forecaster");ap.add_argument("--opponent-forecaster");ap.add_argument("--evidence",default=DEFAULT_EVIDENCE)
-    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=35)
+    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=48)
     ap.add_argument("--maximum-failures",type=int,default=5)
     ap.add_argument("--safety-margin-ms",type=int,default=6000);ap.add_argument("--auto-min-secs-left",type=int,default=901)
     ap.add_argument("--auto-max-age-s",type=float,default=11.0)
@@ -278,7 +278,8 @@ def main():
         spec={"Label":label,"ProgramArguments":[sys.executable,os.path.abspath(__file__),"run","--profile",args.profile,
               "--cli",os.path.abspath(args.cli),"--forecaster",os.path.abspath(args.forecaster),
               "--opponent-forecaster",os.path.abspath(args.opponent_forecaster),"--evidence",args.evidence,
-              "--interval-seconds",str(args.interval_seconds),"--maximum-failures",str(args.maximum_failures)],
+              "--interval-seconds",str(args.interval_seconds),"--forecast-timeout",str(args.forecast_timeout),
+              "--safety-margin-ms",str(args.safety_margin_ms),"--maximum-failures",str(args.maximum_failures)],
               "RunAtLoad":True,"KeepAlive":{"SuccessfulExit":False},"ThrottleInterval":30,
               "EnvironmentVariables":{"PATH":os.path.expanduser("~/.local/bin")+
                   ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},

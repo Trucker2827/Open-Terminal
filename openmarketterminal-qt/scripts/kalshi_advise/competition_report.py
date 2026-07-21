@@ -8,7 +8,7 @@ import random
 import sqlite3
 import time
 
-CLAUDE_EPOCH = "kalshi-blind-claude-cli-v1"
+CLAUDE_EPOCH = "kalshi-blind-claude-cli-v2"
 CODEX_EPOCH = "kalshi-blind-codex-v3-zero-capability"
 MIN_PAIRED = 200
 MIN_COVERAGE = 0.80
@@ -62,6 +62,15 @@ def resolved_outcomes(db_path, ids):
 
 
 def build_report(rows, outcomes=None, firewall_safe=True):
+    # Epochs are experimental units. Never pool earlier policies, CLI pins, or
+    # capability surfaces into the active comparison.
+    rows = [row for row in rows if any(
+        lane.get("forecaster", {}).get("provider") == "anthropic-claude-cli"
+        and lane.get("forecaster", {}).get("epoch_id") == CLAUDE_EPOCH
+        for lane in row.get("lanes", [])) and any(
+        lane.get("forecaster", {}).get("provider") == "openai-codex-cli"
+        and lane.get("forecaster", {}).get("epoch_id") == CODEX_EPOCH
+        for lane in row.get("lanes", []))]
     outcomes = outcomes or {}
     opportunities = [row for row in rows if row.get("event") == "shadow_opportunity" and row.get("lanes")]
     counts = {"claude": {"predicted": 0, "abstained": 0},

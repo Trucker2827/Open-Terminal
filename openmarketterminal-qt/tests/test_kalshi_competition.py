@@ -51,6 +51,16 @@ class CompetitionTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "surface"):
             claude.assert_locked_surface(claude.CLI_VERSION, "bad")
 
+    def test_claude_extracts_forecast_from_noisy_multiple_json(self):
+        claude = load("claude_cli_forecaster")
+        envelope = json.dumps({"result": (
+            'diagnostic {"phase":"reasoning"}\n```json\n'
+            '{"decision":"predict","probability":0.61,"confidence":0.7,'
+            '"rationale":"bounded evidence"}\n```')})
+        parsed = claude.unwrap(envelope)
+        self.assertEqual(parsed["decision"], "predict")
+        self.assertEqual(parsed["probability"], 0.61)
+
     def test_result_states_are_mechanical(self):
         self.assertEqual(compute_result_state(0, 1, 1, -.1, -.01), "INSUFFICIENT_PAIRED_DATA")
         self.assertEqual(compute_result_state(200, .79, 1, -.1, -.01), "INSUFFICIENT_PAIRED_DATA")
@@ -61,14 +71,23 @@ class CompetitionTest(unittest.TestCase):
 
     def test_prompt_divergence_invalidates_epoch(self):
         lanes = [
-            {"forecaster":{"provider":"anthropic-claude-cli"},"status":"ABSTAINED",
+            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v2"},"status":"ABSTAINED",
              "context_hash":"same","forecast":{"prompt_hash":"left"}},
-            {"forecaster":{"provider":"openai-codex-cli"},"status":"ABSTAINED",
+            {"forecaster":{"provider":"openai-codex-cli", "epoch_id":"kalshi-blind-codex-v3-zero-capability"},"status":"ABSTAINED",
              "context_hash":"same","forecast":{"prompt_hash":"right"}},
         ]
         report = build_report([{"event":"shadow_opportunity","lanes":lanes}], {})
         self.assertEqual(report["result_state"], "INVALID_EPOCH")
         self.assertIn("PROMPT_HASH_DIVERGENCE", report["invalid_reasons"])
+
+    def test_previous_epoch_is_not_pooled(self):
+        old = {"lanes": [
+            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v1"}},
+            {"forecaster":{"provider":"openai-codex-cli", "epoch_id":"kalshi-blind-codex-v3-zero-capability"}},
+        ]}
+        report = build_report([old], {}, True)
+        self.assertEqual(report["opportunities"], 0)
+        self.assertEqual(report["result_state"], "INSUFFICIENT_PAIRED_DATA")
 
 
 if __name__ == "__main__":

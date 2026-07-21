@@ -137,7 +137,15 @@ QJsonObject reveal_result(const ChallengeRow& row) {
 } // namespace
 
 Result<OpenResult> AdvisoryChallengeRepository::open(const OpenParams& p) {
-    const TtlPolicy policy = ttl_for(p.seconds_left);
+    TtlPolicy policy = ttl_for(p.seconds_left);
+    // Paired shadow measurements run two independent CLI forecasters. For
+    // contracts with >15m runway, use the full protocol cap so the shared
+    // 48s budget plus commit margin cannot select a winner on latency alone.
+    // Execution relevance stays short; this never grants execution authority.
+    if (!p.competition_pair_id.isEmpty() && p.seconds_left > 900) {
+        policy.prediction_ttl_ms = 60000;
+        policy.execution_relevance_ms = 15000;
+    }
     if (!policy.may_open)
         return Result<OpenResult>::err("too close to settlement to open an advisory challenge");
 

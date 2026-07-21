@@ -13,8 +13,8 @@
 
 - Both forecasters are **SHADOW-only**: `authority:"advisory_only"`, `execution_mode:"shadow"`, `execution_eligible:false`. **Neither ever calls prepare_order/submit_order.** Deterministic engine stays sole executor.
 - **No tools** for either forecaster. Claude runs tool-less (§4 of spec); any tool event/hook/plugin/MCP/model-fallback/version-drift → **abstain + INVALID_EPOCH**.
-- **Claude pin (frozen, no alias, no fallback):** model `claude-opus-4-8`, `--effort medium`, CLI `2.1.216`.
-- **Epoch ids, never pooled:** Claude `kalshi-blind-claude-cli-v1`; Codex `kalshi-blind-codex-v3-zero-capability`.
+- **Claude pin (frozen, no alias, no fallback):** model `claude-opus-4-8`, `--effort medium`, CLI `2.1.217`.
+- **Epoch ids, never pooled:** Claude `kalshi-blind-claude-cli-v2`; Codex `kalshi-blind-codex-v3-zero-capability`.
 - **Prompt:** byte-for-byte identical canonical instruction + serialized blind packet for both; store `prompt_hash` per row.
 - **Preregistered decision rule (frozen before epoch opens):** declare a winner only with **≥200 jointly-resolved pairs**, **≥80% prediction coverage for BOTH**, and a paired-Brier bootstrap CI **not crossing zero**.
 - **Result states (mechanical, no discretion):** `CLAUDE_WINS | CODEX_WINS | STATISTICAL_TIE | INSUFFICIENT_PAIRED_DATA | INVALID_EPOCH`.
@@ -180,14 +180,14 @@ from blind_prompt import INSTRUCTION, build_prompt, prompt_hash, PROMPT_VERSION
 
 MODEL = "claude-opus-4-8"           # exact; no alias, no fallback
 EFFORT = "medium"
-CLI_VERSION = "2.1.216"             # pinned; drift -> abstain
+CLI_VERSION = "2.1.217"             # pinned; drift -> abstain
 TIMEOUT_S = 50
 SCHEMA_VERSION = "kalshi-forecast-v1"
 # Frozen invocation surface (order-insensitive set). Any change -> abstain.
 LOCKED_FLAGS = sorted([
     "-p", "--output-format", "json", "--model", MODEL, "--effort", EFFORT,
     "--system-prompt", "--exclude-dynamic-system-prompt-sections",
-    "--tools", "", "--strict-mcp-config", "--mcp-config", "{}",
+    "--tools", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
     "--disable-slash-commands", "--no-chrome", "--no-session-persistence",
     "--safe-mode", "--permission-mode", "manual",
 ])
@@ -201,13 +201,13 @@ def assert_locked_surface(observed_version, expected_version, observed_surface_h
 
 def _cli_version():
     r = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=10)
-    # `claude --version` prints e.g. "2.1.216 (Claude Code)"; take the semver token.
+    # `claude --version` prints e.g. "2.1.217 (Claude Code)"; take the semver token.
     return (r.stdout or "").strip().split()[0] if r.returncode == 0 and r.stdout.strip() else ""
 
 def _command(cwd):
     return ["claude", "-p", "--output-format", "json", "--model", MODEL, "--effort", EFFORT,
             "--system-prompt", INSTRUCTION, "--exclude-dynamic-system-prompt-sections",
-            "--tools", "", "--strict-mcp-config", "--mcp-config", "{}",
+            "--tools", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
             "--disable-slash-commands", "--no-chrome", "--no-session-persistence",
             "--safe-mode", "--permission-mode", "manual"]
 
@@ -258,7 +258,7 @@ if __name__ == "__main__": raise SystemExit(main())
 - [ ] **Step 5: Commit**
 ```bash
 git add scripts/kalshi_advise/claude_cli_forecaster.py tests/test_kalshi_competition.py
-git commit -m "feat(kalshi): tool-less pinned Claude CLI forecaster (kalshi-blind-claude-cli-v1)"
+git commit -m "feat(kalshi): tool-less pinned Claude CLI forecaster (kalshi-blind-claude-cli-v2)"
 ```
 
 ---

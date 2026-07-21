@@ -13,13 +13,13 @@ from blind_prompt import INSTRUCTION, PROMPT_VERSION, build_prompt, prompt_hash
 
 MODEL = "claude-opus-4-8"
 EFFORT = "medium"
-CLI_VERSION = "2.1.216"
+CLI_VERSION = "2.1.217"
 TIMEOUT_S = 50
 SCHEMA_VERSION = "kalshi-forecast-v1"
-EPOCH_ID = "kalshi-blind-claude-cli-v1"
+EPOCH_ID = "kalshi-blind-claude-cli-v2"
 LOCKED_FLAGS = (
     "-p", "--output-format=json", "--model=" + MODEL, "--effort=" + EFFORT,
-    "--system-prompt=", "--tools=", "--strict-mcp-config", "--mcp-config={\"mcpServers\":{}}",
+    "--system-prompt=", "--tools=", "--disallowedTools=*", "--strict-mcp-config", "--mcp-config={\"mcpServers\":{}}",
     "--disable-slash-commands", "--no-chrome", "--no-session-persistence",
     "--safe-mode", "--permission-mode=dontAsk",
 )
@@ -42,7 +42,7 @@ def cli_version():
 
 def command():
     return ["claude", "-p", "--output-format", "json", "--model", MODEL,
-            "--effort", EFFORT, "--system-prompt", "", "--tools", "",
+            "--effort", EFFORT, "--system-prompt", "", "--tools", "", "--disallowedTools", "*",
             "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--disable-slash-commands",
             "--no-chrome", "--no-session-persistence", "--safe-mode",
             "--permission-mode", "dontAsk"]
@@ -62,10 +62,21 @@ def unwrap(text):
         text = envelope["result"]
     elif isinstance(envelope, dict) and "decision" in envelope:
         return envelope
-    matches = re.findall(r"\{.*\}", text, re.S)
-    if not matches:
+    decoder = json.JSONDecoder()
+    candidates = []
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            candidate, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict):
+            candidates.append(candidate)
+    forecasts = [row for row in candidates if row.get("decision") in ("predict", "abstain")]
+    if not forecasts:
         raise ValueError("Claude returned no forecast object")
-    return json.loads(matches[-1])
+    return forecasts[-1]
 
 
 def run_locked(prompt, timeout=TIMEOUT_S):

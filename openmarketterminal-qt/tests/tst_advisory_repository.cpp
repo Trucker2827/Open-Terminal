@@ -107,6 +107,22 @@ class TstAdvisoryRepository : public QObject {
         QCOMPARE(markets.at(0), markets.at(1));
     }
 
+    void competition_pair_has_latency_neutral_ttl() {
+        adv::AdvisoryChallengeRepository repo;
+        adv::OpenParams p;
+        p.ticker = "KXPAIRTTL"; p.market_id = "PAIR-TTL"; p.horizon = "hourly";
+        p.blind_context = QJsonObject{{"seconds_left", 1920}};
+        p.withheld_market = QJsonObject{{"market_implied_probability", 0.5}};
+        p.daemon_prob = 0.5; p.seconds_left = 1920; p.now_ms = 20'000;
+        p.provider = "openai-codex-cli"; p.competition_pair_id = "pair-ttl";
+        auto paired = repo.open(p); QVERIFY(paired.is_ok());
+        QCOMPARE(paired.value().prediction_ttl_at - paired.value().created_at, qint64(60000));
+
+        p.market_id = "SOLO-TTL"; p.now_ms = 30'000; p.competition_pair_id.clear();
+        auto solo = repo.open(p); QVERIFY(solo.is_ok());
+        QCOMPARE(solo.value().prediction_ttl_at - solo.value().created_at, qint64(45000));
+    }
+
     void open_then_commit_blind_is_idempotent() {
         adv::AdvisoryChallengeRepository repo;
         adv::OpenParams p; p.ticker="KXBTC"; p.market_id="M1"; p.horizon="hourly";
