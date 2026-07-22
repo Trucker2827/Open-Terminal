@@ -210,7 +210,9 @@ void CryptoAutomationCockpit::refresh() {
     // ONE engine, two parameter styles (scalp|spot) — show what is actually
     // configured instead of the old hardcoded "SCALP ENGINE". Engines started
     // before the style field existed default to scalp (their preset).
-    const QString style = config.value(QStringLiteral("style")).toString(QStringLiteral("scalp")).toUpper();
+    const QString style = config.value(QStringLiteral("style"))
+                              .toString(config_file.value(QStringLiteral("style")).toString(QStringLiteral("scalp")))
+                              .toUpper();
     engine_caption_->setText(style + tr(" ENGINE"));
     set_metric(engine_value_, engine_caption_,
                engine_running ? style + tr(" · RUNNING") : style + tr(" · OFFLINE"),
