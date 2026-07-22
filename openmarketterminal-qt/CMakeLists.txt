@@ -994,6 +994,7 @@ set(PYTHON_SOURCES
 
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
+    src/services/crypto/CoinbaseEndpoints.cpp
     src/services/crypto_latency/CryptoLatencyService.cpp
     src/services/crypto_latency/FeedReconnect.cpp
     src/services/edge_radar/BtcFiveMinuteEdgeModel.cpp
@@ -3358,6 +3359,7 @@ add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
     src/cli/EdgeJournalRareAlerts.cpp
+    src/services/crypto/CoinbaseEndpoints.cpp
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp
     src/cli/ObserveCommand.cpp
