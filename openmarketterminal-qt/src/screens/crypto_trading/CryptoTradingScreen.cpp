@@ -474,6 +474,13 @@ void CryptoTradingScreen::setup_timers() {
 }
 
 void CryptoTradingScreen::update_clock() {
+    // 1 Hz spot market stats for the MKT tab (funding/OI are perp-only; a
+    // spot venue shows last/high/low/volume/spread/change from the ticker).
+    if (!is_perp_market() && bottom_panel_ && pending_primary_ticker_.last > 0) {
+        const auto& t = pending_primary_ticker_;
+        bottom_panel_->set_spot_market_stats(t.last, t.high, t.low, t.base_volume, t.percentage,
+                                             t.bid, t.ask);
+    }
     clock_label_->setText(QDateTime::currentDateTime().toString("HH:mm:ss"));
 
     // WS status pill — only restyle on state change. Setting a Qt property

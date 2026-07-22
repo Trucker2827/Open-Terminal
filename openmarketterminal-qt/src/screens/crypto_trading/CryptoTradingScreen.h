@@ -277,6 +277,9 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     // Shared AVAIL-currency fallback chain (pair quote → USD → USDC → USDT →
     // USDE → largest holding) used by both the REST and WS balance paths.
     void apply_live_balance_display(const QJsonObject& balances);
+    QJsonObject last_balances_;  // latest live balances (REST or account WS)
+    // Spot venues: derive POS-tab holdings from the balance + live marks.
+    void refresh_live_holdings();
 
     // Ladder ORDERS/avg-entry overlay — Paper-mode only (typed PtOrder/
     // PtPosition are cleanly available here; Live-mode orders/positions

@@ -887,9 +887,89 @@ void CryptoBottomPanel::update_live_stats() {
     if (stat_values_[8]) stat_values_[8]->setText(last_time);
 }
 
+void CryptoBottomPanel::set_live_holdings(const QJsonArray& holdings) {
+    // Spot venues: the POS tab shows account holdings (from the balance) with
+    // live marks. Entry/P&L render "--" unless the caller estimated them
+    // (est. avg entry exists only for the selected pair's trade history).
+    live_positions_json_ = holdings;
+    const int n = holdings.size();
+    positions_table_->setUpdatesEnabled(false);
+    if (positions_table_->rowCount() != n)
+        positions_table_->setRowCount(n);
+    for (int i = 0; i < n; ++i) {
+        const QJsonObject p = holdings[i].toObject();
+        const QColor bg = (i % 2 == 0) ? kRowEven() : kRowOdd();
+        auto set = [&](int col, const QString& text, const QColor& fg = QColor(),
+                       Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
+            auto* it = ensure_item(positions_table_, i, col);
+            it->setText(text);
+            if (fg.isValid())
+                it->setForeground(fg);
+            it->setBackground(bg);
+            it->setTextAlignment(align);
+        };
+        const double qty = p.value("qty").toDouble();
+        const double price = p.value("price").toDouble();
+        const double avg = p.value("avg_entry").toDouble();
+        set(0, p.value("symbol").toString());
+        set(1, tr("SPOT"), kColorPos());
+        set(2, QString::number(qty, 'f', 8), QColor(), Qt::AlignRight | Qt::AlignVCenter);
+        set(3, avg > 0 ? QString::number(avg, 'f', 2) : QStringLiteral("--"), QColor(),
+            Qt::AlignRight | Qt::AlignVCenter);
+        set(4, price > 0 ? QString::number(price, 'f', 2) : QStringLiteral("--"), QColor(),
+            Qt::AlignRight | Qt::AlignVCenter);
+        if (p.value("upnl_valid").toBool()) {
+            const double upnl = p.value("upnl").toDouble();
+            set(5, QString::number(upnl, 'f', 2), upnl >= 0 ? kColorPos() : kColorNeg(),
+                Qt::AlignRight | Qt::AlignVCenter);
+        } else {
+            set(5, QStringLiteral("--"), QColor(), Qt::AlignRight | Qt::AlignVCenter);
+        }
+        set(6, QStringLiteral("--"), QColor(), Qt::AlignRight | Qt::AlignVCenter);
+    }
+    positions_table_->setUpdatesEnabled(true);
+    update_empty_state(positions_table_, positions_stack_, n);
+}
+
+void CryptoBottomPanel::set_spot_market_stats(double last, double high, double low, double base_volume,
+                                              double change_pct, double bid, double ask) {
+    if (!funding_label_)
+        return;
+    if (!market_tab_spot_mode_) {
+        market_tab_spot_mode_ = true;
+        if (funding_title_) funding_title_->setText(tr("LAST PRICE"));
+        if (mark_title_) mark_title_->setText(tr("24H HIGH"));
+        if (index_title_) index_title_->setText(tr("24H LOW"));
+        if (oi_title_) oi_title_->setText(tr("24H VOLUME"));
+        if (fees_title_) fees_title_->setText(tr("SPREAD"));
+        if (next_funding_title_) next_funding_title_->setText(tr("24H CHANGE"));
+    }
+    funding_label_->setText(last > 0 ? QStringLiteral("$%1").arg(last, 0, 'f', 2) : QStringLiteral("--"));
+    mark_label_->setText(high > 0 ? QStringLiteral("$%1").arg(high, 0, 'f', 2) : QStringLiteral("--"));
+    index_label_->setText(low > 0 ? QStringLiteral("$%1").arg(low, 0, 'f', 2) : QStringLiteral("--"));
+    oi_label_->setText(base_volume > 0 ? QString::number(base_volume, 'f', 2) : QStringLiteral("--"));
+    if (bid > 0 && ask > bid) {
+        const double mid = (bid + ask) / 2.0;
+        fees_label_->setText(QStringLiteral("%1 bps").arg((ask - bid) / mid * 10000.0, 0, 'f', 2));
+    } else {
+        fees_label_->setText(QStringLiteral("--"));
+    }
+    next_funding_label_->setText(QStringLiteral("%1%").arg(change_pct, 0, 'f', 2));
+}
+
 void CryptoBottomPanel::set_market_info(const MarketInfoData& info) {
     if (!info.has_data)
         return;
+    if (market_tab_spot_mode_) {
+        // Venue switched back to a perp market — restore the funding titles.
+        market_tab_spot_mode_ = false;
+        if (funding_title_) funding_title_->setText(tr("FUNDING RATE"));
+        if (mark_title_) mark_title_->setText(tr("MARK PRICE"));
+        if (index_title_) index_title_->setText(tr("INDEX PRICE"));
+        if (oi_title_) oi_title_->setText(tr("OPEN INTEREST"));
+        if (fees_title_) fees_title_->setText(tr("MAKER / TAKER"));
+        if (next_funding_title_) next_funding_title_->setText(tr("NEXT FUNDING"));
+    }
     funding_label_->setText(QString("%1%").arg(info.funding_rate * 100.0, 0, 'f', 4));
     mark_label_->setText(QString("$%1").arg(info.mark_price, 0, 'f', 2));
     index_label_->setText(QString("$%1").arg(info.index_price, 0, 'f', 2));
