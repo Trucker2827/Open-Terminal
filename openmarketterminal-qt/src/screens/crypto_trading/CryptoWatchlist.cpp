@@ -8,6 +8,7 @@
 
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QMenu>
 #include <QMutexLocker>
 #include <QVBoxLayout>
 
@@ -102,6 +103,32 @@ CryptoWatchlist::CryptoWatchlist(QWidget* parent) : QWidget(parent) {
     table_->verticalHeader()->setDefaultSectionSize(20);
 
     connect(table_, &QTableWidget::cellClicked, this, &CryptoWatchlist::on_cell_clicked);
+    // Right-click → price alert. The screen owns the threshold dialog and the
+    // alert engine; the watchlist only reports the row's symbol + last price.
+    table_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(table_, &QTableWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        auto* item = table_->itemAt(pos);
+        if (!item)
+            return;
+        auto* sym_item = table_->item(item->row(), 0);
+        if (!sym_item)
+            return;
+        const QString symbol = sym_item->text();
+        double last = 0.0;
+        {
+            QMutexLocker lock(&mutex_);
+            for (const auto& e : entries_) {
+                if (e.symbol == symbol && e.has_data) {
+                    last = e.price;
+                    break;
+                }
+            }
+        }
+        QMenu menu(this);
+        QAction* act = menu.addAction(tr("Alert at price…"));
+        if (menu.exec(table_->viewport()->mapToGlobal(pos)) == act)
+            emit alert_requested(symbol, last);
+    });
     layout->addWidget(table_, 1);
     layout->addWidget(new DineroNetworkGadget(this));
 

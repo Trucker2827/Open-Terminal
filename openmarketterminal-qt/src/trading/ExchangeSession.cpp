@@ -1,5 +1,7 @@
 ﻿#include "trading/ExchangeSession.h"
 
+#include "trading/AccountStreamParse.h"
+
 #include "core/logging/Logger.h"
 #include "python/PythonRunner.h"
 #include "storage/secure/SecureStorage.h"
@@ -122,6 +124,9 @@ void ExchangeSession::set_credentials(const ExchangeCredentials& creds) {
 
     LOG_INFO(kSessionTag, QString("Credentials updated for %1 (persisted=%2)")
                               .arg(exchange_id_, creds.api_key.isEmpty() ? "no" : "yes"));
+
+    // A running stream can open its account watchers right away.
+    push_account_credentials();
 }
 
 void ExchangeSession::load_stored_credentials() {
@@ -240,7 +245,31 @@ bool ExchangeSession::start_ws(const QString& primary_symbol, const QStringList&
 
     ws_process_->start(python_path, args);
     LOG_INFO(kSessionTag, QString("WS stream start requested for %1/%2").arg(exchange_id_, primary_symbol));
+    // Open the authenticated account watchers when credentials exist. The
+    // stdin line sits buffered in the pipe until ws_stream.py's command loop
+    // starts (post load_markets), so writing immediately is safe.
+    push_account_credentials();
     return true;
+}
+
+void ExchangeSession::push_account_credentials() {
+    ExchangeCredentials creds;
+    {
+        QMutexLocker lock(&mutex_);
+        creds = credentials_;
+    }
+    if (creds.api_key.isEmpty())
+        return;
+    if (!ws_process_ || ws_process_->state() == QProcess::NotRunning)
+        return;
+    QJsonObject cmd;
+    cmd[QStringLiteral("cmd")] = QStringLiteral("set_account_credentials");
+    cmd[QStringLiteral("apiKey")] = creds.api_key;
+    cmd[QStringLiteral("secret")] = creds.secret;
+    cmd[QStringLiteral("password")] = creds.password;
+    ws_process_->write(QJsonDocument(cmd).toJson(QJsonDocument::Compact) + '\n');
+    // Never log the payload — it contains the API secret.
+    LOG_INFO(kSessionTag, QString("[%1] account credentials pushed to ws stream").arg(exchange_id_));
 }
 
 bool ExchangeSession::is_ws_active() const {
@@ -321,7 +350,28 @@ void ExchangeSession::handle_ws_line(const QString& line) {
     const auto msg = doc.object();
     const QString type = msg.value("type").toString();
 
+    // Authenticated account lines (orders / my-trades / balance) route to the
+    // account publishers and never touch the public-data dispatch below.
+    const AccountLine account = parse_account_line(msg);
+    if (!account.kind.isEmpty()) {
+        const QString pair = account.symbol.isEmpty() ? QString() : remap_symbol(account.symbol);
+        if (account.kind == QLatin1String("order") && publisher_.publish_account_order)
+            publisher_.publish_account_order(exchange_id_, pair, account.payload);
+        else if (account.kind == QLatin1String("mytrade") && publisher_.publish_account_mytrade)
+            publisher_.publish_account_mytrade(exchange_id_, pair, account.payload);
+        else if (account.kind == QLatin1String("balance") && publisher_.publish_account_balance)
+            publisher_.publish_account_balance(exchange_id_, account.payload);
+        return;
+    }
+
     if (type == "status") {
+        // The account-mode ack ({"type":"status","account":true,...}) carries
+        // no "connected" field — it must not flip the public WS state.
+        if (msg.contains("account")) {
+            LOG_INFO(kSessionTag, QString("[%1] account stream: %2")
+                                      .arg(exchange_id_, msg.value("account").toBool() ? "ACTIVE" : "inactive"));
+            return;
+        }
         const bool connected = msg.value("connected").toBool(false);
         const bool prev = ws_connected_.exchange(connected);
         if (connected != prev) {

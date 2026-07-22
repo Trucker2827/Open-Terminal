@@ -11,14 +11,19 @@
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
 #include "core/symbol/SymbolContext.h"
+#include "screens/crypto_trading/CryptoAccountCadence.h"
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
+#include "screens/crypto_trading/CryptoChromeState.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
+#include "services/notifications/NotificationService.h"
+#include "storage/repositories/SettingsRepository.h"
+#include "trading/ExchangeDaemonPool.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSession.h"
 #include "trading/ExchangeSessionManager.h"
@@ -28,6 +33,8 @@
 #include "ui/theme/Theme.h"
 
 #include <QCompleter>
+#include <QUuid>
+#include <QInputDialog>
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QPointer>
@@ -168,23 +175,50 @@ void CryptoTradingScreen::set_live_auth_indicator(bool ok) {
     if (desired == last_auth_state_)
         return;
     last_auth_state_ = desired;
-    const QString state = ok ? QStringLiteral("ok") : QStringLiteral("error");
-    auto apply = [&state](QWidget* w) {
-        if (!w)
-            return;
-        w->setProperty("authed", state);
-        w->style()->unpolish(w);
-        w->style()->polish(w);
-    };
-    apply(api_btn_);
-    apply(ws_transport_);
-    if (api_btn_)
-        api_btn_->setToolTip(ok ? tr("Authenticated — live account reachable")
-                                : tr("Authentication failed — check API credentials"));
+    // Tri-state via CryptoChromeState: "none" (no creds / never probed),
+    // "ok", "error". Applies to the API button ONLY — the DAEMON label is a
+    // subprocess-liveness indicator (update_daemon_chrome), not an auth one.
+    const bool has_creds = !ExchangeService::instance().get_credentials().api_key.isEmpty();
+    const QString state = openmarketterminal::crypto::chrome_api_state(has_creds, last_auth_state_);
+    if (api_btn_) {
+        api_btn_->setProperty("authed", state);
+        api_btn_->style()->unpolish(api_btn_);
+        api_btn_->style()->polish(api_btn_);
+        if (state == QLatin1String("none"))
+            api_btn_->setToolTip(tr("No API credentials configured — click to add"));
+        else
+            api_btn_->setToolTip(ok ? tr("Authenticated — live account reachable")
+                                    : tr("Authentication failed — check API credentials"));
+    }
+}
+
+void CryptoTradingScreen::update_daemon_chrome() {
+    const bool daemon_alive = ExchangeDaemonPool::instance().is_ready();
+    const bool ws_up = ExchangeService::instance().is_ws_connected();
+    const QString state = openmarketterminal::crypto::chrome_daemon_state(daemon_alive, ws_up);
+    const int desired = (state == QLatin1String("dead")) ? 0 : (state == QLatin1String("rest")) ? 1 : 2;
+    if (desired == last_daemon_chrome_ || !ws_transport_)
+        return;
+    last_daemon_chrome_ = desired;
+    ws_transport_->setProperty("daemon_state", state);
+    ws_transport_->style()->unpolish(ws_transport_);
+    ws_transport_->style()->polish(ws_transport_);
+    if (desired == 0) {
+        ws_transport_->setText(tr("DAEMON ✕"));
+        ws_transport_->setToolTip(tr("ccxt daemon subprocess is not running"));
+    } else if (desired == 1) {
+        ws_transport_->setText(tr("DAEMON · REST"));
+        ws_transport_->setToolTip(tr("ccxt daemon up — public WS not connected, REST only"));
+    } else {
+        ws_transport_->setText(tr("DAEMON · WS"));
+        ws_transport_->setToolTip(tr("ccxt daemon up — ws_stream.py streaming via ccxt.pro"));
+    }
 }
 
 void CryptoTradingScreen::flush_ws_updates() {
     apply_feed_mode(ExchangeService::instance().is_ws_connected());
+    update_daemon_chrome();  // edge-detected — property writes only on state change
+    evaluate_alerts();       // before the buffers are consumed/cleared below
 
     // Flush primary symbol ticker → header bar + order entry
     if (has_pending_primary_) {
@@ -530,9 +564,148 @@ void CryptoTradingScreen::refresh_candles() {
     async_fetch_candles(selected_symbol_, chart_->current_timeframe());
 }
 
+// ── Local price/spread alerts ───────────────────────────────────────────────
+
+void CryptoTradingScreen::load_alerts() {
+    const auto res = openmarketterminal::SettingsRepository::instance().get(QStringLiteral("crypto.alerts"));
+    if (!res.is_ok() || res.value().isEmpty())
+        return;
+    const QJsonDocument doc = QJsonDocument::fromJson(res.value().toUtf8());
+    QVector<openmarketterminal::crypto::CryptoAlert> alerts;
+    for (const auto& v : doc.array())
+        alerts.append(openmarketterminal::crypto::CryptoAlert::from_json(v.toObject()));
+    alert_engine_.set_alerts(alerts);
+}
+
+void CryptoTradingScreen::save_alerts() {
+    QJsonArray arr;
+    for (const auto& a : alert_engine_.alerts())
+        arr.append(a.to_json());
+    (void) openmarketterminal::SettingsRepository::instance().set(
+        QStringLiteral("crypto.alerts"),
+        QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+}
+
+void CryptoTradingScreen::on_alert_requested(const QString& symbol, double last_price) {
+    bool ok = false;
+    const double threshold = QInputDialog::getDouble(
+        this, tr("Price alert"), tr("Alert when %1 crosses:").arg(symbol), last_price, 0.0,
+        1'000'000'000.0, 8, &ok);
+    if (!ok || threshold <= 0.0)
+        return;
+    openmarketterminal::crypto::CryptoAlert a;
+    a.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    a.exchange = exchange_id_;
+    a.symbol = symbol;
+    // Direction from where the threshold sits relative to the current price;
+    // no known price defaults to cross-up (the engine still needs a prior
+    // below-threshold tick before it can fire).
+    a.kind = (last_price > 0.0 && threshold < last_price) ? QStringLiteral("price_cross_down")
+                                                          : QStringLiteral("price_cross_up");
+    a.threshold = threshold;
+    alert_engine_.add(a);
+    save_alerts();
+}
+
+void CryptoTradingScreen::evaluate_alerts() {
+    auto fire = [this](const trading::TickerData& t) {
+        const auto fired = alert_engine_.on_tick(exchange_id_, t.symbol, t.last, t.bid, t.ask);
+        for (const auto& a : fired) {
+            notifications::NotificationRequest req;
+            req.title = tr("Price alert: %1").arg(a.symbol);
+            req.message = a.kind == QLatin1String("spread_bps")
+                              ? tr("%1 spread reached %2 bps").arg(a.symbol).arg(a.threshold)
+                              : tr("%1 crossed %2").arg(a.symbol).arg(a.threshold);
+            req.level = notifications::NotifLevel::Alert;
+            req.trigger = notifications::NotifTrigger::PriceAlert;
+            notifications::NotificationService::instance().send(req);
+        }
+        return !fired.isEmpty();
+    };
+    bool any = false;
+    if (has_pending_primary_)
+        any = fire(pending_primary_ticker_) || any;
+    for (auto it = pending_tickers_.constBegin(); it != pending_tickers_.constEnd(); ++it)
+        if (it.key() != pending_primary_ticker_.symbol || !has_pending_primary_)
+            any = fire(it.value()) || any;
+    if (any)
+        save_alerts(); // persist the disarmed state — no refire on restart
+}
+
+void CryptoTradingScreen::notify_order_terminal(const QJsonObject& order) {
+    if (trading_mode_ != TradingMode::Live)
+        return; // paper fills stay silent by default
+    const QString msg = fill_notifier_.on_order_event(order);
+    if (msg.isEmpty())
+        return;
+    notifications::NotificationRequest req;
+    req.title = tr("Coinbase order");
+    req.message = msg;
+    req.level = notifications::NotifLevel::Info;
+    req.trigger = notifications::NotifTrigger::OrderFill;
+    notifications::NotificationService::instance().send(req);
+}
+
+void CryptoTradingScreen::on_account_order_event(const QJsonObject& order) {
+    last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+    if (trading_mode_ != TradingMode::Live)
+        return;
+    notify_order_terminal(order);
+    const QString id = order.value(QStringLiteral("id")).toString();
+    if (id.isEmpty())
+        return;
+    const QString status = order.value(QStringLiteral("status")).toString();
+    const bool terminal = status == QLatin1String("closed") || status == QLatin1String("canceled") ||
+                          status == QLatin1String("filled") || status == QLatin1String("rejected") ||
+                          status == QLatin1String("expired");
+    if (terminal)
+        live_orders_by_id_.remove(id);
+    else
+        live_orders_by_id_.insert(id, order);
+
+    // Immediate blotter update from the accumulated open set…
+    QJsonArray orders;
+    for (const auto& o : live_orders_by_id_)
+        orders.append(o);
+    bottom_panel_->set_live_orders(orders);
+    refresh_live_ladder_overlay();
+
+    // …then ONE confirming REST cycle (coalesced) — REST stays authoritative.
+    if (!account_refresh_scheduled_) {
+        account_refresh_scheduled_ = true;
+        QTimer::singleShot(300, this, [this]() {
+            account_refresh_scheduled_ = false;
+            refresh_live_data();
+        });
+    }
+}
+
+void CryptoTradingScreen::refresh_live_ladder_overlay() {
+    if (trading_mode_ != TradingMode::Live || !ladder_)
+        return;
+    QVector<QJsonObject> orders;
+    orders.reserve(live_orders_by_id_.size());
+    for (const auto& o : live_orders_by_id_)
+        orders.append(o);
+    ladder_->set_my_orders(openmarketterminal::crypto::live_orders_to_my_orders(orders, selected_symbol_));
+    ladder_->set_avg_entry(live_avg_entry_.avg_entry());
+}
+
+void CryptoTradingScreen::on_account_balance_event(const QJsonObject& balances) {
+    last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+    if (trading_mode_ != TradingMode::Live)
+        return;
+    apply_live_balance_display(balances);
+}
+
 void CryptoTradingScreen::refresh_live_data() {
     if (trading_mode_ != TradingMode::Live)
         return;
+    // Relax the poll only while the account WS is demonstrably fresh; any
+    // staleness snaps back to the 5s baseline within one tick.
+    if (live_data_timer_)
+        live_data_timer_->setInterval(openmarketterminal::crypto::account_poll_interval_ms(
+            QDateTime::currentMSecsSinceEpoch(), last_account_ws_event_ms_));
     // Skip this tick entirely if any of the 4 live fetches from the previous
     // tick are still in-flight — prevents burst-stacking against the exchange
     // API and against the daemon's request pipeline.
