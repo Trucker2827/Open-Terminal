@@ -3359,6 +3359,7 @@ add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
     src/cli/EdgeJournalRareAlerts.cpp
+    src/cli/EdgeJournalCommands.cpp
     src/services/crypto/CoinbaseEndpoints.cpp
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp

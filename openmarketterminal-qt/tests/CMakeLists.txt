@@ -33,6 +33,8 @@ add_test(NAME tst_bridge_discovery_file COMMAND tst_bridge_discovery_file)
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalRareAlerts.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
