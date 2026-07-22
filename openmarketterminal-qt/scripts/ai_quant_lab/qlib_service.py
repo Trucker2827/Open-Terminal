@@ -317,7 +317,17 @@ class QlibService:
     # is a fresh process) can predict/backtest with a model trained earlier.
     MODELS_DIR = os.path.expanduser("~/.qlib/openterminal_models")
 
-    def __init__(self, provider_uri: str = "~/.qlib/qlib_data/us_data", region: str = "us"):
+    # Point the whole service at a different dataset/bar-frequency without
+    # touching call sites — e.g. the terminal-tick crypto dataset:
+    #   OPENTERMINAL_QLIB_DATA=~/.qlib/qlib_data/crypto_data \
+    #   OPENTERMINAL_QLIB_FREQ=1min openterminalcli quant run model_library ...
+    @staticmethod
+    def data_freq() -> str:
+        return os.environ.get("OPENTERMINAL_QLIB_FREQ", "day")
+
+    def __init__(self, provider_uri: Optional[str] = None, region: str = "us"):
+        provider_uri = provider_uri or os.environ.get(
+            "OPENTERMINAL_QLIB_DATA", "~/.qlib/qlib_data/us_data")
         self.trained_models = {}
         self.experiment_manager = None
         self.initialized = False
@@ -902,6 +912,8 @@ class QlibService:
                 "start_time": train_start,
                 "end_time": valid_end
             }
+            if self.data_freq() != "day":
+                handler_kwargs["freq"] = self.data_freq()
             # Tree models handle NaN features natively, but every dense-input
             # model (linear + the torch family) drops NaN rows — and the
             # bundled US dataset has no vwap field, so one Alpha158 column is
@@ -1142,6 +1154,11 @@ class QlibService:
         if strategy_type != "topk_dropout":
             return {"success": False,
                     "error": f"Strategy '{strategy_type}' not implemented; available: topk_dropout"}
+        if self.data_freq() != "day":
+            return {"success": False,
+                    "error": (f"run_backtest simulates daily bars only; the active dataset is "
+                              f"{self.data_freq()}. Use get_factor_analysis (IC) to evaluate "
+                              "intraday models — an intraday executor is not wired yet.")}
         # The China index default of the old API can't exist in US data, and
         # qlib's empty benchmark_config falls back to it too (report.py
         # _cal_benchmark({})), so "no benchmark" is not expressible downstream.
@@ -1299,6 +1316,8 @@ class QlibService:
                 "start_time": start_date,
                 "end_time": end_date
             }
+            if self.data_freq() != "day":
+                handler_kwargs["freq"] = self.data_freq()
             if handler_type in ('Alpha360', 'Alpha360vwap'):
                 handler_kwargs["fit_start_time"] = start_date
                 handler_kwargs["fit_end_time"] = end_date
@@ -1395,7 +1414,7 @@ class QlibService:
             return {"success": False, "error": "Qlib not initialized"}
         try:
             import pandas as pd
-            cal = list(D.calendar(freq="day"))
+            cal = list(D.calendar(freq=self.data_freq()))
             if not cal:
                 return {"success": False, "error": "No trading calendar available"}
             end_ts = pd.Timestamp(date) if date else pd.Timestamp(cal[-1])
@@ -1412,6 +1431,8 @@ class QlibService:
                 "start_time": str(start.date()),
                 "end_time": str(end.date())
             }
+            if self.data_freq() != "day":
+                handler_kwargs["freq"] = self.data_freq()
             if handler_type in ('Alpha360', 'Alpha360vwap'):
                 handler_kwargs["fit_start_time"] = str(start.date())
                 handler_kwargs["fit_end_time"] = str(end.date())
