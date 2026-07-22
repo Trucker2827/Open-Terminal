@@ -22,6 +22,7 @@
 #include "screens/ai_chat/AnalysisSlashCommands.h"
 #include "services/algo_trading/AlgoTradingService.h"
 #include "services/alpha_arena/RiskEngine.h"
+#include "services/crypto/CoinbaseEndpoints.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/economics/EconomicsService.h"
 #include "services/edge_radar/BtcFiveMinuteEdgeModel.h"
@@ -20241,7 +20242,8 @@ static EdgeCollectedTick edge_fetch_live_crypto_tick(const QString& source,
     QUrl url;
     if (source == QStringLiteral("coinbase")) {
         out.venue_symbol = edge_coinbase_product(symbol);
-        url = QUrl(QStringLiteral("https://api.exchange.coinbase.com/products/%1/ticker").arg(out.venue_symbol));
+        // Advanced Trade public ticker — the legacy Exchange API is sunset.
+        url = openmarketterminal::services::crypto::advanced_ticker_url(out.venue_symbol);
     } else if (source == QStringLiteral("binance")) {
         out.venue_symbol = edge_binance_symbol(symbol);
         QUrl u(QStringLiteral("https://api.binance.com/api/v3/ticker/price"));
@@ -20308,8 +20310,15 @@ static EdgeCollectedTick edge_fetch_live_crypto_tick(const QString& source,
 
     const QJsonObject root = doc.object();
     if (source == QStringLiteral("coinbase")) {
-        out.tick.price = root.value(QStringLiteral("price")).toString().toDouble(&ok);
-        const QDateTime exchange_time = QDateTime::fromString(root.value(QStringLiteral("time")).toString(), Qt::ISODateWithMs);
+        // Advanced Trade shape: {"trades":[{"price","time",...}],"best_bid","best_ask"}
+        double price = 0, bid = 0, ask = 0;
+        ok = openmarketterminal::services::crypto::parse_advanced_ticker(doc, &price, &bid, &ask);
+        out.tick.price = price;
+        const QJsonArray adv_trades = root.value(QStringLiteral("trades")).toArray();
+        const QString trade_time =
+            adv_trades.isEmpty() ? QString()
+                                 : adv_trades.at(0).toObject().value(QStringLiteral("time")).toString();
+        const QDateTime exchange_time = QDateTime::fromString(trade_time, Qt::ISODateWithMs);
         out.tick.exchange_ts = exchange_time.isValid() ? exchange_time.toMSecsSinceEpoch() : out.tick.received_ts;
     } else if (source == QStringLiteral("binance") ||
                source == QStringLiteral("binanceperp")) {
@@ -20530,29 +20539,24 @@ edge_fetch_coinbase_1m_candles(const QString& product,
     int pages = 0;
     while (cursor < to_ms && pages < 3000) {
         const qint64 chunk_end = std::min(cursor + 300LL * 60000LL, to_ms);
-        QUrl url(QStringLiteral("https://api.exchange.coinbase.com/products/%1/candles").arg(product));
-        QUrlQuery query;
-        query.addQueryItem(QStringLiteral("granularity"), QStringLiteral("60"));
-        query.addQueryItem(QStringLiteral("start"), edge_utc_iso(cursor));
-        query.addQueryItem(QStringLiteral("end"), edge_utc_iso(chunk_end));
-        url.setQuery(query);
+        // Advanced Trade public candles (legacy api.exchange.coinbase.com is
+        // sunset). Same 300-candle window per page; start/end are unix seconds.
+        const QUrl url = openmarketterminal::services::crypto::advanced_candles_url(
+            product, cursor / 1000, chunk_end / 1000);
 
         QJsonDocument doc;
         QString error;
         if (!edge_http_get_json(url, timeout_ms, &doc, &error))
             return Result<QVector<EdgeBackfillCandle>>::err(error.toStdString());
-        const QJsonArray rows = doc.array();
-        for (const auto& value : rows) {
-            const QJsonArray row = value.toArray();
-            if (row.size() < 6)
-                continue;
+        const auto rows = openmarketterminal::services::crypto::parse_advanced_candles(doc);
+        for (const auto& row : rows) {
             EdgeBackfillCandle c;
-            c.open_ms = static_cast<qint64>(row.at(0).toDouble()) * 1000;
-            c.low = row.at(1).toDouble();
-            c.high = row.at(2).toDouble();
-            c.open = row.at(3).toDouble();
-            c.close = row.at(4).toDouble();
-            c.volume = row.at(5).toDouble();
+            c.open_ms = row.open_ms;
+            c.low = row.low;
+            c.high = row.high;
+            c.open = row.open;
+            c.close = row.close;
+            c.volume = row.volume;
             if (c.open_ms >= from_ms && c.open_ms <= to_ms && c.close > 0.0)
                 candles.append(c);
         }

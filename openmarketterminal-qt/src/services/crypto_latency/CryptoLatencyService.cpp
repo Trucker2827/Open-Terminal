@@ -2,6 +2,7 @@
 
 #include "datahub/DataHub.h"
 #include "services/crypto_latency/FeedReconnect.h"
+#include "services/crypto/CoinbaseEndpoints.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -322,7 +323,10 @@ CryptoLatencyService::Feed CryptoLatencyService::make_feed(const QString& source
     Feed f;
     f.source = source;
     if (source == QStringLiteral("coinbase")) {
-        f.url = QStringLiteral("wss://ws-feed.exchange.coinbase.com");
+        // Advanced Trade WS — the legacy Exchange feed is sunset. The message
+        // handler already parses the Advanced events envelope (see the
+        // events→trades/tickers branch in handle_message).
+        f.url = QString::fromLatin1(openmarketterminal::services::crypto::kAdvancedTradeWsUrl);
         f.venue_symbol = normalize_symbol(symbol);
     } else if (source == QStringLiteral("kraken")) {
         f.url = QStringLiteral("wss://ws.kraken.com/v2");
@@ -367,11 +371,15 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
         states_[source].rate_limited = false;
         set_state(source, QStringLiteral("connected"));
         if (source == QStringLiteral("coinbase")) {
-            QJsonObject msg{{QStringLiteral("type"), QStringLiteral("subscribe")},
-                            {QStringLiteral("product_ids"), QJsonArray{venue}},
-                            {QStringLiteral("channels"), QJsonArray{QStringLiteral("matches"),
-                                                                    QStringLiteral("ticker")}}};
-            socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+            // Advanced Trade takes ONE channel per subscribe frame (a single
+            // "channel" string — the legacy "channels" array is ignored).
+            // heartbeats keeps the connection alive on quiet products.
+            for (const QString& channel : {QStringLiteral("ticker"), QStringLiteral("market_trades"),
+                                           QStringLiteral("heartbeats")}) {
+                const QJsonObject msg =
+                    openmarketterminal::services::crypto::advanced_ws_subscribe({venue}, channel);
+                socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+            }
         } else if (source == QStringLiteral("kraken")) {
             for (const QString& channel : {QStringLiteral("trade"), QStringLiteral("ticker")}) {
                 QJsonObject params{{QStringLiteral("channel"), channel},

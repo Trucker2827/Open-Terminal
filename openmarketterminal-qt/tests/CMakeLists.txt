@@ -16,6 +16,9 @@ add_test(NAME test_kalshi_advisor_core
 add_test(NAME test_kalshi_competition
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_competition.py -v)
+add_test(NAME test_ws_stream_account
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_ws_stream_account.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
@@ -722,3 +725,49 @@ add_executable(tst_advisor_canary_presentation tst_advisor_canary_presentation.c
 target_include_directories(tst_advisor_canary_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_advisor_canary_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_advisor_canary_presentation COMMAND tst_advisor_canary_presentation)
+
+add_executable(tst_crypto_symbol_universe tst_crypto_symbol_universe.cpp)
+target_include_directories(tst_crypto_symbol_universe PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_symbol_universe PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_symbol_universe COMMAND tst_crypto_symbol_universe)
+
+add_executable(tst_crypto_chrome_state tst_crypto_chrome_state.cpp)
+target_include_directories(tst_crypto_chrome_state PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_chrome_state PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_chrome_state COMMAND tst_crypto_chrome_state)
+
+add_executable(tst_coinbase_endpoints tst_coinbase_endpoints.cpp)
+target_include_directories(tst_coinbase_endpoints PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(tst_coinbase_endpoints PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+target_link_libraries(tst_coinbase_endpoints PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_coinbase_endpoints COMMAND tst_coinbase_endpoints)
+
+add_executable(tst_exchange_account_stream tst_exchange_account_stream.cpp)
+target_include_directories(tst_exchange_account_stream PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_exchange_account_stream PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_exchange_account_stream COMMAND tst_exchange_account_stream)
+
+add_executable(tst_crypto_account_cadence tst_crypto_account_cadence.cpp)
+target_include_directories(tst_crypto_account_cadence PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_account_cadence PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_account_cadence COMMAND tst_crypto_account_cadence)
+
+add_executable(tst_crypto_live_overlay tst_crypto_live_overlay.cpp)
+target_include_directories(tst_crypto_live_overlay PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_live_overlay PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_live_overlay COMMAND tst_crypto_live_overlay)
+
+add_executable(tst_crypto_paper_fill tst_crypto_paper_fill.cpp)
+target_include_directories(tst_crypto_paper_fill PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_paper_fill PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_paper_fill COMMAND tst_crypto_paper_fill)
+
+add_executable(tst_crypto_alert_engine tst_crypto_alert_engine.cpp)
+target_include_directories(tst_crypto_alert_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_alert_engine PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_alert_engine COMMAND tst_crypto_alert_engine)
+
+add_executable(tst_crypto_fill_notifier tst_crypto_fill_notifier.cpp)
+target_include_directories(tst_crypto_fill_notifier PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_fill_notifier PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_fill_notifier COMMAND tst_crypto_fill_notifier)

@@ -3,6 +3,7 @@
 
 #include "core/config/ProfileManager.h"
 #include "core/events/EventBus.h"
+#include "services/crypto/CoinbaseEndpoints.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionCredentialStore.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
@@ -3775,6 +3776,14 @@ void KalshiScreen::start_spot_dom_stream() {
         connect(reference_dom_socket_, &QWebSocket::textMessageReceived,
                 this, &KalshiScreen::handle_reference_dom_message);
         connect(reference_dom_socket_, &QWebSocket::disconnected, this, [this]() {
+            // Advanced→legacy fallback: a coinbase connection that dropped
+            // without ever delivering a book retries on the legacy Exchange
+            // feed (while it still answers) instead of looping on Advanced.
+            if (reference_dom_venue_ == QStringLiteral("coinbase") &&
+                !reference_dom_use_legacy_coinbase_ &&
+                reference_dom_bids_.isEmpty() && reference_dom_asks_.isEmpty()) {
+                reference_dom_use_legacy_coinbase_ = true;
+            }
             if (dom_status_) {
                 dom_status_->setText(QStringLiteral("%1 WS STALE · RECONNECTING")
                                          .arg(reference_dom_venue_.toUpper()));
@@ -3800,9 +3809,12 @@ void KalshiScreen::start_spot_dom_stream() {
         return;
     }
     if (reference_dom_socket_->state() == QAbstractSocket::ConnectingState) return;
-    const QUrl endpoint(reference_dom_venue_ == QStringLiteral("coinbase")
-                            ? QStringLiteral("wss://ws-feed.exchange.coinbase.com")
-                            : QStringLiteral("wss://ws.kraken.com/v2"));
+    const QUrl endpoint(
+        reference_dom_venue_ == QStringLiteral("coinbase")
+            ? QString::fromLatin1(reference_dom_use_legacy_coinbase_
+                                      ? openmarketterminal::services::crypto::kLegacyExchangeWsUrl
+                                      : openmarketterminal::services::crypto::kAdvancedTradeWsUrl)
+            : QStringLiteral("wss://ws.kraken.com/v2"));
     reference_dom_socket_->open(endpoint);
 }
 
@@ -3811,6 +3823,22 @@ void KalshiScreen::subscribe_reference_dom() {
     QJsonObject request;
     if (reference_dom_venue_ == QStringLiteral("coinbase")) {
         const QString product = QString(reference_dom_symbol_).replace(QLatin1Char('/'), QLatin1Char('-'));
+        if (!reference_dom_use_legacy_coinbase_) {
+            // Advanced Trade: one channel per subscribe frame (single
+            // "channel" string); heartbeats keeps quiet books alive.
+            for (const QString& channel : {QStringLiteral("level2"), QStringLiteral("heartbeats")}) {
+                const QJsonObject frame =
+                    openmarketterminal::services::crypto::advanced_ws_subscribe({product}, channel);
+                reference_dom_socket_->sendTextMessage(QJsonDocument(frame).toJson(QJsonDocument::Compact));
+            }
+            if (dom_status_) {
+                dom_status_->setText(QStringLiteral("%1 WS CONNECTED · AWAITING BOOK")
+                                         .arg(reference_dom_venue_.toUpper()));
+                dom_status_->setStyleSheet(QStringLiteral("color:%1;font-size:10px;font-weight:800;")
+                                               .arg(colors::WARNING()));
+            }
+            return;
+        }
         request.insert(QStringLiteral("type"), QStringLiteral("subscribe"));
         request.insert(QStringLiteral("product_ids"), QJsonArray{product});
         request.insert(QStringLiteral("channels"), QJsonArray{QStringLiteral("level2")});
@@ -3843,6 +3871,35 @@ void KalshiScreen::handle_reference_dom_message(const QString& message) {
 
     if (reference_dom_venue_ == QStringLiteral("coinbase")) {
         const QString product = QString(reference_dom_symbol_).replace(QLatin1Char('/'), QLatin1Char('-'));
+        // Advanced Trade level2 envelope: {"channel":"l2_data","events":[{"type":
+        // "snapshot"|"update","product_id":..,"updates":[{"side":"bid"|"offer",
+        // "price_level":"..","new_quantity":".."}]}]} — quantity 0 removes a level.
+        if (root.value(QStringLiteral("channel")).toString() == QStringLiteral("l2_data")) {
+            bool touched = false;
+            for (const auto& ev : root.value(QStringLiteral("events")).toArray()) {
+                const QJsonObject event = ev.toObject();
+                if (event.value(QStringLiteral("product_id")).toString() != product) continue;
+                if (event.value(QStringLiteral("type")).toString() == QStringLiteral("snapshot")) {
+                    reference_dom_bids_.clear();
+                    reference_dom_asks_.clear();
+                }
+                for (const auto& uv : event.value(QStringLiteral("updates")).toArray()) {
+                    const QJsonObject u = uv.toObject();
+                    QMap<double, double>& side = u.value(QStringLiteral("side")).toString() == QStringLiteral("bid")
+                        ? reference_dom_bids_ : reference_dom_asks_;
+                    const double price = u.value(QStringLiteral("price_level")).toVariant().toDouble();
+                    const double qty = u.value(QStringLiteral("new_quantity")).toVariant().toDouble();
+                    if (price <= 0.0) continue;
+                    if (qty <= 0.0) side.remove(price); else side.insert(price, qty);
+                    touched = true;
+                }
+            }
+            if (!touched) return;
+        } else if (root.value(QStringLiteral("channel")).toString() == QStringLiteral("heartbeats") ||
+                   root.value(QStringLiteral("channel")).toString() == QStringLiteral("subscriptions")) {
+            return; // keep-alive / ack frames carry no book data
+        } else {
+        // Legacy Exchange feed shapes (fallback path) below.
         if (root.value(QStringLiteral("product_id")).toString() != product) return;
         const QString type = root.value(QStringLiteral("type")).toString();
         if (type == QStringLiteral("snapshot")) {
@@ -3867,6 +3924,7 @@ void KalshiScreen::handle_reference_dom_message(const QString& message) {
         } else {
             return;
         }
+        } // legacy Exchange-feed branch
     } else {
         if (root.value(QStringLiteral("channel")).toString() != QStringLiteral("book")) return;
         const QString type = root.value(QStringLiteral("type")).toString();
