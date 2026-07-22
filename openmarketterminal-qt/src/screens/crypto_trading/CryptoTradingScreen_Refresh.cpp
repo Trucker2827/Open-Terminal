@@ -21,6 +21,8 @@
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
+#include "services/notifications/NotificationService.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "trading/ExchangeDaemonPool.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSession.h"
@@ -31,6 +33,8 @@
 #include "ui/theme/Theme.h"
 
 #include <QCompleter>
+#include <QUuid>
+#include <QInputDialog>
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QPointer>
@@ -214,6 +218,7 @@ void CryptoTradingScreen::update_daemon_chrome() {
 void CryptoTradingScreen::flush_ws_updates() {
     apply_feed_mode(ExchangeService::instance().is_ws_connected());
     update_daemon_chrome();  // edge-detected — property writes only on state change
+    evaluate_alerts();       // before the buffers are consumed/cleared below
 
     // Flush primary symbol ticker → header bar + order entry
     if (has_pending_primary_) {
@@ -557,6 +562,74 @@ void CryptoTradingScreen::refresh_market_info() {
 
 void CryptoTradingScreen::refresh_candles() {
     async_fetch_candles(selected_symbol_, chart_->current_timeframe());
+}
+
+// ── Local price/spread alerts ───────────────────────────────────────────────
+
+void CryptoTradingScreen::load_alerts() {
+    const auto res = openmarketterminal::SettingsRepository::instance().get(QStringLiteral("crypto.alerts"));
+    if (!res.is_ok() || res.value().isEmpty())
+        return;
+    const QJsonDocument doc = QJsonDocument::fromJson(res.value().toUtf8());
+    QVector<openmarketterminal::crypto::CryptoAlert> alerts;
+    for (const auto& v : doc.array())
+        alerts.append(openmarketterminal::crypto::CryptoAlert::from_json(v.toObject()));
+    alert_engine_.set_alerts(alerts);
+}
+
+void CryptoTradingScreen::save_alerts() {
+    QJsonArray arr;
+    for (const auto& a : alert_engine_.alerts())
+        arr.append(a.to_json());
+    (void) openmarketterminal::SettingsRepository::instance().set(
+        QStringLiteral("crypto.alerts"),
+        QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+}
+
+void CryptoTradingScreen::on_alert_requested(const QString& symbol, double last_price) {
+    bool ok = false;
+    const double threshold = QInputDialog::getDouble(
+        this, tr("Price alert"), tr("Alert when %1 crosses:").arg(symbol), last_price, 0.0,
+        1'000'000'000.0, 8, &ok);
+    if (!ok || threshold <= 0.0)
+        return;
+    openmarketterminal::crypto::CryptoAlert a;
+    a.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    a.exchange = exchange_id_;
+    a.symbol = symbol;
+    // Direction from where the threshold sits relative to the current price;
+    // no known price defaults to cross-up (the engine still needs a prior
+    // below-threshold tick before it can fire).
+    a.kind = (last_price > 0.0 && threshold < last_price) ? QStringLiteral("price_cross_down")
+                                                          : QStringLiteral("price_cross_up");
+    a.threshold = threshold;
+    alert_engine_.add(a);
+    save_alerts();
+}
+
+void CryptoTradingScreen::evaluate_alerts() {
+    auto fire = [this](const trading::TickerData& t) {
+        const auto fired = alert_engine_.on_tick(exchange_id_, t.symbol, t.last, t.bid, t.ask);
+        for (const auto& a : fired) {
+            notifications::NotificationRequest req;
+            req.title = tr("Price alert: %1").arg(a.symbol);
+            req.message = a.kind == QLatin1String("spread_bps")
+                              ? tr("%1 spread reached %2 bps").arg(a.symbol).arg(a.threshold)
+                              : tr("%1 crossed %2").arg(a.symbol).arg(a.threshold);
+            req.level = notifications::NotifLevel::Alert;
+            req.trigger = notifications::NotifTrigger::PriceAlert;
+            notifications::NotificationService::instance().send(req);
+        }
+        return !fired.isEmpty();
+    };
+    bool any = false;
+    if (has_pending_primary_)
+        any = fire(pending_primary_ticker_) || any;
+    for (auto it = pending_tickers_.constBegin(); it != pending_tickers_.constEnd(); ++it)
+        if (it.key() != pending_primary_ticker_.symbol || !has_pending_primary_)
+            any = fire(it.value()) || any;
+    if (any)
+        save_alerts(); // persist the disarmed state — no refire on restart
 }
 
 void CryptoTradingScreen::on_account_order_event(const QJsonObject& order) {

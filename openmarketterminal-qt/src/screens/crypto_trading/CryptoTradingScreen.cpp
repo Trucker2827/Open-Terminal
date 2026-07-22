@@ -68,6 +68,7 @@ CryptoTradingScreen::CryptoTradingScreen(Focus focus, QWidget* parent)
     watchlist_symbols_ = openmarketterminal::crypto::default_watchlist_for(exchange_id_, bitcoin_focus_);
     setup_ui();
     setup_timers();
+    load_alerts();
     LOG_INFO(TAG, "CryptoTradingScreen construction complete");
 }
 
@@ -353,6 +354,7 @@ void CryptoTradingScreen::setup_ui() {
     connect(api_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_api_clicked);
     connect(accounts_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_accounts_clicked);
     connect(watchlist_, &CryptoWatchlist::symbol_selected, this, &CryptoTradingScreen::on_symbol_selected);
+    connect(watchlist_, &CryptoWatchlist::alert_requested, this, &CryptoTradingScreen::on_alert_requested);
     connect(watchlist_, &CryptoWatchlist::search_requested, this, &CryptoTradingScreen::on_search_requested);
     connect(order_entry_, &CryptoOrderEntry::order_submitted, this, &CryptoTradingScreen::on_order_submitted);
     connect(order_entry_, &CryptoOrderEntry::leverage_changed, this, &CryptoTradingScreen::async_set_leverage);
