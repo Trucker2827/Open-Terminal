@@ -1,8 +1,10 @@
 #pragma once
+#include <QDir>
+#include <QHash>
+#include <QJsonObject>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
-#include <QJsonObject>
-#include <QHash>
 #include <QVector>
 namespace openmarketterminal::cli {
 // Run the daemon for `profile`. Blocks in the event loop until SIGTERM/SIGINT
@@ -193,6 +195,20 @@ KalshiSignalTransition kalshi_signal_transition(const QString& current_state,
 QJsonObject kalshi_contract_horizon(double spot, double floor_strike, double cap_strike,
                                     qint64 seconds_left, double realized_move_30s_bps,
                                     const QString& settlement_source);
+
+// The shared advisory-evidence directory (kalshi-ws-books.json,
+// quant-signals.json, calibrator.json). Header-inline so every evidence
+// consumer (daemon, scalp gate, tests) resolves the same location without
+// needing ServeCommand.cpp in its link.
+inline QString kalshi_evidence_path(const QString& filename) {
+    const QString override_dir = qEnvironmentVariable("OPENTERMINAL_KALSHI_EVIDENCE_DIR").trimmed();
+    const QString dir = override_dir.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+              QStringLiteral("/Open Terminal/Open Terminal")
+        : override_dir;
+    QDir().mkpath(dir);
+    return QDir(dir).filePath(filename);
+}
 
 // Pure daemon-job-spec -> CLI-args builder, kept public for deterministic
 // regression tests.

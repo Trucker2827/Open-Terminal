@@ -34,6 +34,9 @@ add_test(NAME test_terminal_bridge_layers
 add_test(NAME test_crypto_dataset
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_dataset.py -v)
+add_test(NAME test_signal_publisher
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_signal_publisher.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
