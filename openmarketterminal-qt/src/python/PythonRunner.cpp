@@ -297,6 +297,10 @@ static QString select_venv_for_script(const QString& script) {
     return "venv-numpy2";
 }
 
+QString PythonRunner::venv_for_script(const QString& script) {
+    return select_venv_for_script(script);
+}
+
 // ── Find Python ──────────────────────────────────────────────────────────────
 
 // Fast, non-blocking detection: checks only file existence (no process spawns)
