@@ -31,6 +31,9 @@ add_test(NAME test_edge_ic_report
 add_test(NAME test_terminal_bridge_layers
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_terminal_bridge_layers.py -v)
+add_test(NAME test_crypto_dataset
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_dataset.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
