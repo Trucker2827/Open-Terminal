@@ -584,6 +584,9 @@ void CryptoTradingScreen::hub_subscribe_topics() {
                 return;
             self->pending_orderbook_ = ob;
             self->has_pending_orderbook_ = true;
+            // Freshness evidence for honest paper fills (CryptoPaperFill.h).
+            self->last_book_ = ob;
+            self->last_book_ms_ = QDateTime::currentMSecsSinceEpoch();
         });
 
     // Account stream (authenticated, fast path) — order events for the active

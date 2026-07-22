@@ -222,6 +222,11 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     trading::OrderBookData pending_orderbook_;
     bool has_pending_orderbook_ = false;
 
+    // Latest book + receipt time — freshness evidence for honest paper-mode
+    // market fills (CryptoPaperFill.h): stale/missing book → REJECT, no fill.
+    trading::OrderBookData last_book_;
+    qint64 last_book_ms_ = 0;
+
     struct ImpulsePoint {
         qint64 ts_ms = 0;
         double price = 0.0;
