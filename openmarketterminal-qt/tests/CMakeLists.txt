@@ -753,3 +753,8 @@ add_executable(tst_crypto_live_overlay tst_crypto_live_overlay.cpp)
 target_include_directories(tst_crypto_live_overlay PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_live_overlay PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_live_overlay COMMAND tst_crypto_live_overlay)
+
+add_executable(tst_crypto_paper_fill tst_crypto_paper_fill.cpp)
+target_include_directories(tst_crypto_paper_fill PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_paper_fill PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_paper_fill COMMAND tst_crypto_paper_fill)
