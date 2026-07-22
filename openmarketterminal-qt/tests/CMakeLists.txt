@@ -758,3 +758,8 @@ add_executable(tst_crypto_paper_fill tst_crypto_paper_fill.cpp)
 target_include_directories(tst_crypto_paper_fill PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_paper_fill PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_paper_fill COMMAND tst_crypto_paper_fill)
+
+add_executable(tst_crypto_alert_engine tst_crypto_alert_engine.cpp)
+target_include_directories(tst_crypto_alert_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_alert_engine PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_alert_engine COMMAND tst_crypto_alert_engine)
