@@ -315,8 +315,7 @@ void AgentConfigScreen::wire_cross_panel_signals() {
     if (tools_panel_ && agents_panel_)
         connect(
             tools_panel_, &ToolsViewPanel::tool_assigned, agents_panel_,
-            [this](const QString& /*id*/, const QStringList& tools) { agents_panel_->apply_tools_selection(tools); },
-            Qt::UniqueConnection);
+            [this](const QString& /*id*/, const QStringList& tools) { agents_panel_->apply_tools_selection(tools); });
 
     // TOOLS → CREATE: selection propagation
     if (tools_panel_ && create_panel_)

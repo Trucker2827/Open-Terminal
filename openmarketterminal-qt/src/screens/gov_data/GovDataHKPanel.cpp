@@ -116,8 +116,7 @@ void GovDataHKPanel::build_ui() {
             QString url = item->data(Qt::UserRole).toString();
             if (!url.isEmpty())
                 QDesktopServices::openUrl(QUrl(url));
-        },
-        Qt::UniqueConnection);
+        });
 
     content_stack_->addWidget(resources_table_); // index 2
 
