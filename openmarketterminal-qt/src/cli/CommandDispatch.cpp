@@ -17105,9 +17105,14 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
     return 0;
 }
 
-// NOTE: MSVC C1001-ICEs generating code for this function inside a unity batch
-// (recurred across v0.3.25/v0.3.26). The real fix is compiling CommandDispatch.cpp
-// as its own TU — see SKIP_UNITY_BUILD_INCLUSION for this file in CMakeLists.txt.
+// NOTE: MSVC C1001-ICEs generating code for this function (recurred across
+// v0.3.25/v0.3.26 in unity batches, and again at v0.3.29 even as its own TU
+// with /GL- — a runner MSVC update reintroduced it in native codegen). With
+// /GL- in effect the pragma below is no longer a no-op, so optimisation is
+// disabled for exactly this function; nil cost on a CLI alert reporter.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma optimize("", off)
+#endif
 static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList args) {
     QString min_edge_raw;
     QString min_conf_raw;
@@ -17208,6 +17213,10 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
     }
     return 0;
 }
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma optimize("", on)
+#endif
 
 static int edge_journal_replay_command(const GlobalOpts& opts, QStringList args) {
     QString symbol;
