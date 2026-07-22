@@ -90,7 +90,12 @@ def refresh_live_safety(args):
     state=record_safety_observation(state,now_ms=now,
         open_exposure=active_exposure,
         submission_unknown_count=int(live.get("submission_unknown_count",0)),
-        reconciled=0 <= reconcile_age <= 30_000)
+        # The serve daemon completes an account reconcile every >=30s
+        # (kAccountReconcileIntervalMs) + job runtime, so the sampled age
+        # routinely exceeds 30s mid-cycle and flapped reconciliation_stale.
+        # 90s tolerates two missed cycles while still failing closed if the
+        # reconciler actually dies (age then grows without bound).
+        reconciled=0 <= reconcile_age <= 90_000)
     exact=[]
     today=time.strftime("%Y-%m-%d",time.gmtime(now/1000))
     for row in positions.get("closed_bets",[]):
