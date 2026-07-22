@@ -242,6 +242,18 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
 
     void flush_ws_updates();
 
+    // ── Authenticated account WS (fast path; REST stays source of truth) ──
+    // Any account event stamps last_account_ws_event_ms_; the REST poll
+    // cadence relaxes only while this is fresh (CryptoAccountCadence.h).
+    qint64 last_account_ws_event_ms_ = 0;
+    QHash<QString, QJsonObject> live_orders_by_id_;  // open orders, keyed by exchange order id
+    bool account_refresh_scheduled_ = false;         // coalesces confirming REST fetches
+    void on_account_order_event(const QJsonObject& order);
+    void on_account_balance_event(const QJsonObject& balances);
+    // Shared AVAIL-currency fallback chain (pair quote → USD → USDC → USDT →
+    // USDE → largest holding) used by both the REST and WS balance paths.
+    void apply_live_balance_display(const QJsonObject& balances);
+
     // Ladder ORDERS/avg-entry overlay — Paper-mode only (typed PtOrder/
     // PtPosition are cleanly available here; Live-mode orders/positions
     // arrive as raw per-exchange JSON already parsed by CryptoBottomPanel,

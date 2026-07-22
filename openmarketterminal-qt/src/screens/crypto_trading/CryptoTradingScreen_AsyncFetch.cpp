@@ -92,8 +92,20 @@ void CryptoTradingScreen::async_fetch_live_orders() {
             [self, result]() {
                 if (!self)
                     return;
-                if (result.contains("orders"))
-                    self->bottom_panel_->set_live_orders(result.value("orders").toArray());
+                if (result.contains("orders")) {
+                    const QJsonArray orders = result.value("orders").toArray();
+                    self->bottom_panel_->set_live_orders(orders);
+                    // REST is the source of truth — rebuild the account-WS
+                    // fast-path accumulator so a missed WS event can't leave
+                    // a phantom open order behind.
+                    self->live_orders_by_id_.clear();
+                    for (const auto& v : orders) {
+                        const QJsonObject o = v.toObject();
+                        const QString id = o.value("id").toString();
+                        if (!id.isEmpty())
+                            self->live_orders_by_id_.insert(id, o);
+                    }
+                }
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);
@@ -124,33 +136,35 @@ void CryptoTradingScreen::async_fetch_live_balance() {
                 if (!self)
                     return;
                 self->set_live_auth_indicator(authed);
-                const QJsonObject balances = result.value("balances").toObject();
-                // Pick the cash/quote currency to display. The displayed pair's
-                // quote (e.g. USDT) may be remapped on the exchange — Coinbase
-                // settles in USD — so try the pair quote first, then common
-                // fiat/stablecoins, then fall back to the single largest holding.
-                const QString pair_quote = self->selected_symbol_.section('/', 1, 1).toUpper();
-                QString ccy;
-                for (const QString& cand : {pair_quote, QStringLiteral("USD"), QStringLiteral("USDC"),
-                                            QStringLiteral("USDT"), QStringLiteral("USDE")}) {
-                    if (!cand.isEmpty() && balances.contains(cand)) {
-                        ccy = cand;
-                        break;
-                    }
-                }
-                if (ccy.isEmpty() && !balances.isEmpty())
-                    ccy = balances.keys().first();
-
-                const QJsonObject b = balances.value(ccy).toObject();
-                const double total = b.value("total").toDouble();
-                const double free = b.value("free").toDouble();
-                const double used = b.value("used").toDouble();
-                self->bottom_panel_->set_live_balance(free, total, used);
-                self->order_entry_->set_balance(free, ccy);
+                self->apply_live_balance_display(result.value("balances").toObject());
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);
     });
+}
+
+void CryptoTradingScreen::apply_live_balance_display(const QJsonObject& balances) {
+    // Pick the cash/quote currency to display. Try the displayed pair's quote
+    // first, then common fiat/stablecoins, then fall back to the single
+    // largest holding. Shared by the REST poll and the account-WS fast path.
+    const QString pair_quote = selected_symbol_.section('/', 1, 1).toUpper();
+    QString ccy;
+    for (const QString& cand : {pair_quote, QStringLiteral("USD"), QStringLiteral("USDC"),
+                                QStringLiteral("USDT"), QStringLiteral("USDE")}) {
+        if (!cand.isEmpty() && balances.contains(cand)) {
+            ccy = cand;
+            break;
+        }
+    }
+    if (ccy.isEmpty() && !balances.isEmpty())
+        ccy = balances.keys().first();
+
+    const QJsonObject b = balances.value(ccy).toObject();
+    const double total = b.value("total").toDouble();
+    const double free = b.value("free").toDouble();
+    const double used = b.value("used").toDouble();
+    bottom_panel_->set_live_balance(free, total, used);
+    order_entry_->set_balance(free, ccy);
 }
 
 // ============================================================================

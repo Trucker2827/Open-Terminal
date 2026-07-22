@@ -155,6 +155,8 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     hub_unsubscribe_topics();
 
     // Clear accumulated buffers — stale data from the old exchange is useless.
+    live_orders_by_id_.clear();
+    last_account_ws_event_ms_ = 0;  // cadence snaps to baseline on the new venue
     pending_tickers_.clear();
     pending_orderbook_ = {};
     has_pending_orderbook_ = false;
@@ -322,6 +324,7 @@ void CryptoTradingScreen::on_mode_toggled() {
         ladder_->set_avg_entry(0);
     } else {
         live_data_timer_->stop();
+        live_orders_by_id_.clear();  // account-WS fast path is live-mode only
         // Leaving live mode → the auth indicator is no longer meaningful; reset
         // the API button to neutral. The DAEMON label is liveness-driven
         // (update_daemon_chrome) and is deliberately NOT touched here.

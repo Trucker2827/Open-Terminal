@@ -743,3 +743,8 @@ add_executable(tst_exchange_account_stream tst_exchange_account_stream.cpp)
 target_include_directories(tst_exchange_account_stream PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_exchange_account_stream PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_exchange_account_stream COMMAND tst_exchange_account_stream)
+
+add_executable(tst_crypto_account_cadence tst_crypto_account_cadence.cpp)
+target_include_directories(tst_crypto_account_cadence PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_account_cadence PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_account_cadence COMMAND tst_crypto_account_cadence)

@@ -11,6 +11,7 @@
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
 #include "core/symbol/SymbolContext.h"
+#include "screens/crypto_trading/CryptoAccountCadence.h"
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
 #include "screens/crypto_trading/CryptoChromeState.h"
@@ -558,9 +559,53 @@ void CryptoTradingScreen::refresh_candles() {
     async_fetch_candles(selected_symbol_, chart_->current_timeframe());
 }
 
+void CryptoTradingScreen::on_account_order_event(const QJsonObject& order) {
+    last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+    if (trading_mode_ != TradingMode::Live)
+        return;
+    const QString id = order.value(QStringLiteral("id")).toString();
+    if (id.isEmpty())
+        return;
+    const QString status = order.value(QStringLiteral("status")).toString();
+    const bool terminal = status == QLatin1String("closed") || status == QLatin1String("canceled") ||
+                          status == QLatin1String("filled") || status == QLatin1String("rejected") ||
+                          status == QLatin1String("expired");
+    if (terminal)
+        live_orders_by_id_.remove(id);
+    else
+        live_orders_by_id_.insert(id, order);
+
+    // Immediate blotter update from the accumulated open set…
+    QJsonArray orders;
+    for (const auto& o : live_orders_by_id_)
+        orders.append(o);
+    bottom_panel_->set_live_orders(orders);
+
+    // …then ONE confirming REST cycle (coalesced) — REST stays authoritative.
+    if (!account_refresh_scheduled_) {
+        account_refresh_scheduled_ = true;
+        QTimer::singleShot(300, this, [this]() {
+            account_refresh_scheduled_ = false;
+            refresh_live_data();
+        });
+    }
+}
+
+void CryptoTradingScreen::on_account_balance_event(const QJsonObject& balances) {
+    last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+    if (trading_mode_ != TradingMode::Live)
+        return;
+    apply_live_balance_display(balances);
+}
+
 void CryptoTradingScreen::refresh_live_data() {
     if (trading_mode_ != TradingMode::Live)
         return;
+    // Relax the poll only while the account WS is demonstrably fresh; any
+    // staleness snaps back to the 5s baseline within one tick.
+    if (live_data_timer_)
+        live_data_timer_->setInterval(openmarketterminal::crypto::account_poll_interval_ms(
+            QDateTime::currentMSecsSinceEpoch(), last_account_ws_event_ms_));
     // Skip this tick entirely if any of the 4 live fetches from the previous
     // tick are still in-flight — prevents burst-stacking against the exchange
     // API and against the daemon's request pipeline.

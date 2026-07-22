@@ -586,6 +586,35 @@ void CryptoTradingScreen::hub_subscribe_topics() {
             self->has_pending_orderbook_ = true;
         });
 
+    // Account stream (authenticated, fast path) — order events for the active
+    // pair and account balance. Other pairs' events land via the confirming
+    // REST cycle; REST remains the source of truth throughout.
+    hub.subscribe<QJsonObject>(
+        ws_subscription_owner_,
+        QStringLiteral("ws:") + ex + QStringLiteral(":account_order:") + selected_symbol_,
+        [self](const QJsonObject& order) {
+            if (self)
+                self->on_account_order_event(order);
+        });
+    hub.subscribe<QJsonObject>(
+        ws_subscription_owner_,
+        QStringLiteral("ws:") + ex + QStringLiteral(":account_balance"),
+        [self](const QJsonObject& balances) {
+            if (self)
+                self->on_account_balance_event(balances);
+        });
+    hub.subscribe<QJsonObject>(
+        ws_subscription_owner_,
+        QStringLiteral("ws:") + ex + QStringLiteral(":account_mytrade:") + selected_symbol_,
+        [self](const QJsonObject& trade) {
+            if (!self)
+                return;
+            Q_UNUSED(trade);
+            // Stamps WS liveness; the ladder avg-entry consumer arrives with
+            // the live-overlay task.
+            self->last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+        });
+
     // Trades — selected symbol only.
     hub.subscribe<openmarketterminal::trading::TradeData>(
         ws_subscription_owner_,
