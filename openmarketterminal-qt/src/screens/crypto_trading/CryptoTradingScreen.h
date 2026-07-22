@@ -160,7 +160,8 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     // ── State ──
     bool bitcoin_focus_ = false;
     QString exchange_id_ = "coinbase";
-    QString selected_symbol_ = "BTC/USDT";
+    // Set in the ctor from CryptoSymbolUniverse (exchange-native quote).
+    QString selected_symbol_;
     crypto::TradingMode trading_mode_ = crypto::TradingMode::Paper;
 
     // Paper trading
@@ -187,13 +188,14 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     // distinct from the public WS feed pill (ws_status_). -1 = unknown/neutral.
     void set_live_auth_indicator(bool ok);
     int last_auth_state_ = -1;
+    // DAEMON label = ccxt subprocess liveness (dead/rest/live), edge-detected.
+    // Independent of the auth indicator above — see CryptoChromeState.h.
+    void update_daemon_chrome();
+    int last_daemon_chrome_ = -1;
 
-    QStringList watchlist_symbols_ = {
-        "BTC/USDT",  "ETH/USDT",  "SOL/USDT",  "BNB/USDT",  "XRP/USDT",   "DOGE/USDT", "ADA/USDT",
-        "AVAX/USDT", "TON/USDT",  "LINK/USDT", "DOT/USDT",  "MATIC/USDT", "UNI/USDT",  "ATOM/USDT",
-        "LTC/USDT",  "BCH/USDT",  "APT/USDT",  "ARB/USDT",  "OP/USDT",    "SUI/USDT",  "TRX/USDT",
-        "INJ/USDT",  "NEAR/USDT", "WIF/USDT",  "PEPE/USDT",
-    };
+    // Set in the ctor (and on exchange change) from CryptoSymbolUniverse —
+    // always quoted in the active exchange's native currency.
+    QStringList watchlist_symbols_;
 
     bool initialized_ = false;
 

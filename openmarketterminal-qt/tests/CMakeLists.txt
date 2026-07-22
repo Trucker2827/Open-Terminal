@@ -727,3 +727,8 @@ add_executable(tst_crypto_symbol_universe tst_crypto_symbol_universe.cpp)
 target_include_directories(tst_crypto_symbol_universe PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_symbol_universe PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_symbol_universe COMMAND tst_crypto_symbol_universe)
+
+add_executable(tst_crypto_chrome_state tst_crypto_chrome_state.cpp)
+target_include_directories(tst_crypto_chrome_state PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_chrome_state PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_chrome_state COMMAND tst_crypto_chrome_state)
