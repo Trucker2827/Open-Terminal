@@ -60,6 +60,14 @@ bool kalshi_accept_book_receipt(QJsonObject& snapshots,
 // the child planner bounded enough to finish before another quote snapshot ages
 // out; this is deliberately separate from the broader manual CLI planner.
 QStringList kalshi_event_planner_args();
+
+// Scalp/spot style — ONE engine, two parameter presets. Normalization and
+// style-dependent defaults are shared by `daemon scalp start` and the
+// `scalp explore` analyzer, and kept public for regression tests.
+// normalize: ""/aliases -> "scalp"/"spot"; unknown -> "" (caller errors).
+QString scalp_style_normalize(const QString& raw);
+double scalp_style_default_min_profit_bps(const QString& style);
+double scalp_style_default_capture_ratio(const QString& style);
 // Only independent exchange ticks are eligible to keep the Kalshi planner's
 // spot reference fresh. Persistence is rate-limited so the daemon gets a
 // current executable reference without turning the feature store into a raw

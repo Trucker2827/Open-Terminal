@@ -426,7 +426,7 @@ static int command_help(const QString& topic) {
             "  daemon audit\n"
             "  daemon jobs list|history|failures|stats|add|show|run|enable|disable|remove|repair|clear-failures\n"
             "  daemon monitors status|repair\n"
-            "  daemon scalp start|status|tape|decisions|venues|explore|stop [BTC-USD] [--cadence-ms N] [--paper]\n"
+            "  daemon scalp start|status|tape|decisions|venues|explore|stop [BTC-USD] [--style scalp|spot] [--cadence-ms N] [--paper]\n"
             "  daemon collectors status|repair|run\n"
             "  daemon notify --title T --message M [--provider P] [--job]\n"
             "  daemon ai <brief|risk|thesis|radar> <target> [--every-sec N] [--timeout-sec N]\n"
