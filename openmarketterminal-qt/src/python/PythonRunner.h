@@ -65,6 +65,11 @@ class PythonRunner : public QObject {
     /// sets the shared base env.
     QProcessEnvironment build_python_env() const;
 
+    // Which venv a script routes to ("venv-numpy1" / "venv-numpy2") — the
+    // same keyword rule run() applies, exposed for direct-QProcess callers
+    // (CLI quant commands) so they can't drift from the app's routing.
+    static QString venv_for_script(const QString& script);
+
     /// Check if python is available
     bool is_available() const;
 

@@ -44,6 +44,7 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommandsC.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands2.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalRareAlerts.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/QuantLabCommands.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp

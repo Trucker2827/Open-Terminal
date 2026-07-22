@@ -3349,6 +3349,26 @@ private slots:
             "('adv-ledger-t-open','adv-ledger-t-blind','adv-ledger-t-revealed',"
             "'adv-ledger-t-post','adv-ledger-t-expired','adv-ledger-t-abandoned')").is_ok());
     }
+
+    // `quant` CLI family: list is hermetic (static module table, no python
+    // spawn) and run must reject unknown modules before touching a process.
+    void quant_list_enumerates_all_modules() {
+        int rc = -1;
+        const QJsonArray modules = json_array_from_dispatch({"--json", "quant", "list"}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(modules.size(), 24);
+        QStringList ids;
+        for (const auto& value : modules)
+            ids << value.toObject().value(QStringLiteral("id")).toString();
+        QVERIFY(ids.contains(QStringLiteral("deep_agent")));
+        QVERIFY(ids.contains(QStringLiteral("model_library")));
+        QVERIFY(ids.contains(QStringLiteral("hft")));
+    }
+    void quant_run_rejects_unknown_module() {
+        int rc = -1;
+        capture_stdout([&]() { return dispatch({"quant", "run", "no_such_module", "check_status"}); }, &rc);
+        QCOMPARE(rc, 2);
+    }
 };
 QTEST_MAIN(TstCommandDispatch)
 #include "tst_command_dispatch.moc"

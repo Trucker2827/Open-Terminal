@@ -1,6 +1,7 @@
 #include "cli/CommandDispatch.h"
 #include "cli/AiRunCommand.h"
 #include "cli/ObserveCommand.h"
+#include "cli/QuantLabCommands.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
 #include "cli/ServeCommand.h"
@@ -167,6 +168,7 @@ static int usage(FILE* stream = stderr, int code = 2) {
         "  data lake status|kalshi|decisions|broker-events Local DuckDB research lake\n"
         "  files list|search|read|write           Manage local File Manager artifacts\n"
         "  notes list|create|show|update          Manage local research notes\n"
+        "  quant list|run <module> <cmd> ['{}']   AI Quant Lab modules (incl. deep_agent) from CLI\n"
         "  notebook list|open|create|run           Manage and run local notebooks\n"
         "  report state|add|save|load             Build and manage Report Builder docs\n"
         "  excel read|write|append|clear          Read/write local CSV/XLSX files\n"
@@ -27906,6 +27908,11 @@ int dispatch(QStringList args) {
     if (group == "observe") {
         // Pure-local read of the headless observer's journal (no transport).
         return observe_command(opts, args);
+    }
+    if (group == "quant" || group == "quantlab" || group == "quant-lab") {
+        // AI Quant Lab modules (incl. Deep Agent) — direct python spawn, no
+        // running app required.
+        return quant_lab_command(opts, args);
     }
     if (group == "serve") {
         if (opts.help) return command_help("serve");
