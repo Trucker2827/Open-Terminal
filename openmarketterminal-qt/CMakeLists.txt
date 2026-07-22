@@ -3357,6 +3357,7 @@ include(GNUInstallDirs)
 add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
+    src/cli/EdgeJournalRareAlerts.cpp
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp
     src/cli/ObserveCommand.cpp

@@ -78,6 +78,7 @@
 #include "storage/HistoricalDataStore.h"
 #include "storage/LocalDataLake.h"
 #include "storage/secure/SecureStorage.h"
+#include "cli/EdgeJournalShared.h"
 #include "storage/sqlite/Database.h"
 #include "core/config/ProfileManager.h"
 #include "trading/ExchangeService.h"
@@ -1402,8 +1403,8 @@ static int emit_screens(const GlobalOpts& opts, const QStringList& args) {
     return 0;
 }
 
-static bool take_bool_flag(QStringList& args, const QString& flag);
-static bool take_string_option(QStringList& args, const QString& flag, QString& out);
+bool take_bool_flag(QStringList& args, const QString& flag);
+bool take_string_option(QStringList& args, const QString& flag, QString& out);
 static QString elide_text(QString s, int max);
 
 struct CoverageEntry {
@@ -1631,7 +1632,7 @@ static bool require_gui_command(const GlobalOpts& opts) {
     return false;
 }
 
-static bool init_headless_for_cli(const GlobalOpts& opts, int& exit_code) {
+bool init_headless_for_cli(const GlobalOpts& opts, int& exit_code) {
     auto ir = headless_runtime().init(opts.profile);
     if (!ir.ok) {
         std::fprintf(stderr, "headless init failed: %s\n", qUtf8Printable(ir.error));
@@ -3587,7 +3588,7 @@ static int emit_news_clusters(const GlobalOpts& opts, const QJsonObject& body) {
     return 0;
 }
 
-static bool take_string_option(QStringList& args, const QString& flag, QString& out) {
+bool take_string_option(QStringList& args, const QString& flag, QString& out) {
     for (int i = 0; i < args.size(); ++i) {
         if (args.at(i) == flag) {
             bool ok = true;
@@ -3598,7 +3599,7 @@ static bool take_string_option(QStringList& args, const QString& flag, QString& 
     return true;
 }
 
-static bool take_bool_flag(QStringList& args, const QString& flag) {
+bool take_bool_flag(QStringList& args, const QString& flag) {
     const int i = args.indexOf(flag);
     if (i < 0)
         return false;
@@ -6437,7 +6438,7 @@ static int crypto_call(const GlobalOpts& opts, const QString& tool, const QJsonO
     return emit_trade_data(opts, body);
 }
 
-static bool require_yes(QStringList& args, const char* usage_line) {
+bool require_yes(QStringList& args, const char* usage_line) {
     if (take_bool_flag(args, QStringLiteral("--yes")))
         return true;
     std::fprintf(stderr, "%s\n", usage_line);
@@ -9493,7 +9494,7 @@ static int data_lake_emit(const GlobalOpts& opts, const QJsonObject& o) {
     return 0;
 }
 
-static const char* edge_journal_cols();
+const char* edge_journal_cols();
 static QJsonObject edge_journal_row_to_lake_json(QSqlQuery& q);
 
 static QString duckdb_path() {
@@ -12796,11 +12797,11 @@ static int emit_notify_triggers(const GlobalOpts& opts) {
     return 0;
 }
 
-static bool notify_wait_send(notifications::INotificationProvider* provider,
-                             const notifications::NotificationRequest& req,
-                             int timeout_ms,
-                             bool& ok,
-                             QString& error) {
+bool notify_wait_send(notifications::INotificationProvider* provider,
+                      const notifications::NotificationRequest& req,
+                      int timeout_ms,
+                      bool& ok,
+                      QString& error) {
     if (!provider) {
         ok = false;
         error = QStringLiteral("provider not found");
@@ -13357,7 +13358,7 @@ static int crypto_latency_command(const GlobalOpts& opts, QStringList args) {
     return crypto_latency_emit(opts, snapshot);
 }
 
-static QString edge_pct(double v) {
+QString edge_pct(double v) {
     return QString::number(v * 100.0, 'f', 2) + QStringLiteral("%");
 }
 
@@ -14678,7 +14679,7 @@ static QString edge_outcome_text(int outcome) {
     return QStringLiteral("pending");
 }
 
-static QString edge_time_text(qint64 ts_ms) {
+QString edge_time_text(qint64 ts_ms) {
     if (ts_ms <= 0)
         return QStringLiteral("-");
     return QDateTime::fromMSecsSinceEpoch(ts_ms, QTimeZone::UTC).toString(Qt::ISODate);
@@ -14756,7 +14757,7 @@ static QJsonObject edge_journal_row_to_lake_json(QSqlQuery& q) {
                        {"source", q.value(28).toString()}};
 }
 
-static const char* edge_journal_cols() {
+const char* edge_journal_cols() {
     return "id, created_at, updated_at, venue, symbol, horizon, market_id, question, direction,"
            " side, call, gate, market_probability, model_probability, raw_edge, edge_after_cost,"
            " gate_edge, spread_cost, fee_cost, liquidity_score, confidence, seconds_left,"
@@ -16332,25 +16333,9 @@ static QJsonObject edge_crypto_cost_json(const QJsonObject& features) {
     return features.value(QStringLiteral("cost")).toObject();
 }
 
-struct EdgeCryptoTrust {
-    QString symbol;
-    QString horizon;
-    int decisions = 0;
-    int resolved = 0;
-    int wins = 0;
-    int buy_resolved = 0;
-    int buy_wins = 0;
-    int no_buy_resolved = 0;
-    int no_buy_wins = 0;
-    double avg_edge = 0.0;
-    double avg_confidence = 0.0;
-    double trust = 0.0;
-    QString status;
-};
-
-static EdgeCryptoTrust edge_crypto_trust_for_symbol(const QString& symbol,
-                                                    const QString& horizon,
-                                                    int max_age_hours) {
+EdgeCryptoTrust edge_crypto_trust_for_symbol(const QString& symbol,
+                                             const QString& horizon,
+                                             int max_age_hours) {
     EdgeCryptoTrust out;
     out.symbol = symbol;
     out.horizon = horizon;
@@ -17105,116 +17090,8 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
     return 0;
 }
 
-// NOTE: MSVC C1001-ICEs on this function (v0.3.25/26, again v0.3.29 —
-// deterministic, front-end crash: msc1.cpp line 1589, ~8s into the TU, so
-// unity-exclusion//GL-/#pragma optimize were all irrelevant). The trigger is
-// the braced QJsonObject initializer-list constructs this function used;
-// they are deliberately written as incremental insert() calls below. Do NOT
-// "clean up" back to brace-init without a green Windows release build.
-static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList args) {
-    QString min_edge_raw;
-    QString min_conf_raw;
-    QString min_trust_raw;
-    QString max_age_raw;
-    QString provider_raw;
-    const bool notify = take_bool_flag(args, QStringLiteral("--notify"));
-    if (!take_string_option(args, QStringLiteral("--min-edge-bps"), min_edge_raw) ||
-        !take_string_option(args, QStringLiteral("--min-confidence"), min_conf_raw) ||
-        !take_string_option(args, QStringLiteral("--min-trust"), min_trust_raw) ||
-        !take_string_option(args, QStringLiteral("--max-age-min"), max_age_raw) ||
-        !take_string_option(args, QStringLiteral("--provider"), provider_raw))
-        return 2;
-    if (notify && !require_yes(args, "usage: edge journal rare-alerts --notify --provider P --yes"))
-        return 2;
-    if (!args.isEmpty()) {
-        std::fprintf(stderr, "usage: edge journal rare-alerts [--min-edge-bps N] [--min-confidence P] [--min-trust N] [--max-age-min N] [--notify --provider P --yes]\n");
-        return 2;
-    }
-    double min_edge_bps = min_edge_raw.isEmpty() ? 50.0 : min_edge_raw.toDouble();
-    double min_conf = min_conf_raw.isEmpty() ? 0.45 : min_conf_raw.toDouble();
-    if (min_conf > 1.0)
-        min_conf /= 100.0;
-    double min_trust = min_trust_raw.isEmpty() ? 0.0 : min_trust_raw.toDouble();
-    int max_age_min = max_age_raw.isEmpty() ? 15 : max_age_raw.toInt();
-    if (min_edge_bps < 0.0 || min_conf < 0.0 || min_conf > 1.0 || min_trust < 0.0 || max_age_min < 1 || max_age_min > 1440) {
-        std::fprintf(stderr, "invalid rare-alert threshold\n");
-        return 2;
-    }
-    auto r = Database::instance().execute(
-        QStringLiteral("SELECT %1 FROM edge_decision_journal"
-                       " WHERE source='edge crypto-recommend' AND call='BUY CANDIDATE'"
-                       " AND outcome=-1 AND created_at>=? ORDER BY created_at DESC LIMIT 50").arg(edge_journal_cols()),
-        {QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(max_age_min) * 60000LL});
-    if (r.is_err()) {
-        std::fprintf(stderr, "%s\n", r.error().c_str());
-        return 5;
-    }
-    QJsonArray alerts;
-    auto& q = r.value();
-    while (q.next()) {
-        const double edge_bps = q.value(15).toDouble() * 10000.0;
-        const double conf = q.value(20).toDouble();
-        const auto trust = edge_crypto_trust_for_symbol(q.value(4).toString(), q.value(5).toString(), 24 * 7);
-        if (edge_bps < min_edge_bps || conf < min_conf || trust.trust < min_trust)
-            continue;
-        QJsonObject alert;
-        alert.insert(QStringLiteral("id"), q.value(0).toString());
-        alert.insert(QStringLiteral("symbol"), q.value(4).toString());
-        alert.insert(QStringLiteral("horizon"), q.value(5).toString());
-        alert.insert(QStringLiteral("edge_bps"), edge_bps);
-        alert.insert(QStringLiteral("confidence"), conf);
-        alert.insert(QStringLiteral("trust"), trust.trust);
-        alert.insert(QStringLiteral("time"), edge_time_text(q.value(1).toLongLong()));
-        alert.insert(QStringLiteral("reason"), q.value(25).toString());
-        alerts.append(alert);
-    }
-    if (notify && !alerts.isEmpty()) {
-        int code = 0;
-        if (!init_headless_for_cli(opts, code))
-            return code;
-        auto& svc = notifications::NotificationService::instance();
-        auto* provider = provider_raw.trimmed().isEmpty() ? nullptr : svc.provider(provider_raw.trimmed().toLower());
-        notifications::NotificationRequest req;
-        req.title = QStringLiteral("OpenTerminal rare crypto edge");
-        req.message = QStringLiteral("%1 fresh BUY candidate(s) passed edge/trust gates").arg(alerts.size());
-        req.level = notifications::NotifLevel::Alert;
-        req.trigger = notifications::NotifTrigger::Manual;
-        bool ok = false;
-        QString error;
-        if (provider)
-            notify_wait_send(provider, req, 15000, ok, error);
-        else
-            error = QStringLiteral("provider required");
-        if (!ok)
-            std::fprintf(stderr, "notification failed: %s\n", qUtf8Printable(error));
-    }
-    if (opts.json) {
-        QJsonObject out;
-        out.insert(QStringLiteral("alerts"), alerts);
-        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
-        return 0;
-    }
-    if (alerts.isEmpty()) {
-        std::printf("rare alerts  none\n");
-        return 0;
-    }
-    std::printf("%-20s %-9s %-7s %-9s %-8s %-7s %s\n", "TIME", "SYMBOL", "HZN", "EDGE", "CONF", "TRUST", "ID");
-    for (const auto& v : alerts) {
-        const auto a = v.toObject();
-        // printf args hoisted into named locals (clearer than interleaving
-        // qUtf8Printable temporaries and doubles directly in the varargs call).
-        const QByteArray c_time = a.value("time").toString().left(19).toUtf8();
-        const QByteArray c_sym = a.value("symbol").toString().toUtf8();
-        const QByteArray c_hzn = a.value("horizon").toString().toUtf8();
-        const QByteArray c_conf = edge_pct(a.value("confidence").toDouble()).toUtf8();
-        const QByteArray c_id = a.value("id").toString().toUtf8();
-        const double edge_bps = a.value("edge_bps").toDouble();
-        const double trust = a.value("trust").toDouble();
-        std::printf("%-20s %-9s %-7s %8.1fbps %-8s %7.1f %s\n", c_time.constData(), c_sym.constData(),
-                    c_hzn.constData(), edge_bps, c_conf.constData(), trust, c_id.constData());
-    }
-    return 0;
-}
+// edge_journal_rare_alerts_command lives in EdgeJournalRareAlerts.cpp —
+// see EdgeJournalShared.h for why it must NOT move back into this TU.
 
 static int edge_journal_replay_command(const GlobalOpts& opts, QStringList args) {
     QString symbol;
