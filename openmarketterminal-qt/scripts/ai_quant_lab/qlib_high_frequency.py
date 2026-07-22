@@ -3,12 +3,12 @@ AI Quant Lab — High Frequency Trading Module
 Real-world microstructure analysis engine backed by live CCXT market data.
 
 Commands (all accept JSON as second argv):
-  fetch_orderbook   {"exchange":"binance","symbol":"BTC/USDT","depth":20}
-  fetch_trades      {"exchange":"binance","symbol":"BTC/USDT","limit":100}
-  analyze           {"exchange":"binance","symbol":"BTC/USDT","depth":20,"limit":100,"inventory":0,"spread_multiplier":1.5}
-  market_making     {"exchange":"binance","symbol":"BTC/USDT","inventory":0,"spread_multiplier":1.5}
-  toxic_flow        {"exchange":"binance","symbol":"BTC/USDT","limit":200}
-  slippage          {"exchange":"binance","symbol":"BTC/USDT","side":"buy","quantity":1.0}
+  fetch_orderbook   {"exchange":"coinbase","symbol":"BTC/USD","depth":20}
+  fetch_trades      {"exchange":"coinbase","symbol":"BTC/USD","limit":100}
+  analyze           {"exchange":"coinbase","symbol":"BTC/USD","depth":20,"limit":100,"inventory":0,"spread_multiplier":1.5}
+  market_making     {"exchange":"coinbase","symbol":"BTC/USD","inventory":0,"spread_multiplier":1.5}
+  toxic_flow        {"exchange":"coinbase","symbol":"BTC/USD","limit":200}
+  slippage          {"exchange":"coinbase","symbol":"BTC/USD","side":"buy","quantity":1.0}
 
 All commands output a single JSON object to stdout.
 """
@@ -234,7 +234,10 @@ def _estimate_slippage(bids: list, asks: list, side: str, quantity: float) -> di
     fills     = []
     total_cost = 0.0
 
-    for price, size in levels:
+    # Some venues (kraken) append a timestamp as a third element per level —
+    # index instead of unpacking.
+    for level in levels:
+        price, size = level[0], level[1]
         if remaining <= 0:
             break
         fill_qty   = min(remaining, size)
@@ -270,8 +273,8 @@ def cmd_fetch_orderbook(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     depth       = int(p.get("depth", 20))
     t0 = time.monotonic()
     try:
@@ -299,8 +302,8 @@ def cmd_fetch_trades(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     limit       = int(p.get("limit", 100))
     try:
         ex     = make_exchange(exchange_id)
@@ -320,8 +323,8 @@ def cmd_analyze(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id      = p.get("exchange", "binance")
-    symbol           = p.get("symbol", "BTC/USDT")
+    exchange_id      = p.get("exchange", "coinbase")
+    symbol           = p.get("symbol", "BTC/USD")
     depth            = int(p.get("depth", 20))
     limit            = int(p.get("limit", 100))
     inventory        = float(p.get("inventory", 0.0))
@@ -365,8 +368,8 @@ def cmd_market_making(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     try:
         ex  = make_exchange(exchange_id)
         ob  = ex.fetch_order_book(symbol, limit=20)
@@ -389,8 +392,8 @@ def cmd_toxic_flow(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     limit       = int(p.get("limit", 200))
     try:
         ex  = make_exchange(exchange_id)
@@ -412,8 +415,8 @@ def cmd_slippage(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     side        = p.get("side", "buy")
     quantity    = float(p.get("quantity", 1.0))
     try:

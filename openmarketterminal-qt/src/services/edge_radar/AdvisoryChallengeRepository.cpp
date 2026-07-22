@@ -334,6 +334,12 @@ Result<QString> AdvisoryChallengeRepository::commit_blind(const CommitParams& cp
         features.insert(QStringLiteral("settlement_band"), blind_context.value(QStringLiteral("settlement_band")));
     if (blind_context.contains(QStringLiteral("distance_bps")))
         features.insert(QStringLiteral("distance_bps"), blind_context.value(QStringLiteral("distance_bps")));
+    // Ambient vol at open enables difficulty-normalized cohorts at scoring
+    // time (the v4 report could not vol-normalize |distance_bps| because no
+    // row carried a vol estimate).
+    if (blind_context.contains(QStringLiteral("realized_volatility")))
+        features.insert(QStringLiteral("realized_volatility"),
+                        blind_context.value(QStringLiteral("realized_volatility")));
 
     auto bt = db.begin_transaction();
     if (bt.is_err())

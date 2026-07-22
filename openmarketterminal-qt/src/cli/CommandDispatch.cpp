@@ -20041,8 +20041,9 @@ static int kalshi_auto_snapshot_command(const GlobalOpts& opts, QStringList args
 //                                defense in depth against a future field
 //                                addition there leaking a probability/price
 //                                conclusion through unchanged.
-// realized_vol has no source in this snapshot and is intentionally omitted
-// rather than fabricated.
+// realized_volatility is sourced from contract.horizon (the serve daemon
+// attaches it when its estimator is ready) and omitted otherwise — never
+// fabricated. The key name matches the python blind allowlist.
 //
 // Defense in depth for wholesale-object allowlist keys (currently just
 // "spot_microstructure"): unlike the individually-extracted fields above,
@@ -20109,6 +20110,8 @@ static QJsonObject kalshi_advise_flatten_snapshot(const QJsonObject& snapshot,
         flat.insert(QStringLiteral("spot"), spot);
     if (horizon.contains(QStringLiteral("realized_move_30s_bps")))
         flat.insert(QStringLiteral("realized_move_bps"), horizon.value(QStringLiteral("realized_move_30s_bps")));
+    if (horizon.contains(QStringLiteral("realized_volatility")))
+        flat.insert(QStringLiteral("realized_volatility"), horizon.value(QStringLiteral("realized_volatility")));
     if (snapshot.contains(QStringLiteral("spot_microstructure")))
         flat.insert(QStringLiteral("spot_microstructure"),
                     kalshi_advise_strip_forbidden_keys_deep(

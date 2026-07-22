@@ -5,7 +5,9 @@
 
 #include "storage/sqlite/Database.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
+#include "services/edge_radar/KalshiAutoEngine.h"
 #include <QSqlQuery>
+#include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
 #include <QThread>
 #include <QTimeZone>
@@ -58,6 +60,10 @@ static QJsonObject edge_scalp_gate_json(const EdgeScalpGate& gate) {
                        {"safety_bps", gate.safety_bps},
                        {"capture_ratio", gate.capture_ratio},
                        {"min_net_bps", gate.min_net_bps},
+                       {"realized_vol_per_min_bps", gate.realized_vol_per_min_bps},
+                       {"realized_vol_samples", gate.realized_vol_samples},
+                       {"observed_move_sigma", gate.observed_move_sigma},
+                       {"min_move_sigma", gate.min_move_sigma},
                        {"trust", QJsonObject{{"score", gate.trust.trust},
                                              {"status", gate.trust.status},
                                              {"resolved", gate.trust.resolved},
@@ -136,6 +142,7 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
     QString min_trust_raw;
     QString interval_raw;
     QString iterations_raw;
+    QString min_sigma_raw;
     const bool maker = take_bool_flag(args, QStringLiteral("--maker")) ||
                        take_bool_flag(args, QStringLiteral("--post-only"));
     const bool allow_warmup = take_bool_flag(args, QStringLiteral("--allow-warmup"));
@@ -156,7 +163,8 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
         !take_string_option(args, QStringLiteral("--min-samples"), min_samples_raw) ||
         !take_string_option(args, QStringLiteral("--min-trust"), min_trust_raw) ||
         !take_string_option(args, QStringLiteral("--interval-sec"), interval_raw) ||
-        !take_string_option(args, QStringLiteral("--iterations"), iterations_raw))
+        !take_string_option(args, QStringLiteral("--iterations"), iterations_raw) ||
+        !take_string_option(args, QStringLiteral("--min-move-sigma"), min_sigma_raw))
         return 2;
 
     int duration_ms = 9000;
@@ -183,10 +191,15 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
     double min_net_bps = min_net_raw.isEmpty() ? 5.0 : min_net_raw.toDouble();
     int interval_sec = interval_raw.isEmpty() ? 5 : interval_raw.toInt();
     int iterations = iterations_raw.isEmpty() ? (watch ? 0 : 1) : iterations_raw.toInt();
+    // Reject moves indistinguishable from ambient noise: the observed move
+    // must be at least this many sigmas of 30-min realized vol scaled to the
+    // observation window. 0 disables; fails open when vol is unavailable.
+    double min_move_sigma = min_sigma_raw.isEmpty() ? 1.0 : min_sigma_raw.toDouble();
     if (capture_ratio <= 0.0 || capture_ratio > 1.0 || max_spread_bps < 0.0 || max_age_ms < 100.0 ||
         min_live_sources < 1 || min_live_sources > 10 || min_samples < 0 || min_samples > 10000 ||
         min_trust < 0.0 || min_trust > 100.0 || safety_bps < 0.0 || min_net_bps < 0.0 ||
-        interval_sec < 1 || interval_sec > 3600 || iterations < 0 || iterations > 100000) {
+        interval_sec < 1 || interval_sec > 3600 || iterations < 0 || iterations > 100000 ||
+        min_move_sigma < 0.0 || min_move_sigma > 10.0) {
         std::fprintf(stderr, "invalid scalp-gate threshold\n");
         return 2;
     }
@@ -232,6 +245,32 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
 
         const auto primary = edge_scalp_primary_window(gate.snapshot, horizon_sec);
         gate.observed_move_bps = primary.available ? primary.move_pct * 100.0 : 0.0;
+
+        // Ambient realized volatility from the stored 1-min tick series
+        // (same estimator the Kalshi auto engine uses). Unavailable vol
+        // leaves realized_vol_per_min_bps at 0 and the noise blocker off.
+        gate.min_move_sigma = min_move_sigma;
+        {
+            const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+            QVector<services::edge_radar::KalshiTimedPrice> prices;
+            const auto series = EdgePredictionModelRepository::instance().list_spot_price_series_since(
+                gate.symbol, now_ms - 8LL * 60 * 60 * 1000, 30'000);
+            if (series.is_ok()) {
+                prices.reserve(series.value().size());
+                for (const auto& tick : series.value())
+                    prices.append(services::edge_radar::KalshiTimedPrice{tick.exchange_ts, tick.price});
+            }
+            const auto vol = services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(
+                prices, now_ms);
+            if (vol.ready) {
+                gate.realized_vol_per_min_bps = edge_annual_vol_to_per_min_bps(vol.annual_volatility);
+                gate.realized_vol_samples = vol.sample_count;
+            }
+        }
+        const int move_window_sec = primary.available && primary.seconds > 0
+                                        ? primary.seconds : horizon_sec;
+        gate.observed_move_sigma = edge_move_noise_sigma(
+            gate.observed_move_bps, gate.realized_vol_per_min_bps, move_window_sec);
         const double directional_move_bps = gate.decision.direction == QLatin1String("up")
                                                 ? std::max(0.0, gate.observed_move_bps)
                                                 : 0.0;
@@ -252,6 +291,9 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
             gate.blockers << QStringLiteral("spot scalp only supports long/up candidates");
         if (gate.net_after_cost_bps < min_net_bps)
             gate.blockers << QStringLiteral("estimated captured move does not clear round-trip cost");
+        if (min_move_sigma > 0.0 && gate.realized_vol_per_min_bps > 0.0 && primary.available &&
+            gate.observed_move_sigma < min_move_sigma)
+            gate.blockers << QStringLiteral("observed move is within the ambient noise floor");
         if (!allow_warmup && gate.trust.resolved < min_samples)
             gate.blockers << QStringLiteral("not enough resolved local samples");
         if (!allow_warmup && gate.trust.trust < min_trust)

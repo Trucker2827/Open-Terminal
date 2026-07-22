@@ -19,6 +19,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <cmath>
 
 namespace openmarketterminal::cli {
 
@@ -153,7 +154,34 @@ struct EdgeScalpGate {
     double capture_ratio = 0.0;
     double min_net_bps = 0.0;
     int horizon_sec = 0;
+    // Ambient realized volatility (0 = unavailable; the noise blocker then
+    // fails OPEN so symbols without stored tick series still gate normally).
+    double realized_vol_per_min_bps = 0.0;
+    int realized_vol_samples = 0;
+    double observed_move_sigma = 0.0;
+    double min_move_sigma = 0.0;
 };
+
+// KalshiAutoEngine::estimate_realized_volatility annualizes over 24/7 minutes
+// (365*24*60) with the time-of-day multiplier already applied. Convert back to
+// a one-minute standard deviation expressed in basis points.
+inline double edge_annual_vol_to_per_min_bps(double annual_volatility) {
+    if (annual_volatility <= 0.0)
+        return 0.0;
+    constexpr double kMinutesPerYear = 365.0 * 24.0 * 60.0;
+    return annual_volatility / std::sqrt(kMinutesPerYear) * 10000.0;
+}
+
+// Express an observed move as a multiple of the ambient volatility scaled to
+// the observation window (Brownian sqrt-time scaling). Returns 0 when the
+// volatility estimate is unavailable so callers can fail open.
+inline double edge_move_noise_sigma(double observed_move_bps, double vol_per_min_bps,
+                                    int window_sec) {
+    if (vol_per_min_bps <= 0.0 || window_sec <= 0)
+        return 0.0;
+    const double window_vol_bps = vol_per_min_bps * std::sqrt(window_sec / 60.0);
+    return window_vol_bps > 0.0 ? std::abs(observed_move_bps) / window_vol_bps : 0.0;
+}
 
 QString edge_crypto_regime_from_features(const QJsonObject& features);
 QJsonObject edge_crypto_cost_json(const QJsonObject& features);

@@ -2977,6 +2977,10 @@ private slots:
             {"distance_from_strike", 1000.0}, {"required_move_bps", 153.8},
             {"realized_move_30s_bps", 12.0}, {"seconds_left", QStringLiteral("900")},
             {"settlement_band", "final_15m"}, {"settlement_source", "CF Benchmarks BRTI"},
+            {"realized_volatility", QJsonObject{{"per_min_bps", 6.3},
+                                                {"annualized_pct", 45.6},
+                                                {"sample_count", 240},
+                                                {"source", "local_1m_ewma"}}},
             {"eligible_context", true}};
         const QJsonObject contract{
             {"question", "BTC above $64,000?"}, {"event_ticker", "KXBTC-RT-EVT"},
@@ -3037,6 +3041,14 @@ private slots:
                  QStringLiteral("final_15m"));
         QVERIFY(journal_features.contains(QStringLiteral("distance_bps")));
         QVERIFY(qAbs(journal_features.value(QStringLiteral("distance_bps")).toDouble() - 153.846154) < 1e-3);
+        // The vol slot was reserved-but-dropped for the whole v4 epoch (three
+        // mismatched key names); prove the horizon's realized_volatility now
+        // survives flatten -> build_blind_packet into the immutable features.
+        const QJsonObject journal_vol =
+            journal_features.value(QStringLiteral("realized_volatility")).toObject();
+        QVERIFY2(!journal_vol.isEmpty(), "realized_volatility dropped by an allowlist");
+        QVERIFY(qAbs(journal_vol.value(QStringLiteral("per_min_bps")).toDouble() - 6.3) < 1e-9);
+        QCOMPARE(journal_vol.value(QStringLiteral("sample_count")).toInt(), 240);
 
         const QJsonObject revealed = json_object_from_dispatch(
             {"--json", "--headless", "kalshi", "auto", "advise", "reveal",

@@ -29,6 +29,7 @@ private slots:
         QJsonObject snap{
             {"strike_floor", 60000}, {"seconds_left", 900}, {"spot", 61000},
             {"spot_microstructure", QJsonObject{{"aggressor_pressure", 0.2}}},
+            {"realized_volatility", QJsonObject{{"per_min_bps", 6.3}}},
             {"market_implied_probability", 0.55}, {"fair_yes", 0.54},
             {"divergence", QJsonObject{{"label","DIVERGENCE"}}},
             {"daemon_probability", 0.55}, {"yes_ask", 0.56}};
@@ -37,6 +38,7 @@ private slots:
             QVERIFY2(!blind.contains(forbidden), qUtf8Printable("leaked: " + forbidden));
         QVERIFY(blind.contains("spot_microstructure"));   // allowlisted
         QVERIFY(blind.contains("strike_floor"));
+        QVERIFY(blind.contains("realized_volatility"));   // v5 vol slot, python-side name
     }
 };
 QTEST_MAIN(TstAdvisoryProtocol)
