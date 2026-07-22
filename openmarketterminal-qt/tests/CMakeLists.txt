@@ -763,3 +763,8 @@ add_executable(tst_crypto_alert_engine tst_crypto_alert_engine.cpp)
 target_include_directories(tst_crypto_alert_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_alert_engine PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_alert_engine COMMAND tst_crypto_alert_engine)
+
+add_executable(tst_crypto_fill_notifier tst_crypto_fill_notifier.cpp)
+target_include_directories(tst_crypto_fill_notifier PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_fill_notifier PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_fill_notifier COMMAND tst_crypto_fill_notifier)

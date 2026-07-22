@@ -5,6 +5,7 @@
 #include "core/symbol/SymbolGroup.h"
 #include "screens/common/IStatefulScreen.h"
 #include "screens/crypto_trading/CryptoAlertEngine.h"
+#include "screens/crypto_trading/CryptoFillNotifier.h"
 #include "screens/crypto_trading/CryptoLiveOverlay.h"
 #include "screens/crypto_trading/CryptoTypes.h"
 #include "trading/TradingTypes.h"
@@ -265,6 +266,10 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     // ── Local price/spread alerts (CryptoAlertEngine.h; persisted under the
     //    "crypto.alerts" setting; delivered via NotificationService only) ──
     openmarketterminal::crypto::CryptoAlertEngine alert_engine_;
+    // Fill/cancel notifications, deduped per (order id, terminal status)
+    // across the WS fast path and the confirming REST refresh. Live only.
+    openmarketterminal::crypto::CryptoFillNotifier fill_notifier_;
+    void notify_order_terminal(const QJsonObject& order);
     void load_alerts();
     void save_alerts();
     void on_alert_requested(const QString& symbol, double last_price);

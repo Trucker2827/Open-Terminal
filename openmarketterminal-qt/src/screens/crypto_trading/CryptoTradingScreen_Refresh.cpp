@@ -632,10 +632,25 @@ void CryptoTradingScreen::evaluate_alerts() {
         save_alerts(); // persist the disarmed state — no refire on restart
 }
 
+void CryptoTradingScreen::notify_order_terminal(const QJsonObject& order) {
+    if (trading_mode_ != TradingMode::Live)
+        return; // paper fills stay silent by default
+    const QString msg = fill_notifier_.on_order_event(order);
+    if (msg.isEmpty())
+        return;
+    notifications::NotificationRequest req;
+    req.title = tr("Coinbase order");
+    req.message = msg;
+    req.level = notifications::NotifLevel::Info;
+    req.trigger = notifications::NotifTrigger::OrderFill;
+    notifications::NotificationService::instance().send(req);
+}
+
 void CryptoTradingScreen::on_account_order_event(const QJsonObject& order) {
     last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
     if (trading_mode_ != TradingMode::Live)
         return;
+    notify_order_terminal(order);
     const QString id = order.value(QStringLiteral("id")).toString();
     if (id.isEmpty())
         return;
