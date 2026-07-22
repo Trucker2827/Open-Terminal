@@ -9,6 +9,7 @@
 #include "mcp/tools/SettingsGate.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
+#include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
@@ -1159,6 +1160,39 @@ class KalshiLiveEventEngine final : public QObject {
         if (!flow_refresh_.isActive()) flow_refresh_.start();
     }
 
+    // Ambient realized volatility of the contract's underlying, from the
+    // repository's stored 1-min tick series via the same estimator the Kalshi
+    // auto engine uses. Returns an empty object when not ready (omitted
+    // rather than fabricated). Cached for 30s per symbol — the snapshot
+    // cadence is 25-75ms and the estimate moves on minute granularity.
+    QJsonObject realized_vol_json(const QString& underlying_symbol, qint64 now_ms) {
+        auto& cached = realized_vol_cache_[underlying_symbol];
+        if (cached.computed_at_ms > 0 && now_ms - cached.computed_at_ms < 30'000)
+            return cached.json;
+        cached.computed_at_ms = now_ms;
+        cached.json = QJsonObject{};
+        QVector<services::edge_radar::KalshiTimedPrice> prices;
+        const auto series = EdgePredictionModelRepository::instance().list_spot_price_series_since(
+            underlying_symbol, now_ms - 8LL * 60 * 60 * 1000, 30'000);
+        if (series.is_ok()) {
+            prices.reserve(series.value().size());
+            for (const auto& tick : series.value())
+                prices.append(services::edge_radar::KalshiTimedPrice{tick.exchange_ts, tick.price});
+        }
+        const auto vol = services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(
+            prices, now_ms);
+        if (vol.ready) {
+            constexpr double kMinutesPerYear = 365.0 * 24.0 * 60.0;
+            cached.json = QJsonObject{
+                {QStringLiteral("per_min_bps"),
+                 vol.annual_volatility / std::sqrt(kMinutesPerYear) * 10000.0},
+                {QStringLiteral("annualized_pct"), vol.annual_volatility * 100.0},
+                {QStringLiteral("sample_count"), vol.sample_count},
+                {QStringLiteral("source"), vol.source}};
+        }
+        return cached.json;
+    }
+
     void update_flow_snapshot(const QString& ticker, qint64 now_ms) {
         const auto yes_book = normalized_books_.value(ticker + QStringLiteral(":yes"));
         const auto no_book = normalized_books_.value(ticker + QStringLiteral(":no"));
@@ -1219,9 +1253,17 @@ class KalshiLiveEventEngine final : public QObject {
             ? std::max<qint64>(0, (close.toMSecsSinceEpoch() - now_ms) / 1000) : -1;
         const double floor_strike = market.extras.value(QStringLiteral("floor_strike")).toDouble();
         const double cap_strike = market.extras.value(QStringLiteral("cap_strike")).toDouble();
-        const QJsonObject horizon = kalshi_contract_horizon(
+        QJsonObject horizon = kalshi_contract_horizon(
             latest_independent_spot_, floor_strike, cap_strike, seconds_left,
             spot_change_bps, QStringLiteral("CF Benchmarks BRTI"));
+        // Close the gap flagged in kalshi_advise_flatten_snapshot: give the
+        // decision snapshot a real ambient-vol source so distance can be
+        // judged against noise. Key name matches the blind allowlists.
+        const QString underlying_symbol = ticker.contains(QStringLiteral("ETH"))
+            ? QStringLiteral("ETH-USD") : QStringLiteral("BTC-USD");
+        const QJsonObject realized_vol = realized_vol_json(underlying_symbol, now_ms);
+        if (!realized_vol.isEmpty())
+            horizon.insert(QStringLiteral("realized_volatility"), realized_vol);
         QJsonObject decision{{QStringLiteral("schema"), 1},
                              {QStringLiteral("ticker"), ticker},
                              {QStringLiteral("observed_at_ms"), QString::number(now_ms)},
@@ -1706,6 +1748,13 @@ class KalshiLiveEventEngine final : public QObject {
     QVector<KalshiFlowPriceSample> independent_spot_history_;
     QJsonObject flow_snapshots_;
     QJsonObject decision_snapshots_;
+    // Realized-vol estimates are repository-backed (thousands of ticks) —
+    // cache per underlying so the 25-75ms snapshot cadence stays cheap.
+    struct CachedVolEstimate {
+        qint64 computed_at_ms = 0;
+        QJsonObject json;
+    };
+    QHash<QString, CachedVolEstimate> realized_vol_cache_;
     QHash<QString, QString> signal_states_;
     QHash<QString, QString> signal_pending_states_;
     QHash<QString, int> signal_streaks_;

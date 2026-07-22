@@ -22,6 +22,12 @@ add_test(NAME test_prediction_kalshi_settlements
 add_test(NAME test_ws_stream_account
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_ws_stream_account.py -v)
+add_test(NAME test_spot_calibrator
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_spot_calibrator.py -v)
+add_test(NAME test_edge_ic_report
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_edge_ic_report.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
@@ -530,6 +536,11 @@ add_executable(tst_kalshi_auto_engine tst_kalshi_auto_engine.cpp)
 target_include_directories(tst_kalshi_auto_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_auto_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_auto_engine COMMAND tst_kalshi_auto_engine)
+
+add_executable(tst_edge_vol_gate tst_edge_vol_gate.cpp)
+target_include_directories(tst_edge_vol_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_vol_gate PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_edge_vol_gate COMMAND tst_edge_vol_gate)
 
 add_executable(tst_decision_orchestrator tst_decision_orchestrator.cpp)
 target_include_directories(tst_decision_orchestrator PRIVATE ${CMAKE_SOURCE_DIR}/src)

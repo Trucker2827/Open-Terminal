@@ -144,7 +144,10 @@ QJsonObject build_blind_packet(const QJsonObject& snapshot) {
     static const QStringList kAllowlist = {
         "strike_floor", "strike_cap", "distance_bps", "required_move_bps", "seconds_left",
         "settlement_band", "settlement_def", "horizon", "spot", "realized_move_bps",
-        "realized_vol", "spot_microstructure"
+        // "realized_volatility" is the name the python-side allowlist
+        // (blind_prompt.competition_context) admits; "realized_vol" is kept
+        // for pre-v5 rows that reserved the old spelling.
+        "realized_vol", "realized_volatility", "spot_microstructure"
     };
 
     QJsonObject blind;

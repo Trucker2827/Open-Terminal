@@ -83,7 +83,9 @@ QWidget* QuantModulePanel::build_hft_panel() {
     exch_lbl->setStyleSheet(QString("color:%1; font-size:9px; font-weight:700; letter-spacing:0.5px;")
                                 .arg(ui::colors::TEXT_TERTIARY()));
     auto* hft_exchange = new QComboBox(top_bar);
-    hft_exchange->addItems({"binance", "kraken", "coinbase", "bybit", "okx", "hyperliquid"});
+    // binance removed: geo-restricted (HTTP 451) for this deployment; the
+    // terminal's native venues lead.
+    hft_exchange->addItems({"coinbase", "kraken", "gemini", "bybit", "okx", "hyperliquid"});
     hft_exchange->setStyleSheet(combo_ss());
     hft_exchange->setFixedWidth(110);
     combo_inputs_["hft_exchange"] = hft_exchange;
@@ -91,10 +93,10 @@ QWidget* QuantModulePanel::build_hft_panel() {
     auto* sym_lbl = new QLabel(tr("SYMBOL"), top_bar);
     sym_lbl->setStyleSheet(exch_lbl->styleSheet());
     auto* hft_symbol = new QLineEdit(top_bar);
-    hft_symbol->setText("BTC/USDT");
+    hft_symbol->setText("BTC/USD");
     hft_symbol->setFixedWidth(100);
     hft_symbol->setStyleSheet(input_ss());
-    hft_symbol->setToolTip(tr("e.g. BTC/USDT, ETH/USDT"));
+    hft_symbol->setToolTip(tr("e.g. BTC/USD, ETH/USD"));
     text_inputs_["hft_symbol"] = hft_symbol;
 
     auto* depth_lbl = new QLabel(tr("DEPTH"), top_bar);
