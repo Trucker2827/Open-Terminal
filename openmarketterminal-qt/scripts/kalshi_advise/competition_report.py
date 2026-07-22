@@ -13,12 +13,31 @@ CLAUDE_EPOCH = "kalshi-blind-claude-cli-v5-latency-neutral"
 CODEX_EPOCH = "kalshi-blind-codex-v4-zero-capability-latency-neutral"
 MIN_PAIRED = 200
 MIN_COVERAGE = 0.80
+SCORING_INFRASTRUCTURE = (
+    "advisor_core.py",
+    "advisor_loop.py",
+    "blind_prompt.py",
+    "claude_cli_forecaster.py",
+    "codex_forecaster.py",
+    "competition_report.py",
+    "../prediction_kalshi.py",
+)
 
 
-def scoring_infrastructure_hash():
-    """Hash the executable scoring implementation used by this epoch."""
-    with open(os.path.abspath(__file__), "rb") as handle:
-        return hashlib.sha256(handle.read()).hexdigest()
+def scoring_infrastructure_hash(base_dir=None):
+    """Hash every runtime Python component capable of changing the verdict."""
+    base = os.path.abspath(base_dir or os.path.dirname(__file__))
+    digest = hashlib.sha256()
+    for name in sorted(SCORING_INFRASTRUCTURE):
+        path = os.path.normpath(os.path.join(base, name))
+        digest.update(name.encode("utf-8") + b"\0")
+        try:
+            with open(path, "rb") as handle:
+                digest.update(hashlib.sha256(handle.read()).digest())
+        except OSError as exc:
+            # Do not let a partial bundle establish a seemingly valid epoch.
+            raise RuntimeError("SCORING_INFRASTRUCTURE_MISSING:" + name) from exc
+    return digest.hexdigest()
 
 
 def compute_result_state(paired, claude_coverage, codex_coverage, ci_low, ci_high,

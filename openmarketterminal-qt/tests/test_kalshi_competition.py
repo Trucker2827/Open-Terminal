@@ -1,8 +1,10 @@
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -10,7 +12,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPTS = os.path.join(ROOT, "scripts", "kalshi_advise")
 sys.path.insert(0, SCRIPTS)
 import blind_prompt
-from competition_report import compute_result_state, build_report, scoring_infrastructure_hash
+from competition_report import (SCORING_INFRASTRUCTURE, build_report, compute_result_state,
+                                scoring_infrastructure_hash)
 
 
 def load(name):
@@ -103,14 +106,34 @@ class CompetitionTest(unittest.TestCase):
         self.assertEqual(report["result_state"], "INSUFFICIENT_PAIRED_DATA")
 
     def test_scoring_infrastructure_drift_invalidates_epoch(self):
-        row = {"event":"shadow_opportunity", "scoring_infrastructure_hash":"superseded", "lanes":[
+        with tempfile.TemporaryDirectory() as root:
+            copied = os.path.join(root, "kalshi_advise")
+            os.makedirs(copied)
+            for name in SCORING_INFRASTRUCTURE:
+                source = os.path.normpath(os.path.join(SCRIPTS, name))
+                target = os.path.normpath(os.path.join(copied, name))
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copyfile(source, target)
+            before = scoring_infrastructure_hash(copied)
+            settlement = os.path.normpath(os.path.join(copied, "../prediction_kalshi.py"))
+            with open(settlement, "ab") as handle:
+                handle.write(b"\n# simulated mid-epoch settlement-netting change\n")
+            after = scoring_infrastructure_hash(copied)
+        self.assertNotEqual(before, after)
+        row = {"event":"shadow_opportunity", "scoring_infrastructure_hash":before, "lanes":[
             {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v5-latency-neutral"}},
             {"forecaster":{"provider":"openai-codex-cli", "epoch_id":"kalshi-blind-codex-v4-zero-capability-latency-neutral"}},
         ]}
-        report = build_report([row], {}, True)
+        with mock.patch("competition_report.scoring_infrastructure_hash", return_value=after):
+            report = build_report([row], {}, True)
         self.assertEqual(report["result_state"], "INVALID_EPOCH")
         self.assertIn("SCORING_INFRASTRUCTURE_DRIFT", report["invalid_reasons"])
-        self.assertEqual(report["scoring_infrastructure_hash"], scoring_infrastructure_hash())
+        self.assertEqual(report["scoring_infrastructure_hash"], after)
+
+    def test_scoring_manifest_missing_component_fails_closed(self):
+        with tempfile.TemporaryDirectory() as empty:
+            with self.assertRaisesRegex(RuntimeError, "SCORING_INFRASTRUCTURE_MISSING"):
+                scoring_infrastructure_hash(empty)
 
 
 if __name__ == "__main__":
