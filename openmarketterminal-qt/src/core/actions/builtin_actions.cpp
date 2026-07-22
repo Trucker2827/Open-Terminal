@@ -783,7 +783,6 @@ void register_builtins() {
     register_screen("data_mapping", "Data Mapping", {"mapping", "data mapping"});
     register_screen("file_manager", "Files", {"files", "file manager"});
     register_screen("notes", "Notes", {"notes"});
-    register_screen("akshare", "AkShare", {"akshare", "china data"});
     register_screen("alpha_arena", "Alpha Arena", {"arena", "alpha arena"});
     register_screen("ma_analytics", "M&A Analytics", {"ma", "m&a", "deals"});
     register_screen("alt_investments", "Alt Investments", {"alts", "alternative investments"});

@@ -81,7 +81,6 @@ class DocsScreen : public QWidget {
     // Data Sources
     QWidget* page_dbnomics();
     QWidget* page_economics();
-    QWidget* page_akshare();
     QWidget* page_gov_data();
 
     // Geopolitics & Alt

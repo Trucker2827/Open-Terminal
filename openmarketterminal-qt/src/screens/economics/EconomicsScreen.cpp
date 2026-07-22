@@ -7,7 +7,6 @@
 #include "core/logging/Logger.h"
 #include "core/session/ScreenStateManager.h"
 #include "screens/economics/panels/AdbPanel.h"
-#include "screens/economics/panels/AkShareChinaPanel.h"
 #include "screens/economics/panels/BcbPanel.h"
 #include "screens/economics/panels/BeaPanel.h"
 #include "screens/economics/panels/BisPanel.h"
@@ -69,7 +68,6 @@ static const struct {
     {"trading_economics", "Trading Econ", "#FF6F00"},
     {"econ_calendar", "Econ Calendar", "#E65100"},
     {"bcb", "BCB Brazil", "#1B5E20"},
-    {"akshare_cn", "AkShare China", "#C62828"},
     {"ons", "ONS UK", "#0277BD"},
     {"global_cb", "Central Banks", "#4A148C"},
     {"federal_reserve", "Federal Reserve", "#1A237E"},
@@ -117,8 +115,6 @@ static EconPanelBase* make_panel(const QString& id, QWidget* parent) {
         return new EconomicCalendarPanel(parent);
     if (id == "bcb")
         return new BcbPanel(parent);
-    if (id == "akshare_cn")
-        return new AkShareChinaPanel(parent);
     if (id == "ons")
         return new OnsPanel(parent);
     if (id == "global_cb")
