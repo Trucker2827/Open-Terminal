@@ -156,6 +156,7 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
 
     // Clear accumulated buffers — stale data from the old exchange is useless.
     live_orders_by_id_.clear();
+    live_avg_entry_.reset();
     last_account_ws_event_ms_ = 0;  // cadence snaps to baseline on the new venue
     pending_tickers_.clear();
     pending_orderbook_ = {};
@@ -281,6 +282,12 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     pending_candles_.clear();
     pending_trades_.clear();
     impulse_points_.clear();
+    // Per-symbol overlay state: the next my-trades REST fetch re-seeds it.
+    live_avg_entry_.reset();
+    if (trading_mode_ == TradingMode::Live && ladder_) {
+        ladder_->set_my_orders({});
+        ladder_->set_avg_entry(0);
+    }
     update_impulse_label();
     market_info_cache_ = {};
 
@@ -314,12 +321,9 @@ void CryptoTradingScreen::on_mode_toggled() {
         live_data_timer_->start(5000);
         refresh_live_data();
         async_fetch_trading_fees(); // populate the Fees tab once on entering live
-        // The ladder's ORDERS/avg-entry overlay is only fed from Paper-mode
-        // PtOrder/PtPosition snapshots (update_ladder_overlay) — Live-mode
-        // orders/positions arrive as raw per-exchange JSON that isn't wired
-        // into it (see task-5 report). Without this, the last Paper overlay
-        // would keep painting indefinitely over Live-mode depth, which reads
-        // as "your resting orders" when they're actually stale paper data.
+        // Clear the Paper overlay on mode entry; the Live overlay repopulates
+        // from the account stream + REST seed (refresh_live_ladder_overlay /
+        // CryptoLiveOverlay.h) within the first refresh cycle.
         ladder_->set_my_orders({});
         ladder_->set_avg_entry(0);
     } else {

@@ -183,6 +183,25 @@ void CryptoTradingScreen::async_fetch_my_trades() {
                 if (!self)
                     return;
                 self->bottom_panel_->update_my_trades(result);
+                // Re-seed the est-avg-entry accumulator from REST history so
+                // the ladder marker is right without waiting for new fills.
+                if (result.contains("trades")) {
+                    QVector<QJsonObject> rows;
+                    for (const auto& v : result.value("trades").toArray())
+                        rows.append(v.toObject());
+                    std::sort(rows.begin(), rows.end(), [](const QJsonObject& a, const QJsonObject& b) {
+                        return a.value("timestamp").toDouble() < b.value("timestamp").toDouble();
+                    });
+                    self->live_avg_entry_.reset();
+                    for (const QJsonObject& t : rows) {
+                        if (t.value("symbol").toString() == self->selected_symbol_ ||
+                            t.value("symbol").toString().isEmpty())
+                            self->live_avg_entry_.add_trade(t.value("side").toString(),
+                                                            t.value("price").toDouble(),
+                                                            t.value("amount").toDouble());
+                    }
+                    self->refresh_live_ladder_overlay();
+                }
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);

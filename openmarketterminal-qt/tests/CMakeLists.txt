@@ -748,3 +748,8 @@ add_executable(tst_crypto_account_cadence tst_crypto_account_cadence.cpp)
 target_include_directories(tst_crypto_account_cadence PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_account_cadence PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_account_cadence COMMAND tst_crypto_account_cadence)
+
+add_executable(tst_crypto_live_overlay tst_crypto_live_overlay.cpp)
+target_include_directories(tst_crypto_live_overlay PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_live_overlay PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_live_overlay COMMAND tst_crypto_live_overlay)

@@ -580,6 +580,7 @@ void CryptoTradingScreen::on_account_order_event(const QJsonObject& order) {
     for (const auto& o : live_orders_by_id_)
         orders.append(o);
     bottom_panel_->set_live_orders(orders);
+    refresh_live_ladder_overlay();
 
     // …then ONE confirming REST cycle (coalesced) — REST stays authoritative.
     if (!account_refresh_scheduled_) {
@@ -589,6 +590,17 @@ void CryptoTradingScreen::on_account_order_event(const QJsonObject& order) {
             refresh_live_data();
         });
     }
+}
+
+void CryptoTradingScreen::refresh_live_ladder_overlay() {
+    if (trading_mode_ != TradingMode::Live || !ladder_)
+        return;
+    QVector<QJsonObject> orders;
+    orders.reserve(live_orders_by_id_.size());
+    for (const auto& o : live_orders_by_id_)
+        orders.append(o);
+    ladder_->set_my_orders(openmarketterminal::crypto::live_orders_to_my_orders(orders, selected_symbol_));
+    ladder_->set_avg_entry(live_avg_entry_.avg_entry());
 }
 
 void CryptoTradingScreen::on_account_balance_event(const QJsonObject& balances) {

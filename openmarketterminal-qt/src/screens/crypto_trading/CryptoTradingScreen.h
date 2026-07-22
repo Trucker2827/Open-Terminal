@@ -4,6 +4,7 @@
 #include "core/symbol/IGroupLinked.h"
 #include "core/symbol/SymbolGroup.h"
 #include "screens/common/IStatefulScreen.h"
+#include "screens/crypto_trading/CryptoLiveOverlay.h"
 #include "screens/crypto_trading/CryptoTypes.h"
 #include "trading/TradingTypes.h"
 
@@ -250,6 +251,10 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     bool account_refresh_scheduled_ = false;         // coalesces confirming REST fetches
     void on_account_order_event(const QJsonObject& order);
     void on_account_balance_event(const QJsonObject& balances);
+    // Live-mode DOM overlay: own resting orders + est. avg entry (VWAP of
+    // my-trades for the active pair; see CryptoLiveOverlay.h caveats).
+    openmarketterminal::crypto::LiveAvgEntry live_avg_entry_;
+    void refresh_live_ladder_overlay();
     // Shared AVAIL-currency fallback chain (pair quote → USD → USDC → USDT →
     // USDE → largest holding) used by both the REST and WS balance paths.
     void apply_live_balance_display(const QJsonObject& balances);

@@ -609,10 +609,15 @@ void CryptoTradingScreen::hub_subscribe_topics() {
         [self](const QJsonObject& trade) {
             if (!self)
                 return;
-            Q_UNUSED(trade);
-            // Stamps WS liveness; the ladder avg-entry consumer arrives with
-            // the live-overlay task.
             self->last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+            if (self->trading_mode_ != crypto::TradingMode::Live)
+                return;
+            if (trade.value(QStringLiteral("symbol")).toString() != self->selected_symbol_)
+                return;
+            self->live_avg_entry_.add_trade(trade.value(QStringLiteral("side")).toString(),
+                                            trade.value(QStringLiteral("price")).toDouble(),
+                                            trade.value(QStringLiteral("amount")).toDouble());
+            self->refresh_live_ladder_overlay();
         });
 
     // Trades — selected symbol only.
