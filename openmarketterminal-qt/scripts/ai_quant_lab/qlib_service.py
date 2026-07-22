@@ -902,6 +902,17 @@ class QlibService:
                 "start_time": train_start,
                 "end_time": valid_end
             }
+            # Tree models handle NaN features natively, but every dense-input
+            # model (linear + the torch family) drops NaN rows — and the
+            # bundled US dataset has no vwap field, so one Alpha158 column is
+            # all-NaN and the training frame comes back EMPTY without a fill.
+            TREE_MODELS = {'lightgbm', 'xgboost', 'catboost'}
+            if model_type_lower not in TREE_MODELS:
+                handler_kwargs["infer_processors"] = [
+                    {"class": "Fillna", "kwargs": {"fields_group": "feature"}}]
+                handler_kwargs["learn_processors"] = [
+                    {"class": "DropnaLabel"},
+                    {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}}]
             # Alpha360 requires fit_start_time and fit_end_time
             if handler_type in ('Alpha360', 'Alpha360vwap'):
                 handler_kwargs["fit_start_time"] = train_start
@@ -940,7 +951,9 @@ class QlibService:
                 'lightgbm': {'num_leaves': 210, 'max_depth': 8, 'learning_rate': 0.05},
                 'xgboost': {'max_depth': 6, 'learning_rate': 0.1},
                 'catboost': {'depth': 6, 'learning_rate': 0.03, 'iterations': 1000},
-                'linear': {'alpha': 0.001},
+                # alpha is only accepted by ridge/lasso — the old {'alpha'}
+                # default aborted every OLS fit on arrival.
+                'linear': {'estimator': 'ridge', 'alpha': 0.001},
                 'lstm': {'d_feat': d_feat, 'hidden_size': 64, 'num_layers': 2, 'batch_size': 2048, 'n_epochs': 50},
                 'gru': {'d_feat': d_feat, 'hidden_size': 64, 'num_layers': 2, 'batch_size': 2048, 'n_epochs': 50},
                 'alstm': {'d_feat': d_feat, 'hidden_size': 64, 'num_layers': 2, 'batch_size': 2048, 'n_epochs': 50},
