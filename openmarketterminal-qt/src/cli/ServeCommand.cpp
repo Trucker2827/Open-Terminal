@@ -584,16 +584,6 @@ QString now_utc() {
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
 }
 
-QString kalshi_evidence_path(const QString& filename) {
-    const QString override_dir = qEnvironmentVariable("OPENTERMINAL_KALSHI_EVIDENCE_DIR").trimmed();
-    const QString dir = override_dir.isEmpty()
-        ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
-              QStringLiteral("/Open Terminal/Open Terminal")
-        : override_dir;
-    QDir().mkpath(dir);
-    return QDir(dir).filePath(filename);
-}
-
 // Persistent Kalshi event coordinator. The socket only decides *when* to run
 // the deterministic planner. All trading authority remains in execute-next ->
 // prepare_order -> submit_order, which rechecks the revocable live gates,
@@ -1259,8 +1249,9 @@ class KalshiLiveEventEngine final : public QObject {
         // Close the gap flagged in kalshi_advise_flatten_snapshot: give the
         // decision snapshot a real ambient-vol source so distance can be
         // judged against noise. Key name matches the blind allowlists.
+        // Tick storage keys bare base symbols (BTC/ETH, not BTC-USD).
         const QString underlying_symbol = ticker.contains(QStringLiteral("ETH"))
-            ? QStringLiteral("ETH-USD") : QStringLiteral("BTC-USD");
+            ? QStringLiteral("ETH") : QStringLiteral("BTC");
         const QJsonObject realized_vol = realized_vol_json(underlying_symbol, now_ms);
         if (!realized_vol.isEmpty())
             horizon.insert(QStringLiteral("realized_volatility"), realized_vol);

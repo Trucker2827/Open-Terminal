@@ -17,6 +17,8 @@
 #include <QSqlQuery>
 #include "services/notifications/NotificationService.h"
 
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <QStringList>
 #include <cmath>
@@ -132,6 +134,47 @@ QStringList edge_context_news_keywords(const QString& symbol, bool crypto);
 QJsonObject edge_context_news_summary(const QStringList& keywords, int days, int limit);
 int edge_journal_command(const GlobalOpts& opts, QStringList args);
 
+// A published Quant Lab model signal for one symbol (quant-signals.json,
+// written by scripts/ai_quant_lab/signal_publisher.py). Advisory evidence
+// only — `trusted` is EARNED by the publisher's trailing-IC rule and an
+// untrusted direction must be treated as noise by every consumer.
+struct EdgeModelSignal {
+    bool present = false;
+    bool fresh = false;
+    bool trusted = false;
+    double score = 0.0;
+    int rank = 0;
+    QString direction;
+    QString model_id;
+    qint64 age_ms = -1;
+    double rank_ic = 0.0;
+};
+
+inline EdgeModelSignal edge_parse_model_signal(const QJsonObject& doc,
+                                               const QString& symbol_base,
+                                               qint64 now_ms,
+                                               qint64 max_age_ms) {
+    EdgeModelSignal out;
+    const QJsonObject signal_map = doc.value(QStringLiteral("signals")).toObject();
+    const QJsonValue entry = signal_map.value(symbol_base.toUpper());
+    if (!entry.isObject())
+        return out;
+    const QJsonObject sig = entry.toObject();
+    out.present = true;
+    out.score = sig.value(QStringLiteral("score")).toDouble();
+    out.rank = sig.value(QStringLiteral("rank")).toInt();
+    out.direction = sig.value(QStringLiteral("direction")).toString();
+    out.model_id = doc.value(QStringLiteral("model_id")).toString();
+    const qint64 generated = static_cast<qint64>(
+        doc.value(QStringLiteral("generated_at_ms")).toDouble());
+    out.age_ms = generated > 0 ? now_ms - generated : -1;
+    out.fresh = out.age_ms >= 0 && out.age_ms <= max_age_ms;
+    out.trusted = doc.value(QStringLiteral("trusted")).toBool(false) && out.fresh;
+    out.rank_ic = doc.value(QStringLiteral("trailing_ic")).toObject()
+                      .value(QStringLiteral("rank_ic_mean")).toDouble();
+    return out;
+}
+
 struct EdgeScalpGate {
     QString symbol;
     QString venue;
@@ -160,6 +203,8 @@ struct EdgeScalpGate {
     int realized_vol_samples = 0;
     double observed_move_sigma = 0.0;
     double min_move_sigma = 0.0;
+    EdgeModelSignal model_signal;
+    double min_model_ic = 0.0;
 };
 
 // KalshiAutoEngine::estimate_realized_volatility annualizes over 24/7 minutes

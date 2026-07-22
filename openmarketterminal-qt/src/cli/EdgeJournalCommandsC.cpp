@@ -6,6 +6,8 @@
 #include "storage/sqlite/Database.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
+#include "cli/ServeCommand.h"
+#include <QFile>
 #include <QSqlQuery>
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/TradeAuditRepository.h"
@@ -60,6 +62,16 @@ static QJsonObject edge_scalp_gate_json(const EdgeScalpGate& gate) {
                        {"safety_bps", gate.safety_bps},
                        {"capture_ratio", gate.capture_ratio},
                        {"min_net_bps", gate.min_net_bps},
+                       {"model_signal", QJsonObject{{"present", gate.model_signal.present},
+                                                    {"fresh", gate.model_signal.fresh},
+                                                    {"trusted", gate.model_signal.trusted},
+                                                    {"score", gate.model_signal.score},
+                                                    {"rank", gate.model_signal.rank},
+                                                    {"direction", gate.model_signal.direction},
+                                                    {"model_id", gate.model_signal.model_id},
+                                                    {"age_ms", static_cast<double>(gate.model_signal.age_ms)},
+                                                    {"rank_ic", gate.model_signal.rank_ic},
+                                                    {"min_model_ic", gate.min_model_ic}}},
                        {"realized_vol_per_min_bps", gate.realized_vol_per_min_bps},
                        {"realized_vol_samples", gate.realized_vol_samples},
                        {"observed_move_sigma", gate.observed_move_sigma},
@@ -143,6 +155,7 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
     QString interval_raw;
     QString iterations_raw;
     QString min_sigma_raw;
+    QString min_model_ic_raw;
     const bool maker = take_bool_flag(args, QStringLiteral("--maker")) ||
                        take_bool_flag(args, QStringLiteral("--post-only"));
     const bool allow_warmup = take_bool_flag(args, QStringLiteral("--allow-warmup"));
@@ -164,7 +177,8 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
         !take_string_option(args, QStringLiteral("--min-trust"), min_trust_raw) ||
         !take_string_option(args, QStringLiteral("--interval-sec"), interval_raw) ||
         !take_string_option(args, QStringLiteral("--iterations"), iterations_raw) ||
-        !take_string_option(args, QStringLiteral("--min-move-sigma"), min_sigma_raw))
+        !take_string_option(args, QStringLiteral("--min-move-sigma"), min_sigma_raw) ||
+        !take_string_option(args, QStringLiteral("--min-model-ic"), min_model_ic_raw))
         return 2;
 
     int duration_ms = 9000;
@@ -195,11 +209,17 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
     // must be at least this many sigmas of 30-min realized vol scaled to the
     // observation window. 0 disables; fails open when vol is unavailable.
     double min_move_sigma = min_sigma_raw.isEmpty() ? 1.0 : min_sigma_raw.toDouble();
+    // Model-signal contradiction blocker. 0 (default) = evidence only, never
+    // blocks. > 0: block an up-gate when a FRESH, TRUSTED published model
+    // signal with trailing rank-IC >= the threshold points down. An untrusted
+    // model can never block — trust is earned by measured IC, not asserted.
+    double min_model_ic = min_model_ic_raw.isEmpty() ? 0.0 : min_model_ic_raw.toDouble();
     if (capture_ratio <= 0.0 || capture_ratio > 1.0 || max_spread_bps < 0.0 || max_age_ms < 100.0 ||
         min_live_sources < 1 || min_live_sources > 10 || min_samples < 0 || min_samples > 10000 ||
         min_trust < 0.0 || min_trust > 100.0 || safety_bps < 0.0 || min_net_bps < 0.0 ||
         interval_sec < 1 || interval_sec > 3600 || iterations < 0 || iterations > 100000 ||
-        min_move_sigma < 0.0 || min_move_sigma > 10.0) {
+        min_move_sigma < 0.0 || min_move_sigma > 10.0 ||
+        min_model_ic < 0.0 || min_model_ic > 1.0) {
         std::fprintf(stderr, "invalid scalp-gate threshold\n");
         return 2;
     }
@@ -253,8 +273,9 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
         {
             const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
             QVector<services::edge_radar::KalshiTimedPrice> prices;
+            // The tick store keys bare base symbols (BTC, not BTC-USD).
             const auto series = EdgePredictionModelRepository::instance().list_spot_price_series_since(
-                gate.symbol, now_ms - 8LL * 60 * 60 * 1000, 30'000);
+                edge_crypto_raw_tick_symbol(gate.symbol), now_ms - 8LL * 60 * 60 * 1000, 30'000);
             if (series.is_ok()) {
                 prices.reserve(series.value().size());
                 for (const auto& tick : series.value())
@@ -271,6 +292,20 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
                                         ? primary.seconds : horizon_sec;
         gate.observed_move_sigma = edge_move_noise_sigma(
             gate.observed_move_bps, gate.realized_vol_per_min_bps, move_window_sec);
+
+        // Published Quant Lab model signal (advisory evidence; see
+        // signal_publisher.py). Missing/stale file leaves present=false.
+        gate.min_model_ic = min_model_ic;
+        {
+            QFile signal_file(kalshi_evidence_path(QStringLiteral("quant-signals.json")));
+            if (signal_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QJsonObject doc =
+                    QJsonDocument::fromJson(signal_file.readAll()).object();
+                gate.model_signal = edge_parse_model_signal(
+                    doc, edge_context_symbol_base(gate.symbol),
+                    QDateTime::currentMSecsSinceEpoch(), 15LL * 60 * 1000);
+            }
+        }
         const double directional_move_bps = gate.decision.direction == QLatin1String("up")
                                                 ? std::max(0.0, gate.observed_move_bps)
                                                 : 0.0;
@@ -294,6 +329,10 @@ int edge_scalp_gate_command(const GlobalOpts& opts, QStringList args) {
         if (min_move_sigma > 0.0 && gate.realized_vol_per_min_bps > 0.0 && primary.available &&
             gate.observed_move_sigma < min_move_sigma)
             gate.blockers << QStringLiteral("observed move is within the ambient noise floor");
+        if (min_model_ic > 0.0 && gate.model_signal.trusted &&
+            gate.model_signal.rank_ic >= min_model_ic &&
+            gate.model_signal.direction == QLatin1String("down"))
+            gate.blockers << QStringLiteral("trusted model signal points down");
         if (!allow_warmup && gate.trust.resolved < min_samples)
             gate.blockers << QStringLiteral("not enough resolved local samples");
         if (!allow_warmup && gate.trust.trust < min_trust)

@@ -23,7 +23,7 @@ import time
 DEFAULT_DB = os.path.expanduser(
     "~/Library/Application Support/org.openterminal.OpenTerminal/data/openmarketterminal.db")
 DEFAULT_EVIDENCE_DIR = os.path.expanduser(
-    "~/Library/Application Support/org.openterminal.OpenTerminal/kalshi-evidence")
+    "~/Library/Application Support/Open Terminal/Open Terminal")
 
 
 def _db_path():
