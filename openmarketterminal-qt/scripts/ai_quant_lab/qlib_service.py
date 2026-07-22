@@ -1363,6 +1363,82 @@ class QlibService:
                 "error": f"Failed to get feature importance: {str(e)}"
             }
 
+    def screen(self,
+               model_id: str,
+               date: Optional[str] = None,
+               top: int = 20,
+               bottom: int = 5) -> Dict[str, Any]:
+        """
+        Rank the model's universe by its latest cross-sectional scores.
+
+        Candidate lists, not signals: pair with get_factor_analysis — if the
+        model's IC is ~0 over a recent window, this ranking is noise and the
+        report says which check to run.
+        """
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
+        if not self.initialized:
+            return {"success": False, "error": "Qlib not initialized"}
+        try:
+            import pandas as pd
+            cal = list(D.calendar(freq="day"))
+            if not cal:
+                return {"success": False, "error": "No trading calendar available"}
+            end_ts = pd.Timestamp(date) if date else pd.Timestamp(cal[-1])
+            eligible = [c for c in cal if pd.Timestamp(c) <= end_ts]
+            if not eligible:
+                return {"success": False, "error": f"No trading days on or before {date}"}
+            end = pd.Timestamp(eligible[-1])
+            # Alpha handlers need rolling-feature warmup before the scored day.
+            start = pd.Timestamp(eligible[max(0, len(eligible) - 120)])
+
+            handler_type = model_info["handler"]
+            handler_kwargs = {
+                "instruments": model_info["instruments"],
+                "start_time": str(start.date()),
+                "end_time": str(end.date())
+            }
+            if handler_type in ('Alpha360', 'Alpha360vwap'):
+                handler_kwargs["fit_start_time"] = str(start.date())
+                handler_kwargs["fit_end_time"] = str(end.date())
+            dataset = init_instance_by_config({
+                "class": "DatasetH",
+                "module_path": "qlib.data.dataset",
+                "kwargs": {
+                    "handler": {
+                        "class": handler_type,
+                        "module_path": "qlib.contrib.data.handler",
+                        "kwargs": handler_kwargs
+                    },
+                    "segments": {"test": (str(start.date()), str(end.date()))}
+                }
+            })
+            pred = model_info["model"].predict(dataset)
+            if pred is None or len(pred) == 0:
+                return {"success": False, "error": "Model produced no scores"}
+            series = pd.Series(pred).sort_index()
+            last_day = series.index.get_level_values("datetime").max()
+            cross_section = series.xs(last_day, level="datetime").sort_values(ascending=False)
+
+            def rows(section):
+                return [{"symbol": str(sym).upper(), "score": float(score)}
+                        for sym, score in section.items()]
+
+            return {
+                "success": True,
+                "model_id": model_id,
+                "as_of": str(pd.Timestamp(last_day).date()),
+                "universe_size": int(len(cross_section)),
+                "top": rows(cross_section.head(max(1, top))),
+                "bottom": rows(cross_section.tail(max(0, bottom)).iloc[::-1]),
+                "caveat": ("Candidate list only — verify predictive power first: "
+                           "get_factor_analysis(model_id, 'ic') over a recent window. "
+                           "IC near 0 means these ranks are noise.")
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Screen failed: {str(e)}"}
+
     def save_model(self, model_id: str, path: str) -> Dict[str, Any]:
         """Save a trained model to disk"""
         model_info = self._load_model(model_id)
@@ -1646,6 +1722,15 @@ def main():
                 params.get("analysis_type", "ic"),
                 params.get("start_date"),
                 params.get("end_date")
+            )
+
+        elif command == "screen":
+            params = json.loads(sys.argv[2])
+            result = service.screen(
+                params.get("model_id"),
+                params.get("date"),
+                params.get("top", 20),
+                params.get("bottom", 5)
             )
 
         elif command == "get_feature_importance":
