@@ -10,7 +10,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPTS = os.path.join(ROOT, "scripts", "kalshi_advise")
 sys.path.insert(0, SCRIPTS)
 import blind_prompt
-from competition_report import compute_result_state, build_report
+from competition_report import compute_result_state, build_report, scoring_infrastructure_hash
 
 
 def load(name):
@@ -101,6 +101,16 @@ class CompetitionTest(unittest.TestCase):
         report = build_report([old], {}, True)
         self.assertEqual(report["opportunities"], 0)
         self.assertEqual(report["result_state"], "INSUFFICIENT_PAIRED_DATA")
+
+    def test_scoring_infrastructure_drift_invalidates_epoch(self):
+        row = {"event":"shadow_opportunity", "scoring_infrastructure_hash":"superseded", "lanes":[
+            {"forecaster":{"provider":"anthropic-claude-cli", "epoch_id":"kalshi-blind-claude-cli-v5-latency-neutral"}},
+            {"forecaster":{"provider":"openai-codex-cli", "epoch_id":"kalshi-blind-codex-v4-zero-capability-latency-neutral"}},
+        ]}
+        report = build_report([row], {}, True)
+        self.assertEqual(report["result_state"], "INVALID_EPOCH")
+        self.assertIn("SCORING_INFRASTRUCTURE_DRIFT", report["invalid_reasons"])
+        self.assertEqual(report["scoring_infrastructure_hash"], scoring_infrastructure_hash())
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from advisor_core import (GatePolicy, ImmutableJournal, ShadowExecutionAdapter,
     comparative_proposals, default_safety_state, evaluate_safety, promotion_transition,
     qualification, record_safety_observation, validate_forecast, write_state)
 from blind_prompt import competition_context, prompt_hash
+from competition_report import scoring_infrastructure_hash
 
 
 def paths(profile):
@@ -167,7 +168,8 @@ def run_once(args, journal):
     ticker=pick_auto_ticker(args.evidence,args.auto_min_secs_left,args.auto_max_age_s)
     base={"event":"shadow_opportunity","opportunity_id":str(uuid.uuid4()),"opened_at_ms":now,
           "ticker":ticker,"forecasters":identities,"loop_version":"kalshi-advisor-loop-v2-duel",
-          "authority":"advisory_only","execution_mode":"shadow","execution_eligible":False}
+          "authority":"advisory_only","execution_mode":"shadow","execution_eligible":False,
+          "scoring_infrastructure_hash":scoring_infrastructure_hash()}
     if not ticker:
         return journal.append({**base,"status":"ABSTAINED","reason_code":"NO_FRESH_CONTRACT"})
     pair_id=str(uuid.uuid4())

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Mechanical, epoch-scoped Claude-vs-Codex shadow competition report."""
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -12,6 +13,12 @@ CLAUDE_EPOCH = "kalshi-blind-claude-cli-v5-latency-neutral"
 CODEX_EPOCH = "kalshi-blind-codex-v4-zero-capability-latency-neutral"
 MIN_PAIRED = 200
 MIN_COVERAGE = 0.80
+
+
+def scoring_infrastructure_hash():
+    """Hash the executable scoring implementation used by this epoch."""
+    with open(os.path.abspath(__file__), "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
 
 
 def compute_result_state(paired, claude_coverage, codex_coverage, ci_low, ci_high,
@@ -78,7 +85,13 @@ def build_report(rows, outcomes=None, firewall_safe=True):
     paired_rows = []
     forecast_rows = []
     invalid_reasons = []
+    current_scoring_hash = scoring_infrastructure_hash()
     for row in opportunities:
+        recorded_scoring_hash = row.get("scoring_infrastructure_hash", "")
+        if not recorded_scoring_hash:
+            invalid_reasons.append("SCORING_HASH_MISSING")
+        elif recorded_scoring_hash != current_scoring_hash:
+            invalid_reasons.append("SCORING_INFRASTRUCTURE_DRIFT")
         lanes = row.get("lanes", [])
         if len(lanes) != 2:
             invalid_reasons.append("PAIRING_CORRUPTION")
@@ -134,6 +147,7 @@ def build_report(rows, outcomes=None, firewall_safe=True):
     state = compute_result_state(len(paired_rows), coverage["claude"], coverage["codex"], low, high, invalid)
     return {"schema_version": "kalshi-competition-report-v1", "generated_at_ms": int(time.time()*1000),
         "result_state": state, "shadow_only": True, "execution_eligible": False,
+        "scoring_infrastructure_hash": current_scoring_hash,
         "epoch_pair": {"claude": CLAUDE_EPOCH, "codex": CODEX_EPOCH},
         "thresholds": {"minimum_jointly_resolved": MIN_PAIRED, "minimum_coverage_each": MIN_COVERAGE},
         "opportunities": total, "jointly_resolved": len(paired_rows), "coverage": coverage,

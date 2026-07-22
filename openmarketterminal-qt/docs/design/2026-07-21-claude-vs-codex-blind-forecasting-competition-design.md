@@ -92,6 +92,9 @@ Jointly-resolved pairs alone can reward a model that only predicts easy cases. T
 ### 5.3 Epoch discipline
 New frozen epoch `kalshi-blind-claude-cli-v5-latency-neutral`, paired only with `kalshi-blind-codex-v4-zero-capability-latency-neutral` and **never pooled** with earlier or Ollama epochs. Same blind packet (price-free allowlist + defense-in-depth `FORBIDDEN_KEYS`), same TTL/commit-blind timing guard, same abstention semantics, same scoring path (`advise score --forecaster-id`), same `kMinResolvedSample`/CI.
 
+### 5.4 Scoring-infrastructure freeze
+At every opportunity the loop journals the SHA-256 of the executable competition scoring implementation. The report publishes the current hash and compares it with every active-epoch row. A missing or changed hash forces `INVALID_EPOCH`; scoring changes therefore require a new epoch and explicit review by both contestants before collection resumes. The Arena displays the abbreviated scoring hash beside the firewall and prompt/context integrity state.
+
 ## 6. Result states (mechanical — no discretionary judgment after seeing results) (Codex amendment #6)
 
 The competition report resolves to exactly one:
@@ -99,7 +102,7 @@ The competition report resolves to exactly one:
 - `CODEX_WINS` — symmetric.
 - `STATISTICAL_TIE` — thresholds met but CI crosses zero.
 - `INSUFFICIENT_PAIRED_DATA` — <200 paired or <80% coverage for either.
-- `INVALID_EPOCH` — any firewall breach, lockdown drift, model fallback, prompt_hash divergence, or pairing corruption during the epoch.
+- `INVALID_EPOCH` — any firewall breach, lockdown drift, model fallback, prompt_hash divergence, pairing corruption, or scoring-infrastructure drift during the epoch.
 
 ## 7. Data flow
 
