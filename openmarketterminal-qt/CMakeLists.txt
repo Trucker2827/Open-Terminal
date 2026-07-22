@@ -2484,6 +2484,8 @@ set_source_files_properties(
 set_source_files_properties(
     src/cli/CommandDispatch.cpp
     src/cli/EdgeJournalCommands.cpp
+    src/cli/EdgeJournalCommandsB.cpp
+    src/cli/EdgeJournalCommandsC.cpp
     src/cli/EdgeJournalCommands2.cpp
     src/cli/EdgeJournalRareAlerts.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
@@ -3363,6 +3365,8 @@ add_executable(openterminalcli
     src/cli/CommandDispatch.cpp
     src/cli/EdgeJournalRareAlerts.cpp
     src/cli/EdgeJournalCommands.cpp
+    src/cli/EdgeJournalCommandsB.cpp
+    src/cli/EdgeJournalCommandsC.cpp
     src/cli/EdgeJournalCommands2.cpp
     src/services/crypto/CoinbaseEndpoints.cpp
     src/cli/automation/AutomationState.cpp

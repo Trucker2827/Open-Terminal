@@ -131,6 +131,33 @@ QStringList edge_context_news_keywords(const QString& symbol, bool crypto);
 QJsonObject edge_context_news_summary(const QStringList& keywords, int days, int limit);
 int edge_journal_command(const GlobalOpts& opts, QStringList args);
 
+struct EdgeScalpGate {
+    QString symbol;
+    QString venue;
+    QString horizon;
+    QString verdict;
+    QString action;
+    QString journal_id;
+    QString rationale;
+    QStringList blockers;
+    CryptoRecommendationDecision decision;
+    services::edge_radar::CryptoMicrostructureSnapshot snapshot;
+    EdgeCryptoTrust trust;
+    double expected_capture_bps = 0.0;
+    double observed_move_bps = 0.0;
+    double round_trip_cost_bps = 0.0;
+    double net_after_cost_bps = 0.0;
+    double fee_bps = 0.0;
+    double slippage_bps = 0.0;
+    double safety_bps = 0.0;
+    double capture_ratio = 0.0;
+    double min_net_bps = 0.0;
+    int horizon_sec = 0;
+};
+
+QString edge_crypto_regime_from_features(const QJsonObject& features);
+QJsonObject edge_crypto_cost_json(const QJsonObject& features);
+
 struct CryptoRecommendationOutcome {
     QString id;
     QString call;
