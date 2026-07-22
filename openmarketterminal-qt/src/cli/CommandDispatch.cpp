@@ -17105,14 +17105,12 @@ static int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList arg
     return 0;
 }
 
-// NOTE: MSVC C1001-ICEs generating code for this function (recurred across
-// v0.3.25/v0.3.26 in unity batches, and again at v0.3.29 even as its own TU
-// with /GL- — a runner MSVC update reintroduced it in native codegen). With
-// /GL- in effect the pragma below is no longer a no-op, so optimisation is
-// disabled for exactly this function; nil cost on a CLI alert reporter.
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma optimize("", off)
-#endif
+// NOTE: MSVC C1001-ICEs on this function (v0.3.25/26, again v0.3.29 —
+// deterministic, front-end crash: msc1.cpp line 1589, ~8s into the TU, so
+// unity-exclusion//GL-/#pragma optimize were all irrelevant). The trigger is
+// the braced QJsonObject initializer-list constructs this function used;
+// they are deliberately written as incremental insert() calls below. Do NOT
+// "clean up" back to brace-init without a green Windows release build.
 static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList args) {
     QString min_edge_raw;
     QString min_conf_raw;
@@ -17159,14 +17157,16 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
         const auto trust = edge_crypto_trust_for_symbol(q.value(4).toString(), q.value(5).toString(), 24 * 7);
         if (edge_bps < min_edge_bps || conf < min_conf || trust.trust < min_trust)
             continue;
-        alerts.append(QJsonObject{{"id", q.value(0).toString()},
-                                  {"symbol", q.value(4).toString()},
-                                  {"horizon", q.value(5).toString()},
-                                  {"edge_bps", edge_bps},
-                                  {"confidence", conf},
-                                  {"trust", trust.trust},
-                                  {"time", edge_time_text(q.value(1).toLongLong())},
-                                  {"reason", q.value(25).toString()}});
+        QJsonObject alert;
+        alert.insert(QStringLiteral("id"), q.value(0).toString());
+        alert.insert(QStringLiteral("symbol"), q.value(4).toString());
+        alert.insert(QStringLiteral("horizon"), q.value(5).toString());
+        alert.insert(QStringLiteral("edge_bps"), edge_bps);
+        alert.insert(QStringLiteral("confidence"), conf);
+        alert.insert(QStringLiteral("trust"), trust.trust);
+        alert.insert(QStringLiteral("time"), edge_time_text(q.value(1).toLongLong()));
+        alert.insert(QStringLiteral("reason"), q.value(25).toString());
+        alerts.append(alert);
     }
     if (notify && !alerts.isEmpty()) {
         int code = 0;
@@ -17189,7 +17189,9 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
             std::fprintf(stderr, "notification failed: %s\n", qUtf8Printable(error));
     }
     if (opts.json) {
-        std::printf("%s\n", QJsonDocument(QJsonObject{{"alerts", alerts}}).toJson(QJsonDocument::Compact).constData());
+        QJsonObject out;
+        out.insert(QStringLiteral("alerts"), alerts);
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
         return 0;
     }
     if (alerts.isEmpty()) {
@@ -17213,10 +17215,6 @@ static int edge_journal_rare_alerts_command(const GlobalOpts& opts, QStringList 
     }
     return 0;
 }
-
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma optimize("", on)
-#endif
 
 static int edge_journal_replay_command(const GlobalOpts& opts, QStringList args) {
     QString symbol;
