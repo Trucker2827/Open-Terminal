@@ -86,7 +86,8 @@ echo "   clean"
 
 echo "== notarizing app (Apple round-trip, takes minutes)"
 ditto -c -k --keepParent "$APP" app.zip
-xcrun notarytool submit app.zip --keychain-profile "$NOTARY_PROFILE" --wait | tee notary-app.log
+xcrun notarytool submit app.zip --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m | tee notary-app.log \
+  || xcrun notarytool submit app.zip --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m | tee notary-app.log
 grep -q "status: Accepted" notary-app.log || { echo "ERROR: app notarization not Accepted" >&2; exit 1; }
 xcrun stapler staple "$APP"
 
@@ -99,7 +100,8 @@ mv "$WORK/$DMG.new" "$WORK/$DMG"
 sign "$WORK/$DMG"
 
 echo "== notarizing DMG"
-xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --wait | tee notary-dmg.log
+xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m | tee notary-dmg.log \
+  || xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m | tee notary-dmg.log
 grep -q "status: Accepted" notary-dmg.log || { echo "ERROR: dmg notarization not Accepted" >&2; exit 1; }
 xcrun stapler staple "$WORK/$DMG"
 
