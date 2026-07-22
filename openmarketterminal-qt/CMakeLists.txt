@@ -33,7 +33,7 @@ if(WIN32 AND CMAKE_HOST_WIN32)
     unset(_openmarketterminal_sdk_dirs)
 endif()
 
-project(OpenTerminal VERSION 0.3.28 LANGUAGES C CXX)
+project(OpenTerminal VERSION 0.3.29 LANGUAGES C CXX)
 
 # Strip C/C++ flags out of RC invocations — rc.exe only understands /D, /I, /fo.
 if(WIN32)
