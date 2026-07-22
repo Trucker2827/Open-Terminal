@@ -4,6 +4,8 @@
 #include "core/logging/Logger.h"
 #include "screens/economics/panels/EconomicsPresets.h"
 #include "services/economics/EconomicsService.h"
+#include "screens/economics/panels/FredDbnomicsFallback.h"
+#include "services/dbnomics/DBnomicsService.h"
 
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -23,6 +25,26 @@ FredPanel::FredPanel(QWidget* parent) : EconPanelBase(kFredSourceId, kFredColor,
     build_base_ui(this);
     connect(&services::EconomicsService::instance(), &services::EconomicsService::result_ready, this,
             &FredPanel::on_result);
+    connect(&services::DBnomicsService::instance(), &services::DBnomicsService::observations_loaded, this,
+            [this](const services::DbnDataPoint& data) {
+                if (pending_dbn_series_id_.isEmpty() || data.series_id != pending_dbn_series_id_)
+                    return;
+                pending_dbn_series_id_.clear();
+                QJsonArray clean;
+                for (const auto& o : data.observations) {
+                    if (!o.valid)
+                        continue;
+                    QJsonObject row;
+                    row.insert(QStringLiteral("date"), o.period);
+                    row.insert(QStringLiteral("value"), o.value);
+                    clean.append(row);
+                }
+                if (clean.isEmpty()) {
+                    show_error(tr("DBnomics mirror returned no data for %1").arg(pending_fred_label_));
+                    return;
+                }
+                display(clean, pending_fred_label_);
+            });
 }
 
 void FredPanel::activate() {
@@ -80,10 +102,18 @@ void FredPanel::on_result(const QString& request_id, const services::EconomicsRe
         // EconomicsService prefixes errors with "[CODE] " when the script
         // returns a structured error_code. Branch on those for friendly UX.
         if (result.error.startsWith("[MISSING_API_KEY]")) {
+            if (request_id.startsWith("fred_")) {
+                try_dbnomics_fallback(request_id.mid(5));
+                return;
+            }
             show_error(tr("FRED API key not configured.\n"
                           "Add it in Settings → Credentials (\"FRED\").\n"
                           "Free key: fred.stlouisfed.org/docs/api/api_key.html"));
         } else if (result.error.startsWith("[INVALID_API_KEY]")) {
+            if (request_id.startsWith("fred_")) {
+                try_dbnomics_fallback(request_id.mid(5));
+                return;
+            }
             show_error(tr("FRED rejected your API key.\n"
                           "Update it in Settings → Credentials — re-issue at:\n"
                           "fred.stlouisfed.org/docs/api/api_key.html"));
@@ -138,6 +168,22 @@ void FredPanel::on_result(const QString& request_id, const services::EconomicsRe
         display(clean, "FRED: " + series);
         LOG_INFO("FredPanel", QString("Displayed %1 observations").arg(clean.size()));
     }
+}
+
+void FredPanel::try_dbnomics_fallback(const QString& fred_series) {
+    const auto fb = fred_dbnomics_fallback(fred_series);
+    if (!fb) {
+        show_error(tr("FRED API key not configured (and no key-less mirror exists for %1).\n"
+                      "Add a key in Settings \u2192 Credentials (\"FRED\") \u2014 free at\n"
+                      "fred.stlouisfed.org/docs/api/api_key.html")
+                       .arg(fred_series));
+        return;
+    }
+    pending_dbn_series_id_ = fb->provider + QLatin1Char('/') + fb->dataset + QLatin1Char('/') + fb->series;
+    pending_fred_label_ = tr("FRED %1 \u2014 key-less via DBnomics (%2)").arg(fred_series, fb->source_label);
+    show_loading(tr("No FRED key \u2014 fetching %1 from the %2 (no key needed)\u2026")
+                     .arg(fred_series, fb->source_label));
+    services::DBnomicsService::instance().fetch_observations(fb->provider, fb->dataset, fb->series);
 }
 
 QVariantMap FredPanel::save_panel_state() const {

@@ -780,3 +780,8 @@ add_executable(tst_crypto_fill_notifier tst_crypto_fill_notifier.cpp)
 target_include_directories(tst_crypto_fill_notifier PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_fill_notifier PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_fill_notifier COMMAND tst_crypto_fill_notifier)
+
+add_executable(tst_fred_dbnomics_fallback tst_fred_dbnomics_fallback.cpp)
+target_include_directories(tst_fred_dbnomics_fallback PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_fred_dbnomics_fallback PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_fred_dbnomics_fallback COMMAND tst_fred_dbnomics_fallback)

@@ -165,7 +165,6 @@ QWidget* DocsScreen::page_keyboard_shortcuts() {
                                               "Export Data — Export current view data\n"
                                               "Refresh All — Refresh all active data feeds")},
                          {tr("NAVIGATE MENU"), tr("Access 30+ screens organized in sub-menus:\n"
-                                                  "■  Markets & Data — Screener, Economics, DBnomics, AkShare, Gov Data\n"
                                                   "■  Trading & Portfolio — Equity Trading, Derivatives, Watchlist\n"
                                                   "■  Research — Equity Research, M&A, Geopolitics, Surface Analytics\n"
                                                   "■  Tools — Report Builder, Node Editor, Code Editor, Excel, Notes")},

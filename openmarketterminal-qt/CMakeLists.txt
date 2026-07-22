@@ -1212,7 +1212,6 @@ set(ALGO_ENGINE_SOURCES
 # Services
 set(SERVICE_SOURCES
     src/services/DataServices.cpp
-    src/services/akshare/AkShareService.cpp
     src/services/alpha_arena/AlphaArenaJson.cpp
     src/services/alpha_arena/Indicators.cpp
     src/services/alpha_arena/ContextBuilder.cpp
@@ -1734,8 +1733,6 @@ set(SCREEN_SOURCES
     src/screens/edge_radar/EdgeRadarScreen.cpp
 
 
-    # AkShare Data Explorer
-    src/screens/akshare/AkShareScreen.cpp
 
     # Geopolitics
     src/screens/geopolitics/GeopoliticsScreen.cpp
@@ -1810,7 +1807,6 @@ set(SCREEN_SOURCES
     src/screens/economics/panels/TradingEconomicsPanel.cpp
     src/screens/economics/panels/EconomicCalendarPanel.cpp
     src/screens/economics/panels/BcbPanel.cpp
-    src/screens/economics/panels/AkShareChinaPanel.cpp
     src/screens/economics/panels/OnsPanel.cpp
     src/screens/economics/panels/GlobalCentralBanksPanel.cpp
     src/screens/economics/panels/FederalReservePanel.cpp
@@ -2029,7 +2025,6 @@ set_source_files_properties(
     src/screens/ai_quant_lab/QuantModulePanel_Misc.cpp
     src/screens/ai_quant_lab/QuantModulePanel_HFT.cpp
     src/screens/ai_quant_lab/QuantModulePanel_LiveLearning.cpp
-    src/screens/akshare/AkShareScreen.cpp
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
     src/screens/algo_trading/StrategyWorkspacePanels.cpp

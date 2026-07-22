@@ -1,7 +1,6 @@
 // src/screens/docs/DocsScreen_Pages_Data.cpp
 //
 // Data-source, geopolitics, and tools/settings docs pages: DBnomics,
-// Economics, AkShare, Gov Data, Geopolitics, Maritime, Polymarket,
 // Alt Investments, Report Builder, Node Editor, Code Editor, Excel, Notes,
 // MCP Servers, Data Mapping, Settings, Profile.
 //
@@ -69,27 +68,6 @@ QWidget* DocsScreen::page_economics() {
                      });
 }
 
-QWidget* DocsScreen::page_akshare() {
-    return make_page(
-        tr("AKSHARE DATA"), tr("Chinese and Asian market data via AkShare"),
-        {
-            {tr("OVERVIEW"), tr("AkShare provides access to Chinese financial market data including A-shares, "
-                                "Hong Kong stocks, Chinese futures, and macro data from Chinese statistical agencies.")},
-            {tr("KEY FEATURES"), tr("■  A-Share market data — SSE, SZSE listed companies\n"
-                                    "■  Hong Kong market data — HKEX listings\n"
-                                    "■  Chinese futures — commodity and financial futures\n"
-                                    "■  Macro data — NBS statistics, PBOC data\n"
-                                    "■  Fund data — Mutual funds, ETFs listed in China")},
-            {tr("REAL-WORLD USAGE"), tr("■  China market exposure: Research A-share opportunities\n"
-                                        "■  Emerging market analysis: Compare Chinese vs global markets\n"
-                                        "■  Commodity trading: Track Chinese commodity demand\n"
-                                        "■  Macro research: Monitor Chinese economic indicators")},
-            {tr("SKILL LEVELS"), tr("BEGINNER: Browse Chinese market indices and major stocks\n"
-                                    "INTERMEDIATE: Compare A-share sectors, track PBOC policy\n"
-                                    "ADVANCED: Chinese commodity-equity correlation analysis\n"
-                                    "PRO: Cross-market arbitrage between A-shares, H-shares, and ADRs")},
-        });
-}
 
 QWidget* DocsScreen::page_gov_data() {
     return make_page(tr("GOVERNMENT DATA"), tr("Official government statistical data"),

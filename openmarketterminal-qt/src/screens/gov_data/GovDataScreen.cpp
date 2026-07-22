@@ -145,30 +145,16 @@ void GovDataScreen::build_ui() {
             panel = new GovDataTreasuryPanel(panel_stack_);
         } else if (prov.id == "us-congress") {
             panel = new GovDataCongressPanel(panel_stack_);
-        } else if (prov.id == "canada-gov") {
-            panel = new GovDataProviderPanel(prov.script, prov.color, "Publishers", {}, panel_stack_);
-        } else if (prov.id == "swiss") {
-            GovProviderOptions swiss_opts;
-            swiss_opts.watermark_text = "\xF0\x9F\x87\xA8\xF0\x9F\x87\xAD opendata.swiss";
-            panel = new GovDataProviderPanel(prov.script, prov.color, "Publishers", swiss_opts, panel_stack_);
+        } else if (prov.id == "uk") {
+            panel = new GovDataUKPanel(panel_stack_);
         } else if (prov.id == "france") {
             panel = new GovDataFrancePanel(panel_stack_);
         } else if (prov.id == "hk") {
             panel = new GovDataHKPanel(panel_stack_);
-        } else if (prov.id == "universal-ckan") {
-            GovProviderOptions ckan_opts;
-            ckan_opts.portal_combo_items = {"data.gov.uk", "open.canada.ca", "data.gov.au",
-                                            "data.gov.hk", "opendata.swiss", "data.gouv.fr",
-                                            "data.gov", "openafrica.net"};
-            ckan_opts.portal_combo_tooltip =
-                tr("This panel uses datagovuk_api.py which queries data.gov.uk.\n"
-                   "The selector shows all CKAN portals covered by the universal provider.");
-            panel = new GovDataProviderPanel(prov.script, prov.color, "Publishers", ckan_opts, panel_stack_);
         } else if (prov.id == "australia") {
             panel = new GovDataAustraliaPanel(panel_stack_);
         } else {
-            // openafrica, spain — still use generic until dedicated scripts exist
-            panel = new GovDataProviderPanel(prov.script, prov.color, "Organizations", {}, panel_stack_);
+            panel = new GovDataProviderPanel(prov.script, prov.color, "Publishers", {}, panel_stack_);
         }
         panel_stack_->addWidget(panel);
     }

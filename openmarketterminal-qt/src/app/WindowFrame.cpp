@@ -27,7 +27,6 @@
 #include "screens/about/AboutScreen.h"
 #include "screens/agent_config/AgentConfigScreen.h"
 #include "screens/ai_quant_lab/AIQuantLabScreen.h"
-#include "screens/akshare/AkShareScreen.h"
 #include "screens/algo_trading/AlgoTradingScreen.h"
 #include "screens/alpha_arena/AlphaArenaScreen.h"
 #include "screens/alt_investments/AltInvestmentsScreen.h"
