@@ -738,3 +738,8 @@ target_include_directories(tst_coinbase_endpoints PRIVATE ${CMAKE_SOURCE_DIR}/sr
 target_compile_definitions(tst_coinbase_endpoints PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 target_link_libraries(tst_coinbase_endpoints PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_coinbase_endpoints COMMAND tst_coinbase_endpoints)
+
+add_executable(tst_exchange_account_stream tst_exchange_account_stream.cpp)
+target_include_directories(tst_exchange_account_stream PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_exchange_account_stream PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_exchange_account_stream COMMAND tst_exchange_account_stream)
