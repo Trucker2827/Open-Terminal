@@ -34,6 +34,7 @@ add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands2.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalRareAlerts.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp

@@ -2483,6 +2483,9 @@ set_source_files_properties(
 # /GL back-end bug). Losing whole-program opt on one CLI dispatcher is nil cost.
 set_source_files_properties(
     src/cli/CommandDispatch.cpp
+    src/cli/EdgeJournalCommands.cpp
+    src/cli/EdgeJournalCommands2.cpp
+    src/cli/EdgeJournalRareAlerts.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
                COMPILE_OPTIONS "$<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/GL->"
 )
@@ -3360,6 +3363,7 @@ add_executable(openterminalcli
     src/cli/CommandDispatch.cpp
     src/cli/EdgeJournalRareAlerts.cpp
     src/cli/EdgeJournalCommands.cpp
+    src/cli/EdgeJournalCommands2.cpp
     src/services/crypto/CoinbaseEndpoints.cpp
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp
