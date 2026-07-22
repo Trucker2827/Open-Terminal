@@ -145,8 +145,7 @@ void GovDataUKPanel::build_ui() {
             const QString url = item->data(Qt::UserRole).toString();
             if (!url.isEmpty())
                 QDesktopServices::openUrl(QUrl(url));
-        },
-        Qt::UniqueConnection);
+        });
     content_stack_->addWidget(wrap_with_pager(resources_table_, res_pager_, this)); // index 2
 
     // Page 3 — Status / loading / error
