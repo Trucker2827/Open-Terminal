@@ -100,8 +100,16 @@ mv "$WORK/$DMG.new" "$WORK/$DMG"
 sign "$WORK/$DMG"
 
 echo "== notarizing DMG"
-xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m | tee notary-dmg.log \
-  || xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m | tee notary-dmg.log
+# A mounted copy of the DMG holds an exclusive kernel lock that makes
+# notarytool's format probe (xar_open) block forever with 0 CPU and no
+# sockets — detach any attach of this exact image first.
+hdiutil info | awk -v img="$WORK/$DMG" \
+  'index($0,"image-path"){hit = index($0,img)>0} hit && /^\/dev\/disk[0-9]+\t/{print $1; hit=0}' \
+  | while read -r dev; do hdiutil detach "$dev" -force -quiet || true; done
+# --force: notarytool misidentifies a codesigned UDZO DMG as "not a UDIF
+# disk image"; the flag skips only the local sniff, not notarization.
+xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --force --wait --timeout 25m | tee notary-dmg.log \
+  || xcrun notarytool submit "$WORK/$DMG" --keychain-profile "$NOTARY_PROFILE" --force --wait --timeout 25m | tee notary-dmg.log
 grep -q "status: Accepted" notary-dmg.log || { echo "ERROR: dmg notarization not Accepted" >&2; exit 1; }
 xcrun stapler staple "$WORK/$DMG"
 
