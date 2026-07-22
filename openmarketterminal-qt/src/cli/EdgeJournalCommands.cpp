@@ -1144,29 +1144,35 @@ int edge_journal_no_trade_command(const GlobalOpts& opts, QStringList args) {
         std::fprintf(stderr, "%s\n", r.error().c_str());
         return 5;
     }
+    // Serial MSVC C1001 site (v0.3.25/26/29): the in-loop multi-arg printf of
+    // Qt temporaries here has crashed the compiler across THREE workaround
+    // generations (raw temporaries, hoisted QByteArrays, own-TU). Current
+    // shape: no printf in the query loop and no varargs formatting at all —
+    // rows are collected first, then each display line is composed with
+    // QString::arg and emitted via a single fputs. Do not "simplify" this
+    // back into printf without a green Windows release build.
     QJsonArray rows;
     auto& q = r.value();
-    if (!opts.json)
-        std::printf("%-20s %-9s %-14s %-8s %-8s %s\n", "TIME", "SYMBOL", "CALL", "CONF", "NET", "REASON");
-    while (q.next()) {
-        if (opts.json) {
-            rows.append(edge_journal_row_to_json(q));
-        } else {
-            // Hoist qUtf8Printable temporaries into named QByteArrays: MSVC C1001
-            // ICEs on this multi-arg printf-of-nested-temporaries in the release
-            // (/O2 unity) build; naming the temporaries dodges the optimizer bug.
-            const QByteArray c_time = edge_time_text(q.value(1).toLongLong()).left(19).toUtf8();
-            const QByteArray c_sym = q.value(4).toString().toUtf8();
-            const QByteArray c_call = elide_text(q.value(10).toString(), 14).toUtf8();
-            const QByteArray c_conf = edge_pct(q.value(20).toDouble()).toUtf8();
-            const QByteArray c_net = edge_pct(q.value(15).toDouble()).toUtf8();
-            const QByteArray c_reason = elide_text(q.value(25).toString(), 110).toUtf8();
-            std::printf("%-20s %-9s %-14s %-8s %-8s %s\n", c_time.constData(), c_sym.constData(),
-                        c_call.constData(), c_conf.constData(), c_net.constData(), c_reason.constData());
-        }
+    while (q.next())
+        rows.append(edge_journal_row_to_json(q));
+    if (opts.json) {
+        QJsonObject out;
+        out.insert(QStringLiteral("rows"), rows);
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return 0;
     }
-    if (opts.json)
-        std::printf("%s\n", QJsonDocument(QJsonObject{{"rows", rows}}).toJson(QJsonDocument::Compact).constData());
+    std::fputs("TIME                 SYMBOL    CALL           CONF     NET      REASON\n", stdout);
+    for (const auto& v : rows) {
+        const QJsonObject row = v.toObject();
+        const QString line = QStringLiteral("%1 %2 %3 %4 %5 %6\n")
+                                 .arg(row.value(QStringLiteral("created_at")).toString().left(19), -20)
+                                 .arg(row.value(QStringLiteral("symbol")).toString(), -9)
+                                 .arg(elide_text(row.value(QStringLiteral("call")).toString(), 14), -14)
+                                 .arg(edge_pct(row.value(QStringLiteral("confidence")).toDouble()), -8)
+                                 .arg(edge_pct(row.value(QStringLiteral("edge_after_cost")).toDouble()), -8)
+                                 .arg(elide_text(row.value(QStringLiteral("reasons")).toString(), 110));
+        std::fputs(line.toUtf8().constData(), stdout);
+    }
     return 0;
 }
 
