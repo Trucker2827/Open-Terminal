@@ -16,6 +16,7 @@
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "screens/equity_trading/AccountManagementDialog.h"
@@ -60,11 +61,11 @@ QString exchange_display_name(const QString& exchange_id) {
 
 QString coinbase_order_symbol(QString symbol) {
     symbol = symbol.trimmed().toUpper();
-    if (symbol.endsWith(QStringLiteral("/USDT")) || symbol.endsWith(QStringLiteral("/USDC")) ||
-        symbol.endsWith(QStringLiteral("/USD"))) {
-        return symbol.section(QLatin1Char('/'), 0, 0) + QStringLiteral("/USD");
-    }
-    return symbol;
+    // The exchange-native universe (CryptoSymbolUniverse) makes display==wire
+    // on Coinbase, so this is normally identity. Defensively migrate only a
+    // stale persisted /USDT suffix; an explicit /USDC pair routes to its own
+    // real Coinbase book instead of being silently forced onto /USD.
+    return openmarketterminal::crypto::migrate_symbol(QStringLiteral("coinbase"), symbol);
 }
 
 bool is_cash_quote(const QString& currency) {
@@ -141,6 +142,7 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     if (ws_transport_) {
         ws_transport_->setText(tr("DAEMON"));
         ws_transport_->setToolTip(tr("ws_stream.py via ccxt.pro — Python subprocess"));
+        last_daemon_chrome_ = -1;  // force re-apply on the new exchange's next flush
     }
 
     auto& es = ExchangeService::instance();
@@ -168,6 +170,21 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     // not suppress the first fetch against the new exchange.
     candles_fetching_.store(false);
     live_inflight_.store(0);
+
+    // Exchange-native symbol universe: re-derive the watchlist and migrate the
+    // current selection BEFORE init_exchange re-subscribes, so the display
+    // pair IS the wire pair on the new venue.
+    watchlist_symbols_ = openmarketterminal::crypto::default_watchlist_for(exchange_id_, bitcoin_focus_);
+    if (watchlist_)
+        watchlist_->set_symbols(watchlist_symbols_);
+    const QString migrated = openmarketterminal::crypto::migrate_symbol(exchange_id_, selected_symbol_);
+    if (migrated != selected_symbol_) {
+        selected_symbol_ = migrated;
+        symbol_input_->setText(migrated);
+        ticker_bar_->set_symbol(migrated);
+        order_entry_->set_symbol(migrated);
+        watchlist_->set_active_symbol(migrated);
+    }
 
     es.set_exchange(exchange_id_);
 
@@ -306,14 +323,13 @@ void CryptoTradingScreen::on_mode_toggled() {
     } else {
         live_data_timer_->stop();
         // Leaving live mode → the auth indicator is no longer meaningful; reset
-        // the API/DAEMON chrome to neutral.
+        // the API button to neutral. The DAEMON label is liveness-driven
+        // (update_daemon_chrome) and is deliberately NOT touched here.
         last_auth_state_ = -1;
-        for (QWidget* w : {static_cast<QWidget*>(api_btn_), static_cast<QWidget*>(ws_transport_)}) {
-            if (!w)
-                continue;
-            w->setProperty("authed", QVariant());
-            w->style()->unpolish(w);
-            w->style()->polish(w);
+        if (api_btn_) {
+            api_btn_->setProperty("authed", QVariant());
+            api_btn_->style()->unpolish(api_btn_);
+            api_btn_->style()->polish(api_btn_);
         }
         refresh_portfolio();
     }

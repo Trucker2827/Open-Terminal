@@ -19,6 +19,7 @@
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -62,12 +63,9 @@ CryptoTradingScreen::CryptoTradingScreen(QWidget* parent)
 CryptoTradingScreen::CryptoTradingScreen(Focus focus, QWidget* parent)
     : QWidget(parent), bitcoin_focus_(focus == Focus::Bitcoin) {
     LOG_INFO(TAG, "Constructing CryptoTradingScreen");
-    if (bitcoin_focus_) {
-        selected_symbol_ = QStringLiteral("BTC/USD");
-        watchlist_symbols_ = {
-            QStringLiteral("BTC/USD"),
-        };
-    }
+    // Exchange-native symbol universe: display pair IS the wire pair.
+    selected_symbol_ = openmarketterminal::crypto::default_symbol_for(exchange_id_, bitcoin_focus_);
+    watchlist_symbols_ = openmarketterminal::crypto::default_watchlist_for(exchange_id_, bitcoin_focus_);
     setup_ui();
     setup_timers();
     LOG_INFO(TAG, "CryptoTradingScreen construction complete");
@@ -375,7 +373,7 @@ void CryptoTradingScreen::setup_ui() {
 }
 
 QString CryptoTradingScreen::default_symbol() const {
-    return bitcoin_focus_ ? QStringLiteral("BTC/USD") : QStringLiteral("BTC/USDT");
+    return openmarketterminal::crypto::default_symbol_for(exchange_id_, bitcoin_focus_);
 }
 
 QString CryptoTradingScreen::normalized_symbol_for_focus(const QString& symbol) const {
@@ -724,8 +722,11 @@ QVariantMap CryptoTradingScreen::save_state() const {
 
 void CryptoTradingScreen::restore_state(const QVariantMap& state) {
     const QString exch = state.value("exchange_id", "coinbase").toString();
-    const QString sym = normalized_symbol_for_focus(
-        state.value("selected_symbol", default_symbol()).toString());
+    // Migrate a persisted stale-quote pair (e.g. ETH/USDT saved before the
+    // exchange-native universe) against the RESTORED exchange, not the
+    // current one; the migrated value is persisted back on next save_state.
+    const QString sym = normalized_symbol_for_focus(openmarketterminal::crypto::migrate_symbol(
+        exch, state.value("selected_symbol", default_symbol()).toString()));
 
     const bool exch_changed = (exch != exchange_id_);
     const bool sym_changed = (sym != selected_symbol_);

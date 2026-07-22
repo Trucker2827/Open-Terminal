@@ -722,3 +722,19 @@ add_executable(tst_advisor_canary_presentation tst_advisor_canary_presentation.c
 target_include_directories(tst_advisor_canary_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_advisor_canary_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_advisor_canary_presentation COMMAND tst_advisor_canary_presentation)
+
+add_executable(tst_crypto_symbol_universe tst_crypto_symbol_universe.cpp)
+target_include_directories(tst_crypto_symbol_universe PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_symbol_universe PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_symbol_universe COMMAND tst_crypto_symbol_universe)
+
+add_executable(tst_crypto_chrome_state tst_crypto_chrome_state.cpp)
+target_include_directories(tst_crypto_chrome_state PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_chrome_state PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_chrome_state COMMAND tst_crypto_chrome_state)
+
+add_executable(tst_coinbase_endpoints tst_coinbase_endpoints.cpp)
+target_include_directories(tst_coinbase_endpoints PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(tst_coinbase_endpoints PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+target_link_libraries(tst_coinbase_endpoints PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_coinbase_endpoints COMMAND tst_coinbase_endpoints)

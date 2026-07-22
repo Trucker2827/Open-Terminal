@@ -13,12 +13,14 @@
 #include "core/symbol/SymbolContext.h"
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
+#include "screens/crypto_trading/CryptoChromeState.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
+#include "trading/ExchangeDaemonPool.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSession.h"
 #include "trading/ExchangeSessionManager.h"
@@ -168,23 +170,49 @@ void CryptoTradingScreen::set_live_auth_indicator(bool ok) {
     if (desired == last_auth_state_)
         return;
     last_auth_state_ = desired;
-    const QString state = ok ? QStringLiteral("ok") : QStringLiteral("error");
-    auto apply = [&state](QWidget* w) {
-        if (!w)
-            return;
-        w->setProperty("authed", state);
-        w->style()->unpolish(w);
-        w->style()->polish(w);
-    };
-    apply(api_btn_);
-    apply(ws_transport_);
-    if (api_btn_)
-        api_btn_->setToolTip(ok ? tr("Authenticated — live account reachable")
-                                : tr("Authentication failed — check API credentials"));
+    // Tri-state via CryptoChromeState: "none" (no creds / never probed),
+    // "ok", "error". Applies to the API button ONLY — the DAEMON label is a
+    // subprocess-liveness indicator (update_daemon_chrome), not an auth one.
+    const bool has_creds = !ExchangeService::instance().get_credentials().api_key.isEmpty();
+    const QString state = openmarketterminal::crypto::chrome_api_state(has_creds, last_auth_state_);
+    if (api_btn_) {
+        api_btn_->setProperty("authed", state);
+        api_btn_->style()->unpolish(api_btn_);
+        api_btn_->style()->polish(api_btn_);
+        if (state == QLatin1String("none"))
+            api_btn_->setToolTip(tr("No API credentials configured — click to add"));
+        else
+            api_btn_->setToolTip(ok ? tr("Authenticated — live account reachable")
+                                    : tr("Authentication failed — check API credentials"));
+    }
+}
+
+void CryptoTradingScreen::update_daemon_chrome() {
+    const bool daemon_alive = ExchangeDaemonPool::instance().is_ready();
+    const bool ws_up = ExchangeService::instance().is_ws_connected();
+    const QString state = openmarketterminal::crypto::chrome_daemon_state(daemon_alive, ws_up);
+    const int desired = (state == QLatin1String("dead")) ? 0 : (state == QLatin1String("rest")) ? 1 : 2;
+    if (desired == last_daemon_chrome_ || !ws_transport_)
+        return;
+    last_daemon_chrome_ = desired;
+    ws_transport_->setProperty("daemon_state", state);
+    ws_transport_->style()->unpolish(ws_transport_);
+    ws_transport_->style()->polish(ws_transport_);
+    if (desired == 0) {
+        ws_transport_->setText(tr("DAEMON ✕"));
+        ws_transport_->setToolTip(tr("ccxt daemon subprocess is not running"));
+    } else if (desired == 1) {
+        ws_transport_->setText(tr("DAEMON · REST"));
+        ws_transport_->setToolTip(tr("ccxt daemon up — public WS not connected, REST only"));
+    } else {
+        ws_transport_->setText(tr("DAEMON · WS"));
+        ws_transport_->setToolTip(tr("ccxt daemon up — ws_stream.py streaming via ccxt.pro"));
+    }
 }
 
 void CryptoTradingScreen::flush_ws_updates() {
     apply_feed_mode(ExchangeService::instance().is_ws_connected());
+    update_daemon_chrome();  // edge-detected — property writes only on state change
 
     // Flush primary symbol ticker → header bar + order entry
     if (has_pending_primary_) {
