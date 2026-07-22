@@ -6,8 +6,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from blind_prompt import PROMPT_VERSION, build_prompt, prompt_hash
 
 MODEL=os.environ.get("KALSHI_CODEX_MODEL","gpt-5.6-sol")
-EPOCH_ID="kalshi-blind-codex-v3-zero-capability"
+EPOCH_ID="kalshi-blind-codex-v4-zero-capability-latency-neutral"
 EFFORT=os.environ.get("KALSHI_CODEX_EFFORT", "medium")
+TIMEOUT_S=88
 CODEX_VERSION="codex-cli 0.144.6"
 FEATURE_REGISTRY_SHA256="f515b7f6cedf7806cf8636f45cd2a6ef447cc48d4f9440b33b1a7d26904766d7"
 
@@ -50,6 +51,7 @@ def main():
     if mode=="identify":
         print(json.dumps({"provider":"openai-codex-cli","model":MODEL,"prompt_version":PROMPT_VERSION,
                           "epoch_id":EPOCH_ID,"effort":EFFORT,"temperature":-1,
+                          "timeout_ms":TIMEOUT_S*1000,
                           "agent_id":"codex-unattended/"+EPOCH_ID}));return 0
     if mode!="predict":return 2
     try:ctx=json.loads(sys.stdin.read())
@@ -66,7 +68,12 @@ def main():
             print(json.dumps({"decision":"abstain","reason_code":"CAPABILITY_LOCKDOWN_FAILED","confidence":0,
                               "rationale":str(exc)[:400]}));return 0
         env=dict(os.environ)
-        r=subprocess.run(command,input=build_prompt(ctx),capture_output=True,text=True,timeout=50,env=env)
+        try:
+            r=subprocess.run(command,input=build_prompt(ctx),capture_output=True,text=True,timeout=TIMEOUT_S,env=env)
+        except subprocess.TimeoutExpired:
+            print(json.dumps({"decision":"abstain","reason_code":"FORECAST_TIMEOUT","confidence":0,
+                              "rationale":f"Codex exceeded the {TIMEOUT_S}s internal blind prediction budget",
+                              "prompt_hash":prompt_hash(ctx),"epoch_id":EPOCH_ID}));return 0
     text=(r.stdout or "").strip();matches=re.findall(r"\{.*\}",text,re.S)
     if r.returncode or not matches:
         print(json.dumps({"decision":"abstain","reason_code":"CODEX_UNAVAILABLE","confidence":0,

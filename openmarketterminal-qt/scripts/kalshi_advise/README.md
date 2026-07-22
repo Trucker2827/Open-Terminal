@@ -115,13 +115,13 @@ LaunchAgent. It is `RunAtLoad` and restarts only after abnormal exit; five
 consecutive loop failures transition the process to `PAUSED_ERROR` instead of
 creating a crash loop:
 
-The Codex v3 firewall is structural, not prompt-based. Each prediction runs
+The Codex v4 firewall is structural, not prompt-based. Each prediction runs
 ephemerally in a new empty temporary workspace with user configuration and
 rules ignored. Shell, unified execution, code-mode, apps, browser, computer-use,
 and image tools are disabled; the remaining read-only sandbox cannot read an
 absolute path outside that empty workspace. A direct probe against the live
 Kalshi book must return that it cannot access the file. Its frozen identity is
-`kalshi-blind-codex-v3-zero-capability`; v1/v2 rows are separate, ineligible epochs.
+`kalshi-blind-codex-v4-zero-capability-latency-neutral`; earlier rows are separate, ineligible epochs.
 
 ```bash
 advisor_loop.py install --profile default --forecaster ./codex_forecaster.py

@@ -429,7 +429,7 @@ void CodeEditorScreen::create_research_notebook(const QString& type, const QStri
                                        {QStringLiteral("cohort_analysis"), tr("Cohort Analysis")},
                                        {QStringLiteral("portfolio_research"), tr("Portfolio Research")},
                                        {QStringLiteral("kalshi_calibration"), tr("Kalshi Calibration & Cohorts")},
-                                       {QStringLiteral("kalshi_advisor_v3"), tr("Kalshi Codex-v3 Advisor Audit")},
+                                       {QStringLiteral("kalshi_advisor_v3"), tr("Kalshi Codex-v4 Advisor Audit")},
                                        {QStringLiteral("coinbase_spot"), tr("Coinbase Spot Evidence")},
                                        {QStringLiteral("kraken_maker"), tr("Kraken Maker-Lane Evidence")},
                                        {QStringLiteral("chronos_horizons"), tr("Chronos-2 Horizon Audit")},
@@ -437,7 +437,7 @@ void CodeEditorScreen::create_research_notebook(const QString& type, const QStri
     const QString title = titles.value(type, tr("Research Notebook"));
     const QString ref_line = reference.isEmpty() ? tr("all current project evidence") : reference;
     const QString advisor_provenance = type == QStringLiteral("kalshi_advisor_v3")
-        ? QStringLiteral("**Forecaster epoch:** `kalshi-blind-codex-v3-zero-capability` only  \n"
+        ? QStringLiteral("**Forecaster epoch:** `kalshi-blind-codex-v4-zero-capability-latency-neutral` only  \n"
                          "**Authority:** advisory-only; qualification evidence cannot enable trading.  \n")
         : QString();
     const QString markdown = QStringLiteral(
@@ -504,7 +504,7 @@ void CodeEditorScreen::create_research_notebook(const QString& type, const QStri
             "print(json.dumps(records, indent=2, default=str))");
     } else if (type == QStringLiteral("kalshi_advisor_v3")) {
         query_code = QStringLiteral(
-            "EPOCH = 'kalshi-blind-codex-v3-zero-capability'\n"
+            "EPOCH = 'kalshi-blind-codex-v4-zero-capability-latency-neutral'\n"
             "records = query('''SELECT id,created_at,market_id,symbol,horizon,model_probability,\n"
             "  market_probability,confidence,edge_after_cost,outcome,resolved_at,features_json,reasons\n"
             "FROM edge_decision_journal WHERE source='llm-advisory'\n"

@@ -14,9 +14,9 @@ from blind_prompt import INSTRUCTION, PROMPT_VERSION, build_prompt, prompt_hash
 MODEL = "claude-opus-4-8"
 EFFORT = "medium"
 CLI_VERSION = "2.1.217"
-TIMEOUT_S = 50
+TIMEOUT_S = 88
 SCHEMA_VERSION = "kalshi-forecast-v1"
-EPOCH_ID = "kalshi-blind-claude-cli-v4-production"
+EPOCH_ID = "kalshi-blind-claude-cli-v5-latency-neutral"
 LOCKED_FLAGS = (
     "-p", "--output-format=json", "--model=" + MODEL, "--effort=" + EFFORT,
     "--system-prompt=", "--tools=", "--disallowedTools=*", "--strict-mcp-config", "--mcp-config={\"mcpServers\":{}}",

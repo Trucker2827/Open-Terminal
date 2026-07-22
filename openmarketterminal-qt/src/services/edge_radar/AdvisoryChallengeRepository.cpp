@@ -140,10 +140,11 @@ Result<OpenResult> AdvisoryChallengeRepository::open(const OpenParams& p) {
     TtlPolicy policy = ttl_for(p.seconds_left);
     // Paired shadow measurements run two independent CLI forecasters. For
     // contracts with >15m runway, use the full protocol cap so the shared
-    // 52s budget plus commit margin cannot select a winner on latency alone.
+    // 90s shared budget plus commit margin cannot select a winner on latency
+    // alone. The 100s TTL remains below the protocol's absolute 120s cap.
     // Execution relevance stays short; this never grants execution authority.
     if (!p.competition_pair_id.isEmpty() && p.seconds_left > 900) {
-        policy.prediction_ttl_ms = 60000;
+        policy.prediction_ttl_ms = 100000;
         policy.execution_relevance_ms = 15000;
     }
     if (!policy.may_open)

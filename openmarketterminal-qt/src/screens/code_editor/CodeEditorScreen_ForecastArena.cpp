@@ -153,11 +153,13 @@ void CodeEditorScreen::refresh_forecast_arena() {
     arena_claude_coverage_->setText(lane_text(QStringLiteral("claude")));
     arena_codex_coverage_->setText(lane_text(QStringLiteral("codex")));
     const auto epochs = report.value(QStringLiteral("epoch_pair")).toObject();
-    arena_integrity_->setText(tr("EPOCH PAIR  %1  ↔  %2\nFIREWALL %3 · %4 opportunities · prompt/context hashes enforced")
-        .arg(epochs.value(QStringLiteral("claude")).toString(QStringLiteral("kalshi-blind-claude-cli-v4-production")),
-             epochs.value(QStringLiteral("codex")).toString(QStringLiteral("kalshi-blind-codex-v3-zero-capability")),
+    const QString scoring_hash = report.value(QStringLiteral("scoring_infrastructure_hash")).toString();
+    arena_integrity_->setText(tr("EPOCH PAIR  %1  ↔  %2\nFIREWALL %3 · %4 opportunities · prompt/context hashes enforced · scoring %5")
+        .arg(epochs.value(QStringLiteral("claude")).toString(QStringLiteral("kalshi-blind-claude-cli-v5-latency-neutral")),
+             epochs.value(QStringLiteral("codex")).toString(QStringLiteral("kalshi-blind-codex-v4-zero-capability-latency-neutral")),
              report.value(QStringLiteral("firewall_safe")).toBool(false) ? QStringLiteral("LOCKED") : QStringLiteral("NOT VERIFIED"))
-        .arg(opportunities));
+        .arg(opportunities)
+        .arg(scoring_hash.isEmpty() ? QStringLiteral("UNPINNED") : scoring_hash.left(12)));
 
     const QJsonArray rows = report.value(QStringLiteral("forecasts")).toArray();
     arena_table_->setRowCount(rows.size());

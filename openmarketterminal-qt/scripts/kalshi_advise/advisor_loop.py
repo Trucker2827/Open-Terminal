@@ -11,6 +11,7 @@ from advisor_core import (GatePolicy, ImmutableJournal, ShadowExecutionAdapter,
     comparative_proposals, default_safety_state, evaluate_safety, promotion_transition,
     qualification, record_safety_observation, validate_forecast, write_state)
 from blind_prompt import competition_context, prompt_hash
+from competition_report import scoring_infrastructure_hash
 
 
 def paths(profile):
@@ -167,7 +168,8 @@ def run_once(args, journal):
     ticker=pick_auto_ticker(args.evidence,args.auto_min_secs_left,args.auto_max_age_s)
     base={"event":"shadow_opportunity","opportunity_id":str(uuid.uuid4()),"opened_at_ms":now,
           "ticker":ticker,"forecasters":identities,"loop_version":"kalshi-advisor-loop-v2-duel",
-          "authority":"advisory_only","execution_mode":"shadow","execution_eligible":False}
+          "authority":"advisory_only","execution_mode":"shadow","execution_eligible":False,
+          "scoring_infrastructure_hash":scoring_infrastructure_hash()}
     if not ticker:
         return journal.append({**base,"status":"ABSTAINED","reason_code":"NO_FRESH_CONTRACT"})
     pair_id=str(uuid.uuid4())
@@ -262,7 +264,7 @@ def main():
         "install","uninstall","safety-observe","evaluate","pause","resume","canary-configure","canary-enable","canary-disable","canary-pulse"])
     ap.add_argument("--profile",default="default");ap.add_argument("--cli",default=DEFAULT_CLI)
     ap.add_argument("--forecaster");ap.add_argument("--opponent-forecaster");ap.add_argument("--evidence",default=DEFAULT_EVIDENCE)
-    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=52)
+    ap.add_argument("--interval-seconds",type=int,default=60);ap.add_argument("--forecast-timeout",type=int,default=90)
     ap.add_argument("--maximum-failures",type=int,default=5)
     ap.add_argument("--safety-margin-ms",type=int,default=6000);ap.add_argument("--auto-min-secs-left",type=int,default=901)
     ap.add_argument("--auto-max-age-s",type=float,default=11.0)
