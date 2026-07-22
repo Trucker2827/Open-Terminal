@@ -34,6 +34,14 @@ class CryptoBottomPanel : public QWidget {
 
     // Live mode data
     void set_live_positions(const QJsonArray& positions);
+    /// Spot venues expose no positions — render account HOLDINGS in the POS
+    /// tab instead. Rows: {symbol, qty, price, avg_entry (0 = unknown),
+    /// upnl_valid, upnl}. Entry/P&L show "--" when unknown; Side shows SPOT.
+    void set_live_holdings(const QJsonArray& holdings);
+    /// Spot venues have no funding/OI — retitle the MKT cards to 24h market
+    /// stats (last/high/low/volume/spread/change) fed from the live ticker.
+    void set_spot_market_stats(double last, double high, double low, double base_volume,
+                               double change_pct, double bid, double ask);
     void set_live_orders(const QJsonArray& orders);
     void set_live_balance(double balance, double equity, double used_margin);
     void set_mode(bool is_paper);
@@ -155,6 +163,7 @@ class CryptoBottomPanel : public QWidget {
     bool is_paper_ = true;
     QJsonObject live_trades_json_;
     QJsonArray live_positions_json_;
+    bool market_tab_spot_mode_ = false;  // MKT cards retitled for spot stats
     double live_balance_ = 0.0;
     double live_equity_ = 0.0;
     double live_used_margin_ = 0.0;

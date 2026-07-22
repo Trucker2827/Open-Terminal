@@ -15,6 +15,7 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -73,8 +74,14 @@ void CryptoTradingScreen::async_fetch_live_positions() {
             [self, result]() {
                 if (!self)
                     return;
-                if (result.contains("positions"))
-                    self->bottom_panel_->set_live_positions(result.value("positions").toArray());
+                if (result.contains("positions")) {
+                    const QJsonArray positions = result.value("positions").toArray();
+                    // Spot venues return no positions; the POS tab is owned by
+                    // the holdings view then (refresh_live_holdings) — don't
+                    // stomp it with an empty perp-shaped array.
+                    if (!positions.isEmpty() || self->is_perp_market())
+                        self->bottom_panel_->set_live_positions(positions);
+                }
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);
@@ -165,6 +172,48 @@ void CryptoTradingScreen::apply_live_balance_display(const QJsonObject& balances
     const double used = b.value("used").toDouble();
     bottom_panel_->set_live_balance(free, total, used);
     order_entry_->set_balance(free, ccy);
+
+    last_balances_ = balances;
+    refresh_live_holdings();
+}
+
+void CryptoTradingScreen::refresh_live_holdings() {
+    // Spot venues expose no positions — the POS tab renders account holdings
+    // instead (asset qty x live mark). Perp venues keep the real position feed.
+    if (trading_mode_ != TradingMode::Live || is_perp_market() || !bottom_panel_)
+        return;
+    static const QSet<QString> kQuoteCurrencies = {
+        QStringLiteral("USD"),  QStringLiteral("USDC"), QStringLiteral("USDT"),
+        QStringLiteral("USDE"), QStringLiteral("EUR"),  QStringLiteral("GBP"),
+    };
+    const QString quote = openmarketterminal::crypto::quote_currency_for(exchange_id_);
+    QJsonArray holdings;
+    for (auto it = last_balances_.constBegin(); it != last_balances_.constEnd(); ++it) {
+        if (kQuoteCurrencies.contains(it.key()))
+            continue;
+        const double qty = it.value().toObject().value(QStringLiteral("total")).toDouble();
+        if (qty <= 0.0)
+            continue;
+        const QString symbol = it.key() + QLatin1Char('/') + quote;
+        double price = 0.0;
+        const auto cached = pending_tickers_.constFind(symbol);
+        if (cached != pending_tickers_.constEnd() && cached->last > 0)
+            price = cached->last;
+        else
+            price = ExchangeService::instance().get_cached_price(symbol).last;
+        QJsonObject row{{QStringLiteral("symbol"), symbol},
+                        {QStringLiteral("qty"), qty},
+                        {QStringLiteral("price"), price}};
+        // Est. avg entry / unrealized P&L exist only for the selected pair,
+        // seeded from its trade history (CryptoLiveOverlay).
+        if (symbol == selected_symbol_ && live_avg_entry_.avg_entry() > 0 && price > 0) {
+            row.insert(QStringLiteral("avg_entry"), live_avg_entry_.avg_entry());
+            row.insert(QStringLiteral("upnl_valid"), true);
+            row.insert(QStringLiteral("upnl"), (price - live_avg_entry_.avg_entry()) * qty);
+        }
+        holdings.append(row);
+    }
+    bottom_panel_->set_live_holdings(holdings);
 }
 
 // ============================================================================
