@@ -86,6 +86,27 @@ bool kalshi_universe_request_timed_out(bool pending, qint64 request_age_ms,
     return pending && request_age_ms >= 0 && request_age_ms > timeout_ms;
 }
 
+QString scalp_style_normalize(const QString& raw) {
+    QString style = raw.trimmed().toLower();
+    if (style.isEmpty())
+        return QStringLiteral("scalp");
+    if (style == QLatin1String("spot-swing") || style == QLatin1String("swing") ||
+        style == QLatin1String("intrahour") || style == QLatin1String("buy-sell"))
+        return QStringLiteral("spot");
+    if (style == QLatin1String("scalp") || style == QLatin1String("spot"))
+        return style;
+    return {};
+}
+
+double scalp_style_default_min_profit_bps(const QString& style) {
+    return style == QLatin1String("spot") ? 25.0 : 10.0;
+}
+
+double scalp_style_default_capture_ratio(const QString& style) {
+    return style == QLatin1String("spot") ? 0.55 : 0.35;
+}
+
+
 bool kalshi_planner_process_timed_out(bool active, qint64 process_age_ms,
                                       qint64 timeout_ms) {
     return active && process_age_ms >= 0 && process_age_ms > timeout_ms;
@@ -5757,13 +5778,8 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
             return v;
         };
         bool ok = true;
-        QString style = style_raw.trimmed().toLower();
-        if (style.isEmpty())
-            style = QStringLiteral("scalp");
-        if (style == QLatin1String("spot-swing") || style == QLatin1String("swing") ||
-            style == QLatin1String("intrahour") || style == QLatin1String("buy-sell"))
-            style = QStringLiteral("spot");
-        if (style != QLatin1String("scalp") && style != QLatin1String("spot")) {
+        const QString style = scalp_style_normalize(style_raw);
+        if (style.isEmpty()) {
             std::fprintf(stderr, "--style must be scalp or spot\n");
             return 2;
         }
@@ -5772,7 +5788,7 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
         const QString liquidity_mode = scalp_liquidity_mode(liquidity_raw);
         const double slippage_bps = parse_double(slippage_raw, 0.0, 0.0, 1000.0, "--slippage-bps", &ok);
         const double safety_bps = parse_double(safety_raw, 5.0, 0.0, 1000.0, "--safety-bps", &ok);
-        double min_profit_bps = parse_double(min_profit_raw, spot_style ? 25.0 : 10.0,
+        double min_profit_bps = parse_double(min_profit_raw, scalp_style_default_min_profit_bps(style),
                                              0.0, 1000.0, "--min-profit-bps", &ok);
         const double min_profit_cents = parse_double(min_profit_cents_raw, 0.0, 0.0, 100000.0,
                                                      "--min-profit-cents", &ok);
@@ -5780,7 +5796,7 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
             min_profit_bps = std::max(min_profit_bps, (min_profit_cents / 100.0) / amount_usd * 10000.0);
         const double confidence = normalize_confidence_gate(
             parse_double(confidence_raw, 80.0, 0.0, 100.0, "--confidence", &ok));
-        const double capture_ratio = parse_double(capture_raw, spot_style ? 0.55 : 0.35,
+        const double capture_ratio = parse_double(capture_raw, scalp_style_default_capture_ratio(style),
                                                   0.01, 1.0, "--capture-ratio", &ok);
         QVector<double> targets;
         const QStringList target_parts = split_csv(target_raw.trimmed().isEmpty()
@@ -5927,6 +5943,7 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
         QString max_age_raw;
         QString max_spread_raw;
         QString min_sources_raw;
+        QString start_style_raw;
         bool paper = true;
         for (int i = 0; i < args.size(); ++i) {
             const QString flag = args.at(i);
@@ -5963,6 +5980,8 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
                 if (!consume_value(args, i, flag, &max_spread_raw)) return 2;
             } else if (flag == QStringLiteral("--min-live-sources")) {
                 if (!consume_value(args, i, flag, &min_sources_raw)) return 2;
+            } else if (flag == QStringLiteral("--style")) {
+                if (!consume_value(args, i, flag, &start_style_raw)) return 2;
             } else if (flag == QStringLiteral("--paper")) {
                 args.removeAt(i--);
                 paper = true;
@@ -6038,6 +6057,11 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
         };
 
         bool ok = true;
+        const QString engine_style = scalp_style_normalize(start_style_raw);
+        if (engine_style.isEmpty()) {
+            std::fprintf(stderr, "--style must be scalp or spot\n");
+            return 2;
+        }
         const int cadence_ms = parse_int(cadence_raw, 250, 50, 5000, "--cadence-ms", &ok);
         const int max_age_ms = parse_int(max_age_raw, 1000, 50, 30000, "--max-age-ms", &ok);
         const int min_live_sources = parse_int(min_sources_raw, 2, 1, 10, "--min-live-sources", &ok);
@@ -6049,15 +6073,18 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
         const double safety_bps = parse_double(safety_raw, 5.0, 0.0, 1000.0, "--safety-bps", &ok);
         if (min_profit_raw.trimmed().isEmpty() && !min_net_raw.trimmed().isEmpty())
             min_profit_raw = min_net_raw;
-        const double min_profit_bps = parse_double(min_profit_raw, 10.0, 0.0, 1000.0, "--min-profit-bps", &ok);
+        const double min_profit_bps = parse_double(min_profit_raw, scalp_style_default_min_profit_bps(engine_style),
+                                                    0.0, 1000.0, "--min-profit-bps", &ok);
         const double min_confidence = normalize_confidence_gate(
             parse_double(min_confidence_raw, 0.0, 0.0, 100.0, "--min-confidence", &ok));
-        const double capture_ratio = parse_double(capture_raw, 0.35, 0.01, 1.0, "--capture-ratio", &ok);
+        const double capture_ratio = parse_double(capture_raw, scalp_style_default_capture_ratio(engine_style),
+                                                   0.01, 1.0, "--capture-ratio", &ok);
         const double max_spread_bps = parse_double(max_spread_raw, 8.0, 0.0, 1000.0, "--max-spread-bps", &ok);
         if (!ok)
             return 2;
 
         const QJsonObject cfg{{"enabled", true},
+                              {"style", engine_style},
                               {"paper", paper},
                               {"symbols", QJsonArray::fromStringList(symbols)},
                               {"sources", QJsonArray::fromStringList(sources)},

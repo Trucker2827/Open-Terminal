@@ -207,8 +207,13 @@ void CryptoAutomationCockpit::refresh() {
     venue_caption_->setText(tr("ACTIVE CRYPTO ACCOUNT"));
     set_metric(venue_value_, venue_caption_, venue_title(exchange_id_) + (is_paper_ ? tr(" / PAPER") : tr(" / LIVE")),
                is_paper_ ? colors::CYAN() : colors::POSITIVE());
-    engine_caption_->setText(tr("SCALP ENGINE"));
-    set_metric(engine_value_, engine_caption_, engine_running ? tr("RUNNING") : tr("OFFLINE"),
+    // ONE engine, two parameter styles (scalp|spot) — show what is actually
+    // configured instead of the old hardcoded "SCALP ENGINE". Engines started
+    // before the style field existed default to scalp (their preset).
+    const QString style = config.value(QStringLiteral("style")).toString(QStringLiteral("scalp")).toUpper();
+    engine_caption_->setText(style + tr(" ENGINE"));
+    set_metric(engine_value_, engine_caption_,
+               engine_running ? style + tr(" · RUNNING") : style + tr(" · OFFLINE"),
                engine_running ? colors::POSITIVE() : colors::NEGATIVE());
     guard_caption_->setText(tr("AUTOMATION GUARD"));
     set_metric(guard_value_, guard_caption_, live_armed ? tr("LIVE ARMED") : tr("PAPER ONLY"),

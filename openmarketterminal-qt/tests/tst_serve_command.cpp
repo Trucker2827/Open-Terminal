@@ -315,6 +315,25 @@ private slots:
         QCOMPARE(refreshed.value("observed_at_ms").toString(), QStringLiteral("30000"));
         QCOMPARE(refreshed.value("source").toString(), QStringLiteral("kalshi_rest"));
     }
+    void scalp_style_normalize_and_defaults() {
+        using namespace openmarketterminal::cli;
+        // Empty -> scalp (the engine's historical behavior); aliases -> spot.
+        QCOMPARE(scalp_style_normalize(""), QStringLiteral("scalp"));
+        QCOMPARE(scalp_style_normalize("  SCALP "), QStringLiteral("scalp"));
+        QCOMPARE(scalp_style_normalize("spot"), QStringLiteral("spot"));
+        QCOMPARE(scalp_style_normalize("spot-swing"), QStringLiteral("spot"));
+        QCOMPARE(scalp_style_normalize("swing"), QStringLiteral("spot"));
+        QCOMPARE(scalp_style_normalize("intrahour"), QStringLiteral("spot"));
+        QCOMPARE(scalp_style_normalize("buy-sell"), QStringLiteral("spot"));
+        // Unknown -> empty so callers fail loudly instead of silently scalping.
+        QVERIFY(scalp_style_normalize("yolo").isEmpty());
+        // Style-dependent defaults (spot waits for bigger moves).
+        QCOMPARE(scalp_style_default_min_profit_bps("scalp"), 10.0);
+        QCOMPARE(scalp_style_default_min_profit_bps("spot"), 25.0);
+        QCOMPARE(scalp_style_default_capture_ratio("scalp"), 0.35);
+        QCOMPARE(scalp_style_default_capture_ratio("spot"), 0.55);
+    }
+
 };
 QTEST_MAIN(TstServeCommand)
 #include "tst_serve_command.moc"
