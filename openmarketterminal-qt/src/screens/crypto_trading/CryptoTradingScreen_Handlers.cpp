@@ -283,6 +283,9 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     pending_trades_.clear();
     impulse_points_.clear();
     // Per-symbol overlay state: the next my-trades REST fetch re-seeds it.
+    // The order accumulator is per-symbol too (topic + REST are per-pair) —
+    // clear it so the blotter can't briefly show the old pair's orders.
+    live_orders_by_id_.clear();
     live_avg_entry_.reset();
     if (trading_mode_ == TradingMode::Live && ladder_) {
         ladder_->set_my_orders({});
