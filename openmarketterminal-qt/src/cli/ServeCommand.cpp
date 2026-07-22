@@ -2721,6 +2721,7 @@ class DaemonScalpEngine {
 
     QJsonObject public_config() const {
         return QJsonObject{{"enabled", enabled_},
+                           {"style", style_},
                            {"paper", true},
                            {"symbols", QJsonArray::fromStringList(symbols_)},
                            {"sources", QJsonArray::fromStringList(sources_)},
@@ -2828,6 +2829,9 @@ class DaemonScalpEngine {
         max_age_ms_ = int_value(cfg, QStringLiteral("max_age_ms"), 1000, 50, 30000);
         max_spread_bps_ = double_value(cfg, QStringLiteral("max_spread_bps"), 8.0, 0.0, 1000.0);
         min_live_sources_ = int_value(cfg, QStringLiteral("min_live_sources"), 2, 1, 10);
+        style_ = scalp_style_normalize(cfg.value(QStringLiteral("style")).toString());
+        if (style_.isEmpty())
+            style_ = QStringLiteral("scalp");
         symbols_ = symbols;
         sources_ = sources;
         enabled_ = true;
@@ -3064,6 +3068,7 @@ class DaemonScalpEngine {
     QStringList sources_ = CryptoLatencyService::default_sources();
     QVector<double> paper_amounts_usd_{25.0, 50.0};
     int cadence_ms_ = 250;
+    QString style_{QStringLiteral("scalp")};
     QString fee_venue_{QStringLiteral("coinbase")};
     QString liquidity_mode_{QStringLiteral("maker")};
     double fee_bps_ = 40.0;
