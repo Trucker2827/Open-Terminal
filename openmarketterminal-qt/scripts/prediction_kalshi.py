@@ -608,6 +608,53 @@ def cmd_fills(payload: dict) -> None:
     _emit({"ok": True, "fills": fills_out})
 
 
+def settlement_row_from_api(s: dict) -> dict:
+    """Pure transform: one raw /portfolio/settlements row -> closed-bet row.
+
+    Netting-aware EXACT P&L: on Kalshi's single order book a held yes+no pair
+    redeems $1 at trade time, so settlement `revenue` only covers the
+    unnetted remainder. Therefore
+        pnl = min(yes,no) * $1 + revenue - yes_cost - no_cost - fees
+    For one-sided rows min()==0 and this reduces to the previous exact
+    formula. Empirically validated against the live account (2026-07-22):
+    the 38 formerly-"pending" mixed rows produce sane values (total -98.30),
+    zero absurd magnitudes; fully-hedged rows lose only spread+fees.
+    """
+    yes_count = _to_float(s.get("yes_count_fp"))
+    no_count = _to_float(s.get("no_count_fp"))
+    yes_cost = _to_float(s.get("yes_total_cost_dollars"))
+    no_cost = _to_float(s.get("no_total_cost_dollars"))
+    fees = _to_float(s.get("fee_cost"))
+    # Revenue remains a legacy integer-cent field in the current endpoint;
+    # prefer a future fixed-point dollar field if Kalshi adds one.
+    revenue = (_to_float(s.get("revenue_dollars"))
+               if s.get("revenue_dollars") is not None
+               else _to_float(s.get("revenue")) / 100.0)
+    ticker = s.get("ticker", "")
+    settled_time = s.get("settled_time", "")
+    side = ("YES" if yes_count > 0 and no_count == 0 else
+            "NO" if no_count > 0 and yes_count == 0 else "MIXED")
+    netted = min(yes_count, no_count)
+    realized_pnl = netted * 1.0 + revenue - yes_cost - no_cost - fees
+    return {
+        "internal_id": f"{ticker}:{settled_time}",
+        "market_id": ticker,
+        "event_ticker": s.get("event_ticker", ""),
+        "market_result": (s.get("market_result") or "").upper(),
+        "side": side,
+        "yes_count": yes_count,
+        "no_count": no_count,
+        "stake": yes_cost + no_cost,
+        "fees": fees,
+        "payout": revenue,
+        "netted_redemption": netted,
+        "realized_pnl": realized_pnl,
+        "accounting_status": ("exact_one_sided" if netted == 0
+                              else "exact_netted_mixed"),
+        "settled_time": settled_time,
+    }
+
+
 def cmd_settlements(payload: dict) -> None:
     params = {"limit": int(payload.get("limit", 100))}
     if payload.get("cursor"):
@@ -617,39 +664,8 @@ def cmd_settlements(payload: dict) -> None:
     if not ok:
         _fail(f"HTTP {code}", detail=data)
         return
-    settlements_out = []
-    for s in data.get("settlements", []) or []:
-        yes_count = _to_float(s.get("yes_count_fp"))
-        no_count = _to_float(s.get("no_count_fp"))
-        yes_cost = _to_float(s.get("yes_total_cost_dollars"))
-        no_cost = _to_float(s.get("no_total_cost_dollars"))
-        fees = _to_float(s.get("fee_cost"))
-        # Revenue remains a legacy integer-cent field in the current endpoint;
-        # prefer a future fixed-point dollar field if Kalshi adds one.
-        revenue = (_to_float(s.get("revenue_dollars"))
-                   if s.get("revenue_dollars") is not None
-                   else _to_float(s.get("revenue")) / 100.0)
-        ticker = s.get("ticker", "")
-        settled_time = s.get("settled_time", "")
-        side = ("YES" if yes_count > 0 and no_count == 0 else
-                "NO" if no_count > 0 and yes_count == 0 else "MIXED")
-        realized_pnl = (revenue - yes_cost - no_cost - fees) if side != "MIXED" else None
-        settlements_out.append({
-            "internal_id": f"{ticker}:{settled_time}",
-            "market_id": ticker,
-            "event_ticker": s.get("event_ticker", ""),
-            "market_result": (s.get("market_result") or "").upper(),
-            "side": side,
-            "yes_count": yes_count,
-            "no_count": no_count,
-            "stake": yes_cost + no_cost,
-            "fees": fees,
-            "payout": revenue,
-            "realized_pnl": realized_pnl,
-            "accounting_status": ("exact_one_sided" if realized_pnl is not None
-                                  else "mixed_requires_fill_reconciliation"),
-            "settled_time": settled_time,
-        })
+    settlements_out = [settlement_row_from_api(s)
+                       for s in data.get("settlements", []) or []]
     # Do not depend on exchange response order. ISO-8601 UTC timestamps sort
     # lexicographically, so the newest closed bet is always rendered first.
     settlements_out.sort(key=lambda row: row.get("settled_time", ""), reverse=True)
