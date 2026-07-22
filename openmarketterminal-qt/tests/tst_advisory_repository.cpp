@@ -116,7 +116,7 @@ class TstAdvisoryRepository : public QObject {
         p.daemon_prob = 0.5; p.seconds_left = 1920; p.now_ms = 20'000;
         p.provider = "openai-codex-cli"; p.competition_pair_id = "pair-ttl";
         auto paired = repo.open(p); QVERIFY(paired.is_ok());
-        QCOMPARE(paired.value().prediction_ttl_at - paired.value().created_at, qint64(60000));
+        QCOMPARE(paired.value().prediction_ttl_at - paired.value().created_at, qint64(100000));
 
         p.market_id = "SOLO-TTL"; p.now_ms = 30'000; p.competition_pair_id.clear();
         auto solo = repo.open(p); QVERIFY(solo.is_ok());

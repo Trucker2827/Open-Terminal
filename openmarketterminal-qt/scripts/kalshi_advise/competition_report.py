@@ -8,8 +8,8 @@ import random
 import sqlite3
 import time
 
-CLAUDE_EPOCH = "kalshi-blind-claude-cli-v4-production"
-CODEX_EPOCH = "kalshi-blind-codex-v3-zero-capability"
+CLAUDE_EPOCH = "kalshi-blind-claude-cli-v5-latency-neutral"
+CODEX_EPOCH = "kalshi-blind-codex-v4-zero-capability-latency-neutral"
 MIN_PAIRED = 200
 MIN_COVERAGE = 0.80
 

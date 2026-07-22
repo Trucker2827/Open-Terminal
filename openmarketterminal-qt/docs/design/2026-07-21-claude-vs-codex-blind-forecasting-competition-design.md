@@ -90,7 +90,7 @@ Jointly-resolved pairs alone can reward a model that only predicts easy cases. T
 **Preregistered (frozen before the epoch opens):** declare a winner only with **≥200 jointly-resolved pairs**, **≥80% prediction coverage for BOTH** contestants, and a paired-Brier CI that **does not cross zero**. Otherwise no winner.
 
 ### 5.3 Epoch discipline
-New frozen epoch `kalshi-blind-claude-cli-v4-production`, **never pooled** with Codex v3 or the Ollama epoch. Same blind packet (price-free allowlist + defense-in-depth `FORBIDDEN_KEYS`), same TTL/commit-blind timing guard, same abstention semantics, same scoring path (`advise score --forecaster-id`), same `kMinResolvedSample`/CI.
+New frozen epoch `kalshi-blind-claude-cli-v5-latency-neutral`, paired only with `kalshi-blind-codex-v4-zero-capability-latency-neutral` and **never pooled** with earlier or Ollama epochs. Same blind packet (price-free allowlist + defense-in-depth `FORBIDDEN_KEYS`), same TTL/commit-blind timing guard, same abstention semantics, same scoring path (`advise score --forecaster-id`), same `kMinResolvedSample`/CI.
 
 ## 6. Result states (mechanical — no discretionary judgment after seeing results) (Codex amendment #6)
 
@@ -106,8 +106,8 @@ The competition report resolves to exactly one:
 ```
 opportunity → capture ONE immutable blind snapshot (context_json, context_hash)
    → atomically create sibling challenges (competition_pair_id, identical context)
-   ├─ parallel → codex_forecaster.py      → {predict|abstain} → commit-blind → journal (epoch: kalshi-blind-codex-v3-zero-capability)
-   └─ parallel → claude_cli_forecaster.py → {predict|abstain} → commit-blind → journal (epoch: kalshi-blind-claude-cli-v4-production)
+   ├─ parallel → codex_forecaster.py      → {predict|abstain} → commit-blind → journal (epoch: kalshi-blind-codex-v4-zero-capability-latency-neutral)
+   └─ parallel → claude_cli_forecaster.py → {predict|abstain} → commit-blind → journal (epoch: kalshi-blind-claude-cli-v5-latency-neutral)
    → resolve at settlement (outcome backfill)
    → advise score --forecaster-id  (each epoch independently)
    → competition report (§5.2) → result state (§6)
@@ -139,7 +139,7 @@ The **daemon Kalshi feed is currently healthy** (connected, 17 markets / 34 asse
 - **Strategic abstention** → coverage floor (≥80% both) + full rate/coverage reporting (§5.2); no winner below threshold.
 - **Silent model drift** (alias/fallback) → exact-model pin, no fallback → abstain + INVALID_EPOCH.
 - **Unfair comparison** (prompt/timing/tier) → byte-for-byte prompt freeze (§5.1), atomic paired-open with identical context (§3.1), independent frozen epochs.
-- **Timeout-budget bias** (measured 2026-07-21) → with `--forecast-timeout 35s`, `claude-opus-4-8 @ medium` (median 13.6s, heavy tail) timed out 12× — **all on 1h contracts with 30–57 min runway** — while `gpt-5.6-sol` (median 31.6s, tighter) never did, flooding `PAIRED_PARTIAL` and letting the tighter-latency model win timeout races by default (skill-irrelevant bias). Contract-horizon is NOT the lever (picker already `--auto-min-secs-left 901`). **Fix:** set `--forecast-timeout` generously (~52s) so **both** tails finish; ensure `elapsed ≤ prediction_ttl_ms − 6000` supports it (raise `ttl_for` `configured_max_ms=60000` for the competition epoch if it caps <~54s). The budget must cover both tails or the paired sample is biased.
+- **Timeout-budget bias** (measured 2026-07-21) → with `--forecast-timeout 35s`, `claude-opus-4-8 @ medium` (median 13.6s, heavy tail) timed out 12× — **all on 1h contracts with 30–57 min runway** — while `gpt-5.6-sol` (median 31.6s, tighter) never did, flooding `PAIRED_PARTIAL` and letting the tighter-latency model win timeout races by default (skill-irrelevant bias). Contract-horizon is NOT the lever (picker already `--auto-min-secs-left 901`). **Fix:** set `--forecast-timeout` generously (~90s) so **both** tails finish; ensure `elapsed ≤ prediction_ttl_ms − 6000` supports it (raise `ttl_for` `configured_max_ms=100000` for the competition epoch if it caps <~96s). The budget must cover both tails or the paired sample is biased.
 - **CLI upgrade re-enabling tools** → version + flag-surface pin → abstain on drift; re-probe on upgrade.
 - **Epoch pooling** → strict `forecaster-id`/`prompt_version` filtering; distinct epoch ids; INVALID_EPOCH on cross-contamination.
 
@@ -155,7 +155,7 @@ A dedicated Qt Notebook window, **"Forecast Arena" (CLAUDE vs CODEX · LIVE SHAD
 3. **Hypothetical value is labeled counterfactual.** Any "net-of-fees value" chart is a **HYPOTHETICAL** scoring aid ("if these blind forecasts had been sized by a fixed rule…") — it must not render like a real equity curve or imply either model held a position.
 4. **Coverage + abstention are prominent, not buried.** Each model's prediction/abstention/expiration/error rates and coverage-by-regime sit *beside* the score (surfacing §5.2 — "leads but abstained on the hard cases" must be visible at a glance, not hidden behind the delta).
 5. **`INVALID_EPOCH` is loud, sticky, and suppresses any leader.** On firewall breach / lockdown drift / model fallback / `prompt_hash` divergence, the Arena shows a prominent INVALID banner and **refuses to display a provisional or final leader** on tainted data.
-6. **Epoch-scoped, never pooled.** The window names the epoch pair it displays (`kalshi-blind-claude-cli-v4-production` ↔ `kalshi-blind-codex-v3-zero-capability`), never mixes epochs, and follows the frozen pair when a `-v2` opens after a `claude` upgrade.
+6. **Epoch-scoped, never pooled.** The window names the epoch pair it displays (`kalshi-blind-claude-cli-v5-latency-neutral` ↔ `kalshi-blind-codex-v4-zero-capability-latency-neutral`), never mixes epochs, and follows the frozen pair when a `-v2` opens after a `claude` upgrade.
 7. **Firewall-integrity panel:** model/CLI/prompt versions, epoch ids, `prompt_hash`/`context_hash`, and live capability-lockdown status — so blindness is auditable in the UI.
 8. **No dead ends:** each opportunity row is clickable → a comparison card with both rationales, the identical blind packet, blind-commit/reveal/outcome timestamps (UTC), post-reveal market info, the scoring arithmetic, and audit hashes.
 9. **Result-state enum matches the report exactly:** `CLAUDE_WINS | CODEX_WINS | STATISTICAL_TIE | INSUFFICIENT_PAIRED_DATA | INVALID_EPOCH` (note: `INSUFFICIENT_PAIRED_DATA`, not `INSUFFICIENT_DATA`) — no UI-side translation layer.
