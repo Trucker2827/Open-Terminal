@@ -722,3 +722,8 @@ add_executable(tst_advisor_canary_presentation tst_advisor_canary_presentation.c
 target_include_directories(tst_advisor_canary_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_advisor_canary_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_advisor_canary_presentation COMMAND tst_advisor_canary_presentation)
+
+add_executable(tst_crypto_symbol_universe tst_crypto_symbol_universe.cpp)
+target_include_directories(tst_crypto_symbol_universe PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_symbol_universe PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_symbol_universe COMMAND tst_crypto_symbol_universe)
