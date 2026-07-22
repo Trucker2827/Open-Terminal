@@ -121,8 +121,7 @@ void GovDataAustraliaPanel::build_ui() {
             const QString url = item->data(Qt::UserRole).toString();
             if (!url.isEmpty())
                 QDesktopServices::openUrl(QUrl(url));
-        },
-        Qt::UniqueConnection);
+        });
     content_stack_->addWidget(resources_table_); // index 2
 
     // Page 3 — Status / loading / error
