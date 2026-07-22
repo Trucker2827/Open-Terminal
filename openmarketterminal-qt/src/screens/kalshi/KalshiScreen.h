@@ -225,6 +225,10 @@ class KalshiScreen final : public QWidget {
     QMap<double, double> reference_dom_asks_;
     QString reference_dom_symbol_;
     QString reference_dom_venue_ = QStringLiteral("kraken");
+    // Coinbase spot-DOM endpoint choice: Advanced Trade WS first; flips to the
+    // legacy Exchange feed on a coinbase connection that never produced a book
+    // (fallback while the sunset feed still answers).
+    bool reference_dom_use_legacy_coinbase_ = false;
     qint64 reference_dom_last_update_ms_ = 0;
     qint64 reference_spot_last_update_ms_ = 0;
     QString reference_spot_source_;
