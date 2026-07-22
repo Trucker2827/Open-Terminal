@@ -4,6 +4,9 @@
 #include "core/symbol/IGroupLinked.h"
 #include "core/symbol/SymbolGroup.h"
 #include "screens/common/IStatefulScreen.h"
+#include "screens/crypto_trading/CryptoAlertEngine.h"
+#include "screens/crypto_trading/CryptoFillNotifier.h"
+#include "screens/crypto_trading/CryptoLiveOverlay.h"
 #include "screens/crypto_trading/CryptoTypes.h"
 #include "trading/TradingTypes.h"
 
@@ -221,6 +224,11 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     trading::OrderBookData pending_orderbook_;
     bool has_pending_orderbook_ = false;
 
+    // Latest book + receipt time — freshness evidence for honest paper-mode
+    // market fills (CryptoPaperFill.h): stale/missing book → REJECT, no fill.
+    trading::OrderBookData last_book_;
+    qint64 last_book_ms_ = 0;
+
     struct ImpulsePoint {
         qint64 ts_ms = 0;
         double price = 0.0;
@@ -241,6 +249,34 @@ class CryptoTradingScreen : public QWidget, public IStatefulScreen, public IGrou
     QVector<crypto::TradeEntry> pending_trades_;
 
     void flush_ws_updates();
+
+    // ── Authenticated account WS (fast path; REST stays source of truth) ──
+    // Any account event stamps last_account_ws_event_ms_; the REST poll
+    // cadence relaxes only while this is fresh (CryptoAccountCadence.h).
+    qint64 last_account_ws_event_ms_ = 0;
+    QHash<QString, QJsonObject> live_orders_by_id_;  // open orders, keyed by exchange order id
+    bool account_refresh_scheduled_ = false;         // coalesces confirming REST fetches
+    void on_account_order_event(const QJsonObject& order);
+    void on_account_balance_event(const QJsonObject& balances);
+    // Live-mode DOM overlay: own resting orders + est. avg entry (VWAP of
+    // my-trades for the active pair; see CryptoLiveOverlay.h caveats).
+    openmarketterminal::crypto::LiveAvgEntry live_avg_entry_;
+    void refresh_live_ladder_overlay();
+
+    // ── Local price/spread alerts (CryptoAlertEngine.h; persisted under the
+    //    "crypto.alerts" setting; delivered via NotificationService only) ──
+    openmarketterminal::crypto::CryptoAlertEngine alert_engine_;
+    // Fill/cancel notifications, deduped per (order id, terminal status)
+    // across the WS fast path and the confirming REST refresh. Live only.
+    openmarketterminal::crypto::CryptoFillNotifier fill_notifier_;
+    void notify_order_terminal(const QJsonObject& order);
+    void load_alerts();
+    void save_alerts();
+    void on_alert_requested(const QString& symbol, double last_price);
+    void evaluate_alerts();
+    // Shared AVAIL-currency fallback chain (pair quote → USD → USDC → USDT →
+    // USDE → largest holding) used by both the REST and WS balance paths.
+    void apply_live_balance_display(const QJsonObject& balances);
 
     // Ladder ORDERS/avg-entry overlay — Paper-mode only (typed PtOrder/
     // PtPosition are cleanly available here; Live-mode orders/positions

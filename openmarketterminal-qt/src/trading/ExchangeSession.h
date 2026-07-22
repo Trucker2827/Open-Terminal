@@ -44,6 +44,11 @@ struct SessionPublisher {
     std::function<void(const QString& exchange, const QString& pair, const TradeData&)> publish_trade;
     std::function<void(const QString& exchange, const QString& pair, const QString& interval, const Candle&)>
         publish_candle;
+    // Authenticated account stream (ws_stream.py --account watchers). Payloads
+    // are the unified ccxt shapes classified by AccountStreamParse.h.
+    std::function<void(const QString& exchange, const QString& pair, const QJsonObject&)> publish_account_order;
+    std::function<void(const QString& exchange, const QString& pair, const QJsonObject&)> publish_account_mytrade;
+    std::function<void(const QString& exchange, const QJsonObject& balances)> publish_account_balance;
 };
 
 class ExchangeSession : public QObject {
@@ -84,6 +89,11 @@ class ExchangeSession : public QObject {
     /// Re-point only the OHLC stream to a new chart timeframe (no restart).
     void set_ws_timeframe(const QString& timeframe);
     QString get_ws_primary_symbol() const;
+    /// Push stored credentials into the running ws_stream.py subprocess via
+    /// its stdin (set_account_credentials command) so it can open the
+    /// authenticated account watchers. No-op without credentials or process.
+    /// Credentials NEVER go on argv or the environment.
+    void push_account_credentials();
 
     // ── Watch management (for paper-trading bookkeeping) ───────────────────
     void watch_symbol(const QString& symbol, const QString& portfolio_id);
