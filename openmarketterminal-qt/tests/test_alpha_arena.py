@@ -3,7 +3,9 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SCRIPTS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 sys.path.insert(0, os.path.join(SCRIPTS, "arena"))
@@ -318,6 +320,78 @@ class SeasonWindowTest(unittest.TestCase):
         self.assertEqual(status["min_resolved_target"], 300)
         self.assertEqual(arena_report.season_state(season, 14 * 86400000),
                          "CLOSED")
+
+
+class FakeOllamaHandler(BaseHTTPRequestHandler):
+    calls = []  # reset per test in setUp
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        type(self).calls.append({"path": self.path, "body": body})
+        raw = json.dumps({"done": True}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def log_message(self, *args):
+        pass
+
+
+class WarmLanesTest(unittest.TestCase):
+    def setUp(self):
+        FakeOllamaHandler.calls = []
+        self.server = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(thread.join)
+        self.addCleanup(self.server.shutdown)
+        self.endpoint = f"http://127.0.0.1:{self.server.server_port}"
+
+    def _lane(self, i, **overrides):
+        lane = {"id": f"m{i}", "kind": "ollama", "model": f"model-{i}",
+                "endpoint": self.endpoint, "epoch_id": f"e{i}",
+                "enabled": True, "warm_timeout_s": 5}
+        lane.update(overrides)
+        return lane
+
+    def test_warm_hits_every_ollama_lane_and_skips_others(self):
+        lanes = [self._lane(1), self._lane(2),
+                 self._lane(3, kind="openai_compat")]
+        statuses = arena_loop.warm_lanes(lanes)
+        self.assertEqual(statuses, {"m1": "OK", "m2": "OK", "m3": "SKIPPED"})
+        self.assertEqual([c["path"] for c in FakeOllamaHandler.calls],
+                         ["/api/generate", "/api/generate"])
+        self.assertEqual([c["body"]["model"] for c in FakeOllamaHandler.calls],
+                         ["model-1", "model-2"])
+        for call in FakeOllamaHandler.calls:
+            self.assertEqual(call["body"]["options"]["num_predict"], 1)
+            self.assertFalse(call["body"]["stream"])
+
+    def test_warm_failure_does_not_abort_round_and_is_journaled(self):
+        lanes = [self._lane(1),
+                 self._lane(2, endpoint="http://127.0.0.1:1", warm_timeout_s=1)]
+        appended = []
+        real = (arena_loop.load_registry, arena_loop.pick_auto_ticker,
+                arena_loop.append_round)
+        arena_loop.load_registry = lambda path=None: lanes
+        arena_loop.pick_auto_ticker = lambda *a, **k: None
+        arena_loop.append_round = lambda rec, path=None: appended.append(rec)
+        try:
+            rec = arena_loop.run_round()
+        finally:
+            (arena_loop.load_registry, arena_loop.pick_auto_ticker,
+             arena_loop.append_round) = real
+        # The dead lane's warm failed, yet the round proceeded past the warm
+        # step to contract picking instead of aborting.
+        self.assertEqual(rec["status"], "NO_CONTRACT")
+        self.assertEqual(rec["warm"]["m1"], "OK")
+        self.assertTrue(rec["warm"]["m2"].startswith("FAILED"))
+        self.assertEqual([c["body"]["model"] for c in FakeOllamaHandler.calls],
+                         ["model-1"])
+        self.assertEqual(appended, [rec])  # journal carries per-lane warm status
 
 
 class ExportHtmlTest(unittest.TestCase):

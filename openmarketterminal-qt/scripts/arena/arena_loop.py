@@ -2,17 +2,20 @@
 """Alpha Arena round loop — N models, one blind packet, sealed probabilities.
 
 A round (group):
-  1. Pick the freshest Kalshi contract with enough runway (same picker the
+  1. Warm every enabled ollama lane (minimal /api/generate) so cold model
+     loads — which a single host serializes — are not charged against the
+     shared prediction TTL. Warm failures are logged; the round proceeds.
+  2. Pick the freshest Kalshi contract with enough runway (same picker the
      duel's wrapper uses).
-  2. `advise open` lane 1 with a fresh group id -> immutable blind context +
+  3. `advise open` lane 1 with a fresh group id -> immutable blind context +
      challenge. `advise open --sibling-of` every other lane: the repository
      copies lane 1's exact context AND open instant, so no lane is penalized
      by call order and every lane shares one context_hash.
-  3. Defense-in-depth: re-verify the context leaks no price field.
-  4. All lanes forecast IN PARALLEL under one symmetric timeout.
-  5. Each in-time predict is committed blind; slow lanes are left to EXPIRE
+  4. Defense-in-depth: re-verify the context leaks no price field.
+  5. All lanes forecast IN PARALLEL under one symmetric timeout.
+  6. Each in-time predict is committed blind; slow lanes are left to EXPIRE
      honestly; abstains are recorded as abstains.
-  6. The round is journaled (arena-rounds.jsonl) and the leaderboard report
+  7. The round is journaled (arena-rounds.jsonl) and the leaderboard report
      refreshed.
 
 Advisory/shadow-only: nothing here can place orders. The frozen v5 duel files
@@ -26,6 +29,7 @@ import json
 import os
 import sys
 import time
+import urllib.request
 import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -67,12 +71,48 @@ def append_round(record, path=ROUNDS_PATH):
         fh.write(json.dumps(record) + "\n")
 
 
+WARM_TIMEOUT_S = 20
+
+
+def warm_lane(lane):
+    """Nudge the lane's ollama host to load the model so cold-start disk time
+    is not charged against the round's prediction TTL. Returns "OK",
+    "SKIPPED" (non-ollama lanes), or "FAILED: <reason>"; never raises."""
+    if lane.get("kind") != "ollama":
+        return "SKIPPED"
+    body = json.dumps({"model": lane["model"], "prompt": "", "stream": False,
+                       "options": {"num_predict": 1}}).encode("utf-8")
+    req = urllib.request.Request(
+        lane["endpoint"].rstrip("/") + "/api/generate", data=body,
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(
+                req, timeout=int(lane.get("warm_timeout_s", WARM_TIMEOUT_S))) as resp:
+            resp.read()
+        return "OK"
+    except Exception as exc:
+        return f"FAILED: {str(exc)[:120]}"
+
+
+def warm_lanes(lanes):
+    """Warm sequentially — a single ollama host serializes model loads anyway."""
+    statuses = {}
+    for lane in lanes:
+        statuses[lane["id"]] = status = warm_lane(lane)
+        if status.startswith("FAILED"):
+            print(json.dumps({"event": "arena_warm_failure", "lane": lane["id"],
+                              "status": status}), file=sys.stderr, flush=True)
+    return statuses
+
+
 def run_round(cli=DEFAULT_CLI, profile=None, evidence=DEFAULT_EVIDENCE,
               min_secs_left=901, max_age_s=11.0):
     lanes = load_registry()
+    warm = warm_lanes(lanes)  # before opening; a warm failure never aborts
     now_ms = int(time.time() * 1000)
     round_rec = {"event": "arena_round", "group_id": str(uuid.uuid4()),
-                 "opened_at_ms": now_ms, "advisory_only": True, "lanes": []}
+                 "opened_at_ms": now_ms, "advisory_only": True,
+                 "warm": warm, "lanes": []}
 
     ticker = pick_auto_ticker(evidence, min_secs_left, max_age_s)
     if not ticker:
