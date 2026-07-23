@@ -516,6 +516,13 @@ const QSet<QString>& local_essentials_tool_names() {
         "search_equity_symbols",
         // Observer
         "get_observations",
+        // Crypto + prediction-market read-only data — this terminal's primary
+        // domain; without these a local model treats "check BTC" or "what are
+        // the Kalshi odds" as out of scope instead of one declared call away.
+        "get_ticker",
+        "get_order_book",
+        "pm_search_markets",
+        "pm_get_market",
         // Web browsing (Task 3: web search/fetch added to the app)
         "web_search",
         "web_fetch",
