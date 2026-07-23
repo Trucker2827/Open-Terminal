@@ -801,6 +801,13 @@ add_test(NAME e2e_sandbox_smoke
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_sandbox_smoke.sh)
 
+# Issue #91 — tools/sign-release.sh probes notary credentials before any
+# download/sign work: a locked keychain (locked screen) must exit immediately
+# with the cause and fix, and a passing probe must leave the success path
+# unchanged. Offline: xcrun/gh stubbed on PATH, no keychain or network.
+add_test(NAME test_sign_release_probe
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_sign_release_probe.sh)
+
 # LLM advisory scoring Task 2 — protocol primitives (canonical JSON hash,
 # horizon-aware TTL policy, allowlist-only blind-packet builder). Pure
 # functions in services/edge_radar/AdvisoryProtocol, no DB/Widgets.
