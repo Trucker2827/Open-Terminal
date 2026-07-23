@@ -1,8 +1,11 @@
 // CryptoTickerBar.cpp — dense price ribbon with bid/ask/spread
 #include "screens/crypto_trading/CryptoTickerBar.h"
 
+#include "services/edge_radar/KalshiAutoEngine.h"
+#include "storage/repositories/EdgePredictionModelRepository.h"
 #include "ui/theme/Theme.h"
 
+#include <QDateTime>
 #include <QHBoxLayout>
 
 #include <cmath>
@@ -56,6 +59,17 @@ CryptoTickerBar::CryptoTickerBar(QWidget* parent) : QWidget(parent) {
     volume_label_->setObjectName("cryptoStatLabel");
     layout->addWidget(volume_label_);
 
+    // Ambient vol + move-in-sigmas (issue #97) — initial state comes from the
+    // shared formatter so "no data yet" reads as an honest -- state.
+    vol_sigma_label_ = new QLabel;
+    vol_sigma_label_->setObjectName("cryptoStatLabel");
+    const auto initial = openmarketterminal::crypto::format_ticker_vol_sigma({}, {});
+    vol_sigma_label_->setText(initial.text);
+    vol_sigma_label_->setToolTip(initial.tooltip);
+    last_vol_sigma_text_ = initial.text;
+    last_vol_sigma_tooltip_ = initial.tooltip;
+    layout->addWidget(vol_sigma_label_);
+
     mark_price_label_ = new QLabel("Mk:--");
     mark_price_label_->setObjectName("cryptoStatLabel");
     mark_price_label_->setVisible(false);
@@ -71,6 +85,18 @@ CryptoTickerBar::CryptoTickerBar(QWidget* parent) : QWidget(parent) {
 
 void CryptoTickerBar::set_symbol(const QString& symbol) {
     symbol_label_->setText(symbol);
+    // The tick store keys bare uppercase base symbols (BTC, not BTC/USDT).
+    const QString base = symbol.section(QLatin1Char('/'), 0, 0)
+                             .section(QLatin1Char('-'), 0, 0)
+                             .trimmed()
+                             .toUpper();
+    if (base != vol_base_symbol_) {
+        vol_base_symbol_ = base;
+        move_window_.clear();
+        vol_state_ = {};
+        vol_refreshed_ms_ = 0; // force an estimator refresh on the next tick
+        render_vol_sigma(QDateTime::currentMSecsSinceEpoch());
+    }
 }
 
 // Round a value to the display precision (here 2 decimals). Two inputs that
@@ -83,9 +109,17 @@ static inline double round_pp(double v, int places = 2) {
 }
 
 void CryptoTickerBar::update_data(double price, double change_pct, double high, double low, double volume,
-                                  bool ws_connected) {
+                                  bool ws_connected, bool live_sample) {
     if (price <= 0)
         return;
+
+    // Vol/sigma readout rides the existing ticker cadence — no new feeds.
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    if (live_sample)
+        move_window_.record(now_ms, price);
+    if (now_ms - vol_refreshed_ms_ >= 60'000)
+        refresh_vol_state(now_ms);
+    render_vol_sigma(now_ms);
 
     const double price_disp = round_pp(price);
     if (price_disp != last_price_display_) {
@@ -159,6 +193,50 @@ void CryptoTickerBar::update_bid_ask(double bid, double ask, double spread) {
     if (s != last_spread_display_) {
         spread_label_->setText(QString("S:%1").arg(s, 0, 'f', 2));
         last_spread_display_ = s;
+    }
+}
+
+void CryptoTickerBar::refresh_vol_state(qint64 now_ms) {
+    vol_refreshed_ms_ = now_ms;
+    vol_state_ = {};
+    if (vol_base_symbol_.isEmpty()) {
+        vol_state_.reason = QStringLiteral("no symbol selected");
+        return;
+    }
+    // Same series and estimator as the CLI scalp gate (EdgeJournalCommandsC):
+    // stored 1-min spot ticks keyed by the bare base symbol.
+    const auto series = EdgePredictionModelRepository::instance().list_spot_price_series_since(
+        vol_base_symbol_, now_ms - 8LL * 60 * 60 * 1000, 30'000);
+    if (!series.is_ok()) {
+        vol_state_.reason = QStringLiteral("no stored tick series for %1").arg(vol_base_symbol_);
+        return;
+    }
+    QVector<services::edge_radar::KalshiTimedPrice> prices;
+    prices.reserve(series.value().size());
+    for (const auto& tick : series.value())
+        prices.append(services::edge_radar::KalshiTimedPrice{tick.exchange_ts, tick.price});
+    const auto vol = services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(prices, now_ms);
+    // On early estimator exits sample_count stays 0; the stored-price count is
+    // the honest warming progress to surface.
+    vol_state_.sample_count = vol.ready ? vol.sample_count : static_cast<int>(prices.size());
+    vol_state_.reason = vol.reason;
+    const double per_min_bps = services::edge_radar::annual_vol_to_per_min_bps(vol.annual_volatility);
+    if (vol.ready && per_min_bps > 0.0) {
+        vol_state_.ready = true;
+        vol_state_.vol_per_min_bps = per_min_bps;
+    }
+}
+
+void CryptoTickerBar::render_vol_sigma(qint64 now_ms) {
+    const auto display =
+        openmarketterminal::crypto::format_ticker_vol_sigma(vol_state_, move_window_.move(now_ms));
+    if (display.text != last_vol_sigma_text_) {
+        vol_sigma_label_->setText(display.text);
+        last_vol_sigma_text_ = display.text;
+    }
+    if (display.tooltip != last_vol_sigma_tooltip_) {
+        vol_sigma_label_->setToolTip(display.tooltip);
+        last_vol_sigma_tooltip_ = display.tooltip;
     }
 }
 

@@ -372,8 +372,11 @@ void CryptoTradingScreen::refresh_ticker() {
     auto& es = ExchangeService::instance();
     const auto cached = es.get_cached_price(selected_symbol_);
     if (cached.last > 0) {
+        // Cache replay: primes the display but must not seed the 1m move
+        // window — the cached price may be stale and would fabricate a
+        // baseline (or a flat 0.0σ) the tape never printed this minute.
         ticker_bar_->update_data(cached.last, cached.percentage, cached.high, cached.low, cached.base_volume,
-                                 es.is_ws_connected());
+                                 es.is_ws_connected(), /*live_sample=*/false);
         if (cached.bid > 0 && cached.ask > 0)
             ticker_bar_->update_bid_ask(cached.bid, cached.ask, std::abs(cached.ask - cached.bid));
         order_entry_->set_current_price(cached.last);
