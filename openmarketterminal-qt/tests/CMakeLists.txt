@@ -2,6 +2,13 @@
 find_package(Qt6 REQUIRED COMPONENTS Test Network Concurrent)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+add_test(NAME test_crypto_fast_router
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_fast_router.py -v)
+add_test(NAME test_crypto_scalp_report
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_scalp_report.py -v)
+
 # Read-only authenticated Kalshi queue-position bridge. Uses unittest so the
 # packaged developer test path does not require pytest or other test extras.
 add_test(NAME test_prediction_kalshi_queue
@@ -602,6 +609,11 @@ add_executable(tst_sandbox_maker_quotes tst_sandbox_maker_quotes.cpp)
 target_include_directories(tst_sandbox_maker_quotes PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_maker_quotes PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_sandbox_maker_quotes COMMAND tst_sandbox_maker_quotes)
+
+add_executable(tst_crypto_auto_scalp tst_crypto_auto_scalp.cpp)
+target_include_directories(tst_crypto_auto_scalp PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_auto_scalp PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_auto_scalp COMMAND tst_crypto_auto_scalp)
 
 # Strategy Sandbox Task 2 — SandboxRegistry: immutable, param-hashed strategy
 # books on top of sandbox_strategy. Same DB bootstrap as tst_sandbox_schema.

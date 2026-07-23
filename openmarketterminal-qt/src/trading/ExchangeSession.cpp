@@ -710,7 +710,9 @@ QJsonObject ExchangeSession::fetch_balance() {
 
 QJsonObject ExchangeSession::place_exchange_order(const QString& symbol, const QString& side, const QString& type,
                                                   double amount, double price, double stop_price, double sl, double tp,
-                                                  bool reduce_only, bool post_only) {
+                                                  bool reduce_only, bool post_only,
+                                                  const QString& time_in_force, const QString& client_order_id,
+                                                  int deadline_ms, bool prefer_native) {
     QJsonObject args;
     args["symbol"] = symbol;
     args["side"] = side;
@@ -730,6 +732,14 @@ QJsonObject ExchangeSession::place_exchange_order(const QString& symbol, const Q
         args["reduce_only"] = true;
     if (post_only)
         args["post_only"] = true;
+    if (!time_in_force.trimmed().isEmpty())
+        args["time_in_force"] = time_in_force.trimmed().toUpper();
+    if (!client_order_id.trimmed().isEmpty())
+        args["client_order_id"] = client_order_id.trimmed();
+    if (deadline_ms > 0)
+        args["deadline_ms"] = deadline_ms;
+    if (prefer_native)
+        args["prefer_native"] = true;
     return daemon_call("place_order", args);
 }
 

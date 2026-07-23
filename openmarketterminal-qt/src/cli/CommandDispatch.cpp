@@ -462,6 +462,7 @@ static int command_help(const QString& topic) {
             "  automation recent [--limit N]\n"
             "  automation costs [--maker|--taker]\n"
             "  automation arm-live --venue coinbase --strategies scalp,spot,long-short --max-order-usd N --symbols BTC-USD --expires-min N --yes --i-understand-live-risk\n"
+            "  automation arm-scalp-canary --venue coinbase|kraken --max-order-usd 10 --max-daily-orders 10 --symbols BTC-USD --yes --i-understand-live-risk\n"
             "  automation arm-bot --venue coinbase --strategies scalp,spot --max-order-usd 100 --symbols BTC-USD --yes --i-understand-live-risk\n"
             "  automation arm-spot --max-order-usd 100 --symbols BTC-USD --target-move-pct 5 --yes --i-understand-live-risk\n"
             "  automation live-status\n"
@@ -469,6 +470,7 @@ static int command_help(const QString& topic) {
             "  automation explore [--style scalp|spot] [--amount 50] [--confidence 80]\n"
             "  automation scenarios [--strategy scalp|spot|long-short] [--amount 100] [--count 96] [--write]\n"
             "  automation disarm-live --yes\n"
+            "  daemon scalp qualification\n"
             "  automation stop\n"
             "\n"
             "The default mode is paper-only. Live execution requires BOTH GUI security gates\n"
@@ -7902,6 +7904,8 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
     const bool yes = take_bool_flag(args, QStringLiteral("--yes"));
     const bool understand = take_bool_flag(args, QStringLiteral("--i-understand-live-risk")) ||
                             take_bool_flag(args, QStringLiteral("--i-understand"));
+    const bool scalp_canary = take_bool_flag(args, QStringLiteral("--require-scalp-qualification")) ||
+                              take_bool_flag(args, QStringLiteral("--scalp-canary"));
     QString max_order_raw;
     QString expires_raw;
     QString symbols_raw;
@@ -7941,8 +7945,8 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
         return 2;
     }
     const QString venue = venue_raw.trimmed().isEmpty() ? QStringLiteral("coinbase") : venue_raw.trimmed().toLower();
-    if (venue != QLatin1String("coinbase")) {
-        std::fprintf(stderr, "--venue currently supports coinbase for guarded live crypto execution\n");
+    if (venue != QLatin1String("coinbase") && venue != QLatin1String("kraken")) {
+        std::fprintf(stderr, "--venue supports coinbase or kraken for guarded live crypto execution\n");
         return 2;
     }
     const QStringList strategies = automation_parse_strategies(strategies_raw, mode_raw.trimmed().isEmpty()
@@ -7953,6 +7957,10 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
     const double max_order_usd = max_order_raw.toDouble(&ok);
     if (!ok || max_order_usd <= 0.0 || max_order_usd > 10000.0) {
         std::fprintf(stderr, "--max-order-usd must be > 0 and <= 10000\n");
+        return 2;
+    }
+    if (scalp_canary && max_order_usd > 10.0) {
+        std::fprintf(stderr, "scalp canary --max-order-usd must be <= 10\n");
         return 2;
     }
     bool int_ok = true;
@@ -7969,6 +7977,10 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
     const int max_daily_orders = max_daily_orders_raw.isEmpty() ? (has_spot ? 1 : 3) : max_daily_orders_raw.toInt(&int_ok);
     if (!int_ok || max_daily_orders < 1 || max_daily_orders > 50) {
         std::fprintf(stderr, "--max-daily-orders must be 1..50\n");
+        return 2;
+    }
+    if (scalp_canary && max_daily_orders > 10) {
+        std::fprintf(stderr, "scalp canary --max-daily-orders must be <= 10\n");
         return 2;
     }
     double entry_offset_bps = entry_offset_raw.isEmpty() ? (has_spot ? 5.0 : 1.0) : entry_offset_raw.toDouble(&ok);
@@ -8004,6 +8016,23 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
         std::fprintf(stderr, "--symbols is required, e.g. --symbols BTC-USD\n");
         return 2;
     }
+    QJsonObject qualification;
+    if (scalp_canary) {
+        const QString qualification_path =
+            automation::state_dir(opts.profile) + QStringLiteral("/scalp_qualification_v1.json");
+        qualification = automation::read_json_object(qualification_path);
+        if (qualification.value(QStringLiteral("report_version")).toString() !=
+                QLatin1String("crypto-scalp-qualification-v1") ||
+            qualification.value(QStringLiteral("engine_version")).toString() !=
+                QLatin1String("crypto-auto-scalp-v1") ||
+            qualification.value(QStringLiteral("state")).toString() != QLatin1String("QUALIFIED") ||
+            !qualification.value(QStringLiteral("execution_eligible")).toBool()) {
+            return automation_emit_object(opts, QJsonObject{
+                {"armed", false}, {"canary", true},
+                {"reason", "frozen crypto scalp qualification gate is not satisfied"},
+                {"qualification", qualification}});
+        }
+    }
     const QDateTime now = QDateTime::currentDateTimeUtc();
     QJsonObject guard{{"enabled", true},
                       {"paper_first", true},
@@ -8021,6 +8050,9 @@ static int automation_arm_live_command(const GlobalOpts& opts, QStringList args)
                       {"min_spot_edge_bps", min_spot_edge_bps},
                       {"min_confidence", min_confidence},
                       {"max_daily_orders", max_daily_orders},
+                      {"scalp_canary", scalp_canary},
+                      {"qualification_version", scalp_canary
+                           ? QStringLiteral("crypto-scalp-qualification-v1") : QString()},
                       {"armed_at", now.toString(Qt::ISODateWithMs)},
                       {"expires_at", now.addSecs(expires_min * 60).toString(Qt::ISODateWithMs)}};
     QString error;
@@ -8138,6 +8170,25 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
                         {"venue_allowed", openmarketterminal::mcp::cli_venue_allowed(venue)}};
         return automation_emit_object(opts, out);
     }
+    if (!dry_run && guard.value(QStringLiteral("scalp_canary")).toBool()) {
+        const QString qualification_path =
+            automation::state_dir(opts.profile) + QStringLiteral("/scalp_qualification_v1.json");
+        const QJsonObject qualification = automation::read_json_object(qualification_path);
+        const QFileInfo qualification_file(qualification_path);
+        const bool qualification_fresh = qualification_file.exists() &&
+            qualification_file.lastModified().toUTC().msecsTo(QDateTime::currentDateTimeUtc()) <= 120000;
+        if (qualification.value(QStringLiteral("report_version")).toString() !=
+                guard.value(QStringLiteral("qualification_version")).toString() ||
+            qualification.value(QStringLiteral("state")).toString() != QLatin1String("QUALIFIED") ||
+            !qualification.value(QStringLiteral("execution_eligible")).toBool() ||
+            !qualification_fresh) {
+            return automation_emit_object(opts, QJsonObject{
+                {"submitted", false}, {"dry_run", false},
+                {"reason", "canary qualification was revoked, stale, or unavailable"},
+                {"qualification_fresh", qualification_fresh},
+                {"qualification", qualification}});
+        }
+    }
     const int max_daily_orders = guard.value(QStringLiteral("max_daily_orders")).toInt(3);
     const int submitted_today = automation::submitted_today_count(opts.profile);
     if (!dry_run && submitted_today >= max_daily_orders) {
@@ -8212,7 +8263,33 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
     mode = chosen_mode;
     const bool spot_mode = mode == QLatin1String("spot");
 
-    const double ref = decision.value(QStringLiteral("reference_price")).toDouble();
+    const bool auto_scalp_v1 =
+        decision.value(QStringLiteral("engine_version")).toString() == QLatin1String("crypto-auto-scalp-v1");
+    QJsonObject selected_proposal;
+    if (auto_scalp_v1) {
+        const QJsonArray proposals = decision.value(QStringLiteral("venue_proposals")).toArray();
+        const int selected = decision.value(QStringLiteral("selected_proposal_index")).toInt(-1);
+        if (selected < 0 || selected >= proposals.size()) {
+            return automation_emit_object(opts, QJsonObject{{"submitted", false}, {"dry_run", dry_run},
+                                                           {"reason", "shadow decision has no selected venue proposal"}});
+        }
+        selected_proposal = proposals[selected].toObject();
+        const QString proposed_venue = selected_proposal.value(QStringLiteral("venue")).toString();
+        const QString canonical_guard_venue = venue == QLatin1String("kraken")
+                                                  ? QStringLiteral("kraken_pro")
+                                                  : QStringLiteral("coinbase_advanced");
+        if (!selected_proposal.value(QStringLiteral("executable")).toBool() ||
+            proposed_venue != canonical_guard_venue) {
+            return automation_emit_object(opts, QJsonObject{
+                {"submitted", false}, {"dry_run", dry_run},
+                {"reason", "selected shadow proposal is not executable on the armed venue"},
+                {"selected_proposal", selected_proposal}});
+        }
+    }
+
+    const double ref = auto_scalp_v1
+        ? selected_proposal.value(QStringLiteral("limit_price")).toDouble()
+        : decision.value(QStringLiteral("reference_price")).toDouble();
     double entry_offset_bps = entry_offset_raw.isEmpty()
                                   ? guard.value(QStringLiteral("entry_offset_bps")).toDouble(spot_mode ? 5.0 : 1.0)
                                   : entry_offset_raw.toDouble(&ok);
@@ -8220,7 +8297,13 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
         std::fprintf(stderr, "--entry-offset-bps must be 0..1000\n");
         return 2;
     }
-    const double limit_price = ref * (1.0 - entry_offset_bps / 10000.0);
+    const QString proposed_side = auto_scalp_v1
+        ? selected_proposal.value(QStringLiteral("side")).toString().toLower()
+        : QStringLiteral("buy");
+    const bool proposed_buy = proposed_side != QLatin1String("sell");
+    const double limit_price = auto_scalp_v1
+        ? ref
+        : ref * (1.0 - entry_offset_bps / 10000.0);
     const double qty = limit_price > 0.0 ? max_order_usd / limit_price : 0.0;
     if (limit_price <= 0.0 || qty <= 0.0)
         return automation_emit_object(opts, QJsonObject{{"submitted", false}, {"dry_run", dry_run}, {"reason", "invalid candidate price"}});
@@ -8229,12 +8312,37 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
     const double target_exit_price = spot_mode && target_move_pct > 0.0
                                          ? limit_price * (1.0 + target_move_pct / 100.0)
                                          : 0.0;
+    const QString liquidity = auto_scalp_v1
+        ? selected_proposal.value(QStringLiteral("liquidity")).toString(QStringLiteral("maker"))
+        : QStringLiteral("maker");
+    const QString tif = auto_scalp_v1
+        ? selected_proposal.value(QStringLiteral("time_in_force")).toString(
+              liquidity == QLatin1String("maker") ? QStringLiteral("GTC") : QStringLiteral("IOC"))
+        : QStringLiteral("GTC");
+    if (!dry_run && guard.value(QStringLiteral("scalp_canary")).toBool() &&
+        tif != QLatin1String("IOC") && tif != QLatin1String("FOK")) {
+        return automation_emit_object(opts, QJsonObject{
+            {"submitted", false}, {"dry_run", false},
+            {"reason", "v1 canary permits IOC/FOK only; resting maker lifecycle is shadow-only"},
+            {"time_in_force", tif}});
+    }
+    const int deadline_ms = auto_scalp_v1
+        ? selected_proposal.value(QStringLiteral("ttl_ms")).toString().toInt()
+        : 0;
+    const QString client_order_id = QStringLiteral("sc%1")
+        .arg(automation::candidate_key(decision).left(16));
     QJsonObject order{{"symbol", symbol.replace('-', '/')},
-                      {"side", "buy"},
+                      {"side", proposed_buy ? "buy" : "sell"},
                       {"quantity", qty},
                       {"order_type", "limit"},
                       {"limit_price", limit_price},
-                      {"post_only", true}};
+                      {"post_only", liquidity == QLatin1String("maker")},
+                      {"time_in_force", tif},
+                      {"client_order_id", client_order_id}};
+    if (auto_scalp_v1 && venue == QLatin1String("kraken")) {
+        order["deadline_ms"] = std::clamp(deadline_ms, 500, 5000);
+        order["prefer_native"] = true;
+    }
     if (spot_mode) {
         order["mode"] = QStringLiteral("spot");
         order["target_move_pct"] = target_move_pct;
@@ -8250,7 +8358,9 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
                     {"guard", guard},
                     {"rationale", spot_mode
                                       ? QStringLiteral("fresh local spot candidate passed edge/confidence gate; submitting post-only limit buy under reference")
-                                      : QStringLiteral("fresh local paper candidate passed cost gate; submitting post-only limit buy under reference")}};
+                                      : auto_scalp_v1
+                                            ? QStringLiteral("qualified shadow proposal preserved exactly; venue, side, limit, TIF and TTL passed unchanged through deterministic gates")
+                                            : QStringLiteral("fresh local paper candidate passed cost gate; submitting post-only limit buy under reference")}};
     if (dry_run) {
         automation::append_jsonl_rotating(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                                                                       {"dry_run", true},
@@ -8273,13 +8383,36 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
     }
 
     QJsonObject body;
+    const qint64 submit_started_ms = QDateTime::currentMSecsSinceEpoch();
     const int rc = call_headless_tool_json(opts, QStringLiteral("crypto_submit_order"), order, body);
+    const qint64 submit_finished_ms = QDateTime::currentMSecsSinceEpoch();
+    bool signal_ts_ok = false;
+    const qint64 signal_ts_ms = decision.value(QStringLiteral("ts_ms")).toString().toLongLong(&signal_ts_ok);
+    const QJsonObject broker_data = body.value(QStringLiteral("data")).toObject();
+    QJsonObject telemetry{
+        {"signal_ts_ms", signal_ts_ok ? QString::number(signal_ts_ms) : QString()},
+        {"submit_started_ts_ms", QString::number(submit_started_ms)},
+        {"ack_received_ts_ms", QString::number(submit_finished_ms)},
+        {"signal_to_submit_ms", signal_ts_ok ? submit_started_ms - signal_ts_ms : -1},
+        {"client_round_trip_ms", submit_finished_ms - submit_started_ms},
+        {"venue_order_ack_ms", broker_data.value(QStringLiteral("order_ack_latency_ms")).toDouble(-1.0)},
+        {"adapter", broker_data.value(QStringLiteral("adapter")).toString()},
+        {"fill_latency_ms", -1},
+    };
+    if (broker_data.value(QStringLiteral("status")).toString().compare(
+            QStringLiteral("filled"), Qt::CaseInsensitive) == 0) {
+        const qint64 fill_ts = broker_data.value(QStringLiteral("timestamp")).toVariant().toLongLong();
+        if (fill_ts > 0)
+            telemetry["fill_latency_ms"] = fill_ts - submit_started_ms;
+    }
     out["submitted"] = rc == 0;
     out["broker_response"] = body;
+    out["latency_telemetry"] = telemetry;
     automation::append_jsonl_rotating(automation::orders_path(opts.profile), QJsonObject{{"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                                                                   {"submitted", rc == 0},
                                                                   {"order", order},
                                                                   {"decision", decision},
+                                                                  {"latency_telemetry", telemetry},
                                                                   {"broker_response", body}});
     return rc == 0 ? automation_emit_object(opts, out) : rc;
 }
@@ -8287,8 +8420,13 @@ static int automation_execute_next_command(const GlobalOpts& opts, QStringList a
 static int automation_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("guide") : args.first().trimmed().toLower();
     if (sub == "arm-live" || sub == "arm-bot" || sub == "bot-arm" ||
+        sub == "arm-scalp-canary" || sub == "scalp-canary" ||
         sub == "arm-spot" || sub == "spot-arm") {
         args.takeFirst();
+        if (sub == QStringLiteral("arm-scalp-canary") || sub == QStringLiteral("scalp-canary")) {
+            args << QStringLiteral("--mode") << QStringLiteral("scalp")
+                 << QStringLiteral("--require-scalp-qualification");
+        }
         if (sub == QStringLiteral("arm-spot") || sub == QStringLiteral("spot-arm"))
             args << QStringLiteral("--mode") << QStringLiteral("spot");
         return automation_arm_live_command(opts, args);

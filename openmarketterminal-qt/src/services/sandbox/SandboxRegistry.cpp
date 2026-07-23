@@ -139,7 +139,7 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     static const Venue venues[] = {
         {"coinbase_advanced", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 60.0, 2.0, 1.0,
          "Coinbase Advanced account tier; verify before live"},
-        {"kraken_pro", "BTC-USD,ETH-USD,SOL-USD", true, 25.0, 40.0, 2.0, 1.0,
+        {"kraken_pro", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 80.0, 2.0, 1.0,
          "Kraken Pro account tier; verify before live"},
         {"alpaca", "AAPL,NVDA,MSFT,SPY,QQQ", false, 0.0, 0.0, 3.0, 2.0,
          "Alpaca commission-free equities; spread/slippage is the cost"},

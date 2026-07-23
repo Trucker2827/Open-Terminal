@@ -32,6 +32,12 @@ import sys
 import signal
 import time
 import traceback
+import base64
+import hashlib
+import hmac
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta, timezone
 
 # Ensure this directory is on path for exchange_client imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -84,6 +90,133 @@ def _require_cap(req_id, ex, cap, exchange_id):
 
 _exchange_pool = {}      # key -> ccxt.Exchange
 _credentials = {}        # exchange_id -> dict
+_kraken_native_router = None
+
+
+class _KrakenNativeOrderRouter:
+    """Persistent Kraken Spot WebSocket v2 order-entry connection.
+
+    Market data remains on the existing public feeds. This adapter is only the
+    authenticated add_order path and deliberately exposes Kraken's deadline,
+    IOC/FOK, post-only and client-order-id protections. Any protocol ambiguity
+    fails the request; it never silently retries an order through REST.
+    """
+
+    URL = "wss://ws-auth.kraken.com/v2"
+    TOKEN_PATH = "/0/private/GetWebSocketsToken"
+
+    def __init__(self, api_key, secret, timeout_s=5):
+        self.api_key = api_key
+        self.secret = secret
+        self.timeout_s = timeout_s
+        self.ws = None
+        self.token = None
+
+    def _signed_token(self):
+        nonce = str(time.time_ns())
+        body = urllib.parse.urlencode({"nonce": nonce}).encode()
+        digest = hashlib.sha256(nonce.encode() + body).digest()
+        signature = base64.b64encode(
+            hmac.new(base64.b64decode(self.secret),
+                     self.TOKEN_PATH.encode() + digest,
+                     hashlib.sha512).digest()
+        ).decode()
+        request = urllib.request.Request(
+            "https://api.kraken.com" + self.TOKEN_PATH,
+            data=body,
+            headers={
+                "API-Key": self.api_key,
+                "API-Sign": signature,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+            payload = json.loads(response.read().decode())
+        if payload.get("error"):
+            raise RuntimeError("Kraken token rejected: " + "; ".join(payload["error"]))
+        token = payload.get("result", {}).get("token")
+        if not token:
+            raise RuntimeError("Kraken token response omitted token")
+        return token
+
+    def _connect(self):
+        try:
+            import websocket
+        except ImportError as exc:
+            raise RuntimeError("websocket-client is required for native Kraken routing") from exc
+        self.close()
+        self.token = self._signed_token()
+        self.ws = websocket.create_connection(self.URL, timeout=self.timeout_s,
+                                              enable_multithread=False)
+
+    def close(self):
+        if self.ws is not None:
+            try:
+                self.ws.close()
+            except Exception:
+                pass
+        self.ws = None
+        self.token = None
+
+    def place(self, args):
+        if self.ws is None or not getattr(self.ws, "connected", False):
+            self._connect()
+        now = datetime.now(timezone.utc)
+        deadline_ms = int(args.get("deadline_ms") or 1000)
+        deadline_ms = min(5000, max(500, deadline_ms))
+        params = {
+            "token": self.token,
+            "symbol": str(args["symbol"]).replace("-", "/"),
+            "side": str(args["side"]).lower(),
+            "order_type": str(args["type"]).lower(),
+            "order_qty": float(args["amount"]),
+            "deadline": (now + timedelta(milliseconds=deadline_ms)).isoformat(
+                timespec="milliseconds").replace("+00:00", "Z"),
+        }
+        if args.get("price") is not None and float(args.get("price") or 0) > 0:
+            params["limit_price"] = float(args["price"])
+        tif = str(args.get("time_in_force") or "GTC").lower()
+        if tif in ("gtc", "gtd", "ioc", "fok"):
+            params["time_in_force"] = tif
+        if args.get("post_only"):
+            params["post_only"] = True
+        client_id = str(args.get("client_order_id") or "").strip()
+        if client_id:
+            params["cl_ord_id"] = client_id[:18]
+        req_id = time.time_ns() & 0x7FFFFFFFFFFFFFFF
+        sent_ns = time.perf_counter_ns()
+        try:
+            self.ws.send(_dumps({"method": "add_order", "params": params, "req_id": req_id}))
+            while True:
+                raw = self.ws.recv()
+                message = json.loads(raw)
+                if message.get("method") != "add_order" or message.get("req_id") != req_id:
+                    continue
+                ack_ns = time.perf_counter_ns()
+                if not message.get("success"):
+                    raise RuntimeError(message.get("error") or "Kraken add_order rejected")
+                result = message.get("result") or {}
+                return {
+                    "id": result.get("order_id"),
+                    "client_order_id": result.get("cl_ord_id") or client_id,
+                    "symbol": args["symbol"],
+                    "side": args["side"],
+                    "type": args["type"],
+                    "amount": args["amount"],
+                    "price": args.get("price"),
+                    "status": "submitted",
+                    "exchange": "kraken",
+                    "adapter": "kraken_spot_websocket_v2",
+                    "time_in_force": tif.upper(),
+                    "deadline_ms": deadline_ms,
+                    "order_ack_latency_ms": (ack_ns - sent_ns) / 1_000_000.0,
+                    "exchange_time_in": message.get("time_in"),
+                    "exchange_time_out": message.get("time_out"),
+                }
+        except Exception:
+            self.close()
+            raise
 
 
 def _normalize_pem(secret):
@@ -345,12 +478,28 @@ def _handle_fetch_balance(req_id, exchange_id, args):
 
 
 def _handle_place_order(req_id, exchange_id, args):
+    global _kraken_native_router
     ex = _get_exchange(exchange_id, need_auth=True)
-    _ensure_markets(ex, exchange_id)
 
     otype = args["type"]
     price = args.get("price")
     params = {}
+    if str(exchange_id).lower() == "kraken" and args.get("prefer_native"):
+        creds = _credentials.get(exchange_id) or {}
+        api_key = creds.get("apiKey") or creds.get("api_key") or getattr(ex, "apiKey", None)
+        secret = creds.get("secret") or getattr(ex, "secret", None)
+        if not api_key or not secret:
+            raise RuntimeError("Kraken native routing requires authenticated API credentials")
+        if (_kraken_native_router is None or
+                _kraken_native_router.api_key != api_key or
+                _kraken_native_router.secret != secret):
+            if _kraken_native_router is not None:
+                _kraken_native_router.close()
+            _kraken_native_router = _KrakenNativeOrderRouter(api_key, secret)
+        result = _kraken_native_router.place(args)
+        _respond(req_id, True, result)
+        return
+    _ensure_markets(ex, exchange_id)
 
     # Map non-native order types to ccxt's unified (type + params) form. ccxt
     # createOrder only accepts "market"/"limit"; stops are expressed via a
@@ -375,15 +524,23 @@ def _handle_place_order(req_id, exchange_id, args):
         # at the API layer; ccxt also understands the unified postOnly flag.
         if str(exchange_id).lower() == "coinbase":
             params["timeInForce"] = "PO"
+    time_in_force = str(args.get("time_in_force") or "").upper()
+    if time_in_force in ("GTC", "GTD", "IOC", "FOK"):
+        params["timeInForce"] = time_in_force
+    client_order_id = str(args.get("client_order_id") or "").strip()
+    if client_order_id:
+        params["clientOrderId"] = client_order_id
     if args.get("sl"):
         params["stopLoss"] = {"triggerPrice": args["sl"]}
     if args.get("tp"):
         params["takeProfit"] = {"triggerPrice": args["tp"]}
 
+    sent_ns = time.perf_counter_ns()
     order = ex.create_order(
         args["symbol"], otype, args["side"],
         args["amount"], price, params,
     )
+    ack_ns = time.perf_counter_ns()
     _respond(req_id, True, {
         "id": order.get("id"),
         "symbol": order.get("symbol"),
@@ -399,6 +556,11 @@ def _handle_place_order(req_id, exchange_id, args):
         "fee": order.get("fee"),
         "timestamp": order.get("timestamp"),
         "exchange": exchange_id,
+        "adapter": "coinbase_advanced_rest" if str(exchange_id).lower() == "coinbase"
+                   else "ccxt_rest",
+        "client_order_id": order.get("clientOrderId") or client_order_id,
+        "time_in_force": time_in_force or None,
+        "order_ack_latency_ms": (ack_ns - sent_ns) / 1_000_000.0,
     })
 
 
