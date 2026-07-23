@@ -524,7 +524,7 @@ static int command_help(const QString& topic) {
             "  kalshi auto advise reveal --challenge ID\n"
             "  kalshi auto advise commit-post --challenge ID --commit-id K --probability P\n"
             "  kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
-            "    [--horizon H] [--limit N]\n"
+            "    [--horizon H] [--limit N] [--since-ms MS] [--until-ms MS]\n"
             "  kalshi auto advise ledger [--limit N]\n"
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
@@ -20711,15 +20711,19 @@ static double kalshi_advise_score_fee_dollars(double entry_price) {
 
 static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList args) {
     QString forecaster_id, provider_filter, model_filter, horizon_filter, limit_raw;
+    QString since_raw, until_raw;
     if (!take_string_option(args, QStringLiteral("--forecaster-id"), forecaster_id) ||
         !take_string_option(args, QStringLiteral("--provider"), provider_filter) ||
         !take_string_option(args, QStringLiteral("--model"), model_filter) ||
         !take_string_option(args, QStringLiteral("--horizon"), horizon_filter) ||
         !take_string_option(args, QStringLiteral("--limit"), limit_raw) ||
+        !take_string_option(args, QStringLiteral("--since-ms"), since_raw) ||
+        !take_string_option(args, QStringLiteral("--until-ms"), until_raw) ||
         !args.isEmpty()) {
         std::fprintf(stderr,
             "usage: kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
-            "       [--horizon H] [--limit N] [--json]\n");
+            "       [--horizon H] [--limit N] [--since-ms MS] [--until-ms MS] [--json]\n"
+            "       (--since-ms inclusive, --until-ms exclusive; epoch milliseconds)\n");
         return 2;
     }
     int limit = 1000;
@@ -20731,6 +20735,25 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
             return 2;
         }
     }
+    // Season windowing (arena P3): [since_ms, until_ms) over created_at, so a
+    // preregistered season's verdict never scores out-of-window commitments.
+    qint64 since_ms = -1, until_ms = -1;
+    if (!since_raw.isEmpty()) {
+        bool ok = false;
+        since_ms = since_raw.toLongLong(&ok);
+        if (!ok || since_ms < 0) {
+            std::fprintf(stderr, "--since-ms must be epoch milliseconds >= 0\n");
+            return 2;
+        }
+    }
+    if (!until_raw.isEmpty()) {
+        bool ok = false;
+        until_ms = until_raw.toLongLong(&ok);
+        if (!ok || until_ms < 0) {
+            std::fprintf(stderr, "--until-ms must be epoch milliseconds >= 0\n");
+            return 2;
+        }
+    }
 
     QString sql = QStringLiteral(
         "SELECT market_id, created_at, features_json, outcome FROM edge_decision_journal "
@@ -20739,6 +20762,14 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
     if (!horizon_filter.isEmpty()) {
         sql += QStringLiteral(" AND horizon=?");
         sql_params << horizon_filter;
+    }
+    if (since_ms >= 0) {
+        sql += QStringLiteral(" AND created_at>=?");
+        sql_params << since_ms;
+    }
+    if (until_ms >= 0) {
+        sql += QStringLiteral(" AND created_at<?");
+        sql_params << until_ms;
     }
     sql += QStringLiteral(" ORDER BY created_at DESC LIMIT ?");
     // Forecaster filtering happens in C++ below (parsed out of features_json,
@@ -20904,7 +20935,8 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
     }
 
     QJsonObject filter{{"forecaster_id", forecaster_id}, {"provider", provider_filter},
-                       {"model", model_filter}, {"horizon", horizon_filter}};
+                       {"model", model_filter}, {"horizon", horizon_filter},
+                       {"since_ms", since_raw}, {"until_ms", until_raw}};
     QJsonObject coverage{{"resolved", n_resolved}, {"daemon_comparable", daemon_comparable},
                         {"net_of_fees_rows", net_of_fees_rows},
                         {"daemon_comparable_summary",

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -150,6 +151,227 @@ class ReportTest(unittest.TestCase):
         for e in report["leaderboard"]:
             self.assertFalse(e["comparable"])
             self.assertIsNone(e["brier"])
+
+
+class SeasonTest(unittest.TestCase):
+    OPEN_PARAMS = '{"days": 14, "min_resolved": 300}'
+
+    def _season_path(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        return os.path.join(tmp, "arena-season.json")
+
+    def test_open_writes_sealed_readonly_file(self):
+        path = self._season_path()
+        rec = arena_report.open_season(self.OPEN_PARAMS, now_ms=1000, path=path)
+        self.assertEqual(rec["closes_at_ms"], 1000 + 14 * 86400000)
+        self.assertEqual(rec["params"],
+                         {"days": 14, "min_resolved": 300, "min_coverage": 0.80})
+        self.assertEqual(arena_report.load_season(path), rec)
+        self.assertFalse(os.stat(path).st_mode & 0o222)  # written read-only
+
+    def test_open_while_open_is_refused_and_file_unchanged(self):
+        path = self._season_path()
+        arena_report.open_season(self.OPEN_PARAMS, now_ms=0, path=path)
+        with open(path, "rb") as fh:
+            before = fh.read()
+        with self.assertRaisesRegex(ValueError, "immutable"):
+            arena_report.open_season('{"days": 1, "min_resolved": 5}',
+                                     now_ms=5000, path=path)
+        with open(path, "rb") as fh:
+            self.assertEqual(fh.read(), before)
+
+    def test_params_are_preregistered_and_validated(self):
+        path = self._season_path()
+        for bad in ("not json", "[]", '{"days": 14}', '{"min_resolved": 300}',
+                    '{"days": 0, "min_resolved": 300}',
+                    '{"days": true, "min_resolved": 300}',
+                    '{"days": 14, "min_resolved": 300, "bonus": 1}',
+                    '{"days": 14, "min_resolved": 300, "min_coverage": 1.5}'):
+            with self.assertRaises(ValueError):
+                arena_report.open_season(bad, now_ms=0, path=path)
+        self.assertFalse(os.path.exists(path))
+
+    def test_tampering_breaks_the_seal(self):
+        path = self._season_path()
+        arena_report.open_season(self.OPEN_PARAMS, now_ms=0, path=path)
+        os.chmod(path, 0o644)
+        with open(path, encoding="utf-8") as fh:
+            record = json.load(fh)
+        record["params"]["min_resolved"] = 1  # lower the bar after opening
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(record, fh)
+        with self.assertRaisesRegex(ValueError, "seal"):
+            arena_report.load_season(path)
+
+    def test_open_after_close_archives_predecessor(self):
+        path = self._season_path()
+        first = arena_report.open_season('{"days": 1, "min_resolved": 10}',
+                                         now_ms=0, path=path)
+        second = arena_report.open_season('{"days": 2, "min_resolved": 20}',
+                                          now_ms=first["closes_at_ms"], path=path)
+        self.assertNotEqual(first["season_id"], second["season_id"])
+        archive = os.path.join(os.path.dirname(path),
+                               f"arena-season-{first['season_id']}.json")
+        with open(archive, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh), first)
+        self.assertEqual(arena_report.load_season(path), second)
+
+
+def windowed_rounds():
+    """m2 commits every in-window round but expired every earlier one: if the
+    season window leaks, m2's coverage collapses below any floor."""
+    def rnd(ts, m2_status):
+        return {"status": "DONE", "opened_at_ms": ts, "lanes": [
+            {"id": "m1", "status": "COMMITTED_BLIND"},
+            {"id": "m2", "status": m2_status}]}
+    rounds = [rnd(100 + i, "COMMITTED_BLIND") for i in range(10)]      # in window
+    rounds += [rnd(10 + i, "EXPIRED") for i in range(50)]              # before it
+    rounds += [rnd(200 + i, "EXPIRED") for i in range(50)]             # after it
+    rounds.append({"status": "DONE", "lanes": [                        # no timestamp
+        {"id": "m1", "status": "COMMITTED_BLIND"},
+        {"id": "m2", "status": "EXPIRED"}]})
+    return rounds
+
+
+class SeasonWindowTest(unittest.TestCase):
+    LANES = ReportTest.LANES
+    SEASON = {"season_id": "s-test", "opened_at_ms": 100, "closes_at_ms": 200,
+              "params": {"days": 14, "min_resolved": 5, "min_coverage": 0.9}}
+
+    @staticmethod
+    def separated_score(lane):
+        if lane["id"] == "m1":
+            return {"brier_pre": 0.10, "ci_low": 0.08, "ci_high": 0.12,
+                    "coverage": {"resolved": 100}}
+        return {"brier_pre": 0.30, "ci_low": 0.25, "ci_high": 0.35,
+                "coverage": {"resolved": 100}}
+
+    def test_report_windows_rounds_and_uses_season_thresholds(self):
+        report = arena_report.build_report(
+            self.LANES, windowed_rounds(), self.separated_score,
+            min_coverage=0.8, min_resolved=50, now_ms=150, season=self.SEASON)
+        # Only the 10 in-window rounds count; out-of-window EXPIRED rounds
+        # (and the timestamp-less round) must not drag m2 below the floor.
+        self.assertEqual(report["rounds_total"], 10)
+        by_id = {e["id"]: e for e in report["leaderboard"]}
+        self.assertEqual(by_id["m2"]["offered"], 10)
+        self.assertEqual(by_id["m2"]["expired"], 0)
+        self.assertTrue(by_id["m2"]["comparable"])
+        # Thresholds are the season's preregistered ones, not the CLI flags.
+        self.assertEqual(report["thresholds"],
+                         {"min_coverage": 0.9, "min_resolved": 5})
+        self.assertEqual(report["season"]["season_id"], "s-test")
+        self.assertEqual(report["season"]["state"], "OPEN")
+        self.assertEqual(report["verdict"], "LEADER: m1")
+
+    def test_without_season_out_of_window_rounds_still_count(self):
+        report = arena_report.build_report(
+            self.LANES, windowed_rounds(), self.separated_score,
+            min_coverage=0.8, min_resolved=50, now_ms=150)
+        self.assertEqual(report["rounds_total"], 111)
+        self.assertIsNone(report["season"])
+        by_id = {e["id"]: e for e in report["leaderboard"]}
+        self.assertFalse(by_id["m2"]["comparable"])
+
+    def test_cli_score_passes_the_season_window(self):
+        calls = []
+
+        class FakeResult:
+            stdout = '{"brier_pre": 0.2}'
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            return FakeResult()
+
+        real_run = arena_report.subprocess.run
+        arena_report.subprocess.run = fake_run
+        try:
+            lane = {"kind": "ollama", "model": "m"}
+            out = arena_report.cli_score(lane, cli="cli",
+                                         since_ms=100, until_ms=200)
+            arena_report.cli_score(lane, cli="cli")
+        finally:
+            arena_report.subprocess.run = real_run
+        self.assertEqual(out, {"brier_pre": 0.2})
+        windowed, unwindowed = calls
+        self.assertEqual(
+            windowed[windowed.index("--since-ms"):][:4],
+            ["--since-ms", "100", "--until-ms", "200"])
+        self.assertNotIn("--since-ms", unwindowed)
+        self.assertNotIn("--until-ms", unwindowed)
+
+    def test_season_status_reports_progress(self):
+        season = {"season_id": "s-days", "opened_at_ms": 0,
+                  "closes_at_ms": 14 * 86400000,
+                  "params": {"days": 14, "min_resolved": 300,
+                             "min_coverage": 0.8}}
+        status = arena_report.season_status(season, windowed_rounds(),
+                                            now_ms=7 * 86400000)
+        self.assertEqual(status["state"], "OPEN")
+        self.assertEqual(status["elapsed_days"], 7.0)
+        self.assertEqual(status["remaining_days"], 7.0)
+        # All 110 timestamped rounds fall in this 14-day window; the
+        # timestamp-less round is excluded, never guessed into it.
+        self.assertEqual(status["rounds_done_in_window"], 110)
+        self.assertEqual(status["committed_in_window"], 120)  # m1x110 + m2x10
+        self.assertEqual(status["min_resolved_target"], 300)
+        self.assertEqual(arena_report.season_state(season, 14 * 86400000),
+                         "CLOSED")
+
+
+class ExportHtmlTest(unittest.TestCase):
+    def _report(self):
+        lanes = [{"id": "m1", "kind": "ollama", "model": "good-model",
+                  "epoch_id": "e1"},
+                 {"id": "m2", "kind": "ollama",
+                  "model": "<script>alert(1)</script>", "epoch_id": "e2"}]
+        rounds = [{"status": "DONE", "opened_at_ms": 100 + i, "lanes": [
+            {"id": "m1", "status": "COMMITTED_BLIND"},
+            {"id": "m2", "status": "COMMITTED_BLIND"}]} for i in range(10)]
+        return arena_report.build_report(
+            lanes, rounds, SeasonWindowTest.separated_score,
+            min_coverage=0.8, min_resolved=50, now_ms=150,
+            season=SeasonWindowTest.SEASON)
+
+    def test_html_is_self_contained_and_escaped(self):
+        page = arena_report.render_html(self._report())
+        self.assertIn("m1", page)
+        self.assertIn("good-model", page)
+        self.assertIn("LEADER: m1", page)
+        self.assertIn("s-test", page)
+        # No scripts, no external assets — the page must stand alone.
+        self.assertNotIn("<script", page)
+        self.assertNotIn("src=", page)
+        self.assertNotIn("href=", page)
+        self.assertNotIn("<link", page)
+        self.assertNotIn("http", page)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", page)
+
+    def test_missing_values_render_as_missing(self):
+        report = arena_report.build_report(
+            ReportTest.LANES, [], lambda lane: None,
+            min_coverage=0.8, min_resolved=50, now_ms=0)
+        page = arena_report.render_html(report)
+        self.assertIn("—", page)
+        self.assertIn("INSUFFICIENT_DATA", page)
+
+    def test_export_command_roundtrip_and_missing_report(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        out_html = os.path.join(tmp, "arena-leaderboard.html")
+        self.assertEqual(
+            arena_report.export_html_command(os.path.join(tmp, "absent.json"),
+                                             out_html), 1)
+        self.assertFalse(os.path.exists(out_html))
+        report_path = os.path.join(tmp, "arena-report.json")
+        with open(report_path, "w", encoding="utf-8") as fh:
+            json.dump(self._report(), fh)
+        self.assertEqual(arena_report.export_html_command(report_path, out_html), 0)
+        with open(out_html, encoding="utf-8") as fh:
+            page = fh.read()
+        self.assertTrue(page.startswith("<!DOCTYPE html>"))
+        self.assertIn("LEADER: m1", page)
 
 
 if __name__ == "__main__":
