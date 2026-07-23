@@ -524,7 +524,7 @@ static int command_help(const QString& topic) {
             "  kalshi auto advise reveal --challenge ID\n"
             "  kalshi auto advise commit-post --challenge ID --commit-id K --probability P\n"
             "  kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
-            "    [--horizon H] [--limit N] [--since-ms MS] [--until-ms MS]\n"
+            "    [--horizon H] [--limit N] [--since-ms MS] [--until-ms MS] [--include-rows]\n"
             "  kalshi auto advise ledger [--limit N]\n"
             "  kalshi auto run|opportunities [--category Crypto#BTC@hourly] [--spot P]\n"
             "  kalshi auto audit [--category C] [--limit N]\n"
@@ -20712,6 +20712,7 @@ static double kalshi_advise_score_fee_dollars(double entry_price) {
 static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList args) {
     QString forecaster_id, provider_filter, model_filter, horizon_filter, limit_raw;
     QString since_raw, until_raw;
+    const bool include_rows = take_bool_flag(args, QStringLiteral("--include-rows"));
     if (!take_string_option(args, QStringLiteral("--forecaster-id"), forecaster_id) ||
         !take_string_option(args, QStringLiteral("--provider"), provider_filter) ||
         !take_string_option(args, QStringLiteral("--model"), model_filter) ||
@@ -20722,7 +20723,8 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
         !args.isEmpty()) {
         std::fprintf(stderr,
             "usage: kalshi auto advise score [--forecaster-id ID | --provider P --model M]\n"
-            "       [--horizon H] [--limit N] [--since-ms MS] [--until-ms MS] [--json]\n"
+            "       [--horizon H] [--limit N] [--since-ms MS] [--until-ms MS]\n"
+            "       [--include-rows] [--json]\n"
             "       (--since-ms inclusive, --until-ms exclusive; epoch milliseconds)\n");
         return 2;
     }
@@ -20946,7 +20948,7 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
         {"rows_covered", net_of_fees_rows},
         {"note", "excludes rows with no recorded market_at_post"}};
 
-    const QJsonObject out{
+    QJsonObject out{
         {"filter", filter},
         {"n_resolved", n_resolved},
         {"daemon_comparable", daemon_comparable},
@@ -20963,6 +20965,20 @@ static int kalshi_auto_advise_score_command(const GlobalOpts& opts, QStringList 
         {"cohorts", cohorts},
         {"evidence", n_resolved >= 30 ? "measured" : "exploratory"},
         {"read_only", true}};
+
+    // --include-rows: per-commitment (p_pre, outcome) pairs, already
+    // yes-normalized by the side determination above -- exactly the rows
+    // all_scored aggregated. Opt-in so existing callers' payloads are
+    // unchanged; consumers (arena_report's unofficial calibration overlay)
+    // get the same population the official brier_pre was computed from,
+    // never a re-derived parallel one.
+    if (include_rows) {
+        QJsonArray row_pairs;
+        for (const adv::ScoredRow& scored : all_scored)
+            row_pairs.append(QJsonObject{{"p_pre", scored.p_pre},
+                                         {"outcome_yes", scored.outcome}});
+        out.insert(QStringLiteral("rows"), row_pairs);
+    }
 
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());

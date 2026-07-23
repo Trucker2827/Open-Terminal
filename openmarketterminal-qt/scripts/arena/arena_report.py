@@ -9,6 +9,11 @@ Mechanical, preregistered, honest:
     with the reason (the v4 duel lesson: timeouts select easy cases).
   - No lane, no round, no number is fabricated. Missing data reads as
     missing.
+  - Calibration overlay (issue #88): per-lane reliability bins and a
+    Platt-scaled Brier, learned after the fact from the same resolved
+    commitments the official Brier aggregated (advise score --include-rows).
+    It lives ONLY in each entry's 'calibrated_unofficial' field — the
+    official brier/CI/rank/verdict never read it.
 
 Seasons (P3): `season open '{"days":14,"min_resolved":300}'` writes an
 immutable, sealed season file; once open its parameters cannot change
@@ -33,6 +38,7 @@ import argparse
 import hashlib
 import html
 import json
+import math
 import os
 import subprocess
 import sys
@@ -211,7 +217,8 @@ def season_status(season, rounds, now_ms):
     return out
 
 
-def cli_score(lane, cli=DEFAULT_CLI, profile=None, since_ms=None, until_ms=None):
+def cli_score(lane, cli=DEFAULT_CLI, profile=None, since_ms=None, until_ms=None,
+              include_rows=False):
     """Per-lane Brier via the terminal's advise score verb. None on failure."""
     cmd = [cli, "--json", "--headless"]
     if profile:
@@ -222,11 +229,174 @@ def cli_score(lane, cli=DEFAULT_CLI, profile=None, since_ms=None, until_ms=None)
         cmd += ["--since-ms", str(int(since_ms))]
     if until_ms is not None:
         cmd += ["--until-ms", str(int(until_ms))]
+    if include_rows:
+        cmd += ["--include-rows"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         return json.loads(r.stdout) if r.stdout.strip() else None
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
+
+
+def cli_score_with_rows(lane, cli=DEFAULT_CLI, profile=None, since_ms=None,
+                        until_ms=None):
+    """cli_score with per-commitment rows for the unofficial calibration
+    overlay. A CLI too old for --include-rows rejects the whole command, so
+    on failure retry without the flag: the official score must never be lost
+    to the unofficial overlay — the overlay just reads as unavailable."""
+    score = cli_score(lane, cli, profile, since_ms=since_ms, until_ms=until_ms,
+                      include_rows=True)
+    if score is None:
+        score = cli_score(lane, cli, profile, since_ms=since_ms, until_ms=until_ms)
+    return score
+
+
+# --- Calibration overlay (unofficial) ---------------------------------------
+# Frozen lane models cannot learn, but the harness can learn their biases:
+# per-lane reliability bins plus a Platt-scaled Brier, computed from the SAME
+# resolved commitments the official Brier aggregated (advise score
+# --include-rows). Everything lands in a separate 'calibrated_unofficial'
+# field; the official brier, CI, comparability and rank never read it.
+
+CALIBRATION_BINS = 10
+CALIBRATION_MIN_PAIRS = 30
+CALIBRATION_LABEL = ("UNOFFICIAL calibration overlay — learned after the "
+                     "fact from resolved commitments; never affects the "
+                     "official Brier, CI, or rank")
+
+
+def _logit(p, eps=1e-6):
+    p = min(1.0 - eps, max(eps, p))
+    return math.log(p / (1.0 - p))
+
+
+def _sigmoid(z):
+    return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, z))))
+
+
+def reliability_bins(pairs, n_bins=CALIBRATION_BINS):
+    """Equal-width reliability bins over predicted probability [0, 1].
+
+    Each bin reports count, mean predicted probability and observed YES
+    rate; an empty bin reads as missing (None), never as a fabricated 0."""
+    bins = [{"lo": i / n_bins, "hi": (i + 1) / n_bins, "count": 0,
+             "mean_predicted": None, "observed_rate": None}
+            for i in range(n_bins)]
+    sums = [[0.0, 0.0] for _ in range(n_bins)]     # [sum_p, sum_y]
+    for p, y in pairs:
+        idx = min(int(p * n_bins), n_bins - 1)     # p == 1.0 -> last bin
+        bins[idx]["count"] += 1
+        sums[idx][0] += p
+        sums[idx][1] += 1.0 if y else 0.0
+    for idx, entry in enumerate(bins):
+        if entry["count"]:
+            entry["mean_predicted"] = sums[idx][0] / entry["count"]
+            entry["observed_rate"] = sums[idx][1] / entry["count"]
+    return bins
+
+
+def _mean_logloss(xs, ys, a, b):
+    total = 0.0
+    for x, y in zip(xs, ys):
+        q = min(1.0 - 1e-12, max(1e-12, _sigmoid(a * x + b)))
+        total += -(y * math.log(q) + (1.0 - y) * math.log(1.0 - q))
+    return total / len(xs)
+
+
+def platt_fit(pairs, iters=50, ridge=1e-6):
+    """Fit Platt scaling p' = sigmoid(a*logit(p) + b) by damped Newton on
+    log-loss: each Newton step is backtracked (halved) until it actually
+    lowers the loss, so the iteration descends monotonically instead of
+    overshooting and oscillating (a full Newton step far from the optimum
+    does exactly that). Deterministic — fixed start, fixed budgets — and
+    dependency-free like OnlineLogit in spot_calibrator. On separable data
+    the maximum-likelihood solution diverges; the finite iteration budget
+    leaves (a, b) large but finite there."""
+    a, b = 1.0, 0.0
+    if not pairs:
+        return a, b
+    xs = [_logit(p) for p, _ in pairs]
+    ys = [1.0 if y else 0.0 for _, y in pairs]
+    loss = _mean_logloss(xs, ys, a, b)
+    for _ in range(iters):
+        g_a = g_b = h_aa = h_ab = h_bb = 0.0
+        for x, y in zip(xs, ys):
+            q = _sigmoid(a * x + b)
+            err = q - y
+            w = max(q * (1.0 - q), 1e-12)
+            g_a += err * x
+            g_b += err
+            h_aa += w * x * x
+            h_ab += w * x
+            h_bb += w
+        h_aa += ridge
+        h_bb += ridge
+        det = h_aa * h_bb - h_ab * h_ab
+        if det <= 0.0:
+            break
+        da = (g_a * h_bb - g_b * h_ab) / det
+        db = (g_b * h_aa - g_a * h_ab) / det
+        step, improved = 1.0, False
+        for _ in range(30):
+            trial = _mean_logloss(xs, ys, a - step * da, b - step * db)
+            if trial < loss:
+                a, b, loss, improved = a - step * da, b - step * db, trial, True
+                break
+            step *= 0.5
+        if not improved or (abs(step * da) < 1e-10 and abs(step * db) < 1e-10):
+            break
+    return a, b
+
+
+def platt_apply(a, b, p):
+    return _sigmoid(a * _logit(p) + b)
+
+
+def brier_of_pairs(pairs):
+    """Mean squared error of (probability, outcome) pairs; None when empty."""
+    if not pairs:
+        return None
+    return sum((p - (1.0 if y else 0.0)) ** 2 for p, y in pairs) / len(pairs)
+
+
+def score_rows_to_pairs(score):
+    """Validated (p_pre, outcome_yes) pairs from an advise-score payload.
+    Rows that fail validation are skipped, never guessed."""
+    pairs = []
+    for row in (score.get("rows") or []):
+        if not isinstance(row, dict):
+            continue
+        p = row.get("p_pre")
+        y = row.get("outcome_yes")
+        if (isinstance(p, (int, float)) and not isinstance(p, bool)
+                and 0.0 <= p <= 1.0
+                and isinstance(y, int) and not isinstance(y, bool)
+                and y in (0, 1)):
+            pairs.append((float(p), y))
+    return pairs
+
+
+def calibration_overlay(pairs, n_bins=CALIBRATION_BINS,
+                        min_pairs=CALIBRATION_MIN_PAIRS):
+    """The per-lane 'calibrated (unofficial)' block, or an honest
+    unavailable marker when there is not enough resolved data to fit."""
+    n = len(pairs)
+    if n < min_pairs:
+        return {"available": False, "n": n,
+                "reason": f"only {n}/{min_pairs} resolved commitments",
+                "label": CALIBRATION_LABEL}
+    a, b = platt_fit(pairs)
+    return {
+        "available": True, "n": n,
+        "reliability_bins": reliability_bins(pairs, n_bins),
+        "platt": {"a": a, "b": b},
+        "brier_raw": brier_of_pairs(pairs),
+        "brier_calibrated": brier_of_pairs(
+            [(platt_apply(a, b, p), y) for p, y in pairs]),
+        "method": "in-sample 2-parameter Platt fit on the official score's "
+                  "resolved rows",
+        "label": CALIBRATION_LABEL,
+    }
 
 
 def build_report(lanes, rounds, score_fn, min_coverage, min_resolved, now_ms,
@@ -253,6 +423,17 @@ def build_report(lanes, rounds, score_fn, min_coverage, min_resolved, now_ms,
             "brier": score.get("brier_pre"),
             "brier_ci": [score.get("ci_low"), score.get("ci_high")],
         }
+        # Unofficial overlay only — nothing below this line may feed the
+        # official brier/CI/comparable/rank fields above.
+        if isinstance(score.get("rows"), list):
+            entry["calibrated_unofficial"] = calibration_overlay(
+                score_rows_to_pairs(score))
+        else:
+            entry["calibrated_unofficial"] = {
+                "available": False,
+                "reason": "per-commitment rows unavailable "
+                          "(CLI without --include-rows)",
+                "label": CALIBRATION_LABEL}
         if offered == 0:
             entry.update(comparable=False, reason="no rounds offered yet")
         elif cov_ratio is not None and cov_ratio < min_coverage:
@@ -286,6 +467,7 @@ def build_report(lanes, rounds, score_fn, min_coverage, min_resolved, now_ms,
         "how_it_works": HOW_IT_WORKS,
         "thresholds": {"min_coverage": min_coverage, "min_resolved": min_resolved},
         "rounds_total": sum(1 for r in rounds if r.get("status") == "DONE"),
+        "calibration_note": CALIBRATION_LABEL,
         "season": season_summary(season, now_ms) if season else None,
         "verdict": verdict,
         "leaderboard": entries,
@@ -442,9 +624,9 @@ def main():
     lanes = load_registry()
     rounds = read_rounds()
     report = build_report(lanes, rounds,
-                          lambda lane: cli_score(lane, args.cli, args.profile,
-                                                 since_ms=since_ms,
-                                                 until_ms=until_ms),
+                          lambda lane: cli_score_with_rows(
+                              lane, args.cli, args.profile,
+                              since_ms=since_ms, until_ms=until_ms),
                           args.min_coverage, args.min_resolved, now_ms,
                           season=season)
     write_atomic(args.out, json.dumps(report, indent=2))
