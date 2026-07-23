@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QHash>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QStandardPaths>
 #include <QString>
 #include <QStringList>
@@ -208,6 +209,37 @@ inline QString kalshi_evidence_path(const QString& filename) {
         : override_dir;
     QDir().mkpath(dir);
     return QDir(dir).filePath(filename);
+}
+
+// GUI daemon indicator: daemon liveness is classified from the
+// kalshi-ws-books.json heartbeat IN-PROCESS, so indicator truth never depends
+// on shelling out to openterminalcli. Three honest states:
+//   "fresh" — heartbeat within fresh_within_ms (daemon is writing evidence now)
+//   "stale" — a heartbeat exists but is older than fresh_within_ms
+//   "none"  — no parseable heartbeat (missing file, zero, or a future
+//             timestamp, which is mistrusted rather than clamped)
+// Header-inline for the same reason as kalshi_evidence_path: the GUI does not
+// link ServeCommand.cpp.
+struct KalshiDaemonEvidenceFreshness {
+    QString state = QStringLiteral("none");
+    qint64 age_ms = -1;  // -1 when no valid heartbeat exists
+};
+inline KalshiDaemonEvidenceFreshness kalshi_daemon_evidence_freshness(
+    qint64 updated_at_ms, qint64 now_ms, qint64 fresh_within_ms = 30'000) {
+    KalshiDaemonEvidenceFreshness out;
+    if (updated_at_ms <= 0 || now_ms <= 0 || updated_at_ms > now_ms) return out;
+    out.age_ms = now_ms - updated_at_ms;
+    out.state = out.age_ms <= fresh_within_ms ? QStringLiteral("fresh")
+                                              : QStringLiteral("stale");
+    return out;
+}
+// write_book_snapshot() serializes updated_at_ms as a decimal STRING; accept a
+// numeric value too so a future schema change cannot silently read as "none".
+inline qint64 kalshi_ws_books_heartbeat_ms(const QJsonObject& root) {
+    const QJsonValue value = root.value(QStringLiteral("updated_at_ms"));
+    if (value.isString()) return value.toString().toLongLong();
+    if (value.isDouble()) return static_cast<qint64>(value.toDouble());
+    return 0;
 }
 
 // Pure daemon-job-spec -> CLI-args builder, kept public for deterministic
