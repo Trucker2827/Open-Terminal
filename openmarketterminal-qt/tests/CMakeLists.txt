@@ -741,6 +741,14 @@ target_include_directories(tst_strategy_evidence_presentation PRIVATE ${CMAKE_SO
 target_link_libraries(tst_strategy_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_strategy_evidence_presentation COMMAND tst_strategy_evidence_presentation)
 
+# Research Lab evidence library row for the published edge IC report
+# (edge-ic.json). Missing/malformed evidence must read as absent, never as a
+# fabricated listing.
+add_executable(tst_edge_ic_evidence_presentation tst_edge_ic_evidence_presentation.cpp)
+target_include_directories(tst_edge_ic_evidence_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_ic_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_edge_ic_evidence_presentation COMMAND tst_edge_ic_evidence_presentation)
+
 add_executable(tst_strategy_cockpit_navigation tst_strategy_cockpit_navigation.cpp)
 target_include_directories(tst_strategy_cockpit_navigation PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_strategy_cockpit_navigation PRIVATE Qt6::Core Qt6::Gui Qt6::Test)

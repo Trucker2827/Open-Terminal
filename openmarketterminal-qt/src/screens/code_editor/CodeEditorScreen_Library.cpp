@@ -3,7 +3,9 @@
 
 #include "screens/code_editor/CodeEditorScreen.h"
 
+#include "cli/ServeCommand.h"
 #include "core/config/AppPaths.h"
+#include "screens/code_editor/EdgeIcEvidencePresentation.h"
 #include "services/notebooks/NotebookLibraryService.h"
 #include "storage/sqlite/Database.h"
 #include "ui/theme/Theme.h"
@@ -370,6 +372,24 @@ void CodeEditorScreen::refresh_research_overview() {
         research_outputs_table_->setItem(row, 2, research_item(cutoff));
         research_outputs_table_->setItem(row, 3, research_item(info.lastModified().toUTC().toString(QStringLiteral("MM-dd HH:mm"))));
         research_outputs_table_->setItem(row, 4, research_item(info.absoluteFilePath()));
+    }
+
+    // The published edge IC report (scripts/edge_ic_report.py --publish) joins
+    // the outputs listing when it exists; a missing file is simply not listed.
+    const EdgeIcEvidenceRow ic_row =
+        edge_ic_evidence_row(cli::kalshi_evidence_path(QStringLiteral("edge-ic.json")));
+    if (ic_row.present &&
+        (filter.isEmpty() || ic_row.title.contains(filter, Qt::CaseInsensitive) ||
+         ic_row.type.contains(filter, Qt::CaseInsensitive))) {
+        const int row = research_outputs_table_->rowCount();
+        research_outputs_table_->insertRow(row);
+        research_outputs_table_->setItem(row, 0, research_item(ic_row.title, ic_row.detail));
+        research_outputs_table_->setItem(row, 1, research_item(ic_row.type, ic_row.detail));
+        research_outputs_table_->setItem(row, 2, research_item(ic_row.generated));
+        const QFileInfo ic_info(ic_row.path);
+        research_outputs_table_->setItem(row, 3, research_item(
+            ic_info.lastModified().toUTC().toString(QStringLiteral("MM-dd HH:mm"))));
+        research_outputs_table_->setItem(row, 4, research_item(ic_row.path));
     }
 
     research_status_summary_->setText(tr("%1 · %2 decisions shown · latest feed %3")
