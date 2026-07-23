@@ -1262,6 +1262,17 @@ jobs:
               echo "  moved Contents/MacOS/yt-dlp → Contents/Resources/yt-dlp"
           fi
 
+          # openterminalcli → Contents/MacOS/openterminalcli. The GUI's
+          # KalshiScreen::cli_path() looks for it beside the app binary;
+          # without it every installed app shows "openterminalcli was not
+          # found beside the app" on any live-CLI feature.
+          if [ -x "build/openterminalcli" ]; then
+              cp "build/openterminalcli" "${APP_BUNDLE}/Contents/MacOS/openterminalcli"
+              echo "  staged openterminalcli → Contents/MacOS/"
+          else
+              echo "::warning::build/openterminalcli missing — bundle ships without the CLI"
+          fi
+
           echo "Bundle staged at: ${APP_BUNDLE}"
           echo "Pre-sign size: $(du -sh "${APP_BUNDLE}" | cut -f1)"
           echo "=== Contents/MacOS/ top level (should be Mach-Os only) ==="
@@ -1283,7 +1294,10 @@ jobs:
             echo "Running macdeployqt on ${APP_BUNDLE}"
             # -always-overwrite keeps incremental runs idempotent on local
             # re-runs without affecting CI (which always starts clean).
-            "${MACDEPLOYQT}" "${APP_BUNDLE}" -verbose=1 -always-overwrite || \
+            # -executable: rpath-fix the bundled CLI against the same
+            # Contents/Frameworks Qt copies as the GUI binary.
+            "${MACDEPLOYQT}" "${APP_BUNDLE}" -verbose=1 -always-overwrite \
+              -executable="${APP_BUNDLE}/Contents/MacOS/openterminalcli" || \
               echo "::warning::macdeployqt exited non-zero — continuing to explicit codesign"
           else
             echo "::error::macdeployqt not found at ${MACDEPLOYQT} — bundle will be missing Qt frameworks"
