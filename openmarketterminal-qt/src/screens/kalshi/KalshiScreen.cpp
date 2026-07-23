@@ -531,6 +531,7 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
             refresh_live_automation_status();
             refresh_daemon_status();
             refresh_advisor_canary_status();
+            update_calibrator_readout();
         }
     });
 }
@@ -808,6 +809,17 @@ void KalshiScreen::build_ui() {
                                         .arg(colors::WARNING()));
     quotes->addWidget(close_countdown_);
     center_layout->addLayout(quotes);
+    calibrator_readout_ = new QLabel(QStringLiteral("CALIBRATOR · select a contract"), center);
+    calibrator_readout_->setWordWrap(true);
+    calibrator_readout_->setToolTip(QStringLiteral(
+        "Advisory-only readout from the spot calibrator (calibrator.json): strike distance in "
+        "sigmas, its calibrated P(YES), and its measured Brier record vs the market baseline. "
+        "It never trades."));
+    calibrator_readout_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:800;")
+                                           .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(),
+                                                colors::BORDER_DIM()));
+    center_layout->addWidget(calibrator_readout_);
 
     reference_chart_ = new KalshiSimpleChart(center);
     reference_chart_->setMinimumHeight(180);
@@ -1823,6 +1835,7 @@ void KalshiScreen::render_market() {
     }
     update_strike_overlay();
     update_observation_strip();
+    update_calibrator_readout();
 }
 
 void KalshiScreen::apply_live_market_prices(const QString& ticker, const QJsonObject& payload) {
@@ -4311,6 +4324,38 @@ void KalshiScreen::update_observation_strip() {
     close_countdown_->setToolTip(close.isValid()
         ? QStringLiteral("Closes at %1").arg(close.toLocalTime().toString(QStringLiteral("h:mm ap")))
         : QStringLiteral("Close time unavailable for this contract."));
+}
+
+void KalshiScreen::update_calibrator_readout() {
+    if (!calibrator_readout_) return;
+    if (!has_selection_) {
+        calibrator_readout_->setText(QStringLiteral("CALIBRATOR · select a contract"));
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - calibrator_report_read_ms_ >= 5'000) {
+        calibrator_report_read_ms_ = now;
+        calibrator_report_ = QJsonObject();
+        QFile file(cli::kalshi_evidence_path(QStringLiteral("calibrator.json")));
+        if (file.open(QIODevice::ReadOnly)) {
+            const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+            if (document.isObject()) calibrator_report_ = document.object();
+        }
+    }
+    const QJsonObject readout = kalshi_data::KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report_, selected_.key.market_id, now);
+    const QString record = readout.value(QStringLiteral("record")).toString();
+    calibrator_readout_->setText(record.isEmpty()
+        ? readout.value(QStringLiteral("headline")).toString()
+        : readout.value(QStringLiteral("headline")).toString() + QLatin1Char('\n') + record);
+    const QString state = readout.value(QStringLiteral("state")).toString();
+    // Deliberately muted styling either way: a calibrated probability is
+    // evidence with a stated record, never an implied edge.
+    const QString color = state == QStringLiteral("ok") ? colors::TEXT_SECONDARY()
+                                                        : colors::WARNING();
+    calibrator_readout_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:800;")
+                                           .arg(color, colors::BG_RAISED(), colors::BORDER_DIM()));
 }
 
 } // namespace openmarketterminal::screens::kalshi

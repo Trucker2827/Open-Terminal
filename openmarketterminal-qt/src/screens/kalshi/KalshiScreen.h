@@ -91,6 +91,7 @@ class KalshiScreen final : public QWidget {
     void set_chart_timeframe(const QString& timeframe);
     void set_spot_symbol(const QString& asset);
     void update_observation_strip();
+    void update_calibrator_readout();
     void update_market_health();
     void update_strike_overlay();
     void refresh_flow_meter();
@@ -159,6 +160,7 @@ class KalshiScreen final : public QWidget {
     QLabel* yes_quote_ = nullptr;
     QLabel* no_quote_ = nullptr;
     QLabel* close_countdown_ = nullptr;
+    QLabel* calibrator_readout_ = nullptr;
     QLabel* contract_strip_ = nullptr;
     QLabel* venue_consensus_ = nullptr;
     QTextEdit* rules_ = nullptr;
@@ -264,6 +266,8 @@ class KalshiScreen final : public QWidget {
     qint64 last_forward_reconcile_ms_ = 0;
     qint64 last_account_activity_fetch_ms_ = 0;
     qint64 last_live_status_fetch_ms_ = 0;
+    QJsonObject calibrator_report_;
+    qint64 calibrator_report_read_ms_ = 0;
     bool live_status_fetching_ = false;
     QJsonObject latest_legacy_live_status_;
     bool shadow_enabled_ = true;
