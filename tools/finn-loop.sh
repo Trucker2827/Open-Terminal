@@ -102,6 +102,11 @@ for i in $(seq 1 "$MAX_ITER"); do
 
   if gh pr merge "$PR" --merge >> "$LOG" 2>&1; then
     journal "issue #$ISSUE PR #$PR: MERGED"
+    # Close + delabel immediately — GitHub's Closes-link fires async and the
+    # next iteration's selection can otherwise race onto the same issue.
+    gh issue close "$ISSUE" >> "$LOG" 2>&1 || true
+    gh issue edit "$ISSUE" --remove-label agent-ready --remove-label finn-building \
+      >> "$LOG" 2>&1 || true
   else
     journal "issue #$ISSUE PR #$PR: merge failed — see log"
   fi
