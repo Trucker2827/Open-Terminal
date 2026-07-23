@@ -3,6 +3,8 @@
 
 #include "core/logging/Logger.h"
 #include "python/PythonRunner.h"
+#include "services/equity/EquityResearchService.h"
+#include "services/relationship_map/RelmapPeerMerge.h"
 #include "storage/cache/CacheManager.h"
 
 #    include "datahub/DataHub.h"
@@ -11,6 +13,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
+
+#include <algorithm>
 
 namespace openmarketterminal::services {
 
@@ -235,7 +240,7 @@ void RelationshipMapService::parse_result(const QString& json_output) {
     data_.calendar.ex_dividend_date = cal["ex_dividend_date"].toString();
     data_.calendar.dividend_date    = cal["dividend_date"].toString();
 
-    // ── Institutional Holders ─────────────────────────────────────────────
+    // ── Institutional Holders (SC 13D/G major owners, with provenance) ────
     for (const auto& v : root["institutional_holders"].toArray()) {
         QJsonObject h = v.toObject();
         InstitutionalHolder holder;
@@ -246,6 +251,8 @@ void RelationshipMapService::parse_result(const QString& json_output) {
         holder.change_percent = h["change_percent"].toDouble();
         holder.fund_family    = h["fund_family"].toString();
         holder.type           = "institutional";
+        holder.source_form    = h["source_form"].toString();
+        holder.filing_date    = h["filing_date"].toString();
         if (!holder.name.isEmpty())
             data_.institutional_holders.append(holder);
     }
@@ -278,34 +285,85 @@ void RelationshipMapService::parse_result(const QString& json_output) {
             data_.insider_holders.append(insider);
     }
 
-    // ── Peers ─────────────────────────────────────────────────────────────
-    for (const auto& v : root["peers"].toArray()) {
-        QJsonObject p = v.toObject();
-        PeerCompany peer;
-        peer.ticker          = p["ticker"].toString();
-        peer.name            = p["name"].toString();
-        peer.market_cap      = p["market_cap"].toDouble();
-        peer.pe_ratio        = p["pe_ratio"].toDouble();
-        peer.forward_pe      = p["forward_pe"].toDouble();
-        peer.roe             = p["roe"].toDouble();
-        peer.revenue_growth  = p["revenue_growth"].toDouble();
-        peer.profit_margins  = p["profit_margins"].toDouble();
-        peer.gross_margins   = p["gross_margins"].toDouble();
-        peer.current_price   = p["current_price"].toDouble();
-        peer.sector          = p["sector"].toString();
-        peer.beta            = p["beta"].toDouble();
-        peer.ev_to_ebitda    = p["ev_to_ebitda"].toDouble();
-        peer.price_to_book   = p["price_to_book"].toDouble();
-        peer.week52_change   = p["week52_change"].toDouble();
-        peer.recommendation  = p["recommendation"].toString();
-        if (!peer.ticker.isEmpty())
-            data_.peers.append(peer);
-    }
+    data_.data_quality = root["data_quality"].toInt();
 
+    // Surface per-section source failures (EDGAR/yfinance) — the sections
+    // read as missing in the UI; the reason belongs in the log.
+    const QJsonObject section_errors = root["section_errors"].toObject();
+    for (auto it = section_errors.begin(); it != section_errors.end(); ++it)
+        LOG_WARN("RelMapService", QString("Section '%1' unavailable: %2")
+                                      .arg(it.key(), it.value().toString()));
+
+    // ── Peers — metrics come from the terminal's own EquityResearchService
+    //    over the curated candidate list (issue #83); the Python script no
+    //    longer fetches peer data.
+    QStringList peer_tickers;
+    for (const auto& v : root["peer_tickers"].toArray()) {
+        const QString t = v.toString().trimmed().toUpper();
+        if (!t.isEmpty())
+            peer_tickers.append(t);
+    }
+    if (peer_tickers.isEmpty()) {
+        finalize();
+        return;
+    }
+    emit progress_changed(90, "Fetching peer metrics...");
+    fetch_peers_native(peer_tickers);
+}
+
+void RelationshipMapService::fetch_peers_native(const QStringList& peer_tickers) {
+    auto& equity_svc = openmarketterminal::services::equity::EquityResearchService::instance();
+    const QString ticker = data_.company.ticker;
+
+    // One-shot context object: peers_loaded/error_occurred are broadcast
+    // signals shared with other consumers (Peers tab, MCP tool), so results
+    // are claimed only when they contain our own symbol's row.
+    auto* holder = new QObject(this);
+    QObject::connect(
+        &equity_svc, &openmarketterminal::services::equity::EquityResearchService::peers_loaded, holder,
+        [this, holder, ticker](QVector<openmarketterminal::services::equity::PeerData> rows) {
+            const bool ours = std::any_of(rows.cbegin(), rows.cend(), [&](const auto& r) {
+                return r.symbol.compare(ticker, Qt::CaseInsensitive) == 0;
+            });
+            if (!ours)
+                return; // another consumer's fetch — keep waiting
+            holder->deleteLater();
+            if (ticker != current_ticker_)
+                return; // superseded by a newer fetch()
+            data_.peers = relmap::merge_peer_data(ticker, rows);
+            finalize();
+        });
+    QObject::connect(
+        &equity_svc, &openmarketterminal::services::equity::EquityResearchService::error_occurred, holder,
+        [this, holder, ticker](QString context, QString message) {
+            if (context != QStringLiteral("Peers"))
+                return;
+            holder->deleteLater();
+            if (ticker != current_ticker_)
+                return;
+            LOG_WARN("RelMapService", "Peer metrics unavailable: " + message);
+            finalize(); // peers stay empty — missing reads missing
+        });
+    // Safety net: never leave the screen stuck at 90% if neither signal
+    // arrives for us (e.g. an unattributable empty result set).
+    QTimer::singleShot(45'000, holder, [this, holder, ticker]() {
+        holder->deleteLater();
+        if (ticker != current_ticker_ || !data_.timestamp.isEmpty())
+            return;
+        LOG_WARN("RelMapService", "Peer metrics timed out for " + ticker);
+        finalize();
+    });
+
+    equity_svc.fetch_peers(ticker, peer_tickers);
+}
+
+void RelationshipMapService::finalize() {
     // ── Valuation Signal ──────────────────────────────────────────────────
     data_.valuation = compute_valuation(data_.company, data_.peers);
 
-    data_.data_quality = root["data_quality"].toInt();
+    if (!data_.peers.isEmpty())
+        data_.data_quality = std::min(100, data_.data_quality + 3 * static_cast<int>(data_.peers.size()));
+
     data_.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
     emit progress_changed(100, "Complete");

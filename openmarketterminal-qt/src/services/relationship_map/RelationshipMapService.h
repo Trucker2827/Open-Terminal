@@ -9,8 +9,10 @@
 
 namespace openmarketterminal::services {
 
-/// Fetches corporate relationship data via Python/yfinance.
-/// Emits progress signals for progressive UI updates.
+/// Fetches corporate relationship data: EDGAR + yfinance sections via
+/// Python (relationship_map.py), then peer metrics via the terminal's own
+/// EquityResearchService (issue #83). Emits progress signals for
+/// progressive UI updates.
 class RelationshipMapService : public QObject
     , public openmarketterminal::datahub::Producer
 {
@@ -41,6 +43,8 @@ class RelationshipMapService : public QObject
     RelationshipMapService() = default;
 
     void parse_result(const QString& json_output);
+    void fetch_peers_native(const QStringList& peer_tickers);
+    void finalize();
     relmap::ValuationSignal compute_valuation(const relmap::CompanyInfo& co, const QVector<relmap::PeerCompany>& peers);
 
     relmap::RelationshipData data_;

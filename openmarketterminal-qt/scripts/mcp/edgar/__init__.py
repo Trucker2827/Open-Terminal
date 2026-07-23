@@ -11,6 +11,7 @@ Modules:
 - forms_8k: 8-K corporate events
 - forms_insider: Form 4 insider transactions
 - forms_13f: 13F institutional holdings
+- forms_13dg: SC 13D/G major (>5%) beneficial owners of a company
 - financials: XBRL financial data extraction
 """
 

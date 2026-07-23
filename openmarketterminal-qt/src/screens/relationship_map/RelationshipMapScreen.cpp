@@ -764,11 +764,18 @@ void RelationshipMapScreen::on_node_selected() {
                         row->setStyleSheet(QString("color: %1; font-size: 10px; %2").arg(colors::TEXT_SECONDARY(), MF()));
                         layout->addWidget(row);
                     };
-                    add_prop(tr("Mkt Cap"), QString("$%1B").arg(p.market_cap / 1e9, 0, 'f', 1));
-                    add_prop(tr("Price"), QString("$%1").arg(p.current_price, 0, 'f', 2));
-                    add_prop(tr("P/E"), QString::number(p.pe_ratio, 'f', 1));
-                    add_prop(tr("ROE"), QString("%1%").arg(p.roe * 100, 0, 'f', 1));
-                    add_prop(tr("Growth"), QString("%1%").arg(p.revenue_growth * 100, 0, 'f', 1));
+                    // The native ratios feed (issue #83) does not carry every
+                    // field — skip what is missing instead of showing $0.
+                    if (p.market_cap > 0)
+                        add_prop(tr("Mkt Cap"), QString("$%1B").arg(p.market_cap / 1e9, 0, 'f', 1));
+                    if (p.current_price > 0)
+                        add_prop(tr("Price"), QString("$%1").arg(p.current_price, 0, 'f', 2));
+                    if (p.pe_ratio > 0)
+                        add_prop(tr("P/E"), QString::number(p.pe_ratio, 'f', 1));
+                    if (p.roe != 0)
+                        add_prop(tr("ROE"), QString("%1%").arg(p.roe * 100, 0, 'f', 1));
+                    if (p.revenue_growth != 0)
+                        add_prop(tr("Growth"), QString("%1%").arg(p.revenue_growth * 100, 0, 'f', 1));
                     break;
                 }
             }
