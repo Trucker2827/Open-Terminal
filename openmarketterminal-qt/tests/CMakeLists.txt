@@ -578,6 +578,11 @@ target_include_directories(tst_kalshi_evidence PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_evidence PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_evidence COMMAND tst_kalshi_evidence)
 
+add_executable(tst_kalshi_settlement_scoreboard tst_kalshi_settlement_scoreboard.cpp)
+target_include_directories(tst_kalshi_settlement_scoreboard PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_settlement_scoreboard PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_settlement_scoreboard COMMAND tst_kalshi_settlement_scoreboard)
+
 # Coherent Kalshi hourly probability surface, constrained portfolio selection,
 # no-lookahead replay, and API compatibility audit. Pure and paper-only.
 add_executable(tst_kalshi_auto_engine tst_kalshi_auto_engine.cpp)

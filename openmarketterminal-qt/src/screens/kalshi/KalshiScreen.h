@@ -192,6 +192,7 @@ class KalshiScreen final : public QWidget {
     QLabel* live_positions_summary_ = nullptr;
     QTableWidget* active_positions_table_ = nullptr;
     QLabel* pnl_summary_ = nullptr;
+    QLabel* pnl_scoreboard_ = nullptr;
     QTableWidget* pnl_table_ = nullptr;
     QPushButton* live_automation_button_ = nullptr;
     QPushButton* kill_live_button_ = nullptr;

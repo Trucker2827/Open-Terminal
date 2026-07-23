@@ -1364,6 +1364,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
+    src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
     # Phase 4 — internal prediction-market adapter (demo mode until
     # `openmarketterminal.markets_endpoint` is configured and `openmarketterminal_market` lands).
     src/services/prediction/openmarketterminal_internal/OpenMarketTerminalInternalAdapter.cpp
