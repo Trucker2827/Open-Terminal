@@ -95,8 +95,10 @@ echo "== rebuilding DMG"
 STAGE="$WORK/stage"; mkdir "$STAGE"
 ditto "$APP" "$STAGE/$(basename "$APP")"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "$VOLNAME" -srcfolder "$STAGE" -ov -format UDZO "$WORK/$DMG.new" -quiet
-mv "$WORK/$DMG.new" "$WORK/$DMG"
+# NOTE: the temp name must END in .dmg — hdiutil silently appends ".dmg"
+# to any other suffix and the follow-up mv finds nothing.
+hdiutil create -volname "$VOLNAME" -srcfolder "$STAGE" -ov -format UDZO "$WORK/new-$DMG"
+mv "$WORK/new-$DMG" "$WORK/$DMG"
 sign "$WORK/$DMG"
 
 echo "== notarizing DMG"
