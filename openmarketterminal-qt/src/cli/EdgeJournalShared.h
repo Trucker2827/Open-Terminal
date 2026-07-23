@@ -12,6 +12,7 @@
 #include "cli/CommandDispatch.h"
 
 #include "core/result/Result.h"
+#include "services/crypto/CryptoFees.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 
 #include <QSqlQuery>
@@ -21,7 +22,6 @@
 #include <QJsonValue>
 #include <QString>
 #include <QStringList>
-#include <cmath>
 
 namespace openmarketterminal::cli {
 
@@ -87,22 +87,20 @@ QJsonObject edge_journal_row_to_json(QSqlQuery& q);
 QString edge_outcome_text(int outcome);
 int edge_parse_outcome(const QString& raw);
 QString edge_price_or_dash(double price);
-struct CryptoFeeProfile {
-    QString venue_key;
-    QString profile;
-    QString source;
-    QString note;
-    double maker_bps = 0.0;
-    double taker_bps = 0.0;
-    double rebate_pct = 0.0;
-    double free_remaining_usd = 0.0;
-    bool free_applies_to_advanced = false;
-    double slippage_bps = 0.0;
-};
-CryptoFeeProfile crypto_fee_profile_for_venue(const QString& venue);
+// Venue fee economics live in the shared services-level table so the GUI and
+// CLI read the same constants; these names keep existing CLI code compiling.
+using CryptoFeeProfile = services::crypto::CryptoFeeProfile;
+inline CryptoFeeProfile crypto_fee_profile_for_venue(const QString& venue) {
+    return services::crypto::crypto_fee_profile_for_venue(venue);
+}
+inline QString crypto_fee_venue_key(const QString& venue) {
+    return services::crypto::crypto_fee_venue_key(venue);
+}
+inline QString crypto_fee_key(const QString& venue_key, const QString& field) {
+    return services::crypto::crypto_fee_key(venue_key, field);
+}
 bool edge_parse_duration_ms(const QString& raw, int& duration_ms);
 bool edge_parse_bps_text(const QString& raw, double& out, const char* flag);
-QString crypto_fee_venue_key(const QString& venue);
 QStringList edge_safe_latency_sources_for_symbol(const QString& raw, const QString& symbol);
 CryptoRecommendationDecision edge_score_crypto_recommendation(
     const QString& symbol,
@@ -207,25 +205,14 @@ struct EdgeScalpGate {
     double min_model_ic = 0.0;
 };
 
-// KalshiAutoEngine::estimate_realized_volatility annualizes over 24/7 minutes
-// (365*24*60) with the time-of-day multiplier already applied. Convert back to
-// a one-minute standard deviation expressed in basis points.
+// Vol/noise math is shared with the radar (services/edge_radar); these
+// wrappers keep the established CLI names.
 inline double edge_annual_vol_to_per_min_bps(double annual_volatility) {
-    if (annual_volatility <= 0.0)
-        return 0.0;
-    constexpr double kMinutesPerYear = 365.0 * 24.0 * 60.0;
-    return annual_volatility / std::sqrt(kMinutesPerYear) * 10000.0;
+    return services::edge_radar::annual_vol_to_per_min_bps(annual_volatility);
 }
-
-// Express an observed move as a multiple of the ambient volatility scaled to
-// the observation window (Brownian sqrt-time scaling). Returns 0 when the
-// volatility estimate is unavailable so callers can fail open.
 inline double edge_move_noise_sigma(double observed_move_bps, double vol_per_min_bps,
                                     int window_sec) {
-    if (vol_per_min_bps <= 0.0 || window_sec <= 0)
-        return 0.0;
-    const double window_vol_bps = vol_per_min_bps * std::sqrt(window_sec / 60.0);
-    return window_vol_bps > 0.0 ? std::abs(observed_move_bps) / window_vol_bps : 0.0;
+    return services::edge_radar::move_noise_sigma(observed_move_bps, vol_per_min_bps, window_sec);
 }
 
 QString edge_crypto_regime_from_features(const QJsonObject& features);

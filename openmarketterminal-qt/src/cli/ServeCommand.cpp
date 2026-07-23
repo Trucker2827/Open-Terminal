@@ -7,6 +7,7 @@
 #include "mcp/McpProvider.h"
 #include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
+#include "services/crypto/CryptoFees.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
 #include "services/crypto_scalp/CryptoAutoScalp.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
@@ -2518,32 +2519,8 @@ struct ScalpVenueFeeProfile {
     QString source;
 };
 
-struct ScalpCoinbaseFeeTier {
-    const char* key;
-    const char* volume;
-    double maker_bps;
-    double taker_bps;
-};
-
-static constexpr ScalpCoinbaseFeeTier kScalpCoinbaseFeeTiers[] = {
-    {"coinbase_advanced", "$0K-$10K", 40.0, 60.0},
-    {"coinbase_tier2", "$10K-$50K", 25.0, 40.0},
-    {"coinbase_tier3", "$50K-$100K", 15.0, 25.0},
-    {"coinbase_tier4", "$100K-$1M", 10.0, 20.0},
-    {"coinbase_tier5", "$1M-$15M", 8.0, 18.0},
-    {"coinbase_tier6", "$15M-$75M", 6.0, 16.0},
-    {"coinbase_tier7", "$75M-$250M", 3.0, 10.0},
-    {"coinbase_tier8", "$250M-$400M", 0.0, 6.0},
-    {"coinbase_tier9", "$400M+", 0.0, 4.0},
-};
-
-std::optional<ScalpCoinbaseFeeTier> scalp_coinbase_fee_tier_by_key(const QString& key) {
-    for (const ScalpCoinbaseFeeTier& tier : kScalpCoinbaseFeeTiers) {
-        if (key == QLatin1String(tier.key))
-            return tier;
-    }
-    return std::nullopt;
-}
+// Coinbase tier constants come from the shared venue fee table
+// (services/crypto/CryptoFees.h) — never duplicate the bps numbers here.
 
 QString scalp_fee_venue(QString venue) {
     venue = venue.trimmed().toLower();
@@ -2602,7 +2579,7 @@ QString scalp_liquidity_mode(QString mode) {
 
 ScalpVenueFeeProfile scalp_fee_profile(const QString& venue) {
     const QString v = scalp_fee_venue(venue);
-    if (const auto coinbase_tier = scalp_coinbase_fee_tier_by_key(v))
+    if (const auto coinbase_tier = services::crypto::coinbase_fee_tier_by_key(v))
         return {v,
                 coinbase_tier->maker_bps,
                 coinbase_tier->taker_bps,
