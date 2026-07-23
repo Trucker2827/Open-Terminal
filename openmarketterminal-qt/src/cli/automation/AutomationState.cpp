@@ -130,6 +130,9 @@ static QByteArray scan_buffer_with_prev(const QString& path, qint64 tail_bytes) 
 }
 
 QString candidate_key(const QJsonObject& decision) {
+    const QString opportunity_id = decision.value(QStringLiteral("opportunity_id")).toString();
+    if (!opportunity_id.isEmpty())
+        return opportunity_id;
     const QString id = decision.value(QStringLiteral("id")).toString();
     if (!id.isEmpty())
         return id;
@@ -204,7 +207,10 @@ QJsonObject latest_candidate(const QString& profile, const QString& symbol_filte
             continue;
         if (d.value(QStringLiteral("verdict")).toString() != QLatin1String("PAPER TRADE CANDIDATE"))
             continue;
-        if (d.value(QStringLiteral("action")).toString() != QLatin1String("PAPER_LIMIT_BUY_ONLY"))
+        const QString action = d.value(QStringLiteral("action")).toString();
+        if (action != QLatin1String("PAPER_LIMIT_BUY_ONLY") &&
+            action != QLatin1String("PAPER_SPOT_BUY_PROPOSAL") &&
+            action != QLatin1String("PAPER_SPOT_SELL_PROPOSAL"))
             continue;
         bool ok = false;
         const qint64 ts_ms = d.value(QStringLiteral("ts_ms")).toString().toLongLong(&ok);

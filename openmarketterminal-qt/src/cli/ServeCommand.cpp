@@ -8,6 +8,7 @@
 #include "mcp/McpTypes.h"
 #include "mcp/tools/SettingsGate.h"
 #include "services/crypto_latency/CryptoLatencyService.h"
+#include "services/crypto_scalp/CryptoAutoScalp.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
@@ -570,6 +571,24 @@ QString daemon_scalp_ticks_path(const QString& profile) {
 
 QString daemon_scalp_decisions_path(const QString& profile) {
     return daemon_state_dir(profile) + QStringLiteral("/scalp_decisions.jsonl");
+}
+
+QString daemon_scalp_qualification_path(const QString& profile) {
+    return daemon_state_dir(profile) + QStringLiteral("/scalp_qualification_v1.json");
+}
+
+QString crypto_scalp_report_script() {
+    const QString app_dir = QCoreApplication::applicationDirPath();
+    const QStringList candidates{
+        QDir(app_dir).absoluteFilePath(QStringLiteral("../scripts/crypto_scalp_report.py")),
+        QDir(app_dir).absoluteFilePath(QStringLiteral("../Resources/scripts/crypto_scalp_report.py")),
+        QDir::current().absoluteFilePath(QStringLiteral("scripts/crypto_scalp_report.py")),
+    };
+    for (const QString& candidate : candidates) {
+        if (QFileInfo::exists(candidate))
+            return QFileInfo(candidate).canonicalFilePath();
+    }
+    return {};
 }
 
 QString daemon_maker_decisions_path(const QString& profile) {
@@ -2589,7 +2608,7 @@ ScalpVenueFeeProfile scalp_fee_profile(const QString& venue) {
                 coinbase_tier->taker_bps,
                 QStringLiteral("Coinbase Advanced, %1 trailing 30-day volume").arg(QString::fromLatin1(coinbase_tier->volume))};
     if (v == QLatin1String("kraken_pro"))
-        return {v, 25.0, 40.0, QStringLiteral("Kraken Pro spot base tier")};
+        return {v, 40.0, 80.0, QStringLiteral("Kraken Pro spot tier 1 (verified 2026-07-23; override with actual account tier)")};
     if (v == QLatin1String("binanceus"))
         return {v, 0.0, 1.0, QStringLiteral("Binance.US Tier 0 spot pairs, public fee page")};
     if (v == QLatin1String("alpaca_crypto"))
@@ -2709,6 +2728,11 @@ class DaemonScalpEngine {
         decision_timer_->setInterval(cadence_ms_);
         QObject::connect(decision_timer_, &QTimer::timeout, qApp, [this]() { evaluate(); });
         decision_timer_->start();
+        qualification_timer_ = new QTimer(qApp);
+        qualification_timer_->setInterval(60000);
+        QObject::connect(qualification_timer_, &QTimer::timeout, qApp,
+                         [this]() { refresh_qualification(); });
+        qualification_timer_->start();
         QTimer::singleShot(0, qApp, [this]() { reload_config(); });
     }
 
@@ -2778,7 +2802,11 @@ class DaemonScalpEngine {
                            {"capture_ratio", capture_ratio_},
                            {"max_age_ms", max_age_ms_},
                            {"max_spread_bps", max_spread_bps_},
-                           {"min_live_sources", min_live_sources_}};
+                           {"min_live_sources", min_live_sources_},
+                           {"paired_venue_routing", paired_venue_routing_},
+                           {"proposal_ttl_ms", proposal_ttl_ms_},
+                           {"min_proposal_net_bps", min_proposal_net_bps_},
+                           {"bar_interval_ms", bar_interval_ms_}};
     }
 
     QString config_fingerprint(const QJsonObject& obj) const {
@@ -2869,6 +2897,11 @@ class DaemonScalpEngine {
         max_age_ms_ = int_value(cfg, QStringLiteral("max_age_ms"), 1000, 50, 30000);
         max_spread_bps_ = double_value(cfg, QStringLiteral("max_spread_bps"), 8.0, 0.0, 1000.0);
         min_live_sources_ = int_value(cfg, QStringLiteral("min_live_sources"), 2, 1, 10);
+        paired_venue_routing_ = cfg.value(QStringLiteral("paired_venue_routing")).toBool(true);
+        proposal_ttl_ms_ = int_value(cfg, QStringLiteral("proposal_ttl_ms"), 750, 100, 5000);
+        min_proposal_net_bps_ = double_value(cfg, QStringLiteral("min_proposal_net_bps"),
+                                             minimum_profit_bps_, 0.0, 1000.0);
+        bar_interval_ms_ = int_value(cfg, QStringLiteral("bar_interval_ms"), 1000, 250, 60000);
         style_ = scalp_style_normalize(cfg.value(QStringLiteral("style")).toString());
         if (style_.isEmpty())
             style_ = QStringLiteral("scalp");
@@ -2878,9 +2911,11 @@ class DaemonScalpEngine {
         started_at_ = now_utc();
         decision_timer_->setInterval(cadence_ms_);
         restart_services();
+        load_journaled_opportunities();
         append_job_log(profile_, QStringLiteral("scalp-engine-start symbols=%1 cadence_ms=%2")
                                      .arg(symbols_.join(','), QString::number(cadence_ms_)));
         write_state(QStringLiteral("starting"));
+        QTimer::singleShot(0, qApp, [this]() { refresh_qualification(); });
     }
 
     void restart_services() {
@@ -2905,6 +2940,47 @@ class DaemonScalpEngine {
         last_journal_ms_.clear();
         last_ingested_ms_.clear();
         last_tick_log_ms_.clear();
+    }
+
+    void load_journaled_opportunities() {
+        journaled_opportunities_.clear();
+        const QStringList paths{decisions_path_ + QStringLiteral(".1"), decisions_path_};
+        for (const QString& path : paths) {
+            for (const QByteArray& line : automation::read_tail(path).split('\n')) {
+                QJsonParseError error;
+                const QJsonDocument doc = QJsonDocument::fromJson(line, &error);
+                if (error.error != QJsonParseError::NoError || !doc.isObject())
+                    continue;
+                const QString id = doc.object().value(QStringLiteral("opportunity_id")).toString();
+                if (!id.isEmpty())
+                    journaled_opportunities_.insert(id);
+            }
+        }
+    }
+
+    void refresh_qualification() {
+        if (!enabled_ || (qualification_process_ &&
+                          qualification_process_->state() != QProcess::NotRunning))
+            return;
+        const QString script = crypto_scalp_report_script();
+        if (script.isEmpty())
+            return;
+        auto* process = new QProcess(qApp);
+        qualification_process_ = process;
+        QObject::connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                         qApp, [this, process](int exit_code, QProcess::ExitStatus status) {
+            if (status != QProcess::NormalExit || exit_code != 0) {
+                append_job_log(profile_, QStringLiteral("scalp-qualification-refresh-failed error=\"%1\"")
+                                             .arg(QString::fromUtf8(process->readAllStandardError()).left(300)));
+            }
+            qualification_process_ = nullptr;
+            process->deleteLater();
+        });
+        process->start(QStringLiteral("python3"),
+                       {script,
+                        QStringLiteral("--decisions"), decisions_path_,
+                        QStringLiteral("--ticks"), ticks_path_,
+                        QStringLiteral("--output"), daemon_scalp_qualification_path(profile_)});
     }
 
     void ingest_tick(const QString& symbol, const CryptoLatencyTick& tick) {
@@ -2934,6 +3010,7 @@ class DaemonScalpEngine {
     }
 
     QJsonObject evaluate_symbol(const QString& symbol) {
+        using namespace services::crypto_scalp;
         const auto latency_snapshot = CryptoLatencyService::filtered_snapshot(
             hub_->snapshot(symbol), scalp_sources_for_symbol(sources_, symbol));
         const auto micro = radars_[symbol].snapshot(latency_snapshot);
@@ -2942,6 +3019,38 @@ class DaemonScalpEngine {
         const ScalpMsWindow w500 = ms_window(rows, 500);
         const ScalpMsWindow w1000 = ms_window(rows, 1000);
         const ScalpMsWindow w5000 = ms_window(rows, 5000);
+        const QVector<ClosedBar> closed_bars = build_closed_bars(rows, bar_interval_ms_);
+        const ReversalSignal reversal = evaluate_reversal(closed_bars);
+
+        QHash<QString, CryptoLatencyTick> latest_by_source;
+        for (const auto& tick : latency_snapshot.latest_ticks) {
+            if (!latest_by_source.contains(tick.source) ||
+                latest_by_source.value(tick.source).received_ts_ms < tick.received_ts_ms)
+                latest_by_source.insert(tick.source, tick);
+        }
+        QVector<VenueProposal> venue_proposals;
+        const qint64 proposal_now = QDateTime::currentMSecsSinceEpoch();
+        const struct {
+            const char* source;
+            const char* venue;
+        } paired_venues[] = {
+            {"coinbase", "coinbase_advanced"},
+            {"kraken", "kraken_pro"},
+        };
+        if (paired_venue_routing_) {
+            for (const auto& paired : paired_venues) {
+                const QString source = QString::fromLatin1(paired.source);
+                if (!latest_by_source.contains(source))
+                    continue;
+                const ScalpVenueFeeProfile fee = scalp_fee_profile(QString::fromLatin1(paired.venue));
+                VenueCost cost{fee.key, source, fee.maker_bps, fee.taker_bps,
+                               slippage_bps_, safety_bps_};
+                venue_proposals.push_back(build_proposal(
+                    reversal, latest_by_source.value(source), cost, liquidity_mode_,
+                    proposal_now, max_age_ms_, min_proposal_net_bps_, proposal_ttl_ms_));
+            }
+        }
+        const int selected_proposal = choose_best_proposal(venue_proposals);
 
         QStringList blockers;
         QString verdict = QStringLiteral("NO TRADE");
@@ -2949,15 +3058,27 @@ class DaemonScalpEngine {
         QString direction = QStringLiteral("flat");
         const double pressure = (w250.pressure * 0.25) + (w500.pressure * 0.30) +
                                 (w1000.pressure * 0.30) + (micro.book_pressure * 0.15);
-        const double confidence = std::clamp(std::abs(pressure), 0.0, 1.0);
-        if (pressure > 0.15)
+        const double confidence = reversal.call != QLatin1String("ABSTAIN")
+                                      ? reversal.confidence
+                                      : std::clamp(std::abs(pressure), 0.0, 1.0);
+        if (reversal.call == QLatin1String("BUY"))
+            direction = QStringLiteral("up");
+        else if (reversal.call == QLatin1String("SELL"))
+            direction = QStringLiteral("down");
+        else if (pressure > 0.15)
             direction = QStringLiteral("up");
         else if (pressure < -0.15)
             direction = QStringLiteral("down");
 
         const double observed_bps = w1000.available ? w1000.move_bps : (w500.available ? w500.move_bps : 0.0);
-        const double directional_bps = direction == QLatin1String("up") ? std::max(0.0, observed_bps) : 0.0;
-        const double expected_capture_bps = directional_bps * capture_ratio_ * confidence;
+        const double directional_bps = direction == QLatin1String("up")
+                                           ? std::max(0.0, observed_bps)
+                                           : direction == QLatin1String("down")
+                                                 ? std::max(0.0, -observed_bps)
+                                                 : 0.0;
+        const double expected_capture_bps = reversal.call != QLatin1String("ABSTAIN")
+                                                ? reversal.expected_move_bps
+                                                : directional_bps * capture_ratio_ * confidence;
         const double spread_cost_bps = liquidity_mode_ == QLatin1String("taker")
                                            ? std::max(0.0, latency_snapshot.cross_source_spread_bps)
                                            : 0.0;
@@ -2977,8 +3098,10 @@ class DaemonScalpEngine {
             blockers << QStringLiteral("spread/divergence too wide");
         if (!w500.available && !w1000.available)
             blockers << QStringLiteral("not enough millisecond window history");
-        if (direction != QLatin1String("up"))
-            blockers << QStringLiteral("paper spot scalp only supports long/up candidates");
+        if (reversal.call == QLatin1String("ABSTAIN"))
+            blockers << QStringLiteral("no confirmed closed-bar reversal");
+        if (paired_venue_routing_ && selected_proposal < 0)
+            blockers << QStringLiteral("no venue clears executable cost-net gate");
         if (confidence < min_confidence_)
             blockers << QStringLiteral("confidence below risk threshold");
         if (edge_surplus_bps < 0.0)
@@ -2986,7 +3109,9 @@ class DaemonScalpEngine {
 
         if (blockers.isEmpty()) {
             verdict = QStringLiteral("PAPER TRADE CANDIDATE");
-            action = QStringLiteral("PAPER_LIMIT_BUY_ONLY");
+            action = reversal.call == QLatin1String("SELL")
+                ? QStringLiteral("PAPER_SPOT_SELL_PROPOSAL")
+                : QStringLiteral("PAPER_SPOT_BUY_PROPOSAL");
         } else if (direction == QLatin1String("up") && latency_snapshot.freshest_age_ms >= 0 &&
                    latency_snapshot.freshest_age_ms <= max_age_ms_) {
             verdict = QStringLiteral("WATCH");
@@ -3005,10 +3130,20 @@ class DaemonScalpEngine {
                                              {"net_after_cost_usd", amount * net_bps / 10000.0},
                                              {"edge_surplus_usd", amount * edge_surplus_bps / 10000.0}});
         }
+        QJsonArray proposals_json;
+        for (int i = 0; i < venue_proposals.size(); ++i) {
+            QJsonObject proposal = services::crypto_scalp::proposal_json(venue_proposals[i]);
+            proposal["selected"] = i == selected_proposal;
+            proposals_json.append(proposal);
+        }
+        const QString opportunity = services::crypto_scalp::opportunity_id(symbol, reversal);
         QJsonObject decision{{"ts", now_utc()},
                              {"ts_ms", QString::number(QDateTime::currentMSecsSinceEpoch())},
                              {"profile", profile_},
                              {"engine", "daemon-scalp-ms"},
+                             {"engine_version", "crypto-auto-scalp-v1"},
+                             {"opportunity_id", opportunity},
+                             {"immutable_opportunity", true},
                              {"paper", true},
                              {"symbol", symbol},
                              {"verdict", verdict},
@@ -3042,14 +3177,25 @@ class DaemonScalpEngine {
                              {"cadence_ms", cadence_ms_},
                              {"blockers", QJsonArray::fromStringList(blockers)},
                              {"windows_ms", windows},
+                             {"reversal_signal", services::crypto_scalp::signal_json(reversal)},
+                             {"venue_proposals", proposals_json},
+                             {"selected_proposal_index", selected_proposal},
+                             {"selection_policy", "highest positive cost-net edge; Coinbase and Kraken evaluated on same signal"},
+                             {"execution_authority", "shadow_only"},
                              {"microstructure", services::edge_radar::CryptoMicrostructureRadar::to_json(micro)}};
 
         const QString hash = QStringLiteral("%1|%2|%3|%4").arg(symbol, verdict, direction, blockers.join(';'));
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        const bool should_journal = last_decision_hash_.value(symbol) != hash ||
-                                    now - last_journal_ms_.value(symbol, 0) >= 1000;
+        const bool immutable_signal = reversal.call == QLatin1String("BUY") ||
+                                      reversal.call == QLatin1String("SELL");
+        const bool should_journal = immutable_signal
+            ? !journaled_opportunities_.contains(opportunity)
+            : last_decision_hash_.value(symbol) != hash ||
+                  now - last_journal_ms_.value(symbol, 0) >= 1000;
         if (should_journal) {
             automation::append_jsonl_rotating(decisions_path_, decision);
+            if (immutable_signal)
+                journaled_opportunities_.insert(opportunity);
             last_decision_hash_[symbol] = hash;
             last_journal_ms_[symbol] = now;
         }
@@ -3101,6 +3247,8 @@ class DaemonScalpEngine {
     QString decisions_path_;
     QTimer* config_timer_ = nullptr;
     QTimer* decision_timer_ = nullptr;
+    QTimer* qualification_timer_ = nullptr;
+    QProcess* qualification_process_ = nullptr;
     QString active_fingerprint_;
     bool enabled_ = false;
     QString started_at_;
@@ -3121,6 +3269,10 @@ class DaemonScalpEngine {
     int max_age_ms_ = 1000;
     double max_spread_bps_ = 8.0;
     int min_live_sources_ = 2;
+    bool paired_venue_routing_ = true;
+    int proposal_ttl_ms_ = 750;
+    double min_proposal_net_bps_ = 10.0;
+    int bar_interval_ms_ = 1000;
     QHash<QString, CryptoMicrostructureRadar> radars_;
     QHash<QString, QVector<CryptoLatencyTick>> recent_;
     QHash<QString, QJsonObject> last_decisions_;
@@ -3128,6 +3280,7 @@ class DaemonScalpEngine {
     QHash<QString, qint64> last_journal_ms_;
     QHash<QString, qint64> last_ingested_ms_;
     QHash<QString, qint64> last_tick_log_ms_;
+    QSet<QString> journaled_opportunities_;
 };
 
 // Paper maker-spread producer. On a timer it reads each venue's own BBO/last
@@ -5671,6 +5824,57 @@ QJsonArray tail_jsonl_objects(const QString& path, int limit, const QString& sym
 
 int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
+    if (sub == "qualification" || sub == "qualify" || sub == "report") {
+        if (!args.isEmpty()) {
+            std::fprintf(stderr, "usage: daemon scalp qualification\n");
+            return 2;
+        }
+        const QString script = crypto_scalp_report_script();
+        if (script.isEmpty()) {
+            std::fprintf(stderr, "crypto scalp qualification reporter not found\n");
+            return 7;
+        }
+        QProcess process;
+        process.start(QStringLiteral("python3"),
+                      {script,
+                       QStringLiteral("--decisions"), daemon_scalp_decisions_path(profile),
+                       QStringLiteral("--ticks"), daemon_scalp_ticks_path(profile),
+                       QStringLiteral("--output"), daemon_scalp_qualification_path(profile)});
+        if (!process.waitForStarted(5000) || !process.waitForFinished(30000) ||
+            process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            std::fprintf(stderr, "qualification reporter failed: %s\n",
+                         process.readAllStandardError().constData());
+            return 7;
+        }
+        QJsonParseError error;
+        const QJsonDocument document = QJsonDocument::fromJson(process.readAllStandardOutput(), &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject()) {
+            std::fprintf(stderr, "qualification reporter returned invalid JSON\n");
+            return 7;
+        }
+        const QJsonObject report = document.object();
+        if (json) {
+            std::printf("%s\n", QJsonDocument(report).toJson(QJsonDocument::Compact).constData());
+        } else {
+            const QJsonArray ci = report.value(QStringLiteral("mean_net_ci95")).toArray();
+            std::printf("CRYPTO AUTO SCALP QUALIFICATION\n");
+            std::printf("state         %s (execution eligible: %s)\n",
+                        qUtf8Printable(report.value("state").toString()),
+                        report.value("execution_eligible").toBool() ? "yes" : "no");
+            std::printf("resolved      %d / %d required   coverage %.1f%% / %.0f%% required\n",
+                        report.value("resolved_count").toInt(),
+                        report.value("required_resolved").toInt(),
+                        report.value("coverage").toDouble() * 100.0,
+                        report.value("required_coverage").toDouble() * 100.0);
+            std::printf("net edge      %.2fbps  CI95 [%.2f, %.2f]bps   win rate %.1f%%\n",
+                        report.value("mean_net_bps").toDouble(),
+                        ci.size() > 0 ? ci[0].toDouble() : 0.0,
+                        ci.size() > 1 ? ci[1].toDouble() : 0.0,
+                        report.value("win_rate").toDouble() * 100.0);
+            std::printf("report        %s\n", qUtf8Printable(daemon_scalp_qualification_path(profile)));
+        }
+        return 0;
+    }
     if (sub == "venues" || sub == "costs" || sub == "compare") {
         QString liquidity_raw;
         QString slippage_raw;
@@ -6210,11 +6414,13 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
         const QJsonObject state = read_json_object_file(daemon_scalp_state_path(profile));
         const QJsonObject daemon = daemon_status_object(profile);
         const QJsonObject guard = automation::read_json_object(automation::live_guard_path(profile));
+        const QJsonObject qualification = read_json_object_file(daemon_scalp_qualification_path(profile));
         if (json) {
             std::printf("%s\n", QJsonDocument(QJsonObject{{"profile", profile},
                                                           {"config", cfg},
                                                           {"state", state},
                                                           {"daemon", daemon},
+                                                          {"qualification", qualification},
                                                           {"live_guard", guard}})
                                     .toJson(QJsonDocument::Compact)
                                     .constData());
@@ -6228,6 +6434,12 @@ int daemon_scalp_command(const QString& profile, bool json, QStringList args) {
                         daemon.value("running").toBool() ? "running" : "not running",
                         qUtf8Printable(daemon.value("mode").toString()));
             std::printf("live guard    %s\n", guard.value("enabled").toBool() ? "ARMED" : "off");
+            std::printf("qualification %s resolved=%d/%d coverage=%.1f%% execution=%s\n",
+                        qUtf8Printable(qualification.value("state").toString(QStringLiteral("not reported"))),
+                        qualification.value("resolved_count").toInt(),
+                        qualification.value("required_resolved").toInt(200),
+                        qualification.value("coverage").toDouble() * 100.0,
+                        qualification.value("execution_eligible").toBool() ? "eligible" : "blocked");
             std::printf("cadence       %dms paper=yes heartbeat=%s\n",
                         effective_cfg.value("cadence_ms").toInt(),
                         qUtf8Printable(state.value("heartbeat_at").toString("-")));
