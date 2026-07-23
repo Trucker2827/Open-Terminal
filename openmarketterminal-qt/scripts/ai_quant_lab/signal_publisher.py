@@ -16,6 +16,9 @@ consumers are expected to treat its direction as noise.
 Usage (dataset/freq via OPENTERMINAL_QLIB_DATA / OPENTERMINAL_QLIB_FREQ):
   publish '{"model_id":"lightgbm_...","ic_start":"2026-07-21","ic_end":"2026-07-22"}'
   run     '{"model_id":"...","interval_sec":300, ...}'
+
+model_id "active" follows the weekly retrain loop's active_model.json pointer
+(model_retrain.py), re-read every cycle so repoints land without a relaunch.
 """
 import json
 import os
@@ -33,6 +36,24 @@ OUTPUT_NAME = "quant-signals.json"
 def evidence_path():
     return os.path.join(
         os.environ.get("OPENTERMINAL_EVIDENCE_DIR", DEFAULT_EVIDENCE_DIR), OUTPUT_NAME)
+
+
+def resolve_model_id(params):
+    """(model_id, error) — model_id "active" resolves through the retrain
+    loop's active_model.json pointer, re-read on every call so a repoint by
+    model_retrain.py takes effect within one publish cycle, no relaunch.
+    Explicit ids pass through untouched; a missing pointer is an error, never
+    a silent fallback."""
+    model_id = params.get("model_id")
+    if model_id != "active":
+        return model_id, None
+    from model_retrain import active_model_path, read_active
+    pointer = read_active()
+    if pointer is None:
+        return None, ("model_id is 'active' but no readable active-model "
+                      f"pointer at {active_model_path()} — run "
+                      "model_retrain.py retrain, or pass an explicit model_id")
+    return pointer["model_id"], None
 
 
 def rolling_ic_window(ic_hours, now_ts=None):
@@ -95,7 +116,9 @@ def save_atomic(payload, path):
 
 
 def publish(params):
-    model_id = params.get("model_id")
+    model_id, resolve_error = resolve_model_id(params)
+    if resolve_error:
+        return {"success": False, "error": resolve_error}
     if not model_id:
         return {"success": False, "error": "model_id is required"}
     from qlib_service import QlibService
