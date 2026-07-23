@@ -1708,6 +1708,7 @@ set(SCREEN_SOURCES
     src/screens/code_editor/CodeEditorScreen_Library.cpp
     src/screens/code_editor/CodeEditorScreen_ResearchLab.cpp
     src/screens/code_editor/CodeEditorScreen_ForecastArena.cpp
+    src/screens/code_editor/CodeEditorScreen_AlphaArena.cpp
 
     # Excel Spreadsheet
     src/screens/excel/ExcelScreen.cpp
@@ -2058,6 +2059,7 @@ set_source_files_properties(
     src/screens/code_editor/CodeEditorScreen_Library.cpp
     src/screens/code_editor/CodeEditorScreen_ResearchLab.cpp
     src/screens/code_editor/CodeEditorScreen_ForecastArena.cpp
+    src/screens/code_editor/CodeEditorScreen_AlphaArena.cpp
     src/services/notebooks/NotebookLibraryService.cpp
     src/screens/crypto_trading/CryptoBottomPanel.cpp
     src/screens/crypto_trading/CryptoAutomationCockpit.cpp

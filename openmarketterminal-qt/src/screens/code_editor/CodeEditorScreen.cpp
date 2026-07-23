@@ -215,6 +215,7 @@ void CodeEditorScreen::build_ui() {
     view_stack_->addWidget(build_reports_page());
     view_stack_->addWidget(build_forecast_arena_page());
     view_stack_->addWidget(build_editor_page());
+    view_stack_->addWidget(build_alpha_arena_page());
     root->addWidget(view_stack_, 1);
 }
 
@@ -235,7 +236,7 @@ QWidget* CodeEditorScreen::build_header() {
     hl->addSpacing(10);
 
     const QStringList tabs = {tr("RESEARCH"), tr("EXPERIMENTS"), tr("TRADE REVIEWS"), tr("REPORTS"),
-                              tr("FORECAST ARENA"), tr("EDITOR")};
+                              tr("FORECAST ARENA"), tr("EDITOR"), tr("ALPHA ARENA")};
     for (int i = 0; i < tabs.size(); ++i) {
         auto* btn = new QPushButton(tabs[i], bar);
         btn->setObjectName("nbViewBtn");
@@ -340,6 +341,8 @@ void CodeEditorScreen::set_view(int index) {
         refresh_reports();
     else if (index == ForecastArenaView)
         refresh_forecast_arena();
+    else if (index == AlphaArenaView)
+        refresh_alpha_arena();
 }
 
 void CodeEditorScreen::on_view_changed(int index) {
