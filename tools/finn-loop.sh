@@ -69,10 +69,17 @@ for i in $(seq 1 "$MAX_ITER"); do
 
   # GitHub's list API is eventually consistent: an issue closed+delabeled
   # seconds ago can still appear here. One attempt per issue per run.
-  CANDIDATES=$(gh issue list --label agent-ready --state open --json number,labels \
-    --jq '[ .[] | select((.labels | map(.name) | index("blocked")) == null)
-                 | select((.labels | map(.name) | index("finn-building")) == null) ]
-           | sort_by(.number) | .[].number' 2>/dev/null)
+  # An empty result can also mean gh/network failure (seen 2026-07-23:
+  # ENOTFOUND ended a run early) — retry before believing "no issues".
+  CANDIDATES=""
+  for attempt in 1 2 3; do
+    CANDIDATES=$(gh issue list --label agent-ready --state open --json number,labels \
+      --jq '[ .[] | select((.labels | map(.name) | index("blocked")) == null)
+                   | select((.labels | map(.name) | index("finn-building")) == null) ]
+             | sort_by(.number) | .[].number' 2>/dev/null)
+    [[ -n "$CANDIDATES" ]] && break
+    sleep 60
+  done
   ISSUE=""
   for cand in ${(f)CANDIDATES}; do
     [[ "$HANDLED" == *" $cand "* ]] || { ISSUE="$cand"; break }
