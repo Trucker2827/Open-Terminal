@@ -185,3 +185,5 @@ openmarketterminal-qt/docs/CRYPTO_WALLET_CONNECT.md
 !docs/**/*.md
 !openmarketterminal-qt/docs/**/*.md
 !openmarketterminal-qt/resources/ai_skills/*.md
+!finn/*.md
+!.claude/commands/*.md
