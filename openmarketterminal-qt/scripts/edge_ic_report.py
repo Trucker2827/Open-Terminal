@@ -15,10 +15,12 @@ import math
 import os
 import re
 import sqlite3
+import sys
 import time
 
-DEFAULT_DB = os.path.expanduser(
-    "~/Library/Application Support/org.openterminal.OpenTerminal/data/openmarketterminal.db")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from openterminal_paths import journal_db
+
 MOVE_RE = re.compile(r"scored: future=[-0-9.eE]+ move=([-0-9.eE]+)")
 
 
@@ -134,7 +136,7 @@ def load_rows(db_path, venue=None, days=30):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=DEFAULT_DB)
+    ap.add_argument("--db", default=journal_db())
     ap.add_argument("--venue")
     ap.add_argument("--days", type=int, default=30)
     args = ap.parse_args()

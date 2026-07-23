@@ -32,15 +32,12 @@ import sys
 import time
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from openterminal_paths import journal_db as _db_path
+
 DEFAULT_OUT = os.path.expanduser("~/.qlib/qlib_data/crypto_data")
-DEFAULT_DB = os.path.expanduser(
-    "~/Library/Application Support/org.openterminal.OpenTerminal/data/openmarketterminal.db")
 FIELDS = ("open", "high", "low", "close", "factor", "change")
 NAN_FIELDS = ("volume", "vwap")   # required by Alpha-handler expressions; see module docstring
-
-
-def _db_path():
-    return os.environ.get("OPENTERMINAL_DATA_DB", DEFAULT_DB)
 
 
 def freq_name(freq_sec):

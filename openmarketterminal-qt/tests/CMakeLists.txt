@@ -54,6 +54,13 @@ add_test(NAME test_alpha_arena
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_alpha_arena.py -v)
 
+# Issue #86 — openterminal_paths as single source of truth for evidence/data
+# paths: default values, env-override semantics, and a sweep asserting no
+# script outside the module (and the frozen v5 duel files) hardcodes them.
+add_test(NAME test_openterminal_paths
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_openterminal_paths.py -v)
+
 # Issue #83 — relationship map EDGAR rewire: us-gaap concept mapping,
 # Form 4 insider ring, SC 13D/G major holders, and the no-yfinance guard
 # for the rewired sections. Stdlib-only fakes (no edgartools/network).

@@ -36,11 +36,12 @@ import uuid
 from advisor_core import validate_forecast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..")))
+from openterminal_paths import evidence_file
+
 DEFAULT_CLI = os.path.abspath(os.path.join(HERE, "..", "..", "build", "openterminalcli"))
 DEFAULT_FORECASTER = os.path.join(HERE, "claude_forecaster.py")
-DEFAULT_EVIDENCE = os.path.expanduser(
-    "~/Library/Application Support/Open Terminal/Open Terminal/kalshi-ws-books.json"
-)
+DEFAULT_EVIDENCE = evidence_file("kalshi-ws-books.json")
 
 # Mirrors adv::kBlindForbiddenKeys() — belt-and-suspenders re-check on the client
 # side. `advise open` already excludes these; this catches any regression.
