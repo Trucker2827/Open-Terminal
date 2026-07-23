@@ -471,12 +471,12 @@ std::optional<LlmResponse> LlmService::try_extract_and_execute_text_tool_calls(c
         follow_body["max_tokens"] = resolved_max_tokens();
         // Temperature intentionally omitted — Anthropic default.
         if (!system_prompt_.isEmpty())
-            follow_body["system"] = system_prompt_;
+            follow_body["system"] = system_prompt_with_now();
     } else if (provider_ == "openmarketterminal") {
         // /research/chat uses messages array
         QJsonArray msgs;
         if (!system_prompt_.isEmpty())
-            msgs.append(QJsonObject{{"role", "system"}, {"content", system_prompt_}});
+            msgs.append(QJsonObject{{"role", "system"}, {"content", system_prompt_with_now()}});
         msgs.append(QJsonObject{{"role", "user"}, {"content", follow_prompt}});
         follow_body["messages"] = msgs;
         if (!model_.isEmpty() && model_ != "openmarketterminal-llm")
@@ -485,7 +485,7 @@ std::optional<LlmResponse> LlmService::try_extract_and_execute_text_tool_calls(c
         // OpenAI-compatible
         QJsonArray msgs;
         if (!system_prompt_.isEmpty())
-            msgs.append(QJsonObject{{"role", "system"}, {"content", system_prompt_}});
+            msgs.append(QJsonObject{{"role", "system"}, {"content", system_prompt_with_now()}});
         msgs.append(QJsonObject{{"role", "user"}, {"content", follow_prompt}});
         follow_body["model"]      = model_;
         follow_body["messages"]   = msgs;
