@@ -25,17 +25,17 @@ import os
 import sys
 import time
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from openterminal_paths import evidence_file
+
 MIN_TRUSTED_RANK_IC = 0.01
 MIN_TRUSTED_PERIODS = 200
 MIN_TRUSTED_TSTAT = 2.0   # Rank_ICIR * sqrt(periods): the mean must be significant, not just positive
-DEFAULT_EVIDENCE_DIR = os.path.expanduser(
-    "~/Library/Application Support/Open Terminal/Open Terminal")
 OUTPUT_NAME = "quant-signals.json"
 
 
 def evidence_path():
-    return os.path.join(
-        os.environ.get("OPENTERMINAL_EVIDENCE_DIR", DEFAULT_EVIDENCE_DIR), OUTPUT_NAME)
+    return evidence_file(OUTPUT_NAME)
 
 
 def resolve_model_id(params):

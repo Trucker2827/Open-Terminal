@@ -18,20 +18,11 @@ import json
 import math
 import os
 import sqlite3
+import sys
 import time
 
-DEFAULT_DB = os.path.expanduser(
-    "~/Library/Application Support/org.openterminal.OpenTerminal/data/openmarketterminal.db")
-DEFAULT_EVIDENCE_DIR = os.path.expanduser(
-    "~/Library/Application Support/Open Terminal/Open Terminal")
-
-
-def _db_path():
-    return os.environ.get("OPENTERMINAL_DATA_DB", DEFAULT_DB)
-
-
-def _evidence_dir():
-    return os.environ.get("OPENTERMINAL_EVIDENCE_DIR", DEFAULT_EVIDENCE_DIR)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from openterminal_paths import evidence_dir as _evidence_dir, journal_db as _db_path
 
 
 def normalize_symbol(symbol):

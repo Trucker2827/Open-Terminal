@@ -22,12 +22,12 @@ import sys
 import time
 import urllib.request
 
-EVIDENCE_PATH = os.path.expanduser(
-    "~/Library/Application Support/Open Terminal/Open Terminal/kalshi-ws-books.json")
-STATE_PATH = os.path.expanduser(
-    "~/Library/Application Support/Open Terminal/Open Terminal/spot-calibrator-state.json")
-OUTPUT_PATH = os.path.expanduser(
-    "~/Library/Application Support/Open Terminal/Open Terminal/calibrator.json")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from openterminal_paths import evidence_file
+
+EVIDENCE_PATH = evidence_file("kalshi-ws-books.json")
+STATE_PATH = evidence_file("spot-calibrator-state.json")
+OUTPUT_PATH = evidence_file("calibrator.json")
 KALSHI_MARKET_URL = "https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}"
 
 FULL_FEATURES = ("signed_distance_bps", "per_min_vol_bps", "sqrt_minutes_left",

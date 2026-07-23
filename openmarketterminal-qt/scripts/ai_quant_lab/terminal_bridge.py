@@ -14,10 +14,11 @@ Env override (tests): OPENTERMINAL_BRIDGE_JSON.
 """
 import json
 import os
+import sys
 import urllib.request
 
-DEFAULT_BRIDGE_JSON = os.path.expanduser(
-    "~/Library/Application Support/org.openterminal.OpenTerminal/bridge.json")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from openterminal_paths import bridge_json
 
 
 class BridgeUnavailable(RuntimeError):
@@ -25,7 +26,7 @@ class BridgeUnavailable(RuntimeError):
 
 
 def _bridge_info():
-    path = os.environ.get("OPENTERMINAL_BRIDGE_JSON", DEFAULT_BRIDGE_JSON)
+    path = bridge_json()
     try:
         with open(path, encoding="utf-8") as fh:
             info = json.load(fh)
