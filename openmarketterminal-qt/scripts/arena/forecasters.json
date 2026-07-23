@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "note": "Alpha Arena contestant registry. A contestant is config, not code. kind: ollama | openai_compat | cli. Disabled lanes are skipped but kept for history.",
+  "defaults": {"timeout_s": 88, "safety_margin_ms": 6000},
+  "forecasters": [
+    {
+      "id": "qwen3.5-local",
+      "kind": "ollama",
+      "model": "qwen3.5:latest",
+      "endpoint": "http://localhost:11434",
+      "epoch_id": "arena-v1-qwen3.5",
+      "enabled": true
+    },
+    {
+      "id": "qwen3-local",
+      "kind": "ollama",
+      "model": "qwen3:latest",
+      "endpoint": "http://localhost:11434",
+      "epoch_id": "arena-v1-qwen3",
+      "enabled": true
+    },
+    {
+      "id": "coney-llama3.1",
+      "kind": "ollama",
+      "model": "coney_/llama3.1-claude-sonnet-4.6:latest",
+      "endpoint": "http://localhost:11434",
+      "epoch_id": "arena-v1-coney-llama3.1",
+      "enabled": true
+    }
+  ]
+}
