@@ -590,6 +590,14 @@ target_include_directories(tst_edge_vol_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_edge_vol_gate PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME tst_edge_vol_gate COMMAND tst_edge_vol_gate)
 
+# Shared paper-proof scoreboard (issue #95): verdict thresholds, sample tiers,
+# per-row fold and persisted-move parser used by the CLI proof-loop AND the
+# GUI SPOT/SCALP cockpit.
+add_executable(tst_edge_proof_stats tst_edge_proof_stats.cpp)
+target_include_directories(tst_edge_proof_stats PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_proof_stats PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_edge_proof_stats COMMAND tst_edge_proof_stats)
+
 add_executable(tst_decision_orchestrator tst_decision_orchestrator.cpp)
 target_include_directories(tst_decision_orchestrator PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_decision_orchestrator PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)

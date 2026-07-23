@@ -8,6 +8,7 @@
 #include "cli/EdgeJournalShared.h"
 
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
+#include "services/edge_radar/EdgeProofStats.h"
 #include "storage/repositories/TradeAuditRepository.h"
 #include "storage/sqlite/Database.h"
 
@@ -228,61 +229,14 @@ static bool edge_update_crypto_recommendation_outcome(const CryptoRecommendation
     return true;
 }
 
-struct EdgeProofSymbolStats {
-    int signal_count = 0;
-    int resolved = 0;
-    int waiting = 0;
-    int wins = 0;
-    int buy_signals = 0;
-    int buy_resolved = 0;
-    int buy_wins = 0;
-    int no_trade_signals = 0;
-    int no_trade_resolved = 0;
-    int no_trade_correct = 0;
-    int matched_orders = 0;
-    double paper_pnl = 0.0;
-    double avoided_value = 0.0;
-};
-
-static QString edge_proof_sample_status(int resolved) {
-    if (resolved >= 1000)
-        return QStringLiteral("institutional-sample");
-    if (resolved >= 500)
-        return QStringLiteral("strong-sample");
-    if (resolved >= 100)
-        return QStringLiteral("useful-sample");
-    if (resolved >= 30)
-        return QStringLiteral("early-sample");
-    return QStringLiteral("warmup");
-}
-
-static int edge_proof_next_milestone(int resolved) {
-    if (resolved < 30)
-        return 30;
-    if (resolved < 100)
-        return 100;
-    if (resolved < 500)
-        return 500;
-    if (resolved < 1000)
-        return 1000;
-    return 0;
-}
-
-static QString edge_proof_verdict(const EdgeProofSymbolStats& s) {
-    const double buy_rate = edge_rate(s.buy_wins, s.buy_resolved);
-    const double no_trade_rate = edge_rate(s.no_trade_correct, s.no_trade_resolved);
-    if (s.resolved < 30)
-        return QStringLiteral("WARMUP");
-    if (s.buy_resolved >= 10 && s.paper_pnl > 0.0 && buy_rate >= 0.55)
-        return QStringLiteral("BUY EDGE PROVING");
-    if (s.buy_resolved >= 10 && (s.paper_pnl <= 0.0 || buy_rate < 0.50))
-        return QStringLiteral("BUY WEAK");
-    if (s.no_trade_resolved >= 20 && no_trade_rate >= 0.65 && s.buy_resolved < 5)
-        return QStringLiteral("AVOID WEAK TRADES");
-    if (s.no_trade_resolved >= 20 && no_trade_rate >= 0.65)
-        return QStringLiteral("NO-TRADE EDGE");
-    return QStringLiteral("MIXED");
-}
+// The stats struct, sample tiers, verdict thresholds and per-row fold moved to
+// services/edge_radar/EdgeProofStats — the GUI cockpit shares them (issue #95).
+using EdgeProofSymbolStats = services::edge_radar::EdgeProofStats;
+using services::edge_radar::EdgeProofRowOutcome;
+using services::edge_radar::edge_proof_accumulate;
+using services::edge_radar::edge_proof_sample_status;
+using services::edge_radar::edge_proof_next_milestone;
+using services::edge_radar::edge_proof_verdict;
 
 static QJsonObject edge_proof_stats_json(const QString& symbol, const EdgeProofSymbolStats& s) {
     return QJsonObject{{"symbol", symbol},
@@ -356,23 +310,11 @@ int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList args) {
     }
 
     const auto broker_events = edge_recent_broker_events_for_proof(symbol, min_ts, 0);
-    int signal_count = 0;
-    int resolved = 0;
-    int waiting = 0;
-    int wins = 0;
-    int buy_signals = 0;
-    int buy_resolved = 0;
-    int buy_wins = 0;
-    int no_trade_signals = 0;
-    int no_trade_resolved = 0;
-    int no_trade_correct = 0;
-    int matched_orders = 0;
     int allowed_orders = 0;
     int denied_orders = 0;
-    double paper_pnl = 0.0;
-    double avoided_value = 0.0;
     QJsonArray rows;
     QMap<QString, EdgeProofSymbolStats> by_symbol;
+    EdgeProofSymbolStats aggregate;
 
     auto& q = r.value();
     if (!opts.json) {
@@ -382,7 +324,6 @@ int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList args) {
                     "TIME", "SYMBOL", "CALL", "RESULT", "MOVE", "PAPER_PNL", "ORDER", "ID");
     }
     while (q.next()) {
-        ++signal_count;
         const QString id = q.value(0).toString();
         const qint64 decision_ts = q.value(1).toLongLong();
         const QString row_symbol = q.value(4).toString();
@@ -390,21 +331,12 @@ int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList args) {
         const QString side = q.value(9).toString();
         const bool buy_call = edge_crypto_is_buy_call(call, side);
         auto sym_stats = by_symbol.value(row_symbol);
-        ++sym_stats.signal_count;
-        if (buy_call)
-            ++buy_signals;
-        else
-            ++no_trade_signals;
-        if (buy_call)
-            ++sym_stats.buy_signals;
-        else
-            ++sym_stats.no_trade_signals;
 
         auto scored = edge_score_crypto_recommendation_outcome(q);
         QString result = QStringLiteral("waiting");
         double move = 0.0;
-        double pnl = 0.0;
         qint64 target_ts = decision_ts + std::max(5, q.value(21).toInt()) * 1000LL;
+        EdgeProofRowOutcome row_outcome;
         if (scored.is_ok()) {
             const auto outcome = scored.value();
             target_ts = outcome.target_ts;
@@ -412,42 +344,15 @@ int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList args) {
             edge_update_crypto_recommendation_outcome(outcome, &error);
             result = edge_outcome_text(outcome.outcome);
             move = outcome.move;
-            ++resolved;
-            ++sym_stats.resolved;
-            if (outcome.outcome == 1)
-                ++wins;
-            if (outcome.outcome == 1)
-                ++sym_stats.wins;
-            if (buy_call) {
-                ++buy_resolved;
-                ++sym_stats.buy_resolved;
-                pnl = amount_usd * (outcome.move - outcome.breakeven);
-                paper_pnl += pnl;
-                sym_stats.paper_pnl += pnl;
-                if (pnl > 0.0) {
-                    ++buy_wins;
-                    ++sym_stats.buy_wins;
-                }
-            } else {
-                ++no_trade_resolved;
-                ++sym_stats.no_trade_resolved;
-                if (outcome.outcome == 1) {
-                    ++no_trade_correct;
-                    ++sym_stats.no_trade_correct;
-                    const double avoided = amount_usd * std::max(0.0, outcome.breakeven - outcome.move);
-                    avoided_value += avoided;
-                    sym_stats.avoided_value += avoided;
-                }
-            }
-        } else {
-            ++waiting;
-            ++sym_stats.waiting;
+            row_outcome = EdgeProofRowOutcome{true, outcome.outcome, outcome.move, outcome.breakeven};
         }
+        const double pnl = edge_proof_accumulate(aggregate, buy_call, row_outcome, amount_usd);
+        edge_proof_accumulate(sym_stats, buy_call, row_outcome, amount_usd);
 
         QString order_label = QStringLiteral("none");
         const auto order = edge_matching_broker_event(broker_events, row_symbol, decision_ts, target_ts);
         if (order) {
-            ++matched_orders;
+            ++aggregate.matched_orders;
             ++sym_stats.matched_orders;
             order_label = order->decision.trimmed().isEmpty() ? order->phase : order->decision;
             const QString d = order->decision.trimmed().toLower();
@@ -491,43 +396,28 @@ int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList args) {
     for (auto it = by_symbol.cbegin(); it != by_symbol.cend(); ++it)
         symbol_rows.append(edge_proof_stats_json(it.key(), it.value()));
 
-    EdgeProofSymbolStats aggregate;
-    aggregate.signal_count = signal_count;
-    aggregate.resolved = resolved;
-    aggregate.waiting = waiting;
-    aggregate.wins = wins;
-    aggregate.buy_signals = buy_signals;
-    aggregate.buy_resolved = buy_resolved;
-    aggregate.buy_wins = buy_wins;
-    aggregate.no_trade_signals = no_trade_signals;
-    aggregate.no_trade_resolved = no_trade_resolved;
-    aggregate.no_trade_correct = no_trade_correct;
-    aggregate.matched_orders = matched_orders;
-    aggregate.paper_pnl = paper_pnl;
-    aggregate.avoided_value = avoided_value;
-
-    QJsonObject summary{{"signals", signal_count},
-                        {"resolved", resolved},
-                        {"waiting", waiting},
-                        {"wins", wins},
-                        {"win_rate", edge_rate(wins, resolved)},
-                        {"buy_signals", buy_signals},
-                        {"buy_resolved", buy_resolved},
-                        {"profitable_buy_trades", buy_wins},
-                        {"profitable_buy_rate", edge_rate(buy_wins, buy_resolved)},
-                        {"no_trade_signals", no_trade_signals},
-                        {"no_trade_resolved", no_trade_resolved},
-                        {"correct_no_trade", no_trade_correct},
-                        {"no_trade_success_rate", edge_rate(no_trade_correct, no_trade_resolved)},
+    QJsonObject summary{{"signals", aggregate.signal_count},
+                        {"resolved", aggregate.resolved},
+                        {"waiting", aggregate.waiting},
+                        {"wins", aggregate.wins},
+                        {"win_rate", edge_rate(aggregate.wins, aggregate.resolved)},
+                        {"buy_signals", aggregate.buy_signals},
+                        {"buy_resolved", aggregate.buy_resolved},
+                        {"profitable_buy_trades", aggregate.buy_wins},
+                        {"profitable_buy_rate", edge_rate(aggregate.buy_wins, aggregate.buy_resolved)},
+                        {"no_trade_signals", aggregate.no_trade_signals},
+                        {"no_trade_resolved", aggregate.no_trade_resolved},
+                        {"correct_no_trade", aggregate.no_trade_correct},
+                        {"no_trade_success_rate", edge_rate(aggregate.no_trade_correct, aggregate.no_trade_resolved)},
                         {"paper_amount_usd", amount_usd},
-                        {"paper_pnl_after_cost", paper_pnl},
-                        {"avoided_value_estimate", avoided_value},
+                        {"paper_pnl_after_cost", aggregate.paper_pnl},
+                        {"avoided_value_estimate", aggregate.avoided_value},
                         {"broker_events_seen", broker_events.size()},
-                        {"matched_orders", matched_orders},
+                        {"matched_orders", aggregate.matched_orders},
                         {"allowed_orders", allowed_orders},
                         {"denied_orders", denied_orders},
-                        {"sample_status", edge_proof_sample_status(resolved)},
-                        {"next_milestone", edge_proof_next_milestone(resolved)},
+                        {"sample_status", edge_proof_sample_status(aggregate.resolved)},
+                        {"next_milestone", edge_proof_next_milestone(aggregate.resolved)},
                         {"verdict", edge_proof_verdict(aggregate)}};
     if (opts.json) {
         std::printf("%s\n", QJsonDocument(QJsonObject{{"summary", summary},
@@ -538,19 +428,21 @@ int edge_journal_proof_loop_command(const GlobalOpts& opts, QStringList args) {
     }
     std::printf("\nSUMMARY\n");
     std::printf("signals      %d resolved=%d waiting=%d win_rate=%s\n",
-                signal_count, resolved, waiting, qUtf8Printable(edge_pct(edge_rate(wins, resolved))));
+                aggregate.signal_count, aggregate.resolved, aggregate.waiting,
+                qUtf8Printable(edge_pct(edge_rate(aggregate.wins, aggregate.resolved))));
     std::printf("buy          %d resolved=%d profitable=%d rate=%s paper_pnl=$%.4f\n",
-                buy_signals, buy_resolved, buy_wins,
-                qUtf8Printable(edge_pct(edge_rate(buy_wins, buy_resolved))), paper_pnl);
+                aggregate.buy_signals, aggregate.buy_resolved, aggregate.buy_wins,
+                qUtf8Printable(edge_pct(edge_rate(aggregate.buy_wins, aggregate.buy_resolved))), aggregate.paper_pnl);
     std::printf("no trade     %d resolved=%d correct=%d rate=%s avoided=$%.4f\n",
-                no_trade_signals, no_trade_resolved, no_trade_correct,
-                qUtf8Printable(edge_pct(edge_rate(no_trade_correct, no_trade_resolved))), avoided_value);
+                aggregate.no_trade_signals, aggregate.no_trade_resolved, aggregate.no_trade_correct,
+                qUtf8Printable(edge_pct(edge_rate(aggregate.no_trade_correct, aggregate.no_trade_resolved))),
+                aggregate.avoided_value);
     std::printf("orders       broker_events=%d matched=%d allowed=%d denied=%d\n",
-                static_cast<int>(broker_events.size()), matched_orders, allowed_orders, denied_orders);
+                static_cast<int>(broker_events.size()), aggregate.matched_orders, allowed_orders, denied_orders);
     std::printf("verdict      %s sample=%s next=%d\n",
                 qUtf8Printable(edge_proof_verdict(aggregate)),
-                qUtf8Printable(edge_proof_sample_status(resolved)),
-                edge_proof_next_milestone(resolved));
+                qUtf8Printable(edge_proof_sample_status(aggregate.resolved)),
+                edge_proof_next_milestone(aggregate.resolved));
     std::printf("\nBY SYMBOL\n");
     std::printf("%-9s %7s %7s %8s %5s %8s %7s %8s %10s %s\n",
                 "SYMBOL", "SIG", "RES", "WIN%", "BUY", "BUY%", "NO_TR", "NT_OK%", "PNL", "VERDICT");
