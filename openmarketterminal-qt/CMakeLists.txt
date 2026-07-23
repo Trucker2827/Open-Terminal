@@ -3682,6 +3682,13 @@ endif()
 if(WIN32)
     # Windows: install exe + all DLLs beside it (windeployqt already copies them)
     install(TARGETS OpenMarketTerminal RUNTIME DESTINATION "." COMPONENT core)
+    # openterminalcli.exe beside the app exe — KalshiScreen shells out to it
+    # for live evidence, and the `cli` component (bin/ layout) is excluded
+    # from CPACK_COMPONENTS_ALL, so without this rule the Windows installer
+    # ships no CLI and every install shows "openterminalcli was not found
+    # beside the app". macOS stages it into Contents/MacOS in CI; Linux into
+    # the AppDir's usr/bin.
+    install(TARGETS openterminalcli RUNTIME DESTINATION "." COMPONENT core)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/scripts/"
             DESTINATION "scripts" COMPONENT scripts
             REGEX "(\\.deleted\\.|\\.pytest_cache|\\.benchmarks|__pycache__|\\.pyc$|\\.db$|\\.sqlite$|\\.sqlite3$|\\.bak$|\\.orig$)" EXCLUDE)
