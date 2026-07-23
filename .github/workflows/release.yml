@@ -280,6 +280,7 @@ jobs:
           MISSING=0
           for essential in \
             "${{ env.APP_NAME }}.exe" \
+            openterminalcli.exe \
             Qt6Core.dll Qt6Gui.dll Qt6Widgets.dll Qt6Network.dll \
             platforms/qwindows.dll sqldrivers/qsqlite.dll \
             tls/qschannelbackend.dll; do
@@ -370,6 +371,21 @@ jobs:
           command -v binarycreator || { echo "::error::binarycreator not found"; exit 1; }
           cpack -G IFW -C ${{ env.BUILD_TYPE }} --verbose
           ls -lh ${{ env.APP_NAME }}-*-setup* 2>/dev/null || ls -lh *.exe 2>/dev/null || true
+
+          # The installed payload must carry the CLI beside the app exe —
+          # the GUI's KalshiScreen shells out to it for live evidence, and a
+          # missing CLI only surfaces as a runtime error on user machines.
+          # cpack leaves its staging tree in _CPack_Packages; inspect the
+          # core component's data dir directly.
+          CORE_DATA=$(find _CPack_Packages -type d -path "*org.openmarketterminal.OpenMarketTerminal.core/data" | head -1)
+          [ -n "${CORE_DATA}" ] || { echo "::error::IFW core data dir not found under _CPack_Packages"; exit 1; }
+          for cli_file in openterminalcli.exe "${{ env.APP_NAME }}.exe"; do
+            if [ ! -f "${CORE_DATA}/${cli_file}" ]; then
+              echo "::error::${cli_file} missing from installer core payload (${CORE_DATA})"
+              exit 1
+            fi
+          done
+          echo "Installer core payload contains openterminalcli.exe beside ${{ env.APP_NAME }}.exe"
 
       # ── Upload ────────────────────────────────────────────────────────────
       # Narrow the glob to the installer output — the broader `*.exe` pattern
@@ -564,6 +580,21 @@ jobs:
           cp "build/${{ env.APP_NAME }}" "${APPDIR}/usr/bin/"
           chmod +x "${APPDIR}/usr/bin/${{ env.APP_NAME }}"
 
+          # openterminalcli beside the app (mac pattern: Contents/MacOS/) —
+          # the GUI's KalshiScreen shells out to it for live Kalshi evidence;
+          # without it every install shows "openterminalcli was not found
+          # beside the app". Hard failure: the target builds unconditionally,
+          # so its absence means the build itself is broken. The AppDir also
+          # feeds the IFW wizard payload, so both artifacts pick it up.
+          if [ -x "build/openterminalcli" ]; then
+            cp "build/openterminalcli" "${APPDIR}/usr/bin/openterminalcli"
+            chmod +x "${APPDIR}/usr/bin/openterminalcli"
+            echo "  staged openterminalcli → usr/bin/"
+          else
+            echo "::error::build/openterminalcli missing — the CLI must ship in the AppDir"
+            exit 1
+          fi
+
           cat > "${APPDIR}/usr/share/applications/openmarketterminal.desktop" <<'EOF'
           [Desktop Entry]
           Name=OpenTerminal
@@ -669,13 +700,25 @@ jobs:
           export OUTPUT="OpenTerminal-${VERSION}-linux-x64-setup.run"
           export UPDATE_INFORMATION="gh-releases-zsync|Trucker2827|Open-Terminal|latest|OpenTerminal-*-linux-x64-setup.run.zsync"
 
+          # --executable openterminalcli: linuxdeploy must know about the
+          # second binary so its Qt deps are resolved and its rpath patched
+          # to $ORIGIN/../lib — a bare copy would fail to find bundled Qt on
+          # user machines.
           ./linuxdeploy-x86_64.AppImage \
             --appdir "${APPDIR}" \
+            --executable "${APPDIR}/usr/bin/openterminalcli" \
             --plugin qt \
             --output appimage \
             --desktop-file "${APPDIR}/usr/share/applications/openmarketterminal.desktop" \
             --icon-file "${ICON_DEST}" \
             2>&1
+
+          # Criterion gate (issue #90): the AppDir must carry the CLI in
+          # usr/bin after linuxdeploy ran.
+          if [ ! -x "${APPDIR}/usr/bin/openterminalcli" ]; then
+            echo "::error::openterminalcli missing from ${APPDIR}/usr/bin after linuxdeploy"
+            exit 1
+          fi
 
           # linuxdeploy names the output after the desktop entry — find it.
           if [ ! -f "${OUTPUT}" ]; then

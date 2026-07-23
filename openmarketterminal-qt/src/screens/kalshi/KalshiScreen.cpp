@@ -1,5 +1,6 @@
 #include "screens/kalshi/KalshiScreen.h"
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
+#include "screens/kalshi/CliLocator.h"
 
 #include "cli/ServeCommand.h"
 #include "core/config/ProfileManager.h"
@@ -3394,12 +3395,15 @@ void KalshiScreen::place_live_order() {
 }
 
 QString KalshiScreen::cli_path() const {
-    const QString app_dir = QCoreApplication::applicationDirPath();
-    const QStringList candidates{app_dir + QStringLiteral("/openterminalcli"),
-        QDir::cleanPath(app_dir + QStringLiteral("/../../../openterminalcli")),
+    using namespace openmarketterminal::screens::kalshi;
+    const QString beside = find_cli_beside_app(
+        QCoreApplication::applicationDirPath(), cli_exe_suffix());
+    if (!beside.isEmpty()) return beside;
+    // PATH fallbacks — findExecutable appends the platform suffix itself.
+    const QStringList fallbacks{
         QStandardPaths::findExecutable(QStringLiteral("openterminalcli")),
         QStandardPaths::findExecutable(QStringLiteral("ot"))};
-    for (const QString& path : candidates)
+    for (const QString& path : fallbacks)
         if (!path.isEmpty() && QFileInfo(path).isExecutable()) return path;
     return {};
 }
