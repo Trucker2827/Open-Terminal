@@ -163,6 +163,65 @@ double KalshiEvidenceEngine::conservative_taker_fee(const PredictionMarket& mark
     return std::ceil(dollars * 100.0 - 1e-9) / 100.0;
 }
 
+QJsonObject KalshiEvidenceEngine::calibrator_readout(const QJsonObject& report,
+                                                     const QString& market_ticker,
+                                                     qint64 now_ms,
+                                                     qint64 max_age_ms) {
+    const auto without_numbers = [](const QString& state, const QString& headline) {
+        return QJsonObject{{QStringLiteral("state"), state},
+                           {QStringLiteral("headline"), headline},
+                           {QStringLiteral("record"), QString()},
+                           {QStringLiteral("trusted"), false}};
+    };
+    const qint64 generated_ms =
+        static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
+    if (generated_ms <= 0)
+        return without_numbers(QStringLiteral("missing"),
+                               QStringLiteral("CALIBRATOR MISSING · no calibrator.json evidence"));
+    if (now_ms - generated_ms > max_age_ms)
+        return without_numbers(
+            QStringLiteral("stale"),
+            QStringLiteral("CALIBRATOR STALE · report is %1 min old · numbers withheld")
+                .arg((now_ms - generated_ms) / 60'000));
+    const QJsonObject prediction = report.value(QStringLiteral("predictions"))
+                                       .toObject().value(market_ticker).toObject();
+    if (prediction.isEmpty())
+        return without_numbers(QStringLiteral("missing"),
+                               QStringLiteral("CALIBRATOR · no prediction for this contract"));
+
+    const QJsonObject features = prediction.value(QStringLiteral("features")).toObject();
+    // required_move_sigma is written as 0.0 both at-the-strike and when the
+    // ambient-vol estimate is absent; only a positive vol makes it meaningful.
+    const QString sigma_text =
+        features.value(QStringLiteral("per_min_vol_bps")).toDouble() > 0.0
+            ? QStringLiteral("STRIKE %1σ AWAY")
+                  .arg(features.value(QStringLiteral("required_move_sigma")).toDouble(), 0, 'f', 1)
+            : QStringLiteral("STRIKE σ UNAVAILABLE (no vol estimate)");
+    const auto percent = [](double p) { return QStringLiteral("%1%").arg(p * 100.0, 0, 'f', 1); };
+    const QString headline = QStringLiteral("%1 · CALIBRATED P(YES) %2 · MARKET MID %3")
+        .arg(sigma_text,
+             percent(prediction.value(QStringLiteral("p_yes_full")).toDouble()),
+             percent(prediction.value(QStringLiteral("market_yes_mid")).toDouble()));
+
+    const int resolved = report.value(QStringLiteral("resolved_contracts")).toInt();
+    const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
+    const QJsonValue brier_market = report.value(QStringLiteral("brier_market_baseline"));
+    const bool trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    const QString record = !brier_full.isDouble() || !brier_market.isDouble()
+        ? QStringLiteral("TRACK RECORD · %1 resolved · Brier unavailable — opinion, not signal")
+              .arg(resolved)
+        : QStringLiteral("TRACK RECORD · %1 resolved · Brier %2 vs market %3 · %4")
+              .arg(resolved)
+              .arg(brier_full.toDouble(), 0, 'f', 3)
+              .arg(brier_market.toDouble(), 0, 'f', 3)
+              .arg(trusted ? QStringLiteral("beats market baseline")
+                           : QStringLiteral("does NOT beat market — opinion, not signal"));
+    return QJsonObject{{QStringLiteral("state"), QStringLiteral("ok")},
+                       {QStringLiteral("headline"), headline},
+                       {QStringLiteral("record"), record},
+                       {QStringLiteral("trusted"), trusted}};
+}
+
 QJsonArray KalshiEvidenceEngine::analyze_ladder(
     const QVector<PredictionMarket>& markets,
     const QHash<QString, PredictionOrderBook>& books,

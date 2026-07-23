@@ -73,6 +73,8 @@ class TestKalshiEvidence : public QObject {
     void appliesSeriesFeesAndWaivers();
     void pricesExecutableCryptoYesAndNo();
     void rejectsLateOrFutureOnlyCryptoInputs();
+    void formatsCalibratorReadoutWithHonestRecord();
+    void withholdsMissingOrStaleCalibratorNumbers();
 };
 
 void TestKalshiEvidence::detectsExecutableRelationships() {
@@ -209,6 +211,102 @@ void TestKalshiEvidence::rejectsLateOrFutureOnlyCryptoInputs() {
         priced, 1900.0, options, decision + 60'000);
     QCOMPARE(after.seconds_left, 0);
     QVERIFY(!after.passes_gate);
+}
+
+namespace {
+
+QJsonObject calibrator_report(qint64 generated_ms, bool adds_value, double per_min_vol_bps) {
+    // Mirrors what spot_calibrator.py build_report() writes to calibrator.json.
+    const QJsonObject features{{QStringLiteral("required_move_sigma"), 26.771822853615074},
+                               {QStringLiteral("per_min_vol_bps"), per_min_vol_bps},
+                               {QStringLiteral("signed_distance_bps"), 14.3},
+                               {QStringLiteral("sqrt_minutes_left"), 0.258},
+                               {QStringLiteral("realized_move_bps"), 0.0},
+                               {QStringLiteral("yes_mid"), 0.0035}};
+    const QJsonObject prediction{{QStringLiteral("p_yes_full"), 0.2690958555948577},
+                                 {QStringLiteral("p_yes_market_baseline"), 0.0206},
+                                 {QStringLiteral("market_yes_mid"), 0.0035},
+                                 {QStringLiteral("features"), features}};
+    return QJsonObject{{QStringLiteral("schema"), 1},
+                       {QStringLiteral("event"), QStringLiteral("spot_calibrator")},
+                       {QStringLiteral("advisory_only"), true},
+                       {QStringLiteral("generated_at_ms"), generated_ms},
+                       {QStringLiteral("resolved_contracts"), 162},
+                       {QStringLiteral("brier_full"), 0.109},
+                       {QStringLiteral("brier_market_baseline"), 0.102},
+                       {QStringLiteral("adds_value_over_market"), adds_value},
+                       {QStringLiteral("predictions"),
+                        QJsonObject{{QStringLiteral("KXBTC15M-26JUL230800-00"), prediction}}}};
+}
+
+} // namespace
+
+void TestKalshiEvidence::formatsCalibratorReadoutWithHonestRecord() {
+    const qint64 now = 1'784'847'600'000;
+    const QString ticker = QStringLiteral("KXBTC15M-26JUL230800-00");
+
+    // Round-trip through the JSON serializer, exactly like the file on disk.
+    const QJsonObject parsed = QJsonDocument::fromJson(
+        QJsonDocument(calibrator_report(now - 60'000, false, 2.069)).toJson()).object();
+    const QJsonObject readout =
+        KalshiEvidenceEngine::calibrator_readout(parsed, ticker, now);
+    QCOMPARE(readout.value(QStringLiteral("state")).toString(), QStringLiteral("ok"));
+    const QString headline = readout.value(QStringLiteral("headline")).toString();
+    QVERIFY(headline.contains(QStringLiteral("26.8σ")));
+    QVERIFY(headline.contains(QStringLiteral("P(YES) 26.9%")));
+    QVERIFY(headline.contains(QStringLiteral("MARKET MID 0.4%")));
+    const QString record = readout.value(QStringLiteral("record")).toString();
+    QVERIFY(record.contains(QStringLiteral("162 resolved")));
+    QVERIFY(record.contains(QStringLiteral("Brier 0.109 vs market 0.102")));
+    QVERIFY(record.contains(QStringLiteral("does NOT beat market — opinion, not signal")));
+    QCOMPARE(readout.value(QStringLiteral("trusted")).toBool(), false);
+
+    const QJsonObject beats = KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report(now - 60'000, true, 2.069), ticker, now);
+    QVERIFY(beats.value(QStringLiteral("record")).toString()
+                .contains(QStringLiteral("beats market baseline")));
+    QCOMPARE(beats.value(QStringLiteral("trusted")).toBool(), true);
+
+    // A zero ambient vol makes required_move_sigma meaningless; the readout
+    // must say so instead of presenting 26.8σ as a measurement.
+    const QJsonObject no_vol = KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report(now - 60'000, false, 0.0), ticker, now);
+    const QString no_vol_headline = no_vol.value(QStringLiteral("headline")).toString();
+    QVERIFY(!no_vol_headline.contains(QStringLiteral("26.8σ")));
+    QVERIFY(no_vol_headline.contains(QStringLiteral("σ UNAVAILABLE")));
+}
+
+void TestKalshiEvidence::withholdsMissingOrStaleCalibratorNumbers() {
+    const qint64 now = 1'784'847'600'000;
+    const QString ticker = QStringLiteral("KXBTC15M-26JUL230800-00");
+
+    const QJsonObject missing_file =
+        KalshiEvidenceEngine::calibrator_readout(QJsonObject{}, ticker, now);
+    QCOMPARE(missing_file.value(QStringLiteral("state")).toString(), QStringLiteral("missing"));
+    QVERIFY(missing_file.value(QStringLiteral("headline")).toString()
+                .contains(QStringLiteral("MISSING")));
+
+    const QJsonObject no_entry = KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report(now - 60'000, false, 2.069), QStringLiteral("KXETH-OTHER"), now);
+    QCOMPARE(no_entry.value(QStringLiteral("state")).toString(), QStringLiteral("missing"));
+    QVERIFY(no_entry.value(QStringLiteral("headline")).toString()
+                .contains(QStringLiteral("no prediction")));
+
+    // 16 minutes old is past the 15-minute default: state flips to stale and
+    // every number is withheld — a stale probability never renders as live.
+    const QJsonObject stale = KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report(now - 16 * 60'000, false, 2.069), ticker, now);
+    QCOMPARE(stale.value(QStringLiteral("state")).toString(), QStringLiteral("stale"));
+    const QString stale_headline = stale.value(QStringLiteral("headline")).toString();
+    QVERIFY(stale_headline.contains(QStringLiteral("STALE")));
+    QVERIFY(stale_headline.contains(QStringLiteral("16 min old")));
+    QVERIFY(!stale_headline.contains(QStringLiteral("26.8")));
+    QVERIFY(stale.value(QStringLiteral("record")).toString().isEmpty());
+
+    // One minute inside the threshold still reads as live.
+    const QJsonObject fresh = KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report(now - 14 * 60'000, false, 2.069), ticker, now);
+    QCOMPARE(fresh.value(QStringLiteral("state")).toString(), QStringLiteral("ok"));
 }
 
 QTEST_APPLESS_MAIN(TestKalshiEvidence)
