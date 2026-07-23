@@ -1,6 +1,7 @@
 #include "screens/kalshi/KalshiScreen.h"
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
 
+#include "cli/ServeCommand.h"
 #include "core/config/ProfileManager.h"
 #include "core/events/EventBus.h"
 #include "services/crypto/CoinbaseEndpoints.h"
@@ -3622,30 +3623,66 @@ void KalshiScreen::refresh_advisor_canary_status() {
 void KalshiScreen::refresh_daemon_status() {
     if (!daemon_badge_ || !daemon_restart_button_ || daemon_status_fetching_ || daemon_restarting_)
         return;
+    // Evidence freshness is judged in-process: a missing CLI binary must never
+    // misreport a daemon that is demonstrably writing evidence as OFF.
+    namespace cli = openmarketterminal::cli;
+    QJsonObject books;
+    QFile books_file(cli::kalshi_evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (books_file.open(QIODevice::ReadOnly | QIODevice::Text))
+        books = QJsonDocument::fromJson(books_file.readAll()).object();
+    const auto evidence = cli::kalshi_daemon_evidence_freshness(
+        cli::kalshi_ws_books_heartbeat_ms(books), QDateTime::currentMSecsSinceEpoch());
+    const auto set_badge = [this](const QString& text, const QString& color, const QString& tip) {
+        daemon_badge_->setText(text);
+        daemon_badge_->setStyleSheet(
+            QStringLiteral("color:%1;font-weight:900;padding:6px;").arg(color));
+        daemon_badge_->setToolTip(tip);
+    };
+    const QString age_text = evidence.age_ms >= 120'000
+        ? QStringLiteral("%1m").arg(evidence.age_ms / 60'000)
+        : QStringLiteral("%1s").arg(evidence.age_ms / 1'000);
+    if (evidence.state == QStringLiteral("fresh")) {
+        set_badge(QStringLiteral("DAEMON: ACTIVE"), colors::GREEN(), QStringLiteral(
+            "Local daemon is active: kalshi-ws-books.json heartbeat %1 ago "
+            "(source: in-process evidence freshness). It owns Kalshi WebSocket "
+            "monitoring, paper evidence, and armed automation.").arg(age_text));
+        daemon_restart_button_->setEnabled(true);
+        return;
+    }
+    if (evidence.state == QStringLiteral("stale"))
+        set_badge(QStringLiteral("DAEMON: STALE"), colors::WARNING(), QStringLiteral(
+            "Daemon evidence is stale: last kalshi-ws-books.json heartbeat %1 ago "
+            "(source: in-process evidence freshness). The daemon may be down or its "
+            "WebSocket feed idle.").arg(age_text));
+    else
+        set_badge(QStringLiteral("DAEMON: NO EVIDENCE"), colors::TEXT_SECONDARY(), QStringLiteral(
+            "No daemon evidence found: kalshi-ws-books.json has no heartbeat "
+            "(source: in-process evidence freshness). Start or restart the daemon "
+            "to begin monitoring."));
+    daemon_restart_button_->setEnabled(true);
+    // CLI refinement: a daemon can be alive without a WebSocket heartbeat (for
+    // example, no Kalshi credentials). A definitive CLI answer upgrades or
+    // settles the badge; a missing/failing CLI leaves the evidence verdict.
     daemon_status_fetching_ = true;
     run_live_cli({QStringLiteral("daemon"), QStringLiteral("status")},
-                 [this](const QJsonObject& status, const QString& error) {
+                 [this, set_badge](const QJsonObject& status, const QString& error) {
         daemon_status_fetching_ = false;
-        const bool running = error.isEmpty() &&
-            (status.value(QStringLiteral("scheduler_running")).toBool() ||
-             status.value(QStringLiteral("running")).toBool());
-        daemon_badge_->setText(running ? QStringLiteral("DAEMON: ACTIVE")
-                                       : QStringLiteral("DAEMON: OFF"));
-        daemon_badge_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:6px;")
-                                         .arg(running ? colors::GREEN() : colors::RED()));
+        daemon_restart_button_->setEnabled(true);
+        if (!error.isEmpty()) return;
+        const bool running = status.value(QStringLiteral("scheduler_running")).toBool() ||
+                             status.value(QStringLiteral("running")).toBool();
         if (running) {
             const qint64 pid = static_cast<qint64>(
                 status.value(QStringLiteral("daemon_process_pid")).toDouble(
                     status.value(QStringLiteral("pid")).toDouble()));
-            daemon_badge_->setToolTip(QStringLiteral(
-                "Local daemon is active%1. It owns Kalshi WebSocket monitoring, paper evidence, and armed automation.")
+            set_badge(QStringLiteral("DAEMON: ACTIVE"), colors::GREEN(), QStringLiteral(
+                "Local daemon is active%1 (source: openterminalcli daemon status). "
+                "It owns Kalshi WebSocket monitoring, paper evidence, and armed automation.")
                 .arg(pid > 0 ? QStringLiteral(" (PID %1)").arg(pid) : QString()));
         } else {
-            daemon_badge_->setToolTip(error.isEmpty()
-                ? QStringLiteral("The local daemon is not running.")
-                : QStringLiteral("The local daemon is not reachable: %1").arg(error));
+            set_badge(QStringLiteral("DAEMON: OFF"), colors::TEXT_SECONDARY(), QStringLiteral(
+                "The local daemon is not running (source: openterminalcli daemon status)."));
         }
-        daemon_restart_button_->setEnabled(true);
     });
 }
 
@@ -3673,9 +3710,9 @@ void KalshiScreen::restart_daemon() {
         daemon_restart_button_->setEnabled(true);
         if (!error.isEmpty()) {
             QMessageBox::warning(this, QStringLiteral("Daemon restart failed"), error);
-            daemon_badge_->setText(QStringLiteral("DAEMON: OFF"));
-            daemon_badge_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:6px;")
-                                             .arg(colors::RED()));
+            // A failed restart command is not proof the daemon is off; let the
+            // in-process evidence check re-derive the badge.
+            refresh_daemon_status();
             return;
         }
         QTimer::singleShot(1'000, this, &KalshiScreen::refresh_daemon_status);

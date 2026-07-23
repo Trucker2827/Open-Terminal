@@ -119,6 +119,42 @@ private slots:
         QCOMPARE(kalshi_event_cycle_delay_ms(false, true, 15000), 0LL);
     }
 
+    // GUI daemon indicator: the badge derives from this pure classifier so
+    // indicator truth never depends on the CLI binary being present.
+    void daemon_indicator_classifies_evidence_freshness() {
+        const auto boundary = kalshi_daemon_evidence_freshness(70'000, 100'000);
+        QCOMPARE(boundary.state, QStringLiteral("fresh"));   // 30s default, inclusive
+        QCOMPARE(boundary.age_ms, 30'000LL);
+        QCOMPARE(kalshi_daemon_evidence_freshness(100'000, 100'000).state,
+                 QStringLiteral("fresh"));                   // heartbeat this instant
+        const auto stale = kalshi_daemon_evidence_freshness(69'999, 100'000);
+        QCOMPARE(stale.state, QStringLiteral("stale"));      // one ms past the window
+        QCOMPARE(stale.age_ms, 30'001LL);
+        QCOMPARE(kalshi_daemon_evidence_freshness(95'000, 100'000, 1'000).state,
+                 QStringLiteral("stale"));                   // window is a parameter
+        // No heartbeat reads as none, never fabricated: absent, negative, and
+        // future timestamps are all mistrusted.
+        const auto missing = kalshi_daemon_evidence_freshness(0, 100'000);
+        QCOMPARE(missing.state, QStringLiteral("none"));
+        QCOMPARE(missing.age_ms, -1LL);
+        QCOMPARE(kalshi_daemon_evidence_freshness(-5, 100'000).state, QStringLiteral("none"));
+        QCOMPARE(kalshi_daemon_evidence_freshness(100'001, 100'000).state,
+                 QStringLiteral("none"));
+    }
+
+    void daemon_indicator_reads_writer_heartbeat_shape() {
+        // write_book_snapshot() serializes updated_at_ms as a decimal string.
+        QCOMPARE(kalshi_ws_books_heartbeat_ms(
+                     QJsonObject{{"updated_at_ms", QStringLiteral("1712345678901")}}),
+                 1712345678901LL);
+        // A numeric value survives a future schema change.
+        QCOMPARE(kalshi_ws_books_heartbeat_ms(QJsonObject{{"updated_at_ms", 1234.0}}), 1234LL);
+        // Absent or junk reads as no heartbeat.
+        QCOMPARE(kalshi_ws_books_heartbeat_ms(QJsonObject{}), 0LL);
+        QCOMPARE(kalshi_ws_books_heartbeat_ms(
+                     QJsonObject{{"updated_at_ms", QStringLiteral("not-a-number")}}), 0LL);
+    }
+
     void kalshi_event_planner_is_bounded_to_executable_cohorts() {
         const QStringList args = kalshi_event_planner_args();
         QCOMPARE(args.mid(0, 3), QStringList({"kalshi", "auto", "run"}));
