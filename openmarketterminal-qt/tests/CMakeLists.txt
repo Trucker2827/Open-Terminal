@@ -836,6 +836,11 @@ target_include_directories(tst_crypto_chrome_state PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_crypto_chrome_state PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_crypto_chrome_state COMMAND tst_crypto_chrome_state)
 
+add_executable(tst_crypto_ticker_vol_sigma tst_crypto_ticker_vol_sigma.cpp)
+target_include_directories(tst_crypto_ticker_vol_sigma PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_ticker_vol_sigma PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_ticker_vol_sigma COMMAND tst_crypto_ticker_vol_sigma)
+
 add_executable(tst_coinbase_endpoints tst_coinbase_endpoints.cpp
     ${CMAKE_SOURCE_DIR}/src/services/crypto/CoinbaseEndpoints.cpp)
 target_include_directories(tst_coinbase_endpoints PRIVATE ${CMAKE_SOURCE_DIR}/src)
