@@ -13,6 +13,7 @@
 #include "screens/crypto_trading/CryptoBottomPanel.h"
 #include "screens/crypto_trading/CryptoChart.h"
 #include "screens/crypto_trading/CryptoCredentials.h"
+#include "screens/crypto_trading/CryptoExchangeAccountsDialog.h"
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
@@ -20,7 +21,6 @@
 #include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
-#include "screens/equity_trading/AccountManagementDialog.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSession.h"
 #include "trading/ExchangeSessionManager.h"
@@ -383,16 +383,10 @@ void CryptoTradingScreen::on_api_clicked() {
 }
 
 void CryptoTradingScreen::on_accounts_clicked() {
-    auto* dlg = new equity::AccountManagementDialog(this);
-    dlg->setWindowTitle(tr("Manage Trading Accounts"));
-
-    connect(dlg, &equity::AccountManagementDialog::credentials_saved, this, [](const QString& account_id) {
-        Q_UNUSED(account_id);
-        LOG_INFO(TAG, "Broker account credentials saved from crypto workspace");
-    });
-
-    dlg->exec();
-    dlg->deleteLater();
+    CryptoExchangeAccountsDialog dialog(exchange_id_, this);
+    connect(&dialog, &CryptoExchangeAccountsDialog::active_exchange_requested, this,
+            [this](const QString& exchange_id) { on_exchange_changed(exchange_id); });
+    dialog.exec();
 }
 
 void CryptoTradingScreen::on_order_submitted(const QString& side, const QString& order_type, double qty, double price,

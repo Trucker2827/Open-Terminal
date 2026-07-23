@@ -255,21 +255,21 @@ void CryptoTradingScreen::setup_ui() {
     clock_label_->setObjectName("cryptoClock");
     cmd_layout->addWidget(clock_label_);
 
-    // API button
-    api_btn_ = new QPushButton(tr("API"));
+    // Shortcut for credentials on the currently selected exchange.
+    api_btn_ = new QPushButton(tr("ACTIVE API"));
     api_btn_->setObjectName("cryptoApiBtn");
     api_btn_->setFixedHeight(22);
     api_btn_->setCursor(Qt::PointingHandCursor);
     cmd_layout->addWidget(api_btn_);
 
-    // Broker accounts button — opens the shared multi-account manager used for
-    // Alpaca/IBKR/etc. This is separate from API, which configures the selected
-    // crypto exchange session (Coinbase/Kraken/Binance...).
-    accounts_btn_ = new QPushButton(tr("ACCOUNTS"));
+    // Unified venue + credential manager for crypto exchanges. Equity broker
+    // accounts deliberately do not appear in the Crypto workspace.
+    accounts_btn_ = new QPushButton(tr("EXCHANGE ACCOUNTS"));
     accounts_btn_->setObjectName("cryptoApiBtn");
     accounts_btn_->setFixedHeight(22);
     accounts_btn_->setCursor(Qt::PointingHandCursor);
-    accounts_btn_->setToolTip(tr("Manage broker accounts such as Alpaca. Exchange API keys stay under API."));
+    accounts_btn_->setToolTip(
+        tr("Configure Coinbase, Kraken, and other exchange credentials; choose the active trading venue."));
     cmd_layout->addWidget(accounts_btn_);
 
     // Mode button
