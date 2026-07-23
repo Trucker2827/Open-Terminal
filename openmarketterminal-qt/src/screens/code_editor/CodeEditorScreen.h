@@ -234,10 +234,12 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QWidget* build_trade_reviews_page();      // CodeEditorScreen_ResearchLab.cpp
     QWidget* build_reports_page();            // CodeEditorScreen_ResearchLab.cpp
     QWidget* build_forecast_arena_page();     // CodeEditorScreen_ForecastArena.cpp
+    QWidget* build_alpha_arena_page();        // CodeEditorScreen_AlphaArena.cpp
     void refresh_experiments();               // CodeEditorScreen_ResearchLab.cpp
     void refresh_trade_reviews();             // CodeEditorScreen_ResearchLab.cpp
     void refresh_reports();                   // CodeEditorScreen_ResearchLab.cpp
     void refresh_forecast_arena();            // CodeEditorScreen_ForecastArena.cpp
+    void refresh_alpha_arena();               // CodeEditorScreen_AlphaArena.cpp
     void open_forecast_comparison(int row);
     void create_research_notebook(const QString& type, const QString& reference = {});
     void open_strategy_workspace();
@@ -297,6 +299,7 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
         ReportsView = 3,
         ForecastArenaView = 4,
         EditorView = 5,
+        AlphaArenaView = 6,
     };
 
     // ── Header + Research Lab stack ──────────────────────────────────────────
@@ -333,6 +336,11 @@ class CodeEditorScreen : public QWidget, public IStatefulScreen {
     QLabel* arena_integrity_ = nullptr;
     QTableWidget* arena_table_ = nullptr;
     QTimer* arena_timer_ = nullptr;
+    QLabel* aa_verdict_ = nullptr;
+    QLabel* aa_round_ = nullptr;
+    QLabel* aa_howto_ = nullptr;
+    QTableWidget* aa_table_ = nullptr;
+    QTimer* aa_timer_ = nullptr;
 };
 
 } // namespace openmarketterminal::screens
