@@ -39,6 +39,25 @@ run_claude() { # run_claude <logfile> <prompt...>
   claude -p "$*" --dangerously-skip-permissions >> "$log" 2>&1
 }
 
+# Builders may leave the checkout on their feature branch; return to fresh
+# main between iterations. Never force: only the (tracked, always-dirty)
+# journal is auto-resolved — any other local change aborts the switch.
+ensure_main() {
+  if [[ "$(git branch --show-current)" != "main" ]]; then
+    cp finn/JOURNAL.md "$LOG_DIR/.journal.bak" 2>/dev/null
+    git checkout -q -- finn/JOURNAL.md 2>/dev/null
+    if git checkout -q main 2>/dev/null; then
+      cp "$LOG_DIR/.journal.bak" finn/JOURNAL.md 2>/dev/null
+    else
+      cp "$LOG_DIR/.journal.bak" finn/JOURNAL.md 2>/dev/null
+      journal "WARNING: cannot return checkout to main (dirty tree) — on $(git branch --show-current)"
+      return 1
+    fi
+  fi
+  git pull --ff-only -q 2>/dev/null || true
+}
+
+HANDLED=" "
 for i in $(seq 1 "$MAX_ITER"); do
   if [[ -f finn/STOP ]]; then
     journal "loop stopped by finn/STOP before iteration $i"
@@ -46,14 +65,23 @@ for i in $(seq 1 "$MAX_ITER"); do
     exit 0
   fi
 
-  ISSUE=$(gh issue list --label agent-ready --state open --json number,labels \
+  ensure_main
+
+  # GitHub's list API is eventually consistent: an issue closed+delabeled
+  # seconds ago can still appear here. One attempt per issue per run.
+  CANDIDATES=$(gh issue list --label agent-ready --state open --json number,labels \
     --jq '[ .[] | select((.labels | map(.name) | index("blocked")) == null)
                  | select((.labels | map(.name) | index("finn-building")) == null) ]
-           | sort_by(.number) | .[0].number' 2>/dev/null)
+           | sort_by(.number) | .[].number' 2>/dev/null)
+  ISSUE=""
+  for cand in ${(f)CANDIDATES}; do
+    [[ "$HANDLED" == *" $cand "* ]] || { ISSUE="$cand"; break }
+  done
   if [[ -z "$ISSUE" || "$ISSUE" == "null" ]]; then
-    journal "no agent-ready issues; loop idle-exits at iteration $i"
+    journal "no unhandled agent-ready issues; loop idle-exits at iteration $i"
     exit 0
   fi
+  HANDLED="$HANDLED$ISSUE "
 
   LOG="$LOG_DIR/$(date +%Y%m%d-%H%M%S)-issue-$ISSUE.log"
   journal "iteration $i: building issue #$ISSUE (log: $LOG)"
@@ -112,4 +140,5 @@ for i in $(seq 1 "$MAX_ITER"); do
   fi
 done
 
+ensure_main
 journal "loop completed $MAX_ITER iterations"
