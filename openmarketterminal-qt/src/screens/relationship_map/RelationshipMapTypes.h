@@ -253,6 +253,11 @@ struct InstitutionalHolder {
     double change_percent = 0;
     QString fund_family;
     QString type; // "institutional" or "mutualfund"
+    // SC 13D/G filing provenance (institutional ring, issue #83). Empty for
+    // mutual-fund holders. A legacy text-only filing yields provenance but
+    // no percentage — the UI shows the provenance instead of a fake 0.00%.
+    QString source_form;  // e.g. "SCHEDULE 13G/A"
+    QString filing_date;  // e.g. "2026-04-29"
 };
 
 struct InsiderHolder {

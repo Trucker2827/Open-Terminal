@@ -28,6 +28,7 @@ from . import forms_10q
 from . import forms_8k
 from . import forms_insider
 from . import forms_13f
+from . import forms_13dg
 from . import financials
 
 
@@ -230,6 +231,16 @@ def execute_command(command: str, args: list) -> Dict[str, Any]:
         return forms_13f.get_13f_summary(ticker)
 
     # =========================================================================
+    # SC 13D/G COMMANDS - Major (>5%) Beneficial Owners of a Company
+    # =========================================================================
+
+    elif command == "major_holders":
+        ticker = args[0] if len(args) > 0 else None
+        limit = int(args[1]) if len(args) > 1 else 10
+        max_scan = int(args[2]) if len(args) > 2 else 25
+        return forms_13dg.get_major_holders(ticker, limit, max_scan)
+
+    # =========================================================================
     # DIRECT SEC ACCESS — CIK resolution, filing text, multiples
     # =========================================================================
 
@@ -271,6 +282,7 @@ def execute_command(command: str, args: list) -> Dict[str, Any]:
                     "8k": ["8k_latest", "8k_events", "8k_events_categorized", "8k_full_text", "8k_search"],
                     "insider": ["insider_transactions", "insider_transactions_detailed", "insider_summary"],
                     "13f": ["13f_holdings", "13f_top_holdings", "13f_manager_info", "13f_summary"],
+                    "13dg": ["major_holders"],
                     "financials": ["get_financials", "get_financial_metrics", "get_xbrl_statements", "get_company_facts"]
                 }
             }

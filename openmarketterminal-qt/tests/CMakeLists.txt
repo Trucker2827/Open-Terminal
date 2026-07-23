@@ -54,6 +54,13 @@ add_test(NAME test_alpha_arena
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_alpha_arena.py -v)
 
+# Issue #83 — relationship map EDGAR rewire: us-gaap concept mapping,
+# Form 4 insider ring, SC 13D/G major holders, and the no-yfinance guard
+# for the rewired sections. Stdlib-only fakes (no edgartools/network).
+add_test(NAME test_relationship_map_edgar
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_relationship_map_edgar.py -v)
+
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
@@ -344,6 +351,14 @@ add_executable(tst_backtest_engine tst_backtest_engine.cpp)
 target_include_directories(tst_backtest_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_backtest_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_backtest_engine COMMAND tst_backtest_engine)
+
+# Issue #83 — relmap peer merge (services/relationship_map/RelmapPeerMerge.h):
+# native EquityResearchService ratios -> map PeerCompany entries. Header-only
+# pure mapping; Qt6::Gui linked because RelationshipMapTypes.h uses QColor.
+add_executable(tst_relmap_peer_merge tst_relmap_peer_merge.cpp)
+target_include_directories(tst_relmap_peer_merge PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_relmap_peer_merge PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME tst_relmap_peer_merge COMMAND tst_relmap_peer_merge)
 
 # Portfolio risk stats (services/portfolio/PortfolioStats) — Sharpe / Sortino /
 # max-drawdown extracted from PortfolioService::compute_metrics. Header-only
