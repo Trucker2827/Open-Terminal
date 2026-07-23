@@ -38,6 +38,9 @@ add_test(NAME test_edge_ic_report
 add_test(NAME test_terminal_bridge_layers
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_terminal_bridge_layers.py -v)
+add_test(NAME test_hft_terminal_source
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_hft_terminal_source.py -v)
 add_test(NAME test_crypto_dataset
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_dataset.py -v)

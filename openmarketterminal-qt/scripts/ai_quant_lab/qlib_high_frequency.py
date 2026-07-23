@@ -10,6 +10,11 @@ Commands (all accept JSON as second argv):
   toxic_flow        {"exchange":"coinbase","symbol":"BTC/USD","limit":200}
   slippage          {"exchange":"coinbase","symbol":"BTC/USD","side":"buy","quantity":1.0}
 
+analyze also accepts {"exchange":"terminal"}: the book comes from the running
+app's own order book over the MCP bridge (terminal_bridge.get_order_book)
+instead of a parallel ccxt connection. No public trade feed exists on that
+path, so toxic-flow reads as unavailable there.
+
 All commands output a single JSON object to stdout.
 """
 
@@ -36,6 +41,13 @@ try:
 except ImportError as e:
     _CCXT_AVAILABLE = False
     _CCXT_ERROR = str(e)
+
+# ── Terminal bridge path (exchange:"terminal") ────────────────────────────────
+_LAB_DIR = os.path.dirname(os.path.abspath(__file__))
+if _LAB_DIR not in sys.path:
+    sys.path.insert(0, _LAB_DIR)
+
+import terminal_bridge
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -267,6 +279,78 @@ def _estimate_slippage(bids: list, asks: list, side: str, quantity: float) -> di
     }
 
 
+# ── Terminal exchange source ──────────────────────────────────────────────────
+
+def _terminal_pair(symbol: str) -> str:
+    """HFT params use ccxt-style pairs; accept BTC-USD and map to BTC/USD."""
+    s = symbol.strip().upper()
+    return s if "/" in s else s.replace("-", "/")
+
+
+def _terminal_order_book(symbol: str, depth: int) -> tuple:
+    """Fetch the app's own order book over the MCP bridge.
+
+    Returns (bids, asks) as [price, size] lists sorted best-first. Raises
+    terminal_bridge.BridgeUnavailable when the app is down and RuntimeError
+    when the bridge answers but the book is unusable — never fabricates.
+    """
+    payload = terminal_bridge.call_tool(
+        "get_order_book", {"symbol": _terminal_pair(symbol), "limit": depth})
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        raise RuntimeError("bridge get_order_book returned no data object")
+    try:
+        bids = [[float(l["price"]), float(l["amount"])] for l in data.get("bids", [])]
+        asks = [[float(l["price"]), float(l["amount"])] for l in data.get("asks", [])]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"bridge get_order_book returned malformed levels: {exc}")
+    bids.sort(key=lambda l: l[0], reverse=True)
+    asks.sort(key=lambda l: l[0])
+    return bids, asks
+
+
+def _analyze_terminal(p: dict) -> None:
+    """analyze with exchange:"terminal" — book metrics from the app's data plane.
+
+    The bridge exposes no public trade feed, so trade-derived toxic-flow
+    metrics read as unavailable instead of being fabricated.
+    """
+    symbol      = p.get("symbol", "BTC-USD")
+    depth       = int(p.get("depth", 20))
+    inventory   = float(p.get("inventory", 0.0))
+    spread_mult = float(p.get("spread_multiplier", 1.5))
+    t0 = time.monotonic()
+    try:
+        bids, asks = _terminal_order_book(symbol, depth)
+    except terminal_bridge.BridgeUnavailable as e:
+        _err(f"terminal bridge unavailable: {e}")
+        return
+    except Exception as e:
+        _err(f"terminal bridge order book fetch failed: {e}")
+        return
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+    metrics  = _compute_book_metrics(bids, asks)
+    mm       = _market_making_quotes(metrics, inventory, spread_mult) if metrics else \
+               {"error": "empty order book from terminal bridge"}
+    slippage = _estimate_slippage(bids, asks, "buy", float(p.get("quantity", 1.0)))
+
+    _ok({
+        "symbol":       symbol,
+        "exchange":     "terminal",
+        "timestamp":    datetime.utcnow().isoformat() + "Z",
+        "latency_ms":   latency_ms,
+        "bids":         bids[:depth],
+        "asks":         asks[:depth],
+        "book_metrics": metrics,
+        "market_making": mm,
+        "toxic_flow":   {"error": "terminal source has no public trade feed — "
+                                  "toxic flow unavailable"},
+        "slippage":     slippage,
+        "trade_count":  0,
+    })
+
+
 # ── Command handlers ──────────────────────────────────────────────────────────
 
 def cmd_fetch_orderbook(p: dict) -> None:
@@ -320,6 +404,9 @@ def cmd_fetch_trades(p: dict) -> None:
 
 def cmd_analyze(p: dict) -> None:
     """Single call: fetch live book + trades → compute all metrics."""
+    if p.get("exchange") == "terminal":
+        _analyze_terminal(p)
+        return
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
