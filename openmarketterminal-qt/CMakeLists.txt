@@ -995,6 +995,7 @@ set(PYTHON_SOURCES
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
     src/services/crypto/CoinbaseEndpoints.cpp
+    src/services/crypto/CryptoFees.cpp
     src/services/crypto_latency/CryptoLatencyService.cpp
     src/services/crypto_latency/FeedReconnect.cpp
     src/services/edge_radar/BtcFiveMinuteEdgeModel.cpp

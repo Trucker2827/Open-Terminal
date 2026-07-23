@@ -1,5 +1,6 @@
 #include "services/sandbox/SandboxRegistry.h"
 
+#include "services/crypto/CryptoFees.h"
 #include "services/sandbox/PaperFillModel.h"
 #include "storage/sqlite/Database.h"
 
@@ -136,8 +137,13 @@ QVector<SpotLaneSeed> spot_lane_grid() {
     // spread + slippage, not a fee.
     // Venue identifiers MUST match what the producers emit (the scalp producer
     // writes coinbase_advanced / kraken_pro; candidate selection is exact-match).
-    static const Venue venues[] = {
-        {"coinbase_advanced", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 60.0, 2.0, 1.0,
+    // Coinbase tier-1 maker/taker come from the shared venue fee table
+    // (services/crypto/CryptoFees.h) — the bps constants live only there.
+    const auto coinbase_tier1 =
+        services::crypto::coinbase_fee_tier_by_key(QStringLiteral("coinbase_advanced")).value();
+    const Venue venues[] = {
+        {"coinbase_advanced", "BTC-USD,ETH-USD,SOL-USD", true, coinbase_tier1.maker_bps,
+         coinbase_tier1.taker_bps, 2.0, 1.0,
          "Coinbase Advanced account tier; verify before live"},
         {"kraken_pro", "BTC-USD,ETH-USD,SOL-USD", true, 40.0, 80.0, 2.0, 1.0,
          "Kraken Pro account tier; verify before live"},
