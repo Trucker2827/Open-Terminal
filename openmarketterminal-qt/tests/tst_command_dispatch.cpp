@@ -450,6 +450,62 @@ private slots:
         QVERIFY(Database::instance().execute(
             "DELETE FROM edge_decision_journal WHERE id='pulse-yes'").is_ok());
     }
+    // Arena P3 seasons: `advise score --since-ms/--until-ms` must window the
+    // resolved rows on created_at ([since, until), until exclusive) so a
+    // preregistered season's verdict never scores out-of-window commitments.
+    void advise_score_window_filters_by_created_at() {
+        sandbox_test_home();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qint64 in_window = now - 60000;
+        const qint64 out_of_window = now - 7200000;
+        const auto insert_row = [](const QString& id, qint64 created) {
+            const QString features = QStringLiteral(
+                "{\"forecaster\":{\"provider\":\"arena-ollama\",\"model\":\"season-m\"},"
+                "\"p_pre\":0.7,\"market_at_open\":0.5}");
+            QVERIFY(Database::instance().execute(
+                "INSERT INTO edge_decision_journal (id,created_at,updated_at,venue,symbol,"
+                "horizon,market_id,side,call,gate,market_probability,model_probability,"
+                "confidence,seconds_left,features_json,source,outcome)"
+                " VALUES (?,?,?,'kalshi','BTC-USD','1h',?,'yes','LLM_ADVISORY',"
+                "'measurement_only',0.5,0.7,0.6,900,?,'llm-advisory',1)",
+                {id, created, created, QStringLiteral("KX-") + id, features}).is_ok());
+        };
+        insert_row(QStringLiteral("season-window-in"), in_window);
+        insert_row(QStringLiteral("season-window-out"), out_of_window);
+
+        int rc = -1;
+        const QStringList base{"--json", "--headless", "kalshi", "auto", "advise",
+                               "score", "--provider", "arena-ollama", "--model",
+                               "season-m"};
+        const QJsonObject all = json_object_from_dispatch(base, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(all.value("n_resolved").toInt(), 2);
+
+        const QJsonObject windowed = json_object_from_dispatch(
+            base + QStringList{"--since-ms", QString::number(now - 3600000),
+                               "--until-ms", QString::number(now)}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(windowed.value("n_resolved").toInt(), 1);
+        QCOMPARE(windowed.value("filter").toObject().value("since_ms").toString(),
+                 QString::number(now - 3600000));
+
+        // until is exclusive: a window ending exactly at the row's created_at
+        // drops that row instead of double-counting it across two seasons.
+        const QJsonObject exclusive = json_object_from_dispatch(
+            base + QStringList{"--since-ms", QString::number(now - 3600000),
+                               "--until-ms", QString::number(in_window)}, &rc);
+        QCOMPARE(rc, 0);
+        QCOMPARE(exclusive.value("n_resolved").toInt(), 0);
+
+        capture_stdout([&]() {
+            return dispatch(QStringList{"--headless", "kalshi", "auto", "advise",
+                                        "score", "--since-ms", "notanumber"});
+        }, &rc);
+        QCOMPARE(rc, 2);
+
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM edge_decision_journal WHERE id LIKE 'season-window-%'").is_ok());
+    }
     void control_trading_brief_is_compact_and_read_only() {
         sandbox_test_home();
         const qint64 now = recent_ms(1000);
