@@ -831,6 +831,11 @@ target_include_directories(tst_advisor_canary_presentation PRIVATE ${CMAKE_SOURC
 target_link_libraries(tst_advisor_canary_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_advisor_canary_presentation COMMAND tst_advisor_canary_presentation)
 
+add_executable(tst_arena_context_presentation tst_arena_context_presentation.cpp)
+target_include_directories(tst_arena_context_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_arena_context_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_arena_context_presentation COMMAND tst_arena_context_presentation)
+
 # Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
 # uses to find the bundled openterminalcli (".exe" on Windows). Header-only,
 # no DB/Widgets.

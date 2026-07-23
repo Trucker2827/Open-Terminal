@@ -1,8 +1,12 @@
 #include "screens/kalshi/KalshiScreen.h"
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
+#include "screens/kalshi/ArenaContextPresentation.h"
 #include "screens/kalshi/CliLocator.h"
 
+#include "app/TerminalShell.h"
 #include "cli/ServeCommand.h"
+#include "core/actions/ActionRegistry.h"
+#include "core/keys/WindowCycler.h"
 #include "core/config/ProfileManager.h"
 #include "core/events/EventBus.h"
 #include "services/crypto/CoinbaseEndpoints.h"
@@ -533,6 +537,7 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
             refresh_live_automation_status();
             refresh_daemon_status();
             refresh_advisor_canary_status();
+            refresh_arena_context_status();
             update_calibrator_readout();
         }
     });
@@ -555,6 +560,7 @@ void KalshiScreen::showEvent(QShowEvent* event) {
     refresh_account_status();
     refresh_daemon_status();
     refresh_advisor_canary_status();
+    refresh_arena_context_status();
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
         kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
     dom_timer_->start();
@@ -1127,6 +1133,34 @@ void KalshiScreen::build_ui() {
         badges->addWidget(badge, 1);
     }
     advisor_layout->addLayout(badges);
+    auto* arena_strip = new QHBoxLayout;
+    arena_context_status_ = new QLabel(
+        QStringLiteral("ARENA OFFLINE · no arena-report.json — is the arena loop running?"),
+        advisor_page);
+    arena_context_status_->setWordWrap(true);
+    arena_context_status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    arena_context_status_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:1px solid %1;padding:9px;font-weight:700;")
+            .arg(colors::WARNING(), colors::BG_RAISED()));
+    arena_context_status_->setToolTip(QStringLiteral(
+        "Alpha Arena leaderboard context from arena-report.json — the blind forecasting "
+        "duel every contract decision sits inside. Read-only evidence; no execution authority."));
+    arena_strip->addWidget(arena_context_status_, 1);
+    arena_open_button_ = new QPushButton(QStringLiteral("OPEN ALPHA ARENA"), advisor_page);
+    arena_open_button_->setCursor(Qt::PointingHandCursor);
+    arena_open_button_->setToolTip(
+        QStringLiteral("Open the Alpha Arena screen: full leaderboard and live rounds."));
+    arena_open_button_->setStyleSheet(QStringLiteral(
+        "QPushButton{background:%1;color:%2;border:1px solid %3;padding:9px 12px;font-weight:900;}")
+        .arg(colors::BG_RAISED(), colors::CYAN(), colors::CYAN()));
+    connect(arena_open_button_, &QPushButton::clicked, this, []() {
+        CommandContext ctx;
+        ctx.shell = &TerminalShell::instance();
+        ctx.focused_frame = WindowCycler::instance().focused_frame();
+        ActionRegistry::instance().invoke(QStringLiteral("screen.alpha_arena"), ctx);
+    });
+    arena_strip->addWidget(arena_open_button_, 0, Qt::AlignTop);
+    advisor_layout->addLayout(arena_strip);
     auto add_advisor_card = [advisor_page, advisor_layout](const QString& title, QLabel*& value) {
         auto* heading = new QLabel(title, advisor_page);
         heading->setStyleSheet(QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
@@ -3651,6 +3685,20 @@ void KalshiScreen::refresh_advisor_canary_status() {
         "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
         .arg(view.critical ? colors::WARNING() : colors::GREEN(), colors::BG_RAISED(),
              view.critical ? colors::WARNING() : colors::BORDER_DIM()));
+}
+
+void KalshiScreen::refresh_arena_context_status() {
+    if (!arena_context_status_) return;
+    namespace cli = openmarketterminal::cli;
+    const ArenaContextView view = present_arena_context(
+        read_json_object(cli::kalshi_evidence_path(QStringLiteral("arena-report.json"))),
+        QDateTime::currentMSecsSinceEpoch());
+    arena_context_status_->setText(view.headline + QStringLiteral("\n") + view.lane);
+    arena_context_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %1;padding:9px;font-weight:700;")
+        .arg(view.offline || view.stale ? colors::WARNING()
+                                        : view.leader ? colors::POSITIVE() : colors::CYAN(),
+             colors::BG_RAISED()));
 }
 
 void KalshiScreen::refresh_daemon_status() {
