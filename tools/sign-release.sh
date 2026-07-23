@@ -28,6 +28,28 @@ echo "== tag: $TAG"
 echo "== identity: $SIGN_IDENTITY"
 echo "== notary profile: $NOTARY_PROFILE"
 
+# Probe notary credentials BEFORE any download/sign work. With the screen
+# locked, the data-protection keychain is locked too, so notarytool cannot
+# read the profile's password item and fails with a misleading "No Keychain
+# password item found" — historically minutes in, after the whole bundle was
+# already re-signed. `notarytool history` exercises the exact same credential
+# path in a few seconds, so a locked keychain surfaces here instead.
+echo "== probing notary credentials (fast fail if the keychain is locked)"
+if ! PROBE_LOG=$(xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" 2>&1); then
+  printf '%s\n' "$PROBE_LOG" | tail -5 >&2
+  cat >&2 <<EOF
+ERROR: notarytool cannot use keychain profile '$NOTARY_PROFILE' (probe above).
+Most common cause: this Mac's screen is locked, which locks the
+data-protection keychain and hides the profile's password item
+(notarytool then reports 'No Keychain password item found').
+Fix: unlock the Mac at the console, keep it awake for the run, and re-run
+this script. If the profile is genuinely missing, recreate it with:
+  xcrun notarytool store-credentials $NOTARY_PROFILE
+EOF
+  exit 1
+fi
+echo "   credentials OK"
+
 WORK=$(mktemp -d /tmp/sign-release.XXXXXX)
 trap 'hdiutil detach "$WORK/mnt" -quiet 2>/dev/null || true; rm -rf "$WORK"' EXIT
 cd "$WORK"
