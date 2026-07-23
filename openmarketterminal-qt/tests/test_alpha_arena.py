@@ -1,5 +1,7 @@
 import json
+import math
 import os
+import random
 import shutil
 import sys
 import tempfile
@@ -446,6 +448,189 @@ class ExportHtmlTest(unittest.TestCase):
             page = fh.read()
         self.assertTrue(page.startswith("<!DOCTYPE html>"))
         self.assertIn("LEADER: m1", page)
+
+
+def synthetic_pairs(distort_a=1.0, distort_b=0.0, n=400, seed=7):
+    """Deterministic (predicted, outcome) pairs whose TRUE probability is q
+    but whose prediction is sigmoid(distort_a*logit(q) + distort_b) — i.e. a
+    forecaster with a known, learnable miscalibration."""
+    rng = random.Random(seed)
+    pairs = []
+    for _ in range(n):
+        q = rng.uniform(0.02, 0.98)
+        predicted = arena_report.platt_apply(distort_a, distort_b, q)
+        outcome = 1 if rng.random() < q else 0
+        pairs.append((predicted, outcome))
+    return pairs
+
+
+class ReliabilityBinsTest(unittest.TestCase):
+    def test_bin_assignment_counts_and_rates(self):
+        pairs = [(0.05, 0), (0.05, 1), (0.62, 1), (0.68, 1), (1.0, 1)]
+        bins = arena_report.reliability_bins(pairs, n_bins=10)
+        self.assertEqual(len(bins), 10)
+        self.assertEqual(bins[0]["count"], 2)
+        self.assertAlmostEqual(bins[0]["mean_predicted"], 0.05)
+        self.assertAlmostEqual(bins[0]["observed_rate"], 0.5)
+        self.assertEqual(bins[6]["count"], 2)
+        self.assertAlmostEqual(bins[6]["mean_predicted"], 0.65)
+        self.assertAlmostEqual(bins[6]["observed_rate"], 1.0)
+        # p == 1.0 belongs to the last bin, not an out-of-range eleventh.
+        self.assertEqual(bins[9]["count"], 1)
+
+    def test_empty_bins_read_missing_never_zero(self):
+        bins = arena_report.reliability_bins([(0.95, 1)], n_bins=10)
+        for b in bins[:9]:
+            self.assertEqual(b["count"], 0)
+            self.assertIsNone(b["mean_predicted"])
+            self.assertIsNone(b["observed_rate"])
+
+    def test_bin_totals_conserve_samples(self):
+        pairs = synthetic_pairs()
+        bins = arena_report.reliability_bins(pairs)
+        self.assertEqual(sum(b["count"] for b in bins), len(pairs))
+
+
+class PlattFitTest(unittest.TestCase):
+    def test_fit_improves_miscalibrated_forecaster(self):
+        # Overconfident lane: predictions pushed away from 0.5.
+        pairs = synthetic_pairs(distort_a=2.2, distort_b=0.4)
+        overlay = arena_report.calibration_overlay(pairs)
+        self.assertTrue(overlay["available"])
+        self.assertLess(overlay["brier_calibrated"], overlay["brier_raw"])
+
+    def test_fit_does_not_wreck_a_calibrated_forecaster(self):
+        pairs = synthetic_pairs(distort_a=1.0, distort_b=0.0)
+        overlay = arena_report.calibration_overlay(pairs)
+        # In-sample Platt can only match-or-beat by a hair; it must never
+        # make a well-calibrated lane read materially worse.
+        self.assertLessEqual(overlay["brier_calibrated"],
+                             overlay["brier_raw"] + 1e-3)
+
+    def test_fit_recovers_known_distortion(self):
+        # Undoing sigmoid(a0*logit(q)+b0) needs a ~= 1/a0, b ~= -b0/a0.
+        pairs = synthetic_pairs(distort_a=2.0, distort_b=0.6, n=4000)
+        a, b = arena_report.platt_fit(pairs)
+        self.assertAlmostEqual(a, 0.5, delta=0.15)
+        self.assertAlmostEqual(b, -0.3, delta=0.15)
+
+    def test_degenerate_one_sided_data_stays_finite(self):
+        pairs = [(0.9, 1)] * 50
+        a, b = arena_report.platt_fit(pairs)
+        self.assertTrue(math.isfinite(a) and math.isfinite(b))
+        overlay = arena_report.calibration_overlay(pairs)
+        self.assertTrue(math.isfinite(overlay["brier_calibrated"]))
+
+
+class CalibrationOverlayTest(unittest.TestCase):
+    LANES = ReportTest.LANES
+
+    @staticmethod
+    def rounds():
+        return [{"status": "DONE", "lanes": [
+            {"id": "m1", "status": "COMMITTED_BLIND"},
+            {"id": "m2", "status": "COMMITTED_BLIND"}]}] * 10
+
+    @staticmethod
+    def score_with_rows(lane):
+        rows = [{"p_pre": p, "outcome_yes": y}
+                for p, y in synthetic_pairs(distort_a=2.0, n=100)]
+        return {"brier_pre": 0.10 if lane["id"] == "m1" else 0.30,
+                "ci_low": 0.08 if lane["id"] == "m1" else 0.25,
+                "ci_high": 0.12 if lane["id"] == "m1" else 0.35,
+                "coverage": {"resolved": 100}, "rows": rows}
+
+    @staticmethod
+    def score_without_rows(lane):
+        score = CalibrationOverlayTest.score_with_rows(lane)
+        del score["rows"]
+        return score
+
+    def _report(self, score_fn):
+        return arena_report.build_report(self.LANES, self.rounds(), score_fn,
+                                         min_coverage=0.8, min_resolved=50,
+                                         now_ms=0)
+
+    def test_overlay_present_and_labeled(self):
+        report = self._report(self.score_with_rows)
+        self.assertEqual(report["calibration_note"],
+                         arena_report.CALIBRATION_LABEL)
+        for entry in report["leaderboard"]:
+            overlay = entry["calibrated_unofficial"]
+            self.assertTrue(overlay["available"])
+            self.assertEqual(overlay["label"], arena_report.CALIBRATION_LABEL)
+            self.assertIn("UNOFFICIAL", overlay["label"])
+            self.assertEqual(overlay["n"], 100)
+            self.assertEqual(len(overlay["reliability_bins"]), 10)
+
+    def test_official_brier_and_rank_untouched_by_overlay(self):
+        with_rows = self._report(self.score_with_rows)
+        without = self._report(self.score_without_rows)
+        official = ("brier", "brier_ci", "comparable", "rank", "coverage",
+                    "resolved")
+        for a, b in zip(with_rows["leaderboard"], without["leaderboard"]):
+            for key in official:
+                self.assertEqual(a.get(key), b.get(key), key)
+        self.assertEqual(with_rows["verdict"], without["verdict"])
+        # The overlay's calibrated Brier differs from the official Brier —
+        # proof the official field is not silently the calibrated one.
+        m1 = with_rows["leaderboard"][0]
+        self.assertNotAlmostEqual(
+            m1["calibrated_unofficial"]["brier_calibrated"], m1["brier"])
+
+    def test_too_few_pairs_reads_unavailable_not_fabricated(self):
+        def sparse(lane):
+            return {"brier_pre": 0.2, "coverage": {"resolved": 5},
+                    "rows": [{"p_pre": 0.5, "outcome_yes": 1}] * 5}
+        report = self._report(sparse)
+        overlay = report["leaderboard"][0]["calibrated_unofficial"]
+        self.assertFalse(overlay["available"])
+        self.assertIn("5/30", overlay["reason"])
+        self.assertNotIn("brier_calibrated", overlay)
+
+    def test_missing_rows_reads_unavailable(self):
+        report = self._report(self.score_without_rows)
+        overlay = report["leaderboard"][0]["calibrated_unofficial"]
+        self.assertFalse(overlay["available"])
+        self.assertIn("rows unavailable", overlay["reason"])
+
+    def test_invalid_rows_are_skipped_never_guessed(self):
+        score = {"rows": [
+            {"p_pre": 0.4, "outcome_yes": 1},
+            {"p_pre": 1.4, "outcome_yes": 1},      # out of range
+            {"p_pre": 0.4, "outcome_yes": 2},      # not binary
+            {"p_pre": True, "outcome_yes": 1},     # bool is not a probability
+            {"p_pre": 0.4, "outcome_yes": True},   # bool is not an outcome
+            "junk", {"p_pre": None, "outcome_yes": None}]}
+        self.assertEqual(arena_report.score_rows_to_pairs(score),
+                         [(0.4, 1)])
+
+    def test_cli_score_requests_rows_and_falls_back(self):
+        calls = []
+
+        class FakeResult:
+            def __init__(self, stdout):
+                self.stdout = stdout
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            # An old CLI rejects --include-rows (usage error, empty stdout).
+            if "--include-rows" in cmd:
+                return FakeResult("")
+            return FakeResult('{"brier_pre": 0.2}')
+
+        real_run = arena_report.subprocess.run
+        arena_report.subprocess.run = fake_run
+        try:
+            out = arena_report.cli_score_with_rows(
+                {"kind": "ollama", "model": "m"}, cli="cli")
+        finally:
+            arena_report.subprocess.run = real_run
+        self.assertEqual(len(calls), 2)
+        self.assertIn("--include-rows", calls[0])
+        self.assertNotIn("--include-rows", calls[1])
+        # The official score survives the overlay being unavailable.
+        self.assertEqual(out, {"brier_pre": 0.2})
 
 
 if __name__ == "__main__":
