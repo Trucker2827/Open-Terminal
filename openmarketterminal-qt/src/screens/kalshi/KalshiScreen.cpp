@@ -11,6 +11,7 @@
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
+#include "services/prediction/kalshi/KalshiSettlementScoreboard.h"
 #include "services/edge_radar/KalshiUniversalEdgeModel.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
@@ -1188,6 +1189,17 @@ void KalshiScreen::build_ui() {
     pnl_summary_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:7px;")
                                     .arg(colors::TEXT_SECONDARY()));
     closed_layout->addWidget(pnl_summary_);
+    pnl_scoreboard_ = new QLabel(
+        QStringLiteral("LIVE SCOREBOARD · loading authenticated Kalshi settlements..."), closed_page);
+    pnl_scoreboard_->setWordWrap(true);
+    pnl_scoreboard_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    pnl_scoreboard_->setToolTip(QStringLiteral(
+        "Hit rate and P/L by average entry price (implied probability paid), computed from "
+        "exact-accounting live settlements only. Mixed YES/NO turnover rows are excluded and counted."));
+    pnl_scoreboard_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:6px 8px;font-weight:700;")
+            .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+    closed_layout->addWidget(pnl_scoreboard_);
     pnl_table_ = new QTableWidget(0, 9, closed_page);
     pnl_table_->setHorizontalHeaderLabels({QStringLiteral("CONTRACT"), QStringLiteral("MODE"),
                                            QStringLiteral("ORIGIN"), QStringLiteral("TYPE"),
@@ -2208,6 +2220,10 @@ void KalshiScreen::update_live_positions_summary() {
 
 void KalshiScreen::render_closed_bets(const QJsonArray& settlements) {
     if (!pnl_table_ || !pnl_summary_) return;
+    if (pnl_scoreboard_) {
+        pnl_scoreboard_->setText(kalshi_data::KalshiSettlementScoreboard::format(
+            kalshi_data::KalshiSettlementScoreboard::compute(settlements)));
+    }
     pnl_table_->setRowCount(0);
     double live_pnl = 0.0;
     double paper_pnl = 0.0;
