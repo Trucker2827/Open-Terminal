@@ -35,6 +35,16 @@ def evidence_path():
         os.environ.get("OPENTERMINAL_EVIDENCE_DIR", DEFAULT_EVIDENCE_DIR), OUTPUT_NAME)
 
 
+def rolling_ic_window(ic_hours, now_ts=None):
+    """(start_date, end_date) covering the trailing ic_hours — loop-safe,
+    unlike fixed ic_start/ic_end which silently go stale in `run` mode."""
+    import datetime as _dt
+    now_dt = _dt.datetime.fromtimestamp(now_ts if now_ts is not None else time.time(),
+                                        tz=_dt.timezone.utc)
+    start_dt = now_dt - _dt.timedelta(hours=float(ic_hours))
+    return str(start_dt.date()), str(now_dt.date())
+
+
 def build_signal_payload(model_id, as_of, ranked, ic_results, now_ms):
     """Pure payload builder (testable without qlib).
 
@@ -96,6 +106,8 @@ def publish(params):
         return {"success": False, "error": f"scoring failed: {screen.get('error')}"}
     ic_results = None
     ic_start, ic_end = params.get("ic_start"), params.get("ic_end")
+    if params.get("ic_hours") and not (ic_start and ic_end):
+        ic_start, ic_end = rolling_ic_window(params["ic_hours"])
     if ic_start and ic_end:
         ic = service.get_factor_analysis(model_id, "ic", ic_start, ic_end)
         if ic.get("success"):

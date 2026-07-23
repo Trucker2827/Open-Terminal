@@ -43,6 +43,13 @@ class PayloadTest(unittest.TestCase):
         p = sp.build_signal_payload("m1", "x", [{"symbol": "BTC", "score": 0.0}], None, 0)
         self.assertEqual(p["signals"]["BTC"]["direction"], "flat")
 
+    def test_rolling_ic_window(self):
+        # 2026-07-23 00:00 UTC minus 24h -> starts on the 22nd, ends on the 23rd.
+        start, end = sp.rolling_ic_window(24, now_ts=1784764800.0)
+        self.assertEqual((start, end), ("2026-07-22", "2026-07-23"))
+        start, _ = sp.rolling_ic_window(72, now_ts=1784764800.0)
+        self.assertEqual(start, "2026-07-20")
+
     def test_atomic_save_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             os.environ["OPENTERMINAL_EVIDENCE_DIR"] = tmp
