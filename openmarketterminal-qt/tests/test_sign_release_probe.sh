@@ -12,7 +12,9 @@
 # falls back to bash (Linux CI) — the probe section uses only shared syntax.
 set -euo pipefail
 
-HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# ${BASH_SOURCE[0]:-$0}: BASH_SOURCE is bash-only; under zsh (set -u) it
+# aborts with 'parameter not set', so fall back to $0.
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
 SCRIPT="${SIGN_RELEASE_SCRIPT:-$HERE/../../tools/sign-release.sh}"
 [ -f "$SCRIPT" ] || { echo "FAIL: sign-release.sh not found at $SCRIPT" >&2; exit 1; }
 SH=$(command -v zsh || command -v bash)
@@ -48,7 +50,9 @@ STUB
 chmod +x "$STUBS/xcrun" "$STUBS/gh"
 
 run_script() {  # $1 = probe rc for the xcrun stub
-  rm -f "$MARKS"/*
+  # Remove markers explicitly: zsh (unlike bash) aborts on an unmatched
+  # glob, and $MARKS is empty before the first run.
+  rm -f "$MARKS/probe-called" "$MARKS/gh-called" "$MARKS/xcrun-unexpected"
   set +e
   OUT=$(PATH="$STUBS:$PATH" MARKS="$MARKS" STUB_PROBE_RC="$1" \
         SIGN_IDENTITY="Developer ID Application: Test (TEAM123)" \
