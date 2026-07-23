@@ -3412,13 +3412,14 @@ private slots:
         int rc = -1;
         const QJsonArray modules = json_array_from_dispatch({"--json", "quant", "list"}, &rc);
         QCOMPARE(rc, 0);
-        QCOMPARE(modules.size(), 24);
+        QCOMPARE(modules.size(), 25);
         QStringList ids;
         for (const auto& value : modules)
             ids << value.toObject().value(QStringLiteral("id")).toString();
         QVERIFY(ids.contains(QStringLiteral("deep_agent")));
         QVERIFY(ids.contains(QStringLiteral("model_library")));
         QVERIFY(ids.contains(QStringLiteral("hft")));
+        QVERIFY(ids.contains(QStringLiteral("crypto_data")));
     }
     void quant_run_rejects_unknown_module() {
         int rc = -1;
