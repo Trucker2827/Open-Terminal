@@ -37,6 +37,9 @@ add_test(NAME test_crypto_dataset
 add_test(NAME test_signal_publisher
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_signal_publisher.py -v)
+add_test(NAME test_alpha_arena
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_alpha_arena.py -v)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
