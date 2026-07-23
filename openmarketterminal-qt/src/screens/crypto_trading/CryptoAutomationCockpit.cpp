@@ -1,6 +1,8 @@
 #include "screens/crypto_trading/CryptoAutomationCockpit.h"
 
 #include "core/config/ProfileManager.h"
+#include "services/edge_radar/EdgeProofStats.h"
+#include "storage/sqlite/Database.h"
 #include "ui/theme/Theme.h"
 
 #include <QDateTime>
@@ -12,15 +14,46 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QLabel>
+#include <QMap>
 #include <QPushButton>
+#include <QSqlQuery>
 #include <QTimer>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace openmarketterminal::screens::crypto {
 
 namespace {
 
 using namespace openmarketterminal::ui;
+namespace proof = openmarketterminal::services::edge_radar;
+
+// The scoreboard mirrors `openterminalcli edge journal proof-loop
+// --max-age-hours 48 --amount-usd 100 --limit 5000` (the spot-check command
+// for issue #95). Keep these three in sync with that invocation.
+constexpr int kProofWindowHours = 48;
+constexpr double kProofAmountUsd = 100.0;
+constexpr int kProofRowLimit = 5000;
+constexpr int kProofRefreshMs = 30000;
+
+QString proof_pct(double rate) {
+    return QString::number(rate * 100.0, 'f', 1) + QStringLiteral("%");
+}
+
+QString proof_money(double usd) {
+    return QStringLiteral("$%1").arg(QString::number(usd, 'f', 4));
+}
+
+QString proof_verdict_color(const QString& verdict) {
+    if (verdict.contains(QLatin1String("PROVING")) || verdict == QLatin1String("NO-TRADE EDGE"))
+        return colors::POSITIVE();
+    if (verdict.contains(QLatin1String("WEAK")))
+        return colors::NEGATIVE();
+    if (verdict == QLatin1String("WARMUP"))
+        return colors::TEXT_SECONDARY();
+    return colors::WARNING();
+}
 
 QString daemon_file(const QString& name) {
     return openmarketterminal::ProfileManager::instance().profile_root() + QStringLiteral("/daemon/") + name;
@@ -107,6 +140,29 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
     grid->addWidget(blockers_value_, 4, 0, 1, 4);
     layout->addWidget(decision);
 
+    // Cumulative paper-proof scoreboard (issue #95): same verdict/sample/stats
+    // computation as `edge journal proof-loop`, strictly read-only on the
+    // journal — resolution stays the CLI's job.
+    auto* proof_panel = new QFrame;
+    proof_panel->setObjectName("cryptoCockpitPanel");
+    auto* proof_grid = new QGridLayout(proof_panel);
+    proof_grid->setContentsMargins(10, 7, 10, 7);
+    proof_grid->setHorizontalSpacing(18);
+    proof_grid->setVerticalSpacing(3);
+    proof_grid->addWidget(text_label("cryptoCockpitSection", tr("PAPER PROOF — CUMULATIVE SCOREBOARD")), 0, 0, 1, 6);
+    const QStringList proof_headers{tr("SCOPE"), tr("VERDICT"), tr("SAMPLE"),
+                                    tr("P&L AFTER COST"), tr("BUY WIN"), tr("NO-TRADE OK")};
+    for (int column = 0; column < proof_headers.size(); ++column) {
+        proof_grid->addWidget(text_label("cryptoCockpitField", proof_headers[column]), 1, column);
+        proof_grid->setColumnStretch(column, 1);
+    }
+    proof_symbol_row_ = make_proof_row(proof_grid, 2);
+    proof_all_row_ = make_proof_row(proof_grid, 3);
+    proof_status_ = text_label("cryptoCockpitDetail", "--");
+    proof_status_->setWordWrap(true);
+    proof_grid->addWidget(proof_status_, 4, 0, 1, 6);
+    layout->addWidget(proof_panel);
+
     auto* feeds = new QFrame;
     feeds->setObjectName("cryptoCockpitPanel");
     auto* feeds_layout = new QVBoxLayout(feeds);
@@ -140,7 +196,14 @@ CryptoAutomationCockpit::CryptoAutomationCockpit(QWidget* parent) : QWidget(pare
     refresh_timer_->setInterval(1000);
     connect(refresh_timer_, &QTimer::timeout, this, &CryptoAutomationCockpit::refresh);
     refresh_timer_->start();
+    // The proof scan reads up to kProofRowLimit journal rows — too heavy for
+    // the 1s heartbeat cadence, cheap at 30s.
+    proof_timer_ = new QTimer(this);
+    proof_timer_->setInterval(kProofRefreshMs);
+    connect(proof_timer_, &QTimer::timeout, this, &CryptoAutomationCockpit::refresh_proof);
+    proof_timer_->start();
     refresh();
+    refresh_proof();
 }
 
 void CryptoAutomationCockpit::set_exchange_context(const QString& exchange_id, bool is_paper) {
@@ -240,6 +303,137 @@ void CryptoAutomationCockpit::refresh() {
     render_sources(decision);
     heartbeat_value_->setText(age_text(state.value(QStringLiteral("heartbeat_at")).toString()));
     heartbeat_value_->setStyleSheet(QStringLiteral("color:%1;").arg(engine_running ? colors::POSITIVE() : colors::NEGATIVE()));
+
+    const QString decision_symbol = decision.value(QStringLiteral("symbol")).toString().trimmed().toUpper();
+    if (decision_symbol != active_symbol_) {
+        active_symbol_ = decision_symbol;
+        refresh_proof();
+    }
+}
+
+CryptoAutomationCockpit::ProofRow CryptoAutomationCockpit::make_proof_row(QGridLayout* grid, int grid_row) {
+    ProofRow row;
+    const auto cell = [&](int column, QLabel*& label) {
+        label = text_label("cryptoCockpitFieldValue", "--");
+        grid->addWidget(label, grid_row, column);
+    };
+    cell(0, row.scope);
+    cell(1, row.verdict);
+    cell(2, row.sample);
+    cell(3, row.pnl);
+    cell(4, row.buy_rate);
+    cell(5, row.no_trade_rate);
+    return row;
+}
+
+void CryptoAutomationCockpit::clear_proof_row(ProofRow& row, const QString& scope, const QString& note) {
+    row.scope->setText(scope);
+    row.verdict->setText(note);
+    row.verdict->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
+    for (QLabel* label : {row.sample, row.pnl, row.buy_rate, row.no_trade_rate})
+        label->setText(QStringLiteral("--"));
+}
+
+void CryptoAutomationCockpit::render_proof_row(ProofRow& row, const QString& scope,
+                                               const proof::EdgeProofStats& s) {
+    row.scope->setText(scope);
+    const QString verdict = proof::edge_proof_verdict(s);
+    row.verdict->setText(verdict);
+    row.verdict->setStyleSheet(QStringLiteral("color:%1;").arg(proof_verdict_color(verdict)));
+    row.sample->setText(QStringLiteral("%1/%2 · %3")
+                            .arg(s.resolved)
+                            .arg(s.signal_count)
+                            .arg(proof::edge_proof_sample_status(s.resolved)));
+    // Missing data reads as missing: no resolved rows of a kind → "--", never
+    // a zero styled as a result.
+    if (s.buy_resolved > 0) {
+        row.pnl->setText(proof_money(s.paper_pnl));
+        row.pnl->setStyleSheet(QStringLiteral("color:%1;").arg(s.paper_pnl > 0.0 ? colors::POSITIVE()
+                                                                                 : colors::NEGATIVE()));
+        row.buy_rate->setText(proof_pct(proof::edge_proof_rate(s.buy_wins, s.buy_resolved)));
+    } else {
+        row.pnl->setText(QStringLiteral("--"));
+        row.pnl->setStyleSheet({});
+        row.buy_rate->setText(QStringLiteral("--"));
+    }
+    row.no_trade_rate->setText(
+        s.no_trade_resolved > 0
+            ? proof_pct(proof::edge_proof_rate(s.no_trade_correct, s.no_trade_resolved))
+            : QStringLiteral("--"));
+}
+
+void CryptoAutomationCockpit::refresh_proof() {
+    const QString all_scope = tr("ALL SYMBOLS");
+    const QString symbol_scope = active_symbol_.isEmpty() ? tr("ACTIVE SYMBOL") : active_symbol_;
+    const qint64 min_ts = QDateTime::currentMSecsSinceEpoch()
+                          - static_cast<qint64>(kProofWindowHours) * 3600000LL;
+    // Strictly read-only on the journal: one SELECT, resolution stays the CLI
+    // proof-loop's job. Outcomes and scored moves are the values the CLI
+    // persisted; rows it has not resolved yet count as waiting.
+    auto r = Database::instance().execute(
+        QStringLiteral("SELECT symbol, side, call, spread_cost, fee_cost, outcome, reasons"
+                       " FROM edge_decision_journal"
+                       " WHERE source='edge crypto-recommend' AND created_at>=?"
+                       " ORDER BY created_at DESC LIMIT %1").arg(kProofRowLimit),
+        {min_ts});
+    if (r.is_err()) {
+        clear_proof_row(proof_symbol_row_, symbol_scope, tr("JOURNAL UNAVAILABLE"));
+        clear_proof_row(proof_all_row_, all_scope, tr("JOURNAL UNAVAILABLE"));
+        proof_status_->setText(tr("Decision journal could not be read: %1")
+                                   .arg(QString::fromStdString(r.error())));
+        return;
+    }
+
+    proof::EdgeProofStats aggregate;
+    QMap<QString, proof::EdgeProofStats> by_symbol;
+    int unpriced = 0;
+    auto& q = r.value();
+    while (q.next()) {
+        const QString row_symbol = q.value(0).toString();
+        const bool buy_call = proof::edge_proof_is_buy_call(q.value(2).toString(), q.value(1).toString());
+        proof::EdgeProofRowOutcome row;
+        const int outcome = q.value(5).toInt();
+        if (outcome >= 0) {
+            double move = 0.0;
+            if (!proof::edge_proof_parse_scored_move(q.value(6).toString(), &move)) {
+                // Resolved outside the scorer (e.g. manual resolve): there is
+                // no honest P&L for it, so exclude it and say so.
+                ++unpriced;
+                continue;
+            }
+            row = proof::EdgeProofRowOutcome{
+                true, outcome, move, std::max(0.0, q.value(3).toDouble() + q.value(4).toDouble())};
+        }
+        auto sym_stats = by_symbol.value(row_symbol);
+        proof::edge_proof_accumulate(aggregate, buy_call, row, kProofAmountUsd);
+        proof::edge_proof_accumulate(sym_stats, buy_call, row, kProofAmountUsd);
+        by_symbol.insert(row_symbol, sym_stats);
+    }
+
+    if (aggregate.signal_count == 0) {
+        clear_proof_row(proof_symbol_row_, symbol_scope, tr("NO RESOLVED SIGNALS YET"));
+        clear_proof_row(proof_all_row_, all_scope, tr("NO RESOLVED SIGNALS YET"));
+        proof_status_->setText(tr("No `edge crypto-recommend` signals in the last %1h — the proof "
+                                  "loop has nothing to score yet.").arg(kProofWindowHours));
+        return;
+    }
+
+    if (active_symbol_.isEmpty() || !by_symbol.contains(active_symbol_))
+        clear_proof_row(proof_symbol_row_, symbol_scope,
+                        active_symbol_.isEmpty() ? tr("NO ACTIVE ENGINE SYMBOL")
+                                                 : tr("NO SIGNALS IN WINDOW"));
+    else
+        render_proof_row(proof_symbol_row_, symbol_scope, by_symbol.value(active_symbol_));
+    render_proof_row(proof_all_row_, all_scope, aggregate);
+
+    QString status = tr("Resolved/signals over the last %1h at $%2 paper per signal, newest %3 rows — "
+                        "matches `edge journal proof-loop`. Read-only; the CLI loop resolves outcomes.")
+                         .arg(kProofWindowHours)
+                         .arg(QString::number(kProofAmountUsd, 'f', 0))
+                         .arg(kProofRowLimit);
+    if (unpriced > 0)
+        status += tr(" %1 resolved row(s) lack a persisted score and are excluded.").arg(unpriced);
+    proof_status_->setText(status);
 }
 
 } // namespace openmarketterminal::screens::crypto

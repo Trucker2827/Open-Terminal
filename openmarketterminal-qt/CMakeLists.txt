@@ -1003,6 +1003,7 @@ set(LLM_SERVICE_SOURCES
     src/services/edge_radar/CryptoHourlyEdgeModel.cpp
     src/services/edge_radar/CryptoImpulseModel.cpp
     src/services/edge_radar/CryptoMicrostructureRadar.cpp
+    src/services/edge_radar/EdgeProofStats.cpp
     src/services/edge_radar/KalshiUniversalEdgeModel.cpp
     src/services/edge_radar/KalshiAutoEngine.cpp
     src/services/edge_radar/BitcoinEvidenceEngine.cpp

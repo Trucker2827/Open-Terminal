@@ -5,6 +5,7 @@
 
 #include "storage/sqlite/Database.h"
 #include "services/edge_radar/CryptoMicrostructureRadar.h"
+#include "services/edge_radar/EdgeProofStats.h"
 #include <QSqlQuery>
 #include "storage/repositories/TradeAuditRepository.h"
 #include <QThread>
@@ -179,13 +180,14 @@ int edge_journal_crypto_stats_command(const GlobalOpts& opts, QStringList args) 
     return 0;
 }
 
+// Both forward to the shared proof-stats module so the GUI cockpit and the
+// CLI classify rows and compute rates from ONE definition (issue #95).
 double edge_rate(int wins, int resolved) {
-    return resolved > 0 ? static_cast<double>(wins) / static_cast<double>(resolved) : 0.0;
+    return services::edge_radar::edge_proof_rate(wins, resolved);
 }
 
 bool edge_crypto_is_buy_call(const QString& call, const QString& side) {
-    Q_UNUSED(side);
-    return call == QLatin1String("BUY CANDIDATE");
+    return services::edge_radar::edge_proof_is_buy_call(call, side);
 }
 
 QString edge_crypto_regime_from_features(const QJsonObject& features) {
