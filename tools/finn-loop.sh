@@ -134,7 +134,11 @@ for i in $(seq 1 "$MAX_ITER"); do
 
   # merge only when CI is fully green
   for wait in $(seq 1 45); do
-    STATUS=$(gh pr checks "$PR" 2>/dev/null | awk '{print $2}' | sort -u | tr '\n' ' ')
+    # Read check states from --json, NOT the human table: a check whose name
+    # contains spaces (e.g. "Tests & Selftests (Linux)") breaks whitespace
+    # column parsing (awk '{print $2}' returned "&", hiding pending/fail — so
+    # Tests never actually gated a merge). bucket ∈ pass|fail|pending|skipping|cancel.
+    STATUS=$(gh pr checks "$PR" --json bucket --jq '[.[].bucket] | unique | join(" ")' 2>/dev/null)
     [[ "$STATUS" == *fail* ]] && break
     [[ "$STATUS" != *pending* && "$STATUS" == *pass* ]] && break
     sleep 60
