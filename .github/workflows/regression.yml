@@ -60,6 +60,12 @@ jobs:
           echo "CC=gcc-12"  >> "$GITHUB_ENV"
           echo "CXX=g++-12" >> "$GITHUB_ENV"
 
+      # test_hft_terminal_source imports qlib_high_frequency -> numpy; the
+      # runner's system python has no numpy, which fails the REQUIRED ctest
+      # step (issue #116). Other python ctests are stdlib-only.
+      - name: Install python test dependencies
+        run: python3 -m pip install --user numpy
+
       - name: Install Qt 6.8.3
         uses: jurplel/install-qt-action@v4
         with:
