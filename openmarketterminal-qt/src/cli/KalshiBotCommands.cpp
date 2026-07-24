@@ -1,10 +1,14 @@
-// `kalshi bot` command family — the PAPER Kalshi bot, ladder rungs 1 and 4.
+// `kalshi bot` command family — the PAPER Kalshi bot, ladder rungs 1, 2 and 4.
 //
-// One tick is: check the kill switch, settle whatever the exchange has
-// actually resolved, then read calibrator.json and journal one decision row
-// for every contract it offers. Every row lands in
+// One tick (`once`/`run`) is: check the kill switch, settle whatever the
+// exchange has actually resolved, then read calibrator.json and journal one
+// decision row for every contract it offers. Every row lands in
 // kalshi-bot-decisions.jsonl, passes included: a tick that bids nothing still
 // has to say why.
+//
+// `gate` scores that ledger against criteria preregistered and sealed BEFORE
+// the record was read (rung 2). It only reads and reports; acting on the
+// verdict is a later rung's job.
 //
 // Rung 4 (the observable loop) adds three subcommands and one file:
 //   `kalshi bot stop`   — throws the kill switch (writes kalshi-bot-stop.json)
@@ -18,8 +22,9 @@
 //
 // This rung has NO live path. There is no order preparation, no submission,
 // no live gate, and no `--mode live` — live mode is refused as unknown, not
-// disabled behind a flag. All decision math lives in the pure, unit-tested
-// KalshiBotDecision; this file only does I/O, flags, and printing.
+// disabled behind a flag. All decision and verdict math lives in the pure,
+// unit-tested KalshiBotDecision / KalshiBotGate; this file only does I/O,
+// flags, and printing.
 //
 // Own TU, excluded from unity builds like the other cli command families
 // (MSVC front-end capacity; see CommandDispatch.cpp).
@@ -28,6 +33,7 @@
 
 #include "cli/ServeCommand.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
+#include "services/prediction/kalshi/KalshiBotGate.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
@@ -36,6 +42,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QSet>
 #include <QThread>
 
@@ -51,6 +58,9 @@ bool take_bool_flag(QStringList& args, const QString& flag);
 
 namespace {
 
+// Rung 4's runtime header contributes free functions and constants
+// (kalshi_bot_loop_status, kKalshiBotStopFileName, …) alongside the classes,
+// so the whole namespace is pulled in rather than named type by type.
 using namespace services::prediction::kalshi_ns;
 
 constexpr auto kLedgerFile = kKalshiBotDecisionLedgerFile;
@@ -59,6 +69,13 @@ constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
 
 QString bot_ledger_path() { return kalshi_evidence_path(QString::fromLatin1(kLedgerFile)); }
 QString bot_stop_path() { return kalshi_evidence_path(QString::fromLatin1(kKalshiBotStopFileName)); }
+
+/// Row filter for one ledger event type.
+std::function<bool(const QJsonObject&)> is_event(const char* name) {
+    return [name](const QJsonObject& row) {
+        return row.value(QStringLiteral("event")).toString() == QLatin1String(name);
+    };
+}
 
 /// Reads a jsonl ledger. `keep` filters rows as they are parsed so a large
 /// evidence file never has to be held in memory whole.
@@ -119,11 +136,6 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         return stopped;
     }
 
-    const auto is_event = [](const char* name) {
-        return [name](const QJsonObject& row) {
-            return row.value(QStringLiteral("event")).toString() == QLatin1String(name);
-        };
-    };
     const QJsonArray decisions = read_jsonl(ledger_path, is_event(kDecisionEvent));
     QJsonArray settlements = read_jsonl(ledger_path, is_event(kSettlementEvent));
     QJsonArray open = KalshiBotDecision::open_positions_from_ledger(decisions, settlements);
@@ -229,11 +241,138 @@ void bot_usage() {
                  "                          [--max-all-in X] [--min-runway-sec N]\n"
                  "                          [--max-report-age-sec N]\n"
                  "       kalshi bot run [--interval N] [--iterations N]\n"
+                 "       kalshi bot gate [--json]\n"
+                 "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
                  "\n"
-                 "Paper only. This rung has no live mode: there is no order path here.\n");
+                 "Paper only. This rung has no live mode: there is no order path here.\n"
+                 "`gate` scores the paper ledger against sealed, preregistered criteria and\n"
+                 "writes the verdict to %s. It never acts on it.\n",
+                 qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile))));
+}
+
+// --- gate (rung 2) --------------------------------------------------------
+
+bool write_json_file(const QString& path, const QJsonObject& object) {
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
+    return file.commit();
+}
+
+/// Criterion numbers are printed as they were measured: the settled-bid count
+/// is a count, money and Brier are printed to four places. A criterion with
+/// nothing to measure prints its note instead of a number.
+QString criterion_line(const QJsonObject& criterion) {
+    const QString id = criterion.value(QStringLiteral("id")).toString();
+    const QJsonValue observed = criterion.value(QStringLiteral("observed"));
+    if (!observed.isDouble())
+        return QStringLiteral("%1 — %2").arg(id, criterion.value(QStringLiteral("note")).toString());
+    const bool counts = id == QLatin1String(KalshiBotGate::kCriterionSettled);
+    const auto text = [counts](double value) {
+        return counts ? QString::number(static_cast<qint64>(value)) : QString::number(value, 'f', 4);
+    };
+    return QStringLiteral("%1  observed %2 · required %3 (%4)")
+        .arg(id, text(observed.toDouble()),
+             text(criterion.value(QStringLiteral("required")).toDouble()),
+             criterion.value(QStringLiteral("comparison")).toString());
+}
+
+void print_gate(const GlobalOpts& opts, const QJsonObject& out, const QString& evidence_path) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return;
+    }
+    std::printf("KALSHI BOT GATE · %s\n",
+                qUtf8Printable(out.value(QStringLiteral("verdict")).toString()));
+    if (!out.value(QStringLiteral("evaluated")).toBool()) {
+        // A refusal states why and stops. No criteria, no numbers, no verdict
+        // about the paper record — the gate did not judge it.
+        std::printf("  %s\n", qUtf8Printable(out.value(QStringLiteral("reason")).toString()));
+        std::printf("  params %s\n",
+                    qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))));
+        std::printf("  verdict written to %s\n", qUtf8Printable(evidence_path));
+        return;
+    }
+    const QJsonObject ledger = out.value(QStringLiteral("ledger")).toObject();
+    std::printf("  gate %s · sealed %lld\n",
+                qUtf8Printable(out.value(QStringLiteral("gate_id")).toString()),
+                static_cast<long long>(out.value(QStringLiteral("sealed_at_ms")).toDouble()));
+    std::printf("  settled %d (%d won / %d lost) · scored %d · unscored %d\n",
+                ledger.value(QStringLiteral("settled_bids")).toInt(),
+                ledger.value(QStringLiteral("wins")).toInt(),
+                ledger.value(QStringLiteral("losses")).toInt(),
+                ledger.value(QStringLiteral("scored_contracts")).toInt(),
+                ledger.value(QStringLiteral("unscored_contracts")).toInt());
+    for (const auto& value : out.value(QStringLiteral("criteria")).toArray()) {
+        const QJsonObject criterion = value.toObject();
+        std::printf("  %-9s %s\n", criterion.value(QStringLiteral("met")).toBool() ? "[MET]" : "[NOT MET]",
+                    qUtf8Printable(criterion_line(criterion)));
+    }
+    std::printf("  verdict written to %s\n", qUtf8Printable(evidence_path));
+}
+
+int gate_seal(const GlobalOpts& opts, const QString& raw_params) {
+    const QString path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile));
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(raw_params.toUtf8(), &parse_error);
+    if (!document.isObject()) {
+        std::fprintf(stderr, "kalshi bot gate seal: params must be a JSON object (%s)\n",
+                     qUtf8Printable(parse_error.errorString()));
+        return 2;
+    }
+    QString error;
+    const QJsonObject record = KalshiBotGate::preregister(path, document.object(),
+                                                          QDateTime::currentMSecsSinceEpoch(), &error);
+    if (record.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot gate seal: %s\n", qUtf8Printable(error));
+        return 3;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(record).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("KALSHI BOT GATE · SEALED\n");
+    std::printf("  gate %s\n", qUtf8Printable(record.value(QStringLiteral("gate_id")).toString()));
+    std::printf("  params %s\n",
+                QJsonDocument(record.value(QStringLiteral("params")).toObject())
+                    .toJson(QJsonDocument::Compact).constData());
+    std::printf("  seal %s\n", qUtf8Printable(record.value(QStringLiteral("seal_sha256")).toString()));
+    std::printf("  written read-only to %s\n", qUtf8Printable(path));
+    return 0;
+}
+
+int gate_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty() && args.first().trimmed().toLower() == QStringLiteral("seal")) {
+        args.removeFirst();
+        if (args.size() != 1) {
+            bot_usage();
+            return 2;
+        }
+        return gate_seal(opts, args.first());
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot gate: unknown argument '%s'\n", qUtf8Printable(args.first()));
+        bot_usage();
+        return 2;
+    }
+
+    const QString ledger_path = kalshi_evidence_path(QString::fromLatin1(kLedgerFile));
+    const QJsonObject out = KalshiBotGate::evaluate(
+        KalshiBotGate::load_params_file(
+            kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))),
+        read_jsonl(ledger_path, is_event(kDecisionEvent)),
+        read_jsonl(ledger_path, is_event(kSettlementEvent)),
+        QDateTime::currentMSecsSinceEpoch());
+
+    const QString evidence_path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
+    if (!write_json_file(evidence_path, out))
+        std::fprintf(stderr, "kalshi bot gate: cannot write %s\n", qUtf8Printable(evidence_path));
+    print_gate(opts, out, evidence_path);
+    // A refusal is not a verdict about the record, so it does not exit 0.
+    return out.value(QStringLiteral("evaluated")).toBool() ? 0 : 3;
 }
 
 // --- the kill switch and the status the GUI chip mirrors --------------------
@@ -396,16 +535,19 @@ bool take_int(QStringList& args, const QString& flag, int& out, bool& bad, int m
 
 int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
-    static const QStringList kSubcommands{QStringLiteral("once"), QStringLiteral("run"),
-                                          QStringLiteral("status"), QStringLiteral("stop"),
-                                          QStringLiteral("resume")};
+    static const QStringList kSubcommands{QStringLiteral("once"),   QStringLiteral("run"),
+                                          QStringLiteral("gate"),   QStringLiteral("status"),
+                                          QStringLiteral("stop"),   QStringLiteral("resume")};
     if (opts.help || sub.isEmpty() || !kSubcommands.contains(sub)) {
         bot_usage();
         return opts.help ? 0 : 2;
     }
 
-    // The kill switch and the status readout take no trading configuration, so
-    // they are answered before any of it is parsed.
+    // The gate reads a ledger and sealed criteria; the kill switch and the
+    // status readout take no trading configuration either. None of the tick's
+    // mode or cap flags apply to any of them, so they branch before those are
+    // parsed.
+    if (sub == QStringLiteral("gate")) return gate_command(opts, args);
     if (sub == QStringLiteral("status")) return bot_status_command(opts, args);
     if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
     if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);
