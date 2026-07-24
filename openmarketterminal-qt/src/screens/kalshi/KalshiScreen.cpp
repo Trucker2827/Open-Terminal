@@ -3364,9 +3364,12 @@ void KalshiScreen::refresh_auto_cockpit_header() {
     const AutoCockpitView view =
         present_auto_cockpit(auto_cockpit_inputs(), QDateTime::currentMSecsSinceEpoch());
 
-    const QString state_color = view.color_role == QStringLiteral("green") ? colors::GREEN()
-                              : view.color_role == QStringLiteral("amber") ? colors::WARNING()
-                                                                           : colors::TEXT_SECONDARY();
+    const auto role_color = [](const QString& role) {
+        if (role == QStringLiteral("green")) return colors::GREEN();
+        if (role == QStringLiteral("amber")) return colors::WARNING();
+        return colors::TEXT_SECONDARY();
+    };
+    const QString state_color = role_color(view.color_role);
     cockpit_state_->setText(view.headline);
     cockpit_state_->setStyleSheet(
         QStringLiteral("color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
@@ -3376,16 +3379,23 @@ void KalshiScreen::refresh_auto_cockpit_header() {
             .arg(color, colors::BG_BASE(), colors::BORDER_DIM());
     };
     cockpit_markets_->setText(view.markets_line);
-    cockpit_markets_->setStyleSheet(line_style(
-        view.markets_line.contains(QStringLiteral("MARKETS LIVE")) ? colors::GREEN()
-                                                                   : colors::WARNING()));
+    cockpit_markets_->setStyleSheet(line_style(role_color(view.markets_role)));
     cockpit_books_->setText(view.books_line);
-    cockpit_books_->setStyleSheet(line_style(
-        view.books_line.startsWith(QStringLiteral("BOOKS LIVE")) ? colors::GREEN()
-                                                                 : colors::WARNING()));
+    cockpit_books_->setStyleSheet(line_style(role_color(view.books_role)));
 
-    if (view.ladder_trustworthy || !ladder_table_) return;
-    // Untrustworthy inputs never leave last-good prices on screen.
+    if (view.ladder_trustworthy) return;
+    // Untrustworthy inputs never leave last-good numbers on screen — and that
+    // includes the plan summary, whose dollar figures are computed from the
+    // very inputs the header has just refused to vouch for. record_ladder_
+    // evidence writes that line only on the live path; this tick overwrites it
+    // the moment the state leaves "live", and keeps overwriting it while the
+    // engine is not running at all.
+    if (ladder_status_) {
+        ladder_status_->setText(auto_cockpit_role() + QLatin1Char('\n') + view.ladder_notice);
+        ladder_status_->setStyleSheet(QStringLiteral("color:%1;border-top:1px solid %2;padding-top:8px;")
+                                          .arg(state_color, colors::BORDER_DIM()));
+    }
+    if (!ladder_table_) return;
     ladder_table_->clearSpans();
     ladder_table_->setRowCount(1);
     ladder_table_->setItem(0, 0, new QTableWidgetItem(view.state.toUpper()));

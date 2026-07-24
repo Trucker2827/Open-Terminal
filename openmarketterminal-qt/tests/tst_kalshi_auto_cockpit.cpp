@@ -1,5 +1,7 @@
 #include <QtTest>
 
+#include <QSet>
+
 #include "screens/kalshi/AutoCockpitPresentation.h"
 
 using namespace openmarketterminal::screens::kalshi;
@@ -244,6 +246,50 @@ class KalshiAutoCockpitTest final : public QObject {
     }
 
     // ── Colour-role mapping and the role statements ─────────────────────────
+
+    /// The per-line colours are decided beside the state, not sniffed out of
+    /// the rendered sentence, so rewording a line cannot flip a colour.
+    void each_input_line_carries_its_own_colour_role() {
+        const auto live = present_auto_cockpit(live_inputs(), kNow);
+        QCOMPARE(live.markets_role, QStringLiteral("green"));
+        QCOMPARE(live.books_role, QStringLiteral("green"));
+
+        auto stale_markets = live_inputs();
+        stale_markets.markets_listed_at_ms = kNow - (kCockpitMarketsStaleMs + 1'000);
+        QCOMPARE(present_auto_cockpit(stale_markets, kNow).markets_role, QStringLiteral("amber"));
+        QCOMPARE(present_auto_cockpit(stale_markets, kNow).books_role, QStringLiteral("green"));
+
+        auto stale_books = live_inputs();
+        stale_books.newest_leg_quote_ms = kNow - (kCockpitBooksStaleMs + 1'000);
+        QCOMPARE(present_auto_cockpit(stale_books, kNow).books_role, QStringLiteral("amber"));
+        QCOMPARE(present_auto_cockpit(stale_books, kNow).markets_role, QStringLiteral("green"));
+
+        // Never arrived is grey, not amber: there is nothing to be stale about.
+        auto no_markets = live_inputs();
+        no_markets.markets_listed_at_ms = 0;
+        no_markets.markets_total = 0;
+        QCOMPARE(present_auto_cockpit(no_markets, kNow).markets_role, QStringLiteral("grey"));
+
+        auto no_books = live_inputs();
+        no_books.legs_with_book = 0;
+        no_books.newest_leg_quote_ms = 0;
+        no_books.oldest_leg_quote_ms = 0;
+        QCOMPARE(present_auto_cockpit(no_books, kNow).books_role, QStringLiteral("grey"));
+    }
+
+    /// The notice is what a caller renders INSTEAD OF a plan, so it must never
+    /// itself carry plan arithmetic — the screen puts it where the cost /
+    /// expected / worst-case dollar line would otherwise be.
+    void the_ladder_notice_replaces_a_plan_and_carries_no_numbers() {
+        auto inputs = live_inputs();
+        inputs.markets_listed_at_ms = kNow - (kCockpitMarketsStaleMs + 1'000);
+        const auto view = present_auto_cockpit(inputs, kNow);
+        QVERIFY(!view.ladder_trustworthy);
+        QVERIFY(!view.ladder_notice.isEmpty());
+        for (const QString& banned : {QStringLiteral("cost"), QStringLiteral("expected"),
+                                      QStringLiteral("worst"), QStringLiteral("$")})
+            QVERIFY2(!view.ladder_notice.contains(banned), qPrintable(view.ladder_notice));
+    }
 
     void the_colour_role_mapping_is_green_amber_grey() {
         QCOMPARE(auto_cockpit_state_color_role(QStringLiteral("live")), QStringLiteral("green"));

@@ -91,6 +91,11 @@ struct AutoCockpitView {
     QString headline;    // what the cockpit is and whether its inputs are usable
     QString markets_line;
     QString books_line;
+    // Per-line colour roles, decided here beside the state rather than
+    // re-derived by the widget from the rendered text: a reworded line must
+    // not be able to silently flip a colour.
+    QString markets_role = QStringLiteral("grey");
+    QString books_role = QStringLiteral("grey");
     // False for every state but "live". The ladder table must then be cleared
     // to `ladder_notice` rather than left showing its last-good rows.
     bool ladder_trustworthy = false;
@@ -192,6 +197,16 @@ inline AutoCockpitView present_auto_cockpit(const AutoCockpitInputs& inputs, qin
     const bool no_books = books_absent(inputs);
     const bool books_stale =
         timestamp_stale(inputs.newest_leg_quote_ms, now_ms, kCockpitBooksStaleMs);
+
+    // An input that never arrived is grey, one that arrived and went old is
+    // amber. The overall chip below follows the worse of the two.
+    view.markets_role = no_markets    ? QStringLiteral("grey")
+                        : markets_stale ? QStringLiteral("amber")
+                                        : QStringLiteral("green");
+    view.books_role = !inputs.has_selection || inputs.legs_total <= 0 || no_books
+                          ? QStringLiteral("grey")
+                      : books_stale ? QStringLiteral("amber")
+                                    : QStringLiteral("green");
 
     // ── STATE ──────────────────────────────────────────────────────────────
     // An input that has never arrived is absent; one that arrived and went old

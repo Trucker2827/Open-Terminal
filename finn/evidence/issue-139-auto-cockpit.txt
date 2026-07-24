@@ -75,6 +75,27 @@ Both amber lines are the audit's findings caught in the wild, not staged:
   So "0/188 legs quoted" is the literal truth about what the engine priced
   from, and it took a header to say so.
 
+## One known difference between the image and the shipped code
+
+The capture predates two review fixes made after it was taken:
+
+- The BOOKS line's colour. In the image it is amber; in the shipped code an
+  input that never arrived is **grey** (only one that arrived and went old is
+  amber), so BOOKS ABSENT now renders grey, matching the chip above it. The
+  text is byte-identical; only the colour differs.
+- The plan-summary line (`ladder_status_`, below the fold in this image) is now
+  replaced by the same withheld-state notice when the inputs are not live. In
+  the captured build it still printed `N contracts · M selected · cost $… ·
+  expected $… · worst $…` — dollar figures computed from exactly the inputs the
+  header had just refused to vouch for.
+
+The image was deliberately NOT re-taken: a second GUI run would append another
+few minutes of ladder rows to the operator's shared evidence ledger (see caveat
+2 above), and the delta is one colour plus a widget that is not visible in the
+frame. Both behaviours are covered by
+`each_input_line_carries_its_own_colour_role` and
+`the_ladder_notice_replaces_a_plan_and_carries_no_numbers`.
+
 ## What is NOT in the screenshot, and why
 
 The ladder table's withheld-state row ("LADDER NOT SHOWN — …") sits below the
