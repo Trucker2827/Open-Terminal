@@ -1366,6 +1366,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
     src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
+    src/services/prediction/kalshi/KalshiBotDecision.cpp
     # Phase 4 — internal prediction-market adapter (demo mode until
     # `openmarketterminal.markets_endpoint` is configured and `openmarketterminal_market` lands).
     src/services/prediction/openmarketterminal_internal/OpenMarketTerminalInternalAdapter.cpp
@@ -2490,6 +2491,7 @@ set_source_files_properties(
     src/cli/EdgeJournalCommands2.cpp
     src/cli/EdgeJournalRareAlerts.cpp
     src/cli/QuantLabCommands.cpp
+    src/cli/KalshiBotCommands.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
                COMPILE_OPTIONS "$<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/GL->"
 )
@@ -3371,6 +3373,7 @@ add_executable(openterminalcli
     src/cli/EdgeJournalCommandsC.cpp
     src/cli/EdgeJournalCommands2.cpp
     src/cli/QuantLabCommands.cpp
+    src/cli/KalshiBotCommands.cpp
     src/services/crypto/CoinbaseEndpoints.cpp
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp

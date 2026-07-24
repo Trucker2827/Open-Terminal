@@ -111,6 +111,7 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands2.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalRareAlerts.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/QuantLabCommands.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/KalshiBotCommands.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
@@ -120,6 +121,13 @@ add_executable(tst_command_dispatch
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeClient.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp
     ${CMAKE_SOURCE_DIR}/src/screens/ai_chat/AnalysisSlashCommands.cpp)
+# The cli command families are compiled as their own TUs in the app targets
+# (see the top-level CMakeLists). set_source_files_properties is directory
+# scoped, so that exclusion does not reach this target — repeat it here for the
+# newest family, whose file-scope helpers would otherwise land in the same
+# unity batch as CommandDispatch.cpp's.
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/cli/KalshiBotCommands.cpp
+                            PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 target_include_directories(tst_command_dispatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # CommandDispatch.cpp now references openterminal_core (HeadlessRuntime +
 # McpProvider) for --headless support, so the test links the core lib too.
@@ -609,6 +617,15 @@ add_executable(tst_kalshi_settlement_scoreboard tst_kalshi_settlement_scoreboard
 target_include_directories(tst_kalshi_settlement_scoreboard PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_settlement_scoreboard PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_settlement_scoreboard COMMAND tst_kalshi_settlement_scoreboard)
+
+# Paper Kalshi bot decision math (rung 1): edge threshold, as-of-now runway,
+# stake/all-in sizing caps, stale (>=120s) and missing calibrator.json refusal,
+# signal-trust reason codes, and settlement of paper positions against real
+# exchange results only. Pure — it cannot reach an exchange.
+add_executable(tst_kalshi_bot_decision tst_kalshi_bot_decision.cpp)
+target_include_directories(tst_kalshi_bot_decision PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_decision PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_decision COMMAND tst_kalshi_bot_decision)
 
 # Coherent Kalshi hourly probability surface, constrained portfolio selection,
 # no-lookahead replay, and API compatibility audit. Pure and paper-only.
