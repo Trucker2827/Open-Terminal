@@ -61,6 +61,14 @@ add_test(NAME test_openterminal_paths
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_openterminal_paths.py -v)
 
+# Issue #101 — EDGAR XBRL → FinancialsData adapter for the Equity
+# Financials tab: canonical concept mapping, dimension/abstract row
+# skipping, missing-stays-missing, error/fallback semantics. Stdlib-only
+# fixtures (no edgartools/yfinance/network).
+add_test(NAME test_edgar_financials_adapter
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_edgar_financials_adapter.py -v)
+
 # Issue #83 — relationship map EDGAR rewire: us-gaap concept mapping,
 # Form 4 insider ring, SC 13D/G major holders, and the no-yfinance guard
 # for the rewired sections. Stdlib-only fakes (no edgartools/network).

@@ -116,6 +116,10 @@ struct Candle {
 // hundreds of heterogeneous line-item names that vary by company.
 struct FinancialsData {
     QString symbol;
+    // Where the statements came from: "edgar" (SEC EDGAR XBRL, primary for
+    // US listings) or "yfinance" (scraped Yahoo, fallback + non-US). The
+    // Financials tab shows this — a wrong source label is a severity-one bug.
+    QString source;
     // Each entry: (period_string, QJsonObject of line items)
     QVector<QPair<QString, QJsonObject>> income_statement;
     QVector<QPair<QString, QJsonObject>> balance_sheet;

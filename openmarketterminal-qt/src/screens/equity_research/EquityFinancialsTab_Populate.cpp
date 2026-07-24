@@ -49,6 +49,7 @@ void EquityFinancialsTab::on_financials_loaded(services::equity::FinancialsData 
     loaded_ = true;
     loading_overlay_->hide_loading();
 
+    update_source_label(payload.source);
     populate_income_view(payload);
     populate_balance_view(payload);
     populate_cashflow_view(payload);
@@ -63,6 +64,19 @@ void EquityFinancialsTab::on_financials_loaded(services::equity::FinancialsData 
 }
 
 // ── Populate helpers ──────────────────────────────────────────────────────────
+
+// Label the statements' actual origin. An unknown/empty source stays
+// unlabeled rather than guessed — a wrong source label is a severity-one bug.
+void EquityFinancialsTab::update_source_label(const QString& source) {
+    if (!source_label_)
+        return;
+    if (source == QLatin1String("edgar"))
+        source_label_->setText(tr("Source: SEC EDGAR (XBRL)"));
+    else if (source == QLatin1String("yfinance"))
+        source_label_->setText(tr("Source: Yahoo (yfinance)"));
+    else
+        source_label_->clear();
+}
 
 double EquityFinancialsTab::get_val(const QJsonObject& o, const QStringList& keys) {
     for (const auto& k : keys) {
