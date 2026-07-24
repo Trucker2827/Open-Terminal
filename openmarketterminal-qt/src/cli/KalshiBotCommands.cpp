@@ -153,9 +153,11 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // lifecycle pass, no report read, no bid — only the journaled refusal.
     // KalshiBotDecision::decide() checks it again (it is the layer that owns
     // the single path to a bid); this early return is what makes the refusal
-    // cheap and total. Deliberately ahead of reconcile(): a cancel is a venue
-    // action, and a stopped bot takes none. Its resting orders therefore stay
-    // resting and stay counted as exposure — the conservative outcome.
+    // total. Deliberately ahead of reconcile(): a cancel is a venue action,
+    // and a stopped bot takes none. Its resting orders therefore stay resting
+    // and stay counted as exposure — the conservative outcome. The ledger is
+    // still replayed below, for reporting only: printing zeros for a book the
+    // bot demonstrably still has out would be the dishonest saving.
     if (stop.engaged) {
         TickResult stopped;
         stopped.stopped = true;
