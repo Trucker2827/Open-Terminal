@@ -76,6 +76,16 @@ add_test(NAME test_relationship_map_edgar
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_relationship_map_edgar.py -v)
 
+# Issue #102 — screen → watchlist feed mapping: the watchlist description must
+# carry the model's measured IC + window (or the explicit "IC unmeasured"
+# disclaimer) and each stock note its score. Fails if the evidence is dropped.
+add_executable(tst_screen_watchlist_feed
+    tst_screen_watchlist_feed.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/ai_quant_lab/ScreenWatchlistFeed.cpp)
+target_include_directories(tst_screen_watchlist_feed PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_screen_watchlist_feed PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_screen_watchlist_feed COMMAND tst_screen_watchlist_feed)
+
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)
