@@ -2,42 +2,49 @@
 
 Dev build `openmarketterminal-qt/build/OpenTerminal.app`, launched as
 `OpenTerminal --profile finn128` (scratch profile dodges the single-instance
-lock). Screens captured 2026-07-24 15:52–15:53 UTC.
+lock). Screens captured 2026-07-24 16:02–16:04 UTC.
 
 ## The service run the panel is mirroring
 
     $ date -u
-    Fri Jul 24 15:48:10 UTC 2026
+    Fri Jul 24 16:03:27 UTC 2026
     $ ./build/openterminalcli kalshi bot once
     KALSHI BOT · PAPER · ok
-      bids 5 · passes 16 · open 5
-      signal TRUSTED (calibrator beats market baseline)
+      bids 4 · passes 24 · open 8
+      settled 1 · realized $0.35
+      signal UNTRUSTED — every bid journaled SIGNAL_UNTRUSTED
       ledger /Users/<user>/Library/Application Support/Open Terminal/Open Terminal/kalshi-bot-decisions.jsonl
 
-5 bids + 16 passes = **21 decisions**, which is exactly what the panel's status
-line reports ("21 decisions in view"), and the panel's rows carry that run's
-`15:48:10Z` timestamp.
+4 bids + 24 passes = 28 decisions on top of the 21 an earlier 15:48:10Z run
+journaled, which is exactly the panel's "49 decisions in view"; the panel's rows
+carry this run's `16:03:27Z` timestamp, and its SIGNAL TRUST line reads
+UNTRUSTED, matching the CLI's own `signal UNTRUSTED` line on the same tick.
 
 ## Screenshots
 
 | file | shows |
 | --- | --- |
-| `issue-128-bot-panel-status.png` | BOT STATUS (green, running), ARMED STATE & CAPS IN FORCE, SIGNAL TRUST |
-| `issue-128-bot-panel-scoreboard-gate.png` | PAPER SCOREBOARD and PROMOTION GATE in their honest absent state |
-| `issue-128-bot-panel-decisions.png` | LATEST DECISIONS — bids and passes, with side / price / size / all-in / edge / reason code |
+| `issue-128-bot-panel-status.png` | BOT STATUS green/running, ARMED STATE & CAPS IN FORCE, SIGNAL TRUST — seconds after the CLI run |
+| `issue-128-bot-panel-stale.png` | the same panel BEFORE that run, amber: `BOT STALE · last decision 15m ago` |
+| `issue-128-bot-panel-scoreboard-gate.png` | SIGNAL TRUST (untrusted), PAPER SCOREBOARD and PROMOTION GATE in their honest absent state |
+| `issue-128-bot-panel-decisions.png` | LATEST DECISIONS — bids and passes with side / price / size / all-in / edge / reason code |
+
+The stale shot is a real 15-minute-old ledger read by the running app, not a
+constructed state: the running→stale→running transition happened live across the
+two captures.
 
 ## Every number traced back to the file the CLI wrote
 
 The three bid rows visible in the decisions screenshot, against
-`kalshi-bot-decisions.jsonl` (fields: ticker, side, price, contracts,
-all_in_usd, edge, reason_code):
+`kalshi-bot-decisions.jsonl` (ticker, side, price, contracts, all_in_usd, edge,
+reason_code):
 
-    KXBTCD-26JUL2412-T64199.99  YES  0.22  9  2.09  0.102  EDGE_CLEARS_THRESHOLD
-    KXBTCD-26JUL2412-T64099.99  YES  0.53  3  1.65  0.301  EDGE_CLEARS_THRESHOLD
-    KXBTCD-26JUL2412-T63999.99  YES  0.81  2  1.65  0.162  EDGE_CLEARS_THRESHOLD
+    KXBTCD-26JUL2413-T64199.99  NO  0.81  2  1.65  -0.150  SIGNAL_UNTRUSTED
+    KXBTCD-26JUL2413-T64099.99  NO  0.67  2  1.38  -0.229  SIGNAL_UNTRUSTED
+    KXBTCD-26JUL2413-T63999.99  NO  0.50  4  2.07  -0.213  SIGNAL_UNTRUSTED
 
-The panel renders these as
-`15:48:10Z · BID · KXBTCD-26JUL2412-T64199.99 · YES $0.22 x9 · all-in $2.09 · edge +0.102 · EDGE_CLEARS_THRESHOLD`
+The panel renders the first as
+`16:03:27Z · BID · KXBTCD-26JUL2413-T64199.99 · NO $0.81 x2 · all-in $1.65 · edge -0.150 · SIGNAL_UNTRUSTED`
 — same values, no rounding of its own, no number the ledger does not carry.
 
 ## The gate section is absent, not zeroed
@@ -49,7 +56,9 @@ rung 2 (PR #133), which is not merged. The panel therefore reads
     scored the paper record yet, so no settled count, P&L, or Brier is claimed
     GATE NOT EVALUATED · no kalshi-bot-gate.json
 
-rather than showing a 0 settled / $0.00 P&L / 0.0000 Brier scoreboard. The
+rather than showing a 0 settled / $0.00 P&L / 0.0000 Brier scoreboard — even
+though a paper settlement DID land on this very tick (`settled 1 · realized
+$0.35`). The panel does not score that itself; the gate does. The
 PASS/FAIL-with-numbers rendering is covered by unit tests
 (`gate_fail_renders_the_verdict_with_its_numbers`, `gate_pass_reads_pass`,
 `unscoreable_brier_is_absent_not_zero`) against verdicts shaped exactly as
@@ -60,8 +69,13 @@ this screenshot look complete.
 
 The ARMED line reads from the live session status the screen already polls
 (`kalshi auto live status`, the session machinery of PRs #39/#44). This machine
-has an armed Kalshi automation session, so the panel shows ARMED with that
-session's own caps ($2.00 stake, $3.00 all-in, 10 orders/hour, $0.00 of $120.00
-exposure used). It shows DISARMED when the status reports no active session,
-and SESSION UNKNOWN / FAIL CLOSED when the status cannot be read at all — it
-never renders an unreadable status as disarmed.
+has an armed Kalshi automation session, so the panel shows
+
+    ARMED · shared Kalshi live session (the bot has no arm of its own) · caps in force:
+    stake <= $2.00 · all-in <= $3.00 · <= 10 orders/hour · exposure $0.00 of $120.00
+
+The line names whose arm it is, so an armed live session cannot be misread as an
+armed bot — the bot is paper-only and has no arm until rung 5. The panel shows
+DISARMED when the status reports no active session, and SESSION UNKNOWN / FAIL
+CLOSED when the status cannot be read at all; it never renders an unreadable
+status as disarmed.

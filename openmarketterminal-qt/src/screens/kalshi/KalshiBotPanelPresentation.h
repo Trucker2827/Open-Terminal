@@ -202,7 +202,11 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     } else {
         view.armed_live = true;
         const QJsonValue orders = live_status.value(QStringLiteral("max_orders_per_hour"));
-        view.armed = QStringLiteral("ARMED · caps in force: stake <= %1 · all-in <= %2 · "
+        // Whose arm this is, stated on the line itself: the shared Kalshi live
+        // session (the deterministic executor's), not a bot arm — the bot has
+        // no arm of its own, and this rung gives it no way to get one.
+        view.armed = QStringLiteral("ARMED · shared Kalshi live session (the bot has no arm of its "
+                                    "own) · caps in force: stake <= %1 · all-in <= %2 · "
                                     "<= %3 orders/hour · exposure %4 of %5%6")
             .arg(cap(live_status, QStringLiteral("per_bet_contract_stake_cap")),
                  cap(live_status, QStringLiteral("per_bet_all_in_tolerance")),

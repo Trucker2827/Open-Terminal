@@ -281,6 +281,10 @@ class KalshiBotPanelPresentationTest final : public QObject {
         const auto view = present_kalshi_bot_panel({}, {}, armed_session(), 7'200'000'000);
         QVERIFY(view.armed_live);
         QVERIFY(view.armed.startsWith("ARMED"));
+        // The arm on display is the shared live session's, not the bot's own —
+        // the line says so, so an armed session cannot read as an armed bot.
+        QVERIFY(view.armed.contains("shared Kalshi live session"));
+        QVERIFY(view.armed.contains("the bot has no arm of its own"));
         QVERIFY(view.armed.contains("stake <= $2.00"));
         QVERIFY(view.armed.contains("all-in <= $3.00"));
         QVERIFY(view.armed.contains("<= 10 orders/hour"));
