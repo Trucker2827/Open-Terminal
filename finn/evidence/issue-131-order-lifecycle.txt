@@ -1,0 +1,140 @@
+Issue #131 — Kalshi bot rung 6: order lifecycle honesty
+=======================================================
+
+Every transcript below is a real `openterminalcli kalshi bot once` run against a
+SCRATCH evidence directory (OPENTERMINAL_KALSHI_EVIDENCE_DIR=/tmp/e131*) holding
+a synthetic calibrator.json. The operator's live ledger was never written to.
+
+Build: openmarketterminal-qt/build (ninja), full suite 130/130.
+
+
+1. A bid opens a RESTING order, and the resting remainder is exposure
+----------------------------------------------------------------------
+mid 0.83, calibrated 0.95 → YES limit $0.83 × 2.
+
+  KALSHI BOT · PAPER · ok
+    bids 1 · passes 0 · open 0
+    resting 1 ($1.66 at limit) · exposure $1.66 of $120.00 · session $1.68 of $120.00
+
+`open 0` is the point: nothing has filled it, so it is not a position. The
+$1.66 is 2 × the $0.83 LIMIT — the PR #44 rule.
+
+
+2. The market moves past the quote → it stays resting, and is not re-quoted
+---------------------------------------------------------------------------
+mid 0.84 (above the $0.83 limit):
+
+  bids 0 · passes 1 · open 0
+  resting 1 ($1.66 at limit) · exposure $1.66 of $120.00
+
+  ledger: pass QUOTE_RESTING     ← the bot replaces quotes, it never stacks them
+
+
+3. The edge goes → the quote is cancelled
+------------------------------------------
+mid 0.90 against calibrated 0.95 (edge 0.05 < the 0.10 threshold):
+
+  resting 0 ($0.00 at limit) · exposure $0.00 of $120.00
+  filled 0 · canceled 1 · UNCONFIRMED cancels 0 (still counted as risk)
+
+  ledger rows, in order:
+    bid    EDGE_CLEARS_THRESHOLD  order_state=resting  2 @ 0.83
+    pass   QUOTE_RESTING
+    cancel CANCELED_EDGE_GONE     order_state=canceled 2 @ 0.83
+    pass   EDGE_BELOW_THRESHOLD
+
+
+4. The market comes back through the limit → it fills, at its own limit
+-----------------------------------------------------------------------
+mid 0.82 against a $0.83 limit:
+
+  bids 0 · passes 1 · open 1
+  resting 0 ($0.00 at limit) · exposure $1.66 of $120.00
+  filled 1 · canceled 0 · UNCONFIRMED cancels 0
+
+Filled at $0.83 (the limit), not at the better $0.82 the mid implies — the
+improvement would be invented. The filled quantity is still exposure.
+
+
+5. TTL expiry → cancel, then re-quote (cancel/replace)
+-------------------------------------------------------
+mid 0.845, so the floored limit ($0.84) rests BELOW the market and nothing
+fills it. The order's ts_ms was then rewound 200s past its 180s TTL:
+
+  bids 1 · passes 0 · open 0
+  resting 1 ($1.68 at limit) · exposure $1.68 of $120.00
+  filled 0 · canceled 1 · UNCONFIRMED cancels 0
+
+  ledger rows, in order:
+    bid    EDGE_CLEARS_THRESHOLD
+    cancel CANCELED_TTL   resting_seconds=200.272
+    bid    REQUOTED       replaces_position_id=KXBTC15M-E131-15@1784914959690
+
+Note (1) and (5) together: with real calibrator mids (0.8342, not 0.83) the
+floored limit rests strictly below the market, so a fill is genuinely
+conditional on the market coming back — it is not a rounding artifact.
+
+
+6. The exposure cap refuses a bid, and binds WITHIN one tick
+-------------------------------------------------------------
+Two contracts, $1.70 all-in each, `--max-exposure 2.00`:
+
+  bids 1 · passes 1 · open 0
+  resting 1 ($1.68 at limit) · exposure $1.68 of $2.00
+
+  KXBTC15M-A-15 bid  EDGE_CLEARS_THRESHOLD  used=1.68 cap=2 all_in=1.7
+  KXBTC15M-B-15 pass EXPOSURE_CAP_BLOCKS_BID used=1.68 cap=2 all_in=1.7
+
+The second contract sees the first one's resting exposure inside the same
+tick. Refused outright, never quietly sized down.
+
+
+Neuter runs (each turns exactly its own tests red, nothing else)
+----------------------------------------------------------------
+  exposure cap gate disabled     → a_bid_is_refused_when_resting_exposure_would_breach_the_cap
+                                   the_caps_bind_within_one_tick_not_only_between_ticks   (2 red)
+  resting remainder × 0.0        → a_resting_remainder_is_exposure_at_its_limit_price
+                                   a_partial_fill_is_exposure_on_both_sides_of_the_split
+                                   a_bid_is_refused_when_resting_exposure_would_breach_the_cap
+                                   an_unconfirmed_cancel_stays_at_risk_and_is_retried_next_tick (4 red)
+  unconfirmed cancel treated as
+    confirmed in replay()        → an_unconfirmed_cancel_stays_at_risk_and_is_retried_next_tick (1 red)
+  TTL check disabled             → a_ttl_expiry_cancels_the_quote_and_frees_the_ticker_to_be_requoted
+                                   a_confirmed_cancel_releases_only_the_remainder
+                                   an_unconfirmed_cancel_stays_at_risk_and_is_retried_next_tick (3 red)
+  edge-gone check disabled       → a_collapsed_or_flipped_edge_cancels_and_is_never_requoted (1 red)
+  panel CANCEL label removed     → a_cancel_is_shown_as_a_cancel_and_never_as_a_pass (1 red)
+
+
+7. A resolved market cannot fill, and cannot be quoted again
+-------------------------------------------------------------
+The trap rung 1 closed with CONTRACT_SETTLED, re-opened by the lifecycle: the
+report's snapshot goes stale under a fresh generation stamp, so a market that
+has ALREADY resolved is still quoted — here at mid 0.82, through the $0.82
+limit, i.e. everything about the report says "fill". A real
+kalshi-settlements.jsonl row for the contract sat beside it.
+
+  tick 1  bids 1 · resting 1 ($1.64 at limit)
+  tick 2  filled 0 · canceled 1 · resting 0 · exposure $0.00
+  tick 3  bids 0 · passes 1
+
+  ledger:
+    bid    EDGE_CLEARS_THRESHOLD
+    cancel CANCELED_MARKET_SETTLED     ← not a fill
+    pass   CONTRACT_SETTLED
+    pass   CONTRACT_SETTLED
+
+Both halves were found by review and each was seen failing first:
+  settled checked AFTER the fill  → the tick 2 cancel becomes a FILL, and the
+                                    "position" settles into fabricated P&L
+  CANCELED_MARKET_SETTLED not fed
+    back into the settled set     → tick 3 quotes a resolved contract again
+                                    (the order left the book, and having never
+                                    filled it produced no settlement row)
+
+  neuters: each turns exactly
+  a_market_that_settles_under_a_resting_quote_retires_it_without_a_position red.
+
+  Also added after review: a_filled_positions_exposure_blocks_a_bid_on_another
+  _contract — AC2 says "resting+filled exposure", and only the resting half was
+  proved as a cap refusal.

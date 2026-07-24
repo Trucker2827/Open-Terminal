@@ -125,15 +125,43 @@ inline QString criterion_line(const QJsonObject& criterion) {
              met ? QStringLiteral("MET") : QStringLiteral("NOT MET"));
 }
 
+/// BID / PASS / FILL / CANCEL. Since ladder rung 6 the ledger also carries the
+/// lifecycle of the orders a bid opens, and a canceled quote rendered as a
+/// "PASS" would be a lie on the screen — the label follows the row's action.
+inline QString action_label(const QString& action) {
+    if (action == QStringLiteral("bid")) return QStringLiteral("BID");
+    if (action == QStringLiteral("fill")) return QStringLiteral("FILL");
+    if (action == QStringLiteral("cancel")) return QStringLiteral("CANCEL");
+    return QStringLiteral("PASS");
+}
+
 inline QString decision_line(const QJsonObject& row) {
     const auto ts_ms = static_cast<qint64>(row.value(QStringLiteral("ts_ms")).toDouble());
     const QString ticker = row.value(QStringLiteral("ticker")).toString();
-    const bool bid = row.value(QStringLiteral("action")).toString() == QStringLiteral("bid");
+    const QString action = row.value(QStringLiteral("action")).toString();
+    const bool bid = action == QStringLiteral("bid");
+    const bool lifecycle = action == QStringLiteral("fill") || action == QStringLiteral("cancel");
 
     QStringList parts;
     parts << (ts_ms > 0 ? clock(ts_ms) : QStringLiteral("--:--:--"));
-    parts << (bid ? QStringLiteral("BID") : QStringLiteral("PASS"));
+    parts << action_label(action);
     parts << (ticker.isEmpty() ? QStringLiteral("(no contract)") : ticker);
+    if (lifecycle) {
+        // A fill quotes what it got at what it paid; a cancel quotes the
+        // remainder it pulled and the limit that remainder was resting at.
+        const QJsonValue contracts = row.value(QStringLiteral("contracts"));
+        const QJsonValue price = row.contains(QStringLiteral("price"))
+                                     ? row.value(QStringLiteral("price"))
+                                     : row.value(QStringLiteral("limit_price"));
+        parts << QStringLiteral("%1 %2 x%3")
+                     .arg(row.value(QStringLiteral("side")).toString(QStringLiteral("?")),
+                          is_number(price) ? money(price.toDouble()) : QStringLiteral("price ?"),
+                          is_number(contracts) ? QString::number(contracts.toInt())
+                                               : QStringLiteral("?"));
+        const QJsonValue at_risk = row.value(QStringLiteral("still_at_risk_usd"));
+        if (is_number(at_risk))
+            parts << QStringLiteral("STILL AT RISK %1").arg(money(at_risk.toDouble()));
+    }
     if (bid) {
         const QJsonValue price = row.value(QStringLiteral("price"));
         const QJsonValue contracts = row.value(QStringLiteral("contracts"));
@@ -144,6 +172,10 @@ inline QString decision_line(const QJsonObject& row) {
                                                : QStringLiteral("?"));
         const QJsonValue all_in = row.value(QStringLiteral("all_in_usd"));
         if (is_number(all_in)) parts << QStringLiteral("all-in %1").arg(money(all_in.toDouble()));
+        // A bid is an order, not a position (rung 6). The screen says which:
+        // "resting" is money committed to a quote nothing has filled yet.
+        const QString order_state = row.value(QStringLiteral("order_state")).toString();
+        if (!order_state.isEmpty()) parts << order_state;
     }
     const QJsonValue edge = row.value(QStringLiteral("edge"));
     if (is_number(edge))

@@ -1,4 +1,5 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
+#include "services/prediction/kalshi/KalshiBotOrders.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -7,6 +8,7 @@
 #include <cmath>
 
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
+using openmarketterminal::services::prediction::kalshi_ns::KalshiBotOrders;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotStopFile;
 
 namespace {
@@ -349,7 +351,17 @@ class TestKalshiBotDecision : public QObject {
     }
 
     void paper_positions_settle_on_the_real_result_and_otherwise_stay_open() {
-        const QJsonArray bid = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, {});
+        // A bid is an order (rung 6); it settles only once something filled
+        // it, so the position under test comes from the replayed book.
+        const QJsonArray order = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, {});
+        const QJsonArray fill = KalshiBotOrders::reconcile(
+            KalshiBotOrders::replay(order), report(0.95, 0.82, 10.0, true, kNow + 1000), {},
+            kNow + 1000, {}, [](const QJsonObject&, const QString&) { return true; });
+        QJsonArray ledger = order;
+        for (const auto& value : fill) ledger.append(value);
+        const QJsonArray bid = KalshiBotOrders::replay(ledger).positions;
+        QCOMPARE(bid.size(), 1);
+
         const QString ticker = only_row(bid).value(QStringLiteral("ticker")).toString();
         const double stake = only_row(bid).value(QStringLiteral("stake_usd")).toDouble();
         const double fee = only_row(bid).value(QStringLiteral("fee_usd")).toDouble();
@@ -378,21 +390,6 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(lost.first().toObject().value(QStringLiteral("realized_pnl")).toDouble(), -stake - fee);
     }
 
-    void a_settled_position_leaves_the_open_book_and_is_never_settled_twice() {
-        const QJsonArray bid = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, {});
-        QCOMPARE(KalshiBotDecision::open_positions_from_ledger(bid, {}).size(), 1);
-        const QJsonArray settled = KalshiBotDecision::settle_paper(
-            bid,
-            QJsonArray{QJsonObject{{QStringLiteral("ticker"),
-                                    only_row(bid).value(QStringLiteral("ticker")).toString()},
-                                   {QStringLiteral("market_result"), QStringLiteral("YES")}}},
-            kNow);
-        QCOMPARE(KalshiBotDecision::open_positions_from_ledger(bid, settled).size(), 0);
-        // Passes are ledger rows too, but they are not positions.
-        const QJsonArray passes = KalshiBotDecision::decide(report(0.84, 0.83, 10.0), {}, {}, kNow, {});
-        QCOMPARE(action(passes), QStringLiteral("pass"));
-        QCOMPARE(KalshiBotDecision::open_positions_from_ledger(passes, {}).size(), 0);
-    }
 };
 
 QTEST_APPLESS_MAIN(TestKalshiBotDecision)

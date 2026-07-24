@@ -627,6 +627,15 @@ target_include_directories(tst_kalshi_bot_decision PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_kalshi_bot_decision PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_decision COMMAND tst_kalshi_bot_decision)
 
+# Kalshi bot order lifecycle (ladder rung 6): a bid is an order, not a
+# position. TTL expiry, a vanished edge, cancel/replace, unconfirmed cancels
+# that stay counted as risk, and the PR #44 exposure rule over resting
+# remainders. Pure — it cannot reach an exchange.
+add_executable(tst_kalshi_bot_orders tst_kalshi_bot_orders.cpp)
+target_include_directories(tst_kalshi_bot_orders PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_orders PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_orders COMMAND tst_kalshi_bot_orders)
+
 # Kalshi bot observable-loop runtime (issue #129) — the ONE loop-status
 # classifier the GUI chip and `kalshi bot status` both render, plus the kill
 # switch file they both write. Header-only, no DB/Widgets.
