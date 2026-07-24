@@ -132,6 +132,11 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
     // actually fired so the happy-path test can assert the RESOLVED price/size.
     bool creds_ = true;
     bool suppress_place_result_ = false;
+    // Negative means "the venue filled the whole order". A real exchange also
+    // answers OK for an order it merely ACCEPTED, or filled only in part, so
+    // these let a test drive those acknowledgements. Restore after use.
+    double filled_override_ = -1.0;
+    QString status_override_;
     int place_order_calls_ = 0;
     pred::OrderRequest last_req_;
 
@@ -154,8 +159,9 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
                 pred::OrderResult r;
                 r.ok = true;
                 r.order_id = "PM-FAKE-1";
-                r.status = "FILLED";
-                r.filled = req.size;
+                r.filled = filled_override_ >= 0.0 ? filled_override_ : req.size;
+                r.remaining = req.size - r.filled;
+                r.status = status_override_.isEmpty() ? QStringLiteral("FILLED") : status_override_;
                 emit order_placed(r);
             },
             Qt::QueuedConnection);
@@ -1084,6 +1090,72 @@ class TstPmPaper : public QObject {
         auto open = PmPaperRepository::instance().get_open("polymarket", "sub-double");
         QVERIFY2(open.value().has_value(), "the one successful submit must have opened a position");
         QCOMPARE(open.value()->contracts, 10.0);  // not 20 — the 2nd submit had no effect
+    }
+
+    // An acknowledgement with zero confirmed fills is a RESTING order, not a
+    // position and not a completed evidence point. It must report as such, and
+    // the live P&L ledger must stay untouched until authenticated fill
+    // reconciliation observes a uniquely identified execution.
+    void pm_submit_live_accepted_but_unfilled_is_not_a_fill() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-resting", 10, QStringLiteral("mkt-resting"));
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        fake_adapter()->filled_override_ = 0.0;
+        fake_adapter()->status_override_ = QStringLiteral("RESTING");
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+        fake_adapter()->status_override_.clear();
+
+        QVERIFY2(res.success, qPrintable("a resting live submit is auditable: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("resting"));
+        QCOMPARE(data.value("filled_count").toDouble(), 0.0);
+        QCOMPARE(data.value("remaining_count").toDouble(), 10.0);
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("resting"));
+        verify_no_live_position("live-resting");
+        QVERIFY2(find_submit_audit("resting", "live"),
+                 "an accepted but unfilled order must NOT be audited as filled");
+        QVERIFY2(!find_submit_audit("filled", "live") ||
+                     TradeAuditRepository::instance().recent(1).value().front().decision !=
+                         QLatin1String("filled"),
+                 "the most recent submit decision must not be 'filled'");
+    }
+
+    // A partial acknowledgement reports only the confirmed quantity and leaves
+    // the resting remainder visible; it still books no P&L from the ack.
+    void pm_submit_live_partial_fill_reports_confirmed_quantity_only() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-partial", 10, QStringLiteral("mkt-partial"));
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        fake_adapter()->filled_override_ = 4.0;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+
+        QVERIFY2(res.success, qPrintable("a partial live submit is auditable: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("partially_filled"));
+        QCOMPARE(data.value("filled_count").toDouble(), 4.0);
+        QCOMPARE(data.value("remaining_count").toDouble(), 6.0);
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("partially_filled"));
+        verify_no_live_position("live-partial");
+        QVERIFY2(find_submit_audit("partially_filled", "live"),
+                 "a partial acknowledgement must be audited as partially filled");
     }
 
     // ── micro-live experiment gates (session id + all-in ceiling) ────────────
