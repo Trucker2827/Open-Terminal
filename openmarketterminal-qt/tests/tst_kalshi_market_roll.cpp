@@ -143,6 +143,21 @@ class KalshiMarketRollTest final : public QObject {
         QVERIFY(!decide_market_refresh(state, kNow).refresh);
     }
 
+    // ── is_selected_contract (the screen's teardown-skip predicate) ──────────
+
+    void the_selected_contract_predicate_matches_by_ticker_only() {
+        const QVector<pred::PredictionMarket> markets{market("KXBTCD-A", kNow + 600'000),
+                                                      market("KXBTCD-B", kNow + 600'000)};
+        QVERIFY(is_selected_contract(markets, 1, QStringLiteral("KXBTCD-B"), true));
+        QVERIFY(!is_selected_contract(markets, 0, QStringLiteral("KXBTCD-B"), true));
+        // Nothing selected yet, or a row that is not in the list: never a match,
+        // so select_market always runs its full setup for those.
+        QVERIFY(!is_selected_contract(markets, 1, QStringLiteral("KXBTCD-B"), false));
+        QVERIFY(!is_selected_contract(markets, 1, QString(), true));
+        QVERIFY(!is_selected_contract(markets, -1, QStringLiteral("KXBTCD-B"), true));
+        QVERIFY(!is_selected_contract(markets, 2, QStringLiteral("KXBTCD-B"), true));
+    }
+
     // ── choose_market_row ────────────────────────────────────────────────────
 
     void an_empty_list_selects_nothing() {

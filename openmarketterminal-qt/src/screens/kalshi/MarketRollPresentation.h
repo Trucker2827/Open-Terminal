@@ -105,6 +105,18 @@ inline bool is_expired(const QString& end_date_iso, bool settled, qint64 now_ms)
 
 } // namespace market_roll_detail
 
+/// Whether row `row` of `markets` holds the contract that is already selected.
+/// This is the predicate the screen's select_market uses to skip its teardown
+/// (unsubscribe, chart clear, freshness-stamp reset) when a background refresh
+/// hands it back the same contract, and the predicate choose_market_row reports
+/// as `same_contract` — one definition, so the two can never disagree.
+inline bool is_selected_contract(const QVector<services::prediction::PredictionMarket>& markets,
+                                 int row, const QString& selected_ticker, bool has_selection) {
+    if (!has_selection || selected_ticker.isEmpty()) return false;
+    if (row < 0 || row >= markets.size()) return false;
+    return markets.at(row).key.market_id == selected_ticker;
+}
+
 /// Whether the screen may issue a market-list fetch now. `interval_ms` is the
 /// background cadence; the expiry path uses its own shorter floor.
 inline MarketRefreshDecision decide_market_refresh(const MarketRefreshState& state, qint64 now_ms,
@@ -185,7 +197,7 @@ inline MarketSelectionDecision choose_market_row(
 
     if (previous_row >= 0 && !expired) {
         decision.row = previous_row;
-        decision.same_contract = true;
+        decision.same_contract = is_selected_contract(markets, previous_row, selected_ticker, true);
         decision.to_ticker = selected_ticker;
         decision.reason = QStringLiteral("preserved");
         return decision;

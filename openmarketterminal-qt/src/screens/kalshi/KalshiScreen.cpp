@@ -1488,6 +1488,10 @@ void KalshiScreen::wire_adapter() {
     connections_ << connect(a, &pred::PredictionExchangeAdapter::markets_ready, this, &KalshiScreen::populate_markets);
     connections_ << connect(a, &pred::PredictionExchangeAdapter::search_results_ready, this,
                             [this](const QVector<pred::PredictionMarket>& markets, const QVector<pred::PredictionEvent>& events) {
+                                // A search that lands between a background
+                                // fetch and its reply is still an operator
+                                // action: it takes the top of its own results.
+                                preserve_selection_on_populate_ = false;
                                 if (!markets.isEmpty()) populate_markets(markets); else populate_events(events);
                             });
     connections_ << connect(a, &pred::PredictionExchangeAdapter::order_book_ready, this, &KalshiScreen::render_order_book);
@@ -1981,7 +1985,7 @@ void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& marke
 
 void KalshiScreen::select_market(int row) {
     if (row < 0 || row >= markets_.size()) return;
-    if (has_selection_ && markets_[row].key.market_id == selected_.key.market_id) {
+    if (is_selected_contract(markets_, row, selected_.key.market_id, has_selection_)) {
         // The same contract, re-listed by a background refresh. Take the fresh
         // quotes and stop: unsubscribing, clearing the chart and zeroing the
         // feed-freshness stamps below would blank this pane every 30 seconds —
