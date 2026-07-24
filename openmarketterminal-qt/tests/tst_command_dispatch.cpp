@@ -1335,24 +1335,30 @@ private slots:
         QVERIFY(Database::instance().execute(
             "DELETE FROM trade_audit WHERE json_extract(intent_json,'$.experiment_id')="
             "'kalshi-micro-live-v1'").is_ok());
-        const QJsonObject autonomous_intent{
+        // The rolling-hour quota and the exposure figure come from the SAME
+        // execution ledger the submit gate reserves against, so an order the
+        // exchange ACCEPTED but has not filled still consumes both. Ten resting
+        // orders must exhaust the hour even though not one of them filled.
+        const QString accepted_intent = QString::fromUtf8(QJsonDocument(QJsonObject{
             {QStringLiteral("asset_class"), QStringLiteral("prediction")},
             {QStringLiteral("venue"), QStringLiteral("kalshi")},
             {QStringLiteral("experiment_id"), QStringLiteral("kalshi-micro-live-v1")},
-            {QStringLiteral("autonomous"), true}};
+            {QStringLiteral("autonomous"), true}}).toJson(QJsonDocument::Compact));
         for (int i = 0; i < 10; ++i) {
-            QJsonObject row_intent = autonomous_intent;
-            if (i == 0)
-                row_intent.remove(QStringLiteral("autonomous")); // Legacy normalized draft.
-            const QString intent = QString::fromUtf8(
-                QJsonDocument(row_intent).toJson(QJsonDocument::Compact));
+            const QString id = QStringLiteral("accepted-%1").arg(i);
+            const QString ts = QDateTime::currentDateTimeUtc().addSecs(-i).toString(Qt::ISODateWithMs);
             QVERIFY(Database::instance().execute(
-                "INSERT INTO trade_audit (ts,phase,tool,account,mode,intent_json,decision,reason,risk_snapshot_json) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                {QDateTime::currentDateTimeUtc().addSecs(-i).toString(Qt::ISODateWithMs),
-                 QStringLiteral("submit"), QStringLiteral("submit_order"), QStringLiteral(""),
-                 QStringLiteral("live"), intent, QStringLiteral("filled"),
-                 QStringLiteral("test fill"), QStringLiteral("{}")}).is_ok());
+                "INSERT INTO order_drafts (draft_id,intent_json,account,mode_hint,status,created_at,expires_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                {id, accepted_intent, QStringLiteral(""), QStringLiteral("live"),
+                 QStringLiteral("resting"), ts, ts}).is_ok());
+            QVERIFY(Database::instance().execute(
+                "INSERT INTO kalshi_live_orders (client_order_id,draft_id,market_id,asset_id,action,outcome,"
+                "state,requested_count,filled_count,remaining_count,limit_price,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                {id, id, QStringLiteral("KXBTC-TEST"), QStringLiteral("KXBTC-TEST:yes"),
+                 QStringLiteral("buy"), QStringLiteral("Yes"), QStringLiteral("resting"),
+                 1.0, 0.0, 1.0, 0.10, ts, ts}).is_ok());
         }
 
         QJsonObject status = json_object_from_dispatch(
@@ -1361,6 +1367,10 @@ private slots:
         QCOMPARE(rc, 0);
         QCOMPARE(status.value(QStringLiteral("orders_last_hour")).toInt(), 10);
         QCOMPARE(status.value(QStringLiteral("orders_remaining_this_hour")).toInt(), 0);
+        // Ten resting contracts at $0.10 are $1.00 of RESERVED budget even
+        // though nothing filled; the old fills-only readout showed $0.00.
+        QVERIFY(qFuzzyCompare(status.value(QStringLiteral("worst_case_exposure_used")).toDouble(), 1.0));
+        QCOMPARE(status.value(QStringLiteral("live_bets")).toInt(), 0);
 
         QJsonObject pulse = json_object_from_dispatch(
             {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
@@ -1379,6 +1389,48 @@ private slots:
         QVERIFY(stopped.value(QStringLiteral("global_live_gate_armed")).toBool());
         QCOMPARE(settings.get(QStringLiteral("kalshi.live_automation.enabled"), QString()).value(),
                  QStringLiteral("false"));
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM kalshi_live_orders WHERE client_order_id LIKE 'accepted-%'").is_ok());
+        QVERIFY(Database::instance().execute(
+            "DELETE FROM order_drafts WHERE draft_id LIKE 'accepted-%'").is_ok());
+
+        // A pilot preset may only TIGHTEN the ceilings, and the tightened values
+        // are what the status readout reports back.
+        QJsonObject pilot = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("24/7"),
+             QStringLiteral("--max-stake"), QStringLiteral("1"),
+             QStringLiteral("--max-orders-per-hour"), QStringLiteral("3"),
+             QStringLiteral("--max-all-in"), QStringLiteral("1.25"),
+             QStringLiteral("--experiment-cap"), QStringLiteral("3.75")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(pilot.value(QStringLiteral("session_active")).toBool());
+        QCOMPARE(pilot.value(QStringLiteral("max_orders_per_hour")).toInt(), 3);
+        QVERIFY(qFuzzyCompare(pilot.value(QStringLiteral("per_bet_contract_stake_cap")).toDouble(), 1.0));
+        QVERIFY(qFuzzyCompare(pilot.value(QStringLiteral("per_bet_all_in_tolerance")).toDouble(), 1.25));
+        QVERIFY(qFuzzyCompare(pilot.value(QStringLiteral("experiment_cap")).toDouble(), 3.75));
+        QCOMPARE(settings.get(QStringLiteral("kalshi.live_automation.max_orders_per_hour"), QString()).value(),
+                 QStringLiteral("3"));
+
+        // Above a ceiling is refused outright, never silently clamped.
+        for (const QStringList& widened : {
+                 QStringList{QStringLiteral("--max-stake"), QStringLiteral("5")},
+                 QStringList{QStringLiteral("--max-orders-per-hour"), QStringLiteral("50")},
+                 QStringList{QStringLiteral("--max-all-in"), QStringLiteral("9")},
+                 QStringList{QStringLiteral("--experiment-cap"), QStringLiteral("500")}}) {
+            QStringList argv{QStringLiteral("--json"), QStringLiteral("kalshi"),
+                             QStringLiteral("auto"), QStringLiteral("live"),
+                             QStringLiteral("session"), QStringLiteral("24/7")};
+            argv += widened;
+            json_object_from_dispatch(argv, &rc);
+            QCOMPARE(rc, 2);
+        }
+
+        QJsonObject pilot_stopped = json_object_from_dispatch(
+            {QStringLiteral("--json"), QStringLiteral("kalshi"), QStringLiteral("auto"),
+             QStringLiteral("live"), QStringLiteral("session"), QStringLiteral("stop")}, &rc);
+        QCOMPARE(rc, 0);
+        QVERIFY(!pilot_stopped.value(QStringLiteral("session_active")).toBool());
         settings.set(QStringLiteral("cli.allow_trading"), QStringLiteral("false"), QStringLiteral("test"));
         settings.set(QStringLiteral("cli.live_trading_armed"), QStringLiteral("false"), QStringLiteral("test"));
         settings.set(QStringLiteral("cli.allowed_venues"), QString(), QStringLiteral("test"));
