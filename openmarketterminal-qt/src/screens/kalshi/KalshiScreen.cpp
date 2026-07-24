@@ -3906,7 +3906,8 @@ void KalshiScreen::refresh_advisor_canary_status() {
     // The canary badge is advisor-file state: once retired it is archive, not
     // status, so it stops posing as a live badge — unless it claims the canary
     // is enabled, which is never hidden.
-    canary_badge_->setVisible(!retirement.retired || view.canary_live);
+    canary_badge_->setVisible(!retirement.retired ||
+                              canary.value(QStringLiteral("enabled")).toBool());
 
     legacy_live_badge_->setText(view.legacy_badge);
     legacy_live_badge_->setStyleSheet(QStringLiteral(
