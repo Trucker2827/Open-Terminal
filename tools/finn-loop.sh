@@ -108,6 +108,15 @@ for i in $(seq 1 "$MAX_ITER"); do
   run_claude "$LOG" "/finn-review $PR"
 
   LABELS=$(gh pr view "$PR" --json labels --jq '.labels[].name' | tr '\n' ' ')
+  # A review session can die with zero output (rate limit, crash) — no label
+  # at all. That is "no verdict", not "changes requested": retry once instead
+  # of burning a build iteration on a phantom revision (seen 2026-07-23, #101).
+  if [[ "$LABELS" != *loop-approved* && "$LABELS" != *loop-changes-requested* \
+        && "$LABELS" != *needs-human-review* ]]; then
+    journal "issue #$ISSUE PR #$PR: review left no verdict (session died?) — retrying review once"
+    run_claude "$LOG" "/finn-review $PR"
+    LABELS=$(gh pr view "$PR" --json labels --jq '.labels[].name' | tr '\n' ' ')
+  fi
   if [[ "$LABELS" == *needs-human-review* ]]; then
     journal "issue #$ISSUE PR #$PR: needs-human-review — left for operator"
     continue
