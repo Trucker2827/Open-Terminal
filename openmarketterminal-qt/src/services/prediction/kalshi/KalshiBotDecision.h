@@ -45,6 +45,10 @@ class KalshiBotDecision {
     static constexpr auto kSizeCapBlocksBid = "SIZE_CAP_BLOCKS_BID";
     static constexpr auto kEdgeClearsThreshold = "EDGE_CLEARS_THRESHOLD";
     static constexpr auto kSignalUntrusted = "SIGNAL_UNTRUSTED";
+    static constexpr auto kQuoteResting = "QUOTE_RESTING";
+    static constexpr auto kExposureCapBlocksBid = "EXPOSURE_CAP_BLOCKS_BID";
+    static constexpr auto kSessionBudgetBlocksBid = "SESSION_BUDGET_BLOCKS_BID";
+    static constexpr auto kRequoted = "REQUOTED";
 
     /// Paper sizing/pricing policy. Defaults are deliberately conservative and
     /// mirror the charter's live ceilings ($2 stake, $3 all-in) so rung 1's
@@ -65,32 +69,81 @@ class KalshiBotDecision {
         /// file another process rewrites every cycle; a stale read is a dead
         /// opinion, not a slightly old one.
         qint64 max_report_age_ms = 120'000;
+        /// How long a quote may rest before it is pulled (ladder rung 6).
+        /// Three default ticks, and well inside the fifteen-minute contracts
+        /// the calibrator quotes: a quote older than this is priced off a
+        /// market that has moved on.
+        int quote_ttl_seconds = 180;
+        /// Ceiling on total exposure outstanding — resting remainders at limit
+        /// price plus filled-but-unsettled positions (the PR #44 rule). It is
+        /// the ceiling `kalshi auto live arm` refuses to exceed for the live
+        /// experiment (CommandDispatch.cpp's `tightened(..., 120.0)`), reused
+        /// rather than invented so paper is measured under the live fence.
+        double max_open_exposure_usd = 120.00;
+        /// Ceiling on the all-in a single bot run may newly commit. A bounded
+        /// run is the charter's first carve-out condition; this is the money
+        /// half of that bound. Defaults to the same ceiling, so it constrains
+        /// only once a session tightens it.
+        double session_budget_usd = 120.00;
+    };
+
+    /// What the bot already has at risk when `decide()` is called, and what
+    /// this tick's lifecycle pass freed up. Supplied by the caller from
+    /// `KalshiBotOrders::replay()` so the decision math stays pure.
+    struct Exposure {
+        /// The PR #44 rule over the whole book, in dollars.
+        double at_risk_usd = 0.0;
+        /// All-in this run has already committed, against `session_budget_usd`.
+        double session_opened_usd = 0.0;
+        /// Orders still working. A ticker with one is not quoted again: the
+        /// bot replaces quotes, it never stacks them.
+        QJsonArray resting;
+        /// `{ticker: position_id}` freed by a TTL cancel on THIS tick, from
+        /// `KalshiBotOrders::requotable()`. A bid on one of these is the
+        /// replace half of cancel/replace and is journaled REQUOTED.
+        QJsonObject requoted;
     };
 
     /// One journal-ready row per decision, in the report's contract order.
     ///
-    /// `open_positions` are the bot's unsettled paper bids (see
-    /// `open_positions_from_ledger`); a contract already held passes with
+    /// `open_positions` are the bot's filled, unsettled positions (from
+    /// `KalshiBotOrders::replay`); a contract already held passes with
     /// `ALREADY_HELD` so a `run` loop never re-bids the same contract every
-    /// tick. `settled_positions` are its closed ones: a contract the exchange
+    /// tick, and a contract with a quote still working passes with
+    /// `QUOTE_RESTING`. `settled_positions` are its closed ones: a contract the exchange
     /// has already resolved passes with `CONTRACT_SETTLED` even if the report
     /// still advertises runway for it, which happens whenever the daemon
     /// snapshot the calibrator reads goes stale under a fresh report.
     /// Rows carry `event`, `ts_ms`, `mode:"paper"`, `live_eligible:false`,
     /// `ticker`, `action` ("bid"|"pass"), `reason_code`, `signal_trusted`, and
     /// a `track_record` snapshot of the report that produced them. Bid rows
-    /// additionally carry side, price, contracts, stake, fee, and the paper
-    /// fill assumption.
+    /// additionally carry side, price, contracts, stake, fee, and — since
+    /// ladder rung 6 — the order's opening lifecycle state: `order_state`
+    /// ("resting"), its TTL, and the fill model that will decide whether it
+    /// ever becomes a position. A bid is an ORDER, not a position; see
+    /// KalshiBotOrders.
+    ///
+    /// `exposure` is the book as it stands after this tick's lifecycle pass.
+    /// A bid is refused outright — never sized down — when it would push
+    /// outstanding exposure past `max_open_exposure_usd` or this run's
+    /// committed all-in past `session_budget_usd`, and the running totals
+    /// include the bids this same call has already made.
+    static QJsonArray decide(const QJsonObject& report,
+                             const QJsonArray& open_positions,
+                             const QJsonArray& settled_positions,
+                             qint64 now_ms,
+                             const Config& config,
+                             const Exposure& exposure);
+
+    /// The same decision against an empty book: nothing resting, nothing at
+    /// risk, no requote. (A defaulted argument cannot be used here — the
+    /// nested Exposure's member initializers are not yet parsed at this point
+    /// in the class.)
     static QJsonArray decide(const QJsonObject& report,
                              const QJsonArray& open_positions,
                              const QJsonArray& settled_positions,
                              qint64 now_ms,
                              const Config& config);
-
-    /// The bot's unsettled paper bids, replayed from its own decision ledger:
-    /// every `action=="bid"` row whose `position_id` has no settlement row.
-    static QJsonArray open_positions_from_ledger(const QJsonArray& decision_rows,
-                                                 const QJsonArray& settlement_rows);
 
     /// Flattens the terminal's two real settlement ledgers into
     /// `{ticker, market_result, settled_time, source}` rows. Rows without a
@@ -109,6 +162,11 @@ class KalshiBotDecision {
     /// position whose ticker has no settlement record produces NO row: it
     /// stays open until the exchange actually resolves it. There is no
     /// synthetic outcome, anywhere.
+    ///
+    /// `open_positions` are `KalshiBotOrders::replay()`'s position rows, whose
+    /// contracts/stake/fee are the FILLED quantities — an order that only ever
+    /// rested is not among them and settles into nothing, which is the honest
+    /// outcome of a quote the market never took.
     static QJsonArray settle_paper(const QJsonArray& open_positions,
                                    const QJsonArray& settlements,
                                    qint64 now_ms);

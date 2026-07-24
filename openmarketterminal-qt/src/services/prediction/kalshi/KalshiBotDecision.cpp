@@ -65,6 +65,15 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
                                      const QJsonArray& settled_positions,
                                      qint64 now_ms,
                                      const Config& config) {
+    return decide(report, open_positions, settled_positions, now_ms, config, Exposure{});
+}
+
+QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
+                                     const QJsonArray& open_positions,
+                                     const QJsonArray& settled_positions,
+                                     qint64 now_ms,
+                                     const Config& config,
+                                     const Exposure& exposure) {
     // --- the report itself must be trustworthy before any contract is read.
     const qint64 generated_ms =
         static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
@@ -105,6 +114,15 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
     QSet<QString> settled;
     for (const auto& value : settled_positions)
         settled.insert(value.toObject().value(QStringLiteral("ticker")).toString());
+    QSet<QString> resting;
+    for (const auto& value : exposure.resting)
+        resting.insert(value.toObject().value(QStringLiteral("ticker")).toString());
+
+    // Running totals: the caps bind across the tick, not just against the book
+    // this tick opened with. Five contracts at $2 each is $10 of new exposure
+    // whether it is bid in five ticks or one.
+    double at_risk_usd = exposure.at_risk_usd;
+    double session_opened_usd = exposure.session_opened_usd;
 
     QJsonArray rows;
     for (auto it = predictions.constBegin(); it != predictions.constEnd(); ++it) {
@@ -161,6 +179,14 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             continue;
         }
 
+        // A quote this tick's lifecycle pass chose to leave working still owns
+        // this contract: the bot replaces quotes, it never stacks them.
+        if (resting.contains(ticker)) {
+            row.insert(QStringLiteral("reason_code"), QString::fromLatin1(kQuoteResting));
+            rows.append(finish(row));
+            continue;
+        }
+
         // Paper pricing: calibrator.json carries only the mid, so the bid is a
         // limit at the mid, floored to the cent (never pay above the mid) on
         // whichever side the edge points. Live rungs price off the real book.
@@ -193,45 +219,78 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             continue;
         }
 
+        // Exposure gates, in the PR #44 currency: a resting remainder is money
+        // at risk, so a bid is REFUSED (never quietly sized down) when the
+        // book plus this bid would breach a ceiling.
+        const double all_in = round_cents(stake + fee);
+        const auto refuse_on_cap = [&](const char* reason_code, double used, double cap) {
+            row.insert(QStringLiteral("reason_code"), QString::fromLatin1(reason_code));
+            row.insert(QStringLiteral("price"), price);
+            row.insert(QStringLiteral("contracts"), contracts);
+            row.insert(QStringLiteral("all_in_usd"), all_in);
+            row.insert(QStringLiteral("exposure_used_usd"), used);
+            row.insert(QStringLiteral("exposure_cap_usd"), cap);
+            rows.append(finish(row));
+        };
+        if (at_risk_usd + all_in > config.max_open_exposure_usd + 1e-9) {
+            refuse_on_cap(kExposureCapBlocksBid, at_risk_usd, config.max_open_exposure_usd);
+            continue;
+        }
+        if (session_opened_usd + all_in > config.session_budget_usd + 1e-9) {
+            refuse_on_cap(kSessionBudgetBlocksBid, session_opened_usd, config.session_budget_usd);
+            continue;
+        }
+        // PR #44's shape exactly: the book contributes STAKE (its exposure
+        // rule), the new order contributes its all-in (its worst case).
+        at_risk_usd = round_cents(at_risk_usd + stake);
+        session_opened_usd = round_cents(session_opened_usd + all_in);
+
         row.insert(QStringLiteral("action"), QStringLiteral("bid"));
         // An untrusted signal does not stop the paper bid — it labels it, on
         // every single bid, so no paper record can be read as a validated one.
+        // A contract whose own quote this tick's TTL pass just pulled is the
+        // replace half of cancel/replace, and says so — except when the signal
+        // is untrusted, which outranks everything: rung 1's rule is that EVERY
+        // bid made on an unvalidated signal is labelled as one. A requote made
+        // under that label still carries `requote` and `replaces_position_id`,
+        // so the replace is never invisible either way.
+        const QString replaces = exposure.requoted.value(ticker).toString();
         row.insert(QStringLiteral("reason_code"),
-                   QString::fromLatin1(trusted ? kEdgeClearsThreshold : kSignalUntrusted));
+                   QString::fromLatin1(!trusted            ? kSignalUntrusted
+                                       : !replaces.isEmpty() ? kRequoted
+                                                             : kEdgeClearsThreshold));
+        if (!replaces.isEmpty()) {
+            row.insert(QStringLiteral("requote"), true);
+            row.insert(QStringLiteral("replaces_position_id"), replaces);
+        }
         row.insert(QStringLiteral("side"), yes_side ? QStringLiteral("YES") : QStringLiteral("NO"));
         row.insert(QStringLiteral("price"), price);
         row.insert(QStringLiteral("contracts"), contracts);
         row.insert(QStringLiteral("stake_usd"), stake);
         row.insert(QStringLiteral("fee_usd"), fee);
-        row.insert(QStringLiteral("all_in_usd"), round_cents(stake + fee));
+        row.insert(QStringLiteral("all_in_usd"), all_in);
         row.insert(QStringLiteral("max_stake_usd"), config.max_stake_usd);
         row.insert(QStringLiteral("max_all_in_usd"), config.max_all_in_usd);
         row.insert(QStringLiteral("position_id"), ticker + QStringLiteral("@") + QString::number(now_ms));
-        // Stated, not implied: no book was consulted, so the fill is an
-        // assumption of this paper rung and never evidence of a real fill.
-        row.insert(QStringLiteral("fill_assumption"),
-                   QStringLiteral("paper: limit at market mid, assumed filled at that price"));
+        // Ladder rung 6: this is an ORDER, and it starts life RESTING. It
+        // becomes a position only when something observable fills it, and it
+        // is pulled when its TTL runs out or its edge goes (KalshiBotOrders).
+        // Until then its remainder counts as exposure at the limit price.
+        row.insert(QStringLiteral("order_state"), QStringLiteral("resting"));
+        row.insert(QStringLiteral("limit_price"), price);
+        row.insert(QStringLiteral("filled_count"), 0);
+        row.insert(QStringLiteral("remaining_count"), contracts);
+        row.insert(QStringLiteral("ttl_ms"), static_cast<double>(config.quote_ttl_seconds) * 1000.0);
+        row.insert(QStringLiteral("expires_at_ms"),
+                   static_cast<double>(now_ms + qint64{config.quote_ttl_seconds} * 1000));
+        // Named for what it is: the book INCLUDING this order. A refusal row's
+        // `exposure_used_usd` is the book WITHOUT the bid it refused, and one
+        // number wearing both meanings would be unreadable.
+        row.insert(QStringLiteral("exposure_after_usd"), at_risk_usd);
+        row.insert(QStringLiteral("exposure_cap_usd"), config.max_open_exposure_usd);
         rows.append(finish(row));
     }
     return rows;
-}
-
-QJsonArray KalshiBotDecision::open_positions_from_ledger(const QJsonArray& decision_rows,
-                                                         const QJsonArray& settlement_rows) {
-    QSet<QString> settled;
-    for (const auto& value : settlement_rows) {
-        const QString id = value.toObject().value(QStringLiteral("position_id")).toString();
-        if (!id.isEmpty()) settled.insert(id);
-    }
-    QJsonArray open;
-    for (const auto& value : decision_rows) {
-        const QJsonObject row = value.toObject();
-        if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) continue;
-        const QString id = row.value(QStringLiteral("position_id")).toString();
-        if (id.isEmpty() || settled.contains(id)) continue;
-        open.append(row);
-    }
-    return open;
 }
 
 QJsonArray KalshiBotDecision::normalize_settlements(const QJsonArray& account_settlements,

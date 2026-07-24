@@ -147,6 +147,57 @@ class KalshiBotPanelPresentationTest final : public QObject {
         QVERIFY(line.contains("EDGE_CLEARS_THRESHOLD"));
     }
 
+    // Ladder rung 6 put the order lifecycle in the same ledger. A canceled
+    // quote rendered as a "PASS" would be a lie on the screen, and a bid that
+    // is still only a resting order must not read like a held position.
+    void a_resting_bid_says_it_is_resting() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject row = bid_row(now - 5'000, "KXBTCD-B118");
+        row.insert("order_state", "resting");
+        const auto view = present_kalshi_bot_panel(QJsonArray{row}, {}, {}, now);
+        QVERIFY(view.decisions.first().contains("BID"));
+        QVERIFY(view.decisions.first().contains("resting"));
+    }
+
+    void a_cancel_is_shown_as_a_cancel_and_never_as_a_pass() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject row = decision_row(now - 5'000, "KXBTCD-B118", "CANCELED_TTL");
+        row.insert("action", "cancel");
+        row.insert("side", "YES");
+        row.insert("limit_price", 0.42);
+        row.insert("contracts", 4);
+        const auto view = present_kalshi_bot_panel(QJsonArray{row}, {}, {}, now);
+        const QString line = view.decisions.first();
+        QVERIFY(line.contains("CANCEL"));
+        QVERIFY(!line.contains("PASS"));
+        QVERIFY(line.contains("YES $0.42 x4"));
+        QVERIFY(line.contains("CANCELED_TTL"));
+    }
+
+    void an_unconfirmed_cancel_says_the_money_is_still_at_risk() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject row = decision_row(now - 5'000, "KXBTCD-B118", "UNCONFIRMED_CANCEL");
+        row.insert("action", "cancel");
+        row.insert("contracts", 4);
+        row.insert("limit_price", 0.42);
+        row.insert("still_at_risk_usd", 1.68);
+        const auto view = present_kalshi_bot_panel(QJsonArray{row}, {}, {}, now);
+        QVERIFY(view.decisions.first().contains("STILL AT RISK $1.68"));
+    }
+
+    void a_fill_is_shown_as_a_fill() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject row = decision_row(now - 5'000, "KXBTCD-B118", "FILLED_AT_LIMIT");
+        row.insert("action", "fill");
+        row.insert("side", "YES");
+        row.insert("price", 0.42);
+        row.insert("contracts", 4);
+        const auto view = present_kalshi_bot_panel(QJsonArray{row}, {}, {}, now);
+        QVERIFY(view.decisions.first().contains("FILL"));
+        QVERIFY(!view.decisions.first().contains("PASS"));
+        QVERIFY(view.decisions.first().contains("YES $0.42 x4"));
+    }
+
     void passes_are_shown_and_carry_no_invented_numbers() {
         const qint64 now = 4'500'000'000;
         const auto view = present_kalshi_bot_panel(
