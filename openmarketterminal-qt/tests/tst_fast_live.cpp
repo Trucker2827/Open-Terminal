@@ -719,11 +719,9 @@ class TstFastLive : public QObject {
         clear_keys();
     }
 
-    // ── FALLBACK (Task 6): the broker reports the order NOT-yet-filled (no avg
-    // price). Reconciliation must fall back to the resolved/limit price (200) for
-    // the P&L ledger, AND the reported status is the broker's honest "open" (not
-    // the optimistic "filled" the old code hardcoded). ──
-    void fast_submit_falls_back_to_resolved_when_no_fill_price() {
+    // ── UNFILLED: broker acceptance is not execution. An open order with zero
+    // filled_qty must report "open" and leave the live ledger untouched. ──
+    void fast_submit_open_order_does_not_change_live_ledger() {
         FakeBroker::reset_derisk_counters();
         const QString acct = arm_fast_live();
         trading::BrokerOrderInfo pending;
@@ -740,12 +738,35 @@ class TstFastLive : public QObject {
         // Honest status: broker says "open" (not filled yet) → must NOT say "filled".
         QCOMPARE(res.data.toObject().value("status").toString(), QStringLiteral("open"));
         auto open = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
+        QVERIFY(open.is_ok());
+        QVERIFY2(!open.value().has_value(),
+                 "an accepted/open order with zero broker-confirmed fill must not create exposure");
+        clear_keys();
+    }
+
+    // ── PARTIAL: account only the quantity the broker confirms, never the
+    // submitted quantity. The resolved price remains a valuation fallback when
+    // the adapter has not yet supplied avg_price. ──
+    void fast_submit_partial_records_confirmed_quantity_only() {
+        FakeBroker::reset_derisk_counters();
+        const QString acct = arm_fast_live();
+        trading::BrokerOrderInfo partial;
+        partial.order_id = "FAKE-1";
+        partial.symbol = "AAPL";
+        partial.side = "BUY";
+        partial.quantity = 5;
+        partial.filled_qty = 2;
+        partial.avg_price = 0;
+        partial.status = "partially_filled";
+        FakeBroker::reconcile_order = partial;
+        auto res = rt_.call_tool("fast_submit_order", submit_args(5));
+        QVERIFY2(res.success, qPrintable("partial fast_submit_order must succeed: " + res.error));
+        QCOMPARE(res.data.toObject().value("status").toString(), QStringLiteral("partially_filled"));
+        auto open = LivePnlRepository::instance().get_open(acct, "equity", "AAPL");
         QVERIFY2(open.is_ok() && open.value().has_value(),
-                 "a live_positions row must exist even when broker has no fill price");
-        QVERIFY2(qFuzzyCompare(open.value()->avg_cost, 200.0),
-                 qPrintable(QStringLiteral("avg_cost must fall back to the resolved 200 when the "
-                                           "broker has no fill price; got ")
-                            + QString::number(open.value()->avg_cost)));
+                 "confirmed partial fill must create live exposure");
+        QCOMPARE(open.value()->qty, 2.0);
+        QCOMPARE(open.value()->avg_cost, 200.0);
         clear_keys();
     }
 

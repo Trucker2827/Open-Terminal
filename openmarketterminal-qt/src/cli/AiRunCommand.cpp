@@ -105,7 +105,12 @@ int ai_usage() {
                  "[--market crypto|equity|prediction] [--interval-sec N] [--max-iters M] "
                  "[--duration-sec D] [--symbols A,B,C] [--no-floor] "
                  "[--max-aggregate-qty N] [--max-position-qty N] [--max-notional-per-order N]\n"
-                 "  --market is REQUIRED for the 'claude' strategy (edge-scoped direction).\n");
+                 "  --market is REQUIRED for the 'claude' strategy (edge-scoped direction).\n"
+                 "  --mode live additionally REQUIRES the floor (no --no-floor), a bounded "
+                 "session (--max-iters or --duration-sec), a positive "
+                 "--max-notional-per-order, and a positive --max-position-qty (enforced "
+                 "against the LIVE position ledger); --max-aggregate-qty is REJECTED in "
+                 "live mode (cross-handler aggregate is paper-only, no live analog)\n");
     return 2;
 }
 
@@ -748,14 +753,10 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
         return 2;
     }
 
-    // Paper-only: the loop drives ONLY the gated paper substrate. Refuse live.
-    if (mode == QLatin1String("live")) {
-        std::fprintf(stderr, "live strategy loop not supported (paper-first)\n");
-        return 2;
-    }
-    if (mode != QLatin1String("paper")) {
-        std::fprintf(stderr, "error: unknown --mode '%s' (only 'paper' is supported)\n",
-                     qUtf8Printable(mode));
+    // Validate the run mode up front (no DB needed). The ARMED gate for live runs
+    // after the DB is up (below) so it can read real arm state.
+    if (mode != QLatin1String("paper") && mode != QLatin1String("live")) {
+        std::fprintf(stderr, "error: unknown --mode '%s' (paper|live)\n", qUtf8Printable(mode));
         return 2;
     }
 
@@ -794,6 +795,50 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     }
     CliToolCaller caller(opts.headless, &hr, client ? &*client : nullptr);
 
+    // Armed live gate (runs AFTER the DB is up so it reads REAL arm state).
+    // Headless: the local DB (opened above) holds cli.* arm flags -- fail fast with a
+    // clear refusal if disarmed. Non-headless: the CLI has NO local DB; arm state lives
+    // in the GUI's DB and is enforced by submit_order over the bridge (the sole
+    // authority), so the CLI proceeds and submit_order denies if the GUI is disarmed.
+    // Either way submit_order re-checks every gate -- the CLI gate is fail-fast only and
+    // can only ever OVER-refuse (a blind read is "not armed").
+    QString submit_mode = QStringLiteral("paper");
+    if (mode == QLatin1String("live")) {
+        if (opts.headless && !(mcp::cli_trading_allowed() && mcp::cli_live_armed())) {
+            std::fprintf(stderr, "live trading not armed -- arm in GUI Settings (paper-first)\n");
+            return 2;
+        }
+
+        // Live containment: an armed live loop must keep the strategy-level safety
+        // rails ON. These are the guards enforceable at the CLI today (the floor and
+        // the per-order notional cap need no live position state; the session must be
+        // bounded). The per-handler position cap is enforced against live positions
+        // separately; the cross-handler AGGREGATE cap has no live analog (it reads the
+        // paper ledger) so it is refused rather than left silently ineffective.
+        QStringList live_missing;
+        if (!require_floor)
+            live_missing << QStringLiteral("the deterministic floor (do not pass --no-floor)");
+        if (max_iters <= 0 && duration_sec <= 0)
+            live_missing << QStringLiteral("a bounded session (--max-iters or --duration-sec)");
+        if (max_notional_per_order <= 0.0)
+            live_missing << QStringLiteral("a positive --max-notional-per-order");
+        if (max_position_qty <= 0.0)
+            live_missing << QStringLiteral("a positive --max-position-qty");
+        if (!live_missing.isEmpty()) {
+            std::fprintf(stderr, "live mode requires: %s\n",
+                         qUtf8Printable(live_missing.join(QStringLiteral("; "))));
+            return 2;
+        }
+        if (max_aggregate_qty > 0.0) {
+            std::fprintf(stderr,
+                "--max-aggregate-qty has no live analog (cross-handler aggregate is paper-only); "
+                "not supported in live mode\n");
+            return 2;
+        }
+
+        submit_mode = QStringLiteral("live");
+    }
+
     // SIGINT → clean stop after the current tick.
     g_stop.store(false);
     std::signal(SIGINT, on_sigint);
@@ -819,10 +864,12 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     cfg.max_aggregate_position_qty = max_aggregate_qty;
     cfg.max_position_qty = max_position_qty;
     cfg.max_notional_per_order = max_notional_per_order;
+    cfg.submit_mode = submit_mode;
 
-    std::printf("[strategy] running '%s' mode=paper market=%s interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
-                qUtf8Printable(strategy->name()), market.isEmpty() ? "any" : qUtf8Printable(market),
-                interval_sec, max_iters, duration_sec,
+    std::printf("[strategy] running '%s' mode=%s armed=%s market=%s interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
+                qUtf8Printable(strategy->name()), qUtf8Printable(submit_mode),
+                submit_mode == QLatin1String("live") ? "true" : "false",
+                market.isEmpty() ? "any" : qUtf8Printable(market), interval_sec, max_iters, duration_sec,
                 qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off", max_aggregate_qty,
                 max_position_qty, max_notional_per_order);
     std::fflush(stdout);
@@ -834,9 +881,9 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     // floor_skipped explains a proposed>0 / filled=0 run when the deterministic
     // floor is ON (default) and the honest edge journal endorses nothing.
     std::printf("summary: ticks=%d proposed=%d prepared=%d filled=%d rejected=%d floor_skipped=%d "
-                "errors=%d halted=%s\n",
+                "errors=%d live_submitted=%d halted=%s\n",
                 s.ticks, s.proposed, s.prepared, s.filled, s.rejected, s.floor_skipped, s.errors,
-                s.halted_by_kill_switch ? "true" : "false");
+                s.live_submitted, s.halted_by_kill_switch ? "true" : "false");
     std::fflush(stdout);
 
     // Restore default SIGINT so a follow-up Ctrl-C behaves normally.

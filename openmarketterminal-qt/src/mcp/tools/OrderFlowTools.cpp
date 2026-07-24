@@ -1517,18 +1517,14 @@ std::vector<ToolDef> get_order_flow_tools() {
                 OrderDraftRepository::instance().update_status(
                     draft_id, resp.success ? "submitted" : "submit_failed");
 
-                // Record the fill in the LIVE realized-P&L ledger, best-effort
-                // reconciled to the broker's ACTUAL fill price (the place_order
-                // response carries none). reconcile_and_record queries the broker
-                // once for resp.order_id and records at the broker's avg fill price
-                // when available (>0), else at the resolved price (the floor).
-                // Venue is "equity"; instrument is the symbol. BUY opens/adds,
-                // SELL closes/reduces.
+                // Reconcile once against broker execution truth. The ledger changes
+                // only for broker-confirmed filled_qty > 0; submission acceptance,
+                // open orders, and zero-fill partials never change exposure.
+                mcp::tools::ReconciledFill reconciled;  // default: empty status, 0 price/qty, not reconciled
                 if (resp.success) {
-                    mcp::tools::reconcile_and_record(acct, QStringLiteral("equity"),
-                                                     b.order.symbol, b.order.side,
-                                                     b.order.quantity, b.resolved_price,
-                                                     resp.order_id);
+                    reconciled = mcp::tools::reconcile_and_record(acct, QStringLiteral("equity"),
+                                     b.order.symbol, b.order.side, b.order.quantity,
+                                     b.resolved_price, resp.order_id);
                 }
 
                 const QString decision = resp.success ? QStringLiteral("filled")
@@ -1542,11 +1538,14 @@ std::vector<ToolDef> get_order_flow_tools() {
                 audit_submit(acct, QStringLiteral("live"), intent, decision, msg, rv);
                 LOG_WARN(TAG, "submit_order LIVE " + decision + " draft " + draft_id);
                 return ToolResult::ok_data(QJsonObject{
-                    {"status", decision},
-                    {"order_id", resp.order_id},
-                    {"account", acct},
-                    {"mode", "live"},
-                    {"message", msg},
+                    {"status", decision},               // UNCHANGED — shared consumers
+                    {"order_id", resp.order_id}, {"account", acct}, {"mode", "live"}, {"message", msg},
+                    // Additive HONEST broker truth for AI-loop consumers (empty/0 when unknown):
+                    {"broker_status", reconciled.status},     // ""|accepted|open|partially_filled|filled|...
+                    {"fill_price", reconciled.price},         // 0 when no quantity was recorded
+                    {"filled_qty", reconciled.qty},           // confirmed qty only; never submitted qty
+                    {"reconciled", reconciled.reconciled},    // true iff broker's real avg price was used
+                    {"ledger_recorded", reconciled.recorded}, // true iff confirmed fill changed live ledger
                 });
             }
 

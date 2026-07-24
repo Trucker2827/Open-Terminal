@@ -12,6 +12,7 @@
 
 #include "core/headless/HeadlessRuntime.h"
 #include "mcp/McpTypes.h"
+#include "mcp/tools/SettingsGate.h"
 #include "services/ai_decision/DecisionContext.h"
 #include "services/ai_ledger/AiLedger.h"
 #include "services/ai_strategy/LlmStrategy.h"
@@ -20,6 +21,8 @@
 #include "services/ai_strategy/StrategyRunner.h"
 #include "services/ai_strategy/TypedAction.h"
 #include "storage/repositories/AiFillRepository.h"
+#include "storage/repositories/LivePnlRepository.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 
 using namespace openmarketterminal;
@@ -90,6 +93,38 @@ static ToolResult filled() {
 static ToolResult submit_rejected(const QString& reason) {
     return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason}});
 }
+// LIVE mock-broker shapes — mirror Part 1's additive OrderFlowTools fields
+// (status stays "filled" == broker SUBMISSION success; broker_status carries
+// the real execution truth).
+static ToolResult live_filled(double price, double qty) {
+    return ToolResult::ok_data(QJsonObject{{"status", "filled"}, {"broker_status", "filled"},
+                                            {"fill_price", price}, {"filled_qty", qty},
+                                            {"reconciled", true}});
+}
+static ToolResult live_open() {
+    return ToolResult::ok_data(QJsonObject{{"status", "filled"}, {"broker_status", "open"}});
+}
+static ToolResult live_partial() {
+    return ToolResult::ok_data(QJsonObject{{"status", "filled"}, {"broker_status", "partially_filled"}});
+}
+static ToolResult live_positions(std::initializer_list<QJsonObject> rows = {}) {
+    QJsonArray result;
+    for (const auto& row : rows)
+        result.append(row);
+    return ToolResult::ok_data(result);
+}
+static ToolResult live_orders(std::initializer_list<QJsonObject> rows = {}) {
+    QJsonArray result;
+    for (const auto& row : rows)
+        result.append(row);
+    return ToolResult::ok_data(result);
+}
+static void enqueue_live_exposure(FakeToolCaller& tc,
+                                  std::initializer_list<QJsonObject> positions = {},
+                                  std::initializer_list<QJsonObject> orders = {}) {
+    tc.enqueue("live_get_positions", live_positions(positions));
+    tc.enqueue("live_get_orders", live_orders(orders));
+}
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +172,70 @@ class TstStrategyLoop : public QObject {
         }
         QVERIFY2(found_submit, "expected a submit_order call");
         QCOMPARE(s.fills.size(), 1); // on_fill invoked once.
+    }
+
+    // Track 3 (AI arming path): a default-constructed RunConfig (submit_mode
+    // left at its default) must still submit mode=="paper" — i.e. adding the
+    // field did not change today's byte-identical paper behavior. Neither
+    // cli.live_armed nor cli.trading_allowed is touched anywhere in this test.
+    void default_submit_mode_is_paper() {
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("D1"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        // cfg.submit_mode intentionally left untouched -- exercising the default.
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);
+        bool found_submit = false;
+        for (const auto& c : tc.calls) {
+            if (c.first == "submit_order") {
+                QCOMPARE(c.second.value("mode").toString(), QStringLiteral("paper"));
+                found_submit = true;
+            }
+        }
+        QVERIFY2(found_submit, "expected a submit_order call");
+    }
+
+    // Track 3 core wiring proof: RunConfig.submit_mode=="live" threads straight
+    // through to the mocked submit_order call, with NO cli.live_armed/
+    // cli.trading_allowed write anywhere and NO real broker in this test binary
+    // (FakeToolCaller only). Proves the runner passes whatever mode the caller
+    // set; submit_order itself remains the sole live-gate authority in prod.
+    // Uses a live_filled() mock (broker_status=="filled") rather than the bare
+    // paper filled() shape -- per #39-a, live mode trusts broker_status, not
+    // status=="filled" alone (see the lifecycle_live_* tests below).
+    void submit_mode_live_threads_to_submit_call() {
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("D1"));
+        tc.enqueue("submit_order", live_filled(10.0, 1.0));
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "AAA"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live"); // caller-set only; no arm flag touched.
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);
+        bool found_submit = false;
+        for (const auto& c : tc.calls) {
+            if (c.first == "submit_order") {
+                QCOMPARE(c.second.value("mode").toString(), QStringLiteral("live"));
+                found_submit = true;
+            }
+        }
+        QVERIFY2(found_submit, "expected a submit_order call carrying mode==live");
     }
 
     // A NON-halting submit rejection (e.g. a risk-floor reject) must NOT fire
@@ -1054,6 +1153,418 @@ class TstStrategyLoop : public QObject {
         };
         RunSummary sum = runner.run(s, tc, RunConfig{.interval_sec = 0, .max_iters = 1});  // no agg cap
         QCOMPARE(sum.filled, 1);
+    }
+
+    // Track 3: the kill switch dominates submit_mode. Even with submit_mode==
+    // "live" set on the config (never armed here -- cli.live_armed/
+    // cli.trading_allowed are NEVER written by this test), a REAL engaged
+    // cli.kill_switch halts the loop on tick 1 (StrategyRunner's top-of-tick
+    // check), before get_quote/prepare_order/submit_order are ever called.
+    void kill_switch_halts_before_any_submit_even_when_mode_live() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.kill_switch", "true", "cli").is_ok());
+
+        FakeToolCaller tc;  // scripted but must NEVER be reached
+        tc.enqueue("prepare_order", prepared("DKILL"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "KILL-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        RunConfig cfg{.interval_sec = 0, .max_iters = 5, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");  // even an (unarmed) "live" mode must not matter.
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        // Restore immediately so later slots (and re-runs) see a clean switch.
+        QVERIFY(SettingsRepository::instance().set("cli.kill_switch", "false", "cli").is_ok());
+
+        QVERIFY(sum.halted_by_kill_switch);
+        QCOMPARE(sum.ticks, 1);  // halted at the very top of tick 1 -- no spin.
+        QCOMPARE(tc.count("prepare_order"), 0);
+        QCOMPARE(tc.count("submit_order"), 0);
+    }
+
+    // ── #39-a mock-broker lifecycle: honest live fill, no phantom ai_fill ──
+    //
+    // Five cases exercising the mode-aware fill block. All LIVE cases use
+    // submit_order responses shaped like Part 1's additive OrderFlowTools
+    // fields (status=="filled" is broker SUBMISSION success only;
+    // broker_status carries the real execution truth). In every LIVE case
+    // the ai_fill ledger must stay empty -- the live realized-P&L ledger is
+    // recorded by submit_order itself (reconcile_and_record), never by the
+    // runner.
+
+    // (1) PAPER regression: unchanged behavior -- status=="filled" books a
+    // real ai_fill row, byte-identical to today.
+    void lifecycle_paper_filled_books_ai_fill_row() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DLIFEP"));
+        tc.enqueue("submit_order", filled());
+
+        FakeStrategy s;  // name() == "fake"
+        s.intents_ = {TradeIntent{{"symbol", "LIFEP-USD"}, {"side", "buy"}, {"quantity", 2.0}, {"limit_price", 50.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        // cfg.submit_mode left at default ("paper").
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);
+        QCOMPARE(sum.live_submitted, 0);
+        auto rows = AiFillRepository::instance().list("fake", "LIFEP-USD", 10);
+        QVERIFY(rows.is_ok());
+        QCOMPARE(rows.value().size(), 1);  // paper still books.
+    }
+
+    // (2) LIVE filled: broker_status=="filled" is a real execution -- counted
+    // as filled, on_fill fires, but NO ai_fill row is ever created (the live
+    // ledger was already recorded by submit_order via reconcile_and_record).
+    void lifecycle_live_filled_counts_no_phantom_ai_fill() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DLIFEL"));
+        tc.enqueue("submit_order", live_filled(100.0, 5.0));
+
+        FakeStrategy s;  // name() == "fake"
+        s.intents_ = {TradeIntent{{"symbol", "LIFEL-USD"}, {"side", "buy"}, {"quantity", 5.0}, {"limit_price", 100.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 1);
+        QCOMPARE(sum.rejected, 0);
+        QCOMPARE(sum.live_submitted, 0);
+        QCOMPARE(s.fills.size(), 1);  // on_fill DID fire -- it's a real execution.
+
+        auto rows = AiFillRepository::instance().list("fake", "LIFEL-USD", 10);
+        QVERIFY(rows.is_ok());
+        QVERIFY2(rows.value().isEmpty(),
+                  "live-filled must NOT book a phantom paper ai_fill row -- the live "
+                  "ledger is submit_order's job");
+    }
+
+    // (3) LIVE open: broker accepted the order but has not executed it yet.
+    // Submission-success ("status":"filled") must NOT be mistaken for an
+    // execution -- not filled, not rejected, counted separately, no booking.
+    void lifecycle_live_open_not_filled_not_booked() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DLIFEO"));
+        tc.enqueue("submit_order", live_open());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "LIFEO-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(sum.rejected, 0);
+        QCOMPARE(sum.live_submitted, 1);
+        QVERIFY(s.fills.isEmpty());  // on_fill must not fire on a non-execution.
+
+        auto rows = AiFillRepository::instance().list("fake", "LIFEO-USD", 10);
+        QVERIFY(rows.is_ok());
+        QVERIFY(rows.value().isEmpty());
+    }
+
+    // (4) LIVE partially_filled: same treatment as open for booking purposes
+    // (a known simplification -- partial fills are not split-booked here).
+    void lifecycle_live_partial_not_filled_not_booked() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DLIFEPA"));
+        tc.enqueue("submit_order", live_partial());
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "LIFEPA-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(sum.rejected, 0);
+        QCOMPARE(sum.live_submitted, 1);
+        QVERIFY(s.fills.isEmpty());
+
+        auto rows = AiFillRepository::instance().list("fake", "LIFEPA-USD", 10);
+        QVERIFY(rows.is_ok());
+        QVERIFY(rows.value().isEmpty());
+    }
+
+    // (5) LIVE rejected: unchanged -- a real broker rejection is still
+    // counted as rejected, no fill, no booking.
+    void lifecycle_live_rejected_counts_rejected() {
+        ensure_migrated_db();
+
+        FakeToolCaller tc;
+        tc.enqueue("prepare_order", prepared("DLIFER"));
+        tc.enqueue("submit_order", submit_rejected("broker denied"));
+
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol", "LIFER-USD"}, {"side", "buy"}, {"quantity", 1.0}, {"limit_price", 10.0}}};
+
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(sum.filled, 0);
+        QCOMPARE(sum.rejected, 1);
+        QCOMPARE(sum.live_submitted, 0);
+        QVERIFY(s.fills.isEmpty());
+
+        auto rows = AiFillRepository::instance().list("fake", "LIFER-USD", 10);
+        QVERIFY(rows.is_ok());
+        QVERIFY(rows.value().isEmpty());
+    }
+
+    // ── Live position cap sources authoritative broker state ──────────────
+    //
+    // The local live P&L ledger is deliberately irrelevant to this gate: it can
+    // lag delayed fills. Broker positions and working orders are authoritative.
+    // Proves three things against a broker-reported +8 position:
+    //   (a) a LIVE run whose growing BUY would push the live position past the
+    //       cap is GATE-REJECTED with rule "position" -- the cap saw the REAL
+    //       live position, not the (empty) paper ai_fill ledger.
+    //   (b) a LIVE reducing SELL against the same live position passes
+    //       (increase-only rule) -- the source isn't just "always reject".
+    //   (c) a PAPER run against the identical symbol, with NO ai_fill seeded,
+    //       sees FLAT (not the live-seeded 8) and the growing buy PASSES --
+    //       proving the position source actually switches by mode rather than
+    //       always reading the live ledger.
+    void live_position_cap_reads_broker_and_paper_stays_on_ai_fill() {
+        ensure_migrated_db();
+
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-lpos", "cli").is_ok());
+        QCOMPARE(mcp::cli_allowed_account(), QStringLiteral("acct-lpos"));
+
+        // (a) growing buy: 8 + 5 = 13 > cap 10 and > existing 8 -> gate-rejected "position".
+        {
+            FakeToolCaller tc;  // no prepare/submit should be reached
+            enqueue_live_exposure(tc, {{{"symbol","LPOS-USD"},{"quantity",8.0},{"side","long"}}});
+            FakeStrategy s;
+            s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+            StrategyRunner runner;
+            runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+            RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+            cfg.require_cost_gate = false;
+            cfg.require_freshness_gate = false;
+            cfg.submit_mode = QStringLiteral("live");
+            cfg.max_position_qty = 10.0;
+            RunSummary sum = runner.run(s, tc, cfg);
+
+            QCOMPARE(sum.filled, 0);
+            QCOMPARE(tc.count("submit_order"), 0);
+            QCOMPARE(sum.gate_rejections.size(), 1);
+            QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+        }
+
+        // (b) reducing sell: 8 - 5 = 3, |3| <= |8| -> passes the cap.
+        {
+            FakeToolCaller tc;
+            enqueue_live_exposure(tc, {{{"symbol","LPOS-USD"},{"quantity",8.0},{"side","long"}}});
+            tc.enqueue("prepare_order", prepared("DLPOSR"));
+            tc.enqueue("submit_order", live_filled(100.0, 5.0));
+            FakeStrategy s;
+            s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","sell"},{"quantity",5.0},{"limit_price",100.0}}};
+            StrategyRunner runner;
+            runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+            RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+            cfg.require_cost_gate = false;
+            cfg.require_freshness_gate = false;
+            cfg.submit_mode = QStringLiteral("live");
+            cfg.max_position_qty = 10.0;
+            RunSummary sum = runner.run(s, tc, cfg);
+
+            QCOMPARE(sum.gate_rejections.size(), 0);
+            QCOMPARE(sum.filled, 1);
+        }
+
+        // (c) PAPER, same symbol, no ai_fill seeded -> flat -> growing buy passes.
+        {
+            FakeToolCaller tc;
+            tc.enqueue("prepare_order", prepared("DLPOSP"));
+            tc.enqueue("submit_order", filled());
+            FakeStrategy s;
+            s.intents_ = {TradeIntent{{"symbol","LPOS-USD"},{"side","buy"},{"quantity",5.0},{"limit_price",100.0}}};
+            StrategyRunner runner;
+            runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+            RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+            cfg.require_cost_gate = false;
+            cfg.require_freshness_gate = false;
+            // cfg.submit_mode left default ("paper").
+            cfg.max_position_qty = 10.0;
+            RunSummary sum = runner.run(s, tc, cfg);
+
+            QCOMPARE(sum.gate_rejections.size(), 0);
+            QCOMPARE(sum.filled, 1);
+        }
+
+        // Reset immediately so later slots (and re-runs) see a clean default.
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    // Regression for the reported cap-bypass interaction: a working SELL may
+    // cancel, so it cannot be treated as a guaranteed hedge for a new BUY.
+    // With an actual long 8 and cap 10, an unfilled sell 8 does not create room
+    // for a buy 10; worst-case long exposure would be 18.
+    void live_position_cap_ignores_opposite_working_order_as_hedge() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-opposite", "cli").is_ok());
+
+        FakeToolCaller tc;
+        enqueue_live_exposure(
+            tc,
+            {{{"symbol","RACE-USD"},{"quantity",8.0},{"side","long"}}},
+            {{{"symbol","RACE-USD"},{"side","sell"},{"quantity",8.0},
+              {"filled_qty",0.0},{"status","open"}}});
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","RACE-USD"},{"side","buy"},
+                                  {"quantity",10.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    // Multiple intents in one model response must share reservations. Both
+    // orders individually fit a cap of 10, but two accepted BUY 6 orders do not.
+    void live_position_cap_reserves_same_tick_submissions() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-batch", "cli").is_ok());
+
+        FakeToolCaller tc;
+        enqueue_live_exposure(tc);
+        tc.enqueue("prepare_order", prepared("DBATCH1"));
+        tc.enqueue("submit_order", live_open());
+        FakeStrategy s;
+        s.intents_ = {
+            TradeIntent{{"symbol","BATCH-USD"},{"side","buy"},{"quantity",6.0},{"limit_price",100.0}},
+            TradeIntent{{"symbol","BATCH-USD"},{"side","buy"},{"quantity",6.0},{"limit_price",100.0}}
+        };
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 1);
+        QCOMPARE(sum.live_submitted, 1);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    void live_position_cap_fails_closed_when_broker_state_unavailable() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-down", "cli").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("live_get_positions", ToolResult::fail("broker timeout"));
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","DOWN-USD"},{"side","buy"},
+                                  {"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position-source"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    void live_position_cap_fails_closed_when_broker_orders_are_unavailable() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "acct-orders-down", "cli").is_ok());
+        FakeToolCaller tc;
+        tc.enqueue("live_get_positions", live_positions());
+        tc.enqueue("live_get_orders", ToolResult::fail("broker orders timeout"));
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","ORDERS-DOWN-USD"},{"side","buy"},
+                                  {"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position-source"));
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+    }
+
+    void live_position_cap_fails_closed_without_live_account() {
+        ensure_migrated_db();
+        QVERIFY(SettingsRepository::instance().set("cli.allowed_account", "", "cli").is_ok());
+        FakeToolCaller tc;
+        FakeStrategy s;
+        s.intents_ = {TradeIntent{{"symbol","NO-ACCOUNT-USD"},{"side","buy"},
+                                  {"quantity",1.0},{"limit_price",100.0}}};
+        StrategyRunner runner;
+        runner.assess_fn = [](const QString&) { return ai_decision::DecisionPacket{}; };
+        RunConfig cfg{.interval_sec = 0, .max_iters = 1, .require_floor = false};
+        cfg.require_cost_gate = false;
+        cfg.require_freshness_gate = false;
+        cfg.submit_mode = QStringLiteral("live");
+        cfg.max_position_qty = 10.0;
+        const RunSummary sum = runner.run(s, tc, cfg);
+
+        QCOMPARE(tc.count("live_get_positions"), 0);
+        QCOMPARE(tc.count("live_get_orders"), 0);
+        QCOMPARE(tc.count("submit_order"), 0);
+        QCOMPARE(sum.gate_rejections.size(), 1);
+        QCOMPARE(sum.gate_rejections.at(0).rule, QStringLiteral("position-source"));
     }
 };
 

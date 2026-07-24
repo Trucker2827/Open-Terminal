@@ -30,6 +30,10 @@ struct RunConfig {
     bool require_cost_gate = true;
     bool require_freshness_gate = true;
     bool require_floor = true;  ///< ON: skip symbols the honest edge system doesn't endorse.
+
+    QString submit_mode = QStringLiteral("paper");  ///< "paper" (default) | "live". Live is set
+                                                    ///< ONLY by the armed CLI path; submit_order
+                                                    ///< re-checks every live gate as the authority.
 };
 
 /// Tally of what one run did. halted_by_kill_switch reflects EITHER the
@@ -50,6 +54,9 @@ struct RunSummary {
     int prepared = 0;
     int filled = 0;
     int rejected = 0;
+    int live_submitted = 0;  ///< LIVE only: broker submission succeeded but is not fully
+                              ///< executed (open/partial/accepted/unknown). Confirmed partial
+                              ///< quantity may already be present in the live audit ledger.
     int errors = 0;
     bool halted_by_kill_switch = false;
     QVector<GateRejection> gate_rejections;
