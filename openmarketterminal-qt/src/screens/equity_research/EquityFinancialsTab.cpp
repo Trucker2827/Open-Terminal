@@ -176,6 +176,8 @@ void EquityFinancialsTab::set_symbol(const QString& symbol) {
         return;
     current_symbol_ = symbol;
     loaded_ = false;
+    if (source_label_)
+        source_label_->clear(); // previous symbol's source must not linger
     loading_overlay_->show_loading(tr("LOADING FINANCIALS…"));
     services::equity::EquityResearchService::instance().fetch_financials(symbol);
 }

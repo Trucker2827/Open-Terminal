@@ -81,6 +81,11 @@ class EquityFinancialsTab : public QWidget {
     QPushButton* btn_cashflow_ = nullptr;
     QPushButton* btn_export_csv_ = nullptr;
 
+    // Data-source label ("Source: SEC EDGAR (XBRL)" / "Source: Yahoo
+    // (yfinance)"); empty until financials arrive.
+    QLabel* source_label_ = nullptr;
+    void update_source_label(const QString& source);
+
     QStackedWidget* stack_ = nullptr;
 
     // ── Income statement widgets ───────────────────────────────────────────────
