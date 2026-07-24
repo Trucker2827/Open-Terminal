@@ -1209,11 +1209,14 @@ void KalshiScreen::build_ui() {
     auto* advisor_layout = new QVBoxLayout(advisor_page);
     advisor_layout->setContentsMargins(10, 10, 10, 10);
     advisor_layout->setSpacing(8);
-    auto* advisor_title = new QLabel(QStringLiteral("CODEX ADVISOR & CANARY · READ-ONLY CONTROL PLANE"), advisor_page);
+    auto* advisor_title = new QLabel(QStringLiteral(
+        "CODEX ADVISOR & CANARY · BLIND DUEL PROTOCOL · READ-ONLY CONTROL PLANE"), advisor_page);
     advisor_title->setStyleSheet(QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
     advisor_layout->addWidget(advisor_title);
     auto* advisor_note = new QLabel(QStringLiteral(
-        "This panel displays authoritative persisted supervisor state. It cannot enable trading, edit safety state, or submit orders."), advisor_page);
+        "This panel displays authoritative persisted supervisor state for the blind forecasting "
+        "duel (the advisor protocol) — a separate system from the BOT tab, which is the current "
+        "Kalshi automation path. It cannot enable trading, edit safety state, or submit orders."), advisor_page);
     advisor_note->setWordWrap(true);
     advisor_note->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
     advisor_layout->addWidget(advisor_note);
@@ -1227,6 +1230,18 @@ void KalshiScreen::build_ui() {
         badges->addWidget(badge, 1);
     }
     advisor_layout->addLayout(badges);
+    // The retired state: hidden while any advisor file is fresh, so a loop that
+    // restarts one day renders exactly as it does today.
+    advisor_retired_banner_ = new QLabel(advisor_page);
+    advisor_retired_banner_->setWordWrap(true);
+    advisor_retired_banner_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    advisor_retired_banner_->setVisible(false);
+    advisor_layout->addWidget(advisor_retired_banner_);
+    advisor_duel_record_ = new QLabel(advisor_page);
+    advisor_duel_record_->setWordWrap(true);
+    advisor_duel_record_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    advisor_duel_record_->setVisible(false);
+    advisor_layout->addWidget(advisor_duel_record_);
     auto* arena_strip = new QHBoxLayout;
     arena_context_status_ = new QLabel(
         QStringLiteral("ARENA OFFLINE · no arena-report.json — is the arena loop running?"),
@@ -3860,8 +3875,38 @@ void KalshiScreen::refresh_advisor_canary_status() {
     const QJsonObject safety = read_json_object(root + QStringLiteral("advisor_safety_state.json"));
     const QJsonObject canary = read_json_object(root + QStringLiteral("advisor_canary_config.json"));
     const QJsonObject latest = read_last_jsonl_object(root + QStringLiteral("advisor_opportunities.jsonl"));
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const AdvisorCanaryView view = present_advisor_canary(loop, qualification, promotion, safety,
-        canary, latest, latest_legacy_live_status_, QDateTime::currentMSecsSinceEpoch());
+        canary, latest, latest_legacy_live_status_, now);
+    // Retirement is judged from the advisor files alone — latest_legacy_live_status_
+    // is a live poll and stays out of it, so a concluded duel never hides an arm.
+    const AdvisorDuelRetirement retirement =
+        advisor_duel_retirement(loop, qualification, promotion, safety, canary, latest, now);
+    if (retirement.retired && !advisor_duel_report_read_) {
+        advisor_duel_report_read_ = true;
+        advisor_duel_report_ = read_json_object(root + QStringLiteral("advisor_competition_report.json"));
+    }
+    if (advisor_retired_banner_ && advisor_duel_record_) {
+        advisor_retired_banner_->setVisible(retirement.retired);
+        advisor_duel_record_->setVisible(retirement.retired);
+        if (retirement.retired) {
+            const AdvisorDuelArchive archive = present_advisor_duel_archive(
+                advisor_duel_report_, retirement.last_update_ms, now);
+            advisor_retired_banner_->setText(archive.headline);
+            advisor_retired_banner_->setStyleSheet(QStringLiteral(
+                "color:%1;background:%2;border:2px solid %1;padding:10px;font-weight:900;")
+                .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED()));
+            advisor_duel_record_->setText(archive.record);
+            advisor_duel_record_->setStyleSheet(QStringLiteral(
+                "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+                .arg(archive.record_available ? colors::CYAN() : colors::WARNING(),
+                     colors::BG_RAISED(), colors::BORDER_DIM()));
+        }
+    }
+    // The canary badge is advisor-file state: once retired it is archive, not
+    // status, so it stops posing as a live badge — unless it claims the canary
+    // is enabled, which is never hidden.
+    canary_badge_->setVisible(!retirement.retired || view.canary_live);
 
     legacy_live_badge_->setText(view.legacy_badge);
     legacy_live_badge_->setStyleSheet(QStringLiteral(
@@ -3880,14 +3925,22 @@ void KalshiScreen::refresh_advisor_canary_status() {
             .arg(view.legacy_live || view.canary_live ? colors::RED() : view.critical
                       ? colors::WARNING() : colors::CYAN(), colors::BG_RAISED()));
     }
-    advisor_system_status_->setText(view.system);
+    // Under the retired banner the four cards are the loop's archived final
+    // state, so they are labelled as such and drop the alarm colour: a
+    // concluded duel is not an incident.
+    advisor_system_status_->setText(retirement.retired
+        ? QStringLiteral("ARCHIVED FINAL STATE — the advisor loop is retired; nothing below is live.\n") +
+              view.system
+        : view.system);
     advisor_qualification_status_->setText(view.qualification);
     advisor_safety_status_->setText(view.safety);
     advisor_activity_status_->setText(view.activity);
     advisor_system_status_->setStyleSheet(QStringLiteral(
         "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
-        .arg(view.critical ? colors::WARNING() : colors::GREEN(), colors::BG_RAISED(),
-             view.critical ? colors::WARNING() : colors::BORDER_DIM()));
+        .arg(retirement.retired ? colors::TEXT_SECONDARY()
+                                : view.critical ? colors::WARNING() : colors::GREEN(),
+             colors::BG_RAISED(),
+             retirement.retired || !view.critical ? colors::BORDER_DIM() : colors::WARNING()));
 }
 
 void KalshiScreen::refresh_arena_context_status() {
