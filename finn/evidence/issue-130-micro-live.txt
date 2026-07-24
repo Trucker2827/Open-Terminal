@@ -1,0 +1,68 @@
+Issue #130 — Kalshi bot rung 5: micro-live behind the human arm
+Real `openterminalcli` transcripts, captured against a scratch
+OPENTERMINAL_KALSHI_EVIDENCE_DIR (the operator's ledger and live session are
+untouched). No armed session exists in that directory, so no transcript below
+could have reached an exchange.
+
+=====================================================================
+1. `--mode live` with no armed session: rc != 0 and a NAMED refusal
+=====================================================================
+$ openterminalcli kalshi bot once --mode live
+kalshi bot: LIVE REFUSED · LIVE_REFUSED_NOT_ARMED
+  no human-armed live session (session_active=false live_armed=false
+  trading_allowed=true venue_allowed=true kill_switch=false session_id=(none))
+  — arming is a human act
+rc=4
+
+The journaled refusal — mode=live, live_eligible=false, and NO ticker, price,
+size, or cap, because there was no decision to describe:
+
+{"action": "pass",
+ "detail": "no human-armed live session (session_active=false live_armed=false
+            trading_allowed=true venue_allowed=true kill_switch=false
+            session_id=(none)) — arming is a human act",
+ "event": "kalshi_bot_decision", "live_eligible": false, "mode": "live",
+ "reason_code": "LIVE_REFUSED_NOT_ARMED",
+ "ts": "2026-07-24T20:54:51.223Z", "ts_ms": 1784926491223}
+
+=====================================================================
+2. the kill switch outranks even the arm check
+=====================================================================
+$ openterminalcli kalshi bot stop --reason "evidence capture"
+$ openterminalcli kalshi bot once --mode live
+kalshi bot: LIVE REFUSED · LIVE_REFUSED_BOT_STOPPED
+  the kill switch is engaged — clear it with `kalshi bot resume` before any
+  live mode is possible
+rc=4
+
+=====================================================================
+3. an unknown mode is a usage error, never a silent downgrade
+=====================================================================
+$ openterminalcli kalshi bot once --mode almost-live
+kalshi bot: unknown mode 'almost-live' — expected paper or live
+rc=2
+
+=====================================================================
+4. GUI parity, captured from a real running app
+=====================================================================
+A second OpenTerminal instance (--profile finn130) pointed at the same scratch
+evidence dir, Predictions -> BOT tab. Screenshots:
+
+  finn/evidence/issue-130-bot-panel-live-badge.png
+      BOT STATUS   [LIVE] BOT STALE · last decision 4m ago     (red)
+      ARMED STATE & CAPS IN FORCE
+      ARMED · shared Kalshi live session (the bot has no arm of its own) ·
+      caps in force: stake <= $2.00 · all-in <= $3.00 · <= 10 orders/hour ·
+      exposure $0.00 of $120.00
+
+  finn/evidence/issue-130-bot-panel-live-decisions.png
+      LATEST DECISIONS (PASSES INCLUDED)
+      20:57:58Z · LIVE · BID  · KXBTC15M-DEMO-C · YES $0.40 x5 · all-in $2.06 ·
+                  filled · submit filled · edge +0.142 · LIVE_ORDER_SUBMITTED
+      20:57:21Z · LIVE · BID  · KXBTC15M-DEMO-B · YES $0.44 x4 · all-in $1.87 ·
+                  submit rejected · edge +0.131 · LIVE_ORDER_REJECTED_BY_SUBMIT
+      20:56:36Z · LIVE · PASS · KXBTC15M-DEMO-A · edge +0.021 ·
+                  EDGE_BELOW_THRESHOLD
+
+A refused order carries NO order_state and says "submit rejected" — it can
+never read on the screen as a placed one.

@@ -1,5 +1,6 @@
 #include "services/prediction/kalshi/KalshiBotOrders.h"
 
+#include "services/prediction/kalshi/KalshiBotLive.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
 #include <QDateTime>
@@ -119,6 +120,15 @@ KalshiBotOrders::Book KalshiBotOrders::replay(const QJsonArray& ledger_rows) {
 
     for (const auto& value : ledger_rows) {
         const QJsonObject row = value.toObject();
+        // Ladder rung 5 put LIVE rows in this same ledger. Everything below is
+        // the PAPER book: the fill model infers fills from an observed mid and
+        // the cancel path is the paper canceller. Replaying a live order
+        // through it would invent a fill the exchange never gave — the one
+        // fabrication this whole ladder exists to avoid. A live order's
+        // lifecycle belongs to the venue and to kalshi_live_orders, which the
+        // submit path owns; here it is simply not this book's order. Rows
+        // without a `mode` are rung 1's and are paper.
+        if (KalshiBotLive::is_live_row(row)) continue;
         const QString event = str(row, "event");
         const QString id = str(row, "position_id");
         if (id.isEmpty()) continue;

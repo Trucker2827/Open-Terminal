@@ -651,6 +651,14 @@ target_include_directories(tst_kalshi_bot_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_bot_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_gate COMMAND tst_kalshi_bot_gate)
 
+# Micro-live containment (rung 5): every carve-out condition refuses on its own,
+# the intent carries the armed session's caps, and live rows are quarantined
+# from the paper fill model and the paper promotion gate.
+add_executable(tst_kalshi_bot_live tst_kalshi_bot_live.cpp)
+target_include_directories(tst_kalshi_bot_live PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_live PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_live COMMAND tst_kalshi_bot_live)
+
 # Coherent Kalshi hourly probability surface, constrained portfolio selection,
 # no-lookahead replay, and API compatibility audit. Pure and paper-only.
 add_executable(tst_kalshi_auto_engine tst_kalshi_auto_engine.cpp)
@@ -882,6 +890,16 @@ add_test(NAME e2e_sandbox_smoke
 add_test(NAME e2e_kalshi_bot_kill_switch
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_kill_switch.sh)
+
+# Issue #130 — micro-live containment, proved against the real openterminalcli:
+# `kalshi bot run --mode live` exits non-zero with a named, journaled refusal
+# when no human armed a session, the kill switch outranks even that check,
+# paper remains the default (positive control: the same report DOES bid), and
+# nothing anywhere in the rung arms a session. Offline, temp evidence dir with
+# no armed session in it, so no path can reach an exchange.
+add_test(NAME e2e_kalshi_bot_live_refusal
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_live_refusal.sh)
 
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately
