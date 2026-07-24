@@ -880,6 +880,14 @@ target_include_directories(tst_arena_context_presentation PRIVATE ${CMAKE_SOURCE
 target_link_libraries(tst_arena_context_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_arena_context_presentation COMMAND tst_arena_context_presentation)
 
+# Kalshi screen BOT panel — freshness/trust/decision rendering plus the gate
+# scoreboard, and the proof that both files are resolved through the one
+# evidence-path module the CLI writes through. Header-only, no DB/Widgets.
+add_executable(tst_kalshi_bot_panel_presentation tst_kalshi_bot_panel_presentation.cpp)
+target_include_directories(tst_kalshi_bot_panel_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_panel_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_panel_presentation COMMAND tst_kalshi_bot_panel_presentation)
+
 # Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
 # uses to find the bundled openterminalcli (".exe" on Windows). Header-only,
 # no DB/Widgets.
