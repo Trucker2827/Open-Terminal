@@ -106,18 +106,21 @@ echo "$STATUS_JSON" | grep -q '"stale_after_ms":120000' || fail "status threshol
 echo "ok: kalshi bot status reads stopped/red from the shared classifier"
 
 # --- 4. the loop exits within one tick ---------------------------------------
-# --interval 1 with 30 iterations: if the switch were only checked at startup,
-# or not acted on, this would run ~30s and journal 30 rows. It must return
-# after the FIRST tick instead.
+# --interval 1 with 60 iterations: if the switch were only checked at startup,
+# or seen but not acted on, this would run ~60s and journal 60 rows. It must
+# return after the FIRST tick instead. The row count is the precise assertion;
+# the 25s wall-clock bound is the coarse one, chosen to leave a slow CI runner
+# plenty of headroom while still being nowhere near the ~60s a neutered exit
+# takes (both were confirmed by neutering the loop's exit).
 BEFORE="$(count_rows BOT_STOPPED)"
 START="$(date +%s)"
 set +e
-"$CLI" kalshi bot run --paper --interval 1 --iterations 30 >/dev/null 2>&1
+"$CLI" kalshi bot run --paper --interval 1 --iterations 60 >/dev/null 2>&1
 RUN_RC=$?
 set -e
 ELAPSED=$(( $(date +%s) - START ))
 [ "$RUN_RC" -eq 0 ] || fail "run exited $RUN_RC on the kill switch; a clean stop must exit 0 (the launchd job's KeepAlive is Crashed-only)"
-[ "$ELAPSED" -le 10 ] || fail "run took ${ELAPSED}s to honour the switch; one tick is 1s here"
+[ "$ELAPSED" -le 25 ] || fail "run took ${ELAPSED}s to honour the switch; one tick is 1s here"
 [ "$(( $(count_rows BOT_STOPPED) - BEFORE ))" -eq 1 ] || fail "run journaled more than one refusal — it did not exit within one tick"
 [ "$(count_bids)" -eq 0 ] || fail "run placed a bid with the kill switch engaged"
 echo "ok: run exited 0 after exactly one refused tick (${ELAPSED}s)"
