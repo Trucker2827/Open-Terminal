@@ -41,6 +41,7 @@ class WatchlistRepository : public BaseRepository<Watchlist> {
     // Stock items
     Result<void> add_stock(const QString& watchlist_id, const QString& symbol, const QString& name = {},
                            const QString& exchange = {});
+    Result<void> set_stock_notes(const QString& watchlist_id, const QString& symbol, const QString& notes);
     Result<void> remove_stock(const QString& watchlist_id, const QString& symbol);
     Result<QVector<WatchlistStock>> get_stocks(const QString& watchlist_id);
 

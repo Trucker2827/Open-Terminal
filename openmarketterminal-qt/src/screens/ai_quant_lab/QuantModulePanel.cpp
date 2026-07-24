@@ -513,6 +513,14 @@ void QuantModulePanel::on_error(const QString& module_id, const QString& message
     if (module_id == "rl_trading" && rl_train_button_) {
         rl_train_button_->setEnabled(true);
     }
+    // A failed IC measurement must not wipe the screen ranks — re-render them
+    // with the explicit "IC unmeasured" disclaimer instead (issue #102).
+    if (module_id == "model_library" && screen_ic_pending_) {
+        screen_ic_pending_ = false;
+        screen_ic_payload_ = QJsonObject();
+        display_model_screen_result();
+        return;
+    }
     display_error(message);
 }
 

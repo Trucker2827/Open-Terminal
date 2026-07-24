@@ -109,6 +109,10 @@ class QuantModulePanel : public QWidget {
     // backtesting kept on its existing display_backtest_result KPI grid.
     void display_factor_discovery_result(const QString& command, const QJsonObject& data);
     void display_model_library_result(const QString& command, const QJsonObject& data);
+    // Model-library Screen action (issue #102): render ranks + caveat + IC
+    // (or the explicit "IC unmeasured" disclaimer) and offer the watchlist feed.
+    void display_model_screen_result();
+    void send_screen_to_watchlist();
     void display_live_signals_result(const QString& command, const QJsonObject& data);
     void display_portfolio_opt_result(const QString& command, const QJsonObject& data);
     void display_factor_evaluation_result(const QString& command, const QJsonObject& data);
@@ -135,6 +139,13 @@ class QuantModulePanel : public QWidget {
     QLabel* rl_progress_stats_ = nullptr;
     class QPlainTextEdit* rl_log_console_ = nullptr;
     QPushButton* rl_train_button_ = nullptr;
+
+    // Model-library Screen flow state: last successful screen payload and the
+    // paired IC measurement. IC pending = measurement in flight; an empty
+    // screen_ic_payload_ after resolution means "IC unmeasured".
+    QJsonObject screen_payload_;
+    QJsonObject screen_ic_payload_;
+    bool screen_ic_pending_ = false;
 
     QHash<QString, QDoubleSpinBox*> double_inputs_;
     QHash<QString, QLineEdit*> text_inputs_;

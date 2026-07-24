@@ -1284,6 +1284,7 @@ set(SERVICE_SOURCES
     src/services/maritime/PortsCatalog.cpp
     src/services/maritime/GeocodingService.cpp
     src/services/ai_quant_lab/AIQuantLabService.cpp
+    src/services/ai_quant_lab/ScreenWatchlistFeed.cpp
     src/services/backtesting/BacktestingService.cpp
     src/services/algo_trading/AlgoTradingService.cpp
     # PortfolioService split; see header comment.

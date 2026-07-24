@@ -61,6 +61,13 @@ Result<void> WatchlistRepository::add_stock(const QString& watchlist_id, const Q
     return r;
 }
 
+Result<void> WatchlistRepository::set_stock_notes(const QString& watchlist_id, const QString& symbol,
+                                                  const QString& notes) {
+    auto r = exec_write("UPDATE watchlist_stocks SET notes = ? WHERE watchlist_id = ? AND symbol = ?",
+                        {notes, watchlist_id, symbol.toUpper()});
+    return r;
+}
+
 Result<void> WatchlistRepository::remove_stock(const QString& watchlist_id, const QString& symbol) {
     auto r = exec_write("DELETE FROM watchlist_stocks WHERE watchlist_id = ? AND symbol = ?",
                         {watchlist_id, symbol.toUpper()});
