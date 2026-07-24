@@ -929,6 +929,15 @@ target_include_directories(tst_kalshi_cli_locator PRIVATE ${CMAKE_SOURCE_DIR}/sr
 target_link_libraries(tst_kalshi_cli_locator PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_cli_locator COMMAND tst_kalshi_cli_locator)
 
+# Kalshi 15-minute contract rollover — when the screen may re-fetch its market
+# list (one request at a time, stall escape) and which row survives that fetch
+# (selection preserved, expired contract rolled to its successor). Pure
+# functions in screens/kalshi/MarketRollPresentation, no DB/Widgets.
+add_executable(tst_kalshi_market_roll tst_kalshi_market_roll.cpp)
+target_include_directories(tst_kalshi_market_roll PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_market_roll PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_market_roll COMMAND tst_kalshi_market_roll)
+
 add_executable(tst_crypto_symbol_universe tst_crypto_symbol_universe.cpp)
 target_include_directories(tst_crypto_symbol_universe PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_crypto_symbol_universe PRIVATE Qt6::Core Qt6::Test)

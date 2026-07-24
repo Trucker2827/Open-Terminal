@@ -2,6 +2,7 @@
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
 #include "screens/kalshi/ArenaContextPresentation.h"
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
+#include "screens/kalshi/MarketRollPresentation.h"
 #include "screens/kalshi/CliLocator.h"
 
 #include "app/TerminalShell.h"
@@ -513,6 +514,12 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
     reference_dom_reconnect_timer_ = new QTimer(this);
     reference_dom_reconnect_timer_->setSingleShot(true);
     connect(reference_dom_reconnect_timer_, &QTimer::timeout, this, &KalshiScreen::start_spot_dom_stream);
+    // Contract rollover. Ticks often; decide_market_refresh owns the actual
+    // cadence (30s periodic, 5s retry once the selected contract expires) so
+    // the policy is testable and the timer stays dumb.
+    market_list_timer_ = new QTimer(this);
+    market_list_timer_->setInterval(5'000);
+    connect(market_list_timer_, &QTimer::timeout, this, &KalshiScreen::refresh_market_list_if_due);
     dom_timer_ = new QTimer(this);
     dom_timer_->setInterval(1500);
     connect(dom_timer_, &QTimer::timeout, this, &KalshiScreen::refresh_venue_consensus);
@@ -567,6 +574,7 @@ void KalshiScreen::showEvent(QShowEvent* event) {
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
         kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
     dom_timer_->start();
+    market_list_timer_->start();
     spot_dom_timer_->start();
     evidence_timer_->start();
     clock_timer_->start();
@@ -1609,6 +1617,12 @@ void KalshiScreen::wire_adapter() {
                             [this](const QString& context, const QString& message) {
                                 if (context == QStringLiteral("fetch_price_history"))
                                     chart_fetching_ = false;
+                                // A failed list fetch releases the rollover
+                                // guard immediately; the stall escape in
+                                // decide_market_refresh is the backstop for
+                                // replies that never arrive at all.
+                                if (context.startsWith(QStringLiteral("Kalshi.fetch_category")))
+                                    market_list_fetch_in_flight_ = false;
                                 if (context == QStringLiteral("place_order") ||
                                     context == QStringLiteral("preflight_order")) {
                                     const QString kind = pending_order_kind_;
@@ -1792,23 +1806,50 @@ QString KalshiScreen::category_slug() const {
     return QStringLiteral("Crypto#%1@%2").arg(asset_, cadence_);
 }
 
-void KalshiScreen::refresh() {
+void KalshiScreen::refresh(bool background) {
     if (auto* a = adapter()) {
-        connection_badge_->setText(QStringLiteral("LOADING"));
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        market_list_last_fetch_ms_ = now;
+        market_list_fetch_started_ms_ = now;
+        market_list_fetch_in_flight_ = true;
+        preserve_selection_on_populate_ = background;
+        // The badge also carries LIVE BOOK / DATA ISSUE; a background re-fetch
+        // every 30s must not flash LOADING over what the operator is reading.
+        if (!background) connection_badge_->setText(QStringLiteral("LOADING"));
         a->list_events(category_slug(), QStringLiteral("volume"), 200, 0);
-        a->fetch_open_orders();
-        if (a->has_credentials()) {
-            a->fetch_balance();
-            a->fetch_positions();
-        }
-        if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(a); kalshi) {
-            kalshi->fetch_exchange_status();
-            kalshi->fetch_exchange_schedule();
-            kalshi->fetch_series_fee_changes();
-            if (kalshi->has_credentials()) kalshi->fetch_settlements(100);
+        // Everything below is operator-triggered scope. A background tick
+        // exists to keep the contract ladder current, not to re-pull the
+        // account and exchange metadata twice a minute.
+        if (!background) {
+            a->fetch_open_orders();
+            if (a->has_credentials()) {
+                a->fetch_balance();
+                a->fetch_positions();
+            }
+            if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(a); kalshi) {
+                kalshi->fetch_exchange_status();
+                kalshi->fetch_exchange_schedule();
+                kalshi->fetch_series_fee_changes();
+                if (kalshi->has_credentials()) kalshi->fetch_settlements(100);
+            }
         }
     }
-    refresh_live_automation_status();
+    // The 1s clock timer already polls this every 5s; a background list tick
+    // adds nothing.
+    if (!background) refresh_live_automation_status();
+}
+
+void KalshiScreen::refresh_market_list_if_due() {
+    MarketRefreshState state;
+    state.visible = isVisible();
+    state.list_fetch_in_flight = market_list_fetch_in_flight_;
+    state.fetch_started_ms = market_list_fetch_started_ms_;
+    state.last_fetch_ms = market_list_last_fetch_ms_;
+    state.has_selection = has_selection_;
+    state.selected_end_date_iso = selected_.end_date_iso;
+    state.selected_settled = selected_.closed;
+    if (!decide_market_refresh(state, QDateTime::currentMSecsSinceEpoch()).refresh) return;
+    refresh(/*background=*/true);
 }
 
 void KalshiScreen::set_family(const QString& family) {
@@ -1853,6 +1894,15 @@ void KalshiScreen::populate_events(const QVector<pred::PredictionEvent>& events)
 }
 
 void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& markets) {
+    // A list payload landed: the no-storm guard releases here, whichever path
+    // asked for it, and `preserve_selection_on_populate_` is consumed once so
+    // any populate not preceded by a background fetch (a search, a market
+    // detail) is treated as operator-driven.
+    market_list_fetch_in_flight_ = false;
+    const bool background = preserve_selection_on_populate_;
+    preserve_selection_on_populate_ = false;
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+
     all_markets_ = markets;
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter())) {
         QSet<QString> series;
@@ -1861,7 +1911,14 @@ void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& marke
             if (!ticker.isEmpty()) series.insert(ticker);
         }
         for (const auto& ticker : series) {
-            kalshi->fetch_series_detail(ticker);
+            // Series metadata (fee schedule, settlement source) changes on the
+            // scale of days. Now that a timer drives this path, re-asking for
+            // every series every 30s would be its own request storm.
+            const qint64 fetched_ms = series_detail_fetched_ms_.value(ticker, 0);
+            if (now_ms - fetched_ms >= 10 * 60 * 1000) {
+                series_detail_fetched_ms_.insert(ticker, now_ms);
+                kalshi->fetch_series_detail(ticker);
+            }
             if (!backfilled_series_.contains(ticker)) {
                 backfilled_series_.insert(ticker);
                 kalshi->fetch_historical_markets(ticker, 100);
@@ -1894,12 +1951,45 @@ void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& marke
         market_list_->addItem(label);
     }
     count_label_->setText(QStringLiteral("%1 CONTRACTS").arg(markets_.size()));
-    connection_badge_->setText(QStringLiteral("PUBLIC DATA"));
-    if (!markets_.isEmpty()) market_list_->setCurrentRow(0);
+    if (!background) connection_badge_->setText(QStringLiteral("PUBLIC DATA"));
+
+    // Which row survives this payload. An operator-driven refresh (cadence,
+    // asset, family, first show) passes no previous ticker and lands on the
+    // top of the new list, exactly as it always did; a background refresh
+    // passes the live selection and gets it back unless that contract expired,
+    // in which case its successor in the same series takes over.
+    const QString previous_ticker =
+        background && has_selection_ ? selected_.key.market_id : QString();
+    const auto choice = choose_market_row(markets_, previous_ticker, selected_.end_date_iso,
+                                          selected_.closed, now_ms);
+    if (choice.rolled) {
+        QJsonObject row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_screen_contract_roll")},
+            {QStringLiteral("from_ticker"), choice.from_ticker},
+            {QStringLiteral("to_ticker"), choice.to_ticker},
+            {QStringLiteral("from_close"), selected_.end_date_iso},
+            {QStringLiteral("cadence"), cadence_},
+            {QStringLiteral("asset"), asset_},
+            {QStringLiteral("reason"), choice.reason},
+            {QStringLiteral("rolled_ts"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+            {QStringLiteral("live_eligible"), false}};
+        kalshi_data::KalshiEvidenceEngine::append_jsonl(
+            evidence_path(QStringLiteral("kalshi-lifecycle.jsonl")), row);
+    }
+    if (choice.row >= 0) market_list_->setCurrentRow(choice.row);
 }
 
 void KalshiScreen::select_market(int row) {
     if (row < 0 || row >= markets_.size()) return;
+    if (has_selection_ && markets_[row].key.market_id == selected_.key.market_id) {
+        // The same contract, re-listed by a background refresh. Take the fresh
+        // quotes and stop: unsubscribing, clearing the chart and zeroing the
+        // feed-freshness stamps below would blank this pane every 30 seconds —
+        // the exact failure the background refresh exists to prevent.
+        selected_ = markets_[row];
+        render_market();
+        return;
+    }
     if (adapter() && !subscribed_ladder_assets_.isEmpty())
         adapter()->unsubscribe_market(subscribed_ladder_assets_);
     selected_ = markets_[row];
@@ -1960,7 +2050,10 @@ void KalshiScreen::render_market() {
     no_quote_->setText(QStringLiteral("NO %1").arg(contract_quote(no)));
     rules_->setPlainText(selected_.description);
     const double selected_price = side_ == QStringLiteral("YES") ? yes : no;
-    if (selected_price > 0.0) price_->setValue(selected_price);
+    // A background refresh re-renders the live contract every 30s, so this is
+    // no longer a selection-time write: the same hasFocus guard the live-tick
+    // path uses keeps it from overwriting a price the operator is typing.
+    if (selected_price > 0.0 && !price_->hasFocus()) price_->setValue(selected_price);
     const QString desired_chart_asset = selected_.key.asset_ids.value(
         side_ == QStringLiteral("NO") ? 1 : 0);
     if (!desired_chart_asset.isEmpty() && desired_chart_asset != chart_asset_id_) {
