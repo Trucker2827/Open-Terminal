@@ -1,6 +1,7 @@
 #include "screens/kalshi/KalshiScreen.h"
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
 #include "screens/kalshi/ArenaContextPresentation.h"
+#include "screens/kalshi/KalshiBotPanelPresentation.h"
 #include "screens/kalshi/CliLocator.h"
 
 #include "app/TerminalShell.h"
@@ -538,6 +539,7 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
             refresh_daemon_status();
             refresh_advisor_canary_status();
             refresh_arena_context_status();
+            refresh_bot_panel();
             update_calibrator_readout();
         }
     });
@@ -561,6 +563,7 @@ void KalshiScreen::showEvent(QShowEvent* event) {
     refresh_daemon_status();
     refresh_advisor_canary_status();
     refresh_arena_context_status();
+    refresh_bot_panel();
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
         kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
     dom_timer_->start();
@@ -1107,6 +1110,83 @@ void KalshiScreen::build_ui() {
     ladder_table_->setToolTip(QStringLiteral("Timestamped paper-only probability surface and constrained portfolio plan. No live order can be submitted here."));
     auto_cockpit_layout->addWidget(ladder_table_, 1);
     tabs->addTab(auto_cockpit, QStringLiteral("AUTO COCKPIT"));
+
+    // --- BOT: a read-only mirror of what `kalshi bot` is doing --------------
+    // Every value on this page comes out of the two evidence files the CLI
+    // writes (kalshi-bot-decisions.jsonl, kalshi-bot-gate.json) plus the live
+    // session status the screen already polls. The panel has no controls: it
+    // cannot arm, disarm, size, price, or place anything.
+    auto* bot_scroll = new QScrollArea(tabs);
+    bot_scroll->setWidgetResizable(true);
+    bot_scroll->setFrameShape(QFrame::NoFrame);
+    auto* bot_page = new QWidget(bot_scroll);
+    auto* bot_layout = new QVBoxLayout(bot_page);
+    bot_layout->setContentsMargins(10, 10, 10, 10);
+    bot_layout->setSpacing(8);
+    auto* bot_title = new QLabel(
+        QStringLiteral("KALSHI BOT · PAPER LADDER · READ-ONLY MIRROR OF THE CLI"), bot_page);
+    bot_title->setStyleSheet(
+        QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
+    bot_layout->addWidget(bot_title);
+    auto* bot_note = new QLabel(
+        QStringLiteral("Every number below is read from the same files `kalshi bot` writes — %1 "
+                       "and %2 — so this panel and the CLI cannot disagree. It has no controls: it "
+                       "cannot arm, size, price, or place anything.")
+            .arg(QString::fromLatin1(kKalshiBotLedgerFile), QString::fromLatin1(kKalshiBotGateFile)),
+        bot_page);
+    bot_note->setWordWrap(true);
+    bot_note->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
+    bot_layout->addWidget(bot_note);
+    auto add_bot_card = [bot_page, bot_layout](const QString& title, const QString& tip,
+                                               QLabel*& value) {
+        auto* heading = new QLabel(title, bot_page);
+        heading->setStyleSheet(QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
+        bot_layout->addWidget(heading);
+        value = new QLabel(QStringLiteral("UNKNOWN / FAIL CLOSED"), bot_page);
+        value->setWordWrap(true);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        value->setToolTip(tip);
+        value->setStyleSheet(
+            QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+                .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+        bot_layout->addWidget(value);
+    };
+    add_bot_card(QStringLiteral("BOT STATUS"),
+                 QStringLiteral("Green when the decision ledger was written recently, amber when "
+                                "it has gone stale, grey when the bot has never run here."),
+                 bot_status_);
+    add_bot_card(QStringLiteral("ARMED STATE & CAPS IN FORCE"),
+                 QStringLiteral("Read from the live session status. An unreadable status is "
+                                "reported as unknown and fails closed; it is never shown as armed."),
+                 bot_armed_);
+    add_bot_card(QStringLiteral("SIGNAL TRUST"),
+                 QStringLiteral("Whether the calibrator that produced the last decision had beaten "
+                                "its market baseline. An untrusted signal still papers, labelled."),
+                 bot_signal_);
+    add_bot_card(QStringLiteral("PAPER SCOREBOARD"),
+                 QStringLiteral("Settled bids, net P&L after fees, and Brier vs the market — as "
+                                "published by the promotion gate, not recomputed here."),
+                 bot_scoreboard_);
+    add_bot_card(QStringLiteral("PROMOTION GATE"),
+                 QStringLiteral("The sealed gate's verdict and every criterion's numbers. No "
+                                "verdict file means no verdict is claimed."),
+                 bot_gate_);
+    auto* bot_decisions_heading =
+        new QLabel(QStringLiteral("LATEST DECISIONS (PASSES INCLUDED)"), bot_page);
+    bot_decisions_heading->setStyleSheet(
+        QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
+    bot_layout->addWidget(bot_decisions_heading);
+    bot_decisions_ = new QListWidget(bot_page);
+    bot_decisions_->setToolTip(QStringLiteral(
+        "One line per decision the bot journaled, newest first. A tick that bid nothing still says "
+        "why it bid nothing."));
+    bot_decisions_->setFont(QFont(QStringLiteral("Menlo"), 11));
+    bot_decisions_->setStyleSheet(
+        QStringLiteral("QListWidget{color:%1;background:%2;border:1px solid %3;}")
+            .arg(colors::TEXT_PRIMARY(), colors::BG_BASE(), colors::BORDER_DIM()));
+    bot_layout->addWidget(bot_decisions_, 1);
+    bot_scroll->setWidget(bot_page);
+    tabs->addTab(bot_scroll, QStringLiteral("BOT"));
 
     auto* advisor_scroll = new QScrollArea(tabs);
     advisor_scroll->setWidgetResizable(true);
@@ -3676,6 +3756,49 @@ void KalshiScreen::refresh_live_automation_status() {
             .arg(killed || (active && !engine_operational)
                      ? colors::RED() : active ? colors::GREEN() : colors::TEXT_SECONDARY()));
     });
+}
+
+void KalshiScreen::refresh_bot_panel() {
+    if (!bot_status_ || !bot_armed_ || !bot_signal_ || !bot_scoreboard_ || !bot_gate_ ||
+        !bot_decisions_)
+        return;
+    // latest_legacy_live_status_ is the `kalshi auto live status` object the
+    // screen already polls; empty until the first poll answers, which the
+    // presenter reports as unknown rather than as disarmed.
+    const KalshiBotPanelView view =
+        load_kalshi_bot_panel(latest_legacy_live_status_, QDateTime::currentMSecsSinceEpoch());
+
+    const QString role = kalshi_bot_state_color_role(view.state);
+    const QString state_color = role == QStringLiteral("green")   ? colors::GREEN()
+                                : role == QStringLiteral("amber") ? colors::WARNING()
+                                                                  : colors::TEXT_SECONDARY();
+    bot_status_->setText(view.status);
+    bot_status_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+            .arg(state_color, colors::BG_RAISED()));
+
+    const auto card_style = [](const QString& color) {
+        return QStringLiteral(
+                   "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+            .arg(color, colors::BG_RAISED(), colors::BORDER_DIM());
+    };
+    bot_armed_->setText(view.armed);
+    bot_armed_->setStyleSheet(card_style(view.armed_live ? colors::RED() : colors::TEXT_SECONDARY()));
+    bot_signal_->setText(view.signal);
+    bot_signal_->setStyleSheet(card_style(view.signal.startsWith(QStringLiteral("SIGNAL TRUSTED"))
+                                              ? colors::GREEN()
+                                              : colors::TEXT_SECONDARY()));
+    bot_scoreboard_->setText(view.scoreboard);
+    bot_scoreboard_->setStyleSheet(card_style(colors::TEXT_SECONDARY()));
+    bot_gate_->setText(view.gate);
+    bot_gate_->setStyleSheet(card_style(view.gate_pass ? colors::GREEN() : colors::TEXT_SECONDARY()));
+
+    bot_decisions_->clear();
+    if (view.decisions.isEmpty())
+        bot_decisions_->addItem(
+            QStringLiteral("No decisions journaled yet — run `openterminalcli kalshi bot once`."));
+    else
+        bot_decisions_->addItems(view.decisions);
 }
 
 void KalshiScreen::refresh_advisor_canary_status() {

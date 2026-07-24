@@ -117,6 +117,7 @@ class KalshiScreen final : public QWidget {
     void refresh_live_automation_status();
     void refresh_advisor_canary_status();
     void refresh_arena_context_status();
+    void refresh_bot_panel();
     void refresh_daemon_status();
     void restart_daemon();
     void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
@@ -192,6 +193,12 @@ class KalshiScreen final : public QWidget {
     QLabel* advisor_activity_status_ = nullptr;
     QLabel* arena_context_status_ = nullptr;
     QPushButton* arena_open_button_ = nullptr;
+    QLabel* bot_status_ = nullptr;
+    QLabel* bot_armed_ = nullptr;
+    QLabel* bot_signal_ = nullptr;
+    QLabel* bot_scoreboard_ = nullptr;
+    QLabel* bot_gate_ = nullptr;
+    QListWidget* bot_decisions_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
     QTableWidget* active_positions_table_ = nullptr;
     QLabel* pnl_summary_ = nullptr;
