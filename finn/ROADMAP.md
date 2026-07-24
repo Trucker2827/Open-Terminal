@@ -31,26 +31,41 @@ decision*:
   bigger-model-will-fix-it fantasies. The engine stays deterministic; models
   stay advisory.
 
-## Pillar 2: Predictions
+## Pillar 2: Predictions — CURRENT FOCUS (operator, 2026-07-24)
 
-The crown jewels: the duel protocol, the arena, the calibrator, hourly
-settlements as ground truth. "Better" means making Kalshi work feel like
-operating an instrument, not reading a firehose:
+The goal is now explicit: **automate Kalshi yes/no bids, runnable as a bot
+and via CLI.** The human arms it; after that, the game is on — the bot
+bids autonomously inside the charter's fence (caps, kill switch,
+preregistered trust gate; see the charter's carve-out). The substrate is
+merged: the gated live path (PR #39), honest live-order accounting
+(PR #44), and a calibrator that currently beats the market baseline
+(adds_value_over_market true at 228 resolved — re-check live, never
+assume).
 
-- The Kalshi screen should answer, per contract, in seconds: how far is
-  strike in *sigmas*, what does the engine think, what does the calibrator
-  think, what do arena models think — each labeled with its measured
-  trustworthiness (or lack of it).
-- Settlement history is a first-class record: honest P&L per settlement
-  (netting-aware), difficulty-cohorted hit rates, streaks — the user's own
-  scoreboard, as rigorous as the models'.
-- The arena and duel should be reachable from the Kalshi workflow, not
-  hidden in Research Lab — they are context for every contract decision.
-- Calibration everywhere: any probability shown near a contract carries its
-  source and track record. An unmeasured probability is displayed as an
-  opinion, not a number.
-- Season/epoch mechanics stay preregistered and mechanical. No discretionary
-  verdicts, ever.
+The build ladder, in order — each rung is only as good as its proof:
+
+1. **Paper bot MVP**: `openterminalcli kalshi bot` consumes calibrator
+   edges, decides yes/no + price + size, journals every decision with its
+   reasoning, settles against real hourly settlements. Paper first, always.
+2. **Preregistered promotion gate**: a sealed, mechanical rule (like an
+   arena season) that decides when paper graduates to micro-live —
+   sample floor, net-positive after fees, Brier vs market baseline,
+   drawdown limit. No discretionary promotion, ever.
+3. **GUI parity**: the Predictions/Kalshi window reflects EXACTLY what is
+   implemented — bot status, armed state, caps in force, live decisions
+   as they happen, the paper/live scoreboard, the promotion gate's
+   current verdict. If the CLI can see it, the window shows it.
+4. **Observable loop**: launchd job, status chip (green/amber/grey),
+   kill-switch that the GUI and CLI can both throw.
+5. **Micro-live behind the human arm**: `--mode live` refused unless the
+   session is armed AND the promotion gate reads PASS. Then: game on.
+6. **Order lifecycle honesty**: quote TTLs, cancel/replace, resting
+   orders counted as risk (the #44 ledger is the single source of truth).
+
+Still standing from before (context for every contract decision): sigmas
+and calibrated probabilities with track records on the Kalshi screen,
+settlement history as the user's own scoreboard, the arena reachable from
+the workflow, no unmeasured probability displayed as a number.
 
 ## Pillar 3: Equity
 

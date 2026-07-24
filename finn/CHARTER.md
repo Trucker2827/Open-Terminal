@@ -31,9 +31,30 @@ Open Terminal's standard, in priority order:
   Importing them is fine. Editing them mid-epoch invalidates a live
   scientific experiment. If a task seems to require touching them: label the
   issue `needs-human-review` and stop.
-- **Advisory only.** No AI-driven code path may place, modify, or enable
-  orders. The deterministic executor is the sole trading authority. Anything
-  brushing `prepare_order`/`submit_order`/live gates → `needs-human-review`.
+- **Advisory only — with one operator-signed carve-out (2026-07-24).** No
+  AI-driven code path may place, modify, or enable orders, and no code path
+  of any kind may ARM live trading — arming is a human act (GUI/CLI), and
+  the AI provably cannot set the armed flag. The deterministic executor is
+  the sole trading authority. Anything brushing
+  `prepare_order`/`submit_order`/live gates → `needs-human-review`.
+  **Carve-out (operator: "once human enable live bot/cli trading thats
+  it.. game is on"):** a deterministic Kalshi yes/no bot MAY place bids
+  autonomously, but ONLY when every one of these holds:
+  1. a human armed the session (the arm the AI cannot set), and the run is
+     bounded (duration/iterations);
+  2. the hard caps hold — $2 stake, $3 all-in (stake+fee), hourly order
+     cap, cumulative exposure cap — tightening-only, never raisable from a
+     session file;
+  3. the signal source has PASSED its preregistered promotion gate
+     (frozen criteria, sealed like an arena season) on PAPER results —
+     an ungated signal trades paper only;
+  4. a kill switch (disarm file/command) halts bidding within one loop
+     tick, and every decision is journaled to the honest ledger
+     (accepted/resting/partial/filled — resting counts as risk);
+  5. the Predictions GUI shows exactly what the bot is doing: armed
+     state, caps, live decisions, scoreboard. **GUI parity is an
+     acceptance criterion, not a follow-up.**
+  Weakening any of these five is a charter violation, not a feature.
 - **Secrets stay local.** No API keys, certificates, or tokens in the repo,
   in CI secrets, or in logs. The Developer ID cert never leaves the keychain.
 - **Live infrastructure is bounced deliberately, never incidentally.** The
