@@ -19,6 +19,8 @@
 #include <QJsonObject>
 #include <QtTest>
 
+#include <cmath>
+
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotGate;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotLive;
@@ -514,6 +516,44 @@ class TstKalshiBotLive : public QObject {
                      QString::fromLatin1(KalshiBotLive::kLiveSubmitted));
         QCOMPARE(paper.value(QStringLiteral("mode")).toString(), QStringLiteral("paper"));
         QVERIFY(KalshiBotLive::live_working(QJsonArray{paper}).isEmpty());
+    }
+
+    // The composition, not just the halves: live_working() feeding decide() is
+    // what actually stops the bot re-buying the contract it just bought, and
+    // the CLI's live tick is exactly this call. Tested here because a permitted
+    // live tick cannot be reached from an e2e without arming for real.
+    void the_bot_does_not_re_bid_the_contract_it_just_bought() {
+        const QJsonObject report{
+            {QStringLiteral("generated_at_ms"), static_cast<double>(kNow)},
+            {QStringLiteral("adds_value_over_market"), true},
+            {QStringLiteral("predictions"),
+             QJsonObject{{QStringLiteral("KXBTC15M-T1"),
+                          QJsonObject{{QStringLiteral("p_yes_full"), 0.62},
+                                      {QStringLiteral("market_yes_mid"), 0.40},
+                                      {QStringLiteral("features"),
+                                       QJsonObject{{QStringLiteral("sqrt_minutes_left"),
+                                                    std::sqrt(10.0)}}}}}}}};
+
+        // Control: with an empty book the same report DOES bid, so the pass
+        // below cannot be attributed to the report failing some other gate.
+        const QJsonArray fresh =
+            KalshiBotDecision::decide(report, {}, {}, kNow, KalshiBotDecision::Config{}, {});
+        QCOMPARE(fresh.size(), 1);
+        QCOMPARE(fresh.first().toObject().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("bid"));
+
+        QJsonObject accepted = bid_row();
+        accepted.insert(QStringLiteral("mode"), QStringLiteral("live"));
+        accepted.insert(QStringLiteral("reason_code"),
+                        QString::fromLatin1(KalshiBotLive::kLiveSubmitted));
+        const QJsonArray rows =
+            KalshiBotDecision::decide(report, KalshiBotLive::live_working(QJsonArray{accepted}), {},
+                                      kNow, KalshiBotDecision::Config{}, {});
+        QCOMPARE(rows.size(), 1);
+        const QJsonObject row = rows.first().toObject();
+        QCOMPARE(row.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
+        QCOMPARE(row.value(QStringLiteral("reason_code")).toString(),
+                 QString::fromLatin1(KalshiBotDecision::kAlreadyHeld));
     }
 
     void a_row_without_a_mode_is_paper() {

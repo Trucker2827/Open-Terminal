@@ -1394,6 +1394,12 @@ class TstPmPaper : public QObject {
                       .contains("already submitted an order for this contract"),
                  "if the submit path now catches a FILLED duplicate itself, delete "
                  "KalshiBotLive::live_working() and its tests — it exists only because it does not");
+        // Say exactly what happened, not merely what did not: the second order
+        // FILLED and reached the adapter. "no duplicate reason" alone would be
+        // satisfied by any other gate quietly catching it, and this is the
+        // evidence base for both live_working()'s existence and issue #141.
+        QCOMPARE(again_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 2);
     }
 
     void cleanupTestCase() { rt_.shutdown(); }
