@@ -132,6 +132,11 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
     // actually fired so the happy-path test can assert the RESOLVED price/size.
     bool creds_ = true;
     bool suppress_place_result_ = false;
+    // Negative means "the venue filled the whole order". A real exchange also
+    // answers OK for an order it merely ACCEPTED, or filled only in part, so
+    // these let a test drive those acknowledgements. Restore after use.
+    double filled_override_ = -1.0;
+    QString status_override_;
     int place_order_calls_ = 0;
     pred::OrderRequest last_req_;
 
@@ -154,8 +159,9 @@ class FakePredictionAdapter : public pred::PredictionExchangeAdapter {
                 pred::OrderResult r;
                 r.ok = true;
                 r.order_id = "PM-FAKE-1";
-                r.status = "FILLED";
-                r.filled = req.size;
+                r.filled = filled_override_ >= 0.0 ? filled_override_ : req.size;
+                r.remaining = req.size - r.filled;
+                r.status = status_override_.isEmpty() ? QStringLiteral("FILLED") : status_override_;
                 emit order_placed(r);
             },
             Qt::QueuedConnection);
@@ -1084,6 +1090,174 @@ class TstPmPaper : public QObject {
         auto open = PmPaperRepository::instance().get_open("polymarket", "sub-double");
         QVERIFY2(open.value().has_value(), "the one successful submit must have opened a position");
         QCOMPARE(open.value()->contracts, 10.0);  // not 20 — the 2nd submit had no effect
+    }
+
+    // An acknowledgement with zero confirmed fills is a RESTING order, not a
+    // position and not a completed evidence point. It must report as such, and
+    // the live P&L ledger must stay untouched until authenticated fill
+    // reconciliation observes a uniquely identified execution.
+    void pm_submit_live_accepted_but_unfilled_is_not_a_fill() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-resting", 10, QStringLiteral("mkt-resting"));
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        fake_adapter()->filled_override_ = 0.0;
+        fake_adapter()->status_override_ = QStringLiteral("RESTING");
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+        fake_adapter()->status_override_.clear();
+
+        QVERIFY2(res.success, qPrintable("a resting live submit is auditable: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("resting"));
+        QCOMPARE(data.value("filled_count").toDouble(), 0.0);
+        QCOMPARE(data.value("remaining_count").toDouble(), 10.0);
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("resting"));
+        verify_no_live_position("live-resting");
+        QVERIFY2(find_submit_audit("resting", "live"),
+                 "an accepted but unfilled order must NOT be audited as filled");
+        QVERIFY2(!find_submit_audit("filled", "live") ||
+                     TradeAuditRepository::instance().recent(1).value().front().decision !=
+                         QLatin1String("filled"),
+                 "the most recent submit decision must not be 'filled'");
+    }
+
+    // A partial acknowledgement reports only the confirmed quantity and leaves
+    // the resting remainder visible; it still books no P&L from the ack.
+    void pm_submit_live_partial_fill_reports_confirmed_quantity_only() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        const QString draft_id = prepare_pm_buy("live-partial", 10, QStringLiteral("mkt-partial"));
+        QVERIFY2(!draft_id.isEmpty(), "prepare a valid BUY draft");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        fake_adapter()->filled_override_ = 4.0;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+
+        QVERIFY2(res.success, qPrintable("a partial live submit is auditable: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("partially_filled"));
+        QCOMPARE(data.value("filled_count").toDouble(), 4.0);
+        QCOMPARE(data.value("remaining_count").toDouble(), 6.0);
+        QCOMPARE(OrderDraftRepository::instance().get(draft_id).value().status,
+                 QStringLiteral("partially_filled"));
+        verify_no_live_position("live-partial");
+        QVERIFY2(find_submit_audit("partially_filled", "live"),
+                 "a partial acknowledgement must be audited as partially filled");
+    }
+
+    // ── micro-live experiment gates (session id + all-in ceiling) ────────────
+
+    // Helper: prepare a micro-live experiment draft. Every field the submit gate
+    // fails closed on is a parameter so a test can omit exactly one of them.
+    QString prepare_experiment_buy(const QString& asset_id, const QString& market_id,
+                                   double contracts, double max_live_stake,
+                                   double max_live_all_in, double estimated_fee,
+                                   const QString& session_id) {
+        QJsonObject args{{"asset_class", "prediction"}, {"venue", "polymarket"},
+                         {"market_id", market_id}, {"asset_id", asset_id},
+                         {"outcome", "Yes"}, {"side", "buy"}, {"contracts", contracts},
+                         {"limit_price", 0.45},
+                         {"experiment_id", "kalshi-micro-live-v1"},
+                         {"max_live_stake", max_live_stake},
+                         {"max_live_all_in", max_live_all_in},
+                         {"estimated_fee", estimated_fee},
+                         {"estimated_total", contracts * 0.45 + estimated_fee},
+                         {"experiment_loss_cap", 120.0}};
+        if (!session_id.isEmpty())
+            args.insert(QStringLiteral("automation_session_id"), session_id);
+        auto res = rt_.call_tool("prepare_order", args);
+        if (!res.success) return {};
+        const QJsonObject d = res.data.toObject();
+        if (d.value("status").toString() != QLatin1String("prepared")) return {};
+        return d.value("draft_id").toString();
+    }
+
+    // The stake cap bounds contract cost only. What actually leaves the account
+    // is stake PLUS the venue fee, so the all-in ceiling is enforced from the
+    // immutable draft at submit — the adapter is never reached when it breaches.
+    void pm_submit_live_all_in_cap_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+
+        // stake 2 * 0.45 = 0.90 (inside max_live_stake 1.00) but 0.90 + 0.50 fee
+        // = 1.40, which breaches the 1.00 all-in ceiling.
+        const QString draft_id = prepare_experiment_buy(
+            QStringLiteral("live-allin"), QStringLiteral("mkt-allin"), 2, 1.0, 1.0, 0.50,
+            QStringLiteral("session-allin"));
+        QVERIFY2(!draft_id.isEmpty(), "prepare a micro-live draft");
+        const int calls_before = fake_adapter()->place_order_calls_;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+
+        QVERIFY2(res.success, qPrintable("an all-in breach is an auditable decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("all-in cap exceeded"),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before);
+        verify_no_live_position("live-allin");
+
+        // Control: the SAME order with an honest fee that fits under the ceiling
+        // clears the gate and reaches the adapter, so the rejection above can
+        // only have come from the all-in check.
+        const QString ok_draft = prepare_experiment_buy(
+            QStringLiteral("live-allin-ok"), QStringLiteral("mkt-allin-ok"), 2, 1.0, 1.0, 0.05,
+            QStringLiteral("session-allin"));
+        QVERIFY2(!ok_draft.isEmpty(), "prepare a within-ceiling micro-live draft");
+        arm_live();
+        const auto ok_res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", ok_draft}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY2(ok_res.success, qPrintable("within-ceiling submit: " + ok_res.error));
+        QCOMPARE(ok_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+    }
+
+    // A micro-live order that cannot be attributed to an armed automation
+    // session is not a bounded experiment order. This holds for EVERY
+    // experiment draft, not only the autonomous ones.
+    void pm_submit_live_without_session_id_rejected() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+
+        const QString draft_id = prepare_experiment_buy(
+            QStringLiteral("live-nosession"), QStringLiteral("mkt-nosession"), 2, 1.0, 1.0, 0.05,
+            QString());
+        QVERIFY2(!draft_id.isEmpty(), "prepare a session-less micro-live draft");
+        const int calls_before = fake_adapter()->place_order_calls_;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+
+        QVERIFY2(res.success, qPrintable("a session-less draft is an auditable decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("armed automation session"),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before);
+        verify_no_live_position("live-nosession");
     }
 
     void cleanupTestCase() { rt_.shutdown(); }

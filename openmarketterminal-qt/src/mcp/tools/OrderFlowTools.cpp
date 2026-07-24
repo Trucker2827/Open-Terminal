@@ -499,7 +499,8 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
     }
     // Live micro-evidence limits are persisted into the immutable draft and
     // re-checked against the fresh executable book immediately before submit.
-    for (const char* key : {"max_live_stake", "experiment_loss_cap"}) {
+    for (const char* key : {"max_live_stake", "max_live_all_in", "estimated_fee",
+                            "estimated_total", "experiment_loss_cap"}) {
         if (args.contains(key) && args.value(key).isDouble())
             intent[key] = args.value(key).toDouble();
     }
@@ -917,6 +918,16 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         // They can only reduce authority: malformed or missing values fail
         // closed for an experiment-tagged draft.
         if (!experiment_id.isEmpty()) {
+            // EVERY micro-live order belongs to an armed automation session, not
+            // only the autonomous ones. A draft with no session id cannot be
+            // attributed to an operator-armed window, so it can never be live.
+            if (intent.value(QStringLiteral("automation_session_id")).toString().trimmed().isEmpty()) {
+                const QString reason = QStringLiteral(
+                    "micro-live order must belong to an armed automation session");
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
             const double max_live_stake = intent.value("max_live_stake").toDouble(0.0);
             const double experiment_cap = intent.value("experiment_loss_cap").toDouble(0.0);
             if (max_live_stake <= 0.0 || experiment_cap <= 0.0 ||
@@ -924,6 +935,21 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
                 const QString reason = QStringLiteral("micro-live stake cap exceeded (%1 > %2)")
                                            .arg(rv.order_value, 0, 'f', 2)
                                            .arg(max_live_stake, 0, 'f', 2);
+                audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
+                                                       {"mode", "live"}});
+            }
+            // The stake cap only bounds contract cost. The all-in ceiling bounds
+            // what actually leaves the account — stake plus the estimated venue
+            // fee. A draft missing either value fails closed.
+            const double max_live_all_in = intent.value("max_live_all_in").toDouble(0.0);
+            const double estimated_fee = intent.value("estimated_fee").toDouble(-1.0);
+            if (max_live_all_in <= 0.0 || estimated_fee < 0.0 ||
+                rv.order_value + estimated_fee > max_live_all_in + 1e-9) {
+                const QString reason = QStringLiteral("micro-live all-in cap exceeded (%1 + %2 > %3)")
+                                           .arg(rv.order_value, 0, 'f', 2)
+                                           .arg(std::max(0.0, estimated_fee), 0, 'f', 2)
+                                           .arg(max_live_all_in, 0, 'f', 2);
                 audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
                 return ToolResult::ok_data(QJsonObject{{"status", "rejected"}, {"reason", reason},
                                                        {"mode", "live"}});
@@ -1160,6 +1186,9 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .boolean("reduce_only", "Reject if the order would increase exposure")
                 .boolean("cancel_order_on_pause", "Ask Kalshi to cancel if trading pauses")
                 .number("max_live_stake", "Optional hard live stake cap carried into the draft").min(0.0)
+                .number("max_live_all_in", "Optional hard live stake-plus-estimated-fee cap").min(0.0)
+                .number("estimated_fee", "Optional conservative estimated venue fee for a live draft").min(0.0)
+                .number("estimated_total", "Optional estimated stake plus fee for a live draft").min(0.0)
                 .number("experiment_loss_cap", "Optional cumulative live experiment exposure cap").min(0.0)
                 .string("experiment_id", "Optional live evidence experiment id").length(1, 128)
                 .string("evidence_decision_id", "Optional source decision journal id").length(1, 128)
