@@ -150,6 +150,18 @@ set -e
 grep -q "unknown mode" "$EVIDENCE/live3.err" || fail "no clear reason: $(cat "$EVIDENCE/live3.err")"
 echo "ok: an unknown mode is refused"
 
+# --- 4b. --paper and --mode live contradict; the conflict is refused ----------
+# The launchd job's whole safety story is the --paper string. A --mode live that
+# silently won over it would escalate a paper job to live.
+set +e
+"$CLI" kalshi bot once --paper --mode live >/dev/null 2>"$EVIDENCE/live4.err"
+RC=$?
+set -e
+[ "$RC" -eq 2 ] || fail "--paper --mode live exited $RC; the conflict must be a usage error"
+grep -q "contradict" "$EVIDENCE/live4.err" || fail "no clear reason: $(cat "$EVIDENCE/live4.err")"
+[ "$(count_matches '"mode":"live"')" -eq 0 ] || fail "the contradictory run journaled a live row"
+echo "ok: --paper --mode live is refused rather than silently escalated"
+
 # --- 5. the launchd job never asks for live -----------------------------------
 PLIST="$(cd "$(dirname "$0")/../scripts/deploy" && pwd)/org.openterminal.kalshi-bot.plist"
 [ -f "$PLIST" ] || fail "no $PLIST"

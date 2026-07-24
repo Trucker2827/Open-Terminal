@@ -372,11 +372,15 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
     }
 
     const QJsonObject report = read_calibrator_report();
-    // No paper book is replayed and none is passed in: a live tick's positions
-    // and resting orders live at the venue, and submit_order's per-contract
-    // duplicate guard — not a second copy of it here — is what stops the bot
-    // stacking orders on a contract it already has working.
-    const QJsonArray rows = KalshiBotDecision::decide(report, {}, {}, now_ms, config, stop);
+    // No PAPER book is replayed: a live order's fills and lifecycle live at the
+    // venue, and the paper model would invent them. What IS read back is the
+    // bot's own record of which contracts the venue already took an order on
+    // — see KalshiBotLive::live_working() for why submit_order's duplicate
+    // guard does not cover a filled live draft. Those pass ALREADY_HELD.
+    const QJsonArray working = KalshiBotLive::live_working(
+        read_jsonl(ledger_path, is_event(kDecisionEvent)));
+    const QJsonArray rows =
+        KalshiBotDecision::decide(report, working, {}, now_ms, config, stop);
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) {
@@ -850,7 +854,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     // explicitly, and the only other value it accepts is `live`.
     QString mode = QStringLiteral("paper");
     take_string_option(args, QStringLiteral("--mode"), mode);
-    take_bool_flag(args, QStringLiteral("--paper"));
+    const bool paper_flag = take_bool_flag(args, QStringLiteral("--paper"));
     mode = mode.trimmed().toLower();
     if (mode != QStringLiteral("paper") && mode != QStringLiteral("live")) {
         std::fprintf(stderr, "kalshi bot: unknown mode '%s' — expected paper or live\n",
@@ -858,6 +862,15 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
         return 2;
     }
     const bool live = mode == QStringLiteral("live");
+    // `--paper` is the launchd job's whole safety story, so it must never be a
+    // flag that silently loses an argument. Escalating a `--paper` invocation
+    // to live because a `--mode live` came after it is the same class of defect
+    // as silently degrading a live one to paper: the conflict is refused.
+    if (paper_flag && live) {
+        std::fprintf(stderr, "kalshi bot: --paper and --mode live contradict each other; "
+                             "refusing rather than picking one\n");
+        return 2;
+    }
 
     KalshiBotDecision::Config config;
     bool bad = false;

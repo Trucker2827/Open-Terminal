@@ -2,6 +2,7 @@
 
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 
@@ -154,6 +155,25 @@ class KalshiBotLive {
     /// (fill model, paper settlement, the promotion gate) must keep reading
     /// them. This is the one place that judgement is made.
     static bool is_live_row(const QJsonObject& row);
+
+    /// The contracts the venue has already taken a bot order on, as `{ticker}`
+    /// rows in the shape `KalshiBotDecision::decide()` reads for ALREADY_HELD.
+    ///
+    /// This is NOT a re-implementation of `submit_order`'s per-contract
+    /// duplicate guard — it exists because that guard demonstrably does not
+    /// cover this case. The guard counts drafts whose status is in
+    /// (`submitting`, `submission_unknown`, `submitted`), but a LIVE submit
+    /// writes the VENUE's state onto the draft (`filled`, `partially_filled`,
+    /// `resting`, …; only the paper branch ever writes `submitted`). A filled
+    /// bot order therefore leaves a `filled` draft that the guard's IN-list
+    /// misses, and without this the bot would re-bid the contract it just
+    /// bought on every tick until the hourly or experiment cap stopped it.
+    ///
+    /// Only an ACCEPTED order blocks. A bid the submit path refused — a rate
+    /// limit, a cap, a killed fill-and-kill — leaves nothing at the venue and
+    /// is retried next tick, which is the correct behaviour for a quote that
+    /// never became an order.
+    static QJsonArray live_working(const QJsonArray& ledger_rows);
 };
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

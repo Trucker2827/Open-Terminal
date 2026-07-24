@@ -471,6 +471,51 @@ class TstKalshiBotLive : public QObject {
                      .value(QStringLiteral("net_pnl_usd")).toDouble());
     }
 
+    // ── the contract the venue already took is not bid again ────────────────
+
+    // submit_order's per-contract duplicate guard counts drafts whose status is
+    // in (submitting, submission_unknown, submitted) — but a LIVE submit writes
+    // the VENUE's state onto the draft, so a filled bot order leaves a `filled`
+    // draft the guard's IN-list misses. Without this the bot would re-buy the
+    // contract it just bought, every tick, until a cap stopped it.
+    void a_contract_the_venue_filled_is_not_quoted_again() {
+        QJsonObject accepted = bid_row();
+        accepted.insert(QStringLiteral("mode"), QStringLiteral("live"));
+        accepted.insert(QStringLiteral("reason_code"),
+                        QString::fromLatin1(KalshiBotLive::kLiveSubmitted));
+        accepted.insert(QStringLiteral("submit_status"), QStringLiteral("filled"));
+        const QJsonArray working = KalshiBotLive::live_working(QJsonArray{accepted});
+        QCOMPARE(working.size(), 1);
+        QCOMPARE(working.first().toObject().value(QStringLiteral("ticker")).toString(),
+                 QStringLiteral("KXBTC15M-T1"));
+    }
+
+    // A bid the submit path refused left nothing at the venue — a rate limit, a
+    // cap, a killed fill-and-kill. Blocking it would be the bot inventing a
+    // position out of a rejection.
+    void a_refused_bid_does_not_block_the_next_tick() {
+        QJsonObject refused = bid_row();
+        refused.insert(QStringLiteral("mode"), QStringLiteral("live"));
+        refused.insert(QStringLiteral("reason_code"),
+                       QString::fromLatin1(KalshiBotLive::kLiveRejected));
+        refused.insert(QStringLiteral("submit_status"), QStringLiteral("rejected"));
+        QVERIFY(KalshiBotLive::live_working(QJsonArray{refused}).isEmpty());
+    }
+
+    // A PAPER bid must not block a live tick: the two books are separate
+    // everywhere else in this rung and must be here too. The row below carries
+    // the live ACCEPTED reason code and differs only in `mode`, so `mode` is
+    // the only thing that can be excluding it — a paper row with an ordinary
+    // paper reason code would be excluded by the accepted-only filter instead,
+    // and would never reach the check this test is named for.
+    void a_paper_bid_does_not_block_a_live_tick() {
+        QJsonObject paper = bid_row();
+        paper.insert(QStringLiteral("reason_code"),
+                     QString::fromLatin1(KalshiBotLive::kLiveSubmitted));
+        QCOMPARE(paper.value(QStringLiteral("mode")).toString(), QStringLiteral("paper"));
+        QVERIFY(KalshiBotLive::live_working(QJsonArray{paper}).isEmpty());
+    }
+
     void a_row_without_a_mode_is_paper() {
         QJsonObject legacy = bid_row();
         legacy.remove(QStringLiteral("mode"));

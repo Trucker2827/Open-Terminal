@@ -1370,6 +1370,30 @@ class TstPmPaper : public QObject {
         QVERIFY2(ok_res.success, qPrintable("within-ceiling submit: " + ok_res.error));
         QCOMPARE(ok_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
         QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+
+        // Documented behaviour, not an aspiration: submit_order's per-contract
+        // duplicate guard counts drafts whose status is in ('submitting',
+        // 'submission_unknown', 'submitted'), but a LIVE submit writes the
+        // VENUE's state onto the draft — the fill above left it 'filled'. The
+        // guard therefore does NOT stop a second order on the same contract,
+        // which is exactly why KalshiBotLive::live_working() suppresses it bot
+        // side. This pins the real behaviour so a change on either side is
+        // visible rather than silent.
+        QCOMPARE(OrderDraftRepository::instance().get(ok_draft).value().status,
+                 QStringLiteral("filled"));
+        const QJsonObject again = bot_live_intent(QStringLiteral("mkt-bot-ok"), 1.0, 0.05);
+        QVERIFY(!again.isEmpty());
+        auto again_prepared = rt_.call_tool("prepare_order", again);
+        const QString again_draft = again_prepared.data.toObject().value("draft_id").toString();
+        QVERIFY(!again_draft.isEmpty());
+        arm_live();
+        const auto again_res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", again_draft}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY2(!again_res.data.toObject().value("reason").toString()
+                      .contains("already submitted an order for this contract"),
+                 "if the submit path now catches a FILLED duplicate itself, delete "
+                 "KalshiBotLive::live_working() and its tests — it exists only because it does not");
     }
 
     void cleanupTestCase() { rt_.shutdown(); }
