@@ -627,6 +627,14 @@ target_include_directories(tst_kalshi_bot_decision PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_kalshi_bot_decision PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_decision COMMAND tst_kalshi_bot_decision)
 
+# Kalshi bot observable-loop runtime (issue #129) — the ONE loop-status
+# classifier the GUI chip and `kalshi bot status` both render, plus the kill
+# switch file they both write. Header-only, no DB/Widgets.
+add_executable(tst_kalshi_bot_runtime tst_kalshi_bot_runtime.cpp)
+target_include_directories(tst_kalshi_bot_runtime PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_runtime PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_runtime COMMAND tst_kalshi_bot_runtime)
+
 # Sealed promotion gate (rung 2): preregistered criteria, mechanical verdict,
 # and a seal that is verified through the disk, not just in memory.
 add_executable(tst_kalshi_bot_gate tst_kalshi_bot_gate.cpp)
@@ -856,6 +864,15 @@ add_test(NAME sandbox_boundary_check
 add_test(NAME e2e_sandbox_smoke
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_sandbox_smoke.sh)
+
+# Issue #129 — the Kalshi bot's kill switch, proved against the real
+# openterminalcli: a bid the bot would have placed is not placed once the stop
+# file exists, and `kalshi bot run` exits within ONE tick of the switch being
+# thrown. Offline, paper-only, temp evidence dir — never touches the operator's
+# ledger.
+add_test(NAME e2e_kalshi_bot_kill_switch
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_kill_switch.sh)
 
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately

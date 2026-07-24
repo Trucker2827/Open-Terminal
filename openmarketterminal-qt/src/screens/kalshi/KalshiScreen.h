@@ -118,6 +118,11 @@ class KalshiScreen final : public QWidget {
     void refresh_advisor_canary_status();
     void refresh_arena_context_status();
     void refresh_bot_panel();
+    /// Throws or clears the bot's kill switch by writing/removing
+    /// kalshi-bot-stop.json — the same file `kalshi bot stop` writes, written
+    /// through the same shared helper, in-process (never by shelling out, so
+    /// the switch does not depend on finding openterminalcli).
+    void toggle_bot_kill_switch();
     void refresh_daemon_status();
     void restart_daemon();
     void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
@@ -198,6 +203,9 @@ class KalshiScreen final : public QWidget {
     QLabel* bot_signal_ = nullptr;
     QLabel* bot_scoreboard_ = nullptr;
     QLabel* bot_gate_ = nullptr;
+    // The BOT panel's one control: the kill switch. It can only stop the bot
+    // or clear that stop — it cannot arm, size, price, or place anything.
+    QPushButton* bot_stop_button_ = nullptr;
     QListWidget* bot_decisions_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
     QTableWidget* active_positions_table_ = nullptr;

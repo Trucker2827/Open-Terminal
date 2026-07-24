@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Kalshi PAPER bot loop (issue #129, ladder rung 4). DOCUMENTED, NOT
+  AUTO-LOADED — live infrastructure is bounced deliberately, so the operator
+  installs and loads this by hand.
+
+  PAPER ONLY. `kalshi bot` has no live order path at all: no preparation, no
+  submission, no live gate, and `--mode live` is refused as an unknown mode.
+  Every row this job writes carries mode=paper, live_eligible=false.
+
+  INSTALL:
+
+      cp org.openterminal.kalshi-bot.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.kalshi-bot.plist
+
+  UNINSTALL:
+
+      launchctl bootout gui/$UID/org.openterminal.kalshi-bot
+      rm ~/Library/LaunchAgents/org.openterminal.kalshi-bot.plist
+
+  RESTART after a rebuild of openterminalcli:
+
+      launchctl kickstart -k gui/$UID/org.openterminal.kalshi-bot
+
+  WHAT IT DOES: one tick every 60s (`kalshi bot run --paper --interval 60`).
+  Each tick re-reads the kill switch, settles whatever the exchange has
+  actually resolved, reads calibrator.json, and journals one decision row per
+  contract — passes included — to
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/kalshi-bot-decisions.jsonl
+
+  KILL SWITCH: `openterminalcli kalshi bot stop` (or the STOP button on the
+  Predictions screen's BOT panel) writes kalshi-bot-stop.json beside that
+  ledger. The loop sees it at the top of its next tick, journals a BOT_STOPPED
+  refusal without bidding, and exits 0 — within one tick (<= 60s).
+
+  KeepAlive is deliberately Crashed-only, NOT `true`: a supervisor that
+  respawned the loop after a clean kill-switch exit would defeat the kill
+  switch. So a crash is restarted; a stop stays stopped. To start bidding
+  again: `openterminalcli kalshi bot resume`, then the kickstart above.
+
+  VERIFY after the first load: `openterminalcli kalshi bot status` should read
+  BOT RUNNING with a last-decision age under two minutes — the same verdict,
+  from the same classifier and threshold, that the GUI BOT chip paints. The
+  logs below carry every tick's summary line.
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.kalshi-bot</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/build/openterminalcli</string>
+    <string>kalshi</string><string>bot</string><string>run</string>
+    <string>--paper</string>
+    <string>--interval</string><string>60</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict>
+    <key>Crashed</key><true/>
+  </dict>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>WorkingDirectory</key><string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/build</string>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kalshi-bot.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kalshi-bot.err.log</string>
+</dict></plist>
