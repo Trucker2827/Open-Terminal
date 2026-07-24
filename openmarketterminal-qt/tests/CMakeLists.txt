@@ -86,6 +86,15 @@ target_include_directories(tst_screen_watchlist_feed PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(tst_screen_watchlist_feed PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_screen_watchlist_feed COMMAND tst_screen_watchlist_feed)
 
+# Issue #103 — Equity Research NOTE action composition
+# (screens/equity_research/EquityResearchNote.h): loaded quote → the note body
+# carries symbol + displayed price/change; no quote → no snapshot line, never
+# zero-filled. Header-only pure composition, so Qt6::Core is enough.
+add_executable(tst_equity_research_note tst_equity_research_note.cpp)
+target_include_directories(tst_equity_research_note PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_equity_research_note PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_equity_research_note COMMAND tst_equity_research_note)
+
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/BridgeDiscoveryFile.cpp)

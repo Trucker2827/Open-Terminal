@@ -145,6 +145,22 @@ NotesScreen::NotesScreen(QWidget* parent) : QWidget(parent) {
     setStyleSheet(QString("background: %1;").arg(BG_BASE()));
     build_ui();
     load_notes();
+
+    // Cross-screen jump (Issue #103): Equity Research's NOTE action navigates
+    // here and asks for the fresh note to be shown. Constructor-scoped like
+    // EquityResearchScreen's equity_research.load_symbol subscription — the
+    // event must land even when the screen was just materialized and is not
+    // yet visible. Handler may fire off-thread; marshal to the UI thread.
+    QPointer<NotesScreen> self = this;
+    EventBus::instance().subscribe("notes.select_note", [self](const QVariantMap& payload) {
+        const int id = payload.value("id").toInt();
+        if (!self || id <= 0)
+            return;
+        QMetaObject::invokeMethod(self.data(), [self, id]() {
+            if (self)
+                self->select_note_by_id(id);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void NotesScreen::build_ui() {
@@ -513,6 +529,30 @@ void NotesScreen::update_notes_list() {
             ++fav_count;
     }
     stats_label_->setText(tr("Total: %1  |  Fav: %2").arg(notes_.size()).arg(fav_count));
+}
+
+void NotesScreen::select_note_by_id(int id) {
+    // Widen the filters silently so the target note can appear in the list;
+    // the single load_notes() below rebuilds it once.
+    current_category_ = "ALL";
+    if (category_list_) {
+        category_list_->blockSignals(true);
+        category_list_->setCurrentRow(0);
+        category_list_->blockSignals(false);
+    }
+    if (search_input_) {
+        search_input_->blockSignals(true);
+        search_input_->clear();
+        search_input_->blockSignals(false);
+    }
+    load_notes();
+
+    for (int i = 0; i < filtered_notes_.size(); ++i) {
+        if (filtered_notes_[i].id == id) {
+            notes_list_->setCurrentRow(i); // currentRowChanged → on_note_selected
+            break;
+        }
+    }
 }
 
 // ── Slots ────────────────────────────────────────────────────────────────────

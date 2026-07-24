@@ -11,6 +11,7 @@
 #include "trading/BrokerRegistry.h"
 #include "trading/BrokerTopic.h"
 #include "screens/equity_research/EquityAnalysisTab.h"
+#include "screens/equity_research/EquityResearchNote.h"
 #include "screens/equity_research/EquityFilingsTab.h"
 #include "screens/equity_research/EquityFinancialsTab.h"
 #include "screens/equity_research/EquityNewsTab.h"
@@ -20,6 +21,7 @@
 #include "screens/equity_research/EquityTechnicalsTab.h"
 #include "services/backtesting/BacktestingService.h"
 #include "services/equity/EquityResearchService.h"
+#include "storage/repositories/NotesRepository.h"
 #include "ui/theme/Theme.h"
 #include "python/PythonRunner.h"
 
@@ -255,6 +257,21 @@ QWidget* EquityResearchScreen::build_title_bar() {
     connect(csv_btn, &QPushButton::clicked, this, &EquityResearchScreen::on_download_csv_clicked);
     hl->addWidget(csv_btn);
 
+    auto* note_btn = new QPushButton(tr("NOTE"), container);
+    note_btn->setCursor(Qt::PointingHandCursor);
+    note_btn->setFixedHeight(24);
+    note_btn->setToolTip(tr("Save a research note for this symbol (with quote snapshot)"));
+    note_btn->setStyleSheet(
+        QString("QPushButton { background:transparent; color:%1; border:1px solid %2;"
+                "padding:0 10px; font-size:%3px; font-family:%4; font-weight:700; letter-spacing:0.5px; }"
+                "QPushButton:hover { background:%5; color:%6; }")
+            .arg(ui::colors::AMBER(), ui::colors::AMBER_DIM())
+            .arg(ui::fonts::TINY)
+            .arg(ui::fonts::DATA_FAMILY)
+            .arg(ui::colors::AMBER(), ui::colors::BG_BASE()));
+    connect(note_btn, &QPushButton::clicked, this, &EquityResearchScreen::on_note_clicked);
+    hl->addWidget(note_btn);
+
     hl->addStretch();
 
     hint_label_ = new QLabel;
@@ -369,7 +386,8 @@ void EquityResearchScreen::load_symbol(const QString& symbol) {
     if (symbol.isEmpty() || symbol == current_symbol_)
         return;
     current_symbol_ = symbol;
-    last_price_ = 0.0; // stale until the new symbol's quote arrives
+    last_price_ = 0.0;   // stale until the new symbol's quote arrives
+    has_quote_ = false;  // ditto — the NOTE snapshot must not carry the old symbol's quote
 
     // Update title bar and quote bar
     symbol_label_->setText(symbol);
@@ -416,8 +434,11 @@ void EquityResearchScreen::update_quote_bar(const services::equity::QuoteData& q
 
     // Cache the freshest price (both the yfinance poll and the live broker stream
     // funnel through here) so a BUY/SELL ticket can seed it for paper market fills.
-    if (q.price > 0.0)
+    if (q.price > 0.0) {
         last_price_ = q.price;
+        last_quote_ = q; // full quote feeds the NOTE action's snapshot line
+        has_quote_ = true;
+    }
 
     const QString cs = EquityOverviewTab::currency_symbol(current_currency_.isEmpty() ? "USD" : current_currency_);
 
@@ -595,6 +616,65 @@ void EquityResearchScreen::on_download_csv_clicked() {
 
     dlg->exec();
     dlg->deleteLater();
+}
+
+// ── Research note (Issue #103) ───────────────────────────────────────────────
+// Closes the research chain into Notes: NOTE composes a FinancialNote for the
+// loaded symbol (quote snapshot only when one actually arrived — never
+// zero-filled), stores it, publishes notes.created (same event the MCP notes
+// tools publish, so an open NotesScreen live-refreshes), and offers a jump to
+// the Notes screen with the new note selected.
+
+void EquityResearchScreen::on_note_clicked() {
+    if (current_symbol_.isEmpty())
+        return;
+
+    equity_note::ResearchNoteQuote q;
+    q.loaded = has_quote_ && last_quote_.price > 0.0;
+    q.price = last_quote_.price;
+    q.change = last_quote_.change;
+    q.change_pct = last_quote_.change_pct;
+    q.currency_symbol =
+        EquityOverviewTab::currency_symbol(current_currency_.isEmpty() ? "USD" : current_currency_);
+
+    const auto draft =
+        equity_note::compose_research_note(current_symbol_, q, QDate::currentDate());
+
+    FinancialNote note;
+    note.title = draft.title;
+    note.content = draft.content;
+    note.category = QStringLiteral("RESEARCH");
+    note.priority = QStringLiteral("MEDIUM");
+    note.sentiment = QStringLiteral("NEUTRAL");
+    note.tickers = draft.tickers;
+    note.word_count = draft.word_count;
+
+    auto r = NotesRepository::instance().create(note);
+    if (r.is_err()) {
+        QMessageBox::warning(this, tr("Note"),
+                             tr("Could not save the note: %1").arg(QString::fromStdString(r.error())));
+        return;
+    }
+    const qlonglong note_id = static_cast<qlonglong>(r.value());
+    EventBus::instance().publish("notes.created", QVariantMap{{"id", note_id}});
+
+    // Second affordance: jump to Notes with the fresh note selected. Navigate
+    // first — WindowFrame's nav.switch_screen handler is queued, so a lazily
+    // constructed NotesScreen exists (and has subscribed) before the 0-ms
+    // timer delivers notes.select_note (same sequencing as NewsScreen → AI Chat).
+    QMessageBox box(QMessageBox::NoIcon, tr("Note saved"),
+                    tr("Research note for %1 saved to Notes.").arg(current_symbol_),
+                    QMessageBox::NoButton, this);
+    auto* open_btn = box.addButton(tr("Open in Notes"), QMessageBox::AcceptRole);
+    box.addButton(tr("Close"), QMessageBox::RejectRole);
+    box.exec();
+    if (box.clickedButton() == open_btn) {
+        EventBus::instance().publish("nav.switch_screen",
+                                     {{"screen_id", QString("notes")}, {"exclusive", true}});
+        QTimer::singleShot(0, [note_id]() {
+            EventBus::instance().publish("notes.select_note", QVariantMap{{"id", note_id}});
+        });
+    }
 }
 
 // ── Re-translation ───────────────────────────────────────────────────────────

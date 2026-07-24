@@ -54,6 +54,9 @@ class NotesScreen : public QWidget, public IStatefulScreen {
     void retranslateUi();
     void load_notes();
     void update_notes_list();
+    // Cross-screen jump target (notes.select_note): reload, widen the
+    // category/search filters, and select the note with this id.
+    void select_note_by_id(int id);
     void show_note(const openmarketterminal::FinancialNote& note);
     void clear_editor();
     void enter_edit_mode();

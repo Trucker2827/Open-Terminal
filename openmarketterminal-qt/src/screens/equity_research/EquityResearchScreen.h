@@ -56,6 +56,10 @@ class EquityResearchScreen : public QWidget, public IStatefulScreen, public IGro
     // Opens the "Download Price Data (CSV)" dialog and exports yfinance OHLCV
     // history for current_symbol_ to a user-chosen file.
     void on_download_csv_clicked();
+    // NOTE → creates a research note for current_symbol_ (quote snapshot in
+    // the body when one has loaded), publishes notes.created, and offers a
+    // jump to the Notes screen with the new note selected.
+    void on_note_clicked();
 
   private:
     void build_ui();
@@ -101,6 +105,11 @@ class EquityResearchScreen : public QWidget, public IStatefulScreen, public IGro
     QString current_symbol_;
     QString current_currency_;
     double last_price_ = 0.0; // freshest quote price, seeds the order ticket
+    // Freshest full quote for current_symbol_ — feeds the NOTE action's
+    // snapshot line. has_quote_ is false until the new symbol's quote arrives
+    // so the note never carries stale or zero-filled numbers.
+    services::equity::QuoteData last_quote_;
+    bool has_quote_ = false;
     bool hub_broker_active_ = false;
 
     // Symbol group link — SymbolGroup::None when unlinked.

@@ -1,3 +1,110 @@
 # Finn Loop Journal
 
 One line per iteration; newest last.
+- 2026-07-23 12:03:45 iteration 1: building issue #80 (log: finn/logs/20260723-120345-issue-80.log)
+- 2026-07-23 12:19:41 issue #80 PR #93: MERGED
+- 2026-07-23 12:19:42 iteration 2: building issue #80 (log: finn/logs/20260723-121942-issue-80.log)
+- 2026-07-23 iteration 2: issue #80 already CLOSED with PR #93 MERGED — duplicate invocation, no-op
+- 2026-07-23 12:20:24 issue #80: no PR after build (blocked or failed) — see log
+- 2026-07-23 12:20:25 iteration 3: building issue #81 (log: finn/logs/20260723-122025-issue-81.log)
+- 2026-07-23 issue #81 PR #94: warm ollama lanes before each round; 26 arena tests + full 111-test suite green; both new tests seen failing first
+- 2026-07-23 12:26:14 issue #81 PR #94: MERGED
+- 2026-07-23 12:26:14 loop completed 3 iterations
+- 2026-07-23 12:51:39 iteration 1: building issue #82 (log: finn/logs/20260723-125139-issue-82.log)
+- 2026-07-23 issue #82 PR #104: built — HFT 'terminal' source via bridge get_order_book; pointer paths in issue were stale (scripts/ai_quant_lab/ actually lives under openmarketterminal-qt/); no public trade feed over bridge so toxic_flow reads unavailable
+- 2026-07-23 13:00:28 issue #82 PR #104: MERGED
+- 2026-07-23 13:00:30 iteration 2: building issue #82 (log: finn/logs/20260723-130030-issue-82.log)
+- 2026-07-23 13:00:57 issue #82: no PR after build (blocked or failed) — see log
+- 2026-07-23 13:00:57 iteration 3: building issue #83 (log: finn/logs/20260723-130057-issue-83.log)
+- 2026-07-23 issue #83 no PR: BLOCKED — criterion "holders via edgar_13f_holdings" rests on a false premise: the 13F module is filer-centric (13Fs filed BY the ticker); verified live `13f_holdings AAPL` → empty, so holders-of-AAPL can never populate. insider_transactions + get_financials verified working. Also flagged: full yfinance removal zeroes ~8 unmapped map sections (governance, technicals, short interest, analysts, officers, calendar). Options posted on issue.
+- 2026-07-23 13:05:32 issue #83: no PR after build (blocked or failed) — see log
+- 2026-07-23 13:05:33 iteration 4: building issue #84 (log: finn/logs/20260723-130533-issue-84.log)
+- 2026-07-23 issue #84 PR #105: built — weekly lightgbm retrain + guarded CAS repoint via active_model.json; publisher model_id "active" follows pointer each cycle; live e2e run swapped (new holdout rank-IC 0.0042 vs incumbent -0.0472); 14 hermetic tests, suite 113/113; surprise: stale __pycache__ gave a false test failure after a same-second same-size restore (pyc mtime is whole-second) — cleared cache before trusting results
+- 2026-07-23 13:19:17 issue #84 PR #105: MERGED
+- 2026-07-23 13:19:19 iteration 5: building issue #84 (log: finn/logs/20260723-131919-issue-84.log)
+- 2026-07-23 iteration 5: issue #84 already CLOSED with PR #105 MERGED — duplicate invocation, no-op
+- 2026-07-23 13:20:05 issue #84: no PR after build (blocked or failed) — see log
+- 2026-07-23 13:20:05 loop completed 5 iterations
+- 2026-07-23 13:28:32 iteration 1: building issue #83 (log: finn/logs/20260723-132832-issue-83.log)
+- 2026-07-23 14:02 issue #83: PR #106 opened (EDGAR rewire: XBRL financials, Form 4 insiders, SC 13D/G major_holders, native peers). Surprises: XBRL presents capex sign-flipped (FCF bug caught live, fixed + regression test); dev-build manual checks need `--profile <scratch>` to dodge the single-instance lock while the operator's app runs.
+- 2026-07-23 14:22 issue #83 PR #106: review change request addressed — evidence jpg was the wrong screen; recaptured actual Relationship Map (AAPL) in scratch profile finn83r2 via AX API (pyobjc) after AppleScript/System Events failed to traverse the Qt tree; profile log kept on disk this time; no code changes (74942d3f)
+- 2026-07-23 15:47:52 issue #83 PR #106: not approved after revision — left open
+- 2026-07-23 15:47:52 no unhandled agent-ready issues; loop idle-exits at iteration 2
+- 2026-07-23 16:09:08 issue #83 PR #106: MERGED (review resumed after network outage)
+- 2026-07-23 16:09:11 iteration 1: building issue #83 (log: finn/logs/20260723-160911-issue-83.log)
+- 2026-07-23 iteration: issue #83 already CLOSED with PR #106 MERGED — duplicate invocation, no-op
+- 2026-07-23 16:09:51 issue #83: no PR after build (blocked or failed) — see log
+- 2026-07-23 16:09:51 iteration 2: building issue #85 (log: finn/logs/20260723-160951-issue-85.log)
+- 2026-07-23 issue #85 PR #107: built — crypto_data registered as 25th quant module (CORE); quant run build/info verified live (1216 real BTC 1min bars); GUI generic panel verified in scratch profile (screenshot in finn/evidence/); test red-green checked, suite 115/115; surprise: 'openterminalcli open quant' resolves to the quantlib pricing screen, not ai_quant_lab — use 'open quantlab'
+- 2026-07-23 16:24:46 issue #85 PR #107: MERGED
+- 2026-07-23 16:24:49 iteration 3: building issue #86 (log: finn/logs/20260723-162449-issue-86.log)
+- 2026-07-23 16:36:51 issue #86 PR #108: MERGED
+- 2026-07-23 16:36:53 iteration 4: building issue #87 (log: finn/logs/20260723-163653-issue-87.log)
+- 2026-07-23 issue #87 PR #109: built — daemon chip classifies kalshi-ws-books.json heartbeat in-process (green fresh / amber stale / grey none, sourced tooltips); CLI demoted to refinement; classifier neuter-checked red-green; suite 116/116; surprise: GUI does not link ServeCommand.cpp, so the classifier had to be header-inline beside kalshi_evidence_path
+- 2026-07-23 16:48:17 issue #87 PR #109: MERGED
+- 2026-07-23 16:48:19 iteration 5: building issue #88 (log: finn/logs/20260723-164819-issue-88.log)
+- 2026-07-23 issue #88 PR #110: built — per-lane calibration overlay (reliability bins + Platt Brier) in 'calibrated_unofficial'; pairs via new 'advise score --include-rows' (reuses yes-side normalization, falls back for old CLIs); official brier/rank proven untouched by test; suite 116/116, 14 new tests, 3 neuter checks; surprise: full-Newton Platt fit oscillates on this data — needed backtracking line search
+- 2026-07-23 17:03:15 issue #88 PR #110: MERGED
+- 2026-07-23 17:03:17 loop completed 5 iterations
+- 2026-07-23 17:04:03 iteration 1: building issue #89 (log: finn/logs/20260723-170403-issue-89.log)
+- 2026-07-23 17:12:19 issue #89: no PR after build (blocked or failed) — see log
+- 2026-07-23 17:12:20 iteration 2: building issue #90 (log: finn/logs/20260723-171220-issue-90.log)
+- 2026-07-23 issue #90 PR #111: built — CLI bundled in Windows installer (core-component install rule; cli component was silently dropped by CPACK_COMPONENTS_ALL) + Linux AppDir usr/bin with linuxdeploy --executable for rpath; cli_path() suffix probing extracted to CliLocator.h, 8 tests seen failing neutered; suite 117/117
+- 2026-07-23 17:27:54 issue #90 PR #111: needs-human-review — left for operator
+- 2026-07-23 17:27:55 iteration 3: building issue #91 (log: finn/logs/20260723-172755-issue-91.log)
+- 2026-07-23 issue #91 PR #112: built — sign-release.sh probes notary credentials (notarytool history, 0.04s) before any download/sign work; locked keychain now exits immediately with cause+fix instead of the misleading 'No Keychain password item found' minutes in. Surprise: this headless session's own keychain IS locked, so the failure reproduced live. test_sign_release_probe (ctest, xcrun/gh stubs) neuter-checked vs origin/main; suite 117/117. needs-human-review carried to PR.
+- 2026-07-23 17:33:41 issue #91 PR #112: needs-human-review — left for operator
+- 2026-07-23 17:33:42 iteration 4: building issue #95 (log: finn/logs/20260723-173342-issue-95.log)
+- 2026-07-23 issue #95: built — shared EdgeProofStats module (verdict/sample/fold, one copy) + cockpit PAPER PROOF scoreboard; pinned-DB spot check matched CLI proof-loop exactly on all integer fields, P&L within 1e-6 (persisted 8dp move); 117/117 tests green; verdict test seen failing under threshold flip
+- 2026-07-23 17:56:32 issue #95 PR #113: MERGED
+- 2026-07-23 17:56:35 iteration 5: building issue #96 (log: finn/logs/20260723-175635-issue-96.log)
+- 2026-07-23 issue #96 PR #114: radar net-of-fees hurdle + noise sigma; fee table extracted to services/crypto/CryptoFees (found THREE pre-existing duplicate Coinbase tier tables: CommandDispatch x2, ServeCommand x1, plus sandbox seed literals); 9 new radar tests all seen failing first; 118/118 green
+- 2026-07-23 18:19:03 issue #96 PR #114: MERGED
+- 2026-07-23 18:19:05 loop completed 5 iterations
+- 2026-07-23 issue #89 PR #115: RESUMED dead builder's commit 5f9bc1d9, rebased on fresh main, re-verified from scratch — suite 119/119, python publish tests fail without change (4 errors), C++ presentation test fails neutered (2 failures); commit was sound, no rebuild needed; surprise: prior session's stat claims all held up under re-verification
+- 2026-07-23 18:28:29 issue #89 PR #115: MERGED (resumed after builder session died pre-push)
+- 2026-07-23 18:28:32 iteration 1: building issue #89 (log: finn/logs/20260723-182832-issue-89.log)
+- 2026-07-23 issue #89: NO-OP — dispatched after PR #115 had already merged (18:28:29, resumed prior session); issue CLOSED, nothing to build
+- 2026-07-23 18:29:12 issue #89: no PR after build (blocked or failed) — see log
+- 2026-07-23 18:29:13 iteration 2: building issue #90 (log: finn/logs/20260723-182913-issue-90.log)
+- 2026-07-23 18:38:11 issue #90 PR #111: needs-human-review — left for operator
+- 2026-07-23 18:38:12 iteration 3: building issue #91 (log: finn/logs/20260723-183812-issue-91.log)
+- 2026-07-23 issue #91 PR #112: already built+loop-approved by prior iteration; re-verified locally (probe test 1/1, neuter check fails on main's script, full suite 117/117, live probe 1.2s); PR CI red is pre-existing main breakage from PR #104 (numpy missing on runner, tracked #116), not this diff; awaiting #116 fix + operator review (needs-human-review)
+- 2026-07-23 18:43:46 issue #91 PR #112: needs-human-review — left for operator
+- 2026-07-23 18:43:47 iteration 4: building issue #97 (log: finn/logs/20260723-184347-issue-97.log)
+- 2026-07-23 18:45:51 issue #91 PR #112: MERGED per operator's conditions (zsh test fix verified under bash+zsh, CI rerun green)
+- 2026-07-23 issue #97 building: ticker-bar ambient vol + move-in-sigmas readout; shared math already relocated by #96 so no cli/ include needed; cached-price replay excluded from move window (stale-baseline honesty)
+- 2026-07-23 18:58:18 issue #97 PR #117: MERGED
+- 2026-07-23 18:58:20 iteration 5: building issue #98 (log: finn/logs/20260723-185820-issue-98.log)
+- 2026-07-23 issue #98 PR #118: built — calibrator.json readout beside YES/NO quotes via new pure KalshiEvidenceEngine::calibrator_readout; live file now shows adds_value_over_market=true (228 resolved) vs false at spec time, both truth values labeled honestly; sigma=0.0 is ambiguous upstream (at-strike vs no-vol) so readout keys honesty off per_min_vol_bps; neuter-checked both new tests
+- 2026-07-23 19:09:33 issue #98 PR #118: MERGED
+- 2026-07-23 19:09:35 iteration 6: building issue #99 (log: finn/logs/20260723-190935-issue-99.log)
+- 2026-07-23 issue #99 PR #119: built — LIVE SCOREBOARD block on closed bets (exact-accounting cohorts ≤35c/35–65c/≥65c + streaks by settled_time, netted/incomplete rows counted as excluded); math in new pure unit KalshiSettlementScoreboard; suite 122/122, streak test seen failing with the settled_time sort neutered
+- 2026-07-23 19:20:27 issue #90 PR #111: MERGED per operator's conditional approval (regression green + release run 30050942452 Windows/Linux payloads verified)
+- 2026-07-23 19:21:13 issue #99 PR #119: MERGED
+- 2026-07-23 19:21:16 iteration 7: building issue #100 (log: finn/logs/20260723-192116-issue-100.log)
+- 2026-07-23 issue #100 PR #120: built — ARENA context strip on Kalshi ADVISOR & CANARY tab via new pure ArenaContextPresentation.h (verdict verbatim, top lane by rank, closest lane's own reason when none comparable, OFFLINE/STALE at 30m); OPEN ALPHA ARENA button through screen.alpha_arena action; suite 124/124, 4 cases seen failing with verdict/stale neutered; note: issue's scripts/arena pointer is actually openmarketterminal-qt/scripts/arena
+- 2026-07-23 19:33:54 issue #100 PR #120: MERGED
+- 2026-07-23 19:33:56 loop completed 7 iterations
+- 2026-07-23 19:34:41 iteration 1: building issue #101 (log: finn/logs/20260723-193441-issue-101.log)
+- 2026-07-23 issue #101 PR #121: built — Financials tab EDGAR XBRL primary + yfinance fallback + source label; 15 adapter tests, suite 125/125, neuter-checked; live AAPL from EDGAR + RELIANCE.NS fallback verified in running app; display locked so label verified via accessibility tree (screenshot impossible on locked session); cmd-bar 'cmd <text>' via openterminalcli hangs 180s — drove UI via System Events AXPress instead
+- 2026-07-23 20:25 issue #101 PR #121 revision round: NO loop review existed (review session died with zero output — no comment, no label); nothing to revise. Completed pending criterion-5 evidence instead: test_edgar_financials_adapter RAN+passed in CI run 30055107579; CI red is only test_hft_terminal_source, identical on main run 30053585613 (#116 pre-existing) — posted on PR, branch untouched at 46c8826c
+- 2026-07-23 20:25:59 issue #101 PR #121: not approved after revision — left open
+- 2026-07-23 20:26:00 iteration 2: building issue #102 (log: finn/logs/20260723-202600-issue-102.log)
+- 2026-07-23 20:26:02 issue #102: no PR after build (blocked or failed) — see log
+- 2026-07-23 20:26:03 iteration 3: building issue #103 (log: finn/logs/20260723-202603-issue-103.log)
+- 2026-07-23 20:26:05 issue #103: no PR after build (blocked or failed) — see log
+- 2026-07-23 20:26:06 iteration 4: building issue #116 (log: finn/logs/20260723-202606-issue-116.log)
+- 2026-07-23 20:26:08 issue #116: no PR after build (blocked or failed) — see log
+- 2026-07-23 20:26:08 loop completed 4 iterations
+- 2026-07-23 21:41:46 issue #116: regression run 30059556713 finished completed/cancelled — numpy fix insufficient, left open
+- 2026-07-23 21:41:47 iteration 1: building issue #101 (log: finn/logs/20260723-214147-issue-101.log)
+- 2026-07-23 21:43:49 issue #101: PR #121 already open from prior build; CI failure was pre-existing numpy flake (#116), merged origin/main (cc3c5424) into branch, adapter test 15/15 locally, CI re-running — https://github.com/Trucker2827/Open-Terminal/pull/121
+- 2026-07-23 21:48:33 issue #101 PR #121: MERGED
+- 2026-07-23 21:48:35 iteration 2: building issue #102 (log: finn/logs/20260723-214835-issue-102.log)
+- 2026-07-23 22:10:47 issue #102 PR #122: MERGED
+- 2026-07-23 22:10:49 iteration 3: building issue #103 (log: finn/logs/20260723-221049-issue-103.log)
+- 2026-07-23 23:12:47 issue #103: no PR after build (blocked or failed) — see log
+- 2026-07-23 23:18:27 no unhandled agent-ready issues; loop idle-exits at iteration 4
+- 2026-07-24 00:33:40 issue #116: FIXED — main run 30066255888 green, ctest log shows test_hft_terminal_source RAN+Passed (numpy into ctest's interpreter)
+- 2026-07-24 00:33:43 iteration 1: building issue #103 (log: finn/logs/20260724-003343-issue-103.log)
