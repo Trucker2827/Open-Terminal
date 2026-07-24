@@ -192,6 +192,10 @@ class KalshiScreen final : public QWidget {
     QLabel* advisor_separation_status_ = nullptr;
     QLabel* legacy_live_badge_ = nullptr;
     QLabel* canary_badge_ = nullptr;
+    // Shown only once every advisor_* file has fallen silent past
+    // kAdvisorRetiredAfterMs: the duel is over and the tab says so.
+    QLabel* advisor_retired_banner_ = nullptr;
+    QLabel* advisor_duel_record_ = nullptr;
     QLabel* advisor_system_status_ = nullptr;
     QLabel* advisor_qualification_status_ = nullptr;
     QLabel* advisor_safety_status_ = nullptr;
@@ -287,6 +291,10 @@ class KalshiScreen final : public QWidget {
     qint64 last_live_status_fetch_ms_ = 0;
     QJsonObject calibrator_report_;
     qint64 calibrator_report_read_ms_ = 0;
+    // advisor_competition_report.json is ~750KB and frozen once the duel ends,
+    // so it is read at most once per session — only when retirement is detected.
+    QJsonObject advisor_duel_report_;
+    bool advisor_duel_report_read_ = false;
     bool live_status_fetching_ = false;
     QJsonObject latest_legacy_live_status_;
     bool shadow_enabled_ = true;

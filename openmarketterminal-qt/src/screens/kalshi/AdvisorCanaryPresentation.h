@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
+#include <QTimeZone>
 
 namespace openmarketterminal::screens::kalshi {
 
@@ -125,6 +127,139 @@ inline AdvisorCanaryView present_advisor_canary(const QJsonObject& loop,
     view.critical = !heartbeat_fresh || !journal_valid || promotion_state.isEmpty() ||
                     !safety.value(QStringLiteral("safe")).toBool() || view.canary_live;
     return view;
+}
+
+// ---------------------------------------------------------------------------
+// Retirement of the blind-duel advisor protocol.
+//
+// The advisor loop rewrote every one of its state files on each pass, so when
+// all of them fall silent together the loop is not slow — it has stopped, and
+// the tab must say so instead of rendering day-old duel machinery as if it
+// were live. This is a fact about the advisor_* files ONLY: the legacy live
+// session status is polled from the running terminal and deliberately never
+// enters this decision, so a concluded duel can never mask an armed session.
+// ---------------------------------------------------------------------------
+
+// The loop's own heartbeat bound is 180s. Six hours without a single write
+// from ANY advisor file is far past a hiccup, a restart, or a slow forecast;
+// nothing shorter than that is claimed to be retirement.
+inline constexpr qint64 kAdvisorRetiredAfterMs = 6LL * 60 * 60 * 1000;
+
+struct AdvisorDuelRetirement {
+    bool retired = false;       // every advisor file is silent past the threshold
+    qint64 last_update_ms = 0;  // newest advisor write seen, 0 when nothing is known
+};
+
+inline AdvisorDuelRetirement advisor_duel_retirement(const QJsonObject& loop,
+                                                     const QJsonObject& qualification_snapshot,
+                                                     const QJsonObject& promotion,
+                                                     const QJsonObject& safety,
+                                                     const QJsonObject& canary,
+                                                     const QJsonObject& latest,
+                                                     qint64 now_ms) {
+    AdvisorDuelRetirement out;
+    // Only write timestamps count. Fields such as canary_epoch_started_at_ms
+    // or last_reconciled_at_ms describe the epoch, not when the file was last
+    // written, and would date the loop by something it did not do.
+    bool skewed = false;
+    const auto note = [&](const QJsonValue& value) {
+        const qint64 ms = advisor_i64(value);
+        if (ms <= 0) return;
+        if (ms > now_ms) { skewed = true; return; }
+        out.last_update_ms = qMax(out.last_update_ms, ms);
+    };
+    note(loop.value(QStringLiteral("heartbeat_at_ms")));
+    note(loop.value(QStringLiteral("updated_at_ms")));
+    note(qualification_snapshot.value(QStringLiteral("updated_at_ms")));
+    note(promotion.value(QStringLiteral("updated_at_ms")));
+    note(safety.value(QStringLiteral("updated_at_ms")));
+    note(canary.value(QStringLiteral("updated_at_ms")));
+    note(latest.value(QStringLiteral("opened_at_ms")));
+    // Fail closed twice over: absent files are not evidence of retirement, and
+    // a future-dated write is unreadable rather than old. Both keep the
+    // existing UNKNOWN / FAIL CLOSED rendering rather than declaring an end.
+    out.retired = !skewed && out.last_update_ms > 0 &&
+                  now_ms - out.last_update_ms > kAdvisorRetiredAfterMs;
+    return out;
+}
+
+struct AdvisorDuelArchive {
+    QString headline;              // RETIRED / DUEL CONCLUDED + the last advisor write
+    QString record;                // the frozen final record, or why it is unavailable
+    bool record_available = false; // a readable advisor_competition_report.json
+};
+
+inline QString advisor_retired_age_text(qint64 age_ms) {
+    if (age_ms < 7'200'000) return QStringLiteral("%1m").arg(age_ms / 60'000);
+    if (age_ms < 172'800'000) return QStringLiteral("%1h").arg(age_ms / 3'600'000);
+    return QStringLiteral("%1d").arg(age_ms / 86'400'000);
+}
+
+// The final record is read out of advisor_competition_report.json — the report
+// competition_report.py froze when the duel ended. Nothing here is derived:
+// result_state is printed as the report states it, and a report that declares
+// no winner is never talked into one.
+inline AdvisorDuelArchive present_advisor_duel_archive(const QJsonObject& competition_report,
+                                                       qint64 last_update_ms, qint64 now_ms) {
+    AdvisorDuelArchive archive;
+    const QString when = last_update_ms > 0
+        ? QDateTime::fromMSecsSinceEpoch(last_update_ms, QTimeZone::UTC)
+              .toString(QStringLiteral("yyyy-MM-dd hh:mm 'UTC'"))
+        : QStringLiteral("unknown");
+    const QString age = last_update_ms > 0 && now_ms >= last_update_ms
+        ? QStringLiteral(" (%1 ago)").arg(advisor_retired_age_text(now_ms - last_update_ms))
+        : QString();
+    archive.headline =
+        QStringLiteral("DUEL CONCLUDED · ADVISOR LOOP RETIRED — last advisor write %1%2\n"
+                       "No advisor state has changed since. Nothing below this banner is live; "
+                       "the current Kalshi automation path is the BOT tab.")
+            .arg(when, age);
+
+    if (competition_report.isEmpty()) {
+        archive.record = QStringLiteral(
+            "FINAL FROZEN DUEL RECORD UNAVAILABLE — advisor_competition_report.json is missing "
+            "or unreadable. The duel's record cannot be shown, and nothing is inferred from its "
+            "absence.");
+        return archive;
+    }
+    archive.record_available = true;
+
+    const QJsonObject epochs = competition_report.value(QStringLiteral("epoch_pair")).toObject();
+    const QString claude_epoch =
+        epochs.value(QStringLiteral("claude")).toString(QStringLiteral("unknown"));
+    const QString codex_epoch =
+        epochs.value(QStringLiteral("codex")).toString(QStringLiteral("unknown"));
+    const QString state = competition_report.value(QStringLiteral("result_state")).toString();
+    const QString verdict =
+        state == QStringLiteral("CLAUDE_WINS") ? QStringLiteral("WINNER: CLAUDE — %1").arg(claude_epoch)
+        : state == QStringLiteral("CODEX_WINS") ? QStringLiteral("WINNER: CODEX — %1").arg(codex_epoch)
+        : state.isEmpty() ? QStringLiteral("NO WINNER DECLARED — result_state missing")
+                          : QStringLiteral("NO WINNER DECLARED — %1").arg(state);
+
+    const QJsonObject thresholds = competition_report.value(QStringLiteral("thresholds")).toObject();
+    const QJsonObject coverage = competition_report.value(QStringLiteral("coverage")).toObject();
+    const QString hash =
+        competition_report.value(QStringLiteral("scoring_infrastructure_hash")).toString();
+    archive.record =
+        QStringLiteral("FINAL FROZEN DUEL RECORD (advisor_competition_report.json)\n"
+                       "RESULT %1 · %2 / %3 jointly resolved of %4 opportunities\n"
+                       "EPOCHS claude=%5 · codex=%6\n"
+                       "COVERAGE claude %7% · codex %8% (minimum %9% each)\n"
+                       "SCORING FROZEN · infrastructure %10 · shadow_only=%11 · execution_eligible=%12")
+            .arg(verdict)
+            .arg(competition_report.value(QStringLiteral("jointly_resolved")).toInt())
+            .arg(thresholds.value(QStringLiteral("minimum_jointly_resolved")).toInt())
+            .arg(competition_report.value(QStringLiteral("opportunities")).toInt())
+            .arg(claude_epoch, codex_epoch)
+            .arg(coverage.value(QStringLiteral("claude")).toDouble() * 100.0, 0, 'f', 1)
+            .arg(coverage.value(QStringLiteral("codex")).toDouble() * 100.0, 0, 'f', 1)
+            .arg(thresholds.value(QStringLiteral("minimum_coverage_each")).toDouble() * 100.0, 0, 'f', 1)
+            .arg(hash.isEmpty() ? QStringLiteral("unknown") : hash.left(12))
+            .arg(competition_report.value(QStringLiteral("shadow_only")).toBool()
+                     ? QStringLiteral("true") : QStringLiteral("false"))
+            .arg(competition_report.value(QStringLiteral("execution_eligible")).toBool()
+                     ? QStringLiteral("true") : QStringLiteral("false"));
+    return archive;
 }
 
 } // namespace openmarketterminal::screens::kalshi

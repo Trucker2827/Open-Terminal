@@ -4,6 +4,13 @@
 
 using namespace openmarketterminal::screens::kalshi;
 
+// A loop state file written at `at` — the shape the advisor loop left behind.
+static QJsonObject stale_loop(qint64 at) {
+    return QJsonObject{{"heartbeat_at_ms", double(at)}, {"updated_at_ms", double(at)},
+        {"journal_valid", true}, {"loop_version", "kalshi-advisor-loop-v1"}, {"pid", 32396},
+        {"opportunities", 2256}};
+}
+
 class AdvisorCanaryPresentationTest final : public QObject {
     Q_OBJECT
   private slots:
@@ -52,6 +59,145 @@ class AdvisorCanaryPresentationTest final : public QObject {
         QVERIFY(view.qualification.contains("73 / 200"));
         QVERIFY(view.qualification.contains("91.0%"));
         QVERIFY(view.activity.contains("CAPABILITY_LOCKDOWN_FAILED"));
+    }
+
+    // ---- retirement of the duel protocol (issue #138) ----------------------
+    //
+    // The six advisor_* files on this machine stopped moving on 2026-07-23 and
+    // no advisor job exists any more. The tab must say the duel concluded
+    // instead of rendering day-old machinery as a live system — and must go
+    // straight back to the live rendering if the loop ever restarts.
+
+    void every_advisor_file_silent_is_retired() {
+        const qint64 now = 1'800'000'000'000;
+        const qint64 wrote = now - 28LL * 3'600'000;  // ~28h, this machine's real gap
+        const auto out = advisor_duel_retirement(stale_loop(wrote),
+            QJsonObject{{"updated_at_ms",double(wrote)}}, QJsonObject{{"updated_at_ms",double(wrote-1'000)}},
+            QJsonObject{{"updated_at_ms",double(wrote-2'000)}}, QJsonObject{{"updated_at_ms",double(wrote)}},
+            QJsonObject{{"opened_at_ms",double(wrote-3'000)}}, now);
+        QVERIFY(out.retired);
+        QCOMPARE(out.last_update_ms, wrote);
+    }
+
+    // Criterion: a genuinely running loop must never be masked. Each advisor
+    // write timestamp on its own is enough to keep the live rendering.
+    void any_fresh_advisor_file_is_not_retired() {
+        const qint64 now = 1'800'000'000'000;
+        const qint64 wrote = now - 28LL * 3'600'000;
+        const qint64 fresh = now - 30'000;
+        const QStringList fields{"loop.heartbeat_at_ms", "loop.updated_at_ms",
+            "qualification.updated_at_ms", "promotion.updated_at_ms", "safety.updated_at_ms",
+            "canary.updated_at_ms", "latest.opened_at_ms"};
+        for (int i = 0; i < fields.size(); ++i) {
+            QJsonObject loop = stale_loop(wrote);
+            QJsonObject qualification{{"updated_at_ms",double(wrote)}};
+            QJsonObject promotion{{"updated_at_ms",double(wrote)}};
+            QJsonObject safety{{"updated_at_ms",double(wrote)}};
+            QJsonObject canary{{"updated_at_ms",double(wrote)}};
+            QJsonObject latest{{"opened_at_ms",double(wrote)}};
+            switch (i) {
+                case 0: loop["heartbeat_at_ms"] = double(fresh); break;
+                case 1: loop["updated_at_ms"] = double(fresh); break;
+                case 2: qualification["updated_at_ms"] = double(fresh); break;
+                case 3: promotion["updated_at_ms"] = double(fresh); break;
+                case 4: safety["updated_at_ms"] = double(fresh); break;
+                case 5: canary["updated_at_ms"] = double(fresh); break;
+                default: latest["opened_at_ms"] = double(fresh); break;
+            }
+            const auto out = advisor_duel_retirement(loop,qualification,promotion,safety,canary,latest,now);
+            QVERIFY2(!out.retired, qPrintable(QStringLiteral("fresh %1 was treated as retired")
+                                                  .arg(fields.at(i))));
+            QCOMPARE(out.last_update_ms, fresh);
+        }
+    }
+
+    void retirement_threshold_is_exact() {
+        const qint64 now = 1'800'000'000'000;
+        const QJsonObject at_bound{{"updated_at_ms",double(now-kAdvisorRetiredAfterMs)}};
+        const QJsonObject one_past{{"updated_at_ms",double(now-kAdvisorRetiredAfterMs-1)}};
+        QVERIFY(!advisor_duel_retirement({},{},at_bound,{},{},{},now).retired);
+        QVERIFY(advisor_duel_retirement({},{},one_past,{},{},{},now).retired);
+    }
+
+    // Absent files are not evidence that the duel ended, and a future-dated
+    // write is unreadable rather than old: both stay UNKNOWN / FAIL CLOSED.
+    void missing_or_skewed_state_is_not_retired() {
+        const qint64 now = 1'800'000'000'000;
+        const auto missing = advisor_duel_retirement({},{},{},{},{},{},now);
+        QVERIFY(!missing.retired);
+        QCOMPARE(missing.last_update_ms, qint64(0));
+        const auto skewed = advisor_duel_retirement(
+            stale_loop(now - 28LL*3'600'000), {}, {}, {},
+            QJsonObject{{"updated_at_ms",double(now+60'000)}}, {}, now);
+        QVERIFY(!skewed.retired);
+    }
+
+    // The legacy live session is a live poll of the running terminal, not an
+    // advisor file: a concluded duel must never hide an armed session.
+    void retirement_never_masks_an_armed_legacy_session() {
+        const qint64 now = 1'800'000'000'000;
+        const qint64 wrote = now - 28LL * 3'600'000;
+        const QJsonObject armed{{"session_active",true}};
+        const auto out = advisor_duel_retirement(stale_loop(wrote),{},{},{},{},{},now);
+        QVERIFY(out.retired);
+        const auto view = present_advisor_canary(stale_loop(wrote),{},{},{},{},{},armed,now);
+        QVERIFY(view.legacy_live);
+        QCOMPARE(view.legacy_badge, QStringLiteral("LEGACY LIVE SESSION: ARMED"));
+    }
+
+    void archive_headline_carries_the_last_advisor_write() {
+        const qint64 wrote = 1'784'816'685'044;  // 2026-07-23 14:24 UTC
+        const auto archive = present_advisor_duel_archive({}, wrote, wrote + 28LL*3'600'000);
+        QVERIFY(archive.headline.contains("DUEL CONCLUDED"));
+        QVERIFY(archive.headline.contains("2026-07-23 14:24 UTC"));
+        QVERIFY(archive.headline.contains("(28h ago)"));
+        QVERIFY(archive.headline.contains("BOT tab"));
+    }
+
+    // A report that declares no winner is never talked into one.
+    void archive_reports_the_frozen_verdict_verbatim() {
+        const QJsonObject report{{"result_state","INSUFFICIENT_PAIRED_DATA"},
+            {"jointly_resolved",53}, {"opportunities",264},
+            {"epoch_pair",QJsonObject{{"claude","kalshi-blind-claude-cli-v5-latency-neutral"},
+                {"codex","kalshi-blind-codex-v4-zero-capability-latency-neutral"}}},
+            {"coverage",QJsonObject{{"claude",0.25},{"codex",0.9848484848484849}}},
+            {"thresholds",QJsonObject{{"minimum_jointly_resolved",200},{"minimum_coverage_each",0.8}}},
+            {"scoring_infrastructure_hash","2876e683b880cdc77c82a5dcc1e32662cd54188668434d51cdccb19d6c3b7a48"},
+            {"shadow_only",true},{"execution_eligible",false}};
+        const auto archive = present_advisor_duel_archive(report, 1'784'816'685'044, 1'800'000'000'000);
+        QVERIFY(archive.record_available);
+        QVERIFY(archive.record.contains("NO WINNER DECLARED — INSUFFICIENT_PAIRED_DATA"));
+        QVERIFY(!archive.record.contains("WINNER: "));
+        QVERIFY(archive.record.contains("53 / 200 jointly resolved of 264 opportunities"));
+        QVERIFY(archive.record.contains("claude=kalshi-blind-claude-cli-v5-latency-neutral"));
+        QVERIFY(archive.record.contains("codex=kalshi-blind-codex-v4-zero-capability-latency-neutral"));
+        QVERIFY(archive.record.contains("claude 25.0% · codex 98.5% (minimum 80.0% each)"));
+        QVERIFY(archive.record.contains("SCORING FROZEN · infrastructure 2876e683b880"));
+        QVERIFY(archive.record.contains("shadow_only=true · execution_eligible=false"));
+    }
+
+    void archive_names_a_winner_only_when_the_report_does() {
+        const QJsonObject epochs{{"epoch_pair",QJsonObject{{"claude","claude-v5"},{"codex","codex-v4"}}}};
+        auto record_for = [&epochs](const QString& state) {
+            QJsonObject report = epochs;
+            report.insert(QStringLiteral("result_state"), state);
+            return present_advisor_duel_archive(report, 1'000, 2'000).record;
+        };
+        QVERIFY(record_for("CODEX_WINS").contains("WINNER: CODEX — codex-v4"));
+        QVERIFY(record_for("CLAUDE_WINS").contains("WINNER: CLAUDE — claude-v5"));
+        QVERIFY(record_for("STATISTICAL_TIE").contains("NO WINNER DECLARED — STATISTICAL_TIE"));
+        QVERIFY(record_for("INVALID_EPOCH").contains("NO WINNER DECLARED — INVALID_EPOCH"));
+        QVERIFY(record_for("").contains("NO WINNER DECLARED — result_state missing"));
+    }
+
+    // Missing data reads missing: no zero-filled record, no invented verdict.
+    void missing_duel_report_reads_missing() {
+        const auto archive = present_advisor_duel_archive({}, 1'784'816'685'044, 1'800'000'000'000);
+        QVERIFY(!archive.record_available);
+        QVERIFY(archive.record.contains("FINAL FROZEN DUEL RECORD UNAVAILABLE"));
+        QVERIFY(archive.record.contains("advisor_competition_report.json"));
+        QVERIFY(!archive.record.contains("WINNER"));
+        QVERIFY(!archive.record.contains("0 / 0"));
     }
 };
 
