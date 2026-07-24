@@ -1,5 +1,7 @@
 #pragma once
 
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
@@ -21,7 +23,13 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///   2. **Withheld numbers are absent, never zero.** A missing or stale report
 ///      carries no probability, edge, or price — the caller cannot mistake a
 ///      default-constructed 0.0 for a measurement.
-///   3. **The signal's trust is re-read live every call.** `signal_trusted`
+///   3. **The kill switch is checked before anything else** (rung 4). There is
+///      exactly one path from this class to a bid, and an engaged stop file
+///      short-circuits it at the top of `decide()`, so "checked every tick
+///      before any bid" is a structural property rather than a caller's
+///      promise. The refused tick still journals one `BOT_STOPPED` row: a
+///      silent stop would be indistinguishable from a dead loop.
+///   4. **The signal's trust is re-read live every call.** `signal_trusted`
 ///      comes from the report's own `adds_value_over_market`, which the
 ///      calibrator only sets true once its Brier beats the market baseline
 ///      over its ≥100-sample gate. When it is false the bot still papers, but
@@ -45,6 +53,7 @@ class KalshiBotDecision {
     static constexpr auto kSizeCapBlocksBid = "SIZE_CAP_BLOCKS_BID";
     static constexpr auto kEdgeClearsThreshold = "EDGE_CLEARS_THRESHOLD";
     static constexpr auto kSignalUntrusted = "SIGNAL_UNTRUSTED";
+    static constexpr auto kBotStopped = "BOT_STOPPED";
     static constexpr auto kQuoteResting = "QUOTE_RESTING";
     static constexpr auto kExposureCapBlocksBid = "EXPOSURE_CAP_BLOCKS_BID";
     static constexpr auto kSessionBudgetBlocksBid = "SESSION_BUDGET_BLOCKS_BID";
@@ -123,6 +132,12 @@ class KalshiBotDecision {
     /// ever becomes a position. A bid is an ORDER, not a position; see
     /// KalshiBotOrders.
     ///
+    /// `stop` is the kill switch as read from disk this tick. When it is
+    /// engaged the report is not even read: the call returns a single
+    /// `BOT_STOPPED` refusal row carrying who threw the switch and when. It is
+    /// checked before the exposure math, before the report, before anything —
+    /// this is the single path from this class to a bid.
+    ///
     /// `exposure` is the book as it stands after this tick's lifecycle pass.
     /// A bid is refused outright — never sized down — when it would push
     /// outstanding exposure past `max_open_exposure_usd` or this run's
@@ -133,17 +148,21 @@ class KalshiBotDecision {
                              const QJsonArray& settled_positions,
                              qint64 now_ms,
                              const Config& config,
+                             const KalshiBotStopFile& stop,
                              const Exposure& exposure);
 
     /// The same decision against an empty book: nothing resting, nothing at
-    /// risk, no requote. (A defaulted argument cannot be used here — the
-    /// nested Exposure's member initializers are not yet parsed at this point
-    /// in the class.)
+    /// risk, no requote. (A defaulted argument cannot be used for `exposure` —
+    /// the nested Exposure's member initializers are not yet parsed at this
+    /// point in the class.) There is deliberately NO overload that takes an
+    /// Exposure without a stop: the kill switch must not be bypassable by
+    /// argument shape.
     static QJsonArray decide(const QJsonObject& report,
                              const QJsonArray& open_positions,
                              const QJsonArray& settled_positions,
                              qint64 now_ms,
-                             const Config& config);
+                             const Config& config,
+                             const KalshiBotStopFile& stop = {});
 
     /// Flattens the terminal's two real settlement ledgers into
     /// `{ticker, market_result, settled_time, source}` rows. Rows without a

@@ -175,7 +175,7 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config tight;
         tight.max_open_exposure_usd = 3.00;
         const QJsonArray refused =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, tight, exposure);
+            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, tight, {}, exposure);
         QCOMPARE(refused.size(), 1);
         QCOMPARE(field(row_at(refused, 0), "action"), QStringLiteral("pass"));
         QCOMPARE(field(row_at(refused, 0), "reason_code"),
@@ -188,7 +188,7 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config roomy;
         roomy.max_open_exposure_usd = 5.00;
         const QJsonArray allowed =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, roomy, exposure);
+            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, roomy, {}, exposure);
         QCOMPARE(field(row_at(allowed, 0), "action"), QStringLiteral("bid"));
     }
 
@@ -198,14 +198,14 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config config;
         config.session_budget_usd = 3.00;
         const QJsonArray refused =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, config, exposure);
+            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, config, {}, exposure);
         QCOMPARE(field(row_at(refused, 0), "reason_code"),
                  QStringLiteral("SESSION_BUDGET_BLOCKS_BID"));
         QCOMPARE(row_at(refused, 0).value(QStringLiteral("exposure_used_usd")).toDouble(), 2.00);
 
         config.session_budget_usd = 10.00;
         QCOMPARE(field(row_at(KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, config,
-                                                        exposure), 0),
+                                                        {}, exposure), 0),
                        "action"),
                  QStringLiteral("bid"));
     }
@@ -218,7 +218,7 @@ class TestKalshiBotOrders : public QObject {
                                {QStringLiteral("KXBTC15M-B"), prediction(0.95, 0.83, 10.0)}});
         KalshiBotDecision::Config config;
         config.max_open_exposure_usd = 3.00;
-        const QJsonArray rows = KalshiBotDecision::decide(two, {}, {}, kNow, config, {});
+        const QJsonArray rows = KalshiBotDecision::decide(two, {}, {}, kNow, config, {}, {});
         QCOMPARE(rows.size(), 2);
         int bids = 0;
         int blocked = 0;
@@ -344,7 +344,7 @@ class TestKalshiBotOrders : public QObject {
         tight.max_open_exposure_usd = 3.00;
         const QJsonArray refused = KalshiBotDecision::decide(
             report(QJsonObject{{QStringLiteral("KXBTC15M-OTHER-15"), prediction(0.95, 0.83, 10.0)}}),
-            {}, {}, kNow, tight, exposure);
+            {}, {}, kNow, tight, {}, exposure);
         QCOMPARE(field(row_at(refused, 0), "reason_code"),
                  QStringLiteral("EXPOSURE_CAP_BLOCKS_BID"));
 
@@ -352,7 +352,7 @@ class TestKalshiBotOrders : public QObject {
         QCOMPARE(field(row_at(KalshiBotDecision::decide(
                                   report(QJsonObject{{QStringLiteral("KXBTC15M-OTHER-15"),
                                                       prediction(0.95, 0.83, 10.0)}}),
-                                  {}, {}, kNow, tight, exposure), 0),
+                                  {}, {}, kNow, tight, {}, exposure), 0),
                        "action"),
                  QStringLiteral("bid"));
     }
@@ -454,7 +454,7 @@ class TestKalshiBotOrders : public QObject {
         exposure.resting = KalshiBotOrders::replay(opening_bid()).resting;
         exposure.at_risk_usd = 1.66;
         const QJsonArray rows =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, {}, exposure);
+            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, {}, {}, exposure);
         QCOMPARE(field(row_at(rows, 0), "action"), QStringLiteral("pass"));
         QCOMPARE(field(row_at(rows, 0), "reason_code"), QStringLiteral("QUOTE_RESTING"));
     }
@@ -463,7 +463,7 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Exposure exposure;
         exposure.requoted = QJsonObject{{QString::fromLatin1(kTicker), QStringLiteral("old@1")}};
         const QJsonArray rows =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, {}, exposure);
+            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, {}, {}, exposure);
         QCOMPARE(field(row_at(rows, 0), "action"), QStringLiteral("bid"));
         QCOMPARE(field(row_at(rows, 0), "reason_code"), QStringLiteral("REQUOTED"));
         QCOMPARE(field(row_at(rows, 0), "replaces_position_id"), QStringLiteral("old@1"));
@@ -472,7 +472,7 @@ class TestKalshiBotOrders : public QObject {
         // on an unvalidated signal says so is not weakened by a requote — but
         // the replace stays visible on the row.
         const QJsonArray untrusted = KalshiBotDecision::decide(
-            one(0.95, 0.83, 10.0, false), {}, {}, kNow, {}, exposure);
+            one(0.95, 0.83, 10.0, false), {}, {}, kNow, {}, {}, exposure);
         QCOMPARE(field(row_at(untrusted, 0), "reason_code"), QStringLiteral("SIGNAL_UNTRUSTED"));
         QCOMPARE(row_at(untrusted, 0).value(QStringLiteral("requote")).toBool(), true);
         QCOMPARE(field(row_at(untrusted, 0), "replaces_position_id"), QStringLiteral("old@1"));

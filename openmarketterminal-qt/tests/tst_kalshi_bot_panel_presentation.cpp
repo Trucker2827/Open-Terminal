@@ -132,6 +132,56 @@ class KalshiBotPanelPresentationTest final : public QObject {
         QVERIFY(view.status.contains("future"));
     }
 
+    // --- the kill switch (issue #129) ---------------------------------------
+
+    /// The chip must not paint green on a bot that has been killed. The last
+    /// row a stopped loop writes is its own BOT_STOPPED refusal, which is as
+    /// fresh as any other tick.
+    void an_engaged_kill_switch_beats_a_fresh_ledger() {
+        const qint64 now = 3'600'000'000;
+        const QJsonArray rows{decision_row(now - 1'000, "", "BOT_STOPPED")};
+        KalshiBotStopFile stop;
+        stop.engaged = true;
+        stop.ts_ms = now - 2'000;
+        stop.source = QStringLiteral("gui");
+        const auto view = present_kalshi_bot_panel(rows, {}, {}, now, 8, stop);
+        QCOMPARE(view.state, QStringLiteral("stopped"));
+        QVERIFY(view.stopped);
+        QCOMPARE(kalshi_bot_state_color_role(view.state), QStringLiteral("red"));
+        QVERIFY(view.status.contains("BOT STOPPED"));
+        QVERIFY(!view.status.contains("BOT RUNNING"));
+        QVERIFY(view.status.contains("by gui"));
+        // Same ledger, switch cleared: it reads running again, so the stopped
+        // verdict came from the switch and not from the rows.
+        const auto cleared = present_kalshi_bot_panel(rows, {}, {}, now);
+        QCOMPARE(cleared.state, QStringLiteral("running"));
+        QVERIFY(!cleared.stopped);
+    }
+
+    /// A stopped tick never opened the calibrator report, so it has no opinion
+    /// on the signal — and must not be described as having refused one.
+    void a_stopped_tick_says_the_signal_was_not_read() {
+        const qint64 now = 3'700'000'000;
+        KalshiBotStopFile stop;
+        stop.engaged = true;
+        const auto view = present_kalshi_bot_panel(
+            QJsonArray{decision_row(now - 1'000, "", "BOT_STOPPED")}, {}, {}, now, 8, stop);
+        QVERIFY(view.signal.contains("SIGNAL NOT READ"));
+        QVERIFY(!view.signal.contains("refused its report"));
+    }
+
+    /// The panel and the CLI resolve the stop file through the same path
+    /// module, so the button cannot write a switch the loop never reads.
+    void the_stop_file_resolves_through_the_shared_evidence_path() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        qputenv("OPENTERMINAL_KALSHI_EVIDENCE_DIR", dir.path().toUtf8());
+        QCOMPARE(kalshi_bot_stop_path(),
+                 QDir(dir.path()).filePath(QStringLiteral("kalshi-bot-stop.json")));
+        QVERIFY(!read_kalshi_bot_stop_file().engaged);
+        qunsetenv("OPENTERMINAL_KALSHI_EVIDENCE_DIR");
+    }
+
     // --- decision rows ------------------------------------------------------
     void bid_row_shows_side_price_size_edge_and_reason() {
         const qint64 now = 4'000'000'000;

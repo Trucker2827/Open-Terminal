@@ -1,20 +1,40 @@
-// `kalshi bot` command family — the PAPER Kalshi bot, ladder rungs 1 and 6.
+// `kalshi bot` command family — the PAPER Kalshi bot, ladder rungs 1, 2, 4
+// and 6.
 //
-// One tick is: settle whatever the exchange has actually resolved, manage the
-// orders already working (fill / cancel on TTL / cancel on a vanished edge),
-// then read calibrator.json and journal one decision row for every contract it
-// offers. Every row lands in kalshi-bot-decisions.jsonl, passes included: a
-// tick that bids nothing still has to say why.
+// One tick (`once`/`run`) is: check the kill switch, settle whatever the
+// exchange has actually resolved, manage the orders already working (fill /
+// cancel on TTL / cancel on a vanished edge), then read calibrator.json and
+// journal one decision row for every contract it offers. Every row lands in
+// kalshi-bot-decisions.jsonl, passes included: a tick that bids nothing still
+// has to say why.
 //
 // A bid is an ORDER, not a position (rung 6). It rests until something
 // observable fills it, its TTL runs out, or its edge goes — and while it rests
 // its remainder is counted as exposure at the limit price, the same PR #44
 // rule the live execution ledger uses.
 //
+// `gate` scores that ledger against criteria preregistered and sealed BEFORE
+// the record was read (rung 2). It only reads and reports; acting on the
+// verdict is a later rung's job.
+//
+// Rung 4 (the observable loop) adds three subcommands and one file:
+//   `kalshi bot stop`   — throws the kill switch (writes kalshi-bot-stop.json)
+//   `kalshi bot resume` — clears it (removes that file)
+//   `kalshi bot status` — prints exactly what the GUI BOT chip shows, from the
+//                         same classifier and the same staleness constant
+//                         (KalshiBotRuntime.h). Two renderers, one truth.
+// The loop re-reads the stop file at the top of EVERY tick, before any bid;
+// `once` refuses that tick, `run` journals the refusal and exits, so the
+// switch halts bidding within one tick either way. The stop short-circuits the
+// WHOLE tick, ahead of the settlement and order-lifecycle passes: a stopped bot
+// takes no venue action at all, and its orders stay resting and stay counted as
+// exposure rather than being quietly released.
+//
 // This rung has NO live path. There is no order preparation, no submission,
 // no live gate, and no `--mode live` — live mode is refused as unknown, not
-// disabled behind a flag. All decision and lifecycle math lives in the pure,
-// unit-tested KalshiBotDecision / KalshiBotOrders; this file only does I/O,
+// disabled behind a flag. All decision, lifecycle and verdict math lives in the
+// pure, unit-tested KalshiBotDecision / KalshiBotOrders / KalshiBotGate; this
+// file only does I/O,
 // flags, and printing.
 //
 // Own TU, excluded from unity builds like the other cli command families
@@ -24,7 +44,9 @@
 
 #include "cli/ServeCommand.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
+#include "services/prediction/kalshi/KalshiBotGate.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
 #include <QDateTime>
@@ -32,6 +54,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QSet>
 #include <QThread>
 
@@ -47,13 +70,24 @@ bool take_bool_flag(QStringList& args, const QString& flag);
 
 namespace {
 
-using services::prediction::kalshi_ns::KalshiBotDecision;
-using services::prediction::kalshi_ns::KalshiBotOrders;
-using services::prediction::kalshi_ns::KalshiEvidenceEngine;
+// Rung 4's runtime header contributes free functions and constants
+// (kalshi_bot_loop_status, kKalshiBotStopFileName, …) alongside the classes,
+// so the whole namespace is pulled in rather than named type by type.
+using namespace services::prediction::kalshi_ns;
 
-constexpr auto kLedgerFile = "kalshi-bot-decisions.jsonl";
+constexpr auto kLedgerFile = kKalshiBotDecisionLedgerFile;
 constexpr auto kDecisionEvent = "kalshi_bot_decision";
 constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
+
+QString bot_ledger_path() { return kalshi_evidence_path(QString::fromLatin1(kLedgerFile)); }
+QString bot_stop_path() { return kalshi_evidence_path(QString::fromLatin1(kKalshiBotStopFileName)); }
+
+/// Row filter for one ledger event type.
+std::function<bool(const QJsonObject&)> is_event(const char* name) {
+    return [name](const QJsonObject& row) {
+        return row.value(QStringLiteral("event")).toString() == QLatin1String(name);
+    };
+}
 
 /// Reads a jsonl ledger. `keep` filters rows as they are parsed so a large
 /// evidence file never has to be held in memory whole.
@@ -96,6 +130,7 @@ struct TickResult {
     double session_opened_usd = 0.0;
     QString state;      ///< "ok", or the refusal reason code
     bool signal_trusted = false;
+    bool stopped = false;
 };
 
 /// The paper venue's canceller. The paper book IS the decision ledger, so a
@@ -106,9 +141,48 @@ struct TickResult {
 /// path either way. A live rung injects a canceller that asks the exchange.
 bool paper_cancel(const QJsonObject&, const QString&) { return true; }
 
+/// One tick. `stop` was read from disk immediately before this call, so the
+/// kill switch is re-read every tick rather than latched at startup.
+/// `session_opened_usd` is this run's committed all-in so far; it is carried
+/// through every exit path, including the stopped one.
 TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
-                    double session_opened_usd) {
-    const QString ledger_path = kalshi_evidence_path(QString::fromLatin1(kLedgerFile));
+                    const KalshiBotStopFile& stop, double session_opened_usd) {
+    const QString ledger_path = bot_ledger_path();
+
+    // The switch short-circuits the whole tick: no settlement pass, no order
+    // lifecycle pass, no report read, no bid — only the journaled refusal.
+    // KalshiBotDecision::decide() checks it again (it is the layer that owns
+    // the single path to a bid); this early return is what makes the refusal
+    // cheap and total. Deliberately ahead of reconcile(): a cancel is a venue
+    // action, and a stopped bot takes none. Its resting orders therefore stay
+    // resting and stay counted as exposure — the conservative outcome.
+    if (stop.engaged) {
+        TickResult stopped;
+        stopped.stopped = true;
+        stopped.state = QString::fromLatin1(KalshiBotDecision::kBotStopped);
+        // Carried, not reset: a stop/resume must not hand the run a fresh
+        // session budget (issue #125's "a re-arm resets lifetime exposure").
+        stopped.session_opened_usd = session_opened_usd;
+        const QJsonArray rows = KalshiBotDecision::decide({}, {}, {}, now_ms, config, stop);
+        for (const auto& value : rows) {
+            KalshiEvidenceEngine::append_jsonl(ledger_path, value.toObject());
+            ++stopped.passes;
+        }
+        // The book is still out there while the bot is stopped; report it
+        // rather than printing zeros the ledger does not support.
+        const KalshiBotOrders::Book book = KalshiBotOrders::replay(
+            read_jsonl(ledger_path, [](const QJsonObject& row) {
+                const QString event = row.value(QStringLiteral("event")).toString();
+                return event == QLatin1String(kDecisionEvent) ||
+                       event == QLatin1String(kSettlementEvent);
+            }));
+        stopped.still_open = static_cast<int>(book.positions.size());
+        stopped.resting = static_cast<int>(book.resting.size());
+        stopped.exposure_usd = book.exposure_usd;
+        stopped.resting_usd = book.resting_usd;
+        return stopped;
+    }
+
     QJsonArray ledger = read_jsonl(ledger_path, [](const QJsonObject& row) {
         const QString event = row.value(QStringLiteral("event")).toString();
         return event == QLatin1String(kDecisionEvent) || event == QLatin1String(kSettlementEvent);
@@ -179,7 +253,7 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // settlement row, and without its CANCELED_MARKET_SETTLED the contract
     // would be quoted again on the next tick.
     const QJsonArray rows = KalshiBotDecision::decide(report, book.positions, book.settled,
-                                                      now_ms, config, exposure);
+                                                      now_ms, config, stop, exposure);
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         journal(row);
@@ -213,6 +287,7 @@ QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config
         {QStringLiteral("mode"), QStringLiteral("paper")},
         {QStringLiteral("live_eligible"), false},
         {QStringLiteral("state"), tick.state},
+        {QStringLiteral("stopped"), tick.stopped},
         {QStringLiteral("bids"), tick.bids},
         {QStringLiteral("passes"), tick.passes},
         {QStringLiteral("settled"), tick.settled},
@@ -245,6 +320,9 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
         return;
     }
     std::printf("KALSHI BOT · PAPER · %s\n", qUtf8Printable(tick.state));
+    if (tick.stopped)
+        std::printf("  kill switch engaged — this tick placed no bid; refusal journaled as %s\n",
+                    KalshiBotDecision::kBotStopped);
     std::printf("  bids %d · passes %d · open %d\n", tick.bids, tick.passes, tick.still_open);
     // Resting is risk: it is printed on every tick, not only when it changes.
     std::printf("  resting %d ($%.2f at limit) · exposure $%.2f of $%.2f · session $%.2f of $%.2f\n",
@@ -270,10 +348,261 @@ void bot_usage() {
                  "                          [--max-report-age-sec N] [--quote-ttl-sec N]\n"
                  "                          [--max-exposure X] [--session-budget X]\n"
                  "       kalshi bot run [--interval N] [--iterations N]\n"
+                 "       kalshi bot gate [--json]\n"
+                 "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
+                 "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
+                 "       kalshi bot resume                  clear it\n"
+                 "       kalshi bot status                  what the GUI BOT chip shows\n"
                  "\n"
                  "Paper only. This rung has no live mode: there is no order path here.\n"
                  "A bid rests until it fills, its TTL expires, or its edge goes; a resting\n"
-                 "remainder counts against --max-exposure at its limit price.\n");
+                 "remainder counts against --max-exposure at its limit price.\n"
+                 "`gate` scores the paper ledger against sealed, preregistered criteria and\n"
+                 "writes the verdict to %s. It never acts on it.\n",
+                 qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile))));
+}
+
+// --- gate (rung 2) --------------------------------------------------------
+
+bool write_json_file(const QString& path, const QJsonObject& object) {
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
+    return file.commit();
+}
+
+/// Criterion numbers are printed as they were measured: the settled-bid count
+/// is a count, money and Brier are printed to four places. A criterion with
+/// nothing to measure prints its note instead of a number.
+QString criterion_line(const QJsonObject& criterion) {
+    const QString id = criterion.value(QStringLiteral("id")).toString();
+    const QJsonValue observed = criterion.value(QStringLiteral("observed"));
+    if (!observed.isDouble())
+        return QStringLiteral("%1 — %2").arg(id, criterion.value(QStringLiteral("note")).toString());
+    const bool counts = id == QLatin1String(KalshiBotGate::kCriterionSettled);
+    const auto text = [counts](double value) {
+        return counts ? QString::number(static_cast<qint64>(value)) : QString::number(value, 'f', 4);
+    };
+    return QStringLiteral("%1  observed %2 · required %3 (%4)")
+        .arg(id, text(observed.toDouble()),
+             text(criterion.value(QStringLiteral("required")).toDouble()),
+             criterion.value(QStringLiteral("comparison")).toString());
+}
+
+void print_gate(const GlobalOpts& opts, const QJsonObject& out, const QString& evidence_path) {
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return;
+    }
+    std::printf("KALSHI BOT GATE · %s\n",
+                qUtf8Printable(out.value(QStringLiteral("verdict")).toString()));
+    if (!out.value(QStringLiteral("evaluated")).toBool()) {
+        // A refusal states why and stops. No criteria, no numbers, no verdict
+        // about the paper record — the gate did not judge it.
+        std::printf("  %s\n", qUtf8Printable(out.value(QStringLiteral("reason")).toString()));
+        std::printf("  params %s\n",
+                    qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))));
+        std::printf("  verdict written to %s\n", qUtf8Printable(evidence_path));
+        return;
+    }
+    const QJsonObject ledger = out.value(QStringLiteral("ledger")).toObject();
+    std::printf("  gate %s · sealed %lld\n",
+                qUtf8Printable(out.value(QStringLiteral("gate_id")).toString()),
+                static_cast<long long>(out.value(QStringLiteral("sealed_at_ms")).toDouble()));
+    std::printf("  settled %d (%d won / %d lost) · scored %d · unscored %d\n",
+                ledger.value(QStringLiteral("settled_bids")).toInt(),
+                ledger.value(QStringLiteral("wins")).toInt(),
+                ledger.value(QStringLiteral("losses")).toInt(),
+                ledger.value(QStringLiteral("scored_contracts")).toInt(),
+                ledger.value(QStringLiteral("unscored_contracts")).toInt());
+    for (const auto& value : out.value(QStringLiteral("criteria")).toArray()) {
+        const QJsonObject criterion = value.toObject();
+        std::printf("  %-9s %s\n", criterion.value(QStringLiteral("met")).toBool() ? "[MET]" : "[NOT MET]",
+                    qUtf8Printable(criterion_line(criterion)));
+    }
+    std::printf("  verdict written to %s\n", qUtf8Printable(evidence_path));
+}
+
+int gate_seal(const GlobalOpts& opts, const QString& raw_params) {
+    const QString path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile));
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(raw_params.toUtf8(), &parse_error);
+    if (!document.isObject()) {
+        std::fprintf(stderr, "kalshi bot gate seal: params must be a JSON object (%s)\n",
+                     qUtf8Printable(parse_error.errorString()));
+        return 2;
+    }
+    QString error;
+    const QJsonObject record = KalshiBotGate::preregister(path, document.object(),
+                                                          QDateTime::currentMSecsSinceEpoch(), &error);
+    if (record.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot gate seal: %s\n", qUtf8Printable(error));
+        return 3;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(record).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("KALSHI BOT GATE · SEALED\n");
+    std::printf("  gate %s\n", qUtf8Printable(record.value(QStringLiteral("gate_id")).toString()));
+    std::printf("  params %s\n",
+                QJsonDocument(record.value(QStringLiteral("params")).toObject())
+                    .toJson(QJsonDocument::Compact).constData());
+    std::printf("  seal %s\n", qUtf8Printable(record.value(QStringLiteral("seal_sha256")).toString()));
+    std::printf("  written read-only to %s\n", qUtf8Printable(path));
+    return 0;
+}
+
+int gate_command(const GlobalOpts& opts, QStringList args) {
+    if (!args.isEmpty() && args.first().trimmed().toLower() == QStringLiteral("seal")) {
+        args.removeFirst();
+        if (args.size() != 1) {
+            bot_usage();
+            return 2;
+        }
+        return gate_seal(opts, args.first());
+    }
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot gate: unknown argument '%s'\n", qUtf8Printable(args.first()));
+        bot_usage();
+        return 2;
+    }
+
+    const QString ledger_path = kalshi_evidence_path(QString::fromLatin1(kLedgerFile));
+    const QJsonObject out = KalshiBotGate::evaluate(
+        KalshiBotGate::load_params_file(
+            kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))),
+        read_jsonl(ledger_path, is_event(kDecisionEvent)),
+        read_jsonl(ledger_path, is_event(kSettlementEvent)),
+        QDateTime::currentMSecsSinceEpoch());
+
+    const QString evidence_path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
+    if (!write_json_file(evidence_path, out))
+        std::fprintf(stderr, "kalshi bot gate: cannot write %s\n", qUtf8Printable(evidence_path));
+    print_gate(opts, out, evidence_path);
+    // A refusal is not a verdict about the record, so it does not exit 0.
+    return out.value(QStringLiteral("evaluated")).toBool() ? 0 : 3;
+}
+
+// --- the kill switch and the status the GUI chip mirrors --------------------
+
+KalshiBotLoopStatus current_loop_status(qint64 now_ms) {
+    return kalshi_bot_loop_status(kalshi_bot_newest_ts_ms(kalshi_bot_read_ledger_tail(bot_ledger_path())),
+                                  kalshi_bot_read_stop_file(bot_stop_path()), now_ms);
+}
+
+QJsonObject status_summary(const KalshiBotLoopStatus& status, qint64 now_ms) {
+    QJsonObject out{
+        {QStringLiteral("mode"), QStringLiteral("paper")},
+        {QStringLiteral("state"), status.state},
+        {QStringLiteral("color_role"), kalshi_bot_state_color_role(status.state)},
+        {QStringLiteral("headline"), status.headline},
+        {QStringLiteral("stopped"), status.stop.engaged},
+        {QStringLiteral("stale_after_ms"), static_cast<double>(kKalshiBotStaleMs)},
+        {QStringLiteral("interval_seconds"), kKalshiBotIntervalSeconds},
+        {QStringLiteral("now_ms"), static_cast<double>(now_ms)},
+        {QStringLiteral("ledger"), bot_ledger_path()},
+        {QStringLiteral("stop_file"), bot_stop_path()}};
+    // An age the ledger cannot support is absent, not zero.
+    if (status.age_ms >= 0)
+        out.insert(QStringLiteral("last_decision_age_ms"), static_cast<double>(status.age_ms));
+    if (status.stop.engaged) {
+        if (status.stop.ts_ms > 0)
+            out.insert(QStringLiteral("stopped_at_ms"), static_cast<double>(status.stop.ts_ms));
+        if (!status.stop.source.isEmpty())
+            out.insert(QStringLiteral("stop_source"), status.stop.source);
+        if (!status.stop.reason.isEmpty())
+            out.insert(QStringLiteral("stop_reason"), status.stop.reason);
+    }
+    return out;
+}
+
+int bot_status_command(const GlobalOpts& opts, QStringList& args) {
+    if (!args.isEmpty()) {
+        // An option this command does not understand is refused, not ignored:
+        // a silently dropped `--json` would make a script read the human text
+        // as a status object.
+        std::fprintf(stderr, "kalshi bot status: unknown option '%s' (JSON is the global flag: "
+                             "`openterminalcli --json kalshi bot status`)\n",
+                     qUtf8Printable(args.first()));
+        return 2;
+    }
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const KalshiBotLoopStatus status = current_loop_status(now_ms);
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(status_summary(status, now_ms))
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    // Same headline, same state, same colour role the chip paints — this text
+    // is produced by kalshi_bot_loop_status(), not re-derived here.
+    std::printf("%s\n", qUtf8Printable(status.headline));
+    std::printf("  chip %s (%s) · stale after %llds\n", qUtf8Printable(status.state.toUpper()),
+                qUtf8Printable(kalshi_bot_state_color_role(status.state)),
+                static_cast<long long>(kKalshiBotStaleMs / 1000));
+    std::printf("  ledger %s\n", qUtf8Printable(bot_ledger_path()));
+    std::printf("  stop file %s%s\n", qUtf8Printable(bot_stop_path()),
+                status.stop.engaged ? " (PRESENT — kill switch engaged)" : " (absent)");
+    return 0;
+}
+
+int bot_stop_command(const GlobalOpts& opts, QStringList& args) {
+    QString reason;
+    take_string_option(args, QStringLiteral("--reason"), reason);
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot stop: unknown option '%s'\n", qUtf8Printable(args.first()));
+        return 2;
+    }
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const QString path = bot_stop_path();
+    if (!kalshi_bot_write_stop_file(path, kalshi_bot_stop_payload(QStringLiteral("cli"), reason,
+                                                                  now_ms))) {
+        // A kill switch that failed to arm must say so loudly: reporting
+        // success here would be the worst possible lie in this file.
+        std::fprintf(stderr, "kalshi bot stop: FAILED to write %s — the bot is NOT stopped\n",
+                     qUtf8Printable(path));
+        return 1;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{QStringLiteral("stopped"), true},
+                                                      {QStringLiteral("stop_file"), path},
+                                                      {QStringLiteral("ts_ms"),
+                                                       static_cast<double>(now_ms)}})
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("KALSHI BOT · KILL SWITCH ENGAGED\n");
+    std::printf("  %s\n", qUtf8Printable(path));
+    std::printf("  the loop refuses and exits on its next tick (<= %ds); `kalshi bot resume` "
+                "clears it\n", kKalshiBotIntervalSeconds);
+    return 0;
+}
+
+int bot_resume_command(const GlobalOpts& opts, QStringList& args) {
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot resume: unknown option '%s'\n",
+                     qUtf8Printable(args.first()));
+        return 2;
+    }
+    const QString path = bot_stop_path();
+    const bool was_engaged = kalshi_bot_read_stop_file(path).engaged;
+    if (!kalshi_bot_clear_stop_file(path)) {
+        std::fprintf(stderr, "kalshi bot resume: FAILED to remove %s — the bot is still stopped\n",
+                     qUtf8Printable(path));
+        return 1;
+    }
+    if (opts.json) {
+        std::printf("%s\n", QJsonDocument(QJsonObject{{QStringLiteral("stopped"), false},
+                                                      {QStringLiteral("was_stopped"), was_engaged},
+                                                      {QStringLiteral("stop_file"), path}})
+                                .toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
+    std::printf("KALSHI BOT · KILL SWITCH CLEARED%s\n",
+                was_engaged ? "" : " (it was not engaged)");
+    std::printf("  the launchd job is not restarted by this command — the operator does that "
+                "deliberately (see org.openterminal.kalshi-bot.plist)\n");
+    return 0;
 }
 
 /// Parses a double flag; returns whether the flag was present. An unparseable
@@ -315,10 +644,22 @@ bool take_int(QStringList& args, const QString& flag, int& out, bool& bad, int m
 
 int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
-    if (opts.help || sub.isEmpty() || (sub != QStringLiteral("once") && sub != QStringLiteral("run"))) {
+    static const QStringList kSubcommands{QStringLiteral("once"),   QStringLiteral("run"),
+                                          QStringLiteral("gate"),   QStringLiteral("status"),
+                                          QStringLiteral("stop"),   QStringLiteral("resume")};
+    if (opts.help || sub.isEmpty() || !kSubcommands.contains(sub)) {
         bot_usage();
         return opts.help ? 0 : 2;
     }
+
+    // The gate reads a ledger and sealed criteria; the kill switch and the
+    // status readout take no trading configuration either. None of the tick's
+    // mode or cap flags apply to any of them, so they branch before those are
+    // parsed.
+    if (sub == QStringLiteral("gate")) return gate_command(opts, args);
+    if (sub == QStringLiteral("status")) return bot_status_command(opts, args);
+    if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
+    if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);
 
     // Paper is the only mode that exists in this rung. `--mode live` is an
     // unknown mode, not a disabled one: refusing it here is the whole point.
@@ -346,7 +687,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     if (take_int(args, QStringLiteral("--max-report-age-sec"), max_age_sec, bad, 1))
         config.max_report_age_ms = static_cast<qint64>(max_age_sec) * 1000;
 
-    int interval = 60;
+    int interval = kKalshiBotIntervalSeconds;
     int iterations = 0; // 0 = until interrupted
     take_int(args, QStringLiteral("--interval"), interval, bad, 1);
     take_int(args, QStringLiteral("--iterations"), iterations, bad, 1);
@@ -358,7 +699,10 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     }
 
     if (sub == QStringLiteral("once")) {
-        print_tick(opts, run_tick(config, QDateTime::currentMSecsSinceEpoch(), 0.0), config);
+        print_tick(opts,
+                   run_tick(config, QDateTime::currentMSecsSinceEpoch(),
+                            kalshi_bot_read_stop_file(bot_stop_path()), 0.0),
+                   config);
         return 0;
     }
 
@@ -367,11 +711,22 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     double session_opened_usd = 0.0;
     for (int i = 0; iterations == 0 || i < iterations; ++i) {
         if (i > 0) QThread::sleep(static_cast<unsigned long>(interval));
-        const TickResult tick = run_tick(config, QDateTime::currentMSecsSinceEpoch(),
+        // Re-read every tick: a switch thrown while this loop slept must be
+        // seen by the very next tick, before that tick can bid.
+        const KalshiBotStopFile stop = kalshi_bot_read_stop_file(bot_stop_path());
+        const TickResult tick = run_tick(config, QDateTime::currentMSecsSinceEpoch(), stop,
                                          session_opened_usd);
         session_opened_usd = tick.session_opened_usd;
         print_tick(opts, tick, config);
         std::fflush(stdout);
+        if (tick.stopped) {
+            // Exit clean, within this tick. The launchd job's KeepAlive is
+            // Crashed-only for exactly this reason: a kill switch that a
+            // supervisor immediately respawned would not be a kill switch.
+            std::fprintf(stderr, "kalshi bot: kill switch engaged (%s) — exiting\n",
+                         qUtf8Printable(bot_stop_path()));
+            return 0;
+        }
     }
     return 0;
 }

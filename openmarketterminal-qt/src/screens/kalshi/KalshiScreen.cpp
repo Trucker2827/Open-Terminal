@@ -1130,9 +1130,11 @@ void KalshiScreen::build_ui() {
     bot_layout->addWidget(bot_title);
     auto* bot_note = new QLabel(
         QStringLiteral("Every number below is read from the same files `kalshi bot` writes — %1 "
-                       "and %2 — so this panel and the CLI cannot disagree. It has no controls: it "
-                       "cannot arm, size, price, or place anything.")
-            .arg(QString::fromLatin1(kKalshiBotLedgerFile), QString::fromLatin1(kKalshiBotGateFile)),
+                       "and %2 — so this panel and the CLI cannot disagree. Its one control is the "
+                       "kill switch (%3): it can stop the bot, and nothing else. It cannot arm, "
+                       "size, price, or place anything.")
+            .arg(QString::fromLatin1(kKalshiBotLedgerFile), QString::fromLatin1(kKalshiBotGateFile),
+                 QString::fromLatin1(kKalshiBotStopFile)),
         bot_page);
     bot_note->setWordWrap(true);
     bot_note->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
@@ -1152,9 +1154,21 @@ void KalshiScreen::build_ui() {
         bot_layout->addWidget(value);
     };
     add_bot_card(QStringLiteral("BOT STATUS"),
-                 QStringLiteral("Green when the decision ledger was written recently, amber when "
-                                "it has gone stale, grey when the bot has never run here."),
+                 QStringLiteral("Green when the decision ledger was written within two tick "
+                                "intervals, amber when it has gone stale, grey when the bot has "
+                                "never run here, red when the kill switch is engaged. "
+                                "`openterminalcli kalshi bot status` prints the same verdict from "
+                                "the same classifier and threshold."),
                  bot_status_);
+    bot_stop_button_ = new QPushButton(QStringLiteral("STOP THE BOT (KILL SWITCH)"), bot_page);
+    bot_stop_button_->setCursor(Qt::PointingHandCursor);
+    bot_stop_button_->setToolTip(
+        QStringLiteral("Writes %1 in the evidence directory — the same file `kalshi bot stop` "
+                       "writes. The loop re-reads it at the top of every tick and refuses before "
+                       "any bid, so bidding halts within one tick.")
+            .arg(QString::fromLatin1(kKalshiBotStopFile)));
+    connect(bot_stop_button_, &QPushButton::clicked, this, &KalshiScreen::toggle_bot_kill_switch);
+    bot_layout->addWidget(bot_stop_button_);
     add_bot_card(QStringLiteral("ARMED STATE & CAPS IN FORCE"),
                  QStringLiteral("Read from the live session status. An unreadable status is "
                                 "reported as unknown and fails closed; it is never shown as armed."),
@@ -3771,6 +3785,7 @@ void KalshiScreen::refresh_bot_panel() {
     const QString role = kalshi_bot_state_color_role(view.state);
     const QString state_color = role == QStringLiteral("green")   ? colors::GREEN()
                                 : role == QStringLiteral("amber") ? colors::WARNING()
+                                : role == QStringLiteral("red")   ? colors::RED()
                                                                   : colors::TEXT_SECONDARY();
     bot_status_->setText(view.status);
     bot_status_->setStyleSheet(
@@ -3793,12 +3808,45 @@ void KalshiScreen::refresh_bot_panel() {
     bot_gate_->setText(view.gate);
     bot_gate_->setStyleSheet(card_style(view.gate_pass ? colors::GREEN() : colors::TEXT_SECONDARY()));
 
+    if (bot_stop_button_) {
+        bot_stop_button_->setText(view.stopped ? QStringLiteral("RESUME THE BOT (CLEAR KILL SWITCH)")
+                                               : QStringLiteral("STOP THE BOT (KILL SWITCH)"));
+        bot_stop_button_->setStyleSheet(
+            QStringLiteral("QPushButton{color:%1;background:%2;border:2px solid %1;padding:8px;"
+                           "font-weight:900;}")
+                .arg(view.stopped ? colors::GREEN() : colors::RED(), colors::BG_RAISED()));
+    }
+
     bot_decisions_->clear();
     if (view.decisions.isEmpty())
         bot_decisions_->addItem(
             QStringLiteral("No decisions journaled yet — run `openterminalcli kalshi bot once`."));
     else
         bot_decisions_->addItems(view.decisions);
+}
+
+void KalshiScreen::toggle_bot_kill_switch() {
+    namespace bot = services::prediction::kalshi_ns;
+    const QString path = kalshi_bot_stop_path();
+    const bool engaged = bot::kalshi_bot_read_stop_file(path).engaged;
+    const bool ok = engaged
+        ? bot::kalshi_bot_clear_stop_file(path)
+        : bot::kalshi_bot_write_stop_file(
+              path, bot::kalshi_bot_stop_payload(QStringLiteral("gui"),
+                                                 QStringLiteral("stopped from the Predictions BOT "
+                                                                "panel"),
+                                                 QDateTime::currentMSecsSinceEpoch()));
+    // A switch that failed to move says so; it never reports the state it was
+    // asked for. The panel then re-reads the file, so what is shown is what is
+    // on disk either way.
+    if (!ok)
+        QMessageBox::critical(
+            this, QStringLiteral("Kalshi bot kill switch"),
+            QStringLiteral("Could not %1\n\n%2\n\nThe bot's state is UNCHANGED.")
+                .arg(engaged ? QStringLiteral("remove the stop file:")
+                             : QStringLiteral("write the stop file:"),
+                     path));
+    refresh_bot_panel();
 }
 
 void KalshiScreen::refresh_advisor_canary_status() {

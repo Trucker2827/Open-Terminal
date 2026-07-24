@@ -64,8 +64,9 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
                                      const QJsonArray& open_positions,
                                      const QJsonArray& settled_positions,
                                      qint64 now_ms,
-                                     const Config& config) {
-    return decide(report, open_positions, settled_positions, now_ms, config, Exposure{});
+                                     const Config& config,
+                                     const KalshiBotStopFile& stop) {
+    return decide(report, open_positions, settled_positions, now_ms, config, stop, Exposure{});
 }
 
 QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
@@ -73,7 +74,25 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
                                      const QJsonArray& settled_positions,
                                      qint64 now_ms,
                                      const Config& config,
+                                     const KalshiBotStopFile& stop,
                                      const Exposure& exposure) {
+    // --- the kill switch, before anything else -----------------------------
+    // This is the only path in this class that can produce a bid, so checking
+    // here is what makes "checked every tick before any bid" structural. It
+    // sits ahead of the rung 6 exposure/requote math for the same reason: no
+    // lifecycle bookkeeping may run before the switch has been honoured. The
+    // refusal is journaled rather than silent: a stop that left no row would
+    // look exactly like a crashed loop.
+    if (stop.engaged) {
+        QJsonObject row = base_row(now_ms, QString(), QStringLiteral("pass"),
+                                   QString::fromLatin1(kBotStopped));
+        if (stop.ts_ms > 0) row.insert(QStringLiteral("stop_ts_ms"), static_cast<double>(stop.ts_ms));
+        if (!stop.source.isEmpty()) row.insert(QStringLiteral("stop_source"), stop.source);
+        if (!stop.reason.isEmpty()) row.insert(QStringLiteral("stop_reason"), stop.reason);
+        return QJsonArray{row};
+    }
+
+
     // --- the report itself must be trustworthy before any contract is read.
     const qint64 generated_ms =
         static_cast<qint64>(report.value(QStringLiteral("generated_at_ms")).toDouble());
