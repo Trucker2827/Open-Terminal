@@ -627,6 +627,13 @@ target_include_directories(tst_kalshi_bot_decision PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_kalshi_bot_decision PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_decision COMMAND tst_kalshi_bot_decision)
 
+# Sealed promotion gate (rung 2): preregistered criteria, mechanical verdict,
+# and a seal that is verified through the disk, not just in memory.
+add_executable(tst_kalshi_bot_gate tst_kalshi_bot_gate.cpp)
+target_include_directories(tst_kalshi_bot_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_gate PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_gate COMMAND tst_kalshi_bot_gate)
+
 # Coherent Kalshi hourly probability surface, constrained portfolio selection,
 # no-lookahead replay, and API compatibility audit. Pure and paper-only.
 add_executable(tst_kalshi_auto_engine tst_kalshi_auto_engine.cpp)
