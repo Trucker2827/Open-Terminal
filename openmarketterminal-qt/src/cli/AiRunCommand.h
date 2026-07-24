@@ -18,7 +18,7 @@ namespace openmarketterminal::cli {
 // begins with the positional <name>. Returns a process exit code.
 int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest);
 
-// Run `ai ctx <symbol> [--json] [--market prediction|equity]` (ai ctx
+// Run `ai ctx <symbol> [--json] [--market crypto|prediction|equity]` (ai ctx
 // decision-packet Task 3). `rest` is the args AFTER `ai ctx`, i.e. it begins
 // with the positional <symbol>. READ-ONLY: calls DecisionContext::assess +
 // to_json and emits the packet — never places an order, writes a gate
@@ -27,11 +27,12 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest);
 // with a packet carrying has_edge_signal=false. Returns a process exit code.
 int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest);
 
-// Run `ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H]
+// Run `ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H]
 // [--json]` (typed-action preview, piece Vc Task 3). READ-ONLY: reads the
-// symbol's current net position via ai_ledger::position_of (a SELECT) and
-// runs it through the pure ai_strategy::translate_action, then emits the
-// resulting TradeIntent preview (or null) -- it never writes an ai_fill row,
+// symbol's current net position via ai_ledger::position_of (a SELECT) and the
+// deterministic edge's direction via ai_strategy::edge_direction_of (a
+// SELECT), then runs both through the pure ai_strategy::translate_action and
+// emits the resulting TradeIntent preview (or null) -- it never writes an ai_fill row,
 // a cli.* gate setting, or places any order. Missing <symbol>/<action> or an
 // unrecognized action/flag -> usage error on stderr, exit 2. Returns a
 // process exit code.

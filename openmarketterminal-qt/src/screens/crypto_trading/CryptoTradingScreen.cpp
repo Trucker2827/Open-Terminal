@@ -19,6 +19,7 @@
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -62,14 +63,12 @@ CryptoTradingScreen::CryptoTradingScreen(QWidget* parent)
 CryptoTradingScreen::CryptoTradingScreen(Focus focus, QWidget* parent)
     : QWidget(parent), bitcoin_focus_(focus == Focus::Bitcoin) {
     LOG_INFO(TAG, "Constructing CryptoTradingScreen");
-    if (bitcoin_focus_) {
-        selected_symbol_ = QStringLiteral("BTC/USD");
-        watchlist_symbols_ = {
-            QStringLiteral("BTC/USD"),
-        };
-    }
+    // Exchange-native symbol universe: display pair IS the wire pair.
+    selected_symbol_ = openmarketterminal::crypto::default_symbol_for(exchange_id_, bitcoin_focus_);
+    watchlist_symbols_ = openmarketterminal::crypto::default_watchlist_for(exchange_id_, bitcoin_focus_);
     setup_ui();
     setup_timers();
+    load_alerts();
     LOG_INFO(TAG, "CryptoTradingScreen construction complete");
 }
 
@@ -304,6 +303,7 @@ void CryptoTradingScreen::setup_ui() {
     center_splitter->addWidget(chart_);
 
     bottom_panel_ = new CryptoBottomPanel;
+    bottom_panel_->set_exchange_context(exchange_id_, trading_mode_ != TradingMode::Live);
     center_splitter->addWidget(bottom_panel_);
 
     center_splitter->setStretchFactor(0, 5); // chart 75%
@@ -354,6 +354,7 @@ void CryptoTradingScreen::setup_ui() {
     connect(api_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_api_clicked);
     connect(accounts_btn_, &QPushButton::clicked, this, &CryptoTradingScreen::on_accounts_clicked);
     connect(watchlist_, &CryptoWatchlist::symbol_selected, this, &CryptoTradingScreen::on_symbol_selected);
+    connect(watchlist_, &CryptoWatchlist::alert_requested, this, &CryptoTradingScreen::on_alert_requested);
     connect(watchlist_, &CryptoWatchlist::search_requested, this, &CryptoTradingScreen::on_search_requested);
     connect(order_entry_, &CryptoOrderEntry::order_submitted, this, &CryptoTradingScreen::on_order_submitted);
     connect(order_entry_, &CryptoOrderEntry::leverage_changed, this, &CryptoTradingScreen::async_set_leverage);
@@ -374,7 +375,7 @@ void CryptoTradingScreen::setup_ui() {
 }
 
 QString CryptoTradingScreen::default_symbol() const {
-    return bitcoin_focus_ ? QStringLiteral("BTC/USD") : QStringLiteral("BTC/USDT");
+    return openmarketterminal::crypto::default_symbol_for(exchange_id_, bitcoin_focus_);
 }
 
 QString CryptoTradingScreen::normalized_symbol_for_focus(const QString& symbol) const {
@@ -473,6 +474,13 @@ void CryptoTradingScreen::setup_timers() {
 }
 
 void CryptoTradingScreen::update_clock() {
+    // 1 Hz spot market stats for the MKT tab (funding/OI are perp-only; a
+    // spot venue shows last/high/low/volume/spread/change from the ticker).
+    if (!is_perp_market() && bottom_panel_ && pending_primary_ticker_.last > 0) {
+        const auto& t = pending_primary_ticker_;
+        bottom_panel_->set_spot_market_stats(t.last, t.high, t.low, t.base_volume, t.percentage,
+                                             t.bid, t.ask);
+    }
     clock_label_->setText(QDateTime::currentDateTime().toString("HH:mm:ss"));
 
     // WS status pill — only restyle on state change. Setting a Qt property
@@ -585,6 +593,43 @@ void CryptoTradingScreen::hub_subscribe_topics() {
                 return;
             self->pending_orderbook_ = ob;
             self->has_pending_orderbook_ = true;
+            // Freshness evidence for honest paper fills (CryptoPaperFill.h).
+            self->last_book_ = ob;
+            self->last_book_ms_ = QDateTime::currentMSecsSinceEpoch();
+        });
+
+    // Account stream (authenticated, fast path) — order events for the active
+    // pair and account balance. Other pairs' events land via the confirming
+    // REST cycle; REST remains the source of truth throughout.
+    hub.subscribe<QJsonObject>(
+        ws_subscription_owner_,
+        QStringLiteral("ws:") + ex + QStringLiteral(":account_order:") + selected_symbol_,
+        [self](const QJsonObject& order) {
+            if (self)
+                self->on_account_order_event(order);
+        });
+    hub.subscribe<QJsonObject>(
+        ws_subscription_owner_,
+        QStringLiteral("ws:") + ex + QStringLiteral(":account_balance"),
+        [self](const QJsonObject& balances) {
+            if (self)
+                self->on_account_balance_event(balances);
+        });
+    hub.subscribe<QJsonObject>(
+        ws_subscription_owner_,
+        QStringLiteral("ws:") + ex + QStringLiteral(":account_mytrade:") + selected_symbol_,
+        [self](const QJsonObject& trade) {
+            if (!self)
+                return;
+            self->last_account_ws_event_ms_ = QDateTime::currentMSecsSinceEpoch();
+            if (self->trading_mode_ != crypto::TradingMode::Live)
+                return;
+            if (trade.value(QStringLiteral("symbol")).toString() != self->selected_symbol_)
+                return;
+            self->live_avg_entry_.add_trade(trade.value(QStringLiteral("side")).toString(),
+                                            trade.value(QStringLiteral("price")).toDouble(),
+                                            trade.value(QStringLiteral("amount")).toDouble());
+            self->refresh_live_ladder_overlay();
         });
 
     // Trades — selected symbol only.
@@ -723,8 +768,11 @@ QVariantMap CryptoTradingScreen::save_state() const {
 
 void CryptoTradingScreen::restore_state(const QVariantMap& state) {
     const QString exch = state.value("exchange_id", "coinbase").toString();
-    const QString sym = normalized_symbol_for_focus(
-        state.value("selected_symbol", default_symbol()).toString());
+    // Migrate a persisted stale-quote pair (e.g. ETH/USDT saved before the
+    // exchange-native universe) against the RESTORED exchange, not the
+    // current one; the migrated value is persisted back on next save_state.
+    const QString sym = normalized_symbol_for_focus(openmarketterminal::crypto::migrate_symbol(
+        exch, state.value("selected_symbol", default_symbol()).toString()));
 
     const bool exch_changed = (exch != exchange_id_);
     const bool sym_changed = (sym != selected_symbol_);

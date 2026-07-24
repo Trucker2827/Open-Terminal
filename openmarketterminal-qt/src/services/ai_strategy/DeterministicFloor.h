@@ -34,5 +34,11 @@ bool intent_reduces_exposure(const TradeIntent& intent, double existing_net_qty)
 /// side (avoid_buy/hold/flat/yes/no/empty) never agrees. Reads only its args.
 bool intent_agrees_with_edge(const QString& intent_side, const QString& edge_side);
 
+/// Pure: normalize a heterogeneous side/direction token to a trade direction —
+/// +1 long (buy/long), -1 short (sell/short), 0 neutral/unknown (avoid_buy/hold/
+/// flat/yes/no/empty). Used by the floor's direction agreement and by callers that
+/// need the edge's recommended direction.
+int side_direction(const QString& s);
+
 } // namespace ai_strategy
 } // namespace openmarketterminal

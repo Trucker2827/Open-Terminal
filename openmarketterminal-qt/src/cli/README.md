@@ -11,6 +11,14 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
     doctor [--live-ai]              # diagnose local CLI/profile setup
     security network-audit           # audit local MCP/AI/network exposure
     setup [status|profile|ai|doctor]# local profile/account + AI onboarding
+    mission manifest                # machine-readable LLM capability and safety contract
+    mission context --symbol BTC-USD --market crypto --json
+    mission plan --symbol BTC-USD --market prediction --json
+    mission explain <decision-id> --json
+    mission reconcile --symbol BTC-USD --market crypto --json
+    mission watch --symbol BTC-USD --market crypto --iterations 20 --interval-sec 2
+    mission replay crypto|prediction # no-lookahead replay through existing evidence tools
+    mission execute prediction <decision-id> # delegates only to the existing guarded executor
     demo trading-system              # one-screen daemon/data/broker/gate proof
     sync status                      # GUI/daemon/CLI ownership alignment
     serve [--status|--stop]
@@ -204,6 +212,27 @@ localhost bridge, or run the core tool tree in-process with `--headless`.
 ## Exit codes
     0 ok · 2 usage · 3 no running instance · 4 token rejected
     5 tool/LLM returned success:false · 6 transport/HTTP error · 7 headless init error
+
+## LLM Mission Protocol
+
+`mission` is the CLI contract for an LLM that needs to observe, assess, plan,
+audit, replay, and request a trade without inventing a second trading system.
+It never exposes credentials and cannot arm an account, clear a kill switch,
+or bypass the existing broker/risk checks.
+
+- `mission context` separates fresh local execution facts from slow, advisory
+  research and includes the current deterministic decision packet.
+- `mission plan` creates a read-only, scoped proposed action. Prediction plans
+  can point to immutable decision envelopes; crypto plans always require a
+  fresh venue recheck at submission.
+- `mission explain` reports only the evidence stored at the original decision
+  timestamp. `mission replay` delegates to the existing no-lookahead replays.
+- `mission execute` delegates to the guarded, human-armed local executors.
+  A successful LLM recommendation is never itself permission to trade.
+
+`--market crypto|prediction|equity` is required for `context`, `plan`,
+`reconcile`, and `watch`. That explicit scope prevents evidence from one venue
+or asset class silently being used to justify another.
 
 ## Notes
 - Attach mode requires the GUI or `openterminalcli serve` running with a bridge.

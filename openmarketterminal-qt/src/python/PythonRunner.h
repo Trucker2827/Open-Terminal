@@ -1,4 +1,5 @@
 #pragma once
+#include <QByteArray>
 #include <QHash>
 #include <QObject>
 #include <QProcess>
@@ -38,6 +39,13 @@ class PythonRunner : public QObject {
     void run(const QString& script, const QStringList& args, Callback cb,
              StreamCallback on_line = {});
 
+    /// Run a script with request data delivered through standard input rather
+    /// than process arguments. Use this for credential-bearing payloads so
+    /// they cannot appear in local process listings.
+    void run_with_stdin(const QString& script, const QStringList& args,
+                        const QByteArray& standard_input, Callback cb,
+                        StreamCallback on_line = {});
+
     /// Run arbitrary Python code (for notebook/colab cells).
     /// Creates a temp file, executes it, returns stdout/stderr.
     void run_code(const QString& code, Callback cb);
@@ -56,6 +64,11 @@ class PythonRunner : public QObject {
     /// a "parent-of-pkg" directory to PYTHONPATH themselves — this helper only
     /// sets the shared base env.
     QProcessEnvironment build_python_env() const;
+
+    // Which venv a script routes to ("venv-numpy1" / "venv-numpy2") — the
+    // same keyword rule run() applies, exposed for direct-QProcess callers
+    // (CLI quant commands) so they can't drift from the app's routing.
+    static QString venv_for_script(const QString& script);
 
     /// Check if python is available
     bool is_available() const;
@@ -85,6 +98,7 @@ class PythonRunner : public QObject {
     struct QueuedRequest {
         QString script;
         QStringList args;
+        QByteArray standard_input;
         Callback cb;
         StreamCallback on_line;
     };

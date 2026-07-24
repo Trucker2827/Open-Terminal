@@ -70,6 +70,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void set_credentials(const KalshiCredentials& creds);
     void subscribe_cf_benchmarks(const QStringList& index_ids);
     void restart_websocket();
+    void request_orderbook_snapshots(const QStringList& tickers);
 
     // ── Kalshi-specific public reads (pass through to REST client) ──────
 
@@ -105,6 +106,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void fetch_queue_positions(const QString& market_tickers = QString(),
                                const QString& event_ticker = QString(),
                                int subaccount = 0);
+    void fetch_reconcile_orders(int limit = 500, const QString& cursor = QString());
 
     // ── Kalshi-specific trading (pass through to Python bridge) ─────────
 
@@ -133,6 +135,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
     void ws_account_event(const QString& type, const QJsonObject& payload);
     void ws_cf_benchmark_event(const QString& index_id, double value, qint64 ts_ms,
                                const QJsonObject& payload);
+    void ws_liveness_activity(qint64 received_at_ms);
 
     void exchange_status_ready(const QJsonObject& status);
     void exchange_schedule_ready(const QJsonObject& schedule);
@@ -153,6 +156,7 @@ class KalshiAdapter : public openmarketterminal::services::prediction::Predictio
         const QString& next_cursor);
     void settlements_ready(const QJsonArray& settlements);
     void queue_positions_ready(const QJsonArray& positions, int resting_orders);
+    void reconcile_orders_ready(const QJsonArray& orders, const QString& cursor);
 
     void order_amended(const QString& order_id, bool ok, const QString& error);
     void single_order_ready(const QJsonObject& order);

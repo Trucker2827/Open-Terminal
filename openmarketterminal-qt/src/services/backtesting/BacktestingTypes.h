@@ -59,7 +59,10 @@ inline QVector<Provider> all_providers() {
          // per-symbol-nested shapes that don't match the frontend renderer; only the
          // backtest-shaped commands are exposed.
          {"backtest", "optimize", "walk_forward"}},
-        {"openmarketterminal", "OpenMarket", QColor("#d97706"), {"backtest", "optimize", "walk_forward"}},
+        // The "openmarketterminal" (QuantConnect-style) provider was removed:
+        // its runner imports an openmarketterminal_engine package and a
+        // scripts/strategies registry that never existed in this repository
+        // (upstream-fork inheritance) — every command could only traceback.
     };
 }
 

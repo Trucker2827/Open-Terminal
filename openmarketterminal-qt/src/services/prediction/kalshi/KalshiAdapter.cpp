@@ -297,6 +297,10 @@ void KalshiAdapter::fetch_batch_order_books(const QStringList& tickers) {
     rest_->fetch_batch_order_books(tickers);
 }
 
+void KalshiAdapter::request_orderbook_snapshots(const QStringList& tickers) {
+    ws_->request_orderbook_snapshots(tickers);
+}
+
 void KalshiAdapter::fetch_price_history(const QString& asset_id, const QString& interval, int /*fidelity*/) {
     const auto [ticker, side] = split_asset_id(asset_id);
     if (ticker.isEmpty()) {
@@ -419,9 +423,12 @@ void KalshiAdapter::run_py(const QString& command, const QJsonObject& extra,
     const QString payload_str =
         QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
     QPointer<KalshiAdapter> self = this;
-    openmarketterminal::python::PythonRunner::instance().run(
+    // Credentials remain in the local secure store until this hand-off. Send
+    // the merged bridge payload over stdin so PEM material never appears in a
+    // child process command line or local process listing.
+    openmarketterminal::python::PythonRunner::instance().run_with_stdin(
         QStringLiteral("prediction_kalshi.py"),
-        {command, payload_str},
+        {command, QStringLiteral("--stdin-json")}, payload_str.toUtf8(),
         [self, on_ok, ctx](openmarketterminal::python::PythonResult r) {
             if (!self) return;
             if (!r.success) {
@@ -513,6 +520,18 @@ void KalshiAdapter::fetch_queue_positions(const QString& market_tickers,
            }, QStringLiteral("fetch_queue_positions"));
 }
 
+void KalshiAdapter::fetch_reconcile_orders(int limit, const QString& cursor) {
+    QPointer<KalshiAdapter> self = this;
+    run_py(QStringLiteral("reconcile_orders"),
+           QJsonObject{{QStringLiteral("limit"), qBound(1, limit, 1000)},
+                       {QStringLiteral("cursor"), cursor}},
+           [self](const QJsonObject& response) {
+               if (!self) return;
+               emit self->reconcile_orders_ready(response.value(QStringLiteral("orders")).toArray(),
+                                                  response.value(QStringLiteral("cursor")).toString());
+           }, QStringLiteral("fetch_reconcile_orders"));
+}
+
 void KalshiAdapter::fetch_open_orders() {
     QPointer<KalshiAdapter> self = this;
     run_py(QStringLiteral("open_orders"), {},
@@ -525,6 +544,7 @@ void KalshiAdapter::fetch_open_orders() {
                    const auto o = v.toObject();
                    pr::OpenOrder ord;
                    ord.order_id = o.value("order_id").toString();
+                   ord.client_order_id = o.value("client_order_id").toString();
                    ord.asset_id = o.value("asset_id").toString();
                    ord.market_id = o.value("market_id").toString();
                    ord.outcome = o.value("outcome").toString();
@@ -594,6 +614,13 @@ void KalshiAdapter::place_order(const pr::OrderRequest& req) {
                out.ok = resp.value("ok").toBool();
                out.order_id = resp.value("order_id").toString();
                out.status = resp.value("status").toString();
+               out.client_order_id = resp.value("client_order_id").toString();
+               out.filled = resp.value("fill_count").toDouble();
+               out.remaining = resp.value("remaining_count").toDouble();
+               out.average_fill_price = resp.value("average_fill_price").toDouble();
+               out.average_fee_paid = resp.value("average_fee_paid").toDouble();
+               out.exchange_ts_ms = qint64(resp.value("ts_ms").toDouble());
+               out.raw = resp.value("raw").toObject();
                emit self->order_placed(out);
            },
            QStringLiteral("place_order"));
@@ -905,6 +932,8 @@ void KalshiAdapter::wire() {
             this, &KalshiAdapter::ws_cf_benchmark_event);
     connect(ws_.get(), &KalshiWsClient::connection_status_changed,
             this, &KalshiAdapter::ws_connection_changed);
+    connect(ws_.get(), &KalshiWsClient::liveness_activity,
+            this, &KalshiAdapter::ws_liveness_activity);
 }
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

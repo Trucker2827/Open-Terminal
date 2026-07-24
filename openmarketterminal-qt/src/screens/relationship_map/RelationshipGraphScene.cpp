@@ -384,19 +384,32 @@ void RelationshipGraphScene::build_graph(
         for (const auto& p : data.peers) {
             if (lv.size() >= 12) break;
             QColor acc = (p.week52_change >= 0) ? cPeer : QColor("#dc2626");
-            lv.append({p.ticker, QString("$%1").arg(p.current_price, 0, 'f', 2), acc});
+            // Native ratios feed carries P/E, not price — show what we have.
+            QString sub = (p.current_price > 0) ? QString("$%1").arg(p.current_price, 0, 'f', 2)
+                        : (p.pe_ratio > 0)      ? tr("P/E %1").arg(p.pe_ratio, 0, 'f', 1)
+                                                : QStringLiteral("—");
+            lv.append({p.ticker, sub, acc});
         }
         push_right(tr("Peers (%1/%2)").arg(lv.size()).arg(data.peers.size()),
                    cPeer, std::move(lv));
     }
 
-    // INSTITUTIONAL → right
+    // INSTITUTIONAL → right (SC 13D/G major owners). A legacy text-only
+    // filing has no parsed percentage — show the filing provenance instead
+    // of a fabricated 0.00%.
     if (filters.show_institutional && !data.institutional_holders.isEmpty()) {
         QVector<LeafInfo> lv;
         for (const auto& h : data.institutional_holders) {
             if (lv.size() >= 8) break;
             if (h.percentage < filters.min_ownership) continue;
-            lv.append({h.name.left(14), QString("%1%").arg(h.percentage, 0, 'f', 2), cInst});
+            QString sub;
+            if (h.percentage > 0)
+                sub = QString("%1%").arg(h.percentage, 0, 'f', 2);
+            else if (!h.source_form.isEmpty())
+                sub = h.source_form + QLatin1Char(' ') + h.filing_date.left(4);
+            else
+                sub = QStringLiteral("—");
+            lv.append({h.name.left(14), sub, cInst});
         }
         push_right(tr("Holders (%1/%2)").arg(lv.size()).arg(data.institutional_holders.size()),
                    cInst, std::move(lv));

@@ -1,6 +1,6 @@
 // QuantLabTools.cpp — Tools that drive the AI Quant Lab screen.
 //
-// 24 modules × bespoke commands → 96 module/command-specific tools plus three
+// 25 modules × bespoke commands → 96 module/command-specific tools plus three
 // generic discovery/dispatch tools. All execution paths bottom out at
 // AIQuantLabService::run_module, which spawns the module's Python script and
 // emits result_ready / error_occurred when it finishes. We bridge those
@@ -300,7 +300,7 @@ std::vector<ToolDef> get_quant_lab_tools() {
     {
         ToolDef t;
         t.name = "list_quant_modules";
-        t.description = "List all 24 AI Quant Lab modules (id, category, description, script).";
+        t.description = "List all 25 AI Quant Lab modules (id, category, description, script).";
         t.category = "quant-lab";
         t.handler = [](const QJsonObject&) -> ToolResult {
             QJsonArray arr;

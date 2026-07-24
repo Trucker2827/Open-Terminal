@@ -669,7 +669,7 @@ void BacktestingScreen::on_command_options_loaded(const QString& provider, const
         combo->setCurrentIndex(0);
     };
 
-    // Providers using json_response() emit camelCase keys; openmarketterminal_provider
+    // Providers using json_response() emit camelCase keys; older providers
     // uses raw json.dumps so its keys stay snake_case. Try camelCase first
     // (the dominant form across vectorbt/bt/backtestingpy/fasttrade/zipline),
     // then fall back to snake_case for openmarketterminal.

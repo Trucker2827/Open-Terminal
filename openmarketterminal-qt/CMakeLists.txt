@@ -33,7 +33,7 @@ if(WIN32 AND CMAKE_HOST_WIN32)
     unset(_openmarketterminal_sdk_dirs)
 endif()
 
-project(OpenTerminal VERSION 0.3.27 LANGUAGES C CXX)
+project(OpenTerminal VERSION 0.3.32 LANGUAGES C CXX)
 
 # Strip C/C++ flags out of RC invocations — rc.exe only understands /D, /I, /fo.
 if(WIN32)
@@ -974,6 +974,10 @@ set(STORAGE_SOURCES
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
     src/storage/sqlite/migrations/v063_ai_handler.cpp
     src/storage/sqlite/migrations/v064_ai_fill.cpp
+    src/storage/sqlite/migrations/v065_ai_handler_market.cpp
+    src/storage/sqlite/migrations/v066_kalshi_execution_ledger.cpp
+    src/storage/sqlite/migrations/v067_edge_advisory_challenge.cpp
+    src/storage/sqlite/migrations/v068_advisory_competition_pair.cpp
 
     # Historical OHLCV data store (Historify, Phase 3 §13)
     src/storage/HistoricalDataStore.cpp
@@ -990,6 +994,8 @@ set(PYTHON_SOURCES
 
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
+    src/services/crypto/CoinbaseEndpoints.cpp
+    src/services/crypto/CryptoFees.cpp
     src/services/crypto_latency/CryptoLatencyService.cpp
     src/services/crypto_latency/FeedReconnect.cpp
     src/services/edge_radar/BtcFiveMinuteEdgeModel.cpp
@@ -998,9 +1004,13 @@ set(LLM_SERVICE_SOURCES
     src/services/edge_radar/CryptoHourlyEdgeModel.cpp
     src/services/edge_radar/CryptoImpulseModel.cpp
     src/services/edge_radar/CryptoMicrostructureRadar.cpp
+    src/services/edge_radar/EdgeProofStats.cpp
     src/services/edge_radar/KalshiUniversalEdgeModel.cpp
     src/services/edge_radar/KalshiAutoEngine.cpp
     src/services/edge_radar/BitcoinEvidenceEngine.cpp
+    src/services/edge_radar/AdvisoryProtocol.cpp
+    src/services/edge_radar/AdvisoryScoring.cpp
+    src/services/edge_radar/AdvisoryChallengeRepository.cpp
     src/services/decision/DecisionOrchestrator.cpp
     src/services/llm/LlmService.cpp
     src/services/llm/AnalysisSkillLoader.cpp
@@ -1204,7 +1214,6 @@ set(ALGO_ENGINE_SOURCES
 # Services
 set(SERVICE_SOURCES
     src/services/DataServices.cpp
-    src/services/akshare/AkShareService.cpp
     src/services/alpha_arena/AlphaArenaJson.cpp
     src/services/alpha_arena/Indicators.cpp
     src/services/alpha_arena/ContextBuilder.cpp
@@ -1275,6 +1284,7 @@ set(SERVICE_SOURCES
     src/services/maritime/PortsCatalog.cpp
     src/services/maritime/GeocodingService.cpp
     src/services/ai_quant_lab/AIQuantLabService.cpp
+    src/services/ai_quant_lab/ScreenWatchlistFeed.cpp
     src/services/backtesting/BacktestingService.cpp
     src/services/algo_trading/AlgoTradingService.cpp
     # PortfolioService split; see header comment.
@@ -1355,6 +1365,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
+    src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
     # Phase 4 — internal prediction-market adapter (demo mode until
     # `openmarketterminal.markets_endpoint` is configured and `openmarketterminal_market` lands).
     src/services/prediction/openmarketterminal_internal/OpenMarketTerminalInternalAdapter.cpp
@@ -1572,6 +1583,7 @@ set(SCREEN_SOURCES
     src/screens/dashboard/widgets/StockQuoteWidget.cpp
     src/screens/dashboard/widgets/DashboardCandleWidget.cpp
     src/screens/dashboard/widgets/DineroNetworkWidget.cpp
+    src/screens/common/DineroNetworkGadget.cpp
     src/services/dinero/DineroRpcClient.cpp
     src/screens/dinero/DineroScreen.cpp
     src/screens/dashboard/widgets/WatchlistWidget.cpp
@@ -1631,6 +1643,7 @@ set(SCREEN_SOURCES
     src/screens/crypto_trading/CryptoOrderBook.cpp
     src/screens/crypto_trading/CryptoLadder.cpp
     src/screens/crypto_trading/CryptoBottomPanel.cpp
+    src/screens/crypto_trading/CryptoAutomationCockpit.cpp
     src/screens/crypto_trading/CryptoCredentials.cpp
     src/screens/crypto_trading/CryptoTimeSales.cpp
     src/screens/crypto_trading/CryptoDepthChart.cpp
@@ -1697,6 +1710,9 @@ set(SCREEN_SOURCES
     src/screens/code_editor/CodeEditorScreen_Cells.cpp
     src/screens/code_editor/CodeEditorScreen_Navigator.cpp
     src/screens/code_editor/CodeEditorScreen_Library.cpp
+    src/screens/code_editor/CodeEditorScreen_ResearchLab.cpp
+    src/screens/code_editor/CodeEditorScreen_ForecastArena.cpp
+    src/screens/code_editor/CodeEditorScreen_AlphaArena.cpp
 
     # Excel Spreadsheet
     src/screens/excel/ExcelScreen.cpp
@@ -1722,8 +1738,6 @@ set(SCREEN_SOURCES
     src/screens/edge_radar/EdgeRadarScreen.cpp
 
 
-    # AkShare Data Explorer
-    src/screens/akshare/AkShareScreen.cpp
 
     # Geopolitics
     src/screens/geopolitics/GeopoliticsScreen.cpp
@@ -1798,7 +1812,6 @@ set(SCREEN_SOURCES
     src/screens/economics/panels/TradingEconomicsPanel.cpp
     src/screens/economics/panels/EconomicCalendarPanel.cpp
     src/screens/economics/panels/BcbPanel.cpp
-    src/screens/economics/panels/AkShareChinaPanel.cpp
     src/screens/economics/panels/OnsPanel.cpp
     src/screens/economics/panels/GlobalCentralBanksPanel.cpp
     src/screens/economics/panels/FederalReservePanel.cpp
@@ -2017,7 +2030,6 @@ set_source_files_properties(
     src/screens/ai_quant_lab/QuantModulePanel_Misc.cpp
     src/screens/ai_quant_lab/QuantModulePanel_HFT.cpp
     src/screens/ai_quant_lab/QuantModulePanel_LiveLearning.cpp
-    src/screens/akshare/AkShareScreen.cpp
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/StrategyOpsMapPanel.cpp
     src/screens/algo_trading/StrategyWorkspacePanels.cpp
@@ -2049,8 +2061,12 @@ set_source_files_properties(
     src/screens/code_editor/CodeEditorScreen_Cells.cpp
     src/screens/code_editor/CodeEditorScreen_Navigator.cpp
     src/screens/code_editor/CodeEditorScreen_Library.cpp
+    src/screens/code_editor/CodeEditorScreen_ResearchLab.cpp
+    src/screens/code_editor/CodeEditorScreen_ForecastArena.cpp
+    src/screens/code_editor/CodeEditorScreen_AlphaArena.cpp
     src/services/notebooks/NotebookLibraryService.cpp
     src/screens/crypto_trading/CryptoBottomPanel.cpp
+    src/screens/crypto_trading/CryptoAutomationCockpit.cpp
     src/screens/crypto_trading/CryptoChart.cpp
     src/screens/crypto_trading/CryptoCredentials.cpp
     src/screens/crypto_trading/CryptoOrderBook.cpp
@@ -2408,6 +2424,10 @@ set_source_files_properties(
     src/storage/sqlite/migrations/v062_decision_envelopes.cpp
     src/storage/sqlite/migrations/v063_ai_handler.cpp
     src/storage/sqlite/migrations/v064_ai_fill.cpp
+    src/storage/sqlite/migrations/v065_ai_handler_market.cpp
+    src/storage/sqlite/migrations/v066_kalshi_execution_ledger.cpp
+    src/storage/sqlite/migrations/v067_edge_advisory_challenge.cpp
+    src/storage/sqlite/migrations/v068_advisory_competition_pair.cpp
     # DecisionContext.cpp — defines an anonymous-namespace `enum class
     # EdgeCol` (scoped enumerators, but the type name itself still lives in
     # the anon namespace); excluded defensively so a Release unity batch can
@@ -2464,6 +2484,12 @@ set_source_files_properties(
 # /GL back-end bug). Losing whole-program opt on one CLI dispatcher is nil cost.
 set_source_files_properties(
     src/cli/CommandDispatch.cpp
+    src/cli/EdgeJournalCommands.cpp
+    src/cli/EdgeJournalCommandsB.cpp
+    src/cli/EdgeJournalCommandsC.cpp
+    src/cli/EdgeJournalCommands2.cpp
+    src/cli/EdgeJournalRareAlerts.cpp
+    src/cli/QuantLabCommands.cpp
     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
                COMPILE_OPTIONS "$<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/GL->"
 )
@@ -3339,6 +3365,13 @@ include(GNUInstallDirs)
 add_executable(openterminalcli
     src/cli/main.cpp
     src/cli/CommandDispatch.cpp
+    src/cli/EdgeJournalRareAlerts.cpp
+    src/cli/EdgeJournalCommands.cpp
+    src/cli/EdgeJournalCommandsB.cpp
+    src/cli/EdgeJournalCommandsC.cpp
+    src/cli/EdgeJournalCommands2.cpp
+    src/cli/QuantLabCommands.cpp
+    src/services/crypto/CoinbaseEndpoints.cpp
     src/cli/automation/AutomationState.cpp
     src/cli/AiRunCommand.cpp
     src/cli/ObserveCommand.cpp
@@ -3651,6 +3684,13 @@ endif()
 if(WIN32)
     # Windows: install exe + all DLLs beside it (windeployqt already copies them)
     install(TARGETS OpenMarketTerminal RUNTIME DESTINATION "." COMPONENT core)
+    # openterminalcli.exe beside the app exe — KalshiScreen shells out to it
+    # for live evidence, and the `cli` component (bin/ layout) is excluded
+    # from CPACK_COMPONENTS_ALL, so without this rule the Windows installer
+    # ships no CLI and every install shows "openterminalcli was not found
+    # beside the app". macOS stages it into Contents/MacOS in CI; Linux into
+    # the AppDir's usr/bin.
+    install(TARGETS openterminalcli RUNTIME DESTINATION "." COMPONENT core)
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/scripts/"
             DESTINATION "scripts" COMPONENT scripts
             REGEX "(\\.deleted\\.|\\.pytest_cache|\\.benchmarks|__pycache__|\\.pyc$|\\.db$|\\.sqlite$|\\.sqlite3$|\\.bak$|\\.orig$)" EXCLUDE)

@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QJsonObject>
+#include <QMap>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -26,6 +27,9 @@ struct CryptoLatencyTick {
     qint64 exchange_ts_ms = 0;
     qint64 received_ts_ms = 0;
     qint64 sequence = 0;
+    bool is_trade = false;
+    QString aggressor_side; // buy or sell; empty when the venue does not identify it
+    double trade_size = 0.0;
 };
 
 struct CryptoLatencySourceState {
@@ -103,6 +107,11 @@ class CryptoLatencyService : public QObject {
         QString escape;
     };
 
+    struct GeminiBook {
+        QMap<double, double> bids;
+        QMap<double, double> asks;
+    };
+
     Feed make_feed(const QString& source, const QString& symbol) const;
     void open_feed(const Feed& feed);
     void open_tcp_feed(const Feed& feed);
@@ -128,6 +137,7 @@ class CryptoLatencyService : public QObject {
     QHash<QString, CryptoLatencyTick> latest_;
     QHash<QString, CryptoLatencySourceState> states_;
     QHash<QString, TerminalState> terminal_states_;
+    QHash<QString, GeminiBook> gemini_books_;
     QSet<QString> wanted_sources_;
     QHash<QString, QTimer*> reconnect_timers_;
 };

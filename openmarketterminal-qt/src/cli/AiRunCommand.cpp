@@ -102,8 +102,10 @@ ai_strategy::LlmStrategy::CompletionFn make_real_completion_fn() {
 int ai_usage() {
     std::fprintf(stderr,
                  "usage: ai run strategy <meanrev|claude> --mode paper "
-                 "[--interval-sec N] [--max-iters M] [--duration-sec D] [--symbols A,B,C] [--no-floor] "
+                 "[--market crypto|equity|prediction] [--interval-sec N] [--max-iters M] "
+                 "[--duration-sec D] [--symbols A,B,C] [--no-floor] "
                  "[--max-aggregate-qty N] [--max-position-qty N] [--max-notional-per-order N]\n"
+                 "  --market is REQUIRED for the 'claude' strategy (edge-scoped direction).\n"
                  "  --mode live additionally REQUIRES the floor (no --no-floor), a bounded "
                  "session (--max-iters or --duration-sec), a positive "
                  "--max-notional-per-order, and a positive --max-position-qty (enforced "
@@ -113,7 +115,7 @@ int ai_usage() {
 }
 
 int ai_ctx_usage() {
-    std::fprintf(stderr, "usage: ai ctx <symbol> [--json] [--market prediction|equity]\n");
+    std::fprintf(stderr, "usage: ai ctx <symbol> [--json] [--market crypto|prediction|equity]\n");
     return 2;
 }
 
@@ -137,6 +139,7 @@ QJsonObject ai_handler_to_json(const AiHandler& h) {
         {"strategy", h.strategy},
         {"provider", h.provider},
         {"symbols", h.symbols},
+        {"market", h.market},
         {"interval_sec", h.interval_sec},
         {"allowed_venues", h.allowed_venues},
         {"max_notional", h.max_notional},
@@ -148,15 +151,17 @@ QJsonObject ai_handler_to_json(const AiHandler& h) {
 }
 
 void print_ai_handler_row(const AiHandler& h) {
-    std::printf("%-20s %-10s %-10s %-20s %6d %-8s %s\n", qUtf8Printable(h.name),
-                qUtf8Printable(h.strategy), qUtf8Printable(h.provider), qUtf8Printable(h.symbols),
-                h.interval_sec, h.enabled ? "enabled" : "disabled", qUtf8Printable(h.notes));
+    std::printf("%-20s %-10s %-12s %-10s %-20s %6d %-8s %s\n", qUtf8Printable(h.name),
+                qUtf8Printable(h.strategy), qUtf8Printable(h.market), qUtf8Printable(h.provider),
+                qUtf8Printable(h.symbols), h.interval_sec, h.enabled ? "enabled" : "disabled",
+                qUtf8Printable(h.notes));
 }
 
 int ai_handler_usage() {
     std::fprintf(stderr,
                  "usage: ai handler create <name> --strategy <s> [--provider p] [--symbols A,B] "
-                 "[--interval-sec N] [--venues v1,v2] [--max-notional X] [--max-position Y] "
+                 "[--market crypto|equity|prediction] [--interval-sec N] [--venues v1,v2] "
+                 "[--max-notional X] [--max-position Y] "
                  "[--notes \"...\"]\n"
                  "       ai handler list [--json]\n"
                  "       ai handler show <name> [--json]\n"
@@ -227,6 +232,14 @@ int ai_handler_create(const GlobalOpts& opts, QStringList rest) {
         } else if (f == "--symbols") {
             if (!take_val(f, v)) return 2;
             h.symbols = v;
+        } else if (f == "--market") {
+            if (!take_val(f, v)) return 2;
+            h.market = v.toLower();
+            if (h.market != QLatin1String("crypto") && h.market != QLatin1String("equity") &&
+                h.market != QLatin1String("prediction")) {
+                std::fprintf(stderr, "error: --market must be 'crypto', 'equity', or 'prediction'\n");
+                return 2;
+            }
         } else if (f == "--interval-sec") {
             if (!take_val(f, v)) return 2;
             h.interval_sec = v.toInt();
@@ -263,6 +276,17 @@ int ai_handler_create(const GlobalOpts& opts, QStringList rest) {
         return 2;
     }
     h.strategy = strategy;
+
+    // Claude derives ENTER direction from edge evidence. Persisting a venue
+    // scope makes saved handlers obey the same no-cross-market rule as
+    // `ai run strategy claude --market ...`; legacy unscoped handlers fail
+    // closed at run time below instead of reading all venues.
+    if (h.strategy == QLatin1String("claude") && h.market.isEmpty()) {
+        std::fprintf(stderr,
+                     "error: --market <crypto|equity|prediction> is required for the 'claude' "
+                     "strategy (edge-scoped direction)\n");
+        return 2;
+    }
 
     if (!init_db_for_handler_command(opts))
         return 7;
@@ -307,8 +331,8 @@ int ai_handler_list(const GlobalOpts& opts) {
                                 .constData());
         return 0;
     }
-    std::printf("%-20s %-10s %-10s %-20s %6s %-8s %s\n", "name", "strategy", "provider", "symbols",
-                "ivl-s", "state", "notes");
+    std::printf("%-20s %-10s %-12s %-10s %-20s %6s %-8s %s\n", "name", "strategy", "market",
+                "provider", "symbols", "ivl-s", "state", "notes");
     for (const auto& h : listed.value()) print_ai_handler_row(h);
     return 0;
 }
@@ -529,6 +553,14 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
     }
     const AiHandler h = fetched.value();
 
+    if (h.strategy == QLatin1String("claude") && h.market.isEmpty()) {
+        std::fprintf(stderr,
+                     "error: handler '%s' has no market scope; recreate it with --market "
+                     "crypto|equity|prediction before running\n",
+                     qUtf8Printable(h.name));
+        return 2;
+    }
+
     ai_strategy::StrategyRegistry registry;
     ai_strategy::register_builtin_strategies(registry);
     if (!registry.has(h.strategy)) {
@@ -552,7 +584,7 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
         symbols = QStringList{QStringLiteral("AAPL")};
 
     std::unique_ptr<ai_strategy::Strategy> strategy =
-        registry.build(h.strategy, {symbols, make_real_completion_fn()});
+        registry.build(h.strategy, {symbols, make_real_completion_fn(), h.market});
     if (!strategy) {
         std::fprintf(stderr, "error: failed to build strategy '%s'\n", qUtf8Printable(h.strategy));
         return 5;
@@ -590,6 +622,11 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
     std::signal(SIGINT, on_sigint);
 
     ai_strategy::StrategyRunner runner;
+    if (!h.market.isEmpty()) {
+        runner.assess_fn = [market = h.market](const QString& symbol) {
+            return ai_decision::assess(symbol, market);
+        };
+    }
     runner.on_log = [](const QString& msg) {
         std::printf("[strategy] %s\n", msg.toUtf8().constData());
         std::fflush(stdout);
@@ -607,10 +644,10 @@ int ai_handler_run(const GlobalOpts& opts, QStringList rest) {
             cfg.allowed_venues.push_back(venue);
     }
 
-    std::printf("[handler] running '%s' strategy=%s mode=paper interval=%ds max-iters=%d "
+    std::printf("[handler] running '%s' strategy=%s market=%s mode=paper interval=%ds max-iters=%d "
                 "duration=%ds symbols=%s\n",
-                qUtf8Printable(h.name), qUtf8Printable(h.strategy), ivl, max_iters, duration_sec,
-                qUtf8Printable(symbols.join(QLatin1Char(','))));
+                qUtf8Printable(h.name), qUtf8Printable(h.strategy), qUtf8Printable(h.market), ivl,
+                max_iters, duration_sec, qUtf8Printable(symbols.join(QLatin1Char(','))));
     std::fflush(stdout);
 
     const ai_strategy::RunSummary s =
@@ -646,6 +683,7 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     double max_aggregate_qty = 0.0;
     double max_position_qty = 0.0;
     double max_notional_per_order = 0.0;
+    QString market;  ///< empty = unscoped (all venues); validated below when non-empty.
 
     // Consume the next token as the value for `flag`; false if missing.
     auto take_val = [&](const QString& flag, QString& dst) -> bool {
@@ -686,6 +724,14 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
         } else if (f == "--max-notional-per-order") {
             if (!take_val(f, v)) return 2;
             max_notional_per_order = v.toDouble();  // non-numeric -> 0 = off
+        } else if (f == "--market") {
+            if (!take_val(f, v)) return 2;
+            market = v;
+            if (market != QLatin1String("crypto") && market != QLatin1String("equity") &&
+                market != QLatin1String("prediction")) {
+                std::fprintf(stderr, "error: --market must be 'crypto', 'equity', or 'prediction'\n");
+                return 2;
+            }
         } else {
             std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
             return ai_usage();
@@ -694,6 +740,18 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
 
     if (symbols.isEmpty())
         symbols = QStringList{QStringLiteral("AAPL")};
+
+    // Edge-scoped direction is only meaningful with a market to scope by: the
+    // 'claude' strategy resolves ENTER side from edge_direction_of(symbol, market)
+    // (and the floor's assess_fn below), so an empty market would let a
+    // cross-venue row for the same symbol decide the direction (the #38 bug).
+    // 'meanrev' is deterministic and never reads edge direction, so it's unaffected.
+    if (name == QLatin1String("claude") && market.isEmpty()) {
+        std::fprintf(stderr,
+                     "error: --market <crypto|equity|prediction> is required for the 'claude' "
+                     "strategy (edge-scoped direction)\n");
+        return 2;
+    }
 
     // Validate the run mode up front (no DB needed). The ARMED gate for live runs
     // after the DB is up (below) so it can read real arm state.
@@ -707,7 +765,8 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     if (name == QLatin1String("meanrev")) {
         strategy = std::make_unique<ai_strategy::MeanReversionStrategy>(symbols);
     } else if (name == QLatin1String("claude")) {
-        strategy = std::make_unique<ai_strategy::LlmStrategy>(symbols, make_real_completion_fn());
+        strategy = std::make_unique<ai_strategy::LlmStrategy>(symbols, make_real_completion_fn(),
+                                                               /*max_qty=*/10.0, market);
     } else {
         std::fprintf(stderr, "error: unknown strategy '%s' (meanrev|claude)\n",
                      qUtf8Printable(name));
@@ -789,6 +848,13 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
         std::printf("[strategy] %s\n", msg.toUtf8().constData());
         std::fflush(stdout);
     };
+    // Scope the floor's edge lookup too: assess_fn feeds the pre-trade
+    // guardrail's cost/freshness/edge inputs (StrategyRunner.h), and its
+    // default is the SAME empty-market assess() the #38 bug came from. When a
+    // market was given, override it to reuse F1's market_venue_filter so the
+    // floor agrees with the strategy's own edge_direction_of(symbol, market).
+    if (!market.isEmpty())
+        runner.assess_fn = [market](const QString& sym) { return ai_decision::assess(sym, market); };
 
     ai_strategy::RunConfig cfg;
     cfg.interval_sec = interval_sec;
@@ -800,9 +866,10 @@ int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest) {
     cfg.max_notional_per_order = max_notional_per_order;
     cfg.submit_mode = submit_mode;
 
-    std::printf("[strategy] running '%s' mode=%s armed=%s interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
+    std::printf("[strategy] running '%s' mode=%s armed=%s market=%s interval=%ds max-iters=%d duration=%ds symbols=%s floor=%s agg_cap=%.4f pos_cap=%.4f notional_cap=%.4f\n",
                 qUtf8Printable(strategy->name()), qUtf8Printable(submit_mode),
-                submit_mode == QLatin1String("live") ? "true" : "false", interval_sec, max_iters, duration_sec,
+                submit_mode == QLatin1String("live") ? "true" : "false",
+                market.isEmpty() ? "any" : qUtf8Printable(market), interval_sec, max_iters, duration_sec,
                 qUtf8Printable(symbols.join(QLatin1Char(','))), require_floor ? "on" : "off", max_aggregate_qty,
                 max_position_qty, max_notional_per_order);
     std::fflush(stdout);
@@ -845,8 +912,9 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
                 return 2;
             }
             market = args.takeFirst();
-            if (market != QLatin1String("prediction") && market != QLatin1String("equity")) {
-                std::fprintf(stderr, "error: --market must be 'prediction' or 'equity'\n");
+            if (market != QLatin1String("crypto") && market != QLatin1String("prediction") &&
+                market != QLatin1String("equity")) {
+                std::fprintf(stderr, "error: --market must be 'crypto', 'prediction', or 'equity'\n");
                 return 2;
             }
         } else {
@@ -936,16 +1004,21 @@ int ai_ctx_command(const GlobalOpts& opts, const QStringList& rest) {
     return 0;
 }
 
-// `ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H]
+// `ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H]
 // [--json]` -- previews what a typed verb translates to for a symbol given
-// its CURRENT ledger position. READ-ONLY: position_of issues a SELECT and
-// translate_action is pure (no DB, no LLM) -- this command writes nothing
-// (no cli.* gate, no ai_fill row, no order); it never constructs a
-// StrategyRunner and never calls prepare_order/submit_order.
+// its CURRENT ledger position AND the deterministic edge's direction (the
+// same edge_direction_of() resolver LlmStrategy uses by default), so the
+// preview matches what a real enter would do. READ-ONLY: position_of issues
+// a SELECT, edge_direction_of()/assess() issues a SELECT, and translate_action
+// is pure (no DB, no LLM) -- this command writes nothing (no cli.* gate, no
+// ai_fill row, no order); it never constructs a StrategyRunner and never
+// calls prepare_order/submit_order.
 int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
     QStringList args = rest;
     if (args.isEmpty()) {
-        std::fprintf(stderr, "usage: ai act <symbol> <skip|enter|trim|exit> [--conviction N] [--handler H] [--json]\n");
+        std::fprintf(stderr,
+                     "usage: ai act <symbol> <enter|trim|exit|hold> [--conviction N] [--handler H] "
+                     "[--market crypto|equity|prediction] [--json]\n");
         return 2;
     }
     const QString symbol = args.takeFirst();
@@ -956,17 +1029,18 @@ int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
     const QString action = args.takeFirst();
 
     ai_strategy::ActionType atype;
-    if (action == QLatin1String("skip"))       atype = ai_strategy::ActionType::Skip;
+    if (action == QLatin1String("skip") || action == QLatin1String("hold")) atype = ai_strategy::ActionType::Skip;
     else if (action == QLatin1String("enter")) atype = ai_strategy::ActionType::Enter;
     else if (action == QLatin1String("trim"))  atype = ai_strategy::ActionType::Trim;
     else if (action == QLatin1String("exit"))  atype = ai_strategy::ActionType::Exit;
     else {
-        std::fprintf(stderr, "error: unknown action '%s' (skip|enter|trim|exit)\n", qUtf8Printable(action));
+        std::fprintf(stderr, "error: unknown action '%s' (enter|trim|exit|hold)\n", qUtf8Printable(action));
         return 2;
     }
 
     double conviction = 1.0;
     QString handler = QStringLiteral("claude");
+    QString market;  ///< empty = unscoped (all venues), matching edge_direction_of()'s default.
     bool json_flag = false;
     while (!args.isEmpty()) {
         const QString f = args.takeFirst();
@@ -984,6 +1058,17 @@ int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
                 return 2;
             }
             handler = args.takeFirst();
+        } else if (f == QLatin1String("--market")) {
+            if (args.isEmpty()) {
+                std::fprintf(stderr, "error: --market requires a value\n");
+                return 2;
+            }
+            market = args.takeFirst();
+            if (market != QLatin1String("crypto") && market != QLatin1String("equity") &&
+                market != QLatin1String("prediction")) {
+                std::fprintf(stderr, "error: --market must be 'crypto', 'equity', or 'prediction'\n");
+                return 2;
+            }
         } else {
             std::fprintf(stderr, "error: unknown flag '%s'\n", qUtf8Printable(f));
             return 2;
@@ -1003,23 +1088,28 @@ int ai_act_command(const GlobalOpts& opts, const QStringList& rest) {
 
     // READ-ONLY: position_of issues a SELECT; translate_action is pure. No write.
     const double net_qty = ai_ledger::position_of(handler, symbol).net_qty;
+    // The deterministic edge decides direction (same resolver the runtime uses),
+    // scoped by --market so the preview matches a real scoped run (empty =
+    // all-venues, as before). READ-ONLY (assess=SELECT).
+    const int edge_dir = ai_strategy::edge_direction_of(symbol, market);
     const auto intent = ai_strategy::translate_action(
-        ai_strategy::ActionChoice{symbol, atype, conviction}, net_qty, ai_strategy::ActionParams{10.0, 0.5});
+        ai_strategy::ActionChoice{symbol, atype, conviction}, net_qty, edge_dir,
+        ai_strategy::ActionParams{10.0, 0.5});
 
     QJsonObject obj{{"action", action}, {"symbol", symbol}, {"conviction", conviction},
-                    {"current_net_qty", net_qty},
+                    {"current_net_qty", net_qty}, {"edge_direction", edge_dir},
                     {"intent", intent ? QJsonValue(*intent) : QJsonValue(QJsonValue::Null)}};
     if (opts.json || json_flag) {
         std::printf("%s\n", QJsonDocument(obj).toJson(QJsonDocument::Compact).constData());
         return 0;
     }
     if (intent)
-        std::printf("%s %s conv=%.4f net=%.4f -> %s %.4f @ market\n", qUtf8Printable(action),
-                    qUtf8Printable(symbol), conviction, net_qty,
+        std::printf("%s %s conv=%.4f net=%.4f edge_dir=%d -> %s %.4f @ market\n", qUtf8Printable(action),
+                    qUtf8Printable(symbol), conviction, net_qty, edge_dir,
                     qUtf8Printable(intent->value("side").toString()), intent->value("quantity").toDouble());
     else
-        std::printf("%s %s conv=%.4f net=%.4f -> no intent\n", qUtf8Printable(action),
-                    qUtf8Printable(symbol), conviction, net_qty);
+        std::printf("%s %s conv=%.4f net=%.4f edge_dir=%d -> no intent\n", qUtf8Printable(action),
+                    qUtf8Printable(symbol), conviction, net_qty, edge_dir);
     return 0;
 }
 

@@ -2,6 +2,7 @@
 
 #include "datahub/DataHub.h"
 #include "services/crypto_latency/FeedReconnect.h"
+#include "services/crypto/CoinbaseEndpoints.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -23,6 +24,16 @@ namespace {
 
 qint64 now_ms() {
     return QDateTime::currentMSecsSinceEpoch();
+}
+
+// A source which has not produced a quote for this long is no longer useful as
+// independent confirmation.  Keep this in step with the freshness gate used
+// by the scalp and maker decision paths.
+constexpr qint64 kLiveSourceMaxAgeMs = 5000;
+
+bool source_is_fresh(const CryptoLatencySourceState& state, qint64 now) {
+    return state.last_tick_ms > 0 && now >= state.last_tick_ms &&
+           now - state.last_tick_ms <= kLiveSourceMaxAgeMs;
 }
 
 double as_double(const QJsonValue& v) {
@@ -78,6 +89,19 @@ QString kraken_pair(const QString& symbol) {
     return s;
 }
 
+QString gemini_pair(const QString& symbol) {
+    const QString normalized = CryptoLatencyService::normalize_symbol(symbol);
+    if (normalized == QStringLiteral("BTC-USD"))
+        return QStringLiteral("btcusd");
+    if (normalized == QStringLiteral("ETH-USD"))
+        return QStringLiteral("ethusd");
+    if (normalized == QStringLiteral("SOL-USD"))
+        return QStringLiteral("solusd");
+    QString pair = normalized;
+    pair.remove('-');
+    return pair.toLower();
+}
+
 QString topic_symbol(const QString& symbol) {
     return CryptoLatencyService::normalize_symbol(symbol).replace('-', '/');
 }
@@ -95,12 +119,13 @@ CryptoLatencyService::~CryptoLatencyService() {
 }
 
 QStringList CryptoLatencyService::default_sources() {
-    return {QStringLiteral("coinbase"), QStringLiteral("kraken"), QStringLiteral("binanceus"),
+    return {QStringLiteral("coinbase"), QStringLiteral("kraken"), QStringLiteral("gemini"),
             QStringLiteral("bitcointicker")};
 }
 
 QStringList CryptoLatencyService::supported_sources() {
-    return {QStringLiteral("coinbase"), QStringLiteral("kraken"), QStringLiteral("binanceus"),
+    return {QStringLiteral("coinbase"), QStringLiteral("kraken"), QStringLiteral("gemini"),
+            QStringLiteral("binanceus"),
             QStringLiteral("binance"), QStringLiteral("binanceperp"),
             QStringLiteral("bitcointicker")};
 }
@@ -128,6 +153,9 @@ QJsonObject CryptoLatencyService::tick_to_json(const CryptoLatencyTick& t) {
                        {QStringLiteral("best_ask"), t.best_ask},
                        {QStringLiteral("bid_size"), t.bid_size},
                        {QStringLiteral("ask_size"), t.ask_size},
+                       {QStringLiteral("is_trade"), t.is_trade},
+                       {QStringLiteral("aggressor_side"), t.aggressor_side},
+                       {QStringLiteral("trade_size"), t.trade_size},
                        {QStringLiteral("exchange_ts_ms"), QString::number(t.exchange_ts_ms)},
                        {QStringLiteral("received_ts_ms"), QString::number(t.received_ts_ms)},
                        {QStringLiteral("age_ms"), t.received_ts_ms > 0 ? now_ms() - t.received_ts_ms : -1},
@@ -190,7 +218,7 @@ CryptoLatencySnapshot CryptoLatencyService::filtered_snapshot(const CryptoLatenc
             filtered.oldest_tick_ms = tick.received_ts_ms;
     }
     for (const auto& state : filtered.sources) {
-        if (state.last_tick_ms > 0)
+        if (source_is_fresh(state, now))
             ++filtered.live_sources;
     }
     if (filtered.newest_tick_ms > 0)
@@ -281,6 +309,7 @@ void CryptoLatencyService::stop() {
     }
     feeds_.clear();
     terminal_states_.clear();
+    gemini_books_.clear();
     // Clear per-feed reconnect state so a fresh start() begins at attempt 0.
     for (auto it = states_.begin(); it != states_.end(); ++it) {
         it->reconnect_attempts = 0;
@@ -294,11 +323,18 @@ CryptoLatencyService::Feed CryptoLatencyService::make_feed(const QString& source
     Feed f;
     f.source = source;
     if (source == QStringLiteral("coinbase")) {
-        f.url = QStringLiteral("wss://ws-feed.exchange.coinbase.com");
+        // Advanced Trade WS — the legacy Exchange feed is sunset. The message
+        // handler already parses the Advanced events envelope (see the
+        // events→trades/tickers branch in handle_message).
+        f.url = QString::fromLatin1(openmarketterminal::services::crypto::kAdvancedTradeWsUrl);
         f.venue_symbol = normalize_symbol(symbol);
     } else if (source == QStringLiteral("kraken")) {
         f.url = QStringLiteral("wss://ws.kraken.com/v2");
         f.venue_symbol = kraken_pair(symbol);
+    } else if (source == QStringLiteral("gemini")) {
+        f.venue_symbol = gemini_pair(symbol);
+        f.url = QStringLiteral("wss://api.gemini.com/v1/marketdata/%1?bids=true&offers=true&trades=true")
+                    .arg(f.venue_symbol);
     } else if (source == QStringLiteral("bitcointicker")) {
         f.url = QStringLiteral("ticker.bitcointicker.co:10080");
         f.venue_symbol = QStringLiteral("bitcointicker:coinbase-usd");
@@ -335,11 +371,15 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
         states_[source].rate_limited = false;
         set_state(source, QStringLiteral("connected"));
         if (source == QStringLiteral("coinbase")) {
-            QJsonObject msg{{QStringLiteral("type"), QStringLiteral("subscribe")},
-                            {QStringLiteral("product_ids"), QJsonArray{venue}},
-                            {QStringLiteral("channels"), QJsonArray{QStringLiteral("matches"),
-                                                                    QStringLiteral("ticker")}}};
-            socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+            // Advanced Trade takes ONE channel per subscribe frame (a single
+            // "channel" string — the legacy "channels" array is ignored).
+            // heartbeats keeps the connection alive on quiet products.
+            for (const QString& channel : {QStringLiteral("ticker"), QStringLiteral("market_trades"),
+                                           QStringLiteral("heartbeats")}) {
+                const QJsonObject msg =
+                    openmarketterminal::services::crypto::advanced_ws_subscribe({venue}, channel);
+                socket->sendTextMessage(QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+            }
         } else if (source == QStringLiteral("kraken")) {
             for (const QString& channel : {QStringLiteral("trade"), QStringLiteral("ticker")}) {
                 QJsonObject params{{QStringLiteral("channel"), channel},
@@ -355,15 +395,23 @@ void CryptoLatencyService::open_feed(const Feed& feed) {
         if (!running_)
             return;
         states_[source].last_close_code = static_cast<int>(socket->closeCode());
-        set_state(source, QStringLiteral("disconnected"));
         // Detect a handshake 429 regardless of which signal wins the race:
         // closeReason() won't carry "429", but errorString() does. schedule_reconnect
         // is first-signal-wins, so fold both in here so the rate-limited (>=15s)
         // backoff is used even if disconnected fires before errorOccurred.
         const QString reason = socket->closeReason();
-        schedule_reconnect(source, is_rate_limited(reason) || is_rate_limited(socket->errorString())
-                                       ? socket->errorString()
-                                       : reason);
+        const QString socket_error = socket->errorString();
+        const bool rate_limited = is_rate_limited(reason) || is_rate_limited(socket_error);
+        const QString diagnostic = rate_limited ? socket_error : reason;
+        schedule_reconnect(source, diagnostic);
+        if (rate_limited) {
+            const int retry_ms = states_.value(source).reconnect_delay_ms;
+            set_state(source,
+                      QStringLiteral("rate limited"),
+                      QStringLiteral("HTTP 429; retrying in about %1s").arg((retry_ms + 999) / 1000));
+        } else {
+            set_state(source, QStringLiteral("disconnected"), diagnostic);
+        }
     });
     connect(socket, &QWebSocket::textMessageReceived, this,
             [this, source = feed.source, venue = feed.venue_symbol](const QString& text) {
@@ -493,6 +541,8 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
             message_type = obj.value(QStringLiteral("method")).toString();
         if (message_type.isEmpty())
             message_type = obj.value(QStringLiteral("event")).toString();
+    } else if (source == QStringLiteral("gemini")) {
+        message_type = obj.value(QStringLiteral("type")).toString();
     }
     note_message(source, message_type.isEmpty() ? QStringLiteral("json") : message_type);
 
@@ -517,6 +567,10 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
         } else if (event == QStringLiteral("trade")) {
             tick.price = as_double(obj.value(QStringLiteral("p")));
             tick.exchange_ts_ms = as_i64(obj.value(QStringLiteral("T")));
+            tick.is_trade = true;
+            tick.trade_size = as_double(obj.value(QStringLiteral("q")));
+            tick.aggressor_side = obj.value(QStringLiteral("m")).toBool()
+                ? QStringLiteral("sell") : QStringLiteral("buy");
         } else {
             return;
         }
@@ -536,6 +590,12 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
         if (type == QStringLiteral("match") || type == QStringLiteral("last_match")) {
             tick.price = as_double(obj.value(QStringLiteral("price")));
             tick.exchange_ts_ms = parse_time_ms(obj.value(QStringLiteral("time")));
+            tick.is_trade = true;
+            tick.trade_size = as_double(obj.value(QStringLiteral("size")));
+            // Coinbase Exchange matches report the resting maker's side.
+            const QString maker = obj.value(QStringLiteral("side")).toString().toLower();
+            if (maker == QLatin1String("sell")) tick.aggressor_side = QStringLiteral("buy");
+            else if (maker == QLatin1String("buy")) tick.aggressor_side = QStringLiteral("sell");
             if (tick.price > 0.0)
                 emit_tick(tick);
             return;
@@ -548,6 +608,13 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
                 const QJsonObject trade = tv.toObject();
                 tick.price = as_double(trade.value(QStringLiteral("price")));
                 tick.exchange_ts_ms = parse_time_ms(trade.value(QStringLiteral("time")));
+                tick.is_trade = true;
+                tick.trade_size = as_double(trade.value(QStringLiteral("size")));
+                // Advanced Trade also reports the maker side, despite the
+                // different envelope used by its market_trades channel.
+                const QString maker = trade.value(QStringLiteral("side")).toString().toLower();
+                if (maker == QLatin1String("sell")) tick.aggressor_side = QStringLiteral("buy");
+                else if (maker == QLatin1String("buy")) tick.aggressor_side = QStringLiteral("sell");
                 tick.best_bid = as_double(trade.value(QStringLiteral("best_bid")));
                 tick.best_ask = as_double(trade.value(QStringLiteral("best_ask")));
                 if (tick.price > 0.0)
@@ -556,6 +623,9 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
             const QJsonArray tickers = event.value(QStringLiteral("tickers")).toArray();
             for (const auto& tv : tickers) {
                 const QJsonObject ticker = tv.toObject();
+                tick.is_trade = false;
+                tick.trade_size = 0.0;
+                tick.aggressor_side.clear();
                 tick.price = as_double(ticker.value(QStringLiteral("price")));
                 tick.best_bid = as_double(ticker.value(QStringLiteral("best_bid")));
                 tick.best_ask = as_double(ticker.value(QStringLiteral("best_ask")));
@@ -566,6 +636,72 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
                     emit_tick(tick);
             }
         }
+        return;
+    } else if (source == QStringLiteral("gemini")) {
+        auto& book = gemini_books_[source];
+        const QJsonArray events = obj.value(QStringLiteral("events")).toArray();
+        bool quote_changed = false;
+        for (const auto& raw_event : events) {
+            const QJsonObject event = raw_event.toObject();
+            const QString event_type = event.value(QStringLiteral("type")).toString();
+            if (event_type == QStringLiteral("change")) {
+                const double price = as_double(event.value(QStringLiteral("price")));
+                const double remaining = as_double(event.value(QStringLiteral("remaining")));
+                QMap<double, double>* levels = event.value(QStringLiteral("side")).toString() == QLatin1String("bid")
+                    ? &book.bids : &book.asks;
+                if (price <= 0.0)
+                    continue;
+                if (remaining > 0.0)
+                    levels->insert(price, remaining);
+                else
+                    levels->remove(price);
+                quote_changed = true;
+            } else if (event_type == QStringLiteral("trade")) {
+                tick.price = as_double(event.value(QStringLiteral("price")));
+                tick.exchange_ts_ms = parse_time_ms(event.value(QStringLiteral("timestampms")));
+                tick.is_trade = true;
+                tick.trade_size = as_double(event.value(QStringLiteral("amount")));
+                const QString maker = event.value(QStringLiteral("makerSide")).toString().toLower();
+                if (maker == QLatin1String("ask")) tick.aggressor_side = QStringLiteral("buy");
+                else if (maker == QLatin1String("bid")) tick.aggressor_side = QStringLiteral("sell");
+                if (tick.exchange_ts_ms <= 0)
+                    tick.exchange_ts_ms = now_ms();
+                if (tick.price > 0.0)
+                    emit_tick(tick);
+            }
+        }
+        if (!quote_changed)
+            return;
+        tick.is_trade = false;
+        tick.trade_size = 0.0;
+        tick.aggressor_side.clear();
+        if (!book.bids.isEmpty()) {
+            const auto bid = std::prev(book.bids.constEnd());
+            tick.best_bid = bid.key();
+            tick.bid_size = bid.value();
+        }
+        if (!book.asks.isEmpty()) {
+            const auto ask = book.asks.constBegin();
+            tick.best_ask = ask.key();
+            tick.ask_size = ask.value();
+        }
+        // A missed book change or an exchange-side snapshot transition can
+        // briefly leave local Gemini levels crossed.  It is still useful as
+        // an independent trade-price feed, but a crossed BBO must never feed
+        // microprice, depth, or imbalance calculations.
+        if (tick.best_bid > 0.0 && tick.best_ask > 0.0 && tick.best_bid >= tick.best_ask) {
+            tick.best_bid = 0.0;
+            tick.best_ask = 0.0;
+            tick.bid_size = 0.0;
+            tick.ask_size = 0.0;
+        }
+        tick.price = tick.best_bid > 0.0 && tick.best_ask > 0.0
+            ? (tick.best_bid + tick.best_ask) / 2.0 : 0.0;
+        tick.exchange_ts_ms = parse_time_ms(obj.value(QStringLiteral("timestampms")));
+        if (tick.exchange_ts_ms <= 0)
+            tick.exchange_ts_ms = now_ms();
+        if (tick.price > 0.0)
+            emit_tick(tick);
         return;
     } else if (source == QStringLiteral("kraken")) {
         const QString channel = obj.value(QStringLiteral("channel")).toString();
@@ -592,6 +728,9 @@ void CryptoLatencyService::handle_text(const QString& source, const QString& ven
             const QJsonObject trade = tv.toObject();
             tick.price = as_double(trade.value(QStringLiteral("price")));
             tick.exchange_ts_ms = parse_time_ms(trade.value(QStringLiteral("timestamp")));
+            tick.is_trade = true;
+            tick.trade_size = as_double(trade.value(QStringLiteral("qty")));
+            tick.aggressor_side = trade.value(QStringLiteral("side")).toString().toLower();
             if (tick.price > 0.0)
                 emit_tick(tick);
         }
@@ -820,7 +959,7 @@ CryptoLatencySnapshot CryptoLatencyService::snapshot() const {
             s.oldest_tick_ms = t.received_ts_ms;
     }
     for (const auto& state : s.sources) {
-        if (state.last_tick_ms > 0)
+        if (source_is_fresh(state, now))
             s.live_sources += 1;
     }
     if (s.newest_tick_ms > 0)

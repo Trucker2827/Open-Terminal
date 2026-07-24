@@ -307,7 +307,11 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             {"quantity", QJsonObject{{"type", "number"}, {"description", "Base-asset amount (> 0)"}}},
             {"order_type", QJsonObject{{"type", "string"}, {"description", "market or limit (default market)"}}},
             {"limit_price", QJsonObject{{"type", "number"}, {"description", "Required for limit orders"}}},
-            {"post_only", QJsonObject{{"type", "boolean"}, {"description", "Maker-only protection for limit orders"}}}};
+            {"post_only", QJsonObject{{"type", "boolean"}, {"description", "Maker-only protection for limit orders"}}},
+            {"time_in_force", QJsonObject{{"type", "string"}, {"description", "GTC, IOC, FOK, or GTD"}}},
+            {"client_order_id", QJsonObject{{"type", "string"}, {"description", "Idempotent client order identifier"}}},
+            {"deadline_ms", QJsonObject{{"type", "integer"}, {"description", "Maximum matching lifetime, 500..5000 ms"}}},
+            {"prefer_native", QJsonObject{{"type", "boolean"}, {"description", "Use venue-native fast adapter when available"}}}};
         t.input_schema.required = {"symbol", "side", "quantity"};
         t.handler = [](const QJsonObject& args) -> ToolResult {
             const QString symbol = args.value("symbol").toString().trimmed();
@@ -315,12 +319,20 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             const double quantity = args.value("quantity").toDouble(0.0);
             const QString otype = args.value("order_type").toString("market").trimmed().toLower();
             const bool post_only = args.value("post_only").toBool(false);
+            const QString time_in_force = args.value("time_in_force").toString().trimmed().toUpper();
+            const QString client_order_id = args.value("client_order_id").toString().trimmed();
+            const int deadline_ms = args.value("deadline_ms").toInt(0);
+            const bool prefer_native = args.value("prefer_native").toBool(false);
             auto& svc = trading::ExchangeService::instance();
             const QString venue = svc.get_exchange();
             QJsonObject intent{{"symbol", symbol}, {"side", side}, {"quantity", quantity},
                                {"order_type", otype}};
             if (args.contains("limit_price")) intent["limit_price"] = args.value("limit_price").toDouble();
             if (post_only) intent["post_only"] = true;
+            if (!time_in_force.isEmpty()) intent["time_in_force"] = time_in_force;
+            if (!client_order_id.isEmpty()) intent["client_order_id"] = client_order_id;
+            if (deadline_ms > 0) intent["deadline_ms"] = deadline_ms;
+            if (prefer_native) intent["prefer_native"] = true;
 
             if (mcp::cli_kill_switch_engaged()) {
                 crypto_exec_audit("crypto_submit_order", venue, "denied", "kill switch engaged", intent);
@@ -346,6 +358,42 @@ std::vector<ToolDef> get_crypto_trading_tools() {
                 crypto_exec_audit("crypto_submit_order", venue, "denied", "post_only requires limit", intent);
                 return ToolResult::fail("post_only requires order_type=limit");
             }
+            if (!time_in_force.isEmpty() &&
+                time_in_force != QLatin1String("GTC") && time_in_force != QLatin1String("IOC") &&
+                time_in_force != QLatin1String("FOK") && time_in_force != QLatin1String("GTD")) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "invalid time_in_force", intent);
+                return ToolResult::fail("time_in_force must be GTC, IOC, FOK, or GTD");
+            }
+            if (deadline_ms != 0 && (deadline_ms < 500 || deadline_ms > 5000)) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "invalid deadline_ms", intent);
+                return ToolResult::fail("deadline_ms must be 500..5000");
+            }
+            if (side == QLatin1String("sell")) {
+                const QString base = symbol.section(QLatin1Char('/'), 0, 0).section(QLatin1Char('-'), 0, 0).toUpper();
+                try {
+                    const QJsonObject balance_response = svc.fetch_balance();
+                    const QJsonValue data_value = balance_response.value(QStringLiteral("data"));
+                    const QJsonObject data = data_value.isObject() ? data_value.toObject() : balance_response;
+                    const QJsonObject balances = data.value(QStringLiteral("balances")).toObject();
+                    const QJsonObject asset = balances.value(base).toObject();
+                    const double free = asset.value(QStringLiteral("free")).toDouble(-1.0);
+                    if (free < quantity) {
+                        crypto_exec_audit("crypto_submit_order", venue, "denied",
+                                          QStringLiteral("insufficient confirmed spot inventory"), intent);
+                        return ToolResult::fail(QStringLiteral("Refused: sell quantity exceeds confirmed free %1 inventory")
+                                                    .arg(base));
+                    }
+                } catch (const std::exception& e) {
+                    crypto_exec_audit("crypto_submit_order", venue, "denied",
+                                      QStringLiteral("spot inventory check failed"), intent);
+                    return ToolResult::fail(QStringLiteral("Refused: could not confirm spot inventory: %1")
+                                                .arg(QString::fromUtf8(e.what())));
+                }
+            }
+            if (post_only && (time_in_force == QLatin1String("IOC") || time_in_force == QLatin1String("FOK"))) {
+                crypto_exec_audit("crypto_submit_order", venue, "denied", "post-only conflicts with IOC/FOK", intent);
+                return ToolResult::fail("post_only cannot be combined with IOC/FOK");
+            }
 
             double price = 0.0;
             if (otype == "limit") {
@@ -370,7 +418,8 @@ std::vector<ToolDef> get_crypto_trading_tools() {
             try {
                 const double limit_px = (otype == "limit") ? price : 0.0;
                 const QJsonObject res = svc.place_exchange_order(symbol, side, otype, quantity, limit_px, 0.0, 0.0, 0.0,
-                                                                 false, post_only);
+                                                                 false, post_only, time_in_force, client_order_id,
+                                                                 deadline_ms, prefer_native);
                 if (res.contains("error") || (res.contains("success") && !res.value("success").toBool())) {
                     const QString msg = res.value("error").toString(res.value("message").toString("exchange error"));
                     crypto_exec_audit("crypto_submit_order", venue, "rejected", msg, intent);

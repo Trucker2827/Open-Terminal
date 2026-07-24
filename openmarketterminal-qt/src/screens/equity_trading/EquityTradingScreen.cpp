@@ -79,6 +79,7 @@ static const QString TAG = "EquityTrading";
 
 EquityTradingScreen::EquityTradingScreen(QWidget* parent) : QWidget(parent) {
     watchlist_symbols_ = DEFAULT_WATCHLIST;
+    orders_view_day_ = trading::pt_us_session_date();
     setup_ui();
     setup_timers();
     connect_data_stream_signals();
@@ -164,7 +165,7 @@ void EquityTradingScreen::showEvent(QShowEvent* event) {
         DataStreamManager::instance().refresh_portfolio(focused_account_id_);
 
     // Catch up intraday auto-square for paper portfolios (e.g. the app was closed
-    // at 15:30, so yesterday's MIS positions never squared). Refresh picks up the
+    // at 16:00 ET, so yesterday's MIS positions never squared). Refresh picks up the
     // resulting state; it no-ops for live accounts.
     trading::pt_settle_intraday_all();
     refresh_paper_panels();
@@ -484,7 +485,7 @@ void EquityTradingScreen::setup_timers() {
         auto* stream = DataStreamManager::instance().stream_for(focused_account_id_);
         if (stream && focused_is_us_market_)
             stream->fetch_clock(); // US-only market clock (Alpaca calendar tab)
-        // Paper intraday auto-square at 15:30 IST. Cheap no-op until the cutoff;
+        // Paper intraday auto-square at 16:00 ET. Cheap no-op until the cutoff;
         // refreshes the panels only when something was actually squared off.
         if (trading::pt_settle_intraday_all() > 0)
             refresh_paper_panels();

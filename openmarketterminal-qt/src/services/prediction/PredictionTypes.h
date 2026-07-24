@@ -131,6 +131,7 @@ struct PredictionPosition {
 
 struct OpenOrder {
     QString order_id;
+    QString client_order_id;
     QString asset_id;
     QString market_id;
     QString outcome;
@@ -163,6 +164,12 @@ struct OrderResult {
     QString error_code;
     QString error_message;
     double filled = 0.0;
+    double remaining = 0.0;
+    double average_fill_price = 0.0;
+    double average_fee_paid = 0.0;
+    qint64 exchange_ts_ms = 0;
+    QString client_order_id;
+    QJsonObject raw;
 };
 
 struct AccountBalance {

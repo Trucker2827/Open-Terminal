@@ -18,11 +18,15 @@
 #include "screens/ai_quant_lab/QuantModulePanel_GsHelpers.h"
 #include "screens/ai_quant_lab/QuantModulePanel_Styles.h"
 
+#include "services/ai_quant_lab/AIQuantLabService.h"
+#include "services/ai_quant_lab/ScreenWatchlistFeed.h"
+#include "storage/repositories/WatchlistRepository.h"
 #include "ui/theme/Theme.h"
 
 #include <QAbstractItemView>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDate>
 #include <QHBoxLayout>
 #include <QHash>
 #include <QHeaderView>
@@ -263,6 +267,46 @@ void QuantModulePanel::display_factor_discovery_result(const QString& command, c
 // 2. MODEL LIBRARY
 // ═════════════════════════════════════════════════════════════════════════════
 void QuantModulePanel::display_model_library_result(const QString& command, const QJsonObject& payload) {
+    // ── screen + paired IC measurement (issue #102) ──────────────────────────
+    // Handled before the generic success check: a failed IC measurement must
+    // NOT wipe the ranks — it renders as "IC unmeasured", while a failed
+    // screen surfaces the backend error and leaves nothing to feed.
+    if (command == "screen") {
+        screen_payload_ = QJsonObject();
+        screen_ic_payload_ = QJsonObject();
+        screen_ic_pending_ = false;
+        clear_results();
+        if (!check_success(payload, [this](const QString& s) { display_error(s); }))
+            return;
+        screen_payload_ = payload;
+        const QDate as_of = QDate::fromString(payload.value("as_of").toString(), Qt::ISODate);
+        if (as_of.isValid()) {
+            screen_ic_pending_ = true;
+            QJsonObject ic_params;
+            ic_params["model_id"] = payload.value("model_id").toString();
+            ic_params["analysis_type"] = "ic";
+            ic_params["start_date"] = as_of.addDays(-90).toString(Qt::ISODate);
+            ic_params["end_date"] = as_of.toString(Qt::ISODate);
+            AIQuantLabService::instance().model_factor_analysis(ic_params);
+        }
+        display_model_screen_result();
+        return;
+    }
+    if (command == "get_factor_analysis") {
+        // Arrives only as the paired measurement of a pending screen. A stale
+        // measurement (screen re-run meanwhile) must never attach another
+        // model's IC to these ranks: successes must match the screened model.
+        if (!screen_ic_pending_ || screen_payload_.isEmpty())
+            return;
+        if (payload.value("success").toBool(false) &&
+            payload.value("model_id").toString() != screen_payload_.value("model_id").toString())
+            return;
+        screen_ic_pending_ = false;
+        screen_ic_payload_ = payload;
+        display_model_screen_result();
+        return;
+    }
+
     clear_results();
     if (!check_success(payload, [this](const QString& s) { display_error(s); }))
         return;
@@ -483,6 +527,178 @@ void QuantModulePanel::display_model_library_result(const QString& command, cons
     }
 
     display_result(payload);
+}
+
+// ── Screen result view (issue #102) ──────────────────────────────────────────
+// Renders screen_payload_ + screen_ic_payload_: ranks, backend caveat verbatim,
+// and the IC evidence adjacent to the ranks — a measured value or the explicit
+// "IC unmeasured — treat ranks as opinion" disclaimer, never silently omitted.
+void QuantModulePanel::display_model_screen_result() {
+    clear_results();
+    const QJsonObject payload = screen_payload_;
+    const QString accent = QColor(module_.color_hex).name();
+    results_layout_->addWidget(gs_section_header(tr("MODEL SCREEN"), accent));
+
+    const QString model_id = payload.value("model_id").toString();
+    const QString as_of = payload.value("as_of").toString("—");
+    const QJsonArray top_rows = payload.value("top").toArray();
+    const QJsonArray bottom_rows = payload.value("bottom").toArray();
+
+    QString ic_card_value = tr("PENDING");
+    QString ic_card_color = ui::colors::TEXT_SECONDARY();
+    if (!screen_ic_pending_) {
+        const QJsonObject ic_results = screen_ic_payload_.value("results").toObject();
+        if (screen_ic_payload_.value("success").toBool(false) && ic_results.value("IC_mean").isDouble()) {
+            const double ic = ic_results.value("IC_mean").toDouble();
+            ic_card_value = QString::number(ic, 'f', 4);
+            ic_card_color = gs_pos_neg_color(ic);
+        } else {
+            ic_card_value = tr("UNMEASURED");
+            ic_card_color = ui::colors::WARNING();
+        }
+    }
+    QList<QWidget*> cards = {
+        gs_make_card(tr("MODEL ID"), model_id, this, ui::colors::POSITIVE()),
+        gs_make_card(tr("AS OF"), as_of, this),
+        gs_make_card(tr("UNIVERSE"), QString::number(payload.value("universe_size").toInt()), this),
+        gs_make_card(tr("IC (RECENT)"), ic_card_value, this, ic_card_color),
+    };
+    results_layout_->addWidget(gs_card_row(cards, this));
+
+    auto* ic_lbl = new QLabel(screen_ic_pending_
+                                  ? tr("Measuring IC over a recent window…")
+                                  : services::quant::screen_ic_evidence(screen_ic_payload_));
+    ic_lbl->setWordWrap(true);
+    ic_lbl->setStyleSheet(QString("color:%1; font-family:'Courier New'; font-size:10px;"
+                                  "padding:6px 10px; background:%2; border-left:3px solid %3;")
+                              .arg(ui::colors::TEXT_PRIMARY(), ui::colors::BG_SURFACE(), accent));
+    results_layout_->addWidget(ic_lbl);
+
+    const QString caveat = payload.value("caveat").toString();
+    if (!caveat.isEmpty()) {
+        auto* cv = new QLabel(caveat);
+        cv->setWordWrap(true);
+        cv->setStyleSheet(QString("color:%1; font-size:10px; padding:6px 10px; background:%2;"
+                                  "border-left:3px solid %1;")
+                              .arg(ui::colors::WARNING(), ui::colors::BG_SURFACE()));
+        results_layout_->addWidget(cv);
+    }
+
+    const auto add_rank_table = [this, accent](const QString& title, const QJsonArray& rows) {
+        if (rows.isEmpty())
+            return;
+        results_layout_->addWidget(gs_section_header(title, accent));
+        auto* table = new QTableWidget(int(rows.size()), 3, this);
+        table->setHorizontalHeaderLabels({tr("Rank"), tr("Symbol"), tr("Score")});
+        table->verticalHeader()->setVisible(false);
+        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        table->setStyleSheet(table_ss());
+        table->setMaximumHeight(qMin(int(rows.size()) * 24 + 32, 320));
+        for (int i = 0; i < rows.size(); ++i) {
+            const auto row = rows[i].toObject();
+            table->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));
+            table->setItem(i, 1, new QTableWidgetItem(row.value("symbol").toString()));
+            const double score = row.value("score").toDouble();
+            auto* si = new QTableWidgetItem(QString::number(score, 'f', 6));
+            si->setForeground(QColor(gs_pos_neg_color(score)));
+            si->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            table->setItem(i, 2, si);
+            table->setRowHeight(i, 24);
+        }
+        results_layout_->addWidget(table);
+    };
+    add_rank_table(tr("TOP %1").arg(top_rows.size()), top_rows);
+    add_rank_table(tr("BOTTOM %1").arg(bottom_rows.size()), bottom_rows);
+
+    // Watchlist feed only after the IC measurement resolves, so the recorded
+    // description carries the measured value or the explicit disclaimer.
+    if (!screen_ic_pending_ && !top_rows.isEmpty()) {
+        auto* send = make_run_button(tr("SEND TOP-%1 TO WATCHLIST").arg(top_rows.size()), this);
+        connect(send, &QPushButton::clicked, this, &QuantModulePanel::send_screen_to_watchlist);
+        results_layout_->addWidget(send);
+    }
+
+    status_label_->setText(screen_ic_pending_
+                               ? tr("Screened %1 — measuring IC…").arg(model_id)
+                               : tr("Screened %1 as of %2").arg(model_id, as_of));
+}
+
+// Create-or-update the model's watchlist from the screened top-N. Description
+// records model id, as-of date and IC evidence; each stock's notes record its
+// score. Advisory only — no order path is touched.
+void QuantModulePanel::send_screen_to_watchlist() {
+    if (screen_payload_.isEmpty() || screen_ic_pending_)
+        return;
+    const QString model_id = screen_payload_.value("model_id").toString();
+    const QJsonArray top_rows = screen_payload_.value("top").toArray();
+    if (model_id.isEmpty() || top_rows.isEmpty()) {
+        display_error(tr("Nothing to send — the screen returned no ranked symbols"));
+        return;
+    }
+
+    auto& repo = openmarketterminal::WatchlistRepository::instance();
+    const QString name = services::quant::screen_watchlist_name(model_id);
+
+    openmarketterminal::Watchlist wl;
+    const auto lists = repo.list_all();
+    if (lists.is_err()) {
+        display_error(tr("Watchlist lookup failed: %1").arg(QString::fromStdString(lists.error())));
+        return;
+    }
+    QString existing_id;
+    for (const auto& w : lists.value())
+        if (w.name == name) {
+            existing_id = w.id;
+            break;
+        }
+    if (existing_id.isEmpty()) {
+        auto created = repo.create(name);
+        if (created.is_err()) {
+            display_error(tr("Watchlist creation failed: %1").arg(QString::fromStdString(created.error())));
+            return;
+        }
+        wl = created.value();
+    } else {
+        auto got = repo.get(existing_id);
+        if (got.is_err()) {
+            display_error(tr("Watchlist lookup failed: %1").arg(QString::fromStdString(got.error())));
+            return;
+        }
+        wl = got.value();
+    }
+
+    wl.description = services::quant::screen_watchlist_description(screen_payload_, screen_ic_payload_);
+    if (auto upd = repo.update(wl); upd.is_err()) {
+        display_error(tr("Watchlist update failed: %1").arg(QString::fromStdString(upd.error())));
+        return;
+    }
+
+    int sent = 0;
+    QStringList failed;
+    for (const auto& v : top_rows) {
+        const QJsonObject row = v.toObject();
+        const QString symbol = row.value("symbol").toString();
+        if (symbol.isEmpty())
+            continue;
+        if (auto add = repo.add_stock(wl.id, symbol); add.is_err()) {
+            failed << symbol;
+            continue;
+        }
+        if (auto note = repo.set_stock_notes(wl.id, symbol,
+                                             services::quant::screen_stock_note(row, screen_payload_));
+            note.is_err()) {
+            failed << symbol;
+            continue;
+        }
+        ++sent;
+    }
+    if (!failed.isEmpty()) {
+        display_error(tr("Watchlist \"%1\": %2 symbol(s) sent, failed: %3")
+                          .arg(name, QString::number(sent), failed.join(", ")));
+        return;
+    }
+    status_label_->setText(tr("Sent %1 symbol(s) to watchlist \"%2\"").arg(sent).arg(name));
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

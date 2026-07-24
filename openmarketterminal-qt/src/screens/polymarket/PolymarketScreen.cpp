@@ -11,6 +11,7 @@
 #include "screens/polymarket/PolymarketPriceChart.h"
 #include "screens/polymarket/PolymarketStatusBar.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "screens/polymarket/PredictionAccountDialog.h"
 #include "services/polymarket/PolymarketService.h"
 #include "services/prediction/PredictionCredentialStore.h"
@@ -413,6 +414,7 @@ void PolymarketScreen::build_ui() {
     crypto_dom_ = new crypto::CryptoOrderBook;
     crypto_dom_->setMinimumHeight(360);
     dom_layout->addWidget(crypto_dom_, 1);
+    dom_layout->addWidget(new DineroNetworkGadget(crypto_dom_panel_));
 
     splitter->addWidget(browse_panel_);
     splitter->addWidget(detail_splitter);

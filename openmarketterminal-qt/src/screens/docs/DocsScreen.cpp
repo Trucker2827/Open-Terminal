@@ -278,7 +278,6 @@ void DocsScreen::build_sidebar() {
     auto* data_cat = add_category(tr("DATA SOURCES"));
     add_item(data_cat, tr("DBnomics"), "dbnomics");
     add_item(data_cat, tr("Economics"), "economics");
-    add_item(data_cat, tr("AkShare Data"), "akshare");
     add_item(data_cat, tr("Government Data"), "gov_data");
 
     // ── Geopolitics & Alt ────────────────────────────────────────────────────
@@ -363,7 +362,6 @@ void DocsScreen::build_content_pages() {
     // Data
     add("dbnomics", page_dbnomics());
     add("economics", page_economics());
-    add("akshare", page_akshare());
     add("gov_data", page_gov_data());
 
     // Geopolitics

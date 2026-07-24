@@ -50,4 +50,40 @@ QVector<WebResult> parse_ddg_results(const QString& html, int max_results) {
     }
     return out;
 }
+
+QVector<WebResult> parse_mojeek_results(const QString& html, int max_results) {
+    QVector<WebResult> out;
+    if (html.isEmpty() || max_results <= 0) return out;
+    // Title: <h2><a class="title" ... href="URL">TITLE</a></h2>
+    static const QRegularExpression kAnchor(
+        "<h2><a[^>]*class=\"[^\"]*title[^\"]*\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a></h2>",
+        QRegularExpression::DotMatchesEverythingOption);
+    // Snippet: the following <p class="s">…</p>
+    static const QRegularExpression kSnippet(
+        "<p class=\"s\">(.*?)</p>",
+        QRegularExpression::DotMatchesEverythingOption);
+    auto anchors = kAnchor.globalMatch(html);
+    auto snippets = kSnippet.globalMatch(html);
+    while (anchors.hasNext() && out.size() < max_results) {
+        const auto m = anchors.next();
+        WebResult r;
+        r.url = m.captured(1);
+        r.title = strip_tags(m.captured(2));
+        if (snippets.hasNext()) r.snippet = strip_tags(snippets.next().captured(1));
+        if (!r.title.isEmpty() && r.url.startsWith("http")) out.push_back(r);
+    }
+    return out;
 }
+
+bool looks_like_bot_challenge(const QString& html) {
+    // DDG's interstitial ships an "anomaly" challenge module; generic walls
+    // say captcha / "are you a robot". Keep the checks narrow — result pages
+    // legitimately mention these words only in rare edge snippets, and a
+    // false positive merely tries the next engine.
+    return html.contains(QLatin1String("anomaly"), Qt::CaseInsensitive) ||
+           html.contains(QLatin1String("challenge-form"), Qt::CaseInsensitive) ||
+           html.contains(QLatin1String("are you a robot"), Qt::CaseInsensitive) ||
+           html.contains(QLatin1String("g-recaptcha"), Qt::CaseInsensitive);
+}
+
+} // namespace openmarketterminal::web

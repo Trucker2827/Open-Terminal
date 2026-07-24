@@ -54,6 +54,19 @@ QString profile_llm_api_key_id(const QString& provider) {
 
 LlmService::LlmService() = default;
 
+
+QString LlmService::system_prompt_with_now() const {
+    if (system_prompt_.isEmpty())
+        return system_prompt_;
+    const QDateTime now = QDateTime::currentDateTime();
+    return system_prompt_ +
+           QStringLiteral("\n\nCurrent date and time: %1 (%2). Trust this over any "
+                          "date you believe from training; for \"today\" questions use "
+                          "this value directly — no tool call needed.")
+               .arg(now.toString(QStringLiteral("dddd, yyyy-MM-dd hh:mm")),
+                    now.timeZoneAbbreviation());
+}
+
 bool LlmService::is_local_model() const {
     // Called with mutex_ held. Mirrors the inline check in ensure_config() but
     // exposes the result to the request builders in LlmRequestBuilders.cpp.

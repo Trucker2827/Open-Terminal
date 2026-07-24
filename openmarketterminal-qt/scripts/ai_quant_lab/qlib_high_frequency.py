@@ -3,12 +3,17 @@ AI Quant Lab — High Frequency Trading Module
 Real-world microstructure analysis engine backed by live CCXT market data.
 
 Commands (all accept JSON as second argv):
-  fetch_orderbook   {"exchange":"binance","symbol":"BTC/USDT","depth":20}
-  fetch_trades      {"exchange":"binance","symbol":"BTC/USDT","limit":100}
-  analyze           {"exchange":"binance","symbol":"BTC/USDT","depth":20,"limit":100,"inventory":0,"spread_multiplier":1.5}
-  market_making     {"exchange":"binance","symbol":"BTC/USDT","inventory":0,"spread_multiplier":1.5}
-  toxic_flow        {"exchange":"binance","symbol":"BTC/USDT","limit":200}
-  slippage          {"exchange":"binance","symbol":"BTC/USDT","side":"buy","quantity":1.0}
+  fetch_orderbook   {"exchange":"coinbase","symbol":"BTC/USD","depth":20}
+  fetch_trades      {"exchange":"coinbase","symbol":"BTC/USD","limit":100}
+  analyze           {"exchange":"coinbase","symbol":"BTC/USD","depth":20,"limit":100,"inventory":0,"spread_multiplier":1.5}
+  market_making     {"exchange":"coinbase","symbol":"BTC/USD","inventory":0,"spread_multiplier":1.5}
+  toxic_flow        {"exchange":"coinbase","symbol":"BTC/USD","limit":200}
+  slippage          {"exchange":"coinbase","symbol":"BTC/USD","side":"buy","quantity":1.0}
+
+analyze also accepts {"exchange":"terminal"}: the book comes from the running
+app's own order book over the MCP bridge (terminal_bridge.get_order_book)
+instead of a parallel ccxt connection. No public trade feed exists on that
+path, so toxic-flow reads as unavailable there.
 
 All commands output a single JSON object to stdout.
 """
@@ -36,6 +41,13 @@ try:
 except ImportError as e:
     _CCXT_AVAILABLE = False
     _CCXT_ERROR = str(e)
+
+# ── Terminal bridge path (exchange:"terminal") ────────────────────────────────
+_LAB_DIR = os.path.dirname(os.path.abspath(__file__))
+if _LAB_DIR not in sys.path:
+    sys.path.insert(0, _LAB_DIR)
+
+import terminal_bridge
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -234,7 +246,10 @@ def _estimate_slippage(bids: list, asks: list, side: str, quantity: float) -> di
     fills     = []
     total_cost = 0.0
 
-    for price, size in levels:
+    # Some venues (kraken) append a timestamp as a third element per level —
+    # index instead of unpacking.
+    for level in levels:
+        price, size = level[0], level[1]
         if remaining <= 0:
             break
         fill_qty   = min(remaining, size)
@@ -264,14 +279,86 @@ def _estimate_slippage(bids: list, asks: list, side: str, quantity: float) -> di
     }
 
 
+# ── Terminal exchange source ──────────────────────────────────────────────────
+
+def _terminal_pair(symbol: str) -> str:
+    """HFT params use ccxt-style pairs; accept BTC-USD and map to BTC/USD."""
+    s = symbol.strip().upper()
+    return s if "/" in s else s.replace("-", "/")
+
+
+def _terminal_order_book(symbol: str, depth: int) -> tuple:
+    """Fetch the app's own order book over the MCP bridge.
+
+    Returns (bids, asks) as [price, size] lists sorted best-first. Raises
+    terminal_bridge.BridgeUnavailable when the app is down and RuntimeError
+    when the bridge answers but the book is unusable — never fabricates.
+    """
+    payload = terminal_bridge.call_tool(
+        "get_order_book", {"symbol": _terminal_pair(symbol), "limit": depth})
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        raise RuntimeError("bridge get_order_book returned no data object")
+    try:
+        bids = [[float(l["price"]), float(l["amount"])] for l in data.get("bids", [])]
+        asks = [[float(l["price"]), float(l["amount"])] for l in data.get("asks", [])]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"bridge get_order_book returned malformed levels: {exc}")
+    bids.sort(key=lambda l: l[0], reverse=True)
+    asks.sort(key=lambda l: l[0])
+    return bids, asks
+
+
+def _analyze_terminal(p: dict) -> None:
+    """analyze with exchange:"terminal" — book metrics from the app's data plane.
+
+    The bridge exposes no public trade feed, so trade-derived toxic-flow
+    metrics read as unavailable instead of being fabricated.
+    """
+    symbol      = p.get("symbol", "BTC-USD")
+    depth       = int(p.get("depth", 20))
+    inventory   = float(p.get("inventory", 0.0))
+    spread_mult = float(p.get("spread_multiplier", 1.5))
+    t0 = time.monotonic()
+    try:
+        bids, asks = _terminal_order_book(symbol, depth)
+    except terminal_bridge.BridgeUnavailable as e:
+        _err(f"terminal bridge unavailable: {e}")
+        return
+    except Exception as e:
+        _err(f"terminal bridge order book fetch failed: {e}")
+        return
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+    metrics  = _compute_book_metrics(bids, asks)
+    mm       = _market_making_quotes(metrics, inventory, spread_mult) if metrics else \
+               {"error": "empty order book from terminal bridge"}
+    slippage = _estimate_slippage(bids, asks, "buy", float(p.get("quantity", 1.0)))
+
+    _ok({
+        "symbol":       symbol,
+        "exchange":     "terminal",
+        "timestamp":    datetime.utcnow().isoformat() + "Z",
+        "latency_ms":   latency_ms,
+        "bids":         bids[:depth],
+        "asks":         asks[:depth],
+        "book_metrics": metrics,
+        "market_making": mm,
+        "toxic_flow":   {"error": "terminal source has no public trade feed — "
+                                  "toxic flow unavailable"},
+        "slippage":     slippage,
+        "trade_count":  0,
+    })
+
+
 # ── Command handlers ──────────────────────────────────────────────────────────
 
 def cmd_fetch_orderbook(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     depth       = int(p.get("depth", 20))
     t0 = time.monotonic()
     try:
@@ -299,8 +386,8 @@ def cmd_fetch_trades(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     limit       = int(p.get("limit", 100))
     try:
         ex     = make_exchange(exchange_id)
@@ -317,11 +404,14 @@ def cmd_fetch_trades(p: dict) -> None:
 
 def cmd_analyze(p: dict) -> None:
     """Single call: fetch live book + trades → compute all metrics."""
+    if p.get("exchange") == "terminal":
+        _analyze_terminal(p)
+        return
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id      = p.get("exchange", "binance")
-    symbol           = p.get("symbol", "BTC/USDT")
+    exchange_id      = p.get("exchange", "coinbase")
+    symbol           = p.get("symbol", "BTC/USD")
     depth            = int(p.get("depth", 20))
     limit            = int(p.get("limit", 100))
     inventory        = float(p.get("inventory", 0.0))
@@ -365,8 +455,8 @@ def cmd_market_making(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     try:
         ex  = make_exchange(exchange_id)
         ob  = ex.fetch_order_book(symbol, limit=20)
@@ -389,8 +479,8 @@ def cmd_toxic_flow(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     limit       = int(p.get("limit", 200))
     try:
         ex  = make_exchange(exchange_id)
@@ -412,8 +502,8 @@ def cmd_slippage(p: dict) -> None:
     if not _CCXT_AVAILABLE:
         _err(f"CCXT not available: {_CCXT_ERROR}")
         return
-    exchange_id = p.get("exchange", "binance")
-    symbol      = p.get("symbol", "BTC/USDT")
+    exchange_id = p.get("exchange", "coinbase")
+    symbol      = p.get("symbol", "BTC/USD")
     side        = p.get("side", "buy")
     quantity    = float(p.get("quantity", 1.0))
     try:

@@ -132,6 +132,23 @@ EdgePredictionModelRepository::list_raw_ticks(const QString& symbol, int limit) 
 }
 
 Result<QVector<EdgePredictionRawTick>>
+EdgePredictionModelRepository::list_recent_price_series_since(
+    const QString& symbol, qint64 received_since_ms, int max_rows) {
+    QString sql = QStringLiteral(
+        "SELECT '' AS id, symbol, 'recent_aggregate' AS source, AVG(price) AS price, "
+        "(exchange_ts/60000)*60000 AS exchange_ts, MAX(received_ts) AS received_ts "
+        "FROM edge_prediction_raw_ticks INDEXED BY idx_edge_pred_ticks_scope "
+        "WHERE symbol=? AND received_ts>=? AND exchange_ts>0 AND price>0 "
+        "GROUP BY exchange_ts/60000 ORDER BY exchange_ts ASC");
+    QVariantList params{symbol.trimmed().toUpper(), received_since_ms};
+    if (max_rows > 0) {
+        sql += QStringLiteral(" LIMIT ?");
+        params << max_rows;
+    }
+    return query_list_as<EdgePredictionRawTick>(sql, params, map_raw_tick);
+}
+
+Result<QVector<EdgePredictionRawTick>>
 EdgePredictionModelRepository::list_raw_ticks_by_exchange_time(const QString& symbol, int limit) {
     QString sql =
         QStringLiteral("SELECT %1 FROM edge_prediction_raw_ticks WHERE exchange_ts > 0").arg(kRawTickCols);

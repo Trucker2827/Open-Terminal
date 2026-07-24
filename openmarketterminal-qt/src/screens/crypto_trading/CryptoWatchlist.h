@@ -33,6 +33,9 @@ class CryptoWatchlist : public QWidget {
   signals:
     void symbol_selected(const QString& symbol);
     void search_requested(const QString& filter);
+    /// Right-click → "Alert at price…". last_price is the row's last known
+    /// price (0 when the row has no data yet) — the screen owns the dialog.
+    void alert_requested(const QString& symbol, double last_price);
 
   protected:
     void changeEvent(QEvent* event) override;
@@ -43,6 +46,7 @@ class CryptoWatchlist : public QWidget {
 
   private:
     void rebuild_table();
+    void fit_table_to_rows(int rows);
     void retranslateUi();
 
     QLineEdit* filter_edit_ = nullptr;

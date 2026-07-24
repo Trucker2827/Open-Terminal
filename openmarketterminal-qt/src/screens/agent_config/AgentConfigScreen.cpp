@@ -315,8 +315,7 @@ void AgentConfigScreen::wire_cross_panel_signals() {
     if (tools_panel_ && agents_panel_)
         connect(
             tools_panel_, &ToolsViewPanel::tool_assigned, agents_panel_,
-            [this](const QString& /*id*/, const QStringList& tools) { agents_panel_->apply_tools_selection(tools); },
-            Qt::UniqueConnection);
+            [this](const QString& /*id*/, const QStringList& tools) { agents_panel_->apply_tools_selection(tools); });
 
     // TOOLS → CREATE: selection propagation
     if (tools_panel_ && create_panel_)
@@ -334,21 +333,20 @@ void AgentConfigScreen::wire_cross_panel_signals() {
             &services::AgentService::instance(), &services::AgentService::agents_discovered, system_panel_,
             [this](QVector<services::AgentInfo>, QVector<services::AgentCategory>) {
                 system_panel_->on_agents_changed();
-            },
-            Qt::UniqueConnection);
+            });
 
         connect(
             &services::AgentService::instance(), &services::AgentService::tools_loaded, system_panel_,
-            [this](services::AgentToolsInfo info) { system_panel_->on_tools_changed(info); }, Qt::UniqueConnection);
+            [this](services::AgentToolsInfo info) { system_panel_->on_tools_changed(info); });
 
         // LLM config saved/deleted → refresh LLM list in System tab
         connect(
             &services::AgentService::instance(), &services::AgentService::config_saved, system_panel_,
-            [this]() { system_panel_->on_llm_config_changed(); }, Qt::UniqueConnection);
+            [this]() { system_panel_->on_llm_config_changed(); });
 
         connect(
             &services::AgentService::instance(), &services::AgentService::config_deleted, system_panel_,
-            [this]() { system_panel_->on_llm_config_changed(); }, Qt::UniqueConnection);
+            [this]() { system_panel_->on_llm_config_changed(); });
     }
 }
 

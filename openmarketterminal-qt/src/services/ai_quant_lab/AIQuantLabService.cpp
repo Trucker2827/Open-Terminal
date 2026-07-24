@@ -470,6 +470,12 @@ void AIQuantLabService::model_backtest(const QJsonObject& params) {
 void AIQuantLabService::model_check_status() {
     run_python_cached("ai_quant_lab/qlib_service.py", {"check_status"}, "model_library", "check_status", kListTtlSec);
 }
+void AIQuantLabService::model_screen(const QJsonObject& params) {
+    run_module("model_library", "screen", params);
+}
+void AIQuantLabService::model_factor_analysis(const QJsonObject& params) {
+    run_module("model_library", "get_factor_analysis", params);
+}
 
 // ── Live Signals ──────────────────────────────────────────────────────────────
 void AIQuantLabService::signals_get_data(const QJsonObject& params) {

@@ -12,6 +12,11 @@ from typing import Dict, List, Any, Optional, Union
 import warnings
 warnings.filterwarnings('ignore')
 
+# qlib's workflow recorder uses mlflow's filesystem store; mlflow >= 3.x
+# refuses it by default and aborts every model.fit(). Opt back in before
+# qlib is imported.
+os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+
 # Qlib imports with availability check
 QLIB_AVAILABLE = False
 QLIB_ERROR = None
@@ -308,7 +313,21 @@ class QlibService:
     - Experiment management with MLflow
     """
 
-    def __init__(self, provider_uri: str = "~/.qlib/qlib_data/us_data", region: str = "us"):
+    # Trained models are pickled here so a later subprocess (each CLI/MCP call
+    # is a fresh process) can predict/backtest with a model trained earlier.
+    MODELS_DIR = os.path.expanduser("~/.qlib/openterminal_models")
+
+    # Point the whole service at a different dataset/bar-frequency without
+    # touching call sites — e.g. the terminal-tick crypto dataset:
+    #   OPENTERMINAL_QLIB_DATA=~/.qlib/qlib_data/crypto_data \
+    #   OPENTERMINAL_QLIB_FREQ=1min openterminalcli quant run model_library ...
+    @staticmethod
+    def data_freq() -> str:
+        return os.environ.get("OPENTERMINAL_QLIB_FREQ", "day")
+
+    def __init__(self, provider_uri: Optional[str] = None, region: str = "us"):
+        provider_uri = provider_uri or os.environ.get(
+            "OPENTERMINAL_QLIB_DATA", "~/.qlib/qlib_data/us_data")
         self.trained_models = {}
         self.experiment_manager = None
         self.initialized = False
@@ -893,6 +912,19 @@ class QlibService:
                 "start_time": train_start,
                 "end_time": valid_end
             }
+            if self.data_freq() != "day":
+                handler_kwargs["freq"] = self.data_freq()
+            # Tree models handle NaN features natively, but every dense-input
+            # model (linear + the torch family) drops NaN rows — and the
+            # bundled US dataset has no vwap field, so one Alpha158 column is
+            # all-NaN and the training frame comes back EMPTY without a fill.
+            TREE_MODELS = {'lightgbm', 'xgboost', 'catboost'}
+            if model_type_lower not in TREE_MODELS:
+                handler_kwargs["infer_processors"] = [
+                    {"class": "Fillna", "kwargs": {"fields_group": "feature"}}]
+                handler_kwargs["learn_processors"] = [
+                    {"class": "DropnaLabel"},
+                    {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}}]
             # Alpha360 requires fit_start_time and fit_end_time
             if handler_type in ('Alpha360', 'Alpha360vwap'):
                 handler_kwargs["fit_start_time"] = train_start
@@ -931,7 +963,9 @@ class QlibService:
                 'lightgbm': {'num_leaves': 210, 'max_depth': 8, 'learning_rate': 0.05},
                 'xgboost': {'max_depth': 6, 'learning_rate': 0.1},
                 'catboost': {'depth': 6, 'learning_rate': 0.03, 'iterations': 1000},
-                'linear': {'alpha': 0.001},
+                # alpha is only accepted by ridge/lasso — the old {'alpha'}
+                # default aborted every OLS fit on arrival.
+                'linear': {'estimator': 'ridge', 'alpha': 0.001},
                 'lstm': {'d_feat': d_feat, 'hidden_size': 64, 'num_layers': 2, 'batch_size': 2048, 'n_epochs': 50},
                 'gru': {'d_feat': d_feat, 'hidden_size': 64, 'num_layers': 2, 'batch_size': 2048, 'n_epochs': 50},
                 'alstm': {'d_feat': d_feat, 'hidden_size': 64, 'num_layers': 2, 'batch_size': 2048, 'n_epochs': 50},
@@ -961,18 +995,32 @@ class QlibService:
 
             # Store trained model
             model_id = f"{model_type_lower}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            self.trained_models[model_id] = {
+            model_info = {
                 "model": model,
                 "type": model_type,
                 "config": config,
                 "handler": handler_type,
                 "instruments": instruments
             }
+            self.trained_models[model_id] = model_info
+
+            # Persist to disk — every CLI/MCP call runs in a fresh subprocess,
+            # so an in-memory-only model can never be predicted or backtested.
+            persisted = False
+            persist_error = None
+            try:
+                import pickle
+                os.makedirs(self.MODELS_DIR, exist_ok=True)
+                with open(os.path.join(self.MODELS_DIR, model_id + ".pkl"), "wb") as fh:
+                    pickle.dump(model_info, fh)
+                persisted = True
+            except Exception as e:
+                persist_error = str(e)
 
             # Calculate basic metrics
             pred_count = len(predictions) if hasattr(predictions, '__len__') else 0
 
-            return {
+            result = {
                 "success": True,
                 "message": f"{model_type} model trained successfully",
                 "model_id": model_id,
@@ -981,13 +1029,41 @@ class QlibService:
                 "handler": handler_type,
                 "training_period": {"start": train_start, "end": train_end},
                 "validation_period": {"start": valid_start, "end": valid_end},
-                "predictions_count": pred_count
+                "predictions_count": pred_count,
+                "persisted": persisted
             }
+            if persist_error:
+                result["warning"] = ("Model NOT saved to disk (%s) — it is usable "
+                                     "only within this process" % persist_error)
+            return result
         except Exception as e:
             return {
                 "success": False,
                 "error": f"Training failed: {str(e)}"
             }
+
+    def _load_model(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a trained model from memory, falling back to the on-disk pickle."""
+        if model_id in self.trained_models:
+            return self.trained_models[model_id]
+        path = os.path.join(self.MODELS_DIR, model_id + ".pkl")
+        if not os.path.exists(path):
+            return None
+        try:
+            import pickle
+            with open(path, "rb") as fh:
+                model_info = pickle.load(fh)
+            self.trained_models[model_id] = model_info
+            return model_info
+        except Exception:
+            return None
+
+    def _model_not_found(self, model_id: str) -> Dict[str, Any]:
+        saved = []
+        if os.path.isdir(self.MODELS_DIR):
+            saved = sorted(f[:-4] for f in os.listdir(self.MODELS_DIR) if f.endswith(".pkl"))
+        return {"success": False,
+                "error": f"Model {model_id} not found (saved models: {saved or 'none'})"}
 
     def predict(self,
                 model_id: str,
@@ -995,11 +1071,11 @@ class QlibService:
                 start_date: str,
                 end_date: str) -> Dict[str, Any]:
         """Generate predictions using a trained model"""
-        if model_id not in self.trained_models:
-            return {"success": False, "error": f"Model {model_id} not found"}
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
 
         try:
-            model_info = self.trained_models[model_id]
             model = model_info["model"]
             handler_type = model_info["handler"]
 
@@ -1044,7 +1120,7 @@ class QlibService:
     def run_backtest(self,
                      model_id: str,
                      strategy_type: str = "topk_dropout",
-                     benchmark: str = "SH000300",
+                     benchmark: Optional[str] = None,
                      topk: int = 50,
                      n_drop: Optional[int] = None,
                      start_date: str = None,
@@ -1052,77 +1128,151 @@ class QlibService:
                      account: float = 100000000,
                      exchange_config: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Run a complete backtest with the Qlib backtesting system.
+        Run a real Qlib backtest: the trained model scores every instrument
+        daily over the window, TopkDropout holds the top names, and the
+        metrics come from the simulated equity curve — never fabricated.
 
         Args:
             model_id: ID of trained model to use
-            strategy_type: Strategy type (topk_dropout, enhanced_indexing)
-            benchmark: Benchmark index
+            strategy_type: Strategy type (topk_dropout)
+            benchmark: Benchmark instrument, or None for absolute metrics
+                       (the bundled US dataset carries no index series)
             topk: Number of stocks to hold
             n_drop: Number of stocks to drop on rebalance
-            start_date/end_date: Backtest period
+            start_date/end_date: Backtest period (required)
             account: Initial account value
-            exchange_config: Exchange configuration
+            exchange_config: Exchange configuration overrides
         """
-        if model_id not in self.trained_models:
-            return {"success": False, "error": f"Model {model_id} not found"}
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
 
         if not self.initialized:
             return {"success": False, "error": "Qlib not initialized"}
+        if not start_date or not end_date:
+            return {"success": False, "error": "start_date and end_date are required"}
+        if strategy_type != "topk_dropout":
+            return {"success": False,
+                    "error": f"Strategy '{strategy_type}' not implemented; available: topk_dropout"}
+        if self.data_freq() != "day":
+            return {"success": False,
+                    "error": (f"run_backtest simulates daily bars only; the active dataset is "
+                              f"{self.data_freq()}. Use get_factor_analysis (IC) to evaluate "
+                              "intraday models — an intraday executor is not wired yet.")}
+        # The China index default of the old API can't exist in US data, and
+        # qlib's empty benchmark_config falls back to it too (report.py
+        # _cal_benchmark({})), so "no benchmark" is not expressible downstream.
+        # Instead default to an equal-weight portfolio of the model's own
+        # universe (qlib treats a list benchmark as the pool's daily average).
+        benchmark_label = benchmark
+        if benchmark in (None, "SH000300"):
+            insts = model_info["instruments"]
+            if isinstance(insts, str):
+                insts = D.list_instruments(D.instruments(insts), start_time=start_date,
+                                           end_time=end_date, as_list=True)
+            benchmark = [str(x).upper() for x in insts]
+            benchmark_label = f"equal_weight({len(benchmark)} instruments)"
 
         try:
-            model_info = self.trained_models[model_id]
+            import pandas as pd
+            from qlib.contrib.evaluate import backtest_daily, risk_analysis
+            from qlib.contrib.strategy import TopkDropoutStrategy
 
-            # Default exchange config for realistic simulation
+            # qlib's executor peeks one step past the window end; ending on the
+            # dataset's final calendar day crashes with an index error.
+            cal = D.calendar(freq="day")
+            if len(cal) >= 2 and pd.Timestamp(end_date) >= cal[-1]:
+                end_date = str(pd.Timestamp(cal[-2]).date())
+
+            model = model_info["model"]
+            handler_type = model_info["handler"]
+            instruments = model_info["instruments"]
+
+            handler_kwargs = {
+                "instruments": instruments,
+                "start_time": start_date,
+                "end_time": end_date
+            }
+            if handler_type in ('Alpha360', 'Alpha360vwap'):
+                handler_kwargs["fit_start_time"] = start_date
+                handler_kwargs["fit_end_time"] = end_date
+            dataset = init_instance_by_config({
+                "class": "DatasetH",
+                "module_path": "qlib.data.dataset",
+                "kwargs": {
+                    "handler": {
+                        "class": handler_type,
+                        "module_path": "qlib.contrib.data.handler",
+                        "kwargs": handler_kwargs
+                    },
+                    "segments": {"test": (start_date, end_date)}
+                }
+            })
+            signal = model.predict(dataset)
+            if signal is None or len(signal) == 0:
+                return {"success": False,
+                        "error": "Model produced no predictions over the backtest window"}
+            # The handler accepts lowercase tickers, but the Exchange's quote
+            # universe uses the canonical UPPERCASE instrument ids — a
+            # lowercase signal makes every order silently untradable.
+            signal = signal.rename(index=str.upper, level="instrument")
+
             default_exchange = {
-                "limit_threshold": 0.095,
+                "limit_threshold": None,
                 "deal_price": "close",
                 "open_cost": 0.0005,
                 "close_cost": 0.0015,
                 "min_cost": 5.0,
-                "trade_unit": 100,
-                "cash_limit": None
+                "trade_unit": 1
             }
-
             if exchange_config:
                 default_exchange.update(exchange_config)
 
-            # Backtest configuration
-            backtest_config = {
-                "strategy": {
-                    "class": "TopkDropoutStrategy" if strategy_type == "topk_dropout" else "EnhancedIndexingStrategy",
-                    "topk": topk,
-                    "n_drop": n_drop or topk // 5
-                },
-                "benchmark": benchmark,
-                "account": account,
-                "exchange": default_exchange
-            }
+            effective_topk = min(topk, max(1, signal.groupby(level=0).size().min()))
+            strategy = TopkDropoutStrategy(
+                signal=signal,
+                topk=effective_topk,
+                n_drop=n_drop if n_drop is not None else max(1, effective_topk // 5))
 
-            # Run backtest (simplified for now - full implementation would use executor)
-            # This returns simulated results
-            results = {
-                "annualized_return": 0.15,
-                "max_drawdown": -0.12,
-                "sharpe_ratio": 1.5,
-                "information_ratio": 0.8,
-                "win_rate": 0.55,
-                "total_return": 0.45,
-                "volatility": 0.18,
-                "calmar_ratio": 1.25,
-                "sortino_ratio": 2.1,
-                "beta": 0.85,
-                "alpha": 0.08
+            report, _positions = backtest_daily(
+                start_time=start_date,
+                end_time=end_date,
+                strategy=strategy,
+                account=account,
+                benchmark=benchmark,
+                exchange_kwargs=default_exchange)
+
+            net_return = report["return"] - report["cost"]
+            analysis = risk_analysis(net_return)["risk"]
+            metrics = {
+                "annualized_return": float(analysis["annualized_return"]),
+                "max_drawdown": float(analysis["max_drawdown"]),
+                "sharpe_ratio": float(analysis["information_ratio"]),  # vs 0 baseline (no risk-free)
+                "total_return": float(net_return.sum()),
+                "volatility": float(analysis["std"] * (252 ** 0.5)),
+                "win_rate": float((net_return > 0).mean()),
+                "trading_days": int(len(report)),
+                "avg_turnover": float(report["turnover"].mean()) if "turnover" in report else None,
+                "total_cost": float(report["cost"].sum())
             }
+            if "bench" in report:
+                excess = net_return - report["bench"]
+                bench_analysis = risk_analysis(excess)["risk"]
+                metrics["excess_annualized_return"] = float(bench_analysis["annualized_return"])
+                metrics["information_ratio"] = float(bench_analysis["information_ratio"])
+                metrics["benchmark_total_return"] = float(report["bench"].sum())
 
             return {
                 "success": True,
                 "model_id": model_id,
                 "strategy": strategy_type,
-                "benchmark": benchmark,
-                "config": backtest_config,
-                "metrics": results,
-                "message": "Backtest completed successfully"
+                "benchmark": benchmark_label,
+                "period": {"start": start_date, "end": end_date},
+                "config": {"topk": effective_topk,
+                           "n_drop": n_drop if n_drop is not None else max(1, effective_topk // 5),
+                           "account": account, "exchange": default_exchange},
+                "metrics": metrics,
+                "message": "Backtest simulated on real market data"
             }
         except Exception as e:
             return {
@@ -1132,48 +1282,84 @@ class QlibService:
 
     def get_factor_analysis(self,
                            model_id: str,
-                           analysis_type: str = "ic") -> Dict[str, Any]:
+                           analysis_type: str = "ic",
+                           start_date: Optional[str] = None,
+                           end_date: Optional[str] = None) -> Dict[str, Any]:
         """
-        Analyze factor/model performance.
+        Measure real predictive power: daily information coefficient between
+        the model's scores and realized next-period returns over a window.
 
         Args:
             model_id: Model to analyze
-            analysis_type: Type of analysis ('ic', 'returns', 'risk')
+            analysis_type: 'ic' (returns/risk live in run_backtest)
+            start_date/end_date: Evaluation window (required)
         """
-        if model_id not in self.trained_models:
-            return {"success": False, "error": f"Model {model_id} not found"}
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
+        if not self.initialized:
+            return {"success": False, "error": "Qlib not initialized"}
+        if analysis_type != "ic":
+            return {"success": False,
+                    "error": f"analysis_type '{analysis_type}' not implemented — "
+                             "portfolio returns/risk come from run_backtest on real data"}
+        if not start_date or not end_date:
+            return {"success": False, "error": "start_date and end_date are required"}
 
         try:
-            # Return analysis results
-            analysis_results = {
-                "ic": {
-                    "IC_mean": 0.045,
-                    "IC_std": 0.012,
-                    "ICIR": 3.75,
-                    "Rank_IC_mean": 0.048,
-                    "Rank_IC_std": 0.011,
-                    "Rank_ICIR": 4.36
-                },
-                "returns": {
-                    "total_return": 0.35,
-                    "annualized_return": 0.28,
-                    "excess_return": 0.12,
-                    "monthly_returns": []
-                },
-                "risk": {
-                    "volatility": 0.15,
-                    "max_drawdown": -0.08,
-                    "var_95": -0.025,
-                    "cvar_95": -0.035,
-                    "downside_deviation": 0.10
-                }
-            }
+            import pandas as pd
+            from qlib.data.dataset.handler import DataHandlerLP
 
+            handler_type = model_info["handler"]
+            handler_kwargs = {
+                "instruments": model_info["instruments"],
+                "start_time": start_date,
+                "end_time": end_date
+            }
+            if self.data_freq() != "day":
+                handler_kwargs["freq"] = self.data_freq()
+            if handler_type in ('Alpha360', 'Alpha360vwap'):
+                handler_kwargs["fit_start_time"] = start_date
+                handler_kwargs["fit_end_time"] = end_date
+            dataset = init_instance_by_config({
+                "class": "DatasetH",
+                "module_path": "qlib.data.dataset",
+                "kwargs": {
+                    "handler": {
+                        "class": handler_type,
+                        "module_path": "qlib.contrib.data.handler",
+                        "kwargs": handler_kwargs
+                    },
+                    "segments": {"test": (start_date, end_date)}
+                }
+            })
+            pred = model_info["model"].predict(dataset)
+            label = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_L)
+            df = pd.concat([pd.Series(pred, name="score"),
+                            label.iloc[:, 0].rename("label")], axis=1).dropna()
+            if df.empty:
+                return {"success": False, "error": "No overlapping predictions/labels in window"}
+            by_day = df.groupby(level="datetime")
+            ic = by_day.apply(lambda x: x["score"].corr(x["label"]))
+            rank_ic = by_day.apply(lambda x: x["score"].corr(x["label"], method="spearman"))
+            ic, rank_ic = ic.dropna(), rank_ic.dropna()
+            if ic.empty:
+                return {"success": False, "error": "Too few instruments per day to compute IC"}
             return {
                 "success": True,
                 "model_id": model_id,
-                "analysis_type": analysis_type,
-                "results": analysis_results.get(analysis_type, analysis_results)
+                "analysis_type": "ic",
+                "period": {"start": start_date, "end": end_date},
+                "results": {
+                    "IC_mean": float(ic.mean()),
+                    "IC_std": float(ic.std()),
+                    "ICIR": float(ic.mean() / ic.std()) if ic.std() else None,
+                    "Rank_IC_mean": float(rank_ic.mean()),
+                    "Rank_IC_std": float(rank_ic.std()),
+                    "Rank_ICIR": float(rank_ic.mean() / rank_ic.std()) if rank_ic.std() else None,
+                    "days": int(len(ic)),
+                    "positive_ic_days": float((ic > 0).mean())
+                }
             }
         except Exception as e:
             return {
@@ -1183,11 +1369,11 @@ class QlibService:
 
     def get_feature_importance(self, model_id: str) -> Dict[str, Any]:
         """Get feature importance for tree-based models"""
-        if model_id not in self.trained_models:
-            return {"success": False, "error": f"Model {model_id} not found"}
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
 
         try:
-            model_info = self.trained_models[model_id]
             model = model_info["model"]
 
             # Get feature importance if available
@@ -1209,13 +1395,91 @@ class QlibService:
                 "error": f"Failed to get feature importance: {str(e)}"
             }
 
+    def screen(self,
+               model_id: str,
+               date: Optional[str] = None,
+               top: int = 20,
+               bottom: int = 5) -> Dict[str, Any]:
+        """
+        Rank the model's universe by its latest cross-sectional scores.
+
+        Candidate lists, not signals: pair with get_factor_analysis — if the
+        model's IC is ~0 over a recent window, this ranking is noise and the
+        report says which check to run.
+        """
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
+        if not self.initialized:
+            return {"success": False, "error": "Qlib not initialized"}
+        try:
+            import pandas as pd
+            cal = list(D.calendar(freq=self.data_freq()))
+            if not cal:
+                return {"success": False, "error": "No trading calendar available"}
+            end_ts = pd.Timestamp(date) if date else pd.Timestamp(cal[-1])
+            eligible = [c for c in cal if pd.Timestamp(c) <= end_ts]
+            if not eligible:
+                return {"success": False, "error": f"No trading days on or before {date}"}
+            end = pd.Timestamp(eligible[-1])
+            # Alpha handlers need rolling-feature warmup before the scored day.
+            start = pd.Timestamp(eligible[max(0, len(eligible) - 120)])
+
+            handler_type = model_info["handler"]
+            handler_kwargs = {
+                "instruments": model_info["instruments"],
+                "start_time": str(start.date()),
+                "end_time": str(end.date())
+            }
+            if self.data_freq() != "day":
+                handler_kwargs["freq"] = self.data_freq()
+            if handler_type in ('Alpha360', 'Alpha360vwap'):
+                handler_kwargs["fit_start_time"] = str(start.date())
+                handler_kwargs["fit_end_time"] = str(end.date())
+            dataset = init_instance_by_config({
+                "class": "DatasetH",
+                "module_path": "qlib.data.dataset",
+                "kwargs": {
+                    "handler": {
+                        "class": handler_type,
+                        "module_path": "qlib.contrib.data.handler",
+                        "kwargs": handler_kwargs
+                    },
+                    "segments": {"test": (str(start.date()), str(end.date()))}
+                }
+            })
+            pred = model_info["model"].predict(dataset)
+            if pred is None or len(pred) == 0:
+                return {"success": False, "error": "Model produced no scores"}
+            series = pd.Series(pred).sort_index()
+            last_day = series.index.get_level_values("datetime").max()
+            cross_section = series.xs(last_day, level="datetime").sort_values(ascending=False)
+
+            def rows(section):
+                return [{"symbol": str(sym).upper(), "score": float(score)}
+                        for sym, score in section.items()]
+
+            return {
+                "success": True,
+                "model_id": model_id,
+                "as_of": str(pd.Timestamp(last_day).date()),
+                "universe_size": int(len(cross_section)),
+                "top": rows(cross_section.head(max(1, top))),
+                "bottom": rows(cross_section.tail(max(0, bottom)).iloc[::-1]),
+                "caveat": ("Candidate list only — verify predictive power first: "
+                           "get_factor_analysis(model_id, 'ic') over a recent window. "
+                           "IC near 0 means these ranks are noise.")
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Screen failed: {str(e)}"}
+
     def save_model(self, model_id: str, path: str) -> Dict[str, Any]:
         """Save a trained model to disk"""
-        if model_id not in self.trained_models:
-            return {"success": False, "error": f"Model {model_id} not found"}
+        model_info = self._load_model(model_id)
+        if model_info is None:
+            return self._model_not_found(model_id)
 
         try:
-            model_info = self.trained_models[model_id]
             model = model_info["model"]
 
             # Use Qlib's built-in serialization
@@ -1489,7 +1753,18 @@ def main():
             params = json.loads(sys.argv[2])
             result = service.get_factor_analysis(
                 params.get("model_id"),
-                params.get("analysis_type", "ic")
+                params.get("analysis_type", "ic"),
+                params.get("start_date"),
+                params.get("end_date")
+            )
+
+        elif command == "screen":
+            params = json.loads(sys.argv[2])
+            result = service.screen(
+                params.get("model_id"),
+                params.get("date"),
+                params.get("top", 20),
+                params.get("bottom", 5)
             )
 
         elif command == "get_feature_importance":

@@ -105,7 +105,7 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
     void on_replicate_portfolio_requested();
     // Paper: convert a position's product in place (MIS -> CNC) then refresh.
     void on_convert_position(const QString& position_id, const QString& symbol, const QString& new_product);
-    // Orders tab date-selector changed — show that IST day's paper order book.
+    // Orders tab date-selector changed — show that US/Eastern day's paper order book.
     void on_orders_day_changed(const QDate& day);
     // Square off the subset of open positions by P&L sign (+1 winners, -1 losers).
     void on_square_off_group(const QString& account_id, int sign);
@@ -278,9 +278,9 @@ class EquityTradingScreen : public QWidget, public IGroupLinked, public IStatefu
 
     QStringList watchlist_symbols_;
     QString active_watchlist_id_; // current WatchlistRepository list id
-    // Paper order book day shown in the Orders tab (default today; date selector
-    // moves it to view a past IST session). Open positions/holdings stay current.
-    QDate orders_view_day_ = QDate::currentDate();
+    // Paper order book day shown in the Orders tab (default today ET; date selector
+    // moves it to view a past US/Eastern session). Open positions/holdings stay current.
+    QDate orders_view_day_;
     QStringList position_symbols_; // symbols with open positions (transient, for live pricing)
     QVector<trading::BrokerPosition> live_positions_; // cached live positions for focused account
     double current_price_ = 0.0;  // last known LTP for selected symbol

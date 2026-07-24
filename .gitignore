@@ -115,7 +115,8 @@ node_modules/
 dist-ssr/
 
 # ── Claude Code — never commit ───────────────────────────────
-.claude/
+.claude/*
+!.claude/commands/
 CLAUDE.md
 openmarketterminal-qt/DESIGN_SYSTEM.md
 
@@ -184,3 +185,5 @@ openmarketterminal-qt/docs/CRYPTO_WALLET_CONNECT.md
 !docs/**/*.md
 !openmarketterminal-qt/docs/**/*.md
 !openmarketterminal-qt/resources/ai_skills/*.md
+!finn/*.md
+!.claude/commands/*.md

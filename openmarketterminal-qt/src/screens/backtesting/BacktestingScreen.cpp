@@ -124,7 +124,7 @@ void BacktestingScreen::retranslateUi() {
     if (export_json_btn_) export_json_btn_->setText(tr("EXPORT JSON"));
     if (summary_hint_)
         summary_hint_->setText(tr("Select a provider, command, and strategy, then click RUN to execute.\n\n"
-                                  "Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT, OpenMarketTerminal\n"
+                                  "Supported providers: VectorBT, Backtesting.py, FastTrade, Zipline, BT\n"
                                   "Commands: Backtest, Optimize, Walk-Forward, Indicators, ML Labels, CV Splits, Returns"));
     if (equity_hint_)     equity_hint_->setText(tr("Run a backtest to see the equity curve."));
     if (result_tabs_ && result_tabs_->count() >= 5) {

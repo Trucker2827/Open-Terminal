@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <QWidget>
 
+class QMouseEvent;
+
 namespace openmarketterminal::screens {
 
 class StrategyOpsMapPanel : public QWidget {
@@ -15,10 +17,16 @@ class StrategyOpsMapPanel : public QWidget {
   public slots:
     void refresh();
 
+  signals:
+    void drilldownRequested(int view, const QString& book_kind);
+
   protected:
     void paintEvent(QPaintEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
   private:
     struct BookNode {
@@ -69,6 +77,7 @@ class StrategyOpsMapPanel : public QWidget {
     QString latest_decision_verdict_ = QStringLiteral("WAITING");
     QString latest_decision_blocker_;
     QString status_text_ = QStringLiteral("waiting for sandbox data");
+    QPointF hover_position_{-1.0, -1.0};
 };
 
 } // namespace openmarketterminal::screens

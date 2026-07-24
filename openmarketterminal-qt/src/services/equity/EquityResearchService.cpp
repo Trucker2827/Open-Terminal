@@ -281,7 +281,34 @@ void EquityResearchService::load_symbol(const QString& symbol, const QString& pe
 }
 
 // ── Financials ────────────────────────────────────────────────────────────────
+// SEC EDGAR XBRL (edgar_financials.py) is the primary source for US listings;
+// scraped Yahoo (yfinance_data.py) is the fallback and the only path for
+// suffixed non-US symbols (.NS/.BO etc. — EDGAR serves US filers only). The
+// emitted FinancialsData carries `source` so the tab labels where the numbers
+// actually came from.
 void EquityResearchService::fetch_financials(const QString& symbol) {
+    if (symbol.contains(QLatin1Char('.'))) {
+        fetch_financials_yfinance(symbol);
+        return;
+    }
+    run_python("edgar_financials.py", {"financials", symbol}, [this, symbol](bool ok, const QString& out) {
+        if (ok) {
+            const auto obj = QJsonDocument::fromJson(python::extract_json(out).toUtf8()).object();
+            if (!obj.contains("error")) {
+                const FinancialsData fd = parse_financials(obj);
+                if (!fd.income_statement.isEmpty() || !fd.balance_sheet.isEmpty() || !fd.cash_flow.isEmpty()) {
+                    emit financials_loaded(fd);
+                    return;
+                }
+            }
+        }
+        // EDGAR could not serve this symbol (CIK lookup failure, edgartools
+        // unavailable, empty statements) — fall back to yfinance.
+        fetch_financials_yfinance(symbol);
+    });
+}
+
+void EquityResearchService::fetch_financials_yfinance(const QString& symbol) {
     run_python("yfinance_data.py", {"financials", symbol}, [this, symbol](bool ok, const QString& out) {
         if (!ok) {
             emit error_occurred("Financials", "Failed to fetch financials for " + symbol);
@@ -750,6 +777,8 @@ QVector<Candle> EquityResearchService::parse_candles(const QJsonArray& arr) cons
 FinancialsData EquityResearchService::parse_financials(const QJsonObject& obj) const {
     FinancialsData fd;
     fd.symbol = obj["symbol"].toString();
+    // yfinance_data.py output carries no "source" field — it IS yfinance.
+    fd.source = obj.contains("source") ? obj["source"].toString() : QStringLiteral("yfinance");
 
     auto parse_stmt = [](const QJsonObject& stmt) {
         QVector<QPair<QString, QJsonObject>> result;

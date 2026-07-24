@@ -41,6 +41,10 @@ run() { local secs="$1"; shift; if [ -n "$TIMEOUT" ]; then "$TIMEOUT" "$secs" "$
 APP_ROOT="$HOME/Library/Application Support/org.openterminal.OpenTerminal"
 PROFILE="e2e-smoke-$$"
 HL=(--headless --profile "$PROFILE")
+# --json is a separate global flag (parsed alongside --headless/--profile, see
+# CommandDispatch.cpp's GlobalOpts parsing); the advise block below needs
+# machine-readable output to assert on JSON keys, so it uses HLJ instead of HL.
+HLJ=(--json --headless --profile "$PROFILE")
 ROOT="$APP_ROOT/profiles/$PROFILE"
 cleanup() {
   rm -rf "$ROOT"; rm -f "/tmp/ot_e2e_quote.$$"
@@ -123,6 +127,92 @@ if [ $rc -eq 5 ] && printf '%s' "$out" | grep -qi "requires authenticated auth";
   ok "GATE default-deny: live_cancel_all_orders DENIED (exit 5, fail-closed)"
 else
   bad "GATE: expected exit 5 + 'requires authenticated auth', got rc=$rc out=[$out]"
+fi
+
+# 8) advise ledger → valid JSON with read_only, exit 0 (works on empty DB) ───
+out=$(run 30 "$CLI" "${HLJ[@]}" kalshi auto advise ledger 2>/dev/null); rc=$?
+if [ $rc -eq 0 ] && printf '%s' "$out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null \
+   && printf '%s' "$out" | grep -q '"read_only"'; then
+  ok "advise ledger: valid JSON with read_only (exit 0)"
+else bad "advise ledger rc=$rc out=[$out]"; fi
+
+# 9) advise score → valid JSON with evidence, exit 0 (works with 0 resolved) ─
+out=$(run 30 "$CLI" "${HLJ[@]}" kalshi auto advise score 2>/dev/null); rc=$?
+if [ $rc -eq 0 ] && printf '%s' "$out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null \
+   && printf '%s' "$out" | grep -q '"evidence"'; then
+  ok "advise score: valid JSON with evidence (exit 0)"
+else bad "advise score rc=$rc out=[$out]"; fi
+
+# 10) advise open --ticker KXBTC → NO live Kalshi data in CI, so this must
+#     handle BOTH outcomes without hard-failing on absent data:
+#       (a) a blind `context` object was produced (live snapshot existed) --
+#           assert PRICE_WITHHELD and grep the WHOLE JSON line for every
+#           forbidden price/probability key. Any hit is a firewall breach and
+#           MUST fail the smoke regardless of data availability.
+#       (b) no `context` (unavailable/available:false) -- acceptable pass,
+#           logged, not a smoke failure: CI has no live Kalshi feed.
+out=$(run 30 "$CLI" "${HLJ[@]}" kalshi auto advise open --ticker KXBTC 2>/dev/null); rc=$?
+forbidden_hit=""
+for key in market_implied_probability yes_ask yes_bid no_ask no_bid fair_yes fair_no \
+           divergence daemon_probability model_weight cost_net_edge; do
+  if printf '%s' "$out" | grep -q "\"$key\""; then forbidden_hit="$key"; break; fi
+done
+if [ -n "$forbidden_hit" ]; then
+  bad "advise open: FIREWALL BREACH — forbidden key '$forbidden_hit' present in emitted context/output"
+elif printf '%s' "$out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null \
+     && printf '%s' "$out" | grep -q '"context"'; then
+  withheld=$(printf '%s' "$out" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("PRICE_WITHHELD", False))
+except Exception:
+    print(False)' 2>/dev/null)
+  if [ $rc -eq 0 ] && [ "$withheld" = "True" ]; then
+    ok "advise open: blind context produced, PRICE_WITHHELD, no forbidden keys (exit 0)"
+  else
+    bad "advise open: context present but PRICE_WITHHELD missing/false (rc=$rc) out=[$out]"
+  fi
+elif printf '%s' "$out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+  echo "INFO: advise open returned no live snapshot (rc=$rc) — acceptable, no Kalshi data in CI: [$out]"
+  ok "advise open: no live snapshot, unavailable response handled cleanly (no firewall breach)"
+else
+  bad "advise open: non-JSON output (rc=$rc) out=[$out]"
+fi
+
+# 11) advise commit-blind → reveal → commit-post cycle over a locally-opened
+#     challenge. This does NOT depend on live Kalshi data: OpenParams can be
+#     seeded even when the snapshot path above returned unavailable, because
+#     advise open's failure mode there is "no snapshot", not "no CLI path" --
+#     so instead we drive the cycle only when advise open (step 10) actually
+#     produced a challenge_id; if it didn't (no live data), this block is
+#     skipped and logged rather than forced, since commit-blind/reveal/
+#     commit-post all require a real challenge_id from a prior open().
+challenge_id=""
+if printf '%s' "$out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+  challenge_id=$(printf '%s' "$out" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("challenge_id",""))
+except Exception:
+    print("")' 2>/dev/null)
+fi
+if [ -n "$challenge_id" ]; then
+  commit_id="e2e-smoke-$$"
+  cb_out=$(run 30 "$CLI" "${HLJ[@]}" kalshi auto advise commit-blind \
+    --challenge "$challenge_id" --commit-id "$commit_id" --probability 0.5 2>&1); cb_rc=$?
+  rv_out=$(run 30 "$CLI" "${HLJ[@]}" kalshi auto advise reveal --challenge "$challenge_id" 2>&1); rv_rc=$?
+  cp_out=$(run 30 "$CLI" "${HLJ[@]}" kalshi auto advise commit-post \
+    --challenge "$challenge_id" --commit-id "${commit_id}-post" --probability 0.5 2>&1); cp_rc=$?
+  cp_state=$(printf '%s' "$cp_out" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("state",""))
+except Exception:
+    print("")' 2>/dev/null)
+  if [ $cb_rc -eq 0 ] && [ $rv_rc -eq 0 ] && [ $cp_rc -eq 0 ] && [ "$cp_state" = "COMMITTED_POST" ]; then
+    ok "advise commit-blind -> reveal -> commit-post: full cycle reached COMMITTED_POST (exit 0)"
+  else
+    bad "advise cycle failed: commit-blind rc=$cb_rc[$cb_out] reveal rc=$rv_rc[$rv_out] commit-post rc=$cp_rc[$cp_out]"
+  fi
+else
+  echo "INFO: advise open produced no challenge_id (no live snapshot) — skipping commit-blind/reveal/commit-post cycle"
 fi
 
 echo

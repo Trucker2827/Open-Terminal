@@ -1,8 +1,9 @@
 import importlib.util
+import io
 import pathlib
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
@@ -14,6 +15,54 @@ SPEC.loader.exec_module(MODULE)
 
 
 class QueuePositionsTest(unittest.TestCase):
+    def test_authenticated_get_retries_rate_limit_with_fresh_signature(self):
+        limited = Mock(status_code=429, headers={"Retry-After": "0"})
+        limited.json.return_value = {"error": "rate limited"}
+        success = Mock(status_code=200, headers={})
+        success.json.return_value = {"balance": 100}
+        requests_module = Mock()
+        requests_module.request.side_effect = [limited, success]
+        with patch.dict(sys.modules, {"requests": requests_module}), \
+             patch.object(MODULE, "_auth_headers", side_effect=[{"sig": "one"}, {"sig": "two"}]) as auth, \
+             patch.object(MODULE.time, "sleep") as sleep:
+            ok, code, data = MODULE._request(
+                {"use_demo": True}, "GET", "/portfolio/balance")
+
+        self.assertTrue(ok)
+        self.assertEqual(code, 200)
+        self.assertEqual(data["balance"], 100)
+        self.assertEqual(requests_module.request.call_count, 2)
+        self.assertEqual(auth.call_count, 2)
+        sleep.assert_called_once()
+
+    def test_non_idempotent_post_is_not_retried(self):
+        failed = Mock(status_code=503, headers={})
+        failed.json.return_value = {"error": "unavailable"}
+        requests_module = Mock()
+        requests_module.request.return_value = failed
+        with patch.dict(sys.modules, {"requests": requests_module}), \
+             patch.object(MODULE, "_auth_headers", return_value={"sig": "one"}), \
+             patch.object(MODULE.time, "sleep") as sleep:
+            ok, code, _ = MODULE._request(
+                {"use_demo": True}, "POST", "/portfolio/orders", body={"ticker": "KX"})
+
+        self.assertFalse(ok)
+        self.assertEqual(code, 503)
+        self.assertEqual(requests_module.request.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_stdin_payload_mode_does_not_need_payload_in_argv(self):
+        emitted = []
+        handler = Mock()
+        with patch.dict(MODULE.COMMANDS, {"fee_quote": handler}), \
+             patch.object(MODULE, "_emit", emitted.append), \
+             patch.object(sys, "argv", ["prediction_kalshi.py", "fee_quote", "--stdin-json"]), \
+             patch.object(sys, "stdin", io.StringIO('{"price": 0.50, "count": 1}')):
+            self.assertEqual(MODULE.main(), 0)
+
+        handler.assert_called_once_with({"price": 0.50, "count": 1})
+        self.assertEqual(emitted, [])
+
     def test_discovers_resting_markets_and_joins_order(self):
         requests = []
 

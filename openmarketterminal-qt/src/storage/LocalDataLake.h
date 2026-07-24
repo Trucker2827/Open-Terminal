@@ -23,6 +23,10 @@ class LocalDataLake {
     bool ensure(QString* error = nullptr) const;
     QJsonObject status() const;
     QJsonObject manifest() const;
+    // QSaveFile leaves *.jsonl.* artifacts behind after an interrupted
+    // replacement. This is intentionally opt-in: callers must preview first
+    // and then pass confirmed=true to delete only old, unlocked artifacts.
+    QJsonObject cleanup_interrupted_artifacts(bool confirmed, QString* error = nullptr) const;
 
     bool append_jsonl(const QString& dataset, const QJsonObject& row, QString* error = nullptr);
     int append_jsonl(const QString& dataset, const QJsonArray& rows, QString* error = nullptr);

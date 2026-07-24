@@ -234,12 +234,6 @@ void CommandBar::build_commands() {
          {"dbn", "dbnomics", "database"},
          "",
          {"dbnomics", "database", "economic"}},
-        {"akshare",
-         tr("AKShare Data"),
-         "Chinese financial data",
-         {"aks", "akshare", "chinese"},
-         "",
-         {"akshare", "chinese", "china"}},
         // Geopolitics
         {"geopolitics",
          tr("Geopolitics"),

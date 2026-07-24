@@ -3,10 +3,12 @@
 
 #include "core/symbol/SymbolDragSource.h"
 #include "core/symbol/SymbolRef.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "ui/theme/Theme.h"
 
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QMenu>
 #include <QMutexLocker>
 #include <QVBoxLayout>
 
@@ -96,10 +98,39 @@ CryptoWatchlist::CryptoWatchlist(QWidget* parent) : QWidget(parent) {
     table_->verticalHeader()->hide();
     table_->setShowGrid(false);
     table_->setFocusPolicy(Qt::NoFocus);
-    table_->verticalHeader()->setDefaultSectionSize(22);
+    // Twenty-pixel rows keep the complete default list (through PEPE) visible
+    // above the fixed compact Dinero gadget at standard terminal heights.
+    table_->verticalHeader()->setDefaultSectionSize(20);
 
     connect(table_, &QTableWidget::cellClicked, this, &CryptoWatchlist::on_cell_clicked);
+    // Right-click → price alert. The screen owns the threshold dialog and the
+    // alert engine; the watchlist only reports the row's symbol + last price.
+    table_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(table_, &QTableWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        auto* item = table_->itemAt(pos);
+        if (!item)
+            return;
+        auto* sym_item = table_->item(item->row(), 0);
+        if (!sym_item)
+            return;
+        const QString symbol = sym_item->text();
+        double last = 0.0;
+        {
+            QMutexLocker lock(&mutex_);
+            for (const auto& e : entries_) {
+                if (e.symbol == symbol && e.has_data) {
+                    last = e.price;
+                    break;
+                }
+            }
+        }
+        QMenu menu(this);
+        QAction* act = menu.addAction(tr("Alert at price…"));
+        if (menu.exec(table_->viewport()->mapToGlobal(pos)) == act)
+            emit alert_requested(symbol, last);
+    });
     layout->addWidget(table_, 1);
+    layout->addWidget(new DineroNetworkGadget(this));
 
     // Drag-out: hold-and-drag a pair row to ship it to any drop target — drop
     // it on the pushpin bar at the top to pin + broadcast it, matching the
@@ -284,6 +315,7 @@ void CryptoWatchlist::rebuild_table() {
         }
 
         const int n = filtered.size();
+        fit_table_to_rows(n);
         table_->setUpdatesEnabled(false);
         if (table_->rowCount() != n)
             table_->setRowCount(n);
@@ -319,6 +351,7 @@ void CryptoWatchlist::rebuild_table() {
     }
 
     const int n = visible.size();
+    fit_table_to_rows(n);
     table_->setUpdatesEnabled(false);
     if (table_->rowCount() != n)
         table_->setRowCount(n);
@@ -364,6 +397,16 @@ void CryptoWatchlist::rebuild_table() {
                Qt::AlignRight | Qt::AlignVCenter);
     }
     table_->setUpdatesEnabled(true);
+}
+
+void CryptoWatchlist::fit_table_to_rows(int rows) {
+    // Cap the table at its actual content height so the following Dinero
+    // gadget hugs the final visible symbol instead of floating at the bottom
+    // of an empty viewport. Qt can still shrink it and provide a scrollbar on
+    // shorter windows or when search returns many rows.
+    const int header = table_->horizontalHeader()->sizeHint().height();
+    const int body = qMax(1, rows) * table_->verticalHeader()->defaultSectionSize();
+    table_->setMaximumHeight(header + body + table_->frameWidth() * 2);
 }
 
 } // namespace openmarketterminal::screens::crypto

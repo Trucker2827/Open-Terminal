@@ -95,21 +95,21 @@ BaseWidget::BaseWidget(const QString& title, QWidget* parent, const QString& acc
     hl->addWidget(refresh_btn_);
 
     // Close button
-    auto* close_btn = new QPushButton;
-    close_btn->setFixedSize(20, 20);
-    close_btn->setText("");
-    close_btn->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton));
-    close_btn->setIconSize(QSize(11, 11));
-    close_btn->setToolTip(tr("Close widget"));
-    close_btn->setCursor(Qt::PointingHandCursor);
-    close_btn->setStyleSheet(
+    close_btn_ = new QPushButton;
+    close_btn_->setFixedSize(20, 20);
+    close_btn_->setText("");
+    close_btn_->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton));
+    close_btn_->setIconSize(QSize(11, 11));
+    close_btn_->setToolTip(tr("Close widget"));
+    close_btn_->setCursor(Qt::PointingHandCursor);
+    close_btn_->setStyleSheet(
         QString("QPushButton { color: %1; background: %2; border: 1px solid %3; border-radius: 2px; "
                 "padding: 0px; }"
                 "QPushButton:hover { color: %4; border-color: %4; background: %5; }")
             .arg(ui::colors::TEXT_TERTIARY(), ui::colors::BG_SURFACE(), ui::colors::BORDER_DIM(), ui::colors::NEGATIVE(),
                  ui::colors::BG_HOVER()));
-    connect(close_btn, &QPushButton::clicked, this, &BaseWidget::close_requested);
-    hl->addWidget(close_btn);
+    connect(close_btn_, &QPushButton::clicked, this, &BaseWidget::close_requested);
+    hl->addWidget(close_btn_);
 
     vl->addWidget(title_bar_);
 
@@ -148,6 +148,11 @@ BaseWidget::BaseWidget(const QString& title, QWidget* parent, const QString& acc
     loading_watchdog_->setSingleShot(true);
     loading_watchdog_->setInterval(20000);
     connect(loading_watchdog_, &QTimer::timeout, this, &BaseWidget::on_watchdog_fired);
+}
+
+void BaseWidget::set_close_button_visible(bool visible) {
+    if (close_btn_)
+        close_btn_->setVisible(visible);
 }
 
 void BaseWidget::refresh_base_theme() {

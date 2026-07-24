@@ -30,6 +30,8 @@ inline QVector<QuantModule> all_quant_modules() {
          "Multi-strategy backtesting with portfolio optimization"},
         {"live_signals", "Live Signals", "SIGNAL", "CORE", QStringLiteral("#FFC400"), "ai_quant_lab/qlib_service.py",
          "Real-time trading signal generation"},
+        {"crypto_data", "Crypto Dataset", "CRYPTO", "CORE", QStringLiteral("#F7931A"), "ai_quant_lab/crypto_dataset.py",
+         "qlib bar dataset built from the terminal's own crypto ticks (build/info)"},
 
         // AI/ML
         {"deep_agent", "Deep Agent", "DAGENT", "AI_ML", QStringLiteral("#9D4EDD"), "agents/rdagents/cli.py",

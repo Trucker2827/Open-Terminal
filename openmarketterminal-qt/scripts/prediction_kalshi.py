@@ -3,6 +3,7 @@
 
 Invocation:
     python prediction_kalshi.py <command> <json_payload>
+    python prediction_kalshi.py <command> --stdin-json
 
 Commands:
     fee_quote         — local fee/cost estimate using Kalshi-style fees
@@ -55,7 +56,9 @@ from __future__ import annotations
 import base64
 import datetime
 import json
+import random
 import sys
+import time
 import traceback
 import uuid
 
@@ -149,8 +152,26 @@ def _request(payload: dict, method: str, path: str, *, params=None, body=None):
     base = _base_url(bool(payload.get("use_demo")))
     url = base + path
     signing_path = _API_PREFIX + path  # full path under host, no query string
-    headers = _auth_headers(payload, method, signing_path)
-    resp = requests.request(method, url, headers=headers, params=params, json=body, timeout=30)
+    # GET/DELETE are naturally retryable. A create-order POST is also safe to
+    # retry only when it carries Kalshi's client_order_id idempotency key.
+    retryable = method.upper() in ("GET", "DELETE") or (
+        method.upper() == "POST" and isinstance(body, dict) and body.get("client_order_id")
+    )
+    resp = None
+    for attempt in range(4):
+        # Sign every attempt with a fresh timestamp; replaying stale headers can
+        # turn a recoverable rate limit into an authentication failure.
+        headers = _auth_headers(payload, method, signing_path)
+        resp = requests.request(method, url, headers=headers, params=params, json=body, timeout=30)
+        if not retryable or resp.status_code not in (429, 500, 502, 503, 504) or attempt == 3:
+            break
+        retry_after = resp.headers.get("Retry-After", "")
+        try:
+            delay = min(8.0, max(0.05, float(retry_after)))
+        except (TypeError, ValueError):
+            delay = min(8.0, 0.25 * (2 ** attempt) + random.uniform(0.0, 0.10))
+        time.sleep(delay)
+    assert resp is not None
     ok = resp.status_code in (200, 201)
     try:
         data = resp.json()
@@ -162,7 +183,18 @@ def _request(payload: dict, method: str, path: str, *, params=None, body=None):
 def _public_request(payload: dict, method: str, path: str, *, params=None):
     import requests
     base = _base_url(bool(payload.get("use_demo")))
-    resp = requests.request(method, base + path, params=params, timeout=30)
+    resp = None
+    for attempt in range(4):
+        resp = requests.request(method, base + path, params=params, timeout=30)
+        if resp.status_code not in (429, 500, 502, 503, 504) or attempt == 3:
+            break
+        retry_after = resp.headers.get("Retry-After", "")
+        try:
+            delay = min(8.0, max(0.05, float(retry_after)))
+        except (TypeError, ValueError):
+            delay = min(8.0, 0.25 * (2 ** attempt) + random.uniform(0.0, 0.10))
+        time.sleep(delay)
+    assert resp is not None
     ok = resp.status_code in (200, 201)
     try:
         data = resp.json()
@@ -464,6 +496,19 @@ def cmd_open_orders(payload: dict) -> None:
     _emit({"ok": True, "orders": orders})
 
 
+def cmd_reconcile_orders(payload: dict) -> None:
+    """Return recent account orders, including terminal states, for recovery."""
+    params = {"limit": min(max(int(payload.get("limit", 500)), 1), 1000)}
+    if payload.get("cursor"):
+        params["cursor"] = str(payload["cursor"])
+    ok, code, data = _request(payload, "GET", "/portfolio/orders", params=params)
+    if not ok:
+        _fail(f"HTTP {code}", detail=data)
+        return
+    _emit({"ok": True, "orders": data.get("orders", []) or [],
+           "cursor": data.get("cursor", "")})
+
+
 def cmd_queue_positions(payload: dict) -> None:
     """Return resting orders joined with their price-time queue positions.
 
@@ -563,6 +608,53 @@ def cmd_fills(payload: dict) -> None:
     _emit({"ok": True, "fills": fills_out})
 
 
+def settlement_row_from_api(s: dict) -> dict:
+    """Pure transform: one raw /portfolio/settlements row -> closed-bet row.
+
+    Netting-aware EXACT P&L: on Kalshi's single order book a held yes+no pair
+    redeems $1 at trade time, so settlement `revenue` only covers the
+    unnetted remainder. Therefore
+        pnl = min(yes,no) * $1 + revenue - yes_cost - no_cost - fees
+    For one-sided rows min()==0 and this reduces to the previous exact
+    formula. Empirically validated against the live account (2026-07-22):
+    the 38 formerly-"pending" mixed rows produce sane values (total -98.30),
+    zero absurd magnitudes; fully-hedged rows lose only spread+fees.
+    """
+    yes_count = _to_float(s.get("yes_count_fp"))
+    no_count = _to_float(s.get("no_count_fp"))
+    yes_cost = _to_float(s.get("yes_total_cost_dollars"))
+    no_cost = _to_float(s.get("no_total_cost_dollars"))
+    fees = _to_float(s.get("fee_cost"))
+    # Revenue remains a legacy integer-cent field in the current endpoint;
+    # prefer a future fixed-point dollar field if Kalshi adds one.
+    revenue = (_to_float(s.get("revenue_dollars"))
+               if s.get("revenue_dollars") is not None
+               else _to_float(s.get("revenue")) / 100.0)
+    ticker = s.get("ticker", "")
+    settled_time = s.get("settled_time", "")
+    side = ("YES" if yes_count > 0 and no_count == 0 else
+            "NO" if no_count > 0 and yes_count == 0 else "MIXED")
+    netted = min(yes_count, no_count)
+    realized_pnl = netted * 1.0 + revenue - yes_cost - no_cost - fees
+    return {
+        "internal_id": f"{ticker}:{settled_time}",
+        "market_id": ticker,
+        "event_ticker": s.get("event_ticker", ""),
+        "market_result": (s.get("market_result") or "").upper(),
+        "side": side,
+        "yes_count": yes_count,
+        "no_count": no_count,
+        "stake": yes_cost + no_cost,
+        "fees": fees,
+        "payout": revenue,
+        "netted_redemption": netted,
+        "realized_pnl": realized_pnl,
+        "accounting_status": ("exact_one_sided" if netted == 0
+                              else "exact_netted_mixed"),
+        "settled_time": settled_time,
+    }
+
+
 def cmd_settlements(payload: dict) -> None:
     params = {"limit": int(payload.get("limit", 100))}
     if payload.get("cursor"):
@@ -572,39 +664,8 @@ def cmd_settlements(payload: dict) -> None:
     if not ok:
         _fail(f"HTTP {code}", detail=data)
         return
-    settlements_out = []
-    for s in data.get("settlements", []) or []:
-        yes_count = _to_float(s.get("yes_count_fp"))
-        no_count = _to_float(s.get("no_count_fp"))
-        yes_cost = _to_float(s.get("yes_total_cost_dollars"))
-        no_cost = _to_float(s.get("no_total_cost_dollars"))
-        fees = _to_float(s.get("fee_cost"))
-        # Revenue remains a legacy integer-cent field in the current endpoint;
-        # prefer a future fixed-point dollar field if Kalshi adds one.
-        revenue = (_to_float(s.get("revenue_dollars"))
-                   if s.get("revenue_dollars") is not None
-                   else _to_float(s.get("revenue")) / 100.0)
-        ticker = s.get("ticker", "")
-        settled_time = s.get("settled_time", "")
-        side = ("YES" if yes_count > 0 and no_count == 0 else
-                "NO" if no_count > 0 and yes_count == 0 else "MIXED")
-        realized_pnl = (revenue - yes_cost - no_cost - fees) if side != "MIXED" else None
-        settlements_out.append({
-            "internal_id": f"{ticker}:{settled_time}",
-            "market_id": ticker,
-            "event_ticker": s.get("event_ticker", ""),
-            "market_result": (s.get("market_result") or "").upper(),
-            "side": side,
-            "yes_count": yes_count,
-            "no_count": no_count,
-            "stake": yes_cost + no_cost,
-            "fees": fees,
-            "payout": revenue,
-            "realized_pnl": realized_pnl,
-            "accounting_status": ("exact_one_sided" if realized_pnl is not None
-                                  else "mixed_requires_fill_reconciliation"),
-            "settled_time": settled_time,
-        })
+    settlements_out = [settlement_row_from_api(s)
+                       for s in data.get("settlements", []) or []]
     # Do not depend on exchange response order. ISO-8601 UTC timestamps sort
     # lexicographically, so the newest closed bet is always rendered first.
     settlements_out.sort(key=lambda row: row.get("settled_time", ""), reverse=True)
@@ -700,11 +761,18 @@ def cmd_place_order(payload: dict) -> None:
         _fail(f"HTTP {code}", detail=data)
         return
     order = data.get("order", data) or {}
+    filled = _to_float(order.get("fill_count", order.get("fill_count_fp")))
+    remaining = _to_float(order.get("remaining_count", order.get("remaining_count_fp")))
     _emit({
         "ok": True,
         "order_id": order.get("order_id", data.get("order_id", "")),
         "status": _order_status_from_event_order(order),
         "client_order_id": order.get("client_order_id", body["client_order_id"]),
+        "fill_count": filled,
+        "remaining_count": remaining,
+        "average_fill_price": _to_float(order.get("average_fill_price")),
+        "average_fee_paid": _to_float(order.get("average_fee_paid")),
+        "ts_ms": int(_to_float(order.get("ts_ms", data.get("ts_ms", 0)))),
         "raw": data,
     })
 
@@ -867,6 +935,7 @@ COMMANDS = {
     "balance": cmd_balance,
     "positions": cmd_positions,
     "open_orders": cmd_open_orders,
+    "reconcile_orders": cmd_reconcile_orders,
     "queue_positions": cmd_queue_positions,
     "fills": cmd_fills,
     "settlements": cmd_settlements,
@@ -885,6 +954,7 @@ AUTH_COMMANDS = {
     "balance",
     "positions",
     "open_orders",
+    "reconcile_orders",
     "queue_positions",
     "fills",
     "settlements",
@@ -905,7 +975,11 @@ def main() -> int:
         _fail("usage: prediction_kalshi.py <command> [<json_payload>]")
         return 2
     command = sys.argv[1]
-    payload_str = sys.argv[2] if len(sys.argv) > 2 else "{}"
+    # Credential-bearing payloads arrive over stdin. The legacy argv form is
+    # retained for standalone compatibility, but app callers must use stdin so
+    # private keys never appear in process listings.
+    payload_str = sys.stdin.read() if len(sys.argv) > 2 and sys.argv[2] == "--stdin-json" \
+        else (sys.argv[2] if len(sys.argv) > 2 else "{}")
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as exc:

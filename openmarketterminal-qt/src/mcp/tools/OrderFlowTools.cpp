@@ -492,6 +492,11 @@ ToolResult prepare_prediction_order(const QJsonObject& args) {
     };
     if (args.contains("limit_price") && args.value("limit_price").isDouble())
         intent["limit_price"] = args.value("limit_price").toDouble();
+    if (!args.value(QStringLiteral("order_type")).toString().trimmed().isEmpty())
+        intent[QStringLiteral("order_type")] = args.value(QStringLiteral("order_type")).toString().trimmed().toLower();
+    for (const char* key : {"post_only", "reduce_only", "cancel_order_on_pause"}) {
+        if (args.value(QLatin1String(key)).isBool()) intent[QLatin1String(key)] = args.value(QLatin1String(key)).toBool();
+    }
     // Live micro-evidence limits are persisted into the immutable draft and
     // re-checked against the fresh executable book immediately before submit.
     for (const char* key : {"max_live_stake", "experiment_loss_cap"}) {
@@ -556,6 +561,14 @@ struct PmPlaceResult {
     bool indeterminate = false;
     QString reason;    // non-empty: order_id on success, error/timeout on failure
     QString order_id;
+    QString client_order_id;
+    QString status;
+    double filled = 0.0;
+    double remaining = 0.0;
+    double average_fill_price = 0.0;
+    double average_fee_paid = 0.0;
+    qint64 exchange_ts_ms = 0;
+    QJsonObject raw;
 };
 
 PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req) {
@@ -573,6 +586,14 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
         bool timed_out = false;
         QString error;
         QString order_id;
+        QString client_order_id;
+        QString status;
+        double filled = 0.0;
+        double remaining = 0.0;
+        double average_fill_price = 0.0;
+        double average_fee_paid = 0.0;
+        qint64 exchange_ts_ms = 0;
+        QJsonObject raw;
     };
     auto st = std::make_shared<PlaceState>();
 
@@ -592,6 +613,14 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
                     return;
                 st->ok = r.ok;
                 st->order_id = r.order_id;
+                st->client_order_id = r.client_order_id;
+                st->status = r.status;
+                st->filled = r.filled;
+                st->remaining = r.remaining;
+                st->average_fill_price = r.average_fill_price;
+                st->average_fee_paid = r.average_fee_paid;
+                st->exchange_ts_ms = r.exchange_ts_ms;
+                st->raw = r.raw;
                 if (!r.ok)
                     st->error = r.error_message.isEmpty() ? r.error_code : r.error_message;
                 st->finished = true;
@@ -637,8 +666,60 @@ PmPlaceResult pm_place_live(const QString& venue, const pred::OrderRequest& req)
     }
     out.ok = true;
     out.order_id = st->order_id;
-    out.reason = st->order_id.isEmpty() ? QStringLiteral("filled") : st->order_id;
+    out.client_order_id = st->client_order_id;
+    out.status = st->status;
+    out.filled = st->filled;
+    out.remaining = st->remaining;
+    out.average_fill_price = st->average_fill_price;
+    out.average_fee_paid = st->average_fee_paid;
+    out.exchange_ts_ms = st->exchange_ts_ms;
+    out.raw = st->raw;
+    out.reason = st->order_id.isEmpty() ? QStringLiteral("accepted") : st->order_id;
     return out;
+}
+
+QString normalized_kalshi_order_state(const PmPlaceResult& result, double requested) {
+    const QString venue_state = result.status.trimmed().toUpper();
+    if (result.filled >= requested - 1e-9 && requested > 0.0)
+        return QStringLiteral("filled");
+    if (result.filled > 0.0)
+        return QStringLiteral("partially_filled");
+    if (venue_state == QLatin1String("CANCELED") || venue_state == QLatin1String("CANCELLED"))
+        return QStringLiteral("cancelled");
+    if (venue_state == QLatin1String("REJECTED"))
+        return QStringLiteral("rejected");
+    if (result.remaining > 0.0 || venue_state == QLatin1String("RESTING"))
+        return QStringLiteral("resting");
+    return QStringLiteral("accepted");
+}
+
+Result<void> persist_kalshi_submission(const QString& draft_id, const QJsonObject& intent,
+                                       const PmPlaceResult& result, double execution_price) {
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    const double requested = intent.value(QStringLiteral("contracts")).toDouble();
+    const QString client_id = result.client_order_id.isEmpty() ? draft_id : result.client_order_id;
+    const QString state = normalized_kalshi_order_state(result, requested);
+    const QString raw = QString::fromUtf8(QJsonDocument(result.raw).toJson(QJsonDocument::Compact));
+    auto order = Database::instance().execute(
+        "INSERT INTO kalshi_live_orders(client_order_id,order_id,draft_id,market_id,asset_id,action,outcome,state,"
+        "requested_count,filled_count,remaining_count,limit_price,average_fill_price,fees_paid,exchange_ts_ms,"
+        "created_at,updated_at,last_reconciled_at,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(client_order_id) DO UPDATE SET order_id=excluded.order_id,state=excluded.state,"
+        "filled_count=excluded.filled_count,remaining_count=excluded.remaining_count,"
+        "average_fill_price=excluded.average_fill_price,fees_paid=excluded.fees_paid,"
+        "exchange_ts_ms=excluded.exchange_ts_ms,updated_at=excluded.updated_at,raw_json=excluded.raw_json",
+        {client_id, result.order_id, draft_id, intent.value(QStringLiteral("market_id")).toString(),
+         intent.value(QStringLiteral("asset_id")).toString(), intent.value(QStringLiteral("side")).toString(),
+         intent.value(QStringLiteral("outcome")).toString(), state, requested, result.filled,
+         result.remaining, execution_price, result.average_fill_price,
+         result.average_fee_paid * result.filled, result.exchange_ts_ms, now, now, now, raw});
+    if (order.is_err()) return Result<void>::err(order.error());
+
+    // The create response exposes cumulative immediate-fill quantities but no
+    // durable fill id. Persist them on the order for immediate state reporting,
+    // then let GET /portfolio/fills populate the deduplicated fill ledger and
+    // P&L. Recording both would double-book the same execution.
+    return Result<void>::ok();
 }
 
 // ── prediction submit path (asset_class == "prediction") ─────────────────────
@@ -878,10 +959,8 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
                                                            {"mode", "live"}});
                 }
                 auto hourly = Database::instance().execute(
-                    "SELECT COUNT(*) FROM trade_audit WHERE mode='live' AND decision='filled' "
-                    "AND ts>=? AND json_extract(intent_json,'$.asset_class')='prediction' "
-                    "AND json_extract(intent_json,'$.venue')='kalshi' "
-                    "AND json_extract(intent_json,'$.experiment_id')=?",
+                    "SELECT COUNT(*) FROM kalshi_live_orders o JOIN order_drafts d ON d.draft_id=o.draft_id "
+                    "WHERE o.created_at>=? AND json_extract(d.intent_json,'$.experiment_id')=?",
                     {QDateTime::currentDateTimeUtc().addSecs(-3600).toString(Qt::ISODateWithMs),
                      experiment_id});
                 if (hourly.is_err() || !hourly.value().next() ||
@@ -894,11 +973,13 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
                 }
             }
             auto spent = Database::instance().execute(
-                "SELECT COALESCE(SUM(CAST(json_extract(risk_snapshot_json,'$.order_value') AS REAL)),0) "
-                "FROM trade_audit WHERE mode='live' AND decision='filled' "
-                "AND json_extract(intent_json,'$.asset_class')='prediction' "
-                "AND json_extract(intent_json,'$.venue')='kalshi' "
-                "AND json_extract(intent_json,'$.experiment_id')=?", {experiment_id});
+                "SELECT COALESCE(SUM((CASE WHEN o.filled_count>0 THEN o.filled_count*"
+                "CASE WHEN o.average_fill_price>0 THEN o.average_fill_price ELSE o.limit_price END ELSE 0 END)+"
+                "(CASE WHEN o.state IN ('submitting','submission_unknown','accepted','resting','partially_filled') "
+                "THEN o.remaining_count*o.limit_price ELSE 0 END)),0) "
+                "FROM kalshi_live_orders o JOIN order_drafts d ON d.draft_id=o.draft_id "
+                "WHERE o.state NOT IN ('rejected','settled') AND json_extract(d.intent_json,'$.experiment_id')=?",
+                {experiment_id});
             if (spent.is_err() || !spent.value().next()) {
                 const QString reason = QStringLiteral("could not verify micro-live experiment exposure");
                 audit_submit(draft.account, QStringLiteral("live"), intent, "denied", reason, rv);
@@ -961,6 +1042,10 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
         oreq.order_type = ot.isEmpty() ? QStringLiteral("limit") : ot;
         oreq.price = execution_price;
         oreq.size = contracts;
+        oreq.extras.insert(QStringLiteral("post_only"), intent.value(QStringLiteral("post_only")).toBool());
+        oreq.extras.insert(QStringLiteral("reduce_only"), intent.value(QStringLiteral("reduce_only")).toBool());
+        oreq.extras.insert(QStringLiteral("cancel_order_on_pause"),
+                           intent.value(QStringLiteral("cancel_order_on_pause")).toBool(true));
         // The persisted draft UUID is also the exchange client UUID. A late
         // response can therefore be reconciled without inventing a second
         // identity or submitting a replacement order.
@@ -968,23 +1053,40 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
 
         const PmPlaceResult pr = pm_place_live(venue, oreq);
 
-        const QString draft_status = pr.ok ? QStringLiteral("submitted")
+        const QString venue_state = pr.ok ? normalized_kalshi_order_state(pr, contracts) : QString();
+        const QString draft_status = pr.ok ? venue_state
             : pr.indeterminate ? QStringLiteral("submission_unknown")
                                : QStringLiteral("submit_failed");
         OrderDraftRepository::instance().update_status(
             draft_id, draft_status);
 
-        // Record the fill in the LIVE realized-P&L ledger at the RESOLVED price.
-        // PM has no AccountManager account → account "" ; venue is the exchange;
-        // instrument is the asset_id. BUY opens/adds, SELL closes/reduces.
-        if (pr.ok) {
-            if (side == QLatin1String("buy"))
-                mcp::tools::record_open(QStringLiteral(""), venue, asset_id, contracts, execution_price);
-            else
-                mcp::tools::record_close(QStringLiteral(""), venue, asset_id, contracts, execution_price);
+        if (pr.indeterminate && venue == QLatin1String("kalshi")) {
+            const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+            Database::instance().execute(
+                "INSERT INTO kalshi_live_orders(client_order_id,draft_id,market_id,asset_id,action,outcome,state,"
+                "requested_count,remaining_count,limit_price,created_at,updated_at,raw_json) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(client_order_id) DO UPDATE SET "
+                "state='submission_unknown',updated_at=excluded.updated_at",
+                {draft_id, draft_id, market_id, asset_id, side, outcome,
+                 QStringLiteral("submission_unknown"), contracts, contracts, execution_price,
+                 now, now, QStringLiteral("{}")});
         }
 
-        const QString decision = pr.ok ? QStringLiteral("filled")
+        if (pr.ok && venue == QLatin1String("kalshi")) {
+            auto persisted = persist_kalshi_submission(draft_id, intent, pr, execution_price);
+            if (persisted.is_err()) {
+                OrderDraftRepository::instance().update_status(draft_id, QStringLiteral("reconciliation_required"));
+                const QString reason = QStringLiteral("venue accepted order but local execution ledger failed: %1")
+                                           .arg(QString::fromStdString(persisted.error()));
+                audit_submit(QString(), QStringLiteral("live"), intent,
+                             QStringLiteral("reconciliation_required"), reason, rv);
+                return ToolResult::ok_data(QJsonObject{{"status", "reconciliation_required"},
+                    {"order_id", pr.order_id}, {"client_order_id", draft_id},
+                    {"reconciliation_required", true}, {"reason", reason}, {"venue", venue}, {"mode", "live"}});
+            }
+        }
+
+        const QString decision = pr.ok ? venue_state
             : pr.indeterminate ? QStringLiteral("submission_unknown")
                                : QStringLiteral("rejected");
         // trade_audit.reason is NOT NULL — pr.reason is always non-empty (order_id
@@ -995,6 +1097,10 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
             {"status", decision},
             {"order_id", pr.order_id},
             {"client_order_id", draft_id},
+            {"filled_count", pr.filled},
+            {"remaining_count", pr.remaining},
+            {"average_fill_price", pr.average_fill_price},
+            {"average_fee_paid", pr.average_fee_paid},
             {"reconciliation_required", pr.indeterminate},
             {"reason", pr.reason},
             {"venue", venue},
@@ -1039,7 +1145,7 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .string("symbol", "Equity trading symbol (e.g. AAPL)").length(1, 32)
                 .number("quantity", "Equity order quantity (must be > 0)").min(0.0)
                 .string("order_type", "Equity order type").default_str("market")
-                    .enums({"market", "limit", "stop", "stop_limit"})
+                    .enums({"market", "limit", "stop", "stop_limit", "fok", "fak"})
                 .string("exchange", "Exchange / venue (optional)")
                 .string("account", "Account identifier (optional)")
                 .string("strategy", "Originating strategy name (optional)")
@@ -1050,6 +1156,9 @@ std::vector<ToolDef> get_order_flow_tools() {
                 .string("asset_id", "Prediction outcome asset id — prediction only")
                 .string("outcome", "Prediction outcome name — prediction only")
                 .number("contracts", "Prediction contracts (must be > 0) — prediction only").min(0.0)
+                .boolean("post_only", "Reject rather than cross the book")
+                .boolean("reduce_only", "Reject if the order would increase exposure")
+                .boolean("cancel_order_on_pause", "Ask Kalshi to cancel if trading pauses")
                 .number("max_live_stake", "Optional hard live stake cap carried into the draft").min(0.0)
                 .number("experiment_loss_cap", "Optional cumulative live experiment exposure cap").min(0.0)
                 .string("experiment_id", "Optional live evidence experiment id").length(1, 128)

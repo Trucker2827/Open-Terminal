@@ -39,6 +39,31 @@ private slots:
         QVERIFY2(rows.size() == 1, "expected 1 result");
         QCOMPARE(rows[0].title, QString("News & Tools <x>"));
     }
+    // Mojeek — the keyless fallback engine (real markup captured 2026-07-23).
+    void mojeek_results_parse() {
+        const QString html = QStringLiteral(
+            "<ul class=\"results-standard\">"
+            "<li class=\"r1\"><a title=\"u\" href=\"https://www.weather-us.com/en/georgia-usa/atlanta\" class=\"ob\">"
+            "<p class=\"i\"><span class=\"url\">https://www.weather-us.com</span></p></a>"
+            "<h2><a class=\"title\" title=\"t\" href=\"https://www.weather-us.com/en/georgia-usa/atlanta\">"
+            "Weather today - Atlanta, GA</a></h2>"
+            "<p class=\"s\"><strong>Weather</strong> radar - <strong>Atlanta</strong>, cloudy and rainy.</p></li>"
+            "<li class=\"r2\"><h2><a class=\"title\" href=\"https://example.com/two\">Second</a></h2>"
+            "<p class=\"s\">Snippet two</p></li></ul>");
+        const auto rows = parse_mojeek_results(html, 5);
+        QCOMPARE(rows.size(), 2);
+        QCOMPARE(rows[0].title, QString("Weather today - Atlanta, GA"));
+        QCOMPARE(rows[0].url, QString("https://www.weather-us.com/en/georgia-usa/atlanta"));
+        QVERIFY(rows[0].snippet.contains("cloudy and rainy"));
+        QCOMPARE(rows[1].title, QString("Second"));
+    }
+    void bot_challenge_is_detected_and_results_are_not() {
+        QVERIFY(looks_like_bot_challenge(
+            QStringLiteral("<div id=\"anomaly-modal\">complete this challenge-form</div>")));
+        QVERIFY(looks_like_bot_challenge(QStringLiteral("<div class=\"g-recaptcha\"></div>")));
+        QVERIFY(!looks_like_bot_challenge(
+            QStringLiteral("<a class=\"result__a\" href=\"https://x.com\">Weather in Atlanta</a>")));
+    }
 };
 QTEST_MAIN(TstWebSearchParser)
 #include "tst_web_search_parser.moc"

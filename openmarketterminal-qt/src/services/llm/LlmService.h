@@ -131,6 +131,10 @@ class LlmService : public QObject {
     mutable int max_tokens_ = 4096;
     mutable int max_tool_rounds_ = 40;
     mutable QString system_prompt_;
+    // system_prompt_ plus a fresh current-date/time line. Computed per
+    // request — models (local ones especially) otherwise hallucinate
+    // "today" from their training cutoff and confabulate justifications.
+    QString system_prompt_with_now() const;
     mutable bool tools_enabled_ = true;
     mutable bool config_loaded_ = false;
 

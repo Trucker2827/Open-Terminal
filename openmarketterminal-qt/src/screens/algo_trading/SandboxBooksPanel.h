@@ -17,6 +17,10 @@ class SandboxBooksPanel : public QWidget {
 
   public slots:
     void refresh();
+    void apply_cockpit_drilldown(int view, const QString& book_kind = {});
+
+  signals:
+    void returnToCockpit();
 
   protected:
     void showEvent(QShowEvent* event) override;
@@ -35,6 +39,7 @@ class SandboxBooksPanel : public QWidget {
     void populate_leaderboard();
     void populate_position_counts();
     void update_selected_detail();
+    void apply_current_drilldown();
 
     QLabel* status_label_ = nullptr;
     QLabel* active_count_ = nullptr;
@@ -45,6 +50,11 @@ class SandboxBooksPanel : public QWidget {
     QLabel* eligible_count_ = nullptr;
     QTableWidget* leaderboard_table_ = nullptr;
     QLabel* detail_label_ = nullptr;
+    QLabel* drilldown_badge_ = nullptr;
+    QPushButton* back_button_ = nullptr;
+    QPushButton* show_all_button_ = nullptr;
+    int drilldown_view_ = 0;
+    QString drilldown_book_kind_;
     bool first_show_ = true;
 };
 

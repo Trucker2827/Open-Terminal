@@ -22,7 +22,6 @@ class BacktestingService : public QObject {
     void load_command_options(const QString& provider);
 
     /// Legacy: load strategies from openmarketterminal provider only
-    void list_strategies();
 
     /// Store a portfolio config for BacktestingScreen to pick up on next show.
     void set_pending_portfolio_config(const QJsonObject& config);
@@ -31,7 +30,6 @@ class BacktestingService : public QObject {
 
   signals:
     void result_ready(QString provider, QString command, QJsonObject data);
-    void strategies_loaded(QJsonObject strategies);
     void command_options_loaded(QString provider, QJsonObject options);
     void error_occurred(QString context, QString message);
 
