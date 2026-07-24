@@ -1,3 +1,4 @@
 # Finn Loop Journal
 
 One line per iteration; newest last.
+- 2026-07-24 issue #103 PR: Equity Research NOTE action closes the research chain into Notes — toolbar NOTE composes a FinancialNote (tickers=symbol, dated title, quote-snapshot body only when a quote loaded — honesty guard, never zero-filled), publishes notes.created (same event/payload as MCP notes tools, so an open NotesScreen live-refreshes), and offers "Open in Notes" → nav.switch_screen + notes.select_note. New pure header EquityResearchNote.h + tst_equity_research_note (6 cases); neuter-checked red (both honesty cases fail without the guard); full suite 127/127. Surprise: a complete prior WIP for this issue sat uncommitted on main atop a 107-line local JOURNAL accumulation — carried the code onto a fresh origin/main branch, stashed to preserve the local journal, kept it out of the PR.
