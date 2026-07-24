@@ -1,0 +1,96 @@
+# Issue #139 — AUTO COCKPIT freshness header, manual evidence
+
+Screenshot: `issue-139-auto-cockpit-header.png` (crop of the real cockpit tab).
+
+## How it was captured
+
+Dev build `openmarketterminal-qt/build/OpenTerminal.app` from this branch,
+launched as
+
+    HOME=/tmp/finn139-home OpenTerminal --profile finn139
+
+driven through the local bridge:
+
+    HOME=/tmp/finn139-home openterminalcli --profile finn139 \
+        workspace open polymarket --exclusive
+
+Prediction Markets opens on the Kalshi venue, so this is the real KalshiScreen
+with its real timers and real Kalshi REST traffic. No Kalshi credentials are
+configured on this profile, so it is public data only and the authenticated
+WebSocket book feed never subscribes — which is what produces the BOOKS ABSENT
+reading below. The capture is a `screencapture -l<windowid>` of that window
+alone, so nothing else on the operator's desktop is in the image.
+
+## Two honest caveats about the method
+
+1. **The screen was locked for the whole session.** `loginwindow` sat at window
+   layer 2004, so a full-screen capture returned black and synthesized
+   `CGEventPost` clicks went to the lock window, not to the app — the AUTO
+   COCKPIT tab could not be clicked. The capture was therefore taken from a
+   build carrying one extra line, `tabs->setCurrentIndex(tabs->indexOf(
+   auto_cockpit_scroll))` in place of `tabs->setCurrentIndex(0)`, so the tab
+   opens selected. That line is NOT in the branch (reverted before the final
+   build and suite run); every widget, value and colour in the image is the
+   shipped code rendering live data.
+2. **`HOME` does not move the evidence directory.** `KalshiScreen::evidence_path`
+   resolves through `QStandardPaths::AppLocalDataLocation`, which on macOS comes
+   from the process's real home, not from `$HOME`. So this session's ladder
+   snapshots and book-event batches appended to the operator's shared
+   `~/Library/Application Support/Open Terminal/Open Terminal/*.jsonl` alongside
+   the operator's own running instance, rather than to a scratch directory. The
+   rows are ordinary advisory research evidence of the same kind that instance
+   was already writing; no trading path was touched and the app was stopped as
+   soon as this was noticed. Worth knowing before the next GUI-evidence run:
+   `--profile` isolates the profile, `HOME` does not isolate the Kalshi evidence
+   ledger.
+
+## What the screenshot shows
+
+    AUTO COCKPIT ABSENT · KXBTCD-26JUL2420 · no leg has a live book     [grey]
+    MARKETS STALE · 636 listed · 2m ago · older than 60s, so it may no
+      longer hold the open contract                                     [amber]
+    BOOKS ABSENT · 0/188 legs quoted — every leg is priced from the
+      cached market snapshot, not from a live book                      [amber]
+    AUTO COCKPIT — deterministic research ladder + bounded manual execution.
+    BOT — autonomous paper/live bidding under the sealed promotion gate.
+    ADVISOR & CANARY — archived blind-duel protocol, read-only.
+    [ OPEN THE BOT TAB  → ]
+
+Both amber lines are the audit's findings caught in the wild, not staged:
+
+- **MARKETS STALE at 2m** is finding A. `refresh()` has no timer on this base
+  (issue #137, branch pushed, unmerged), so the contract list ages from the
+  moment the screen is opened and never refreshes itself. Before this change
+  the cockpit rendered exactly the same static ladder with nothing said about
+  it. This is the expected reading on `origin/main` today, and it should turn
+  green on its own once #137 lands.
+
+- **BOOKS ABSENT · 0/188** is finding C. `KalshiAutoEngine::quote_for` falls
+  back to the market's cached `outcome_price`/`*_ask_dollars` when no book
+  exists, so all 188 legs still got prices, a `net_edge`, and table rows.
+  Cross-checked against the ladder ledger rather than taken on trust: of the
+  last 108 `kalshi_ladder_snapshot` rows carrying a surface, exactly 54 have
+  zero legs with a `quote_observed_at_ms` — the credential-less rows from this
+  session, interleaved 1:1 with the operator's own fully-quoted 188/188 rows.
+  So "0/188 legs quoted" is the literal truth about what the engine priced
+  from, and it took a header to say so.
+
+## What is NOT in the screenshot, and why
+
+The ladder table's withheld-state row ("LADDER NOT SHOWN — …") sits below the
+fold of a 1013 px pane, and with the machine locked there was no way to scroll
+or resize the window. That rendering is covered by
+`tst_kalshi_auto_cockpit::every_not_live_state_withholds_the_ladder_with_a_stated_reason`
+and by the neuter that forces `ladder_trustworthy = true` (9 tests red).
+
+## Layout defect found and fixed during capture
+
+The first capture attempt rendered the state chip completely blank: the AUTO
+COCKPIT page had no scroll area, unlike its MAKER ORDER / BOT / ADVISOR
+siblings, so the fixed-height pane compressed the new header to zero height.
+A cockpit header that renders as an empty box is the same "reads as broken"
+failure this issue is about, so the page now scrolls like its siblings. The
+cross-link button then vanished for a second reason — beside a word-wrapped
+chip it lost its width — and now sits on its own row under the role lines.
+Both were caught only by looking at the real window; the unit tests could not
+see either.
