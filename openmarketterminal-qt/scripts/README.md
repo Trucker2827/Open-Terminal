@@ -27,7 +27,6 @@ scripts/
 | 🏛️ **Government Data** | 19 countries/portals - official statistics | [GOVERNMENT_DATA_SOURCES.md](./GOVERNMENT_DATA_SOURCES.md) |
 | 🌍 **Economic Data** | 11 organizations - FRED, World Bank, IMF, OECD | [ECONOMIC_DATA_SOURCES.md](./ECONOMIC_DATA_SOURCES.md) |
 | 📊 **Market Data** | 9 providers - stocks, options, crypto, forex | [MARKET_DATA_SOURCES.md](./MARKET_DATA_SOURCES.md) |
-| 🇨🇳 **China Data** | 9 modules - AkShare ecosystem, Chinese markets | [CHINA_DATA_SOURCES.md](./CHINA_DATA_SOURCES.md) |
 | 🌏 **Regional Data** | 5 sources - Japan, Sweden, Spain, Africa, Asia | [REGIONAL_DATA_SOURCES.md](./REGIONAL_DATA_SOURCES.md) |
 | 🇺🇸 **US Financial** | 4 agencies - SEC, Treasury, Energy | [US_FINANCIAL_DATA_SOURCES.md](./US_FINANCIAL_DATA_SOURCES.md) |
 | 🔧 **Specialty Data** | 7 tools - EconDB, technicals, reports, news | [SPECIALTY_DATA_SOURCES.md](./SPECIALTY_DATA_SOURCES.md) |
@@ -49,7 +48,7 @@ scripts/
 - **Economic Data**: FRED, World Bank, IMF, OECD, ECB, BEA, BLS
 - **Crypto**: CoinGecko, Kraken, Binance
 - **Government**: SEC Edgar, Congress.gov, Federal Reserve
-- **International**: AkShare (China), Eurostat (EU), data.gov variants
+- **International**: Eurostat (EU), data.gov variants
 
 ### Analytics Modules
 - **Equity Investment**: DCF, DDM, multiples valuation, fundamental analysis

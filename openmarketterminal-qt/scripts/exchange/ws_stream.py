@@ -177,6 +177,126 @@ def resolve_symbol(exchange, requested, exchange_id):
     return None
 
 
+
+# ── Authenticated account mode (Task 6) ──────────────────────────────────────
+# Credentials arrive ONLY via the stdin command
+#   {"cmd":"set_account_credentials","apiKey":..,"secret":..,"password":..}
+# — never argv (visible in ps) and never the environment. On first receipt the
+# supervised account watchers spawn; ccxt.pro normalizes each venue's private
+# channel (Coinbase Advanced user channel included) into unified shapes.
+
+ACCOUNT_CMDS = {"set_account_credentials"}
+
+_ORDER_KEEP = ("id", "clientOrderId", "symbol", "side", "type", "price", "amount",
+               "filled", "remaining", "average", "status", "timestamp")
+_TRADE_KEEP = ("id", "order", "symbol", "side", "price", "amount", "cost", "timestamp")
+
+
+def _normalize_pem(secret):
+    """Same fix as exchange_daemon._normalize_pem: Coinbase CDP EC PEMs pasted
+    from JSON carry literal backslash-n escapes; convert to real newlines.
+    Non-PEM secrets pass through untouched."""
+    if not isinstance(secret, str) or "-----BEGIN" not in secret:
+        return secret
+    if "\\n" not in secret and "\\r" not in secret:
+        return secret
+    return secret.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+
+def make_account_order_msg(order):
+    return {"type": "account_order", "order": {k: order.get(k) for k in _ORDER_KEEP}}
+
+
+def make_account_mytrade_msg(trade):
+    return {"type": "account_mytrade", "trade": {k: trade.get(k) for k in _TRADE_KEEP}}
+
+
+def make_account_balance_msg(balances):
+    """Per-currency {free,used,total}; zero balances and ccxt's non-currency
+    index keys (free/used/total/info/timestamp/datetime) are filtered — same
+    shape discipline as the REST daemon's fetch_balance."""
+    out = {}
+    for cur, b in (balances or {}).items():
+        if not isinstance(b, dict) or not cur.isupper():
+            continue
+        if (b.get("total") or 0) or (b.get("free") or 0) or (b.get("used") or 0):
+            out[cur] = {"free": b.get("free"), "used": b.get("used"), "total": b.get("total")}
+    return {"type": "account_balance", "balances": out}
+
+
+async def watch_account_orders(exchange):
+    errors = 0
+    while True:
+        try:
+            orders = await exchange.watch_orders()
+            errors = 0
+            for o in orders or []:
+                emit(make_account_order_msg(o))
+        except Exception as e:
+            errors += 1
+            if errors <= 3:
+                emit({"type": "error", "source": "account_orders", "message": str(e)})
+            if errors >= MAX_CONSECUTIVE_ERRORS:
+                return
+            await asyncio.sleep(min(errors * 2, 30))
+
+
+async def watch_account_mytrades(exchange):
+    errors = 0
+    while True:
+        try:
+            trades = await exchange.watch_my_trades()
+            errors = 0
+            for t in trades or []:
+                emit(make_account_mytrade_msg(t))
+        except Exception as e:
+            errors += 1
+            if errors <= 3:
+                emit({"type": "error", "source": "account_mytrades", "message": str(e)})
+            if errors >= MAX_CONSECUTIVE_ERRORS:
+                return
+            await asyncio.sleep(min(errors * 2, 30))
+
+
+async def watch_account_balance(exchange):
+    errors = 0
+    while True:
+        try:
+            bal = await exchange.watch_balance()
+            errors = 0
+            currencies = {k: v for k, v in (bal or {}).items() if isinstance(v, dict) and k.isupper()}
+            emit(make_account_balance_msg(currencies))
+        except Exception as e:
+            errors += 1
+            if errors <= 3:
+                emit({"type": "error", "source": "account_balance", "message": str(e)})
+            if errors >= MAX_CONSECUTIVE_ERRORS:
+                return
+            await asyncio.sleep(min(errors * 2, 30))
+
+
+def spawn_account_tasks(exchange, exchange_id):
+    """Supervised account watchers, capability-gated per venue."""
+    has = exchange.describe().get("has", {})
+    tasks = []
+    if has.get("watchOrders"):
+        tasks.append(asyncio.create_task(supervise(
+            "account_orders", lambda: watch_account_orders(exchange))))
+    else:
+        emit({"type": "info", "message": f"account channel watchOrders unsupported on {exchange_id}"})
+    if has.get("watchMyTrades"):
+        tasks.append(asyncio.create_task(supervise(
+            "account_mytrades", lambda: watch_account_mytrades(exchange))))
+    else:
+        emit({"type": "info", "message": f"account channel watchMyTrades unsupported on {exchange_id}"})
+    if has.get("watchBalance"):
+        tasks.append(asyncio.create_task(supervise(
+            "account_balance", lambda: watch_account_balance(exchange))))
+    else:
+        emit({"type": "info", "message": f"account channel watchBalance unsupported on {exchange_id}"})
+    return tasks
+
+
 # ── Per-exchange capability detection ────────────────────────────────────────
 
 def get_exchange_caps(exchange):
@@ -638,6 +758,15 @@ async def stdin_command_loop(exchange, exchange_id, caps, ticker_cache, state):
             state["tasks"] = kept + [new_ohlcv]
             await _cancel_tasks(old_ohlcv)
 
+        # ── Authenticated account stream (credentials via stdin ONLY) ────────
+        elif action == "set_account_credentials":
+            exchange.apiKey = cmd.get("apiKey") or ""
+            exchange.secret = _normalize_pem(cmd.get("secret") or "")
+            exchange.password = cmd.get("password") or ""
+            if exchange.apiKey and not state.get("account_tasks"):
+                state["account_tasks"] = spawn_account_tasks(exchange, exchange_id)
+                emit({"type": "status", "account": True, "exchange": exchange_id})
+
         # Unknown command — ignore silently.
 
 
@@ -824,7 +953,7 @@ async def main():
     finally:
         # Tear down every still-running task (primary + watchlist + stdin) cleanly
         # so there are no "Task was destroyed but it is pending" warnings on shutdown.
-        teardown = list(state["tasks"]) + watchlist_tasks
+        teardown = list(state["tasks"]) + list(state.get("account_tasks") or []) + watchlist_tasks
         if stdin_task is not None:
             teardown.append(stdin_task)
         await _cancel_tasks(teardown)

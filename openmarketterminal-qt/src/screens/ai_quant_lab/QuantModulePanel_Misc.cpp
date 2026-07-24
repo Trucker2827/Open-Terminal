@@ -1036,6 +1036,59 @@ QWidget* QuantModulePanel::build_model_library_panel() {
     btvl2->addStretch();
     tabs->addTab(bt_tab, tr("Backtest"));
 
+    // ── Screen (issue #102) ──
+    // Rank a trained model's universe; the result view pairs the ranks with
+    // the model's measured IC (or an explicit "unmeasured" disclaimer) and
+    // offers a send-to-watchlist feed. Candidate lists, not signals.
+    auto* sc_tab = new QWidget(this);
+    auto* scvl = new QVBoxLayout(sc_tab);
+    scvl->setContentsMargins(12, 12, 12, 12);
+    scvl->setSpacing(8);
+    auto* sc_model = new QLineEdit(sc_tab);
+    sc_model->setPlaceholderText(tr("Model ID (from training output)"));
+    sc_model->setStyleSheet(input_ss());
+    text_inputs_["ml_sc_model"] = sc_model;
+    scvl->addWidget(build_input_row(tr("Model ID"), sc_model, sc_tab));
+    auto* sc_date = new QLineEdit(sc_tab);
+    sc_date->setPlaceholderText(tr("As-of date (YYYY-MM-DD, empty = latest)"));
+    sc_date->setStyleSheet(input_ss());
+    text_inputs_["ml_sc_date"] = sc_date;
+    scvl->addWidget(build_input_row(tr("As-of Date"), sc_date, sc_tab));
+    auto* sc_top = new QSpinBox(sc_tab);
+    sc_top->setRange(1, 200);
+    sc_top->setValue(20);
+    sc_top->setStyleSheet(spinbox_ss());
+    int_inputs_["ml_sc_top"] = sc_top;
+    scvl->addWidget(build_input_row(tr("Top N"), sc_top, sc_tab));
+    auto* sc_bottom = new QSpinBox(sc_tab);
+    sc_bottom->setRange(0, 200);
+    sc_bottom->setValue(5);
+    sc_bottom->setStyleSheet(spinbox_ss());
+    int_inputs_["ml_sc_bottom"] = sc_bottom;
+    scvl->addWidget(build_input_row(tr("Bottom N"), sc_bottom, sc_tab));
+    auto* sc_run = make_run_button(tr("SCREEN MODEL"), sc_tab);
+    connect(sc_run, &QPushButton::clicked, this, [this]() {
+        const QString model_id = text_inputs_["ml_sc_model"]->text().trimmed();
+        if (model_id.isEmpty()) {
+            display_error(tr("Model ID is required"));
+            return;
+        }
+        status_label_->setText(tr("Screening..."));
+        screen_payload_ = QJsonObject();
+        screen_ic_payload_ = QJsonObject();
+        screen_ic_pending_ = false;
+        QJsonObject params;
+        params["model_id"] = model_id;
+        if (!text_inputs_["ml_sc_date"]->text().trimmed().isEmpty())
+            params["date"] = text_inputs_["ml_sc_date"]->text().trimmed();
+        params["top"] = int_inputs_["ml_sc_top"]->value();
+        params["bottom"] = int_inputs_["ml_sc_bottom"]->value();
+        AIQuantLabService::instance().model_screen(params);
+    });
+    scvl->addWidget(sc_run);
+    scvl->addStretch();
+    tabs->addTab(sc_tab, tr("Screen"));
+
     vl->addWidget(tabs, 1);
     results_layout_ = new QVBoxLayout;
     vl->addLayout(results_layout_);

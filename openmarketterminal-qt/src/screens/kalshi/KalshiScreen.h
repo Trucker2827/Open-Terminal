@@ -91,9 +91,12 @@ class KalshiScreen final : public QWidget {
     void set_chart_timeframe(const QString& timeframe);
     void set_spot_symbol(const QString& asset);
     void update_observation_strip();
+    void update_calibrator_readout();
     void update_market_health();
     void update_strike_overlay();
+    void refresh_flow_meter();
     void record_ladder_evidence();
+    void refresh_volatility_estimate(const QString& symbol, qint64 decision_ts_ms);
     void render_ladder_surface(
         const QVector<services::edge_radar::KalshiSurfacePoint>& surface,
         const services::edge_radar::KalshiPortfolioPlan& plan,
@@ -112,6 +115,8 @@ class KalshiScreen final : public QWidget {
     void show_live_automation_dialog();
     void kill_live_automation();
     void refresh_live_automation_status();
+    void refresh_advisor_canary_status();
+    void refresh_arena_context_status();
     void refresh_daemon_status();
     void restart_daemon();
     void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
@@ -156,6 +161,7 @@ class KalshiScreen final : public QWidget {
     QLabel* yes_quote_ = nullptr;
     QLabel* no_quote_ = nullptr;
     QLabel* close_countdown_ = nullptr;
+    QLabel* calibrator_readout_ = nullptr;
     QLabel* contract_strip_ = nullptr;
     QLabel* venue_consensus_ = nullptr;
     QTextEdit* rules_ = nullptr;
@@ -173,11 +179,23 @@ class KalshiScreen final : public QWidget {
     QLabel* gate_label_ = nullptr;
     QLabel* shadow_status_ = nullptr;
     QLabel* ladder_status_ = nullptr;
+    QLabel* flow_status_ = nullptr;
+    QLabel* flow_detail_ = nullptr;
     QTableWidget* ladder_table_ = nullptr;
     QLabel* live_automation_status_ = nullptr;
+    QLabel* advisor_separation_status_ = nullptr;
+    QLabel* legacy_live_badge_ = nullptr;
+    QLabel* canary_badge_ = nullptr;
+    QLabel* advisor_system_status_ = nullptr;
+    QLabel* advisor_qualification_status_ = nullptr;
+    QLabel* advisor_safety_status_ = nullptr;
+    QLabel* advisor_activity_status_ = nullptr;
+    QLabel* arena_context_status_ = nullptr;
+    QPushButton* arena_open_button_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
     QTableWidget* active_positions_table_ = nullptr;
     QLabel* pnl_summary_ = nullptr;
+    QLabel* pnl_scoreboard_ = nullptr;
     QTableWidget* pnl_table_ = nullptr;
     QPushButton* live_automation_button_ = nullptr;
     QPushButton* kill_live_button_ = nullptr;
@@ -213,6 +231,10 @@ class KalshiScreen final : public QWidget {
     QMap<double, double> reference_dom_asks_;
     QString reference_dom_symbol_;
     QString reference_dom_venue_ = QStringLiteral("kraken");
+    // Coinbase spot-DOM endpoint choice: Advanced Trade WS first; flips to the
+    // legacy Exchange feed on a coinbase connection that never produced a book
+    // (fallback while the sunset feed still answers).
+    bool reference_dom_use_legacy_coinbase_ = false;
     qint64 reference_dom_last_update_ms_ = 0;
     qint64 reference_spot_last_update_ms_ = 0;
     QString reference_spot_source_;
@@ -229,6 +251,9 @@ class KalshiScreen final : public QWidget {
     std::atomic<bool> consensus_fetching_{false};
     std::atomic<bool> chart_fetching_{false};
     std::atomic<bool> spot_chart_fetching_{false};
+    std::atomic<bool> volatility_fetching_{false};
+    QHash<QString, services::edge_radar::KalshiVolatilityEstimate> volatility_cache_;
+    QHash<QString, qint64> volatility_cache_refreshed_ms_;
     QString chart_timeframe_ = QStringLiteral("live");
     QString chart_asset_id_;
     qint64 last_chart_fetch_ms_ = 0;
@@ -245,7 +270,10 @@ class KalshiScreen final : public QWidget {
     qint64 last_forward_reconcile_ms_ = 0;
     qint64 last_account_activity_fetch_ms_ = 0;
     qint64 last_live_status_fetch_ms_ = 0;
+    QJsonObject calibrator_report_;
+    qint64 calibrator_report_read_ms_ = 0;
     bool live_status_fetching_ = false;
+    QJsonObject latest_legacy_live_status_;
     bool shadow_enabled_ = true;
     QVector<services::prediction::PredictionPosition> positions_;
     int shadow_candidates_ = 0;

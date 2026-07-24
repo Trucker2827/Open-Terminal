@@ -2,6 +2,13 @@
 find_package(Qt6 REQUIRED COMPONENTS Test Network Concurrent)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+add_test(NAME test_crypto_fast_router
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_fast_router.py -v)
+add_test(NAME test_crypto_scalp_report
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_scalp_report.py -v)
+
 # Read-only authenticated Kalshi queue-position bridge. Uses unittest so the
 # packaged developer test path does not require pytest or other test extras.
 add_test(NAME test_prediction_kalshi_queue
@@ -10,6 +17,83 @@ add_test(NAME test_prediction_kalshi_queue
 add_test(NAME test_kalshi_strategy
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_strategy.py -v)
+add_test(NAME test_kalshi_advisor_core
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_advisor_core.py -v)
+add_test(NAME test_kalshi_competition
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_competition.py -v)
+add_test(NAME test_prediction_kalshi_settlements
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_prediction_kalshi_settlements.py -v)
+add_test(NAME test_ws_stream_account
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_ws_stream_account.py -v)
+add_test(NAME test_spot_calibrator
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_spot_calibrator.py -v)
+add_test(NAME test_edge_ic_report
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_edge_ic_report.py -v)
+add_test(NAME test_terminal_bridge_layers
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_terminal_bridge_layers.py -v)
+add_test(NAME test_hft_terminal_source
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_hft_terminal_source.py -v)
+add_test(NAME test_crypto_dataset
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_crypto_dataset.py -v)
+add_test(NAME test_signal_publisher
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_signal_publisher.py -v)
+add_test(NAME test_model_retrain
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_model_retrain.py -v)
+add_test(NAME test_alpha_arena
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_alpha_arena.py -v)
+
+# Issue #86 — openterminal_paths as single source of truth for evidence/data
+# paths: default values, env-override semantics, and a sweep asserting no
+# script outside the module (and the frozen v5 duel files) hardcodes them.
+add_test(NAME test_openterminal_paths
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_openterminal_paths.py -v)
+
+# Issue #101 — EDGAR XBRL → FinancialsData adapter for the Equity
+# Financials tab: canonical concept mapping, dimension/abstract row
+# skipping, missing-stays-missing, error/fallback semantics. Stdlib-only
+# fixtures (no edgartools/yfinance/network).
+add_test(NAME test_edgar_financials_adapter
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_edgar_financials_adapter.py -v)
+
+# Issue #83 — relationship map EDGAR rewire: us-gaap concept mapping,
+# Form 4 insider ring, SC 13D/G major holders, and the no-yfinance guard
+# for the rewired sections. Stdlib-only fakes (no edgartools/network).
+add_test(NAME test_relationship_map_edgar
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_relationship_map_edgar.py -v)
+
+# Issue #102 — screen → watchlist feed mapping: the watchlist description must
+# carry the model's measured IC + window (or the explicit "IC unmeasured"
+# disclaimer) and each stock note its score. Fails if the evidence is dropped.
+add_executable(tst_screen_watchlist_feed
+    tst_screen_watchlist_feed.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/ai_quant_lab/ScreenWatchlistFeed.cpp)
+target_include_directories(tst_screen_watchlist_feed PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_screen_watchlist_feed PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_screen_watchlist_feed COMMAND tst_screen_watchlist_feed)
+
+# Issue #103 — Equity Research NOTE action composition
+# (screens/equity_research/EquityResearchNote.h): loaded quote → the note body
+# carries symbol + displayed price/change; no quote → no snapshot line, never
+# zero-filled. Header-only pure composition, so Qt6::Core is enough.
+add_executable(tst_equity_research_note tst_equity_research_note.cpp)
+target_include_directories(tst_equity_research_note PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_equity_research_note PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_equity_research_note COMMAND tst_equity_research_note)
 
 add_executable(tst_bridge_discovery_file
     tst_bridge_discovery_file.cpp
@@ -21,6 +105,12 @@ add_test(NAME tst_bridge_discovery_file COMMAND tst_bridge_discovery_file)
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommandsB.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommandsC.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalCommands2.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/EdgeJournalRareAlerts.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/QuantLabCommands.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/automation/AutomationState.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/AiRunCommand.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/ObserveCommand.cpp
@@ -296,6 +386,14 @@ target_include_directories(tst_backtest_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_backtest_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_backtest_engine COMMAND tst_backtest_engine)
 
+# Issue #83 — relmap peer merge (services/relationship_map/RelmapPeerMerge.h):
+# native EquityResearchService ratios -> map PeerCompany entries. Header-only
+# pure mapping; Qt6::Gui linked because RelationshipMapTypes.h uses QColor.
+add_executable(tst_relmap_peer_merge tst_relmap_peer_merge.cpp)
+target_include_directories(tst_relmap_peer_merge PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_relmap_peer_merge PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME tst_relmap_peer_merge COMMAND tst_relmap_peer_merge)
+
 # Portfolio risk stats (services/portfolio/PortfolioStats) — Sharpe / Sortino /
 # max-drawdown extracted from PortfolioService::compute_metrics. Header-only
 # pure math, so the test needs only Qt6::Core (no core lib link).
@@ -507,12 +605,35 @@ target_include_directories(tst_kalshi_evidence PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_evidence PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_evidence COMMAND tst_kalshi_evidence)
 
+add_executable(tst_kalshi_settlement_scoreboard tst_kalshi_settlement_scoreboard.cpp)
+target_include_directories(tst_kalshi_settlement_scoreboard PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_settlement_scoreboard PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_settlement_scoreboard COMMAND tst_kalshi_settlement_scoreboard)
+
 # Coherent Kalshi hourly probability surface, constrained portfolio selection,
 # no-lookahead replay, and API compatibility audit. Pure and paper-only.
 add_executable(tst_kalshi_auto_engine tst_kalshi_auto_engine.cpp)
 target_include_directories(tst_kalshi_auto_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_auto_engine PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_auto_engine COMMAND tst_kalshi_auto_engine)
+
+add_executable(tst_edge_vol_gate tst_edge_vol_gate.cpp)
+target_include_directories(tst_edge_vol_gate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_vol_gate PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_edge_vol_gate COMMAND tst_edge_vol_gate)
+
+add_executable(tst_crypto_microstructure_radar tst_crypto_microstructure_radar.cpp)
+target_include_directories(tst_crypto_microstructure_radar PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_microstructure_radar PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_crypto_microstructure_radar COMMAND tst_crypto_microstructure_radar)
+
+# Shared paper-proof scoreboard (issue #95): verdict thresholds, sample tiers,
+# per-row fold and persisted-move parser used by the CLI proof-loop AND the
+# GUI SPOT/SCALP cockpit.
+add_executable(tst_edge_proof_stats tst_edge_proof_stats.cpp)
+target_include_directories(tst_edge_proof_stats PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_proof_stats PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_edge_proof_stats COMMAND tst_edge_proof_stats)
 
 add_executable(tst_decision_orchestrator tst_decision_orchestrator.cpp)
 target_include_directories(tst_decision_orchestrator PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -561,6 +682,11 @@ add_executable(tst_sandbox_maker_quotes tst_sandbox_maker_quotes.cpp)
 target_include_directories(tst_sandbox_maker_quotes PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_sandbox_maker_quotes PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_sandbox_maker_quotes COMMAND tst_sandbox_maker_quotes)
+
+add_executable(tst_crypto_auto_scalp tst_crypto_auto_scalp.cpp)
+target_include_directories(tst_crypto_auto_scalp PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_auto_scalp PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_auto_scalp COMMAND tst_crypto_auto_scalp)
 
 # Strategy Sandbox Task 2 — SandboxRegistry: immutable, param-hashed strategy
 # books on top of sandbox_strategy. Same DB bootstrap as tst_sandbox_schema.
@@ -647,6 +773,19 @@ target_include_directories(tst_strategy_evidence_presentation PRIVATE ${CMAKE_SO
 target_link_libraries(tst_strategy_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_strategy_evidence_presentation COMMAND tst_strategy_evidence_presentation)
 
+# Research Lab evidence library row for the published edge IC report
+# (edge-ic.json). Missing/malformed evidence must read as absent, never as a
+# fabricated listing.
+add_executable(tst_edge_ic_evidence_presentation tst_edge_ic_evidence_presentation.cpp)
+target_include_directories(tst_edge_ic_evidence_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_edge_ic_evidence_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_edge_ic_evidence_presentation COMMAND tst_edge_ic_evidence_presentation)
+
+add_executable(tst_strategy_cockpit_navigation tst_strategy_cockpit_navigation.cpp)
+target_include_directories(tst_strategy_cockpit_navigation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_strategy_cockpit_navigation PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME tst_strategy_cockpit_navigation COMMAND tst_strategy_cockpit_navigation)
+
 # AI pre-trade guardrail Task 1 — evaluate_pretrade: pure, no DB/settings/I-O.
 # Takes a TradeIntent + GateInputs + GatePolicy and returns a GateVerdict.
 add_executable(tst_pretrade_gate tst_pretrade_gate.cpp)
@@ -663,6 +802,11 @@ add_executable(tst_typed_action tst_typed_action.cpp)
 target_include_directories(tst_typed_action PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_typed_action PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_typed_action COMMAND tst_typed_action)
+
+add_executable(tst_advisory_repository tst_advisory_repository.cpp)
+target_include_directories(tst_advisory_repository PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisory_repository PRIVATE openterminal_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME tst_advisory_repository COMMAND tst_advisory_repository)
 
 # Strategy Sandbox Task 11 — power-boundary check: the sandbox service
 # object files (PaperExecutor/PaperFillModel/SandboxResolver/SandboxScorer/
@@ -688,3 +832,98 @@ add_test(NAME sandbox_boundary_check
 add_test(NAME e2e_sandbox_smoke
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_sandbox_smoke.sh)
+
+# Issue #91 — tools/sign-release.sh probes notary credentials before any
+# download/sign work: a locked keychain (locked screen) must exit immediately
+# with the cause and fix, and a passing probe must leave the success path
+# unchanged. Offline: xcrun/gh stubbed on PATH, no keychain or network.
+add_test(NAME test_sign_release_probe
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_sign_release_probe.sh)
+
+# LLM advisory scoring Task 2 — protocol primitives (canonical JSON hash,
+# horizon-aware TTL policy, allowlist-only blind-packet builder). Pure
+# functions in services/edge_radar/AdvisoryProtocol, no DB/Widgets.
+add_executable(tst_advisory_protocol tst_advisory_protocol.cpp)
+target_include_directories(tst_advisory_protocol PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisory_protocol PRIVATE openterminal_core Qt6::Test)
+add_test(NAME tst_advisory_protocol COMMAND tst_advisory_protocol)
+
+add_executable(tst_advisory_scoring tst_advisory_scoring.cpp)
+target_include_directories(tst_advisory_scoring PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisory_scoring PRIVATE openterminal_core Qt6::Test)
+add_test(NAME tst_advisory_scoring COMMAND tst_advisory_scoring)
+
+add_executable(tst_advisor_canary_presentation tst_advisor_canary_presentation.cpp)
+target_include_directories(tst_advisor_canary_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_advisor_canary_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_advisor_canary_presentation COMMAND tst_advisor_canary_presentation)
+
+add_executable(tst_arena_context_presentation tst_arena_context_presentation.cpp)
+target_include_directories(tst_arena_context_presentation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_arena_context_presentation PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_arena_context_presentation COMMAND tst_arena_context_presentation)
+
+# Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
+# uses to find the bundled openterminalcli (".exe" on Windows). Header-only,
+# no DB/Widgets.
+add_executable(tst_kalshi_cli_locator tst_kalshi_cli_locator.cpp)
+target_include_directories(tst_kalshi_cli_locator PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_cli_locator PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_cli_locator COMMAND tst_kalshi_cli_locator)
+
+add_executable(tst_crypto_symbol_universe tst_crypto_symbol_universe.cpp)
+target_include_directories(tst_crypto_symbol_universe PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_symbol_universe PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_symbol_universe COMMAND tst_crypto_symbol_universe)
+
+add_executable(tst_crypto_chrome_state tst_crypto_chrome_state.cpp)
+target_include_directories(tst_crypto_chrome_state PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_chrome_state PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_chrome_state COMMAND tst_crypto_chrome_state)
+
+add_executable(tst_crypto_ticker_vol_sigma tst_crypto_ticker_vol_sigma.cpp)
+target_include_directories(tst_crypto_ticker_vol_sigma PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_ticker_vol_sigma PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_ticker_vol_sigma COMMAND tst_crypto_ticker_vol_sigma)
+
+add_executable(tst_coinbase_endpoints tst_coinbase_endpoints.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/crypto/CoinbaseEndpoints.cpp)
+target_include_directories(tst_coinbase_endpoints PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(tst_coinbase_endpoints PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+target_link_libraries(tst_coinbase_endpoints PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_coinbase_endpoints COMMAND tst_coinbase_endpoints)
+
+add_executable(tst_exchange_account_stream tst_exchange_account_stream.cpp)
+target_include_directories(tst_exchange_account_stream PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_exchange_account_stream PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_exchange_account_stream COMMAND tst_exchange_account_stream)
+
+add_executable(tst_crypto_account_cadence tst_crypto_account_cadence.cpp)
+target_include_directories(tst_crypto_account_cadence PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_account_cadence PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_account_cadence COMMAND tst_crypto_account_cadence)
+
+add_executable(tst_crypto_live_overlay tst_crypto_live_overlay.cpp)
+target_include_directories(tst_crypto_live_overlay PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_live_overlay PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_live_overlay COMMAND tst_crypto_live_overlay)
+
+add_executable(tst_crypto_paper_fill tst_crypto_paper_fill.cpp)
+target_include_directories(tst_crypto_paper_fill PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_paper_fill PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_paper_fill COMMAND tst_crypto_paper_fill)
+
+add_executable(tst_crypto_alert_engine tst_crypto_alert_engine.cpp)
+target_include_directories(tst_crypto_alert_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_alert_engine PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_alert_engine COMMAND tst_crypto_alert_engine)
+
+add_executable(tst_crypto_fill_notifier tst_crypto_fill_notifier.cpp)
+target_include_directories(tst_crypto_fill_notifier PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_crypto_fill_notifier PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_crypto_fill_notifier COMMAND tst_crypto_fill_notifier)
+
+add_executable(tst_fred_dbnomics_fallback tst_fred_dbnomics_fallback.cpp)
+target_include_directories(tst_fred_dbnomics_fallback PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_fred_dbnomics_fallback PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_fred_dbnomics_fallback COMMAND tst_fred_dbnomics_fallback)

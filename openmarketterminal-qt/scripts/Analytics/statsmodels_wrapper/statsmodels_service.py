@@ -602,6 +602,26 @@ def dispatch(operation, data):
                 "error_kind": "runtime", "traceback": traceback.format_exc()}
 
 
+def _apply_terminal_source(operation, data):
+    """`{"source":"terminal"}`: fill data["values"] from the terminal's own
+    stored tick history (ai_quant_lab/terminal_data.py). Returns an error
+    payload, or None when data is ready."""
+    if not isinstance(data, dict) or data.get("source") != "terminal":
+        return None
+    try:
+        sys.path.insert(0, os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "..", "ai_quant_lab")))
+        from terminal_data import resolve_terminal_series
+        resolve_terminal_series(data)
+        return None
+    except ValueError as exc:
+        return {"success": False, "operation": operation, "error": str(exc),
+                "error_kind": "validation"}
+    except Exception as exc:  # unreadable DB, missing file — fail honestly
+        return {"success": False, "operation": operation,
+                "error": f"terminal data source unavailable: {exc}", "error_kind": "data"}
+
+
 def main(args):
     if len(args) < 1:
         print(json.dumps({
@@ -621,6 +641,10 @@ def main(args):
                 "error": f"Invalid JSON: {e}", "error_kind": "validation",
             }))
             return
+    _terminal_err = _apply_terminal_source(operation, data)
+    if _terminal_err:
+        print(json.dumps(_terminal_err))
+        return
     result = dispatch(operation, data)
     print(json.dumps(result, default=str))
 

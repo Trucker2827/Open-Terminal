@@ -56,6 +56,7 @@ class StrategyRiskPanel final : public QWidget {
 
   public slots:
     void refresh();
+    void focus_decision_envelopes();
 
   private:
     void build_ui();
@@ -86,10 +87,12 @@ class StrategyRunHistoryPanel final : public QWidget {
 
   public slots:
     void refresh();
+    void focus_outcomes();
 
   private:
     void build_ui();
     void refresh_fills();
+    void refresh_outcomes();
 
     QTabWidget* tabs_ = nullptr;
     QTableWidget* fills_table_ = nullptr;
@@ -98,6 +101,8 @@ class StrategyRunHistoryPanel final : public QWidget {
     QLabel* open_count_ = nullptr;
     QLabel* realized_total_ = nullptr;
     QLabel* detail_label_ = nullptr;
+    QTableWidget* outcomes_table_ = nullptr;
+    QLabel* outcomes_summary_ = nullptr;
     StrategyAutomationPanel* automation_ = nullptr;
     QTimer refresh_timer_;
 };

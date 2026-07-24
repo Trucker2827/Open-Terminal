@@ -1,5 +1,9 @@
 #include "storage/repositories/PaperTradingRepository.h"
 
+#include "trading/PaperTrading.h"
+
+#include <QDateTime>
+
 #include <cmath>
 
 namespace openmarketterminal {
@@ -65,7 +69,7 @@ PtPosition PaperTradingRepository::map_position(QSqlQuery& q) {
     p.opened_at = q.value(11).toString();
     // Blank product = a legacy position from before product tracking. Treat it as
     // delivery (carry-forward / Holdings), NOT MIS — defaulting to MIS made the
-    // 15:30 auto-square wrongly close pre-existing positions.
+    // 16:00 ET auto-square wrongly close pre-existing positions.
     p.product = q.value(12).toString().isEmpty() ? QStringLiteral("CNC") : q.value(12).toString();
     p.held_margin = q.value(13).toDouble();
     return p;
@@ -398,11 +402,12 @@ Result<void> PaperTradingRepository::delete_all_trades(const QString& portfolio_
 // ── Stats ────────────────────────────────────────────────────────────────────
 
 Result<PtStats> PaperTradingRepository::get_stats(const QString& portfolio_id) {
-    const char* today_pnl_sql =
-        "  COALESCE(SUM(CASE WHEN date(datetime(timestamp, 'localtime')) "
-        "    = date(datetime('now', 'localtime')) THEN pnl ELSE 0 END), 0)";
+    // "Today" = current America/New_York session day (not host localtime / IST).
+    const QDate et_today = trading::pt_us_session_date();
+    const QString day_start = trading::pt_us_session_day_start_utc(et_today).toString(Qt::ISODate);
+    const QString day_end = trading::pt_us_session_day_start_utc(et_today.addDays(1)).toString(Qt::ISODate);
 
-    const QString sql = QString(
+    const QString sql =
         "SELECT "
         "  COALESCE(SUM(pnl), 0),"                                                                       // 0 realized
         "  COUNT(*),"                                                                                     // 1 fills
@@ -414,11 +419,10 @@ Result<PtStats> PaperTradingRepository::get_stats(const QString& portfolio_id) {
         "  COALESCE(SUM(CASE WHEN pnl < 0 THEN pnl ELSE 0 END), 0),"                                      // 7 gross-
         "  COALESCE(SUM(fee), 0),"                                                                        // 8 fees
         "  COALESCE(SUM(price * quantity), 0),"                                                           // 9 turnover
-        "%1"                                                                                              // 10 today
-        " FROM pt_trades WHERE portfolio_id = ?")
-                            .arg(today_pnl_sql);
+        "  COALESCE(SUM(CASE WHEN timestamp >= ? AND timestamp < ? THEN pnl ELSE 0 END), 0)"             // 10 today ET
+        " FROM pt_trades WHERE portfolio_id = ?";
 
-    auto r = db().execute(sql, {portfolio_id});
+    auto r = db().execute(sql, {day_start, day_end, portfolio_id});
 
     if (r.is_err())
         return Result<PtStats>::err(r.error());

@@ -298,7 +298,6 @@ QMenu* ToolBar::build_markets_menu() {
     nav(m, tr("Economics"), "economics");
     nav(m, tr("GOVT Data"), "gov_data");
     nav(m, tr("DBnomics"), "dbnomics");
-    nav(m, tr("AKShare Data"), "akshare");
     nav(m, tr("Relationship Map"), "relationship_map");
     return m;
 }

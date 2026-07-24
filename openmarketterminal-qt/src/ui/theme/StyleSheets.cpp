@@ -303,8 +303,9 @@ QString crypto_trading_styles() {
                "#cryptoWsTransport { color: %9; font-size: 9px; font-weight: 600; "
                "  letter-spacing: 0.5px; background: transparent; border: none; "
                "  margin-left: 4px; }"
-               "#cryptoWsTransport[authed=\"ok\"] { color: %15; }"
-               "#cryptoWsTransport[authed=\"error\"] { color: %11; }"
+               "#cryptoWsTransport[daemon_state=\"live\"] { color: %15; }"
+               "#cryptoWsTransport[daemon_state=\"rest\"] { color: %12; }"
+               "#cryptoWsTransport[daemon_state=\"dead\"] { color: %11; }"
                "#cryptoClock { color: %6; font-size: 11px; font-weight: 600; "
                "  background: transparent; border: none; }"
 

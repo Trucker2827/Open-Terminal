@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QElapsedTimer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
@@ -23,6 +24,7 @@ class FakeBridge : public QObject {
 public:
     quint16 port = 0;
     QString token = "secret";
+    int response_delay_ms = 0;  // simulate a slow synchronous tool (first byte late)
     FakeBridge() {
         thread_ = QThread::create([this] {
             QTcpServer srv;
@@ -53,7 +55,13 @@ public:
                         "Content-Type: application/json\r\n"
                         "Content-Length: " + QByteArray::number(body.size()) + "\r\n"
                         "Connection: close\r\n\r\n" + body;
-                    s->write(resp); s->flush(); s->disconnectFromHost();
+                    if (response_delay_ms > 0) {
+                        QTimer::singleShot(response_delay_ms, s, [s, resp] {
+                            s->write(resp); s->flush(); s->disconnectFromHost();
+                        });
+                    } else {
+                        s->write(resp); s->flush(); s->disconnectFromHost();
+                    }
                 });
             });
             QEventLoop loop;
@@ -103,6 +111,27 @@ private slots:
     void dead_endpoint_is_transport() {
         BridgeClient c({"http://127.0.0.1:1", "secret", 0, ""});
         QCOMPARE(c.get_tools().status, ClientStatus::Transport);
+    }
+    // Regression: a synchronous tool that computes >5s before its first
+    // response byte (Quant Lab python subprocess) must not be truncated to
+    // "no header terminator" — Connection: close is the framing, so the
+    // client waits for socket close, not for line-idle.
+    void slow_first_byte_is_not_truncated() {
+        FakeBridge fb;
+        fb.response_delay_ms = 6000;  // longer than the old 5s idle window
+        BridgeClient c({QString("http://127.0.0.1:%1").arg(fb.port), "secret", 0, ""});
+        auto r = c.get_tools();
+        QCOMPARE(r.status, ClientStatus::Ok);
+        QVERIFY(r.body.value("tools").toArray().size() == 1);
+    }
+    void total_deadline_bounds_a_hung_bridge() {
+        FakeBridge fb;
+        fb.response_delay_ms = 3000;
+        BridgeClient c({QString("http://127.0.0.1:%1").arg(fb.port), "secret", 0, ""}, /*total_timeout_ms=*/500);
+        QElapsedTimer t; t.start();
+        auto r = c.get_tools();
+        QVERIFY(r.status != ClientStatus::Ok);
+        QVERIFY(t.elapsed() < 2500);  // gave up at the deadline, not at the server's leisure
     }
     void call_tool_sends_name_and_args() {
         FakeBridge fb;

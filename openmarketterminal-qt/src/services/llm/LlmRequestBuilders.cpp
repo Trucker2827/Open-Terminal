@@ -27,7 +27,7 @@ QJsonObject LlmService::build_openai_request(const QString& user_message,
 
     QJsonArray messages;
     if (!system_prompt_.isEmpty())
-        messages.append(QJsonObject{{"role", "system"}, {"content", system_prompt_}});
+        messages.append(QJsonObject{{"role", "system"}, {"content", system_prompt_with_now()}});
     for (const auto& m : history)
         messages.append(QJsonObject{{"role", m.role}, {"content", m.content}});
     messages.append(QJsonObject{{"role", "user"}, {"content", user_message}});
@@ -98,7 +98,7 @@ QJsonObject LlmService::build_anthropic_request(const QString& user_message,
     req["messages"]   = messages;
     req["max_tokens"] = resolved_max_tokens();
     if (!system_prompt_.isEmpty())
-        req["system"] = system_prompt_;
+        req["system"] = system_prompt_with_now();
     if (stream)
         req["stream"] = true;
 
@@ -145,7 +145,7 @@ QJsonObject LlmService::build_gemini_request(const QString& user_message,
     req["contents"]         = contents;
     req["generationConfig"] = gen_cfg;
     if (!system_prompt_.isEmpty()) {
-        req["systemInstruction"] = QJsonObject{{"parts", QJsonArray{QJsonObject{{"text", system_prompt_}}}}};
+        req["systemInstruction"] = QJsonObject{{"parts", QJsonArray{QJsonObject{{"text", system_prompt_with_now()}}}}};
     }
 
     // Gemini tools: tools[{functionDeclarations:[{name, description, parameters}]}].
@@ -180,7 +180,7 @@ QJsonObject LlmService::build_openmarketterminal_request(const QString& user_mes
     // /research/chat uses OpenAI messages format.
     QJsonArray messages;
     if (!system_prompt_.isEmpty())
-        messages.append(QJsonObject{{"role", "system"}, {"content", system_prompt_}});
+        messages.append(QJsonObject{{"role", "system"}, {"content", system_prompt_with_now()}});
     for (const auto& m : history)
         messages.append(QJsonObject{{"role", m.role}, {"content", m.content}});
     messages.append(QJsonObject{{"role", "user"}, {"content", user_message}});

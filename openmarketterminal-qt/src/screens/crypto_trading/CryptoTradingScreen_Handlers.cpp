@@ -16,6 +16,8 @@
 #include "screens/crypto_trading/CryptoLadder.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoPaperFill.h"
+#include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "screens/equity_trading/AccountManagementDialog.h"
@@ -28,6 +30,8 @@
 #include "ui/theme/Theme.h"
 
 #include <QCompleter>
+
+#include <limits>
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -60,11 +64,11 @@ QString exchange_display_name(const QString& exchange_id) {
 
 QString coinbase_order_symbol(QString symbol) {
     symbol = symbol.trimmed().toUpper();
-    if (symbol.endsWith(QStringLiteral("/USDT")) || symbol.endsWith(QStringLiteral("/USDC")) ||
-        symbol.endsWith(QStringLiteral("/USD"))) {
-        return symbol.section(QLatin1Char('/'), 0, 0) + QStringLiteral("/USD");
-    }
-    return symbol;
+    // The exchange-native universe (CryptoSymbolUniverse) makes display==wire
+    // on Coinbase, so this is normally identity. Defensively migrate only a
+    // stale persisted /USDT suffix; an explicit /USDC pair routes to its own
+    // real Coinbase book instead of being silently forced onto /USD.
+    return openmarketterminal::crypto::migrate_symbol(QStringLiteral("coinbase"), symbol);
 }
 
 bool is_cash_quote(const QString& currency) {
@@ -135,10 +139,13 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     exchange_btn_->setText(exchange_display_name(exchange));
     if (order_entry_)
         order_entry_->set_exchange_id(exchange_id_);
+    if (bottom_panel_)
+        bottom_panel_->set_exchange_context(exchange_id_, trading_mode_ != TradingMode::Live);
 
     if (ws_transport_) {
         ws_transport_->setText(tr("DAEMON"));
         ws_transport_->setToolTip(tr("ws_stream.py via ccxt.pro — Python subprocess"));
+        last_daemon_chrome_ = -1;  // force re-apply on the new exchange's next flush
     }
 
     auto& es = ExchangeService::instance();
@@ -151,9 +158,14 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     hub_unsubscribe_topics();
 
     // Clear accumulated buffers — stale data from the old exchange is useless.
+    live_orders_by_id_.clear();
+    live_avg_entry_.reset();
+    last_account_ws_event_ms_ = 0;  // cadence snaps to baseline on the new venue
     pending_tickers_.clear();
     pending_orderbook_ = {};
     has_pending_orderbook_ = false;
+    last_book_ = {};
+    last_book_ms_ = 0;
     pending_primary_ticker_ = {};
     has_pending_primary_ = false;
     pending_candles_.clear();
@@ -166,6 +178,21 @@ void CryptoTradingScreen::on_exchange_changed(const QString& exchange) {
     // not suppress the first fetch against the new exchange.
     candles_fetching_.store(false);
     live_inflight_.store(0);
+
+    // Exchange-native symbol universe: re-derive the watchlist and migrate the
+    // current selection BEFORE init_exchange re-subscribes, so the display
+    // pair IS the wire pair on the new venue.
+    watchlist_symbols_ = openmarketterminal::crypto::default_watchlist_for(exchange_id_, bitcoin_focus_);
+    if (watchlist_)
+        watchlist_->set_symbols(watchlist_symbols_);
+    const QString migrated = openmarketterminal::crypto::migrate_symbol(exchange_id_, selected_symbol_);
+    if (migrated != selected_symbol_) {
+        selected_symbol_ = migrated;
+        symbol_input_->setText(migrated);
+        ticker_bar_->set_symbol(migrated);
+        order_entry_->set_symbol(migrated);
+        watchlist_->set_active_symbol(migrated);
+    }
 
     es.set_exchange(exchange_id_);
 
@@ -257,9 +284,20 @@ void CryptoTradingScreen::switch_symbol(const QString& symbol) {
     pending_primary_ticker_ = {};
     has_pending_orderbook_ = false;
     pending_orderbook_ = {};
+    last_book_ = {};
+    last_book_ms_ = 0;  // the old symbol's book must never fill the new symbol's paper order
     pending_candles_.clear();
     pending_trades_.clear();
     impulse_points_.clear();
+    // Per-symbol overlay state: the next my-trades REST fetch re-seeds it.
+    // The order accumulator is per-symbol too (topic + REST are per-pair) —
+    // clear it so the blotter can't briefly show the old pair's orders.
+    live_orders_by_id_.clear();
+    live_avg_entry_.reset();
+    if (trading_mode_ == TradingMode::Live && ladder_) {
+        ladder_->set_my_orders({});
+        ladder_->set_avg_entry(0);
+    }
     update_impulse_label();
     market_info_cache_ = {};
 
@@ -287,30 +325,28 @@ void CryptoTradingScreen::on_mode_toggled() {
     mode_btn_->style()->polish(mode_btn_);
     order_entry_->set_mode(!is_live);
     bottom_panel_->set_mode(!is_live);
+    bottom_panel_->set_exchange_context(exchange_id_, !is_live);
 
     if (is_live) {
         live_data_timer_->start(5000);
         refresh_live_data();
         async_fetch_trading_fees(); // populate the Fees tab once on entering live
-        // The ladder's ORDERS/avg-entry overlay is only fed from Paper-mode
-        // PtOrder/PtPosition snapshots (update_ladder_overlay) — Live-mode
-        // orders/positions arrive as raw per-exchange JSON that isn't wired
-        // into it (see task-5 report). Without this, the last Paper overlay
-        // would keep painting indefinitely over Live-mode depth, which reads
-        // as "your resting orders" when they're actually stale paper data.
+        // Clear the Paper overlay on mode entry; the Live overlay repopulates
+        // from the account stream + REST seed (refresh_live_ladder_overlay /
+        // CryptoLiveOverlay.h) within the first refresh cycle.
         ladder_->set_my_orders({});
         ladder_->set_avg_entry(0);
     } else {
         live_data_timer_->stop();
+        live_orders_by_id_.clear();  // account-WS fast path is live-mode only
         // Leaving live mode → the auth indicator is no longer meaningful; reset
-        // the API/DAEMON chrome to neutral.
+        // the API button to neutral. The DAEMON label is liveness-driven
+        // (update_daemon_chrome) and is deliberately NOT touched here.
         last_auth_state_ = -1;
-        for (QWidget* w : {static_cast<QWidget*>(api_btn_), static_cast<QWidget*>(ws_transport_)}) {
-            if (!w)
-                continue;
-            w->setProperty("authed", QVariant());
-            w->style()->unpolish(w);
-            w->style()->polish(w);
+        if (api_btn_) {
+            api_btn_->setProperty("authed", QVariant());
+            api_btn_->style()->unpolish(api_btn_);
+            api_btn_->style()->polish(api_btn_);
         }
         refresh_portfolio();
     }
@@ -366,22 +402,37 @@ void CryptoTradingScreen::on_order_submitted(const QString& side, const QString&
                       .arg(qty).arg(price).arg(stop_price).arg(sl).arg(tp).arg(post_only ? "yes" : "no").arg(selected_symbol_));
     try {
         if (trading_mode_ == TradingMode::Paper) {
-            auto ticker = ExchangeService::instance().get_cached_price(selected_symbol_);
-            std::optional<double> price_opt;
-            if (order_type == "market")
-                price_opt = ticker.last > 0 ? ticker.last : 1000.0;
-            else if (price > 0)
-                price_opt = price;
-
-            std::optional<double> stop_opt;
-            if (stop_price > 0)
-                stop_opt = stop_price;
-
-            auto order = pt_place_order(portfolio_id_, selected_symbol_, side, order_type, qty, price_opt, stop_opt);
             if (order_type == "market") {
-                double fill = ticker.last > 0 ? ticker.last : price_opt.value_or(1000.0);
-                pt_fill_order(order.id, fill);
+                // Honest market fill: walk the freshest live book; a stale or
+                // empty book REJECTS instead of filling against dead data.
+                // (Replaces the old ticker.last / literal-1000.0 fill.)
+                const qint64 age_ms = last_book_ms_ > 0
+                    ? QDateTime::currentMSecsSinceEpoch() - last_book_ms_
+                    : std::numeric_limits<qint64>::max();
+                const auto verdict = openmarketterminal::crypto::paper_market_fill(
+                    side, qty, last_book_, age_ms, portfolio_.fee_rate);
+                if (!verdict.ok) {
+                    order_entry_->show_order_result(false, tr("PAPER reject: %1").arg(verdict.reason));
+                    return;
+                }
+                auto order = pt_place_order(portfolio_id_, selected_symbol_, side, order_type,
+                                            verdict.filled_qty, verdict.fill_price, std::nullopt);
+                pt_fill_order(order.id, verdict.fill_price);
+                order_entry_->show_order_result(
+                    true, tr("PAPER filled %1 @ %2 (fee ≈ %3)%4")
+                              .arg(verdict.filled_qty)
+                              .arg(verdict.fill_price)
+                              .arg(verdict.fee_paid)
+                              .arg(verdict.filled_qty < qty ? tr(" — PARTIAL: visible depth") : QString()));
             } else {
+                std::optional<double> price_opt;
+                if (price > 0)
+                    price_opt = price;
+                std::optional<double> stop_opt;
+                if (stop_price > 0)
+                    stop_opt = stop_price;
+                auto order =
+                    pt_place_order(portfolio_id_, selected_symbol_, side, order_type, qty, price_opt, stop_opt);
                 OrderMatcher::instance().add_order(order);
                 if (sl > 0 || tp > 0)
                     OrderMatcher::instance().set_sl_tp(portfolio_id_, selected_symbol_, order.id, sl, tp);

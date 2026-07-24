@@ -297,6 +297,10 @@ static QString select_venv_for_script(const QString& script) {
     return "venv-numpy2";
 }
 
+QString PythonRunner::venv_for_script(const QString& script) {
+    return select_venv_for_script(script);
+}
+
 // ── Find Python ──────────────────────────────────────────────────────────────
 
 // Fast, non-blocking detection: checks only file existence (no process spawns)
@@ -421,6 +425,12 @@ QString PythonRunner::find_scripts_dir() const {
 // ── Run Script ───────────────────────────────────────────────────────────────
 
 void PythonRunner::run(const QString& script, const QStringList& args, Callback cb, StreamCallback on_line) {
+    run_with_stdin(script, args, {}, std::move(cb), std::move(on_line));
+}
+
+void PythonRunner::run_with_stdin(const QString& script, const QStringList& args,
+                                  const QByteArray& standard_input, Callback cb,
+                                  StreamCallback on_line) {
     // Thread-affinity guard. PythonRunner is a QObject singleton living on
     // whatever thread first called instance() — in practice the main thread,
     // because main.cpp warms it at startup. But run() is invoked from
@@ -436,8 +446,8 @@ void PythonRunner::run(const QString& script, const QStringList& args, Callback 
         StreamCallback on_line_copy = std::move(on_line);
         QMetaObject::invokeMethod(
             this,
-            [this, script, args, cb_copy = std::move(cb_copy), on_line_copy = std::move(on_line_copy)]() mutable {
-                run(script, args, std::move(cb_copy), std::move(on_line_copy));
+            [this, script, args, standard_input, cb_copy = std::move(cb_copy), on_line_copy = std::move(on_line_copy)]() mutable {
+                run_with_stdin(script, args, standard_input, std::move(cb_copy), std::move(on_line_copy));
             },
             Qt::QueuedConnection);
         return;
@@ -466,7 +476,7 @@ void PythonRunner::run(const QString& script, const QStringList& args, Callback 
     }
 
     // Queue the request and start if under concurrency limit
-    queue_.enqueue({script, args, std::move(cb), std::move(on_line)});
+    queue_.enqueue({script, args, standard_input, std::move(cb), std::move(on_line)});
     start_next();
 }
 
@@ -510,7 +520,7 @@ void PythonRunner::run_code(const QString& code, Callback cb) {
     file.close();
 
     // Queue as a special request — use the temp file path directly
-    queue_.enqueue({"__code__:" + temp_path, {}, std::move(cb), {}});
+    queue_.enqueue({"__code__:" + temp_path, {}, {}, std::move(cb), {}});
     start_next();
 }
 
@@ -766,6 +776,10 @@ void PythonRunner::start_next() {
                                .arg(python_exe)
                                .arg(script_path));
         proc->start(python_exe, full_args);
+        if (!req.standard_input.isEmpty()) {
+            proc->write(req.standard_input);
+            proc->closeWriteChannel();
+        }
     }
 }
 

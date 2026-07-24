@@ -18,7 +18,7 @@ namespace openmarketterminal::cli {
 // begins with the positional <name>. Returns a process exit code.
 int ai_run_strategy(const GlobalOpts& opts, const QStringList& rest);
 
-// Run `ai ctx <symbol> [--json] [--market prediction|equity]` (ai ctx
+// Run `ai ctx <symbol> [--json] [--market crypto|prediction|equity]` (ai ctx
 // decision-packet Task 3). `rest` is the args AFTER `ai ctx`, i.e. it begins
 // with the positional <symbol>. READ-ONLY: calls DecisionContext::assess +
 // to_json and emits the packet — never places an order, writes a gate

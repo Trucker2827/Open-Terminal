@@ -125,6 +125,15 @@ KalshiWsClient::KalshiWsClient(QObject* parent) : QObject(parent) {
     ping_timer_ = new QTimer(this);
     ping_timer_->setInterval(kPingIntervalMs);
     connect(ping_timer_, &QTimer::timeout, this, &KalshiWsClient::send_ping);
+    book_publish_timer_ = new QTimer(this);
+    book_publish_timer_->setSingleShot(true);
+    book_publish_timer_->setInterval(25);
+    connect(book_publish_timer_, &QTimer::timeout, this, [this]() {
+        const auto pending = pending_book_publishes_;
+        pending_book_publishes_.clear();
+        for (auto it = pending.cbegin(); it != pending.cend(); ++it)
+            publish_books(it.key(), it.value());
+    });
 }
 
 KalshiWsClient::~KalshiWsClient() = default;
@@ -221,6 +230,7 @@ void KalshiWsClient::ensure_connected() {
 }
 
 void KalshiWsClient::send_subscribe(const QStringList& tickers) {
+    if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject params;
     QJsonArray channels;
     // Kalshi v2 (Apr 2026):
@@ -237,9 +247,10 @@ void KalshiWsClient::send_subscribe(const QStringList& tickers) {
     QJsonArray tarr;
     for (const auto& t : tickers) tarr.append(t);
     params.insert("market_tickers", tarr);
-    // Keep each side on its native contract-price scale. We then construct
-    // the complementary asks locally, matching the REST orderbook parser.
-    params.insert("use_yes_price", false);
+    // Kalshi is migrating order-book streams to a unified YES-price scale.
+    // Request it explicitly, then convert NO levels back to native NO prices
+    // at the parser boundary so the rest of OpenTerminal remains unchanged.
+    params.insert("use_yes_price", true);
 
     QJsonObject msg;
     msg.insert("id", next_msg_id_++);
@@ -251,10 +262,22 @@ void KalshiWsClient::send_subscribe(const QStringList& tickers) {
 }
 
 void KalshiWsClient::request_orderbook_snapshot(const QString& ticker) {
-    if (!connected_ || ticker.isEmpty() || orderbook_subscription_sid_ <= 0) return;
+    request_orderbook_snapshots({ticker});
+}
+
+void KalshiWsClient::request_orderbook_snapshots(const QStringList& tickers) {
+    if (!connected_ || !ws_ || !ws_->is_connected() || tickers.isEmpty() ||
+        orderbook_subscription_sid_ <= 0) return;
+    QJsonArray market_tickers;
+    for (const QString& ticker : tickers) {
+        const QString normalized = ticker.trimmed().toUpper();
+        if (!normalized.isEmpty() && subscribed_tickers_.contains(normalized))
+            market_tickers.append(normalized);
+    }
+    if (market_tickers.isEmpty()) return;
     QJsonObject params{{QStringLiteral("sids"), QJsonArray{orderbook_subscription_sid_}},
                        {QStringLiteral("action"), QStringLiteral("get_snapshot")},
-                       {QStringLiteral("market_tickers"), QJsonArray{ticker}}};
+                       {QStringLiteral("market_tickers"), market_tickers}};
     QJsonObject msg{{QStringLiteral("id"), next_msg_id_++},
                     {QStringLiteral("cmd"), QStringLiteral("update_subscription")},
                     {QStringLiteral("params"), params}};
@@ -262,6 +285,7 @@ void KalshiWsClient::request_orderbook_snapshot(const QString& ticker) {
 }
 
 void KalshiWsClient::send_account_subscribe() {
+    if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject params;
     params.insert(QStringLiteral("channels"),
                   QJsonArray{QStringLiteral("fill"), QStringLiteral("user_orders"),
@@ -273,7 +297,7 @@ void KalshiWsClient::send_account_subscribe() {
 }
 
 void KalshiWsClient::send_cf_subscribe() {
-    if (cf_indices_.isEmpty()) return;
+    if (!connected_ || !ws_ || !ws_->is_connected() || cf_indices_.isEmpty()) return;
     QJsonArray ids;
     for (const auto& id : cf_indices_) ids.append(id);
     QJsonObject params{{QStringLiteral("channels"), QJsonArray{QStringLiteral("cfbenchmarks_value")}},
@@ -312,8 +336,13 @@ void KalshiWsClient::publish_books(const QString& ticker, qint64 ts_ms) {
                       make_book(ticker + QStringLiteral(":no"), it->no_bids, it->yes_bids));
 }
 
+void KalshiWsClient::schedule_book_publish(const QString& ticker, qint64 ts_ms) {
+    pending_book_publishes_.insert(ticker, ts_ms);
+    if (!book_publish_timer_->isActive()) book_publish_timer_->start();
+}
+
 void KalshiWsClient::send_ping() {
-    if (!connected_) return;
+    if (!connected_ || !ws_ || !ws_->is_connected()) return;
     QJsonObject ping;
     ping.insert("id", next_msg_id_++);
     ping.insert("cmd", "ping");
@@ -329,6 +358,7 @@ void KalshiWsClient::on_connected() {
     orderbook_subscription_sid_ = 0;
     ping_timer_->start();
     LOG_INFO("KalshiWS", "Connected");
+    emit liveness_activity(QDateTime::currentMSecsSinceEpoch());
     emit connection_status_changed(true);
     if (!subscribed_tickers_.isEmpty()) {
         send_subscribe(QStringList(subscribed_tickers_.begin(), subscribed_tickers_.end()));
@@ -356,9 +386,14 @@ void KalshiWsClient::on_message(const QString& msg) {
     if (msg.isEmpty()) return;
     QJsonParseError perr;
     auto doc = QJsonDocument::fromJson(msg.toUtf8(), &perr);
-    if (doc.isNull()) return;
+    if (doc.isNull() || !doc.isObject()) return;
     const auto obj = doc.object();
     const QString type = obj.value("type").toString();
+    // Any valid inbound protocol frame proves that the socket is alive. Pong
+    // is deliberately handled before market payload parsing: quiet books must
+    // not be mistaken for a dead transport.
+    emit liveness_activity(QDateTime::currentMSecsSinceEpoch());
+    if (type == QStringLiteral("pong")) return;
     const auto payload = obj.value("msg").toObject();
     const QString ticker = payload.value("market_ticker").toString();
 
@@ -458,12 +493,15 @@ void KalshiWsClient::on_message(const QString& msg) {
     if (ts_ms <= 0) ts_ms = QDateTime::currentMSecsSinceEpoch();
     auto& state = books_[ticker];
 
-    const auto parse_levels = [](const QJsonArray& levels, QMap<int, double>* out) {
+    const auto parse_levels = [](const QJsonArray& levels, QMap<int, double>* out,
+                                 bool yes_price_to_no_price = false) {
         out->clear();
         for (const auto& value : levels) {
             const auto level = value.toArray();
             if (level.size() < 2) continue;
-            const int price = qRound(kalshi_fp_to_double(level[0]) * 10000.0);
+            double parsed_price = kalshi_fp_to_double(level[0]);
+            if (yes_price_to_no_price) parsed_price = 1.0 - parsed_price;
+            const int price = qRound(parsed_price * 10000.0);
             const double size = kalshi_fp_to_double(level[1]);
             if (price > 0 && size > 0.0) out->insert(price, size);
         }
@@ -475,10 +513,10 @@ void KalshiWsClient::on_message(const QString& msg) {
         if (yes.isEmpty()) yes = payload.value("yes_dollars").toArray();
         if (no.isEmpty()) no = payload.value("no_dollars").toArray();
         parse_levels(yes, &state.yes_bids);
-        parse_levels(no, &state.no_bids);
+        parse_levels(no, &state.no_bids, true);
         if (seq > 0) orderbook_sequence_ = seq;
         state.has_snapshot = true;
-        publish_books(ticker, ts_ms);
+        schedule_book_publish(ticker, ts_ms);
         return;
     }
 
@@ -494,7 +532,9 @@ void KalshiWsClient::on_message(const QString& msg) {
     }
 
     const QString side = payload.value("side").toString().toLower();
-    const int price = qRound(kalshi_fp_to_double(payload.value("price_dollars")) * 10000.0);
+    double parsed_price = kalshi_fp_to_double(payload.value("price_dollars"));
+    if (side == QStringLiteral("no")) parsed_price = 1.0 - parsed_price;
+    const int price = qRound(parsed_price * 10000.0);
     const double delta = kalshi_fp_to_double(payload.value("delta_fp"));
     QMap<int, double>& levels = side == QStringLiteral("no") ? state.no_bids : state.yes_bids;
     const double next = levels.value(price) + delta;
@@ -503,7 +543,7 @@ void KalshiWsClient::on_message(const QString& msg) {
         else levels.insert(price, next);
     }
     orderbook_sequence_ = seq > 0 ? seq : orderbook_sequence_ + 1;
-    publish_books(ticker, ts_ms);
+    schedule_book_publish(ticker, ts_ms);
 }
 
 // ── Hub publish helpers ─────────────────────────────────────────────────────

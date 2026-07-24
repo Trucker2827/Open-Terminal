@@ -100,6 +100,26 @@ SessionPublisher ExchangeSessionManager::build_publisher() {
                               QLatin1Char(':') + interval;
         openmarketterminal::datahub::DataHub::instance().publish(topic, QVariant::fromValue(c));
     };
+    // Authenticated account stream — covered by the existing ws:<id>:* topic
+    // patterns, so no producer-registration change is needed.
+    p.publish_account_order = [](const QString& exchange, const QString& pair, const QJsonObject& order) {
+        if (!hub_supported_exchange(exchange) || pair.isEmpty())
+            return;
+        const QString topic = QStringLiteral("ws:") + exchange + QStringLiteral(":account_order:") + pair;
+        openmarketterminal::datahub::DataHub::instance().publish(topic, QVariant::fromValue(order));
+    };
+    p.publish_account_mytrade = [](const QString& exchange, const QString& pair, const QJsonObject& trade) {
+        if (!hub_supported_exchange(exchange) || pair.isEmpty())
+            return;
+        const QString topic = QStringLiteral("ws:") + exchange + QStringLiteral(":account_mytrade:") + pair;
+        openmarketterminal::datahub::DataHub::instance().publish(topic, QVariant::fromValue(trade));
+    };
+    p.publish_account_balance = [](const QString& exchange, const QJsonObject& balances) {
+        if (!hub_supported_exchange(exchange))
+            return;
+        const QString topic = QStringLiteral("ws:") + exchange + QStringLiteral(":account_balance");
+        openmarketterminal::datahub::DataHub::instance().publish(topic, QVariant::fromValue(balances));
+    };
     return p;
 }
 

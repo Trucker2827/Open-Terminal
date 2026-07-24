@@ -1,6 +1,5 @@
 // src/screens/code_editor/CodeEditorScreen.cpp
-// OpenMarketTerminal Notebook — Obsidian design system implementation.
-// Two views: a prebuilt-notebook Library (cards) and the notebook Editor.
+// OpenTerminal Research Lab — project-connected research and notebook editor.
 
 // CellWidget + CodeTextEdit lives in CodeEditorScreen_Cells.cpp.
 // CellNavigator lives in CodeEditorScreen_Navigator.cpp.
@@ -64,7 +63,7 @@ inline QString kStyle() {
                "#nbHeader { background:%2; border-bottom:2px solid %3; }"
                "#nbHeaderTitle { color:%3; font-weight:700; letter-spacing:1px; background:transparent; }"
 
-               // View tabs (LIBRARY / EDITOR)
+               // Research Lab tabs
                "#nbViewBtn { background:transparent; color:%5; border:1px solid %8; "
                "  font-weight:700; padding:4px 14px; }"
                "#nbViewBtn:hover { color:%4; border-color:%9; }"
@@ -110,6 +109,30 @@ inline QString kStyle() {
                "  padding:1px 7px; border:1px solid rgba(220,38,38,0.35); }"
                "#nbCardOpenBtn { background:%3; color:%1; border:none; padding:5px 18px; font-weight:700; }"
                "#nbCardOpenBtn:hover { background:%10; }"
+
+               // Research Lab tables / stat bands
+               "#nbLabPage { background:%1; }"
+               "#nbLabBand { background:%2; border-bottom:1px solid %8; }"
+               "#nbLabTitle { color:%3; font-weight:700; background:transparent; }"
+               "#nbLabSummary { color:%5; background:transparent; }"
+               "#nbWorkflowBand { background:%1; border-bottom:1px solid %8; }"
+               "#nbWorkflowBtn { background:%7; color:%4; border:1px solid %8; padding:5px 10px; "
+               "  font-weight:700; }"
+               "#nbWorkflowBtn:hover { color:%3; border-color:%3; }"
+               "#nbMetricsBand { background:%2; border-bottom:1px solid %8; }"
+               "#nbMetricPanel { background:%2; border-right:1px solid %8; }"
+               "#nbMetricValue { color:%4; font-size:20px; font-weight:700; background:transparent; }"
+               "#nbMetricValue[positive=\"true\"] { color:%6; }"
+               "#nbMetricValue[positive=\"false\"] { color:%14; }"
+               "#nbMetricLabel { color:%5; font-size:10px; font-weight:700; background:transparent; }"
+               "#nbResearchSection { background:%1; border-right:1px solid %8; }"
+               "#nbSectionTitle { color:%13; background:%2; border-bottom:1px solid %8; "
+               "  padding-left:10px; font-weight:700; }"
+               "QTableWidget#nbLabTable { background:%1; color:%4; border:none; gridline-color:%8; "
+               "  alternate-background-color:%7; selection-background-color:%12; }"
+               "QTableWidget#nbLabTable::item { padding:3px 7px; border-bottom:1px solid %8; }"
+               "QTableWidget#nbLabTable QHeaderView::section { background:%2; color:%5; border:none; "
+               "  border-bottom:1px solid %8; padding:5px 7px; font-weight:700; }"
 
                // Scroll
                "QScrollBar:vertical { background:%1; width:6px; }"
@@ -159,7 +182,7 @@ CodeEditorScreen::CodeEditorScreen(QWidget* parent) : QWidget(parent) {
     build_ui();
     on_new_notebook();
     populate_library();
-    set_view(0); // land on the Library so users discover the prebuilt notebooks
+    set_view(ResearchView);
 }
 
 void CodeEditorScreen::showEvent(QShowEvent* event) {
@@ -186,12 +209,17 @@ void CodeEditorScreen::build_ui() {
 
     view_stack_ = new QStackedWidget(this);
     library_page_ = build_library_page();
-    view_stack_->addWidget(library_page_);     // 0 — Library
-    view_stack_->addWidget(build_editor_page()); // 1 — Editor
+    view_stack_->addWidget(library_page_);
+    view_stack_->addWidget(build_experiments_page());
+    view_stack_->addWidget(build_trade_reviews_page());
+    view_stack_->addWidget(build_reports_page());
+    view_stack_->addWidget(build_forecast_arena_page());
+    view_stack_->addWidget(build_editor_page());
+    view_stack_->addWidget(build_alpha_arena_page());
     root->addWidget(view_stack_, 1);
 }
 
-// Header bar: title + LIBRARY/EDITOR tabs + Library search + NEW button.
+// Header bar: project research views + notebook editor.
 QWidget* CodeEditorScreen::build_header() {
     auto* bar = new QWidget(this);
     bar->setObjectName("nbHeader");
@@ -201,13 +229,14 @@ QWidget* CodeEditorScreen::build_header() {
     hl->setContentsMargins(14, 0, 12, 0);
     hl->setSpacing(8);
 
-    header_title_ = new QLabel(tr("NOTEBOOKS"), bar);
+    header_title_ = new QLabel(tr("RESEARCH LAB"), bar);
     header_title_->setObjectName("nbHeaderTitle");
     header_title_->setStyleSheet(QString("font-family:%1; font-size:%2px;").arg(fonts::DATA_FAMILY).arg(fonts::SMALL));
     hl->addWidget(header_title_);
     hl->addSpacing(10);
 
-    const QStringList tabs = {tr("LIBRARY"), tr("EDITOR")};
+    const QStringList tabs = {tr("RESEARCH"), tr("EXPERIMENTS"), tr("TRADE REVIEWS"), tr("REPORTS"),
+                              tr("FORECAST ARENA"), tr("EDITOR"), tr("ALPHA ARENA")};
     for (int i = 0; i < tabs.size(); ++i) {
         auto* btn = new QPushButton(tabs[i], bar);
         btn->setObjectName("nbViewBtn");
@@ -222,7 +251,7 @@ QWidget* CodeEditorScreen::build_header() {
 
     lib_search_input_ = new QLineEdit(bar);
     lib_search_input_->setObjectName("nbSearchInput");
-    lib_search_input_->setPlaceholderText(tr("Search notebooks..."));
+    lib_search_input_->setPlaceholderText(tr("Filter evidence, symbols, models..."));
     lib_search_input_->setClearButtonEnabled(true);
     connect(lib_search_input_, &QLineEdit::textChanged, this, &CodeEditorScreen::on_library_search);
     hl->addWidget(lib_search_input_);
@@ -232,7 +261,7 @@ QWidget* CodeEditorScreen::build_header() {
     header_new_btn_->setCursor(Qt::PointingHandCursor);
     connect(header_new_btn_, &QPushButton::clicked, this, [this]() {
         on_new_notebook();
-        set_view(1);
+        set_view(EditorView);
     });
     hl->addWidget(header_new_btn_);
 
@@ -299,9 +328,21 @@ void CodeEditorScreen::set_view(int index) {
         view_btns_[i]->style()->unpolish(view_btns_[i]);
         view_btns_[i]->style()->polish(view_btns_[i]);
     }
-    // Search only applies to the Library view.
+    // Search filters the live evidence workspace.
     if (lib_search_input_)
-        lib_search_input_->setVisible(index == 0);
+        lib_search_input_->setVisible(index == ResearchView);
+    if (index == ResearchView)
+        refresh_research_overview();
+    else if (index == ExperimentsView)
+        refresh_experiments();
+    else if (index == TradeReviewsView)
+        refresh_trade_reviews();
+    else if (index == ReportsView)
+        refresh_reports();
+    else if (index == ForecastArenaView)
+        refresh_forecast_arena();
+    else if (index == AlphaArenaView)
+        refresh_alpha_arena();
 }
 
 void CodeEditorScreen::on_view_changed(int index) {
@@ -744,7 +785,7 @@ void CodeEditorScreen::on_open_notebook() {
 bool CodeEditorScreen::open_notebook_path(const QString& path) {
     const bool ok = load_notebook_from_path(path);
     if (ok)
-        set_view(1); // surface the editor so the loaded notebook is visible
+        set_view(EditorView);
     return ok;
 }
 
@@ -1041,11 +1082,11 @@ void CodeEditorScreen::changeEvent(QEvent* event) {
 
 void CodeEditorScreen::retranslateUi() {
     // Header
-    if (header_title_) header_title_->setText(tr("NOTEBOOKS"));
-    const QStringList tab_labels = {tr("LIBRARY"), tr("EDITOR")};
+    if (header_title_) header_title_->setText(tr("RESEARCH LAB"));
+    const QStringList tab_labels = {tr("RESEARCH"), tr("EXPERIMENTS"), tr("TRADE REVIEWS"), tr("REPORTS"), tr("EDITOR")};
     for (int i = 0; i < view_btns_.size() && i < tab_labels.size(); ++i)
         view_btns_[i]->setText(tab_labels[i]);
-    if (lib_search_input_) lib_search_input_->setPlaceholderText(tr("Search notebooks..."));
+    if (lib_search_input_) lib_search_input_->setPlaceholderText(tr("Filter evidence, symbols, models..."));
     if (header_new_btn_) header_new_btn_->setText(tr("＋  NEW NOTEBOOK"));
 
     // Toolbar
@@ -1060,10 +1101,6 @@ void CodeEditorScreen::retranslateUi() {
     if (btn_sidebar_) btn_sidebar_->setText(tr("SIDEBAR"));
     if (py_label_) py_label_->setText(tr("Python"));
     refresh_kernel_label();
-    if (lib_toolbar_lbl_)
-        lib_toolbar_lbl_->setText(tr("NOTEBOOK LIBRARY — curated finance, economics, trading, "
-                                     "investing, portfolio & quant notebooks"));
-
     // Status bar
     if (shortcuts_label_)
         shortcuts_label_->setText(tr("Ctrl+Enter: RUN  |  Shift+Enter: RUN & NEXT  |  Tab: 4 SPACES  |  Ctrl+S: SAVE"));

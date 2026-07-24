@@ -15,6 +15,7 @@
 #include "screens/crypto_trading/CryptoCredentials.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
 #include "screens/crypto_trading/CryptoOrderEntry.h"
+#include "screens/crypto_trading/CryptoSymbolUniverse.h"
 #include "screens/crypto_trading/CryptoTickerBar.h"
 #include "screens/crypto_trading/CryptoWatchlist.h"
 #include "trading/ExchangeService.h"
@@ -73,8 +74,14 @@ void CryptoTradingScreen::async_fetch_live_positions() {
             [self, result]() {
                 if (!self)
                     return;
-                if (result.contains("positions"))
-                    self->bottom_panel_->set_live_positions(result.value("positions").toArray());
+                if (result.contains("positions")) {
+                    const QJsonArray positions = result.value("positions").toArray();
+                    // Spot venues return no positions; the POS tab is owned by
+                    // the holdings view then (refresh_live_holdings) — don't
+                    // stomp it with an empty perp-shaped array.
+                    if (!positions.isEmpty() || self->is_perp_market())
+                        self->bottom_panel_->set_live_positions(positions);
+                }
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);
@@ -92,8 +99,20 @@ void CryptoTradingScreen::async_fetch_live_orders() {
             [self, result]() {
                 if (!self)
                     return;
-                if (result.contains("orders"))
-                    self->bottom_panel_->set_live_orders(result.value("orders").toArray());
+                if (result.contains("orders")) {
+                    const QJsonArray orders = result.value("orders").toArray();
+                    self->bottom_panel_->set_live_orders(orders);
+                    // REST is the source of truth — rebuild the account-WS
+                    // fast-path accumulator so a missed WS event can't leave
+                    // a phantom open order behind.
+                    self->live_orders_by_id_.clear();
+                    for (const auto& v : orders) {
+                        const QJsonObject o = v.toObject();
+                        const QString id = o.value("id").toString();
+                        if (!id.isEmpty())
+                            self->live_orders_by_id_.insert(id, o);
+                    }
+                }
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);
@@ -124,33 +143,77 @@ void CryptoTradingScreen::async_fetch_live_balance() {
                 if (!self)
                     return;
                 self->set_live_auth_indicator(authed);
-                const QJsonObject balances = result.value("balances").toObject();
-                // Pick the cash/quote currency to display. The displayed pair's
-                // quote (e.g. USDT) may be remapped on the exchange — Coinbase
-                // settles in USD — so try the pair quote first, then common
-                // fiat/stablecoins, then fall back to the single largest holding.
-                const QString pair_quote = self->selected_symbol_.section('/', 1, 1).toUpper();
-                QString ccy;
-                for (const QString& cand : {pair_quote, QStringLiteral("USD"), QStringLiteral("USDC"),
-                                            QStringLiteral("USDT"), QStringLiteral("USDE")}) {
-                    if (!cand.isEmpty() && balances.contains(cand)) {
-                        ccy = cand;
-                        break;
-                    }
-                }
-                if (ccy.isEmpty() && !balances.isEmpty())
-                    ccy = balances.keys().first();
-
-                const QJsonObject b = balances.value(ccy).toObject();
-                const double total = b.value("total").toDouble();
-                const double free = b.value("free").toDouble();
-                const double used = b.value("used").toDouble();
-                self->bottom_panel_->set_live_balance(free, total, used);
-                self->order_entry_->set_balance(free, ccy);
+                self->apply_live_balance_display(result.value("balances").toObject());
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);
     });
+}
+
+void CryptoTradingScreen::apply_live_balance_display(const QJsonObject& balances) {
+    // Pick the cash/quote currency to display. Try the displayed pair's quote
+    // first, then common fiat/stablecoins, then fall back to the single
+    // largest holding. Shared by the REST poll and the account-WS fast path.
+    const QString pair_quote = selected_symbol_.section('/', 1, 1).toUpper();
+    QString ccy;
+    for (const QString& cand : {pair_quote, QStringLiteral("USD"), QStringLiteral("USDC"),
+                                QStringLiteral("USDT"), QStringLiteral("USDE")}) {
+        if (!cand.isEmpty() && balances.contains(cand)) {
+            ccy = cand;
+            break;
+        }
+    }
+    if (ccy.isEmpty() && !balances.isEmpty())
+        ccy = balances.keys().first();
+
+    const QJsonObject b = balances.value(ccy).toObject();
+    const double total = b.value("total").toDouble();
+    const double free = b.value("free").toDouble();
+    const double used = b.value("used").toDouble();
+    bottom_panel_->set_live_balance(free, total, used);
+    order_entry_->set_balance(free, ccy);
+
+    last_balances_ = balances;
+    refresh_live_holdings();
+}
+
+void CryptoTradingScreen::refresh_live_holdings() {
+    // Spot venues expose no positions — the POS tab renders account holdings
+    // instead (asset qty x live mark). Perp venues keep the real position feed.
+    if (trading_mode_ != TradingMode::Live || is_perp_market() || !bottom_panel_)
+        return;
+    static const QSet<QString> kQuoteCurrencies = {
+        QStringLiteral("USD"),  QStringLiteral("USDC"), QStringLiteral("USDT"),
+        QStringLiteral("USDE"), QStringLiteral("EUR"),  QStringLiteral("GBP"),
+    };
+    const QString quote = openmarketterminal::crypto::quote_currency_for(exchange_id_);
+    QJsonArray holdings;
+    for (auto it = last_balances_.constBegin(); it != last_balances_.constEnd(); ++it) {
+        if (kQuoteCurrencies.contains(it.key()))
+            continue;
+        const double qty = it.value().toObject().value(QStringLiteral("total")).toDouble();
+        if (qty <= 0.0)
+            continue;
+        const QString symbol = it.key() + QLatin1Char('/') + quote;
+        double price = 0.0;
+        const auto cached = pending_tickers_.constFind(symbol);
+        if (cached != pending_tickers_.constEnd() && cached->last > 0)
+            price = cached->last;
+        else
+            price = ExchangeService::instance().get_cached_price(symbol).last;
+        QJsonObject row{{QStringLiteral("symbol"), symbol},
+                        {QStringLiteral("qty"), qty},
+                        {QStringLiteral("price"), price}};
+        // Est. avg entry / unrealized P&L exist only for the selected pair,
+        // seeded from its trade history (CryptoLiveOverlay).
+        if (symbol == selected_symbol_ && live_avg_entry_.avg_entry() > 0 && price > 0) {
+            row.insert(QStringLiteral("avg_entry"), live_avg_entry_.avg_entry());
+            row.insert(QStringLiteral("upnl_valid"), true);
+            row.insert(QStringLiteral("upnl"), (price - live_avg_entry_.avg_entry()) * qty);
+        }
+        holdings.append(row);
+    }
+    bottom_panel_->set_live_holdings(holdings);
 }
 
 // ============================================================================
@@ -169,6 +232,25 @@ void CryptoTradingScreen::async_fetch_my_trades() {
                 if (!self)
                     return;
                 self->bottom_panel_->update_my_trades(result);
+                // Re-seed the est-avg-entry accumulator from REST history so
+                // the ladder marker is right without waiting for new fills.
+                if (result.contains("trades")) {
+                    QVector<QJsonObject> rows;
+                    for (const auto& v : result.value("trades").toArray())
+                        rows.append(v.toObject());
+                    std::sort(rows.begin(), rows.end(), [](const QJsonObject& a, const QJsonObject& b) {
+                        return a.value("timestamp").toDouble() < b.value("timestamp").toDouble();
+                    });
+                    self->live_avg_entry_.reset();
+                    for (const QJsonObject& t : rows) {
+                        if (t.value("symbol").toString() == self->selected_symbol_ ||
+                            t.value("symbol").toString().isEmpty())
+                            self->live_avg_entry_.add_trade(t.value("side").toString(),
+                                                            t.value("price").toDouble(),
+                                                            t.value("amount").toDouble());
+                    }
+                    self->refresh_live_ladder_overlay();
+                }
                 self->live_inflight_.fetch_sub(1);
             },
             Qt::QueuedConnection);

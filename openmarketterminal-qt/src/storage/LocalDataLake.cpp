@@ -6,9 +6,11 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QLockFile>
 #include <QSaveFile>
 
 #include <algorithm>
@@ -30,23 +32,88 @@ QString sanitize_name(QString value) {
 QJsonObject dataset_status(const QString& root, const QString& dataset) {
     const QDir dir(root + QDir::separator() + dataset);
     qint64 bytes = 0;
+    qint64 orphaned_temp_bytes = 0;
     int files = 0;
+    int orphaned_temp_files = 0;
     qint64 last_modified = 0;
     if (dir.exists()) {
-        const auto entries = dir.entryInfoList(QStringList{QStringLiteral("*.jsonl")},
-                                               QDir::Files | QDir::Readable,
-                                               QDir::Name);
+        const auto entries = dir.entryInfoList(QDir::Files | QDir::Readable, QDir::Name);
         for (const QFileInfo& info : entries) {
-            ++files;
-            bytes += info.size();
-            last_modified = std::max<qint64>(last_modified, info.lastModified().toMSecsSinceEpoch());
+            const QString name = info.fileName();
+            if (name.endsWith(QStringLiteral(".jsonl"))) {
+                ++files;
+                bytes += info.size();
+                last_modified = std::max<qint64>(last_modified, info.lastModified().toMSecsSinceEpoch());
+            } else if (name.contains(QStringLiteral(".jsonl.")) &&
+                       !name.endsWith(QStringLiteral(".jsonl.lock"))) {
+                // QSaveFile uses this naming shape for interrupted replacements.
+                // Do not delete evidence automatically; surface it for an explicit
+                // operator cleanup after the writer has been made serial.
+                ++orphaned_temp_files;
+                orphaned_temp_bytes += info.size();
+            }
         }
     }
     return QJsonObject{{"dataset", dataset},
                        {"path", dir.absolutePath()},
                        {"files", files},
                        {"bytes", QString::number(bytes)},
+                       {"orphaned_temp_files", orphaned_temp_files},
+                       {"orphaned_temp_bytes", QString::number(orphaned_temp_bytes)},
+                       {"total_bytes", QString::number(bytes + orphaned_temp_bytes)},
                        {"last_modified_ms", QString::number(last_modified)}};
+}
+
+constexpr qint64 kInterruptedArtifactMinimumAgeMs = 5 * 60 * 1000;
+
+struct InterruptedArtifactScan {
+    struct Candidate {
+        QString path;
+        qint64 bytes = 0;
+    };
+    QVector<Candidate> candidates;
+    int recent_files = 0;
+    qint64 recent_bytes = 0;
+};
+
+InterruptedArtifactScan interrupted_artifact_scan(const QString& root) {
+    InterruptedArtifactScan scan;
+    if (!QFileInfo::exists(root))
+        return scan;
+
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    QDirIterator it(root, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QFileInfo info(it.next());
+        const QString name = info.fileName();
+        if (!name.contains(QStringLiteral(".jsonl.")) ||
+            name.endsWith(QStringLiteral(".jsonl.lock")))
+            continue;
+        if (now_ms - info.lastModified().toMSecsSinceEpoch() < kInterruptedArtifactMinimumAgeMs) {
+            ++scan.recent_files;
+            scan.recent_bytes += info.size();
+            continue;
+        }
+        scan.candidates.append({info.absoluteFilePath(), info.size()});
+    }
+    return scan;
+}
+
+QString interrupted_artifact_target_path(const QString& artifact_path) {
+    const int marker = artifact_path.lastIndexOf(QStringLiteral(".jsonl."));
+    return marker < 0 ? QString() : artifact_path.left(marker + QStringLiteral(".jsonl").size());
+}
+
+QJsonArray cleanup_preview_rows(const QVector<InterruptedArtifactScan::Candidate>& candidates) {
+    QJsonArray rows;
+    // Keep the safe preview useful in a terminal. The count and byte total
+    // remain exact; this is just a representative, inspectable sample.
+    constexpr int kPreviewLimit = 20;
+    for (int index = 0; index < candidates.size() && index < kPreviewLimit; ++index) {
+        const auto& candidate = candidates.at(index);
+        rows.append(QJsonObject{{"path", candidate.path}, {"bytes", QString::number(candidate.bytes)}});
+    }
+    return rows;
 }
 
 QJsonObject source_doc(const QString& source, const QString& details) {
@@ -54,6 +121,14 @@ QJsonObject source_doc(const QString& source, const QString& details) {
 }
 
 bool replace_jsonl_file(const QString& path, const QJsonArray& rows, QString* error) {
+    QLockFile lock(path + QStringLiteral(".lock"));
+    lock.setStaleLockTime(5 * 60 * 1000);
+    if (!lock.tryLock(5000)) {
+        if (error)
+            *error = QStringLiteral("data lake write lock unavailable for %1: %2")
+                         .arg(path, lock.error());
+        return false;
+    }
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
         if (error)
@@ -67,8 +142,13 @@ bool replace_jsonl_file(const QString& path, const QJsonArray& rows, QString* er
         QJsonObject row = v.toObject();
         if (!row.contains(QStringLiteral("_lake_ingested_at")))
             row["_lake_ingested_at"] = ingested_at;
-        f.write(QJsonDocument(row).toJson(QJsonDocument::Compact));
-        f.write("\n");
+        const QByteArray encoded = QJsonDocument(row).toJson(QJsonDocument::Compact) + '\n';
+        if (f.write(encoded) != encoded.size()) {
+            f.cancelWriting();
+            if (error)
+                *error = QStringLiteral("failed to write %1: %2").arg(path, f.errorString());
+            return false;
+        }
     }
     if (!f.commit()) {
         if (error)
@@ -132,6 +212,21 @@ bool LocalDataLake::ensure(QString* error) const {
         }
     }
 
+    if (QFileInfo::exists(manifest_path()))
+        return true;
+
+    QLockFile manifest_lock(manifest_path() + QStringLiteral(".lock"));
+    manifest_lock.setStaleLockTime(5 * 60 * 1000);
+    if (!manifest_lock.tryLock(5000)) {
+        if (error)
+            *error = QStringLiteral("data lake manifest lock unavailable: %1").arg(manifest_lock.error());
+        return false;
+    }
+    // Another collector may have completed initialization while this process
+    // was waiting for the lock.
+    if (QFileInfo::exists(manifest_path()))
+        return true;
+
     QSaveFile manifest_file(manifest_path());
     if (!manifest_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
         if (error)
@@ -191,26 +286,109 @@ QJsonObject LocalDataLake::manifest() const {
 QJsonObject LocalDataLake::status() const {
     const QString root = root_dir();
     QJsonArray datasets;
+    qint64 active_bytes = 0;
+    qint64 orphaned_temp_bytes = 0;
+    int orphaned_temp_files = 0;
     for (const QString& name : {QStringLiteral("raw_ticks"),
                                QStringLiteral("market_snapshots"),
                                QStringLiteral("model_outputs"),
                                QStringLiteral("decision_journal"),
                                QStringLiteral("broker_events"),
                                QStringLiteral("news_research")}) {
-        datasets.append(dataset_status(root, name));
+        const QJsonObject row = dataset_status(root, name);
+        active_bytes += row.value("bytes").toString().toLongLong();
+        orphaned_temp_bytes += row.value("orphaned_temp_bytes").toString().toLongLong();
+        orphaned_temp_files += row.value("orphaned_temp_files").toInt();
+        datasets.append(row);
     }
     const QFileInfo manifest_info(manifest_path());
     return QJsonObject{{"root", root},
                        {"exists", QFileInfo::exists(root)},
                        {"manifest", manifest_path()},
                        {"manifest_exists", manifest_info.exists()},
+                       {"active_bytes", QString::number(active_bytes)},
+                       {"orphaned_temp_files", orphaned_temp_files},
+                       {"orphaned_temp_bytes", QString::number(orphaned_temp_bytes)},
+                       {"total_bytes", QString::number(active_bytes + orphaned_temp_bytes)},
+                       {"storage_warning", orphaned_temp_files > 0
+                           ? QStringLiteral("interrupted replacement artifacts detected; use an explicit cleanup command after review")
+                           : QString()},
                        {"datasets", datasets}};
+}
+
+QJsonObject LocalDataLake::cleanup_interrupted_artifacts(bool confirmed, QString* error) const {
+    const InterruptedArtifactScan scan = interrupted_artifact_scan(root_dir());
+    qint64 candidate_bytes = 0;
+    for (const auto& candidate : scan.candidates)
+        candidate_bytes += candidate.bytes;
+
+    QJsonObject out{{"root", root_dir()},
+                    {"confirmed", confirmed},
+                    {"minimum_artifact_age_seconds", kInterruptedArtifactMinimumAgeMs / 1000},
+                    {"candidate_files", scan.candidates.size()},
+                    {"candidate_bytes", QString::number(candidate_bytes)},
+                    {"recent_files_skipped", scan.recent_files},
+                    {"recent_bytes_skipped", QString::number(scan.recent_bytes)},
+                    {"preview", cleanup_preview_rows(scan.candidates)}};
+    if (!confirmed) {
+        out["deleted_files"] = 0;
+        out["deleted_bytes"] = QStringLiteral("0");
+        out["next_command"] = QStringLiteral("data lake cleanup-interrupted --yes");
+        out["rule"] = QStringLiteral("preview only; no files were deleted without --yes");
+        return out;
+    }
+
+    int deleted_files = 0;
+    int locked_files = 0;
+    int failed_files = 0;
+    qint64 deleted_bytes = 0;
+    QJsonArray failures;
+    for (const auto& candidate : scan.candidates) {
+        const QString target_path = interrupted_artifact_target_path(candidate.path);
+        if (target_path.isEmpty()) {
+            ++failed_files;
+            failures.append(QJsonObject{{"path", candidate.path}, {"error", "invalid artifact name"}});
+            continue;
+        }
+        QLockFile lock(target_path + QStringLiteral(".lock"));
+        lock.setStaleLockTime(5 * 60 * 1000);
+        if (!lock.tryLock(0)) {
+            ++locked_files;
+            continue;
+        }
+        if (!QFile::remove(candidate.path)) {
+            ++failed_files;
+            failures.append(QJsonObject{{"path", candidate.path},
+                                        {"error", QStringLiteral("failed to remove artifact")}});
+            continue;
+        }
+        ++deleted_files;
+        deleted_bytes += candidate.bytes;
+    }
+    out["deleted_files"] = deleted_files;
+    out["deleted_bytes"] = QString::number(deleted_bytes);
+    out["locked_files_skipped"] = locked_files;
+    out["failed_files"] = failed_files;
+    if (!failures.isEmpty())
+        out["failures"] = failures;
+    out["ok"] = failed_files == 0;
+    if (failed_files > 0 && error)
+        *error = QStringLiteral("some interrupted lake artifacts could not be removed");
+    return out;
 }
 
 bool LocalDataLake::append_jsonl(const QString& dataset, const QJsonObject& row, QString* error) {
     if (!ensure(error))
         return false;
-    QFile f(dataset_file(dataset));
+    const QString path = dataset_file(dataset);
+    QLockFile lock(path + QStringLiteral(".lock"));
+    lock.setStaleLockTime(5 * 60 * 1000);
+    if (!lock.tryLock(5000)) {
+        if (error)
+            *error = QStringLiteral("data lake write lock unavailable for %1: %2").arg(path, lock.error());
+        return false;
+    }
+    QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
         if (error)
             *error = QStringLiteral("failed to open %1: %2").arg(f.fileName(), f.errorString());
@@ -219,8 +397,12 @@ bool LocalDataLake::append_jsonl(const QString& dataset, const QJsonObject& row,
     QJsonObject copy = row;
     if (!copy.contains(QStringLiteral("_lake_ingested_at")))
         copy["_lake_ingested_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    f.write(QJsonDocument(copy).toJson(QJsonDocument::Compact));
-    f.write("\n");
+    const QByteArray encoded = QJsonDocument(copy).toJson(QJsonDocument::Compact) + '\n';
+    if (f.write(encoded) != encoded.size()) {
+        if (error)
+            *error = QStringLiteral("failed to write %1: %2").arg(f.fileName(), f.errorString());
+        return false;
+    }
     return true;
 }
 

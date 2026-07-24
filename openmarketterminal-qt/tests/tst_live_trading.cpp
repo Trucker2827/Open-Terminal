@@ -38,8 +38,8 @@ using namespace openmarketterminal;
 using namespace openmarketterminal::headless;
 
 // ── FakeBroker — a minimal sandbox IBroker the live equity path can route to.
-// place_order ALWAYS reports a successful fill with order_id "FAKE-1"; every
-// other method is a harmless stub. Registered under a test broker id via
+// place_order returns a successful submission with order_id "FAKE-1" and
+// get_orders confirms its fill; every other method is a harmless stub. Registered under a test broker id via
 // BrokerRegistry::register_broker_for_test so an armed equity `submit_order
 // live` against a "sandbox" account routes here instead of a real broker. NO
 // real credentials are ever used.
@@ -73,7 +73,18 @@ class FakeBroker : public trading::IBroker {
     }
     trading::ApiResponse<QVector<trading::BrokerOrderInfo>>
     get_orders(const trading::BrokerCredentials&) override {
-        return {};
+        trading::BrokerOrderInfo order;
+        order.order_id = QStringLiteral("FAKE-1");
+        order.symbol = QStringLiteral("AAPL");
+        order.side = QStringLiteral("buy");
+        order.quantity = 10.0;
+        order.filled_qty = 10.0;
+        order.avg_price = 100.0;
+        order.status = QStringLiteral("filled");
+        trading::ApiResponse<QVector<trading::BrokerOrderInfo>> response;
+        response.success = true;
+        response.data = QVector<trading::BrokerOrderInfo>{order};
+        return response;
     }
     trading::ApiResponse<QJsonObject>
     get_trade_book(const trading::BrokerCredentials&) override {

@@ -39,6 +39,7 @@ class CryptoMicrostructureWidget : public BaseWidget {
     void apply_styles();
     void start_feed();
     void stop_feed();
+    void refresh_cost_context();
     void render();
     void render_sources(const openmarketterminal::services::edge_radar::CryptoMicrostructureSnapshot& snap);
     void render_windows(const openmarketterminal::services::edge_radar::CryptoMicrostructureSnapshot& snap);
@@ -53,6 +54,10 @@ class CryptoMicrostructureWidget : public BaseWidget {
 
     openmarketterminal::services::crypto_latency::CryptoLatencyService feed_;
     openmarketterminal::services::edge_radar::CryptoMicrostructureRadar radar_;
+    // Net-of-fees + noise-floor inputs for the radar call; refreshed
+    // periodically (fee table + stored realized-vol series), never fabricated.
+    openmarketterminal::services::edge_radar::CryptoMicrostructureCostContext cost_ctx_;
+    qint64 cost_ctx_refreshed_ms_ = 0;
 
     QTimer* render_timer_ = nullptr;
     QLabel* call_label_ = nullptr;
@@ -60,6 +65,7 @@ class CryptoMicrostructureWidget : public BaseWidget {
     QLabel* price_label_ = nullptr;
     QLabel* book_label_ = nullptr;
     QLabel* pressure_label_ = nullptr;
+    QLabel* econ_label_ = nullptr;
     QLabel* rationale_label_ = nullptr;
     QTableWidget* windows_table_ = nullptr;
     QTableWidget* sources_table_ = nullptr;

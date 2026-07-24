@@ -1,4 +1,5 @@
 #include "cli/BridgeClient.h"
+#include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QTcpSocket>
 #include <QUrl>
@@ -26,14 +27,27 @@ ClientResult BridgeClient::request(const QByteArray& method, const QString& path
     if (!sock.waitForBytesWritten(3000))
         return {ClientStatus::Transport, {}, "write failed"};
 
+    // Connection: close framing — the response is complete when the server
+    // closes the socket, not when the line goes quiet. An idle-window read here
+    // truncates slow tools (a Quant Lab call legitimately computes for >5s
+    // before its first byte), so wait until close, bounded only by the total
+    // deadline.
     QByteArray resp;
-    while (sock.state() == QAbstractSocket::ConnectedState && sock.waitForReadyRead(5000))
+    QElapsedTimer waited;
+    waited.start();
+    while (sock.state() == QAbstractSocket::ConnectedState) {
+        const qint64 remaining = total_timeout_ms_ - waited.elapsed();
+        if (remaining <= 0)
+            break;
+        sock.waitForReadyRead(static_cast<int>(qMin<qint64>(remaining, 1000)));
         resp += sock.readAll();
+    }
     resp += sock.readAll();
 
     const int hdr_end = resp.indexOf("\r\n\r\n");
     if (hdr_end < 0)
-        return {ClientStatus::BadResponse, {}, "no header terminator"};
+        return {ClientStatus::BadResponse, {},
+                QString("no header terminator (%1 bytes after %2ms)").arg(resp.size()).arg(waited.elapsed())};
     const QByteArray status_line = resp.left(resp.indexOf("\r\n"));
     const QByteArray payload = resp.mid(hdr_end + 4);
     const int code = status_line.split(' ').value(1).toInt();

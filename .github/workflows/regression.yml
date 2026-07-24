@@ -86,6 +86,21 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DOPENMARKETTERMINAL_BUILD_TESTS=ON
 
+      # test_hft_terminal_source imports qlib_high_frequency -> numpy (issue
+      # #116). Install into the EXACT interpreter ctest will invoke — CMake's
+      # Python3_EXECUTABLE — not the shell's python3: install-qt-action puts a
+      # toolcache python on PATH, and a bare `pip install --user` lands in a
+      # different interpreter's site-packages (first fix attempt failed that way).
+      - name: Install python test dependencies (ctest interpreter)
+        working-directory: openmarketterminal-qt
+        run: |
+          PY=$(sed -n 's/^Python3_EXECUTABLE:FILEPATH=//p' build-test/CMakeCache.txt | head -1)
+          if [ -z "$PY" ]; then PY=$(sed -n 's/^_Python3_EXECUTABLE:INTERNAL=//p' build-test/CMakeCache.txt | head -1); fi
+          test -n "$PY" || { echo "::error::Python3_EXECUTABLE not found in CMakeCache"; exit 1; }
+          echo "ctest python: $PY ($("$PY" --version))"
+          "$PY" -m pip install --user numpy || "$PY" -m pip install numpy
+          "$PY" -c "import numpy; print('numpy', numpy.__version__)"
+
       - name: Build (GUI + CLI + tests)
         working-directory: openmarketterminal-qt
         run: cmake --build build-test --parallel "$(nproc)"

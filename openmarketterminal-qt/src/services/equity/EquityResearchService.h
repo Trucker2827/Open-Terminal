@@ -69,6 +69,10 @@ class EquityResearchService : public QObject {
     void ensure_candles(const QString& symbol, const QString& period,
                         std::function<void(bool, const QString&)> done);
 
+    // yfinance financials path — the fallback fetch_financials() uses when
+    // EDGAR cannot serve the symbol, and the direct path for non-US listings.
+    void fetch_financials_yfinance(const QString& symbol);
+
     // yfinance news path — the fallback fetch_news() uses when Google News
     // (fetch_company_news.py) is unavailable or returns no articles.
     void fetch_news_yfinance(const QString& symbol, int count);

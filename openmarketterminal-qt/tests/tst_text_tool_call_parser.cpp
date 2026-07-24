@@ -93,6 +93,39 @@ private slots:
     void empty_known_set_is_safe() {
         QVERIFY(parse_bare_json_tool_calls(R"({"name":"get_quote","arguments":{}})", {}).isEmpty());
     }
+
+    // Field report (coney/llama3.1 via Ollama, 2026-07-23): the model NARRATES
+    // the call — prose, then an un-fenced JSON object using the MCP-client
+    // prefixed tool name. Both quirks must resolve to a real call.
+    void llama_narrated_unfenced_prefixed_call_parses() {
+        const QString content =
+            "I can help you with this one. To get the current weather forecast for "
+            "Atlanta, GA using DuckDuckGo web search, I would call the "
+            "\"openmarketterminal__web_search\" function as follows:\n"
+            R"({"name": "openmarketterminal__web_search", "parameters": {"max_results":"5","url":"","query":"atlanta ga weather"}})";
+        const auto c = parse_bare_json_tool_calls(content, {"web_search", "get_quote"});
+        QCOMPARE(c.size(), 1);
+        QCOMPARE(c.first().first, QString("web_search"));
+        QCOMPARE(c.first().second.value("query").toString(), QString("atlanta ga weather"));
+    }
+    void mcp_double_prefix_and_functions_path_normalize() {
+        const auto a = parse_bare_json_tool_calls(
+            R"(Sure: {"name":"mcp__openmarketterminal__get_quote","arguments":{"symbol":"AAPL"}})",
+            {"get_quote"});
+        QCOMPARE(a.size(), 1);
+        QCOMPARE(a.first().first, QString("get_quote"));
+        const auto b = parse_bare_json_tool_calls(
+            R"(Calling {"name":"functions.get_quote","arguments":{"symbol":"AAPL"}} now.)",
+            {"get_quote"});
+        QCOMPARE(b.size(), 1);
+    }
+    void unfenced_scan_ignores_non_tool_objects_and_braces_in_strings() {
+        // Prose containing a data-shaped object and a brace inside a string
+        // must not produce calls or crash the balanced scan.
+        const QString content =
+            "Revenue was {\"revenue\": 1} and the note said \"use {curly} braces\" — done.";
+        QVERIFY(parse_bare_json_tool_calls(content, {"web_search"}).isEmpty());
+    }
 };
 
 QTEST_MAIN(TstTextToolCallParser)

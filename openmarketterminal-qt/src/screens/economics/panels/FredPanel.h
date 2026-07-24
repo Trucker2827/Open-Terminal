@@ -26,6 +26,12 @@ class FredPanel : public EconPanelBase {
 
   private:
     void retranslateUi() override;
+    // Key-less DBnomics fallback (FredDbnomicsFallback.h): when the FRED key
+    // is missing/invalid and the requested series has a verified mirror, we
+    // fetch it from the native DBnomicsService instead of showing an error.
+    void try_dbnomics_fallback(const QString& fred_series);
+    QString pending_dbn_series_id_;  // "PROV/DATASET/CODE" awaited, empty = none
+    QString pending_fred_label_;
 
     QLineEdit* series_input_ = nullptr;
     QComboBox* preset_combo_ = nullptr;

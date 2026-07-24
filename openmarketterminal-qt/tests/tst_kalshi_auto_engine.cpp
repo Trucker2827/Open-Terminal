@@ -300,7 +300,31 @@ class TstKalshiAutoEngine : public QObject {
         QVERIFY(point.net_edge < 0.0);
     }
 
-    void causal_gate_rejects_quotes_that_did_not_precede_the_price_move() {
+    void calibration_evidence_cannot_gain_authority_until_explicitly_enabled() {
+        const qint64 now = 1'800'000'000'000LL;
+        auto ctx = context(now);
+        ctx.calibration_gate_enabled = true;
+        KalshiCalibrationModel proven;
+        proven.ready = true;
+        proven.sample_count = 40;
+        proven.learned_model_weight = 0.75;
+        proven.points = {{0.2, 0.1, 20}, {0.8, 0.9, 20}};
+        const auto market = above_market(QStringLiteral("AUTH"), QStringLiteral("EV"),
+                                         64'000.0, 0.49, 0.51, now + 3'600'000);
+        const auto unproven = KalshiAutoEngine::build_surface({market}, {}, ctx).first();
+        QVERIFY(!unproven.calibration_bucket.isEmpty());
+        ctx.calibration_models.insert(unproven.calibration_bucket, proven);
+        const auto disabled = KalshiAutoEngine::build_surface({market}, {}, ctx).first();
+        QCOMPARE(disabled.model_weight, 0.0);
+        QCOMPARE(disabled.probability_source, QStringLiteral("market_only_authority_disabled"));
+
+        ctx.model_authority_enabled = true;
+        const auto enabled = KalshiAutoEngine::build_surface({market}, {}, ctx).first();
+        QCOMPARE(enabled.model_weight, 0.75);
+        QCOMPARE(enabled.probability_source, QStringLiteral("bucket_calibrated_market_shrink"));
+    }
+
+    void causal_timing_is_recorded_but_does_not_veto_an_otherwise_valid_entry() {
         const qint64 now = 1'800'000'000'000LL;
         auto ctx = context(now);
         ctx.causal_gate_enabled = true;
@@ -319,8 +343,24 @@ class TstKalshiAutoEngine : public QObject {
         QVERIFY(rejected.valid);
         QVERIFY(!rejected.causal_eligible);
         QVERIFY(rejected.causal_reason.contains(QStringLiteral("precede")));
-        const auto rejected_plan = KalshiAutoEngine::optimize({rejected}, ctx);
-        QVERIFY(rejected_plan.legs.isEmpty());
+
+        // Lead/lag did not demonstrate predictive skill in the independent
+        // cohort analysis. It remains an auditable diagnostic, not a veto on
+        // a candidate that clears executable economics and portfolio limits.
+        auto candidate = rejected;
+        candidate.selected_side = QStringLiteral("yes");
+        candidate.selected_ask = 0.20;
+        candidate.selected_bid = 0.19;
+        candidate.selected_fair = 0.60;
+        candidate.net_edge = 0.40;
+        candidate.cross_horizon_consistent = true;
+        KalshiPortfolioConstraints limits;
+        limits.unit_notional = 1.0;
+        limits.max_total_cost = 2.0;
+        limits.max_worst_case_loss = 2.0;
+        const auto diagnostic_plan = KalshiAutoEngine::optimize({candidate}, ctx, limits);
+        QCOMPARE(diagnostic_plan.legs.size(), 1);
+        QCOMPARE(diagnostic_plan.legs.first().ticker, QStringLiteral("CAUSAL"));
 
         yes.last_update_ms = now - 400;
         no.last_update_ms = now - 400;
@@ -566,9 +606,9 @@ class TstKalshiAutoEngine : public QObject {
                                        0.08, 250, 31 * 60};
         auto result = KalshiAutoEngine::evaluate_micro_evidence(input);
         QVERIFY(result.eligible);
-        QCOMPARE(result.required_edge, 0.08);
+        QCOMPARE(result.required_edge, 0.05);
 
-        input.edge_after_cost = 0.079;
+        input.edge_after_cost = 0.049;
         result = KalshiAutoEngine::evaluate_micro_evidence(input);
         QVERIFY(!result.eligible);
         QVERIFY(result.blockers.join(QLatin1Char(' ')).contains(QStringLiteral("time-conditioned")));

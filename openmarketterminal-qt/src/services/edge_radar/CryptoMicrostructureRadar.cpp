@@ -25,6 +25,28 @@ double spread_bps(double bid, double ask) {
     return mid > 0.0 ? ((ask - bid) / mid) * 10000.0 : 0.0;
 }
 
+double top_book_imbalance(double bid_size, double ask_size) {
+    const double total = bid_size + ask_size;
+    if (bid_size <= 0.0 || ask_size <= 0.0 || total <= 0.0)
+        return 0.0;
+    return clamp_unit((bid_size - ask_size) / total);
+}
+
+double microprice(double bid, double ask, double bid_size, double ask_size) {
+    if (bid <= 0.0 || ask <= 0.0 || ask < bid)
+        return 0.0;
+    const double total = bid_size + ask_size;
+    if (bid_size <= 0.0 || ask_size <= 0.0 || total <= 0.0)
+        return (bid + ask) / 2.0;
+    // Larger bid depth shifts the executable-pressure estimate toward the ask,
+    // while larger ask depth shifts it toward the bid.
+    return ((ask * bid_size) + (bid * ask_size)) / total;
+}
+
+// Minimum observed-move sigmas before a move counts as signal rather than
+// ambient noise. Matches the CLI scalp-gate --min-move-sigma default.
+constexpr double kMinMoveSigma = 1.0;
+
 int source_status_rank(const CryptoMicrostructureSource& row) {
     if (row.status == QStringLiteral("live"))
         return 0;
@@ -39,20 +61,38 @@ int source_status_rank(const CryptoMicrostructureSource& row) {
 
 void CryptoMicrostructureRadar::clear() {
     ticks_.clear();
+    last_prune_newest_ms_ = 0;
 }
 
 void CryptoMicrostructureRadar::add_tick(const latency::CryptoLatencyTick& tick) {
     if (tick.price <= 0.0 || tick.received_ts_ms <= 0)
         return;
-    ticks_.push_back(tick);
-    std::stable_sort(ticks_.begin(), ticks_.end(), [](const auto& a, const auto& b) {
+    const auto before = [](const auto& a, const auto& b) {
         if (a.received_ts_ms != b.received_ts_ms)
             return a.received_ts_ms < b.received_ts_ms;
         return a.sequence < b.sequence;
-    });
+    };
+    if (ticks_.isEmpty() || !before(tick, ticks_.last()))
+        ticks_.append(tick);
+    else
+        ticks_.insert(std::lower_bound(ticks_.begin(), ticks_.end(), tick, before), tick);
+
     const qint64 newest = ticks_.isEmpty() ? 0 : ticks_.last().received_ts_ms;
-    while (!ticks_.isEmpty() && newest - ticks_.first().received_ts_ms > 180000)
-        ticks_.removeFirst();
+    // Incoming feeds are normally chronological. A full stable_sort and
+    // removeFirst on every tick made this O(n log n)+O(n) in the hottest
+    // daemon callback and could starve all timers for tens of seconds. Prune
+    // the already-ordered vector once per second in one batch instead.
+    if (newest - last_prune_newest_ms_ >= 1'000 || ticks_.size() > 100'000) {
+        const qint64 cutoff = newest - 180'000;
+        const auto first_kept = std::lower_bound(
+            ticks_.cbegin(), ticks_.cend(), cutoff,
+            [](const latency::CryptoLatencyTick& row, qint64 timestamp) {
+                return row.received_ts_ms < timestamp;
+            });
+        const qsizetype remove_count = std::distance(ticks_.cbegin(), first_kept);
+        if (remove_count > 0) ticks_.remove(0, remove_count);
+        last_prune_newest_ms_ = newest;
+    }
 }
 
 CryptoMicrostructureWindow CryptoMicrostructureRadar::window(int seconds) const {
@@ -64,10 +104,17 @@ CryptoMicrostructureWindow CryptoMicrostructureRadar::window(int seconds) const 
     const auto& end = ticks_.last();
     const qint64 cutoff = end.received_ts_ms - static_cast<qint64>(seconds) * 1000;
     QVector<latency::CryptoLatencyTick> rows;
-    for (const auto& tick : ticks_) {
-        if (tick.received_ts_ms >= cutoff)
-            rows.push_back(tick);
+    int anchor_index = -1;
+    for (int i = 0; i < ticks_.size(); ++i) {
+        if (ticks_[i].received_ts_ms <= cutoff)
+            anchor_index = i;
+        else
+            break;
     }
+    if (anchor_index >= 0)
+        rows.push_back(ticks_[anchor_index]);
+    for (int i = anchor_index + 1; i < ticks_.size(); ++i)
+        rows.push_back(ticks_[i]);
     if (rows.size() < 2)
         return out;
 
@@ -83,18 +130,48 @@ CryptoMicrostructureWindow CryptoMicrostructureRadar::window(int seconds) const 
         else
             ++out.flat_ticks;
     }
+    for (const auto& row : rows) {
+        // rows may include one pre-window anchor for price-move continuity;
+        // never count that older observation as executed volume in this window.
+        if (!row.is_trade || row.received_ts_ms < cutoff) continue;
+        const double size = row.trade_size > 0.0 ? row.trade_size : 1.0;
+        if (row.aggressor_side == QLatin1String("buy")) {
+            out.aggressor_buy_volume += size;
+            ++out.classified_trades;
+        } else if (row.aggressor_side == QLatin1String("sell")) {
+            out.aggressor_sell_volume += size;
+            ++out.classified_trades;
+        } else {
+            out.unclassified_trade_volume += size;
+            ++out.unclassified_trades;
+        }
+    }
+    const double classified_volume = out.aggressor_buy_volume + out.aggressor_sell_volume;
+    const double total_trade_volume = classified_volume + out.unclassified_trade_volume;
+    out.aggressor_pressure = classified_volume > 0.0
+        ? clamp_unit((out.aggressor_buy_volume - out.aggressor_sell_volume) / classified_volume)
+        : 0.0;
+    out.aggressor_coverage = total_trade_volume > 0.0
+        ? std::clamp(classified_volume / total_trade_volume, 0.0, 1.0) : 0.0;
     const int directional = out.upticks + out.downticks;
     out.tape_pressure = directional > 0
                             ? clamp_unit(static_cast<double>(out.upticks - out.downticks) /
                                          static_cast<double>(directional))
                             : 0.0;
     out.move_pct = ((out.end_price / out.start_price) - 1.0) * 100.0;
-    out.available = true;
+    out.coverage_ms = out.end_price > 0.0
+                          ? rows.last().received_ts_ms - rows.first().received_ts_ms
+                          : 0;
+    // A named 15s or 60s signal must contain that amount of history. A short
+    // one-shot capture is useful for warm-up, but it must not masquerade as a
+    // completed longer-horizon measurement.
+    out.available = out.coverage_ms >= static_cast<qint64>(seconds) * 1000;
     return out;
 }
 
 CryptoMicrostructureSnapshot CryptoMicrostructureRadar::snapshot(
-    const latency::CryptoLatencySnapshot& latency_snapshot) const {
+    const latency::CryptoLatencySnapshot& latency_snapshot,
+    const CryptoMicrostructureCostContext& cost_context) const {
     CryptoMicrostructureSnapshot out;
     out.symbol = latency_snapshot.symbol;
     out.freshest_source = latency_snapshot.freshest_source;
@@ -113,23 +190,43 @@ CryptoMicrostructureSnapshot CryptoMicrostructureRadar::snapshot(
     double book_weight = 0.0;
     for (const auto& state : latency_snapshot.sources) {
         const auto tick = latest.value(state.source);
+        auto quote = tick;
+        if (quote.best_bid <= 0.0 || quote.best_ask <= 0.0 ||
+            quote.bid_size <= 0.0 || quote.ask_size <= 0.0) {
+            // Trade ticks normally arrive more frequently than quote updates.
+            // Keep the last fresh quote rather than mistaking a trade-only tick
+            // for an empty order book.
+            for (auto it = ticks_.crbegin(); it != ticks_.crend(); ++it) {
+                if (it->source == state.source && it->best_bid > 0.0 && it->best_ask > 0.0 &&
+                    it->bid_size > 0.0 && it->ask_size > 0.0) {
+                    quote = *it;
+                    break;
+                }
+            }
+        }
         CryptoMicrostructureSource row;
         row.source = state.source;
         row.status = state.status;
         row.message = state.error.isEmpty() ? state.last_message_type : state.error;
         row.price = tick.price;
-        row.best_bid = tick.best_bid;
-        row.best_ask = tick.best_ask;
-        row.spread_bps = spread_bps(tick.best_bid, tick.best_ask);
+        row.best_bid = quote.best_bid;
+        row.best_ask = quote.best_ask;
+        row.bid_size = quote.bid_size;
+        row.ask_size = quote.ask_size;
+        row.microprice = microprice(quote.best_bid, quote.best_ask, quote.bid_size, quote.ask_size);
+        row.top_book_imbalance = top_book_imbalance(quote.bid_size, quote.ask_size);
+        row.spread_bps = spread_bps(quote.best_bid, quote.best_ask);
         row.age_ms = state.last_tick_ms > 0 ? now - state.last_tick_ms : -1;
+        row.quote_age_ms = quote.received_ts_ms > 0 ? now - quote.received_ts_ms : -1;
         row.ticks = state.ticks;
         out.sources.push_back(row);
 
-        if (tick.best_bid > 0.0 && tick.best_ask > 0.0) {
-            const double mid = (tick.best_bid + tick.best_ask) / 2.0;
-            const double price_vs_mid = mid > 0.0 ? (tick.price - mid) / mid : 0.0;
-            book_sum += std::clamp(price_vs_mid * 10000.0, -1.0, 1.0);
+        if (row.quote_age_ms >= 0 && row.quote_age_ms <= 3000 &&
+            quote.best_bid > 0.0 && quote.best_ask > 0.0 &&
+            quote.bid_size > 0.0 && quote.ask_size > 0.0) {
+            book_sum += row.top_book_imbalance;
             book_weight += 1.0;
+            ++out.top_book_sources;
         }
     }
     std::stable_sort(out.sources.begin(), out.sources.end(), [](const auto& a, const auto& b) {
@@ -149,6 +246,17 @@ CryptoMicrostructureSnapshot CryptoMicrostructureRadar::snapshot(
         return a.source < b.source;
     });
     out.book_pressure = book_weight > 0.0 ? clamp_unit(book_sum / book_weight) : 0.0;
+    double microprice_sum = 0.0;
+    int microprice_sources = 0;
+    for (const auto& row : out.sources) {
+        if (row.microprice > 0.0 && row.quote_age_ms >= 0 && row.quote_age_ms <= 3000) {
+            microprice_sum += row.microprice;
+            ++microprice_sources;
+        }
+    }
+    out.microprice = microprice_sources > 0
+                         ? microprice_sum / static_cast<double>(microprice_sources)
+                         : out.reference_price;
 
     CryptoMicrostructureWindow primary;
     for (const auto& w : out.windows) {
@@ -168,11 +276,54 @@ CryptoMicrostructureSnapshot CryptoMicrostructureRadar::snapshot(
     if (primary.available)
         out.tape_pressure = primary.tape_pressure;
 
-    const double combined = out.tape_pressure * 0.70 + out.book_pressure * 0.30;
+    if (primary.available) {
+        out.aggressor_pressure = primary.aggressor_pressure;
+        out.aggressor_coverage = primary.aggressor_coverage;
+        out.aggressor_buy_volume = primary.aggressor_buy_volume;
+        out.aggressor_sell_volume = primary.aggressor_sell_volume;
+        out.classified_trades = primary.classified_trades;
+    }
+
+    const bool aggressor_ready = out.classified_trades >= 5 && out.aggressor_coverage >= 0.60;
+    const double combined = aggressor_ready
+        ? out.aggressor_pressure * 0.45 + out.tape_pressure * 0.35 + out.book_pressure * 0.20
+        : out.tape_pressure * 0.70 + out.book_pressure * 0.30;
     out.confidence = std::clamp(std::abs(combined), 0.0, 1.0);
     out.direction = combined > 0.12 ? QStringLiteral("up")
                    : combined < -0.12 ? QStringLiteral("down")
                                        : QStringLiteral("flat");
+
+    out.observed_move_available = primary.available;
+    if (primary.available) {
+        out.observed_move_bps = primary.move_pct * 100.0;
+        out.observed_move_window_sec = primary.seconds;
+    }
+    if (cost_context.fee_available) {
+        out.cost_context_available = true;
+        out.cost_venue_key = cost_context.venue_key;
+        out.round_trip_hurdle_bps = cost_context.round_trip_fee_bps + cost_context.slippage_bps +
+                                    std::max(0.0, out.cross_source_spread_bps);
+        if (primary.available) {
+            out.net_move_bps = std::abs(out.observed_move_bps) - out.round_trip_hurdle_bps;
+            out.net_economics_status = QStringLiteral("available");
+        } else {
+            out.net_economics_status = QStringLiteral("unavailable: no completed observation window");
+        }
+    }
+    if (cost_context.vol_available && cost_context.realized_vol_per_min_bps > 0.0) {
+        out.realized_vol_available = true;
+        out.realized_vol_per_min_bps = cost_context.realized_vol_per_min_bps;
+        out.realized_vol_samples = cost_context.realized_vol_samples;
+        if (primary.available) {
+            out.observed_move_sigma = move_noise_sigma(
+                out.observed_move_bps, out.realized_vol_per_min_bps, primary.seconds);
+            out.noise_sigma_available = true;
+            out.noise_floor_status = QStringLiteral("available");
+        } else {
+            out.noise_floor_status = QStringLiteral("unavailable: no completed observation window");
+        }
+    }
+
     if (out.freshest_age_ms < 0 || out.freshest_age_ms > 3000) {
         out.call = QStringLiteral("NO TRADE");
         out.rationale = QStringLiteral("freshest BTC tick is stale");
@@ -184,15 +335,42 @@ CryptoMicrostructureSnapshot CryptoMicrostructureRadar::snapshot(
         out.rationale = QStringLiteral("exchange prices disagree; possible lag/outlier");
     } else if (out.direction == QStringLiteral("flat")) {
         out.call = QStringLiteral("NO TRADE");
-        out.rationale = QStringLiteral("tape pressure is not directional");
+        out.rationale = QStringLiteral("tick-direction and top-book pressure are not directional");
     } else {
-        out.call = out.confidence >= 0.35 ? QStringLiteral("TRADE CANDIDATE")
-                                          : QStringLiteral("WATCH");
-        out.rationale = QStringLiteral("tape=%1 book=%2 spread=%3bps")
+        bool candidate = out.confidence >= 0.35;
+        out.rationale = QStringLiteral("tick=%1 top_book=%2 spread=%3bps")
                             .arg(out.tape_pressure, 0, 'f', 2)
                             .arg(out.book_pressure, 0, 'f', 2)
                             .arg(out.cross_source_spread_bps, 0, 'f', 2);
+        // Roadmap rule: displayed opportunities are net-of-round-trip, never
+        // gross. With a fee context, pressure alone cannot produce TRADE
+        // CANDIDATE — the observed move must clear the hurdle and (when the
+        // vol estimate exists) stand above the ambient noise floor. Missing
+        // vol fails OPEN, matching the CLI scalp-gate noise blocker.
+        if (candidate && out.cost_context_available) {
+            if (!out.observed_move_available) {
+                candidate = false;
+                out.rationale = QStringLiteral(
+                    "pressure without a completed window; cannot verify the %1bps round-trip hurdle")
+                                    .arg(out.round_trip_hurdle_bps, 0, 'f', 0);
+            } else if (out.net_move_bps <= 0.0) {
+                candidate = false;
+                out.rationale = QStringLiteral("move %1bps gross · net %2bps vs %3bps hurdle — does not clear round-trip cost")
+                                    .arg(out.observed_move_bps, 0, 'f', 1)
+                                    .arg(out.net_move_bps, 0, 'f', 1)
+                                    .arg(out.round_trip_hurdle_bps, 0, 'f', 0);
+            } else if (out.noise_sigma_available && out.observed_move_sigma < kMinMoveSigma) {
+                candidate = false;
+                out.rationale = QStringLiteral("move %1bps is %2σ of ambient vol — within the noise floor")
+                                    .arg(out.observed_move_bps, 0, 'f', 1)
+                                    .arg(out.observed_move_sigma, 0, 'f', 1);
+            }
+        }
+        out.call = candidate ? QStringLiteral("TRADE CANDIDATE") : QStringLiteral("WATCH");
     }
+    out.aggressive_trade_flow_status = aggressor_ready
+        ? QStringLiteral("available: classified buyer/seller initiated volume")
+        : QStringLiteral("warming: insufficient classified trade volume");
     return out;
 }
 
@@ -205,13 +383,19 @@ QJsonObject CryptoMicrostructureRadar::to_json(const CryptoMicrostructureSnapsho
                                    {"price", s.price},
                                    {"best_bid", s.best_bid},
                                    {"best_ask", s.best_ask},
+                                   {"bid_size", s.bid_size},
+                                   {"ask_size", s.ask_size},
+                                   {"microprice", s.microprice},
+                                   {"top_book_imbalance", s.top_book_imbalance},
                                    {"spread_bps", s.spread_bps},
                                    {"age_ms", QString::number(s.age_ms)},
+                                   {"quote_age_ms", QString::number(s.quote_age_ms)},
                                    {"ticks", s.ticks}});
     }
     QJsonArray windows;
     for (const auto& w : snapshot.windows) {
         windows.append(QJsonObject{{"seconds", w.seconds},
+                                   {"coverage_ms", QString::number(w.coverage_ms)},
                                    {"upticks", w.upticks},
                                    {"downticks", w.downticks},
                                    {"flat_ticks", w.flat_ticks},
@@ -219,21 +403,54 @@ QJsonObject CryptoMicrostructureRadar::to_json(const CryptoMicrostructureSnapsho
                                    {"end_price", w.end_price},
                                    {"move_pct", w.move_pct},
                                    {"tape_pressure", w.tape_pressure},
+                                   {"aggressor_buy_volume", w.aggressor_buy_volume},
+                                   {"aggressor_sell_volume", w.aggressor_sell_volume},
+                                   {"unclassified_trade_volume", w.unclassified_trade_volume},
+                                   {"aggressor_pressure", w.aggressor_pressure},
+                                   {"aggressor_coverage", w.aggressor_coverage},
+                                   {"classified_trades", w.classified_trades},
+                                   {"unclassified_trades", w.unclassified_trades},
                                    {"available", w.available}});
     }
-    return QJsonObject{{"symbol", snapshot.symbol},
+    return QJsonObject{{"schema_version", 1},
+                       {"event", "crypto_microstructure_snapshot"},
+                       {"observed_at_ms", QString::number(QDateTime::currentMSecsSinceEpoch())},
+                       {"symbol", snapshot.symbol},
                        {"call", snapshot.call},
                        {"direction", snapshot.direction},
                        {"rationale", snapshot.rationale},
                        {"freshest_source", snapshot.freshest_source},
                        {"freshest_age_ms", QString::number(snapshot.freshest_age_ms)},
                        {"reference_price", snapshot.reference_price},
+                       {"microprice", snapshot.microprice},
                        {"cross_source_spread_bps", snapshot.cross_source_spread_bps},
                        {"book_pressure", snapshot.book_pressure},
                        {"tape_pressure", snapshot.tape_pressure},
+                       {"aggressor_pressure", snapshot.aggressor_pressure},
+                       {"aggressor_coverage", snapshot.aggressor_coverage},
+                       {"aggressor_buy_volume", snapshot.aggressor_buy_volume},
+                       {"aggressor_sell_volume", snapshot.aggressor_sell_volume},
+                       {"classified_trades", snapshot.classified_trades},
                        {"confidence", snapshot.confidence},
                        {"live_sources", snapshot.live_sources},
+                       {"top_book_sources", snapshot.top_book_sources},
                        {"tick_count", snapshot.tick_count},
+                       {"tick_pressure_kind", snapshot.tick_pressure_kind},
+                       {"aggressive_trade_flow_status", snapshot.aggressive_trade_flow_status},
+                       {"cost_context_available", snapshot.cost_context_available},
+                       {"cost_venue_key", snapshot.cost_venue_key},
+                       {"round_trip_hurdle_bps", snapshot.round_trip_hurdle_bps},
+                       {"observed_move_available", snapshot.observed_move_available},
+                       {"observed_move_bps", snapshot.observed_move_bps},
+                       {"observed_move_window_sec", snapshot.observed_move_window_sec},
+                       {"net_move_bps", snapshot.net_move_bps},
+                       {"net_economics_status", snapshot.net_economics_status},
+                       {"realized_vol_available", snapshot.realized_vol_available},
+                       {"realized_vol_per_min_bps", snapshot.realized_vol_per_min_bps},
+                       {"realized_vol_samples", snapshot.realized_vol_samples},
+                       {"noise_sigma_available", snapshot.noise_sigma_available},
+                       {"observed_move_sigma", snapshot.observed_move_sigma},
+                       {"noise_floor_status", snapshot.noise_floor_status},
                        {"sources", sources},
                        {"windows", windows}};
 }

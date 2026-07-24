@@ -1,7 +1,11 @@
 #include "screens/dashboard/widgets/CryptoMicrostructureWidget.h"
 
+#include "services/crypto/CryptoFees.h"
+#include "services/edge_radar/KalshiAutoEngine.h"
+#include "storage/repositories/EdgePredictionModelRepository.h"
 #include "ui/theme/Theme.h"
 
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -33,6 +37,11 @@ QString signed_pct(double value) {
     const QString sign = value > 0.0 ? "+" : "";
     return QString("%1%2%").arg(sign).arg(value, 0, 'f', 3);
 }
+
+QString signed_bps(double value) {
+    const QString sign = value > 0.0 ? "+" : "";
+    return QString("%1%2").arg(sign).arg(value, 0, 'f', 1);
+}
 } // namespace
 
 CryptoMicrostructureWidget::CryptoMicrostructureWidget(const QJsonObject& cfg, QWidget* parent)
@@ -62,6 +71,11 @@ CryptoMicrostructureWidget::CryptoMicrostructureWidget(const QJsonObject& cfg, Q
     pressure_label_ = new QLabel("TAPE -  BOOK -");
     pressure_label_->setAlignment(Qt::AlignCenter);
     vl->addWidget(pressure_label_);
+
+    econ_label_ = new QLabel("MOVE -  NET -  HURDLE -");
+    econ_label_->setAlignment(Qt::AlignCenter);
+    econ_label_->setWordWrap(true);
+    vl->addWidget(econ_label_);
 
     windows_table_ = new QTableWidget(3, 4, this);
     windows_table_->setHorizontalHeaderLabels({tr("Window"), tr("Move"), tr("Pressure"), tr("Ticks")});
@@ -149,10 +163,55 @@ void CryptoMicrostructureWidget::start_feed() {
     if (feed_active_)
         return;
     radar_.clear();
+    refresh_cost_context();
     set_loading(true);
     feed_.start(symbol_, sources_);
     render_timer_->start();
     feed_active_ = true;
+}
+
+void CryptoMicrostructureWidget::refresh_cost_context() {
+    // Fee side: the shared venue fee table (services/crypto/CryptoFees.h) with
+    // any locally configured tier overrides — the same constants the CLI scalp
+    // gate uses. Taker round trip: the widget assumes no post-only discipline.
+    const auto profile = services::crypto::crypto_fee_profile_for_venue(QStringLiteral("coinbase"));
+    cost_ctx_.fee_available = true;
+    cost_ctx_.venue_key = profile.venue_key;
+    cost_ctx_.round_trip_fee_bps = profile.taker_bps * 2.0;
+    cost_ctx_.slippage_bps = profile.slippage_bps;
+    if (econ_label_)
+        econ_label_->setToolTip(QString("%1 (%2): taker %3bps x2 + slippage %4bps + observed divergence. %5")
+                                    .arg(profile.venue_key, profile.profile)
+                                    .arg(profile.taker_bps, 0, 'f', 1)
+                                    .arg(profile.slippage_bps, 0, 'f', 1)
+                                    .arg(profile.note));
+
+    // Noise side: realized vol from the stored 1-min spot series (the same
+    // estimator the CLI scalp gate uses). No usable series → explicitly
+    // unavailable; the noise floor then fails open and the display says so.
+    cost_ctx_.vol_available = false;
+    cost_ctx_.realized_vol_per_min_bps = 0.0;
+    cost_ctx_.realized_vol_samples = 0;
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    // The tick store keys bare base symbols (BTC, not BTC-USD).
+    const QString base = symbol_.section(QLatin1Char('-'), 0, 0).trimmed().toUpper();
+    const auto series = EdgePredictionModelRepository::instance().list_spot_price_series_since(
+        base, now_ms - 8LL * 60 * 60 * 1000, 30'000);
+    if (series.is_ok()) {
+        QVector<services::edge_radar::KalshiTimedPrice> prices;
+        prices.reserve(series.value().size());
+        for (const auto& tick : series.value())
+            prices.append(services::edge_radar::KalshiTimedPrice{tick.exchange_ts, tick.price});
+        const auto vol = services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(
+            prices, now_ms);
+        const double per_min_bps = services::edge_radar::annual_vol_to_per_min_bps(vol.annual_volatility);
+        if (vol.ready && per_min_bps > 0.0) {
+            cost_ctx_.vol_available = true;
+            cost_ctx_.realized_vol_per_min_bps = per_min_bps;
+            cost_ctx_.realized_vol_samples = vol.sample_count;
+        }
+    }
+    cost_ctx_refreshed_ms_ = now_ms;
 }
 
 void CryptoMicrostructureWidget::stop_feed() {
@@ -168,7 +227,10 @@ void CryptoMicrostructureWidget::on_tick(const services::crypto_latency::CryptoL
 }
 
 void CryptoMicrostructureWidget::render() {
-    const auto snap = radar_.snapshot(feed_.snapshot());
+    if (feed_active_ &&
+        QDateTime::currentMSecsSinceEpoch() - cost_ctx_refreshed_ms_ >= 60'000)
+        refresh_cost_context();
+    const auto snap = radar_.snapshot(feed_.snapshot(), cost_ctx_);
     call_label_->setText(QString("%1  %2  %3%")
                              .arg(snap.call, snap.direction.toUpper())
                              .arg(snap.confidence, 0, 'f', 1));
@@ -206,6 +268,29 @@ void CryptoMicrostructureWidget::render() {
                                  .arg(snap.tape_pressure, 0, 'f', 2)
                                  .arg(snap.book_pressure, 0, 'f', 2)
                                  .arg(snap.tick_count));
+
+    // Net-of-round-trip economics + noise sigma next to the call. Missing
+    // inputs are named, never rendered as zero.
+    QString econ;
+    if (snap.observed_move_available)
+        econ = QString("MOVE %1bps gross (%2s) · NET %3bps vs %4bps hurdle")
+                   .arg(signed_bps(snap.observed_move_bps))
+                   .arg(snap.observed_move_window_sec)
+                   .arg(signed_bps(snap.net_move_bps))
+                   .arg(snap.round_trip_hurdle_bps, 0, 'f', 0);
+    else
+        econ = QString("MOVE - (window warming) · HURDLE %1bps")
+                   .arg(snap.round_trip_hurdle_bps, 0, 'f', 0);
+    econ += snap.noise_sigma_available
+                ? QString(" · %1σ").arg(snap.observed_move_sigma, 0, 'f', 1)
+                : QStringLiteral(" · σ - (vol unavailable)");
+    econ_label_->setText(econ);
+    const QColor econ_color = snap.observed_move_available && snap.net_move_bps > 0.0
+                                  ? ui::colors::POSITIVE()
+                                  : ui::colors::TEXT_TERTIARY();
+    econ_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;")
+                                   .arg(econ_color.name()));
+
     rationale_label_->setText(snap.rationale);
 
     render_windows(snap);
@@ -305,6 +390,7 @@ void CryptoMicrostructureWidget::apply_styles() {
     price_label_->setStyleSheet(QString("color:%1;font-size:13px;font-weight:800;background:transparent;").arg(text));
     book_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;").arg(text));
     pressure_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;").arg(muted));
+    econ_label_->setStyleSheet(QString("color:%1;font-size:10px;font-weight:700;background:transparent;").arg(muted));
     rationale_label_->setStyleSheet(QString("color:%1;font-size:9px;background:transparent;").arg(muted));
 
     const QString table_css =

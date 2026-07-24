@@ -6,6 +6,7 @@
 // dispatches async_handler on a worker thread, so no additional marshaling is needed here.
 
 #include "mcp/tools/WebTools.h"
+#include "storage/repositories/SettingsRepository.h"
 #include "web/HeadlessBrowser.h"
 #include "web/WebSearchParser.h"
 
@@ -25,9 +26,12 @@ std::vector<ToolDef> get_web_tools() {
         ToolDef t;
         t.name = "web_search";
         t.description =
-            "Search the web (DuckDuckGo) for current information and return the top results "
-            "(title, url, snippet). Use for live/general facts not covered by the finance data "
-            "tools: recent events, general news, definitions, company background. "
+            "Search the web for current information and return the top results "
+            "(title, url, snippet). Engine chain: Google Programmable Search when "
+            "connectors.google_cse_key/_cx are set in Settings, else DuckDuckGo, "
+            "falling back to Mojeek when an engine serves a bot challenge. Use for "
+            "live/general facts not covered by the finance data tools: recent events, "
+            "general news, definitions, company background. "
             "Args: query (string, required), max_results (int, default 5, max 20).";
         t.category = "web";
         t.input_schema.properties = QJsonObject{
@@ -36,7 +40,8 @@ std::vector<ToolDef> get_web_tools() {
         };
         t.input_schema.required = QStringList{"query"};
         t.auth_required = AuthLevel::None;
-        t.default_timeout_ms = 20000;
+        // The chain may try up to three engines at ~9s each.
+        t.default_timeout_ms = 30000;
         t.async_handler = [](const QJsonObject& args, ToolContext ctx,
                               std::shared_ptr<QPromise<ToolResult>> promise) {
             const QString q = args.value("query").toString().trimmed();
@@ -55,24 +60,75 @@ std::vector<ToolDef> get_web_tools() {
                 return;
             }
 
-            QUrl url("https://html.duckduckgo.com/html/");
-            QUrlQuery qq;
-            qq.addQueryItem("q", q);
-            url.setQuery(qq);
+            // Engine chain: Google Programmable Search (if the user configured
+            // an API key — the only reliable Google path; scraping google.com
+            // hits bot walls immediately) → DuckDuckGo html endpoint →
+            // Mojeek (keyless, scraper-tolerant). DDG started serving an
+            // "anomaly" anti-bot challenge to automated traffic in 2026 —
+            // detect it and fall through instead of reporting no results.
+            const QString js = "document.documentElement.outerHTML";
+            QVector<web::WebResult> rows;
+            QStringList engines_tried;
 
-            // Extract page HTML; C++ parser runs on the result.
-            const QString js   = "document.documentElement.outerHTML";
-            const QString html = web::HeadlessBrowser::instance().fetch(url, js, 15000);
+            const auto key_result = openmarketterminal::SettingsRepository::instance().get(
+                QStringLiteral("connectors.google_cse_key"));
+            const auto cx_result = openmarketterminal::SettingsRepository::instance().get(
+                QStringLiteral("connectors.google_cse_cx"));
+            const QString cse_key = key_result.is_ok() ? key_result.value().trimmed() : QString();
+            const QString cse_cx = cx_result.is_ok() ? cx_result.value().trimmed() : QString();
+            if (!cse_key.isEmpty() && !cse_cx.isEmpty()) {
+                engines_tried << QStringLiteral("google");
+                QUrl gurl("https://www.googleapis.com/customsearch/v1");
+                QUrlQuery gq;
+                gq.addQueryItem("key", cse_key);
+                gq.addQueryItem("cx", cse_cx);
+                gq.addQueryItem("q", q);
+                gq.addQueryItem("num", QString::number(std::min(fetch_n, 10)));
+                gurl.setQuery(gq);
+                // Chromium renders raw JSON inside a <pre> — innerText restores it.
+                const QString body = web::HeadlessBrowser::instance().fetch(
+                    gurl, QStringLiteral("document.body.innerText"), 9000);
+                const auto doc = QJsonDocument::fromJson(body.toUtf8());
+                for (const auto& item : doc.object().value(QStringLiteral("items")).toArray()) {
+                    const auto o = item.toObject();
+                    rows.push_back({o.value(QStringLiteral("title")).toString(),
+                                    o.value(QStringLiteral("link")).toString(),
+                                    o.value(QStringLiteral("snippet")).toString()});
+                }
+            }
 
-            if (promise->future().isFinished()) return; // provider watchdog already fired
+            if (rows.isEmpty()) {
+                engines_tried << QStringLiteral("duckduckgo");
+                QUrl url("https://html.duckduckgo.com/html/");
+                QUrlQuery qq;
+                qq.addQueryItem("q", q);
+                url.setQuery(qq);
+                const QString html = web::HeadlessBrowser::instance().fetch(url, js, 9000);
+                if (promise->future().isFinished()) return; // provider watchdog already fired
+                if (!html.isEmpty() && !web::looks_like_bot_challenge(html))
+                    rows = web::parse_ddg_results(html, fetch_n);
+            }
 
-            if (html.isEmpty()) {
-                promise->addResult(ToolResult::fail("web_search: page load failed or timed out"));
+            if (rows.isEmpty()) {
+                engines_tried << QStringLiteral("mojeek");
+                QUrl murl("https://www.mojeek.com/search");
+                QUrlQuery mq;
+                mq.addQueryItem("q", q);
+                murl.setQuery(mq);
+                const QString html = web::HeadlessBrowser::instance().fetch(murl, js, 9000);
+                if (promise->future().isFinished()) return;
+                if (!html.isEmpty() && !web::looks_like_bot_challenge(html))
+                    rows = web::parse_mojeek_results(html, fetch_n);
+            }
+
+            if (rows.isEmpty()) {
+                promise->addResult(ToolResult::fail(
+                    QStringLiteral("web_search: no engine returned results (tried %1) — "
+                                   "pages blocked, empty, or timed out")
+                        .arg(engines_tried.join(QStringLiteral(", ")))));
                 promise->finish();
                 return;
             }
-
-            const auto rows = web::parse_ddg_results(html, fetch_n);
 
             // Filter out DuckDuckGo ad/tracker links (host == *.duckduckgo.com).
             QJsonArray arr;

@@ -1,0 +1,37 @@
+# Open-Terminal — Cursor scratchpad & lessons
+
+## Scratchpad — Project audit (2026-07-17)
+
+Task: Audit `feat/ai-short-entries` after short-entry + Research Lab work.
+
+[X] Inventory branch commits vs main
+[X] Inspect staged vs unstaged vs HEAD
+[X] Architecture review (edge_direction_of / translate_action / CLI / runner)
+[X] Security / paper-vs-live arming review
+[X] Research Lab UI + CMake review
+[ ] Fix P0: un-poison git index (do not commit staged AI revert)
+[ ] Fix P1: `ai ctx` floor_permits short-edge semantics
+[ ] Commit Research Lab as separate coherent unit (when user asks)
+
+### Verdict
+- Shipped tip `ae1aa2cb` is coherent: edge-directional short/long entries, paper-only.
+- Working tree AI files match HEAD (good).
+- **Git index is poisoned** — staged AI diffs revert tip and won't compile (3-arg `translate_action` vs 4-arg header).
+- Research Lab UI is real, unstaged/untracked; CMake wires `CodeEditorScreen_ResearchLab.cpp` + unity-skip correctly.
+
+### Remediation (when user asks to fix)
+1. `git restore --staged` the 6 AI files OR `git add` working-tree versions so staged == HEAD for those files.
+2. Update `floor_permits` in `ai ctx` for short-aligned edges.
+3. Stage Research Lab set together: CMake + CodeEditorScreen* + ResearchLab.cpp.
+
+---
+
+## Lessons
+
+- **Staged ≠ working tree:** After partial reverts / edits, always check `git diff --cached` *and* `git diff HEAD`. Inverse staged/unstaged diffs mean a commit would ship the broken index, not the good tree.
+- **`translate_action` arity:** Signature is 4-arg `(choice, net_qty, edge_direction, params)`. A 3-arg call with `ActionParams{}` as 3rd arg fails to compile against current `TypedAction.h`.
+- **Direction is env-owned, not LLM-owned:** `edge_direction_of` → assess/floor/`side_direction`; model only picks verb + conviction.
+- **`floor_permits` in `ai ctx` is still a LONG probe** (`intent_agrees_with_edge("buy", …)`). After short entries shipped, short-endorsed edges misreport as not permitted — fix or rename (`floor_permits_long` / direction-aware).
+- **`--no-floor` vs direction:** Runner floor can be skipped, but `edge_direction_of` still hard-requires full endorsement → Enter stays null without endorsed edge.
+- **Research Lab + Library unity:** `_Library.cpp` and `_ResearchLab.cpp` share anon-namespace helper names; both must stay in `SKIP_UNITY_BUILD_INCLUSION`.
+- **Paper arming:** `ai run strategy` / `ai handler run` refuse live; `StrategyRunner` submits `mode:paper`; handlers created disabled. Do not weaken these in UI work.

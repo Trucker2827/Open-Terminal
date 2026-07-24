@@ -8,7 +8,7 @@
 # flag and would start its event loop and hang the script).
 #
 # Usage: scripts/release/release-macos.sh
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -17,6 +17,7 @@ APPID="Developer ID Application: Mirsad Hajdarevic (JXJS6ZA5FJ)"
 PROFILE=dinero-notarytool
 ENT=/tmp/ot-entitlements.plist
 MACDEPLOYQT=/opt/homebrew/bin/macdeployqt
+QT_FRAMEWORKS=/opt/homebrew/lib
 
 step() { echo; echo "==================== $* ===================="; }
 
@@ -51,8 +52,31 @@ cat > "$ENT" <<'EOF'
 EOF
 cat "$ENT"
 
-step "3. macdeployqt (bundle Qt frameworks/plugins)"
-"$MACDEPLOYQT" "$APP" -verbose=1 2>&1 | tail -4 || { echo "MACDEPLOYQT FAILED"; exit 1; }
+step "3. verify Qt deployment from Release build"
+# OpenMarketTerminal's CMake POST_BUILD already runs macdeployqt.  Running it
+# again here can reintroduce incomplete Homebrew WebEngine framework copies.
+[[ -x "$MACDEPLOYQT" ]] || { echo "macdeployqt not found: $MACDEPLOYQT"; exit 1; }
+
+# Some Homebrew macdeployqt builds create Qt framework links and resources but
+# omit the framework Mach-O binary. A bundle like that cannot be signed or
+# launched. Repair only incomplete framework copies from the same local Qt
+# installation before signing; complete deployments are left untouched.
+for framework in "$APP"/Contents/Frameworks/Qt*.framework; do
+  [[ -d "$framework" ]] || continue
+  framework_name="$(basename "$framework" .framework)"
+  framework_binary="$framework/Versions/A/$framework_name"
+  [[ -f "$framework_binary" ]] && continue
+
+  source_framework="$QT_FRAMEWORKS/$framework_name.framework"
+  source_binary="$source_framework/Versions/A/$framework_name"
+  [[ -f "$source_binary" ]] || {
+    echo "Incomplete $framework_name deployment and no local source framework"
+    exit 1
+  }
+  echo "Repairing incomplete $framework_name framework deployment"
+  rm -rf "$framework"
+  ditto "$source_framework" "$framework"
+done
 
 step "4. codesign (deep, hardened runtime + timestamp + entitlements)"
 codesign --force --deep --options runtime --timestamp --entitlements "$ENT" \

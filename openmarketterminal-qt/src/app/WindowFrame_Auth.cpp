@@ -80,7 +80,7 @@ void WindowFrame::on_auth_state_changed() {
                     auth::InactivityGuard::instance().set_terminal_locked(true);
                     return;
                 }
-                if (auth::PinManager::instance().has_pin()) {
+                if (auth::PinManager::instance().is_lock_enabled()) {
                     LOG_INFO("WindowFrame", "Authenticated (on app stack) with PIN — showing PIN unlock");
                     lock_screen_->show_unlock();
                     locked_ = true;
@@ -122,7 +122,7 @@ void WindowFrame::on_auth_state_changed() {
                 auth::InactivityGuard::instance().set_terminal_locked(true);
                 return;
             }
-            if (auth::PinManager::instance().has_pin()) {
+            if (auth::PinManager::instance().is_lock_enabled()) {
                 LOG_INFO("WindowFrame", "Authenticated with PIN — showing PIN unlock");
                 lock_screen_->show_unlock();
                 locked_ = true;
@@ -141,7 +141,8 @@ void WindowFrame::on_auth_state_changed() {
         // If we are about to show the shell while still locked or ungated, log
         // a warning so the regression is visible rather than leaking the
         // dashboard for one frame.
-        if (locked_ || !pin_gate_cleared_) {
+        const bool pin_lock_required = auth::PinManager::instance().is_lock_enabled();
+        if (locked_ || (pin_lock_required && !pin_gate_cleared_)) {
             LOG_WARN("WindowFrame",
                      QString("on_auth_state_changed: shell would become visible while "
                              "locked=%1 gate_cleared=%2 — forcing lock screen")
@@ -241,7 +242,7 @@ void WindowFrame::enter_local_shell() {
 
     // PIN gate (the only gate in local-first mode): if a local PIN is configured
     // and not yet cleared this session, require unlock before revealing the shell.
-    if (!pin_gate_cleared_ && auth::PinManager::instance().has_pin()) {
+    if (!pin_gate_cleared_ && auth::PinManager::instance().is_lock_enabled()) {
         LOG_INFO("WindowFrame", QString("Local boot — PIN unlock required (window %1)").arg(window_id_));
         locked_ = true;
         lock_screen_->show_unlock();
@@ -268,9 +269,10 @@ void WindowFrame::enter_local_shell() {
         dock_router_->navigate(QStringLiteral("dashboard"));
     layout::WorkspaceShell::load_last_or_default();
 
-    // Enable inactivity auto-lock only when a PIN exists to unlock with; otherwise
+    // Enable inactivity auto-lock only when the user has chosen to require a
+    // PIN; otherwise a timeout would lock an intentionally unlocked terminal.
     // a timeout would lock the user out of their own local terminal permanently.
-    if (auth::PinManager::instance().has_pin()) {
+    if (auth::PinManager::instance().is_lock_enabled()) {
         auto r = SettingsRepository::instance().get("security.lock_timeout_minutes");
         if (r.is_ok() && !r.value().isEmpty()) {
             const int minutes = r.value().toInt();

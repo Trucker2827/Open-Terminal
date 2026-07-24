@@ -58,10 +58,14 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void unsubscribe_all();
     void disconnect();
     /// Force a fresh authenticated socket while retaining subscriptions.
-    /// Used by the daemon watchdog when the transport still reports connected
-    /// but no market events have arrived within the freshness budget.
+    /// Used only when connection liveness is lost; quiet market data is not a
+    /// transport failure and is handled by downstream freshness gates.
     void restart();
     bool is_connected() const { return connected_; }
+    /// Ask the authenticated socket to re-emit full books for subscribed
+    /// markets. The resulting orderbook_updated signals are the freshness
+    /// authority; sending this request alone never advances a timestamp.
+    void request_orderbook_snapshots(const QStringList& tickers);
 
     /// Register with the hub + install prediction:kalshi:* policies.
     void ensure_registered_with_hub();
@@ -87,6 +91,9 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void cf_benchmark_event(const QString& index_id, double value, qint64 ts_ms,
                             const QJsonObject& payload);
     void connection_status_changed(bool connected);
+    /// A valid inbound frame (including pong) proves the authenticated socket
+    /// is alive even when every subscribed market is quiet.
+    void liveness_activity(qint64 received_at_ms);
 
   private slots:
     void on_connected();
@@ -101,6 +108,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
     void send_account_subscribe();
     void send_cf_subscribe();
     void request_orderbook_snapshot(const QString& ticker);
+    void schedule_book_publish(const QString& ticker, qint64 ts_ms);
     void publish_books(const QString& ticker, qint64 ts_ms);
     void publish_price(const QString& asset_id, double price);
     void publish_orderbook(const QString& asset_id,
@@ -108,6 +116,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
 
     openmarketterminal::WebSocketClient* ws_ = nullptr;
     QTimer* ping_timer_ = nullptr;
+    QTimer* book_publish_timer_ = nullptr;
 
     KalshiCredentials creds_;
     QSet<QString> subscribed_tickers_;
@@ -124,6 +133,7 @@ class KalshiWsClient : public QObject, public openmarketterminal::datahub::Produ
         bool has_snapshot = false;
     };
     QHash<QString, BookState> books_;
+    QHash<QString, qint64> pending_book_publishes_;
     qint64 orderbook_sequence_ = 0;
 
     static constexpr const char* kProdWs = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";

@@ -29,7 +29,6 @@ gnews==0.4.2
 # keyword scorer if this is absent.
 vaderSentiment==3.3.2
 geopy>=2.4.0
-akshare>=1.14.0
 aiohappyeyeballs==2.6.1
 aiosignal==1.4.0
 attrs==25.4.0

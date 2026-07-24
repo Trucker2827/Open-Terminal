@@ -117,6 +117,11 @@ class AIQuantLabService : public QObject {
     void model_train(const QJsonObject& params);
     void model_backtest(const QJsonObject& params);
     void model_check_status();
+    /// Rank a trained model's universe (qlib_service `screen`).
+    void model_screen(const QJsonObject& params);
+    /// Measure the model's IC over a window (qlib_service `get_factor_analysis`),
+    /// routed to model_library so the Screen result view can pair IC with ranks.
+    void model_factor_analysis(const QJsonObject& params);
 
     // ── Live Signals ────────────────────────────────────────────────────────
     void signals_get_data(const QJsonObject& params);

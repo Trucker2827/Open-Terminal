@@ -80,6 +80,14 @@ void EquityFinancialsTab::build_ui() {
     btn_income_->setChecked(true);
     btn_hl->addStretch();
 
+    // Where the statements came from (EDGAR XBRL vs Yahoo). Empty until the
+    // first financials payload arrives — no source, no claim.
+    source_label_ = new QLabel;
+    source_label_->setStyleSheet(QString("color:%1; font-size:10px; background:transparent; border:0;")
+                                     .arg(ui::colors::TEXT_SECONDARY()));
+    btn_hl->addWidget(source_label_);
+    btn_hl->addSpacing(10);
+
     btn_export_csv_ = new QPushButton(tr("EXPORT CSV"));
     btn_export_csv_->setStyleSheet(QString(R"(
         QPushButton {

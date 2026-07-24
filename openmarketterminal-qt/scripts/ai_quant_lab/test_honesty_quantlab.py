@@ -207,6 +207,62 @@ check("AdvModels main() exits non-zero on failure",
       rc != 0 and isinstance(payload, dict) and payload.get("success") is False)
 
 # --------------------------------------------------------------------------
+# Q7 — Model screen (issue #102). The screen result is a candidate list, not a
+#       signal: a SUCCESS payload must carry the honesty caveat pointing at
+#       get_factor_analysis, and a missing model must fail loudly with no
+#       caveat-bearing ranks. Verified IN-PROCESS against the real screen()
+#       code path with a stub model (pandas only, no qlib install needed):
+#       screen() references module-level D / init_instance_by_config, so both
+#       are patched on the module exactly where the real path resolves them.
+# --------------------------------------------------------------------------
+try:
+    import pandas as pd
+    import qlib_service as qs
+
+    svc = qs.QlibService.__new__(qs.QlibService)  # skip __init__ (qlib.init)
+    svc.initialized = True
+    svc.trained_models = {}
+
+    class _FakeD:
+        @staticmethod
+        def calendar(freq="day"):
+            return [pd.Timestamp("2025-06-27"), pd.Timestamp("2025-06-30")]
+
+    class _FakeModel:
+        def predict(self, dataset):
+            idx = pd.MultiIndex.from_product(
+                [[pd.Timestamp("2025-06-30")], ["aapl", "msft", "tsla"]],
+                names=["datetime", "instrument"])
+            return pd.Series([0.3, 0.1, -0.2], index=idx)
+
+    qs.D = _FakeD
+    qs.init_instance_by_config = lambda cfg: object()
+    svc.trained_models["honesty_screen"] = {
+        "model": _FakeModel(), "handler": "Alpha158",
+        "instruments": ["aapl", "msft", "tsla"],
+    }
+
+    r = svc.screen("honesty_screen", top=2, bottom=1)
+    if not (isinstance(r, dict) and r.get("success") is True):
+        print(f"[honesty-quantlab] screen payload was: {r}")
+    check("screen success carries the caveat field",
+          isinstance(r, dict) and r.get("success") is True
+          and isinstance(r.get("caveat"), str)
+          and "get_factor_analysis" in r["caveat"] and "IC" in r["caveat"])
+    check("screen success carries as_of/universe/top/bottom",
+          isinstance(r, dict) and r.get("as_of") == "2025-06-30"
+          and r.get("universe_size") == 3
+          and [x["symbol"] for x in r.get("top", [])] == ["AAPL", "MSFT"]
+          and [x["symbol"] for x in r.get("bottom", [])] == ["TSLA"])
+
+    rm = svc.screen("no_such_model_zzz")
+    check("screen missing model fails honestly (no caveat-bearing ranks)",
+          isinstance(rm, dict) and rm.get("success") is False
+          and rm.get("caveat") is None and rm.get("top") is None)
+except ImportError as e:
+    print(f"[honesty-quantlab] skip: Model screen (import failed: {e})")
+
+# --------------------------------------------------------------------------
 if _failures:
     print(f"[honesty-quantlab] FAILED ({len(_failures)}): {', '.join(_failures)}")
     sys.exit(1)

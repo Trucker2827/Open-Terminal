@@ -1,18 +1,28 @@
 #include "screens/kalshi/KalshiScreen.h"
+#include "screens/kalshi/AdvisorCanaryPresentation.h"
+#include "screens/kalshi/ArenaContextPresentation.h"
+#include "screens/kalshi/CliLocator.h"
 
+#include "app/TerminalShell.h"
+#include "cli/ServeCommand.h"
+#include "core/actions/ActionRegistry.h"
+#include "core/keys/WindowCycler.h"
 #include "core/config/ProfileManager.h"
 #include "core/events/EventBus.h"
+#include "services/crypto/CoinbaseEndpoints.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionCredentialStore.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
+#include "services/prediction/kalshi/KalshiSettlementScoreboard.h"
 #include "services/edge_radar/KalshiUniversalEdgeModel.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
 #include "storage/repositories/EdgePredictionModelRepository.h"
 #include "storage/repositories/SettingsRepository.h"
 #include "storage/sqlite/Database.h"
 #include "screens/crypto_trading/CryptoOrderBook.h"
+#include "screens/common/DineroNetworkGadget.h"
 #include "screens/polymarket/PredictionAccountDialog.h"
 #include "trading/ExchangeService.h"
 #include "trading/ExchangeSessionManager.h"
@@ -238,6 +248,27 @@ void append_venue_feature_snapshot(const QJsonObject& row) {
     const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     kalshi_data::KalshiEvidenceEngine::append_jsonl(
         directory + QStringLiteral("/kalshi-venue-features.jsonl"), row);
+}
+
+QJsonObject read_json_object(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const auto document = QJsonDocument::fromJson(file.readAll());
+    return document.isObject() ? document.object() : QJsonObject{};
+}
+
+QJsonObject read_last_jsonl_object(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= 0) return {};
+    const qint64 window = qMin<qint64>(file.size(), 128 * 1024);
+    file.seek(file.size() - window);
+    const QList<QByteArray> lines = file.readAll().split('\n');
+    for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+        if (it->trimmed().isEmpty()) continue;
+        const auto document = QJsonDocument::fromJson(*it);
+        if (document.isObject()) return document.object();
+    }
+    return {};
 }
 
 QPushButton* segment(const QString& label, QWidget* parent) {
@@ -494,6 +525,7 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
     connect(clock_timer_, &QTimer::timeout, this, [this]() {
         update_observation_strip();
         update_market_health();
+        refresh_flow_meter();
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (auto* a = adapter(); a && a->has_credentials() &&
             now - last_account_activity_fetch_ms_ >= 30'000) {
@@ -504,6 +536,9 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
             last_live_status_fetch_ms_ = now;
             refresh_live_automation_status();
             refresh_daemon_status();
+            refresh_advisor_canary_status();
+            refresh_arena_context_status();
+            update_calibrator_readout();
         }
     });
 }
@@ -524,6 +559,8 @@ void KalshiScreen::showEvent(QShowEvent* event) {
     }
     refresh_account_status();
     refresh_daemon_status();
+    refresh_advisor_canary_status();
+    refresh_arena_context_status();
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter()))
         kalshi->subscribe_cf_benchmarks({cf_index_for_asset(asset_)});
     dom_timer_->start();
@@ -780,6 +817,17 @@ void KalshiScreen::build_ui() {
                                         .arg(colors::WARNING()));
     quotes->addWidget(close_countdown_);
     center_layout->addLayout(quotes);
+    calibrator_readout_ = new QLabel(QStringLiteral("CALIBRATOR · select a contract"), center);
+    calibrator_readout_->setWordWrap(true);
+    calibrator_readout_->setToolTip(QStringLiteral(
+        "Advisory-only readout from the spot calibrator (calibrator.json): strike distance in "
+        "sigmas, its calibrated P(YES), and its measured Brier record vs the market baseline. "
+        "It never trades."));
+    calibrator_readout_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:800;")
+                                           .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(),
+                                                colors::BORDER_DIM()));
+    center_layout->addWidget(calibrator_readout_);
 
     reference_chart_ = new KalshiSimpleChart(center);
     reference_chart_->setMinimumHeight(180);
@@ -1013,6 +1061,31 @@ void KalshiScreen::build_ui() {
     live_automation_status_->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::TEXT_SECONDARY()));
     live_controls->addWidget(live_automation_status_, 1);
     auto_cockpit_layout->addLayout(live_controls);
+    advisor_separation_status_ = new QLabel(QStringLiteral(
+        "LEGACY LIVE SESSION: UNKNOWN / FAIL CLOSED  |  CODEX CANARY: UNKNOWN / FAIL CLOSED"), auto_cockpit);
+    advisor_separation_status_->setWordWrap(true);
+    advisor_separation_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:2px solid %1;padding:8px;font-weight:900;")
+        .arg(colors::RED(), colors::BG_RAISED()));
+    auto_cockpit_layout->addWidget(advisor_separation_status_);
+    flow_status_ = new QLabel(QStringLiteral("FLOW METER · waiting for local Kalshi WebSocket evidence"),
+                              auto_cockpit);
+    flow_status_->setWordWrap(true);
+    flow_status_->setToolTip(QStringLiteral(
+        "Read-only public contract flow: resting YES/NO depth, recent taker contracts, and liquidity added or pulled. It is not a count of people and never submits an order."));
+    flow_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:7px;font-weight:800;")
+                                    .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+    auto_cockpit_layout->addWidget(flow_status_);
+    flow_detail_ = new QLabel(QStringLiteral("FLOW CONTEXT · waiting for multi-window, divergence, cost, and ladder evidence"),
+                              auto_cockpit);
+    flow_detail_->setWordWrap(true);
+    flow_detail_->setToolTip(QStringLiteral(
+        "Local decision evidence: several flow windows, spot/contract divergence, immediate taker cost, and ladder checks. Advisory only; it does not place or approve orders."));
+    flow_detail_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:6px;font-weight:700;")
+                                    .arg(colors::TEXT_SECONDARY(), colors::BG_BASE(), colors::BORDER_DIM()));
+    auto_cockpit_layout->addWidget(flow_detail_);
     ladder_table_ = new CompactTableWidget(0, 8, auto_cockpit);
     ladder_table_->setHorizontalHeaderLabels({QStringLiteral("CONTRACT"), QStringLiteral("SIDE"),
                                                QStringLiteral("ASK"), QStringLiteral("MARKET"),
@@ -1034,6 +1107,79 @@ void KalshiScreen::build_ui() {
     ladder_table_->setToolTip(QStringLiteral("Timestamped paper-only probability surface and constrained portfolio plan. No live order can be submitted here."));
     auto_cockpit_layout->addWidget(ladder_table_, 1);
     tabs->addTab(auto_cockpit, QStringLiteral("AUTO COCKPIT"));
+
+    auto* advisor_scroll = new QScrollArea(tabs);
+    advisor_scroll->setWidgetResizable(true);
+    advisor_scroll->setFrameShape(QFrame::NoFrame);
+    auto* advisor_page = new QWidget(advisor_scroll);
+    auto* advisor_layout = new QVBoxLayout(advisor_page);
+    advisor_layout->setContentsMargins(10, 10, 10, 10);
+    advisor_layout->setSpacing(8);
+    auto* advisor_title = new QLabel(QStringLiteral("CODEX ADVISOR & CANARY · READ-ONLY CONTROL PLANE"), advisor_page);
+    advisor_title->setStyleSheet(QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
+    advisor_layout->addWidget(advisor_title);
+    auto* advisor_note = new QLabel(QStringLiteral(
+        "This panel displays authoritative persisted supervisor state. It cannot enable trading, edit safety state, or submit orders."), advisor_page);
+    advisor_note->setWordWrap(true);
+    advisor_note->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
+    advisor_layout->addWidget(advisor_note);
+    auto* badges = new QHBoxLayout;
+    legacy_live_badge_ = new QLabel(QStringLiteral("LEGACY LIVE SESSION: UNKNOWN / FAIL CLOSED"), advisor_page);
+    canary_badge_ = new QLabel(QStringLiteral("CODEX CANARY: UNKNOWN / FAIL CLOSED"), advisor_page);
+    for (auto* badge : {legacy_live_badge_, canary_badge_}) {
+        badge->setWordWrap(true);
+        badge->setStyleSheet(QStringLiteral("color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+                                 .arg(colors::RED(), colors::BG_RAISED()));
+        badges->addWidget(badge, 1);
+    }
+    advisor_layout->addLayout(badges);
+    auto* arena_strip = new QHBoxLayout;
+    arena_context_status_ = new QLabel(
+        QStringLiteral("ARENA OFFLINE · no arena-report.json — is the arena loop running?"),
+        advisor_page);
+    arena_context_status_->setWordWrap(true);
+    arena_context_status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    arena_context_status_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:1px solid %1;padding:9px;font-weight:700;")
+            .arg(colors::WARNING(), colors::BG_RAISED()));
+    arena_context_status_->setToolTip(QStringLiteral(
+        "Alpha Arena leaderboard context from arena-report.json — the blind forecasting "
+        "duel every contract decision sits inside. Read-only evidence; no execution authority."));
+    arena_strip->addWidget(arena_context_status_, 1);
+    arena_open_button_ = new QPushButton(QStringLiteral("OPEN ALPHA ARENA"), advisor_page);
+    arena_open_button_->setCursor(Qt::PointingHandCursor);
+    arena_open_button_->setToolTip(
+        QStringLiteral("Open the Alpha Arena screen: full leaderboard and live rounds."));
+    arena_open_button_->setStyleSheet(QStringLiteral(
+        "QPushButton{background:%1;color:%2;border:1px solid %3;padding:9px 12px;font-weight:900;}")
+        .arg(colors::BG_RAISED(), colors::CYAN(), colors::CYAN()));
+    connect(arena_open_button_, &QPushButton::clicked, this, []() {
+        CommandContext ctx;
+        ctx.shell = &TerminalShell::instance();
+        ctx.focused_frame = WindowCycler::instance().focused_frame();
+        ActionRegistry::instance().invoke(QStringLiteral("screen.alpha_arena"), ctx);
+    });
+    arena_strip->addWidget(arena_open_button_, 0, Qt::AlignTop);
+    advisor_layout->addLayout(arena_strip);
+    auto add_advisor_card = [advisor_page, advisor_layout](const QString& title, QLabel*& value) {
+        auto* heading = new QLabel(title, advisor_page);
+        heading->setStyleSheet(QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
+        advisor_layout->addWidget(heading);
+        value = new QLabel(QStringLiteral("UNKNOWN / FAIL CLOSED"), advisor_page);
+        value->setWordWrap(true);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        value->setStyleSheet(QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+                                 .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+        advisor_layout->addWidget(value);
+    };
+    add_advisor_card(QStringLiteral("SYSTEM STATUS"), advisor_system_status_);
+    add_advisor_card(QStringLiteral("QUALIFICATION"), advisor_qualification_status_);
+    add_advisor_card(QStringLiteral("SAFETY & PROMOTION"), advisor_safety_status_);
+    add_advisor_card(QStringLiteral("LATEST ACTIVITY"), advisor_activity_status_);
+    advisor_layout->addStretch();
+    advisor_scroll->setWidget(advisor_page);
+    tabs->addTab(advisor_scroll, QStringLiteral("ADVISOR & CANARY"));
+
     auto* pnl_page = new QWidget(tabs);
     auto* pnl_layout = new QVBoxLayout(pnl_page);
     pnl_layout->setContentsMargins(8, 8, 8, 8);
@@ -1077,6 +1223,17 @@ void KalshiScreen::build_ui() {
     pnl_summary_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:7px;")
                                     .arg(colors::TEXT_SECONDARY()));
     closed_layout->addWidget(pnl_summary_);
+    pnl_scoreboard_ = new QLabel(
+        QStringLiteral("LIVE SCOREBOARD · loading authenticated Kalshi settlements..."), closed_page);
+    pnl_scoreboard_->setWordWrap(true);
+    pnl_scoreboard_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    pnl_scoreboard_->setToolTip(QStringLiteral(
+        "Hit rate and P/L by average entry price (implied probability paid), computed from "
+        "exact-accounting live settlements only. Mixed YES/NO turnover rows are excluded and counted."));
+    pnl_scoreboard_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:6px 8px;font-weight:700;")
+            .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED(), colors::BORDER_DIM()));
+    closed_layout->addWidget(pnl_scoreboard_);
     pnl_table_ = new QTableWidget(0, 9, closed_page);
     pnl_table_->setHorizontalHeaderLabels({QStringLiteral("CONTRACT"), QStringLiteral("MODE"),
                                            QStringLiteral("ORIGIN"), QStringLiteral("TYPE"),
@@ -1164,6 +1321,7 @@ void KalshiScreen::build_ui() {
     dom_layout->addWidget(dom_status_);
     spot_dom_ = new crypto::CryptoOrderBook(dom_panel_);
     dom_layout->addWidget(spot_dom_, 1);
+    dom_layout->addWidget(new DineroNetworkGadget(dom_panel_));
 
     workspace_splitter_->addWidget(market_list_);
     workspace_splitter_->addWidget(center);
@@ -1724,6 +1882,7 @@ void KalshiScreen::render_market() {
     }
     update_strike_overlay();
     update_observation_strip();
+    update_calibrator_readout();
 }
 
 void KalshiScreen::apply_live_market_prices(const QString& ticker, const QJsonObject& payload) {
@@ -1956,7 +2115,7 @@ void KalshiScreen::update_live_positions_summary() {
             {QStringLiteral("stake"), cost},
             {QStringLiteral("fees"), position.fees_paid},
             {QStringLiteral("current_value"), has_mark ? exit_value : -1.0},
-            {QStringLiteral("pnl"), has_mark ? marked_pnl : QJsonValue::Null},
+            {QStringLiteral("pnl"), has_mark ? QJsonValue(marked_pnl) : QJsonValue(QJsonValue::Null)},
             {QStringLiteral("realized_pnl"), position.realized_pnl},
             {QStringLiteral("rationale"), rationale},
             {QStringLiteral("decision_at"), audit_timestamp}});
@@ -2047,7 +2206,7 @@ void KalshiScreen::update_live_positions_summary() {
                 {QStringLiteral("stake"), cost},
                 {QStringLiteral("fees"), entry_fee},
                 {QStringLiteral("current_value"), has_mark ? exit_value : -1.0},
-                {QStringLiteral("pnl"), has_mark ? marked_pnl : QJsonValue::Null},
+                {QStringLiteral("pnl"), has_mark ? QJsonValue(marked_pnl) : QJsonValue(QJsonValue::Null)},
                 {QStringLiteral("position_id"), position_id},
                 {QStringLiteral("strategy_id"), strategy_id},
                 {QStringLiteral("decision_id"), decision_id},
@@ -2095,6 +2254,10 @@ void KalshiScreen::update_live_positions_summary() {
 
 void KalshiScreen::render_closed_bets(const QJsonArray& settlements) {
     if (!pnl_table_ || !pnl_summary_) return;
+    if (pnl_scoreboard_) {
+        pnl_scoreboard_->setText(kalshi_data::KalshiSettlementScoreboard::format(
+            kalshi_data::KalshiSettlementScoreboard::compute(settlements)));
+    }
     pnl_table_->setRowCount(0);
     double live_pnl = 0.0;
     double paper_pnl = 0.0;
@@ -2741,24 +2904,10 @@ void KalshiScreen::record_ladder_evidence() {
     auto_context.spot_observed_at_ms = official_fresh_for_auto
         ? official_settlement_reference_ms_ : reference_spot_last_update_ms_;
     const QString volatility_symbol = asset_.trimmed().toUpper();
-    const auto estimate_for = [now](const QString& series_symbol) {
-        QVector<services::edge_radar::KalshiTimedPrice> prices;
-        const auto series = EdgePredictionModelRepository::instance().list_price_series_since(
-            series_symbol, now - 14LL * 24 * 60 * 60 * 1000, 21'000);
-        if (series.is_ok()) {
-            prices.reserve(series.value().size());
-            for (const auto& tick : series.value())
-                prices.append(services::edge_radar::KalshiTimedPrice{tick.exchange_ts, tick.price});
-        }
-        return services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(prices, now);
-    };
-    auto volatility = estimate_for(volatility_symbol);
-    if ((!volatility.ready || volatility.sample_count < 30) &&
-        !volatility_symbol.endsWith(QStringLiteral("-USD"))) {
-        const auto usd_volatility = estimate_for(volatility_symbol + QStringLiteral("-USD"));
-        if (usd_volatility.ready || usd_volatility.sample_count > volatility.sample_count)
-            volatility = usd_volatility;
-    }
+    refresh_volatility_estimate(volatility_symbol, now);
+    auto volatility = volatility_cache_.value(volatility_symbol);
+    if (!volatility_cache_.contains(volatility_symbol))
+        volatility.reason = QStringLiteral("background volatility refresh pending");
     auto_context.annual_volatility = volatility.annual_volatility;
     auto_context.volatility_ready = volatility.ready;
     auto_context.volatility_time_of_day_multiplier = volatility.time_of_day_multiplier;
@@ -2958,6 +3107,120 @@ void KalshiScreen::record_ladder_evidence() {
                                       .arg(opportunities > 0 ? colors::GREEN() : colors::TEXT_SECONDARY(),
                                            colors::BORDER_DIM()));
     render_ladder_surface(auto_surface, auto_plan, diagnostics);
+}
+
+void KalshiScreen::refresh_volatility_estimate(const QString& symbol, qint64 decision_ts_ms) {
+    const QString normalized = symbol.trimmed().toUpper();
+    if (normalized.isEmpty() || decision_ts_ms <= 0) return;
+    constexpr qint64 kRefreshIntervalMs = 60'000;
+    if (decision_ts_ms - volatility_cache_refreshed_ms_.value(normalized) < kRefreshIntervalMs)
+        return;
+    bool expected = false;
+    if (!volatility_fetching_.compare_exchange_strong(expected, true)) return;
+
+    QPointer<KalshiScreen> self(this);
+    (void)QtConcurrent::run([self, normalized, decision_ts_ms]() {
+        const auto estimate_for = [decision_ts_ms](const QString& series_symbol) {
+            QVector<services::edge_radar::KalshiTimedPrice> prices;
+            const auto series = EdgePredictionModelRepository::instance().list_recent_price_series_since(
+                series_symbol, decision_ts_ms - 24LL * 60 * 60 * 1000, 1'500);
+            if (series.is_ok()) {
+                prices.reserve(series.value().size());
+                for (const auto& tick : series.value())
+                    prices.append({tick.exchange_ts, tick.price});
+            }
+            return services::edge_radar::KalshiAutoEngine::estimate_realized_volatility(
+                prices, decision_ts_ms);
+        };
+
+        auto estimate = estimate_for(normalized);
+        if ((!estimate.ready || estimate.sample_count < 30) &&
+            !normalized.endsWith(QStringLiteral("-USD"))) {
+            const auto usd_estimate = estimate_for(normalized + QStringLiteral("-USD"));
+            if (usd_estimate.ready || usd_estimate.sample_count > estimate.sample_count)
+                estimate = usd_estimate;
+        }
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, normalized, decision_ts_ms, estimate]() {
+            if (!self) return;
+            self->volatility_cache_.insert(normalized, estimate);
+            self->volatility_cache_refreshed_ms_.insert(normalized, decision_ts_ms);
+            self->volatility_fetching_ = false;
+        }, Qt::QueuedConnection);
+    });
+}
+
+void KalshiScreen::refresh_flow_meter() {
+    if (!flow_status_) return;
+    if (!has_selection_ || selected_.key.market_id.isEmpty()) {
+        flow_status_->setText(QStringLiteral("FLOW METER · select a contract to view its public book and trade flow"));
+        if (flow_detail_) flow_detail_->setText(QStringLiteral("FLOW CONTEXT · select a contract"));
+        return;
+    }
+    QFile file(evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        flow_status_->setText(QStringLiteral("FLOW METER · waiting for the local daemon WebSocket snapshot"));
+        if (flow_detail_) flow_detail_->setText(QStringLiteral("FLOW CONTEXT · daemon snapshot unavailable"));
+        return;
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    const QJsonObject root = document.object();
+    const QJsonObject snapshot = root.value(QStringLiteral("snapshots")).toObject()
+        .value(selected_.key.market_id).toObject();
+    const QJsonObject row = snapshot.isEmpty()
+        ? root.value(QStringLiteral("flow")).toObject().value(selected_.key.market_id).toObject()
+        : snapshot;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 observed = row.value(QStringLiteral("observed_at_ms")).toString().toLongLong();
+    if (row.isEmpty() || observed <= 0 || observed > now || now - observed > 30'000) {
+        flow_status_->setText(QStringLiteral("FLOW METER · no fresh 30s snapshot for this contract"));
+        if (flow_detail_) flow_detail_->setText(QStringLiteral("FLOW CONTEXT · waiting for fresh WebSocket evidence"));
+        return;
+    }
+    const QString signal = row.value(QStringLiteral("signal")).toString(QStringLiteral("MIXED"));
+    const QString confidence = row.value(QStringLiteral("confidence")).toString(QStringLiteral("LOW"));
+    const double pressure = row.value(QStringLiteral("combined_pressure")).toDouble();
+    const QString pressure_text = QStringLiteral("%1%2")
+        .arg(pressure >= 0.0 ? QStringLiteral("+") : QString())
+        .arg(pressure, 0, 'f', 2);
+    const QColor color = signal.startsWith(QStringLiteral("YES")) ? QColor(colors::GREEN())
+                        : signal.startsWith(QStringLiteral("NO")) ? QColor(colors::RED())
+                                                                     : QColor(colors::TEXT_SECONDARY());
+    flow_status_->setText(QStringLiteral(
+        "FLOW METER · %1 · %2 · 30s · resting YES %3 / NO %4 · taker YES %5 / NO %6 · pressure %7")
+                              .arg(signal, confidence)
+                              .arg(row.value(QStringLiteral("yes_bid_depth")).toDouble(), 0, 'f', 1)
+                              .arg(row.value(QStringLiteral("no_bid_depth")).toDouble(), 0, 'f', 1)
+                              .arg(row.value(QStringLiteral("yes_taker_quantity")).toDouble(), 0, 'f', 1)
+                              .arg(row.value(QStringLiteral("no_taker_quantity")).toDouble(), 0, 'f', 1)
+                              .arg(pressure_text));
+    flow_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:7px;font-weight:800;")
+                                    .arg(color.name(), colors::BG_RAISED(), colors::BORDER_DIM()));
+    if (!flow_detail_ || snapshot.isEmpty()) return;
+    const QJsonObject windows = snapshot.value(QStringLiteral("flow")).toObject()
+        .value(QStringLiteral("windows")).toObject();
+    const auto compact_window = [&windows](const QString& key) {
+        const QJsonObject window = windows.value(key).toObject();
+        const double pressure = window.value(QStringLiteral("combined_pressure")).toDouble();
+        return QStringLiteral("%1 %2 %3%4")
+            .arg(key, window.value(QStringLiteral("signal")).toString(QStringLiteral("MIXED")))
+            .arg(pressure >= 0.0 ? QStringLiteral("+") : QString())
+            .arg(pressure, 0, 'f', 2);
+    };
+    const QJsonObject divergence = snapshot.value(QStringLiteral("flow")).toObject()
+        .value(QStringLiteral("divergence")).toObject();
+    const QJsonObject execution = snapshot.value(QStringLiteral("execution")).toObject();
+    const QJsonObject yes = execution.value(QStringLiteral("yes")).toObject();
+    const QJsonObject no = execution.value(QStringLiteral("no")).toObject();
+    const QJsonObject ladder = snapshot.value(QStringLiteral("ladder")).toObject();
+    flow_detail_->setText(QStringLiteral(
+        "FLOW CONTEXT · %1 · %2 · %3 · %4 · YES immediate loss %5c · NO %6c · ladder opportunities %7 · advisory only")
+        .arg(compact_window(QStringLiteral("2s")), compact_window(QStringLiteral("30s")),
+             compact_window(QStringLiteral("5m")), divergence.value(QStringLiteral("label")).toString(QStringLiteral("QUIET")))
+        .arg(yes.value(QStringLiteral("immediate_round_trip_loss")).toDouble() * 100.0, 0, 'f', 1)
+        .arg(no.value(QStringLiteral("immediate_round_trip_loss")).toDouble() * 100.0, 0, 'f', 1)
+        .arg(ladder.value(QStringLiteral("actionable_count")).toInt()));
 }
 
 void KalshiScreen::render_ladder_surface(
@@ -3182,12 +3445,15 @@ void KalshiScreen::place_live_order() {
 }
 
 QString KalshiScreen::cli_path() const {
-    const QString app_dir = QCoreApplication::applicationDirPath();
-    const QStringList candidates{app_dir + QStringLiteral("/openterminalcli"),
-        QDir::cleanPath(app_dir + QStringLiteral("/../../../openterminalcli")),
+    using namespace openmarketterminal::screens::kalshi;
+    const QString beside = find_cli_beside_app(
+        QCoreApplication::applicationDirPath(), cli_exe_suffix());
+    if (!beside.isEmpty()) return beside;
+    // PATH fallbacks — findExecutable appends the platform suffix itself.
+    const QStringList fallbacks{
         QStandardPaths::findExecutable(QStringLiteral("openterminalcli")),
         QStandardPaths::findExecutable(QStringLiteral("ot"))};
-    for (const QString& path : candidates)
+    for (const QString& path : fallbacks)
         if (!path.isEmpty() && QFileInfo(path).isExecutable()) return path;
     return {};
 }
@@ -3224,11 +3490,13 @@ void KalshiScreen::show_live_automation_dialog() {
     dialog.setWindowTitle(QStringLiteral("Arm bounded Kalshi automation"));
     auto* layout = new QVBoxLayout(&dialog);
     auto* text = new QLabel(QStringLiteral(
-        "Choose a preset and how long the bot may place real Kalshi orders without individual approval.\n\n"
+        "Choose a pilot preset and how long the bot may place real Kalshi orders without "
+        "individual approval.\n\n"
         "CURRENT HOUR starts immediately and stops at the next :00 clock boundary. "
-        "CONTINUOUS runs until you use the kill switch. Every order still re-checks quote freshness, depth, "
-        "edge after cost, time left, credentials, session expiry, and the global kill switch.\n\n"
-        "The pilot presets deliberately cap both the order count and the total money at risk. "
+        "A preset can only TIGHTEN the pilot ceilings, never raise them: no more than 10 accepted "
+        "orders in any rolling hour; contract stake <= $2; fees may bring all-in cost up to $3; "
+        "cumulative experiment exposure <= $120; one bot order per contract. "
+        "Exposure counts accepted orders that are still resting, not only fills. "
         "Every submission re-checks quote freshness, executable depth, edge after cost, time left, credentials, "
         "session expiry, and the global kill switch. An emergency kill switch must be reset explicitly in "
         "Settings > Security before a new session can be armed."), &dialog);
@@ -3237,11 +3505,16 @@ void KalshiScreen::show_live_automation_dialog() {
     auto* preset_row = new QHBoxLayout;
     preset_row->addWidget(new QLabel(QStringLiteral("LIVE PILOT:"), &dialog));
     auto* preset = new QComboBox(&dialog);
-    preset->addItem(QStringLiteral("$1 / 3 orders per hour / $3.75 session cap"),
+    // stake cap, accepted orders per rolling hour, all-in cap, cumulative experiment cap
+    preset->addItem(QStringLiteral("$1 stake · 3 orders/hour · $1.25 all-in · $3.75 experiment cap"),
                     QVariantList{1.0, 3, 1.25, 3.75});
-    preset->addItem(QStringLiteral("$2 / 5 orders per hour / $12.50 session cap"),
+    preset->addItem(QStringLiteral("$2 stake · 5 orders/hour · $2.50 all-in · $12.50 experiment cap"),
                     QVariantList{2.0, 5, 2.50, 12.50});
-    preset->setToolTip(QStringLiteral("Limits apply to real orders only. Parallel paper remains unlimited and follows the same decision gate."));
+    preset->addItem(QStringLiteral("$2 stake · 10 orders/hour · $3 all-in · $120 experiment cap (full ceilings)"),
+                    QVariantList{2.0, 10, 3.0, 120.0});
+    preset->setToolTip(QStringLiteral(
+        "Limits apply to real orders only. The experiment cap is cumulative across every session, "
+        "not per session. Parallel paper remains unlimited and follows the same decision gate."));
     preset_row->addWidget(preset, 1);
     layout->addLayout(preset_row);
     auto* parallel_paper = new QCheckBox(
@@ -3327,6 +3600,7 @@ void KalshiScreen::refresh_live_automation_status() {
             return;
         }
         const bool active = status.value(QStringLiteral("session_active")).toBool();
+        latest_legacy_live_status_ = status;
         const bool killed = status.value(QStringLiteral("kill_switch")).toBool();
         const bool autonomous = status.value(QStringLiteral("autonomous")).toBool();
         const bool paper = status.value(QStringLiteral("parallel_paper_enabled")).toBool();
@@ -3373,23 +3647,22 @@ void KalshiScreen::refresh_live_automation_status() {
                     "Arm bounded autonomous Kalshi execution for 1H, 6H, 12H, or 24/7."));
             }
         }
-        const int accepted_orders = status.value(QStringLiteral("orders_last_hour")).toInt();
-        const int hourly_limit = status.value(QStringLiteral("max_orders_per_hour")).toInt(10);
-        const double reserved = status.value(QStringLiteral("worst_case_exposure_used")).toDouble();
-        const double experiment_cap = status.value(QStringLiteral("experiment_cap")).toDouble(120.0);
-        const double stake_cap = status.value(QStringLiteral("per_bet_contract_stake_cap")).toDouble(2.0);
-        const double all_in_cap = status.value(QStringLiteral("per_bet_all_in_tolerance")).toDouble(3.0);
+        // Say what the numbers actually measure. Orders counted here are the ones
+        // the exchange ACCEPTED; the money is RESERVED against the experiment cap
+        // (filled notional plus the resting remainder), not proven spent. The
+        // limits are the armed session's, which may be tighter than the ceilings.
         live_automation_status_->setText(QStringLiteral(
-            "%1 · %2/%3 accepted orders this rolling hour · $%4 of $%5 reserved · stake <=$%6 + fee, all-in <=$%7%8%9")
+            "%1 · %2/%3 accepted LIVE orders this rolling hour · $%4 of $%5 reserved · "
+            "stake <=$%6 + fee, all-in <=$%7%8%9")
             .arg(active ? (autonomous ? QStringLiteral("AUTO ACTIVE")
                                       : QStringLiteral("REVIEW SESSION ACTIVE"))
                         : QStringLiteral("SESSION STOPPED"))
-            .arg(accepted_orders)
-            .arg(hourly_limit)
-            .arg(reserved, 0, 'f', 2)
-            .arg(experiment_cap, 0, 'f', 2)
-            .arg(stake_cap, 0, 'f', 2)
-            .arg(all_in_cap, 0, 'f', 2)
+            .arg(status.value(QStringLiteral("orders_last_hour")).toInt())
+            .arg(status.value(QStringLiteral("max_orders_per_hour")).toInt(10))
+            .arg(status.value(QStringLiteral("worst_case_exposure_used")).toDouble(), 0, 'f', 2)
+            .arg(status.value(QStringLiteral("experiment_cap")).toDouble(120.0), 0, 'f', 2)
+            .arg(status.value(QStringLiteral("per_bet_contract_stake_cap")).toDouble(2.0), 0, 'f', 2)
+            .arg(status.value(QStringLiteral("per_bet_all_in_tolerance")).toDouble(3.0), 0, 'f', 2)
             .arg(paper ? QStringLiteral(" · PAPER ON: %1 open / %2 closed, no hourly limit")
                              .arg(status.value(QStringLiteral("paper_open_positions")).toInt())
                              .arg(status.value(QStringLiteral("paper_closed_positions")).toInt())
@@ -3405,33 +3678,124 @@ void KalshiScreen::refresh_live_automation_status() {
     });
 }
 
+void KalshiScreen::refresh_advisor_canary_status() {
+    if (!legacy_live_badge_ || !canary_badge_ || !advisor_system_status_ ||
+        !advisor_qualification_status_ || !advisor_safety_status_ || !advisor_activity_status_)
+        return;
+    const QString root = ProfileManager::instance().profile_root() + QStringLiteral("/daemon/");
+    const QJsonObject loop = read_json_object(root + QStringLiteral("advisor_loop_state.json"));
+    const QJsonObject qualification = read_json_object(root + QStringLiteral("advisor_qualification_report.json"));
+    const QJsonObject promotion = read_json_object(root + QStringLiteral("advisor_promotion_state.json"));
+    const QJsonObject safety = read_json_object(root + QStringLiteral("advisor_safety_state.json"));
+    const QJsonObject canary = read_json_object(root + QStringLiteral("advisor_canary_config.json"));
+    const QJsonObject latest = read_last_jsonl_object(root + QStringLiteral("advisor_opportunities.jsonl"));
+    const AdvisorCanaryView view = present_advisor_canary(loop, qualification, promotion, safety,
+        canary, latest, latest_legacy_live_status_, QDateTime::currentMSecsSinceEpoch());
+
+    legacy_live_badge_->setText(view.legacy_badge);
+    legacy_live_badge_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+        .arg(view.legacy_live ? colors::RED() : latest_legacy_live_status_.isEmpty()
+                  ? colors::WARNING() : colors::TEXT_SECONDARY(), colors::BG_RAISED()));
+    canary_badge_->setText(view.canary_badge);
+    canary_badge_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+        .arg(view.canary_live ? colors::RED() : view.canary_badge.contains(QStringLiteral("UNKNOWN"))
+                  ? colors::WARNING() : colors::CYAN(), colors::BG_RAISED()));
+    if (advisor_separation_status_) {
+        advisor_separation_status_->setText(view.legacy_badge + QStringLiteral("  |  ") + view.canary_badge);
+        advisor_separation_status_->setStyleSheet(QStringLiteral(
+            "color:%1;background:%2;border:2px solid %1;padding:8px;font-weight:900;")
+            .arg(view.legacy_live || view.canary_live ? colors::RED() : view.critical
+                      ? colors::WARNING() : colors::CYAN(), colors::BG_RAISED()));
+    }
+    advisor_system_status_->setText(view.system);
+    advisor_qualification_status_->setText(view.qualification);
+    advisor_safety_status_->setText(view.safety);
+    advisor_activity_status_->setText(view.activity);
+    advisor_system_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+        .arg(view.critical ? colors::WARNING() : colors::GREEN(), colors::BG_RAISED(),
+             view.critical ? colors::WARNING() : colors::BORDER_DIM()));
+}
+
+void KalshiScreen::refresh_arena_context_status() {
+    if (!arena_context_status_) return;
+    namespace cli = openmarketterminal::cli;
+    const ArenaContextView view = present_arena_context(
+        read_json_object(cli::kalshi_evidence_path(QStringLiteral("arena-report.json"))),
+        QDateTime::currentMSecsSinceEpoch());
+    arena_context_status_->setText(view.headline + QStringLiteral("\n") + view.lane);
+    arena_context_status_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %1;padding:9px;font-weight:700;")
+        .arg(view.offline || view.stale ? colors::WARNING()
+                                        : view.leader ? colors::POSITIVE() : colors::CYAN(),
+             colors::BG_RAISED()));
+}
+
 void KalshiScreen::refresh_daemon_status() {
     if (!daemon_badge_ || !daemon_restart_button_ || daemon_status_fetching_ || daemon_restarting_)
         return;
+    // Evidence freshness is judged in-process: a missing CLI binary must never
+    // misreport a daemon that is demonstrably writing evidence as OFF.
+    namespace cli = openmarketterminal::cli;
+    QJsonObject books;
+    QFile books_file(cli::kalshi_evidence_path(QStringLiteral("kalshi-ws-books.json")));
+    if (books_file.open(QIODevice::ReadOnly | QIODevice::Text))
+        books = QJsonDocument::fromJson(books_file.readAll()).object();
+    const auto evidence = cli::kalshi_daemon_evidence_freshness(
+        cli::kalshi_ws_books_heartbeat_ms(books), QDateTime::currentMSecsSinceEpoch());
+    const auto set_badge = [this](const QString& text, const QString& color, const QString& tip) {
+        daemon_badge_->setText(text);
+        daemon_badge_->setStyleSheet(
+            QStringLiteral("color:%1;font-weight:900;padding:6px;").arg(color));
+        daemon_badge_->setToolTip(tip);
+    };
+    const QString age_text = evidence.age_ms >= 120'000
+        ? QStringLiteral("%1m").arg(evidence.age_ms / 60'000)
+        : QStringLiteral("%1s").arg(evidence.age_ms / 1'000);
+    if (evidence.state == QStringLiteral("fresh")) {
+        set_badge(QStringLiteral("DAEMON: ACTIVE"), colors::GREEN(), QStringLiteral(
+            "Local daemon is active: kalshi-ws-books.json heartbeat %1 ago "
+            "(source: in-process evidence freshness). It owns Kalshi WebSocket "
+            "monitoring, paper evidence, and armed automation.").arg(age_text));
+        daemon_restart_button_->setEnabled(true);
+        return;
+    }
+    if (evidence.state == QStringLiteral("stale"))
+        set_badge(QStringLiteral("DAEMON: STALE"), colors::WARNING(), QStringLiteral(
+            "Daemon evidence is stale: last kalshi-ws-books.json heartbeat %1 ago "
+            "(source: in-process evidence freshness). The daemon may be down or its "
+            "WebSocket feed idle.").arg(age_text));
+    else
+        set_badge(QStringLiteral("DAEMON: NO EVIDENCE"), colors::TEXT_SECONDARY(), QStringLiteral(
+            "No daemon evidence found: kalshi-ws-books.json has no heartbeat "
+            "(source: in-process evidence freshness). Start or restart the daemon "
+            "to begin monitoring."));
+    daemon_restart_button_->setEnabled(true);
+    // CLI refinement: a daemon can be alive without a WebSocket heartbeat (for
+    // example, no Kalshi credentials). A definitive CLI answer upgrades or
+    // settles the badge; a missing/failing CLI leaves the evidence verdict.
     daemon_status_fetching_ = true;
     run_live_cli({QStringLiteral("daemon"), QStringLiteral("status")},
-                 [this](const QJsonObject& status, const QString& error) {
+                 [this, set_badge](const QJsonObject& status, const QString& error) {
         daemon_status_fetching_ = false;
-        const bool running = error.isEmpty() &&
-            (status.value(QStringLiteral("scheduler_running")).toBool() ||
-             status.value(QStringLiteral("running")).toBool());
-        daemon_badge_->setText(running ? QStringLiteral("DAEMON: ACTIVE")
-                                       : QStringLiteral("DAEMON: OFF"));
-        daemon_badge_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:6px;")
-                                         .arg(running ? colors::GREEN() : colors::RED()));
+        daemon_restart_button_->setEnabled(true);
+        if (!error.isEmpty()) return;
+        const bool running = status.value(QStringLiteral("scheduler_running")).toBool() ||
+                             status.value(QStringLiteral("running")).toBool();
         if (running) {
             const qint64 pid = static_cast<qint64>(
                 status.value(QStringLiteral("daemon_process_pid")).toDouble(
                     status.value(QStringLiteral("pid")).toDouble()));
-            daemon_badge_->setToolTip(QStringLiteral(
-                "Local daemon is active%1. It owns Kalshi WebSocket monitoring, paper evidence, and armed automation.")
+            set_badge(QStringLiteral("DAEMON: ACTIVE"), colors::GREEN(), QStringLiteral(
+                "Local daemon is active%1 (source: openterminalcli daemon status). "
+                "It owns Kalshi WebSocket monitoring, paper evidence, and armed automation.")
                 .arg(pid > 0 ? QStringLiteral(" (PID %1)").arg(pid) : QString()));
         } else {
-            daemon_badge_->setToolTip(error.isEmpty()
-                ? QStringLiteral("The local daemon is not running.")
-                : QStringLiteral("The local daemon is not reachable: %1").arg(error));
+            set_badge(QStringLiteral("DAEMON: OFF"), colors::TEXT_SECONDARY(), QStringLiteral(
+                "The local daemon is not running (source: openterminalcli daemon status)."));
         }
-        daemon_restart_button_->setEnabled(true);
     });
 }
 
@@ -3459,9 +3823,9 @@ void KalshiScreen::restart_daemon() {
         daemon_restart_button_->setEnabled(true);
         if (!error.isEmpty()) {
             QMessageBox::warning(this, QStringLiteral("Daemon restart failed"), error);
-            daemon_badge_->setText(QStringLiteral("DAEMON: OFF"));
-            daemon_badge_->setStyleSheet(QStringLiteral("color:%1;font-weight:900;padding:6px;")
-                                             .arg(colors::RED()));
+            // A failed restart command is not proof the daemon is off; let the
+            // in-process evidence check re-derive the badge.
+            refresh_daemon_status();
             return;
         }
         QTimer::singleShot(1'000, this, &KalshiScreen::refresh_daemon_status);
@@ -3562,6 +3926,14 @@ void KalshiScreen::start_spot_dom_stream() {
         connect(reference_dom_socket_, &QWebSocket::textMessageReceived,
                 this, &KalshiScreen::handle_reference_dom_message);
         connect(reference_dom_socket_, &QWebSocket::disconnected, this, [this]() {
+            // Advanced→legacy fallback: a coinbase connection that dropped
+            // without ever delivering a book retries on the legacy Exchange
+            // feed (while it still answers) instead of looping on Advanced.
+            if (reference_dom_venue_ == QStringLiteral("coinbase") &&
+                !reference_dom_use_legacy_coinbase_ &&
+                reference_dom_bids_.isEmpty() && reference_dom_asks_.isEmpty()) {
+                reference_dom_use_legacy_coinbase_ = true;
+            }
             if (dom_status_) {
                 dom_status_->setText(QStringLiteral("%1 WS STALE · RECONNECTING")
                                          .arg(reference_dom_venue_.toUpper()));
@@ -3587,9 +3959,12 @@ void KalshiScreen::start_spot_dom_stream() {
         return;
     }
     if (reference_dom_socket_->state() == QAbstractSocket::ConnectingState) return;
-    const QUrl endpoint(reference_dom_venue_ == QStringLiteral("coinbase")
-                            ? QStringLiteral("wss://ws-feed.exchange.coinbase.com")
-                            : QStringLiteral("wss://ws.kraken.com/v2"));
+    const QUrl endpoint(
+        reference_dom_venue_ == QStringLiteral("coinbase")
+            ? QString::fromLatin1(reference_dom_use_legacy_coinbase_
+                                      ? openmarketterminal::services::crypto::kLegacyExchangeWsUrl
+                                      : openmarketterminal::services::crypto::kAdvancedTradeWsUrl)
+            : QStringLiteral("wss://ws.kraken.com/v2"));
     reference_dom_socket_->open(endpoint);
 }
 
@@ -3598,6 +3973,22 @@ void KalshiScreen::subscribe_reference_dom() {
     QJsonObject request;
     if (reference_dom_venue_ == QStringLiteral("coinbase")) {
         const QString product = QString(reference_dom_symbol_).replace(QLatin1Char('/'), QLatin1Char('-'));
+        if (!reference_dom_use_legacy_coinbase_) {
+            // Advanced Trade: one channel per subscribe frame (single
+            // "channel" string); heartbeats keeps quiet books alive.
+            for (const QString& channel : {QStringLiteral("level2"), QStringLiteral("heartbeats")}) {
+                const QJsonObject frame =
+                    openmarketterminal::services::crypto::advanced_ws_subscribe({product}, channel);
+                reference_dom_socket_->sendTextMessage(QJsonDocument(frame).toJson(QJsonDocument::Compact));
+            }
+            if (dom_status_) {
+                dom_status_->setText(QStringLiteral("%1 WS CONNECTED · AWAITING BOOK")
+                                         .arg(reference_dom_venue_.toUpper()));
+                dom_status_->setStyleSheet(QStringLiteral("color:%1;font-size:10px;font-weight:800;")
+                                               .arg(colors::WARNING()));
+            }
+            return;
+        }
         request.insert(QStringLiteral("type"), QStringLiteral("subscribe"));
         request.insert(QStringLiteral("product_ids"), QJsonArray{product});
         request.insert(QStringLiteral("channels"), QJsonArray{QStringLiteral("level2")});
@@ -3630,6 +4021,35 @@ void KalshiScreen::handle_reference_dom_message(const QString& message) {
 
     if (reference_dom_venue_ == QStringLiteral("coinbase")) {
         const QString product = QString(reference_dom_symbol_).replace(QLatin1Char('/'), QLatin1Char('-'));
+        // Advanced Trade level2 envelope: {"channel":"l2_data","events":[{"type":
+        // "snapshot"|"update","product_id":..,"updates":[{"side":"bid"|"offer",
+        // "price_level":"..","new_quantity":".."}]}]} — quantity 0 removes a level.
+        if (root.value(QStringLiteral("channel")).toString() == QStringLiteral("l2_data")) {
+            bool touched = false;
+            for (const auto& ev : root.value(QStringLiteral("events")).toArray()) {
+                const QJsonObject event = ev.toObject();
+                if (event.value(QStringLiteral("product_id")).toString() != product) continue;
+                if (event.value(QStringLiteral("type")).toString() == QStringLiteral("snapshot")) {
+                    reference_dom_bids_.clear();
+                    reference_dom_asks_.clear();
+                }
+                for (const auto& uv : event.value(QStringLiteral("updates")).toArray()) {
+                    const QJsonObject u = uv.toObject();
+                    QMap<double, double>& side = u.value(QStringLiteral("side")).toString() == QStringLiteral("bid")
+                        ? reference_dom_bids_ : reference_dom_asks_;
+                    const double price = u.value(QStringLiteral("price_level")).toVariant().toDouble();
+                    const double qty = u.value(QStringLiteral("new_quantity")).toVariant().toDouble();
+                    if (price <= 0.0) continue;
+                    if (qty <= 0.0) side.remove(price); else side.insert(price, qty);
+                    touched = true;
+                }
+            }
+            if (!touched) return;
+        } else if (root.value(QStringLiteral("channel")).toString() == QStringLiteral("heartbeats") ||
+                   root.value(QStringLiteral("channel")).toString() == QStringLiteral("subscriptions")) {
+            return; // keep-alive / ack frames carry no book data
+        } else {
+        // Legacy Exchange feed shapes (fallback path) below.
         if (root.value(QStringLiteral("product_id")).toString() != product) return;
         const QString type = root.value(QStringLiteral("type")).toString();
         if (type == QStringLiteral("snapshot")) {
@@ -3654,6 +4074,7 @@ void KalshiScreen::handle_reference_dom_message(const QString& message) {
         } else {
             return;
         }
+        } // legacy Exchange-feed branch
     } else {
         if (root.value(QStringLiteral("channel")).toString() != QStringLiteral("book")) return;
         const QString type = root.value(QStringLiteral("type")).toString();
@@ -4003,6 +4424,38 @@ void KalshiScreen::update_observation_strip() {
     close_countdown_->setToolTip(close.isValid()
         ? QStringLiteral("Closes at %1").arg(close.toLocalTime().toString(QStringLiteral("h:mm ap")))
         : QStringLiteral("Close time unavailable for this contract."));
+}
+
+void KalshiScreen::update_calibrator_readout() {
+    if (!calibrator_readout_) return;
+    if (!has_selection_) {
+        calibrator_readout_->setText(QStringLiteral("CALIBRATOR · select a contract"));
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - calibrator_report_read_ms_ >= 5'000) {
+        calibrator_report_read_ms_ = now;
+        calibrator_report_ = QJsonObject();
+        QFile file(cli::kalshi_evidence_path(QStringLiteral("calibrator.json")));
+        if (file.open(QIODevice::ReadOnly)) {
+            const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+            if (document.isObject()) calibrator_report_ = document.object();
+        }
+    }
+    const QJsonObject readout = kalshi_data::KalshiEvidenceEngine::calibrator_readout(
+        calibrator_report_, selected_.key.market_id, now);
+    const QString record = readout.value(QStringLiteral("record")).toString();
+    calibrator_readout_->setText(record.isEmpty()
+        ? readout.value(QStringLiteral("headline")).toString()
+        : readout.value(QStringLiteral("headline")).toString() + QLatin1Char('\n') + record);
+    const QString state = readout.value(QStringLiteral("state")).toString();
+    // Deliberately muted styling either way: a calibrated probability is
+    // evidence with a stated record, never an implied edge.
+    const QString color = state == QStringLiteral("ok") ? colors::TEXT_SECONDARY()
+                                                        : colors::WARNING();
+    calibrator_readout_->setStyleSheet(QStringLiteral(
+        "color:%1;background:%2;border:1px solid %3;padding:4px 8px;font-size:10px;font-weight:800;")
+                                           .arg(color, colors::BG_RAISED(), colors::BORDER_DIM()));
 }
 
 } // namespace openmarketterminal::screens::kalshi

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily per-venue edge IC publish (issue #89). DOCUMENTED, NOT AUTO-LOADED —
+  live infrastructure is bounced deliberately: the operator copies this file
+  into ~/Library/LaunchAgents/ and loads it by hand:
+
+      cp org.openterminal.edge-ic.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.edge-ic.plist
+
+  Every day 04:50 (after the 03:20 daily crypto-dataset rebuild) it runs
+  scripts/edge_ic_report.py with the publish flag (stdlib only, read-only
+  against the journal DB) and atomically rewrites edge-ic.json in the
+  evidence dir:
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/edge-ic.json
+
+  The Research Lab evidence library lists that file when it exists; if this
+  job never runs, the file is simply absent and nothing is fabricated.
+
+  Verify after the first run: the logs below, plus a fresh generated_at_ms in
+  edge-ic.json (cat it, or re-run the script by hand with the same flag).
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.edge-ic</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/edge_ic_report.py</string>
+    <string>--publish</string>
+  </array>
+  <key>StartCalendarInterval</key><dict>
+    <key>Hour</key><integer>4</integer><key>Minute</key><integer>50</integer>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/edge-ic.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/edge-ic.err.log</string>
+</dict></plist>

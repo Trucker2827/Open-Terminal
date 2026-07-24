@@ -15,8 +15,12 @@
 // registers as pure DataHub producer-wiring.
 
 #include <QtTest>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
+#include <QDateTime>
 
 #include <atomic>
 #include <chrono>
@@ -29,6 +33,7 @@
 #include "mcp/TerminalMcpBridge.h"
 #include "storage/sqlite/Database.h"
 #include "storage/sqlite/migrations/MigrationRunner.h"
+#include "storage/LocalDataLake.h"
 
 using namespace openmarketterminal;
 
@@ -140,6 +145,63 @@ class TstDataServices : public QObject {
         // without hanging after the full set is registered.
         const auto stats = datahub::DataHub::instance().stats();
         Q_UNUSED(stats);
+    }
+
+    void data_lake_reports_interrupted_replacement_artifacts_without_deleting_them() {
+        auto& lake = storage::LocalDataLake::instance();
+        QString error;
+        QVERIFY2(lake.append_jsonl(QStringLiteral("raw_ticks"),
+                                   QJsonObject{{"source", "test"}, {"price", 1.0}}, &error),
+                 qPrintable(error));
+        const QString final_path = lake.dataset_file(QStringLiteral("raw_ticks"));
+        QFile artifact(final_path + QStringLiteral(".interrupted"));
+        QVERIFY(artifact.open(QIODevice::WriteOnly));
+        QCOMPARE(artifact.write("unfinished replacement\n"), qint64(23));
+        artifact.close();
+
+        const QJsonObject status = lake.status();
+        QVERIFY(status.value("orphaned_temp_files").toInt() >= 1);
+        QVERIFY(status.value("orphaned_temp_bytes").toString().toLongLong() >= 23);
+        QVERIFY(status.value("total_bytes").toString().toLongLong() >
+                 status.value("active_bytes").toString().toLongLong());
+        QVERIFY(!status.value("storage_warning").toString().isEmpty());
+        QVERIFY(QFileInfo::exists(artifact.fileName()));
+    }
+
+    void data_lake_cleanup_requires_confirmation_and_preserves_recent_artifacts() {
+        auto& lake = storage::LocalDataLake::instance();
+        const QString final_path = lake.dataset_file(QStringLiteral("model_outputs"));
+        QVERIFY(QDir().mkpath(QFileInfo(final_path).absolutePath()));
+
+        QFile old_artifact(final_path + QStringLiteral(".interrupted-old"));
+        QVERIFY(old_artifact.open(QIODevice::WriteOnly));
+        const QByteArray old_payload("old interrupted replacement\n");
+        QCOMPARE(old_artifact.write(old_payload), qint64(old_payload.size()));
+        old_artifact.close();
+        QVERIFY(old_artifact.open(QIODevice::ReadWrite));
+        QVERIFY(old_artifact.setFileTime(QDateTime::currentDateTimeUtc().addSecs(-600),
+                                         QFileDevice::FileModificationTime));
+        old_artifact.close();
+
+        QFile recent_artifact(final_path + QStringLiteral(".interrupted-recent"));
+        QVERIFY(recent_artifact.open(QIODevice::WriteOnly));
+        const QByteArray recent_payload("recent interrupted replacement\n");
+        QCOMPARE(recent_artifact.write(recent_payload), qint64(recent_payload.size()));
+        recent_artifact.close();
+
+        QString error;
+        const QJsonObject preview = lake.cleanup_interrupted_artifacts(false, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(preview.value("candidate_files").toInt() >= 1);
+        QCOMPARE(preview.value("deleted_files").toInt(), 0);
+        QVERIFY(QFileInfo::exists(old_artifact.fileName()));
+        QVERIFY(QFileInfo::exists(recent_artifact.fileName()));
+
+        const QJsonObject cleaned = lake.cleanup_interrupted_artifacts(true, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(cleaned.value("deleted_files").toInt() >= 1);
+        QVERIFY(!QFileInfo::exists(old_artifact.fileName()));
+        QVERIFY(QFileInfo::exists(recent_artifact.fileName()));
     }
 };
 

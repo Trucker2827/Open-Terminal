@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Weekly crypto model retrain loop (issue #84). DOCUMENTED, NOT AUTO-LOADED —
+  live infrastructure is bounced deliberately: the operator copies this file
+  into ~/Library/LaunchAgents/ and loads it by hand:
+
+      cp org.openterminal.model-retrain.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.model-retrain.plist
+
+  Every Sunday 04:40 (after the 03:20 daily crypto-dataset rebuild) it
+  retrains lightgbm on the env-pointed crypto dataset, measures trailing
+  rank-IC on a held-out window for both the new model and the incumbent, and
+  atomically repoints ~/.qlib/openterminal_models/active_model.json ONLY if
+  the new model's holdout rank-IC >= the incumbent's.
+
+  current_model_id below is the bootstrap incumbent: it is only consulted
+  when no active_model.json exists yet, so the first run compares against
+  the model the publisher plist pins today.
+
+  To let the publisher follow the pointer, edit
+  ~/Library/LaunchAgents/org.openterminal.signal-publisher.plist so its JSON
+  argument reads "model_id":"active", then kickstart it:
+
+      launchctl kickstart -k gui/$UID/org.openterminal.signal-publisher
+
+  Verify after the first run: logs below, plus
+      model_retrain.py status '{}'
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.model-retrain</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/venv-numpy2/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/ai_quant_lab/model_retrain.py</string>
+    <string>retrain</string>
+    <string>{"current_model_id":"lightgbm_20260722_193327"}</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>OPENTERMINAL_QLIB_DATA</key><string>/Users/haydarevich/.qlib/qlib_data/crypto_data</string>
+    <key>OPENTERMINAL_QLIB_FREQ</key><string>1min</string>
+    <key>MLFLOW_ALLOW_FILE_STORE</key><string>true</string>
+  </dict>
+  <key>StartCalendarInterval</key><dict>
+    <key>Weekday</key><integer>0</integer>
+    <key>Hour</key><integer>4</integer><key>Minute</key><integer>40</integer>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/model-retrain.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/model-retrain.err.log</string>
+</dict></plist>

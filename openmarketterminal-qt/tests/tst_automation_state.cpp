@@ -12,6 +12,12 @@ using namespace openmarketterminal::cli::automation;
 class TstAutomationState : public QObject {
     Q_OBJECT
   private slots:
+    void auto_scalp_opportunity_id_is_restart_safe_consumption_key() {
+        const QJsonObject decision{{"opportunity_id", "immutable-op-1"},
+                                   {"symbol", "BTC-USD"}, {"ts_ms", "123"}};
+        QCOMPARE(candidate_key(decision), QStringLiteral("immutable-op-1"));
+    }
+
     void guard_roundtrip() {
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());
