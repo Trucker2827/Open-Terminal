@@ -7,6 +7,7 @@
 #include <cmath>
 
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
+using openmarketterminal::services::prediction::kalshi_ns::KalshiBotStopFile;
 
 namespace {
 
@@ -66,6 +67,63 @@ class TestKalshiBotDecision : public QObject {
     Q_OBJECT
 
   private slots:
+    // --- the kill switch (rung 4) ----------------------------------------
+
+    /// The report used here is the SAME one that bids in
+    /// edge_below_threshold_passes_and_above_bids — the positive control is
+    /// asserted in the same test, so a passing result cannot come from a
+    /// report that would not have bid anyway.
+    void an_engaged_kill_switch_refuses_the_bid_it_would_otherwise_place() {
+        const QJsonObject bidding_report = report(0.95, 0.83, 10.0);
+        const QJsonArray without_stop = KalshiBotDecision::decide(bidding_report, {}, {}, kNow, {});
+        QCOMPARE(action(without_stop), QStringLiteral("bid"));  // positive control
+
+        KalshiBotStopFile stop;
+        stop.engaged = true;
+        stop.ts_ms = kNow - 5'000;
+        stop.source = QStringLiteral("cli");
+        stop.reason = QStringLiteral("operator pulled it");
+        const QJsonArray rows =
+            KalshiBotDecision::decide(bidding_report, {}, {}, kNow, {}, stop);
+
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(action(rows), QStringLiteral("pass"));
+        QCOMPARE(reason(rows), QStringLiteral("BOT_STOPPED"));
+        // Not one bid row anywhere in the tick.
+        for (const auto& value : rows)
+            QVERIFY(value.toObject().value(QStringLiteral("action")).toString() !=
+                    QStringLiteral("bid"));
+        // Who threw it and when, on the audit row itself.
+        const QJsonObject row = only_row(rows);
+        QCOMPARE(row.value(QStringLiteral("stop_source")).toString(), QStringLiteral("cli"));
+        QCOMPARE(row.value(QStringLiteral("stop_reason")).toString(),
+                 QStringLiteral("operator pulled it"));
+        QCOMPARE(static_cast<qint64>(row.value(QStringLiteral("stop_ts_ms")).toDouble()),
+                 kNow - 5'000);
+        // The report was never read, so no number from it leaks onto the row.
+        QVERIFY(!row.contains(QStringLiteral("calibrated_p")));
+        QVERIFY(!row.contains(QStringLiteral("edge")));
+        QVERIFY(!row.contains(QStringLiteral("price")));
+    }
+
+    /// The stop is journaled, not silent: a tick that refused must be
+    /// distinguishable from a loop that simply died.
+    void a_stopped_tick_still_journals_exactly_one_row() {
+        KalshiBotStopFile stop;
+        stop.engaged = true;
+        const QJsonArray rows = KalshiBotDecision::decide({}, {}, {}, kNow, {}, stop);
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(reason(rows), QStringLiteral("BOT_STOPPED"));
+        const QJsonObject row = only_row(rows);
+        QCOMPARE(row.value(QStringLiteral("event")).toString(),
+                 QStringLiteral("kalshi_bot_decision"));
+        QCOMPARE(row.value(QStringLiteral("mode")).toString(), QStringLiteral("paper"));
+        QCOMPARE(row.value(QStringLiteral("live_eligible")).toBool(), false);
+        // The switch outranks even a missing report: the tick stops before the
+        // report is looked at, so it reports the stop, not REPORT_MISSING.
+        QVERIFY(reason(rows) != QStringLiteral("REPORT_MISSING"));
+    }
+
     // --- refusals: the file itself is not trustworthy -------------------
 
     void missing_report_is_refused_and_journaled() {

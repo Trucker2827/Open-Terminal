@@ -17,9 +17,14 @@
 // The ledger is read only for what the ledger alone knows: how recently the
 // bot ticked, whether it trusted its signal on that tick, and what it actually
 // decided, passes included.
+//
+// Rung 4: the status chip's classification is NOT computed here either. State,
+// staleness threshold, colour role and headline all come from
+// KalshiBotRuntime.h, which `kalshi bot status` renders from as well — that is
+// what makes "the CLI mirrors the chip" a property rather than a claim.
 
 #include "cli/ServeCommand.h"
-#include "screens/kalshi/ArenaContextPresentation.h"  // arena_age_text
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -33,10 +38,20 @@
 
 namespace openmarketterminal::screens::kalshi {
 
-// The evidence files `kalshi bot` (rung 1) and the promotion gate (rung 2)
-// write. Both resolve through the one path module every consumer uses, so the
-// panel can never read a different directory than the CLI writes.
-inline constexpr auto kKalshiBotLedgerFile = "kalshi-bot-decisions.jsonl";
+// The state names, staleness threshold, colour role and stop-file format are
+// the CLI's, not the panel's — one definition, two renderers.
+using services::prediction::kalshi_ns::kalshi_bot_state_color_role;
+using services::prediction::kalshi_ns::KalshiBotLoopStatus;
+using services::prediction::kalshi_ns::KalshiBotStopFile;
+using services::prediction::kalshi_ns::kKalshiBotStaleMs;
+
+// The evidence files `kalshi bot` (rungs 1 and 4) and the promotion gate
+// (rung 2) write. All three resolve through the one path module every consumer
+// uses, so the panel can never read a different directory than the CLI writes.
+inline constexpr auto kKalshiBotLedgerFile =
+    services::prediction::kalshi_ns::kKalshiBotDecisionLedgerFile;
+inline constexpr auto kKalshiBotStopFile =
+    services::prediction::kalshi_ns::kKalshiBotStopFileName;
 inline constexpr auto kKalshiBotGateFile = "kalshi-bot-gate.json";
 
 inline QString kalshi_bot_ledger_path() {
@@ -45,15 +60,14 @@ inline QString kalshi_bot_ledger_path() {
 inline QString kalshi_bot_gate_path() {
     return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiBotGateFile));
 }
-
-// `kalshi bot run` ticks on a 60s default interval. Five missed ticks is not a
-// slow loop, it is a stopped one — but the bot is also legitimately run as
-// `kalshi bot once`, so a stale ledger is reported as stale, never as broken.
-inline constexpr qint64 kKalshiBotStaleMs = 5LL * 60 * 1000;
+inline QString kalshi_bot_stop_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiBotStopFile));
+}
 
 struct KalshiBotPanelView {
-    QString status;             // headline: running/stale/off plus last-tick age
-    QString state;              // "running" | "stale" | "off"
+    QString status;             // headline: stopped/running/stale/off plus last-tick age
+    QString state;              // "stopped" | "running" | "stale" | "off"
+    bool stopped = false;       // the kill switch file exists right now
     QString armed;              // armed state + the caps in force, or DISARMED
     bool armed_live = false;    // an armed live session exists right now
     QString signal;             // signal-trust state of the most recent tick
@@ -62,14 +76,6 @@ struct KalshiBotPanelView {
     bool gate_pass = false;     // the gate evaluated and every criterion is met
     QStringList decisions;      // most recent decisions first, passes included
 };
-
-// Colour intent for `state`, so the mapping itself is testable: the widget only
-// turns these roles into theme colours.
-inline QString kalshi_bot_state_color_role(const QString& state) {
-    if (state == QStringLiteral("running")) return QStringLiteral("green");
-    if (state == QStringLiteral("stale")) return QStringLiteral("amber");
-    return QStringLiteral("grey");
-}
 
 namespace kalshi_bot_detail {
 
@@ -153,42 +159,34 @@ inline QString decision_line(const QJsonObject& row) {
 /// `ledger_rows` are raw rows from kalshi-bot-decisions.jsonl (both decision
 /// and paper-settlement events); this function does its own event filtering.
 /// `gate` is kalshi-bot-gate.json, `live_status` the `kalshi auto live status`
-/// object the screen already polls. `max_decisions` bounds the rendered list.
+/// object the screen already polls, `stop` the kill switch as read from disk.
+/// `max_decisions` bounds the rendered list.
 inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows,
                                                    const QJsonObject& gate,
                                                    const QJsonObject& live_status,
                                                    qint64 now_ms,
-                                                   int max_decisions = 8) {
+                                                   int max_decisions = 8,
+                                                   const KalshiBotStopFile& stop = {}) {
     using namespace kalshi_bot_detail;
     KalshiBotPanelView view;
 
     // --- what the bot did, newest first ------------------------------------
     QList<QJsonObject> decisions;
-    qint64 newest_ms = 0;
     for (const auto& value : ledger_rows) {
         const QJsonObject row = value.toObject();
-        newest_ms = qMax(newest_ms, static_cast<qint64>(row.value(QStringLiteral("ts_ms")).toDouble()));
         if (row.value(QStringLiteral("event")).toString() != QStringLiteral("kalshi_bot_decision"))
             continue;
         decisions.prepend(row);
     }
 
-    // --- status: freshness of the ledger the CLI writes ---------------------
-    if (newest_ms <= 0) {
-        view.state = QStringLiteral("off");
-        view.status = QStringLiteral("BOT OFF · no %1 — `kalshi bot once` has never run here")
-                          .arg(QString::fromLatin1(kKalshiBotLedgerFile));
-    } else if (now_ms - newest_ms > kKalshiBotStaleMs || newest_ms > now_ms) {
-        view.state = QStringLiteral("stale");
-        view.status = QStringLiteral("BOT STALE · last decision %1")
-                          .arg(newest_ms > now_ms ? QStringLiteral("timestamped in the future")
-                                                  : arena_age_text(now_ms - newest_ms));
-    } else {
-        view.state = QStringLiteral("running");
-        view.status = QStringLiteral("BOT RUNNING · last decision %1 · %2 decisions in view")
-                          .arg(arena_age_text(now_ms - newest_ms))
-                          .arg(decisions.size());
-    }
+    // --- status chip: classified by the CLI's own classifier ----------------
+    const KalshiBotLoopStatus status = services::prediction::kalshi_ns::kalshi_bot_loop_status(
+        services::prediction::kalshi_ns::kalshi_bot_newest_ts_ms(ledger_rows), stop, now_ms);
+    view.state = status.state;
+    view.stopped = status.stop.engaged;
+    view.status = status.state == QStringLiteral("running")
+        ? QStringLiteral("%1 · %2 decisions in view").arg(status.headline).arg(decisions.size())
+        : status.headline;
 
     // --- armed state and the caps in force ----------------------------------
     if (live_status.isEmpty()) {
@@ -224,7 +222,15 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     } else {
         const QJsonObject& latest = decisions.first();
         const QJsonValue trusted = latest.value(QStringLiteral("signal_trusted"));
-        if (!trusted.isBool())
+        const QString reason = latest.value(QStringLiteral("reason_code")).toString();
+        if (reason == QStringLiteral("BOT_STOPPED"))
+            // The stopped tick never reached the report, so it has no opinion
+            // on the signal — saying "unknown because it refused its report"
+            // would misdescribe why.
+            view.signal = QStringLiteral(
+                "SIGNAL NOT READ · the kill switch stopped the last tick before the calibrator "
+                "report was opened");
+        else if (!trusted.isBool())
             view.signal = QStringLiteral("SIGNAL UNKNOWN · the last tick refused its report (%1)")
                               .arg(latest.value(QStringLiteral("reason_code"))
                                        .toString(QStringLiteral("no reason code")));
@@ -300,25 +306,11 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     return view;
 }
 
-/// The tail of the decision ledger. Only the recent end is needed (freshness,
-/// signal trust, the latest decisions), and the file grows without bound, so a
-/// fixed window is read rather than the whole ledger.
+/// The tail of the decision ledger — the CLI's own reader, so `kalshi bot
+/// status` and the chip age the same rows.
 inline QJsonArray read_kalshi_bot_ledger_tail(qint64 window_bytes = 512LL * 1024) {
-    QJsonArray rows;
-    QFile file(kalshi_bot_ledger_path());
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= 0) return rows;
-    const bool truncated = file.size() > window_bytes;
-    if (truncated) file.seek(file.size() - window_bytes);
-    QList<QByteArray> lines = file.readAll().split('\n');
-    // A window that starts mid-file starts mid-line; that first fragment is
-    // dropped rather than parsed as a partial row.
-    if (truncated && !lines.isEmpty()) lines.removeFirst();
-    for (const QByteArray& line : lines) {
-        if (line.trimmed().isEmpty()) continue;
-        const QJsonDocument document = QJsonDocument::fromJson(line);
-        if (document.isObject()) rows.append(document.object());
-    }
-    return rows;
+    return services::prediction::kalshi_ns::kalshi_bot_read_ledger_tail(kalshi_bot_ledger_path(),
+                                                                        window_bytes);
 }
 
 inline QJsonObject read_kalshi_bot_gate() {
@@ -328,11 +320,15 @@ inline QJsonObject read_kalshi_bot_gate() {
     return document.isObject() ? document.object() : QJsonObject();
 }
 
-/// The panel as the screen renders it: both evidence files read through the
-/// unified path module, nothing else consulted.
+inline KalshiBotStopFile read_kalshi_bot_stop_file() {
+    return services::prediction::kalshi_ns::kalshi_bot_read_stop_file(kalshi_bot_stop_path());
+}
+
+/// The panel as the screen renders it: all three evidence files read through
+/// the unified path module, nothing else consulted.
 inline KalshiBotPanelView load_kalshi_bot_panel(const QJsonObject& live_status, qint64 now_ms) {
     return present_kalshi_bot_panel(read_kalshi_bot_ledger_tail(), read_kalshi_bot_gate(),
-                                    live_status, now_ms);
+                                    live_status, now_ms, 8, read_kalshi_bot_stop_file());
 }
 
 } // namespace openmarketterminal::screens::kalshi

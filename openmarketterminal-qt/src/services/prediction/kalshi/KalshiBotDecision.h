@@ -1,5 +1,7 @@
 #pragma once
 
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
@@ -21,7 +23,13 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///   2. **Withheld numbers are absent, never zero.** A missing or stale report
 ///      carries no probability, edge, or price — the caller cannot mistake a
 ///      default-constructed 0.0 for a measurement.
-///   3. **The signal's trust is re-read live every call.** `signal_trusted`
+///   3. **The kill switch is checked before anything else** (rung 4). There is
+///      exactly one path from this class to a bid, and an engaged stop file
+///      short-circuits it at the top of `decide()`, so "checked every tick
+///      before any bid" is a structural property rather than a caller's
+///      promise. The refused tick still journals one `BOT_STOPPED` row: a
+///      silent stop would be indistinguishable from a dead loop.
+///   4. **The signal's trust is re-read live every call.** `signal_trusted`
 ///      comes from the report's own `adds_value_over_market`, which the
 ///      calibrator only sets true once its Brier beats the market baseline
 ///      over its ≥100-sample gate. When it is false the bot still papers, but
@@ -45,6 +53,7 @@ class KalshiBotDecision {
     static constexpr auto kSizeCapBlocksBid = "SIZE_CAP_BLOCKS_BID";
     static constexpr auto kEdgeClearsThreshold = "EDGE_CLEARS_THRESHOLD";
     static constexpr auto kSignalUntrusted = "SIGNAL_UNTRUSTED";
+    static constexpr auto kBotStopped = "BOT_STOPPED";
 
     /// Paper sizing/pricing policy. Defaults are deliberately conservative and
     /// mirror the charter's live ceilings ($2 stake, $3 all-in) so rung 1's
@@ -81,11 +90,16 @@ class KalshiBotDecision {
     /// a `track_record` snapshot of the report that produced them. Bid rows
     /// additionally carry side, price, contracts, stake, fee, and the paper
     /// fill assumption.
+    ///
+    /// `stop` is the kill switch as read from disk this tick. When it is
+    /// engaged the report is not even read: the call returns a single
+    /// `BOT_STOPPED` refusal row carrying who threw the switch and when.
     static QJsonArray decide(const QJsonObject& report,
                              const QJsonArray& open_positions,
                              const QJsonArray& settled_positions,
                              qint64 now_ms,
-                             const Config& config);
+                             const Config& config,
+                             const KalshiBotStopFile& stop = {});
 
     /// The bot's unsettled paper bids, replayed from its own decision ledger:
     /// every `action=="bid"` row whose `position_id` has no settlement row.
