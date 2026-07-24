@@ -1,6 +1,7 @@
 #include "cli/CommandDispatch.h"
 #include "cli/AiRunCommand.h"
 #include "cli/ObserveCommand.h"
+#include "cli/KalshiBotCommands.h"
 #include "cli/QuantLabCommands.h"
 #include "cli/BridgeDiscovery.h"
 #include "cli/BridgeClient.h"
@@ -24096,8 +24097,11 @@ static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     int init_code = 0;
     if (!init_headless_for_cli(opts, init_code)) return init_code;
     const QString group = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
+    // `bot` is the paper calibrator bot (rung 1) and lives in its own TU.
+    if (group == QStringLiteral("bot")) return kalshi_bot_command(opts, args);
     if (group != QStringLiteral("auto")) {
-        std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n"); return 2;
+        std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n"
+                             "       kalshi bot once|run   (paper calibrator bot)\n"); return 2;
     }
     const QString sub = args.isEmpty() ? QStringLiteral("status") : args.takeFirst().trimmed().toLower();
     if (sub == QStringLiteral("status")) return kalshi_auto_status_command(opts, args);
