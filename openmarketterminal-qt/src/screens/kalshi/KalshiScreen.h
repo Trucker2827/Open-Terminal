@@ -288,6 +288,8 @@ class KalshiScreen final : public QWidget {
     qint64 market_list_fetch_started_ms_ = 0;
     qint64 market_list_last_fetch_ms_ = 0;
     bool preserve_selection_on_populate_ = false;
+    // Last refresh verdict written to the log, so an unchanged one stays quiet.
+    QString market_list_logged_reason_;
     QHash<QString, qint64> series_detail_fetched_ms_;
     QTimer* market_list_timer_ = nullptr;
     QTimer* dom_timer_ = nullptr;

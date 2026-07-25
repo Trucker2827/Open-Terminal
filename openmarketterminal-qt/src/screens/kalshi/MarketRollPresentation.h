@@ -17,6 +17,14 @@
 //     refresh must not yank the operator's selection; an expired selection
 //     rolls to the next contract in the same series; nothing else moves it.
 //
+// Each decision also formats itself into one log line (describe_market_refresh,
+// describe_market_selection). Without them a running process reports nothing
+// about which branch it took, so a silent screen cannot be told apart from a
+// screen that correctly answered "hidden" — which is exactly the ambiguity the
+// first manual-verification attempt on this module ran into. The formatters are
+// pure for the same reason the decisions are: that every branch names itself,
+// and that a roll names both of its tickers, is then regression-testable.
+//
 // The roll is deliberately keyed on the selected contract's OWN close time,
 // not on its absence from the new list. Absence has innocent causes (a search
 // result set, a horizon filter change), and a roll is journaled as a real
@@ -248,6 +256,52 @@ inline MarketSelectionDecision choose_market_row(
     decision.to_ticker = markets.at(best_row).key.market_id;
     decision.reason = QStringLiteral("rolled");
     return decision;
+}
+
+namespace market_roll_detail {
+
+/// `-` for an empty field. A blank in a log line is unreadable; an absent value
+/// should look absent.
+inline QString or_dash(const QString& value) {
+    return value.isEmpty() ? QStringLiteral("-") : value;
+}
+
+} // namespace market_roll_detail
+
+/// One line describing a refresh decision, for the screen's log. Carries the
+/// branch by name — `hidden` (the screen is off-screen), `in-flight`, `waiting`,
+/// `periodic`, `expired` — plus the inputs that produced it, so a log reader can
+/// tell a suppressed tick from a timer that never started.
+inline QString describe_market_refresh(const MarketRefreshState& state,
+                                       const MarketRefreshDecision& decision,
+                                       const QString& selected_ticker, qint64 now_ms) {
+    const QString since = state.last_fetch_ms > 0
+                              ? QString::number(now_ms - state.last_fetch_ms)
+                              : QStringLiteral("never");
+    return QStringLiteral("list refresh %1: reason=%2 visible=%3 in_flight=%4 since_last_ms=%5"
+                          " selected=%6 closes=%7")
+        .arg(decision.refresh ? QStringLiteral("FETCH") : QStringLiteral("skip"))
+        .arg(decision.reason)
+        .arg(state.visible ? 1 : 0)
+        .arg(state.list_fetch_in_flight ? 1 : 0)
+        .arg(since)
+        .arg(market_roll_detail::or_dash(selected_ticker))
+        .arg(market_roll_detail::or_dash(state.selected_end_date_iso));
+}
+
+/// One line describing which row a landed payload selected. Always names both
+/// ends of the transition, so a real 15-minute rollover reads as
+/// `reason=rolled A -> B` in the log and not merely as a row index.
+inline QString describe_market_selection(const MarketSelectionDecision& decision, int market_count,
+                                         bool background) {
+    return QStringLiteral("list populated (%1): reason=%2 row=%3 contracts=%4 %5 -> %6%7")
+        .arg(background ? QStringLiteral("background") : QStringLiteral("operator"))
+        .arg(decision.reason)
+        .arg(decision.row)
+        .arg(market_count)
+        .arg(market_roll_detail::or_dash(decision.from_ticker))
+        .arg(market_roll_detail::or_dash(decision.to_ticker))
+        .arg(decision.rolled ? QStringLiteral(" ROLLED") : QString());
 }
 
 } // namespace openmarketterminal::screens::kalshi

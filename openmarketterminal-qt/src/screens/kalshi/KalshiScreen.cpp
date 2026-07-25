@@ -11,6 +11,7 @@
 #include "core/keys/WindowCycler.h"
 #include "core/config/ProfileManager.h"
 #include "core/events/EventBus.h"
+#include "core/logging/Logger.h"
 #include "services/crypto/CoinbaseEndpoints.h"
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionCredentialStore.h"
@@ -1960,7 +1961,18 @@ void KalshiScreen::refresh_market_list_if_due() {
     state.has_selection = has_selection_;
     state.selected_end_date_iso = selected_.end_date_iso;
     state.selected_settled = selected_.closed;
-    if (!decide_market_refresh(state, QDateTime::currentMSecsSinceEpoch()).refresh) return;
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const auto decision = decide_market_refresh(state, now_ms);
+    // Every fetch, and every change of verdict, says so in the log. Without
+    // this a silent screen is indistinguishable from one whose timer never
+    // started; with it the cadence is one grep. Unchanged verdicts stay quiet so
+    // a 5s tick does not put twelve "waiting" lines a minute in the log.
+    if (decision.refresh || decision.reason != market_list_logged_reason_) {
+        market_list_logged_reason_ = decision.reason;
+        LOG_INFO(QStringLiteral("Kalshi.market_list"),
+                 describe_market_refresh(state, decision, selected_.key.market_id, now_ms));
+    }
+    if (!decision.refresh) return;
     refresh(/*background=*/true);
 }
 
@@ -2077,6 +2089,10 @@ void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& marke
         background && has_selection_ ? selected_.key.market_id : QString();
     const auto choice = choose_market_row(markets_, previous_ticker, selected_.end_date_iso,
                                           selected_.closed, now_ms);
+    // The other half of the cadence trace: which contract a landed payload
+    // selected, and — on a real rollover — both ends of the handoff.
+    LOG_INFO(QStringLiteral("Kalshi.market_list"),
+             describe_market_selection(choice, markets_.size(), background));
     if (choice.rolled) {
         QJsonObject row{
             {QStringLiteral("event"), QStringLiteral("kalshi_screen_contract_roll")},

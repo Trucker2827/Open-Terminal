@@ -296,6 +296,79 @@ class KalshiMarketRollTest final : public QObject {
         QVERIFY(decision.same_contract);
     }
 
+    // ── the log lines (observability contract) ───────────────────────────────
+
+    void every_refresh_branch_names_itself_in_the_log() {
+        // The reason the log line exists: "the screen was hidden" and "the timer
+        // never started" look identical from outside the process unless the
+        // suppressed branch says which one it was.
+        MarketRefreshState hidden;  // visible = false
+        hidden.last_fetch_ms = kNow - 10 * kMarketRefreshIntervalMs;
+        const QString hidden_line =
+            describe_market_refresh(hidden, decide_market_refresh(hidden, kNow),
+                                    QStringLiteral("KXBTCD-1215"), kNow);
+        QVERIFY(hidden_line.contains(QStringLiteral("reason=hidden")));
+        QVERIFY(hidden_line.contains(QStringLiteral("visible=0")));
+        QVERIFY(hidden_line.contains(QStringLiteral("skip")));
+
+        MarketRefreshState due = visible_state();
+        due.last_fetch_ms = kNow - kMarketRefreshIntervalMs;
+        const QString due_line = describe_market_refresh(due, decide_market_refresh(due, kNow),
+                                                         QStringLiteral("KXBTCD-1215"), kNow);
+        QVERIFY(due_line.contains(QStringLiteral("reason=periodic")));
+        QVERIFY(due_line.contains(QStringLiteral("FETCH")));
+        QVERIFY(due_line.contains(QStringLiteral("selected=KXBTCD-1215")));
+        QVERIFY(due_line.contains(
+            QStringLiteral("since_last_ms=%1").arg(kMarketRefreshIntervalMs)));
+
+        MarketRefreshState waiting = visible_state();
+        waiting.last_fetch_ms = kNow - 1'000;
+        QVERIFY(describe_market_refresh(waiting, decide_market_refresh(waiting, kNow), QString(),
+                                        kNow)
+                    .contains(QStringLiteral("reason=waiting")));
+
+        MarketRefreshState busy = visible_state();
+        busy.list_fetch_in_flight = true;
+        busy.fetch_started_ms = kNow - 1'000;
+        const QString busy_line =
+            describe_market_refresh(busy, decide_market_refresh(busy, kNow), QString(), kNow);
+        QVERIFY(busy_line.contains(QStringLiteral("reason=in-flight")));
+        QVERIFY(busy_line.contains(QStringLiteral("in_flight=1")));
+        // Never fetched: absent reads absent, not as a bogus age since epoch.
+        QVERIFY(busy_line.contains(QStringLiteral("since_last_ms=never")));
+        QVERIFY(busy_line.contains(QStringLiteral("selected=-")));
+
+        MarketRefreshState expired = visible_state();
+        expired.last_fetch_ms = kNow - kMarketExpiredRetryMs;
+        expired.has_selection = true;
+        expired.selected_end_date_iso = iso(kNow - 60'000);
+        QVERIFY(describe_market_refresh(expired, decide_market_refresh(expired, kNow),
+                                        QStringLiteral("KXBTCD-1215"), kNow)
+                    .contains(QStringLiteral("reason=expired")));
+    }
+
+    void the_log_line_names_both_ends_of_a_roll() {
+        const QVector<pred::PredictionMarket> markets{market("KXBTCD-1215", kNow - 5'000),
+                                                      market("KXBTCD-1230", kNow + 900'000)};
+        const auto rolled =
+            choose_market_row(markets, QStringLiteral("KXBTCD-1215"), iso(kNow - 5'000), false, kNow);
+        QVERIFY(rolled.rolled);
+        const QString line = describe_market_selection(rolled, markets.size(), /*background=*/true);
+        QVERIFY(line.contains(QStringLiteral("reason=rolled")));
+        QVERIFY(line.contains(QStringLiteral("KXBTCD-1215 -> KXBTCD-1230")));
+        QVERIFY(line.contains(QStringLiteral("ROLLED")));
+        QVERIFY(line.contains(QStringLiteral("background")));
+
+        // A preserved selection is not dressed up as a roll in the log either.
+        const auto preserved = choose_market_row(markets, QStringLiteral("KXBTCD-1230"),
+                                                 iso(kNow + 900'000), false, kNow);
+        const QString preserved_line =
+            describe_market_selection(preserved, markets.size(), /*background=*/false);
+        QVERIFY(preserved_line.contains(QStringLiteral("reason=preserved")));
+        QVERIFY(!preserved_line.contains(QStringLiteral("ROLLED")));
+        QVERIFY(preserved_line.contains(QStringLiteral("operator")));
+    }
+
     void a_series_without_extras_falls_back_to_the_ticker_prefix() {
         QVector<pred::PredictionMarket> markets{market("KXBTCD-1215", kNow - 5'000),
                                                 market("KXBTCD-1230", kNow + 900'000),
