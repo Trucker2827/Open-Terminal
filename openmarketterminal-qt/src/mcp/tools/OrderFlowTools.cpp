@@ -1024,9 +1024,24 @@ ToolResult submit_prediction_order(const OrderDraft& draft, const QJsonObject& i
             // One bot position per contract. A newly journaled signal must not
             // produce another order while an older micro-live draft for the
             // same market is being submitted or has already been submitted.
+            //
+            // The IN-list is every status that means "the venue has, or may
+            // have, an order for this contract". A LIVE submit writes the
+            // VENUE's state onto the draft (`filled`, `partially_filled`,
+            // `resting`, `accepted`); only the PAPER branch ever writes
+            // `submitted`, so the three transport states alone missed a live
+            // order that filled (#141). `reconciliation_required` is the
+            // strongest of all — the venue took the order and only the local
+            // ledger write failed.
+            //
+            // Deliberately a whitelist, not `NOT IN (rejected,cancelled,…)`:
+            // `prepared`/`expired` drafts left nothing at the venue, and the
+            // bot writes a `prepared` draft on every tick, so a blacklist
+            // would wedge a contract forever on the first gate rejection.
             auto duplicate = Database::instance().execute(
                 "SELECT COUNT(*) FROM order_drafts WHERE draft_id<>? "
-                "AND status IN ('submitting','submission_unknown','submitted') "
+                "AND status IN ('submitting','submission_unknown','submitted','accepted',"
+                "'resting','partially_filled','filled','reconciliation_required') "
                 "AND json_extract(intent_json,'$.experiment_id')=? "
                 "AND json_extract(intent_json,'$.market_id')=?",
                 {draft_id, experiment_id, market_id});

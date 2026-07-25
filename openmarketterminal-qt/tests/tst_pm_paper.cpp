@@ -1371,14 +1371,11 @@ class TstPmPaper : public QObject {
         QCOMPARE(ok_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
         QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
 
-        // Documented behaviour, not an aspiration: submit_order's per-contract
-        // duplicate guard counts drafts whose status is in ('submitting',
-        // 'submission_unknown', 'submitted'), but a LIVE submit writes the
-        // VENUE's state onto the draft — the fill above left it 'filled'. The
-        // guard therefore does NOT stop a second order on the same contract,
-        // which is exactly why KalshiBotLive::live_working() suppresses it bot
-        // side. This pins the real behaviour so a change on either side is
-        // visible rather than silent.
+        // #141: a LIVE submit writes the VENUE's state onto the draft — the fill
+        // above left it 'filled', not 'submitted' (only the paper branch ever
+        // writes that). The per-contract duplicate guard's IN-list now carries
+        // the venue states a live submit can write, so the second order for the
+        // contract the venue already filled is refused BEFORE the adapter.
         QCOMPARE(OrderDraftRepository::instance().get(ok_draft).value().status,
                  QStringLiteral("filled"));
         const QJsonObject again = bot_live_intent(QStringLiteral("mkt-bot-ok"), 1.0, 0.05);
@@ -1390,16 +1387,82 @@ class TstPmPaper : public QObject {
         const auto again_res = rt_.call_tool(
             "submit_order", QJsonObject{{"draft_id", again_draft}, {"mode", "live"}});
         disarm_live();
-        QVERIFY2(!again_res.data.toObject().value("reason").toString()
-                      .contains("already submitted an order for this contract"),
-                 "if the submit path now catches a FILLED duplicate itself, delete "
-                 "KalshiBotLive::live_working() and its tests — it exists only because it does not");
-        // Say exactly what happened, not merely what did not: the second order
-        // FILLED and reached the adapter. "no duplicate reason" alone would be
-        // satisfied by any other gate quietly catching it, and this is the
-        // evidence base for both live_working()'s existence and issue #141.
-        QCOMPARE(again_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
-        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 2);
+        const QJsonObject again_data = again_res.data.toObject();
+        QCOMPARE(again_data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(again_data.value("reason").toString()
+                     .contains("already submitted an order for this contract"),
+                 qPrintable("a filled predecessor must be caught by the duplicate guard, not by "
+                            "some other gate: " + again_data.value("reason").toString()));
+        // The strongest half: no second order left the process. Nothing was
+        // double-bought at the venue, and the refusal is a gate, not a race.
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+    }
+
+    // The other half of #141: the guard must block only what the venue actually
+    // has. An order the venue REFUSED (rejected) or KILLED (a fill-and-kill
+    // that rested nowhere) left nothing behind, so the contract stays
+    // submittable — blocking it would be the bot inventing a position out of a
+    // refusal and standing down for the rest of the experiment.
+    void a_refused_or_killed_live_order_does_not_block_the_contract() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        set_setting("kalshi.live_automation.enabled", "true");
+        set_setting("kalshi.live_automation.session_id", "sess-bot-live");
+        set_setting("kalshi.live_automation.ends_at",
+                    QDateTime::currentDateTimeUtc().addSecs(3600).toString(Qt::ISODateWithMs));
+        set_setting("kalshi.live_automation.max_orders_per_hour", "10");
+
+        // Each pass: submit once with the venue answering `answer`, assert the
+        // draft landed in `landed`, then submit AGAIN for the same contract and
+        // assert that second order reached the adapter rather than the guard.
+        struct VenueAnswer { const char* venue_says; const char* draft_lands; };
+        for (const VenueAnswer& answer : {VenueAnswer{"REJECTED", "rejected"},
+                                          VenueAnswer{"CANCELED", "cancelled"}}) {
+            const QString landed = QString::fromLatin1(answer.draft_lands);
+            const QString market = QStringLiteral("mkt-bot-") + landed;
+            const QJsonObject first = bot_live_intent(market, 1.0, 0.05);
+            QVERIFY2(!first.isEmpty(), "the bot must build a live intent for a permitted session");
+            auto first_prepared = rt_.call_tool("prepare_order", first);
+            const QString first_draft =
+                first_prepared.data.toObject().value("draft_id").toString();
+            QVERIFY(!first_draft.isEmpty());
+
+            fake_adapter()->filled_override_ = 0.0;         // nothing was bought
+            fake_adapter()->status_override_ = QString::fromLatin1(answer.venue_says);
+            arm_live();
+            const auto first_res = rt_.call_tool(
+                "submit_order", QJsonObject{{"draft_id", first_draft}, {"mode", "live"}});
+            disarm_live();
+            fake_adapter()->filled_override_ = -1.0;
+            fake_adapter()->status_override_.clear();
+            QVERIFY2(first_res.success, qPrintable("first submit: " + first_res.error));
+            QCOMPARE(first_res.data.toObject().value("status").toString(), landed);
+            QCOMPARE(OrderDraftRepository::instance().get(first_draft).value().status, landed);
+
+            const QJsonObject second = bot_live_intent(market, 1.0, 0.05);
+            QVERIFY(!second.isEmpty());
+            auto second_prepared = rt_.call_tool("prepare_order", second);
+            const QString second_draft =
+                second_prepared.data.toObject().value("draft_id").toString();
+            QVERIFY(!second_draft.isEmpty());
+            const int calls_before = fake_adapter()->place_order_calls_;
+            arm_live();
+            const auto second_res = rt_.call_tool(
+                "submit_order", QJsonObject{{"draft_id", second_draft}, {"mode", "live"}});
+            disarm_live();
+            const QJsonObject second_data = second_res.data.toObject();
+            QVERIFY2(!second_data.value("reason").toString()
+                          .contains("already submitted an order for this contract"),
+                     qPrintable(landed + " must not block the contract: " +
+                                second_data.value("reason").toString()));
+            // Said positively: the retry FILLED and reached the venue. "no
+            // duplicate reason" alone would also be satisfied by some other
+            // gate quietly refusing it.
+            QCOMPARE(second_data.value("status").toString(), QStringLiteral("filled"));
+            QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+        }
     }
 
     void cleanupTestCase() { rt_.shutdown(); }

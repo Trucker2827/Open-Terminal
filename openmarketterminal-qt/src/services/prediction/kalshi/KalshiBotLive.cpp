@@ -2,7 +2,6 @@
 
 #include <QDateTime>
 #include <QJsonDocument>
-#include <QSet>
 #include <QTimeZone>
 
 #include <algorithm>
@@ -322,25 +321,6 @@ QJsonObject KalshiBotLive::refusal_row(const Permission& permission, qint64 now_
 
 bool KalshiBotLive::is_live_row(const QJsonObject& row) {
     return row.value(QStringLiteral("mode")).toString() == QLatin1String(kModeLive);
-}
-
-QJsonArray KalshiBotLive::live_working(const QJsonArray& ledger_rows) {
-    QSet<QString> tickers;
-    for (const auto& value : ledger_rows) {
-        const QJsonObject row = value.toObject();
-        if (!is_live_row(row)) continue;
-        if (row.value(QStringLiteral("event")).toString() != QLatin1String(kDecisionEvent)) continue;
-        if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) continue;
-        // Only what the venue took. A refused bid left nothing behind.
-        if (row.value(QStringLiteral("reason_code")).toString() != QLatin1String(kLiveSubmitted))
-            continue;
-        const QString ticker = row.value(QStringLiteral("ticker")).toString();
-        if (!ticker.isEmpty()) tickers.insert(ticker);
-    }
-    QJsonArray out;
-    for (const QString& ticker : tickers)
-        out.append(QJsonObject{{QStringLiteral("ticker"), ticker}});
-    return out;
 }
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns
