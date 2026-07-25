@@ -1,0 +1,171 @@
+# Issue #137 — Kalshi 15-minute contract auto-roll: what was verified by hand,
+# and what was not.
+#
+# This note is written by the session that merged the branch forward onto
+# origin/main fe2ac0cd and re-verified it. The two code commits (546bd01c,
+# 81ce0a98) were inherited from an earlier session whose own evidence could NOT
+# be re-checked here — see "What the earlier session claimed" at the bottom —
+# so everything below is what THIS session observed directly.
+
+## 1. Suite, on the merge-forward tip
+
+    $ ctest --test-dir openmarketterminal-qt/build --output-on-failure
+    ...
+    124/135 Test #124: tst_kalshi_market_roll ..................   Passed    0.01 sec
+    ...
+    100% tests passed, 0 tests failed out of 135
+
+Test #124 confirmed RUN by name and number, not inferred from a green total.
+The binary was rebuilt after the merge (mtime 22:23 against a 22:21 source), so
+the pass is not a stale object. 24 cases:
+
+    Totals: 26 passed, 0 failed, 0 skipped, 0 blacklisted   (24 cases + init/cleanup)
+
+ctest NAME set = origin/main's 134 ∪ {tst_kalshi_market_roll} = 135, compared as
+sets rather than counts, because the merge touched tests/CMakeLists.txt on both
+sides and a dropped add_test would stay green.
+
+## 2. Neuters — six, one at a time, restored to 24/24 between each
+
+Each edit was made in MarketRollPresentation.h; ninja was confirmed to relink
+tst_kalshi_market_roll before the result was trusted.
+
+    in-flight guard removed (`if (false && state.list_fetch_in_flight ...)`)
+        -> 2 red: an_in_flight_fetch_blocks_the_timer,
+                  an_expired_selection_also_cannot_stack_a_second_fetch
+
+    is_expired() always false
+        -> 10 red: an_expired_selection_refreshes_ahead_of_the_periodic_cadence,
+                   a_settled_selection_is_expired_whatever_its_clock_says,
+                   an_expired_selection_rolls_to_the_soonest_successor_in_its_series,
+                   a_roll_ties_are_broken_by_the_lists_own_ranking,
+                   the_successor_search_skips_contracts_that_are_already_dead,
+                   a_settled_contract_rolls_even_before_its_close_time,
+                   an_expired_contract_that_dropped_off_the_list_still_rolls,
+                   an_expiry_with_no_successor_listed_is_not_claimed_as_a_roll,
+                   the_close_grace_keeps_a_roll_from_firing_early,
+                   a_series_without_extras_falls_back_to_the_ticker_prefix
+
+    preservation branch disabled (`if (false && previous_row >= 0 && !expired)`)
+        -> 3 red: a_background_refresh_keeps_the_live_selection_even_when_it_moved_rows,
+                  the_close_grace_keeps_a_roll_from_firing_early,
+                  the_refetched_close_time_overrides_what_the_screen_remembered
+
+    is_selected_contract() always false
+        -> 3 red: the_selected_contract_predicate_matches_by_ticker_only,
+                  a_background_refresh_keeps_the_live_selection_even_when_it_moved_rows,
+                  the_refetched_close_time_overrides_what_the_screen_remembered
+
+    stall escape removed (`if (state.list_fetch_in_flight)`)
+        -> 1 red: a_lost_fetch_releases_the_guard_instead_of_wedging_it
+
+    kMarketCloseGraceMs = 0
+        -> 1 red: the_close_grace_keeps_a_roll_from_firing_early
+
+## 3. The Qt signal contract the roll actually depends on
+
+No unit test can see this, and it is the hinge of the whole fix: the roll only
+reaches the DOM/maker panel and the charts if `market_list_->setCurrentRow(row)`
+re-enters `select_market`. populate_markets clears the list first, so the
+question is whether `clear()` resets the current row (making every later
+setCurrentRow a real change) — if it did not, a roll landing on the same row
+index would be a silent no-op and the pane would stay dead.
+
+Checked empirically with a scratch Qt program (NOT part of the branch) that
+replays populate_markets' exact sequence — clear(); addItem() xN;
+setCurrentRow(row) — with a slot on QListWidget::currentRowChanged:
+
+    after first payload: currentRow=0 signals=1 last=0
+      clear() emitted 1 signal(s), first=-1, currentRow now -1
+      same-row preserve: signals=2 last=0  (select_market re-entered: YES)
+      roll to a new ticker at row 0: signals=2 last=0  (select_market re-entered: YES)
+
+clear()'s -1 hits select_market's `row < 0` early return, so no teardown fires
+on it, and the following setCurrentRow always re-enters select_market — with the
+same ticker (short-circuit, pane untouched) or the successor (full teardown +
+resubscribe). Both branches confirmed reachable.
+
+## 4. Live dev-build session, on the 15-minute cadence
+
+Dev build of this branch, run so that nothing touched the operator's terminal:
+
+    HOME=/tmp/finn137-home \
+    OPENTERMINAL_KALSHI_EVIDENCE_DIR=/tmp/finn137-evidence2 \
+    build/OpenTerminal.app/Contents/MacOS/OpenTerminal --profile finn137
+
+The evidence-dir override is what actually isolates the ledger. HOME alone does
+NOT: kalshi_evidence_path() (ServeCommand.h:204) reads
+QStandardPaths::GenericDataLocation, which on macOS comes from the process's
+real home — a scratch session without the override appends to the operator's own
+kalshi-lifecycle.jsonl. The operator's app (pid 45904) and ledger were untouched.
+
+The screen's cadence is a widget toggle with no action id the local bridge can
+invoke, and its default is hourly, so reaching the 15-minute ladder needed a
+one-line CAPTURE-ONLY build change — `cadence_` initialised to "fifteen_min"
+(KalshiScreen.h:170). It is not in the branch; the tree was restored and
+rebuilt before commit.
+
+What that session produced:
+
+    [2026-07-24 22:58:08.511-04:00] [INFO] [Kalshi.fetch_category]
+        fan-out done: 1 events / 1 markets from 2 series probed (cap 200)
+
+That is a real Kalshi REST fetch on the 15-minute ladder from this branch's
+build — one contract, which is what the 15-minute horizon filter admits at that
+hour. It is the only Kalshi traffic the session produced.
+
+## 5. What could NOT be captured, and why
+
+The machine was at the macOS login screen for the entire session
+(`CGSSessionScreenIsLocked = true`), as it was for the earlier one. Consequences:
+
+  - No screenshot. Synthesized clicks go to the lock window, so the "15 MIN"
+    cadence button could not be pressed by hand either — hence the capture-only
+    default above.
+  - The Prediction Markets dock panel would not stay materialised. Immediately
+    after the fetch above it read back as
+    `state=spawning, has_live_widget=false` from `workspace panels`, and
+    repeated `workspace open polymarket --exclusive` calls returned
+    "Navigated" without spawning a live widget. No second list fetch ever
+    followed the 22:58:08 one, so this session never observed the 30s cadence
+    on a live screen and never reached a 15-minute boundary with a selection
+    alive.
+
+    What that silence means was NOT established, and is not asserted here. The
+    reading consistent with the panel readback is that the screen went
+    not-visible, so `decide_market_refresh` answered "hidden" — the screen has
+    no hideEvent and stops no timer, so `visible` is the only thing that
+    suppresses a tick once the timer has started. But no decision value was
+    read from the running process, and the alternatives were not ruled out:
+    the timer never started (i.e. the 22:58:08 fetch came from something other
+    than showEvent), or `markets_ready` never reached populate_markets so the
+    in-flight guard stayed set — though that one should still have cleared at
+    the 90s stall escape, which is itself evidence against it. Whoever next
+    gets a live screen on this branch should watch for a second fetch ~30s
+    after the first before trusting the cadence end to end.
+  - A `QT_QPA_PLATFORM=offscreen` run (which would have side-stepped the lock
+    entirely) never reached "Application ready" — it stalled after
+    "Pre-warmed 53 dashboard topics during login screen". The network was
+    badly degraded throughout (a single Kalshi REST call took 11.5s; the
+    market-data batch took 43s), which is the likeliest reason.
+
+**Stated plainly: no 15-minute rollover was hand-verified. No roll record was
+produced in kalshi-lifecycle.jsonl this session.** The auto-roll and the
+selection preservation are covered by the pure-function tests and their neuters
+(sections 1–2) and by the signal check (section 3); the end-to-end behaviour on
+a live 15-minute boundary is NOT covered by hand evidence.
+
+## What the earlier session claimed, and why it is not re-quoted here
+
+The first draft of this file (uncommitted, from the session that wrote the two
+code commits) quoted thirteen `Kalshi.fetch_category` lines at 30–35s spacing
+and a 12-fetches / 2-select_market ratio from an 18:07 run, as evidence for the
+periodic cadence and for selection preservation on the live path. Its trailing
+line — "See ROLLOVER section appended below" — was never written; that session
+ended first.
+
+That log is gone: the scratch profile's log rotated twice during this session's
+restarts, and neither openmarketterminal.log nor .log.prev contains any 18:xx
+line. Those figures are therefore unverifiable, and re-printing them as evidence
+would be exactly the staleness-fabrication this repo has been bitten by before.
+They are described here, not claimed.
