@@ -1,5 +1,6 @@
 #pragma once
 
+#include "screens/kalshi/AutoCockpitPresentation.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
 
 #include "services/prediction/PredictionTypes.h"
@@ -27,6 +28,7 @@ class QResizeEvent;
 class QSpinBox;
 class QStackedWidget;
 class QSplitter;
+class QTabWidget;
 class QTableWidget;
 class QTableWidgetItem;
 class QTextEdit;
@@ -100,6 +102,21 @@ class KalshiScreen final : public QWidget {
     void update_market_health();
     void update_strike_overlay();
     void refresh_flow_meter();
+    /// Repaints the AUTO COCKPIT header from `present_auto_cockpit`. Driven by
+    /// the 1s clock tick and NOT by the ladder engine, so a cockpit whose
+    /// engine has stopped ages into STALE instead of freezing at its last-good
+    /// text. Owns the ladder table whenever the inputs are not live: the rows
+    /// are replaced with the stated reason rather than left showing prices
+    /// derived from inputs the header has just called untrustworthy — and that
+    /// includes the plan-summary line, which the engine pass writes only on the
+    /// live path. `now_ms` is passed in so a single engine pass classifies its
+    /// inputs against one clock reading: the header and the gate at the end of
+    /// record_ladder_evidence must never straddle a staleness boundary and
+    /// disagree about the same pass.
+    void refresh_auto_cockpit_header(qint64 now_ms);
+    /// The cockpit's inputs as they stand right now: live selection and market
+    /// list state, plus the ladder-leg freshness carried in cockpit_ladder_.
+    AutoCockpitInputs auto_cockpit_inputs() const;
     void record_ladder_evidence();
     void refresh_volatility_estimate(const QString& symbol, qint64 decision_ts_ms);
     void render_ladder_surface(
@@ -190,6 +207,13 @@ class KalshiScreen final : public QWidget {
     QLabel* gate_label_ = nullptr;
     QLabel* shadow_status_ = nullptr;
     QLabel* ladder_status_ = nullptr;
+    // AUTO COCKPIT header: what this surface is, and whether the inputs it
+    // prices from are fresh. Repainted every clock tick.
+    QLabel* cockpit_state_ = nullptr;
+    QLabel* cockpit_markets_ = nullptr;
+    QLabel* cockpit_books_ = nullptr;
+    QLabel* cockpit_roles_ = nullptr;
+    QPushButton* cockpit_open_bot_ = nullptr;
     QLabel* flow_status_ = nullptr;
     QLabel* flow_detail_ = nullptr;
     QTableWidget* ladder_table_ = nullptr;
@@ -197,6 +221,10 @@ class KalshiScreen final : public QWidget {
     QLabel* advisor_separation_status_ = nullptr;
     QLabel* legacy_live_badge_ = nullptr;
     QLabel* canary_badge_ = nullptr;
+    // Shown only once every advisor_* file has fallen silent past
+    // kAdvisorRetiredAfterMs: the duel is over and the tab says so.
+    QLabel* advisor_retired_banner_ = nullptr;
+    QLabel* advisor_duel_record_ = nullptr;
     QLabel* advisor_system_status_ = nullptr;
     QLabel* advisor_qualification_status_ = nullptr;
     QLabel* advisor_safety_status_ = nullptr;
@@ -233,6 +261,18 @@ class KalshiScreen final : public QWidget {
     QLabel* cashout_label_ = nullptr;
     QPushButton* cashout_button_ = nullptr;
     QPushButton* live_order_button_ = nullptr;
+    // The centre tab bar, kept so the cockpit can hand the operator over to the
+    // BOT tab. The index is captured at addTab time — never searched by label,
+    // which a later rename would break silently.
+    QTabWidget* center_tabs_ = nullptr;
+    int bot_tab_index_ = -1;
+    // When populate_markets last replaced all_markets_. 0 = never listed.
+    qint64 markets_listed_at_ms_ = 0;
+    // Ladder-leg freshness carried over from the last surface the engine built
+    // (KalshiSurfacePoint::quote_observed_at_ms), so the 1s header and the 5s
+    // ladder can never quote different book ages. Cleared when the selection
+    // changes: facts about the previous event are not facts about this one.
+    AutoCockpitInputs cockpit_ladder_;
     QString pending_order_kind_;
     QJsonObject pending_manual_order_;
     QSet<QString> recorded_fill_ids_;
@@ -301,6 +341,10 @@ class KalshiScreen final : public QWidget {
     qint64 last_live_status_fetch_ms_ = 0;
     QJsonObject calibrator_report_;
     qint64 calibrator_report_read_ms_ = 0;
+    // advisor_competition_report.json is ~750KB and frozen once the duel ends,
+    // so it is read at most once per session — only when retirement is detected.
+    QJsonObject advisor_duel_report_;
+    bool advisor_duel_report_read_ = false;
     bool live_status_fetching_ = false;
     QJsonObject latest_legacy_live_status_;
     bool shadow_enabled_ = true;

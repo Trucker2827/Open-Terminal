@@ -1,0 +1,62 @@
+issue #138 — ADVISOR & CANARY tab renders the concluded duel honestly
+=====================================================================
+
+Captured 2026-07-24 18:27–18:29 local from a dev build on a scratch profile
+(`OpenTerminal --profile finn138`), seeded with THIS machine's real advisor
+state: the six advisor_* files and advisor_competition_report.json copied
+verbatim out of
+  ~/Library/Application Support/org.openterminal.OpenTerminal/daemon/
+where every one of them last moved on 2026-07-23 14:24 UTC and no advisor
+job exists in launchd any more.
+
+issue-138-advisor-retired.png — the retired rendering
+-----------------------------------------------------
+  CODEX ADVISOR & CANARY · BLIND DUEL PROTOCOL · READ-ONLY CONTROL PLANE
+  "…for the blind forecasting duel (the advisor protocol) — a separate
+   system from the BOT tab, which is the current Kalshi automation path."
+
+  LEGACY LIVE SESSION: ARMED            <- still there, still red
+  (the CODEX CANARY badge is gone: it is advisor-file state, and once the
+   duel is over it is archive, not status)
+
+  DUEL CONCLUDED · ADVISOR LOOP RETIRED — last advisor write
+  2026-07-23 14:24 UTC (32h ago)
+  No advisor state has changed since. Nothing below this banner is live;
+  the current Kalshi automation path is the BOT tab.
+
+  FINAL FROZEN DUEL RECORD (advisor_competition_report.json)
+  RESULT NO WINNER DECLARED — INSUFFICIENT_PAIRED_DATA · 53 / 200 jointly
+    resolved of 264 opportunities
+  EPOCHS claude=kalshi-blind-claude-cli-v5-latency-neutral ·
+         codex=kalshi-blind-codex-v4-zero-capability-latency-neutral
+  COVERAGE claude 25.0% · codex 98.5% (minimum 80.0% each)
+  SCORING FROZEN · infrastructure 2876e683b880 · shadow_only=true ·
+    execution_eligible=false
+
+The armed badge above the banner is the point, not an accident: retirement
+is judged from the advisor files ONLY. `latest_legacy_live_status_` is the
+live `kalshi auto live status` poll and deliberately never enters the
+staleness math, so a concluded duel can never cover an armed session.
+
+issue-138-advisor-retired-record.png — the same panel scrolled
+--------------------------------------------------------------
+Whole frozen record incl. the SCORING FROZEN line, and the four legacy
+cards below it now headed
+  ARCHIVED FINAL STATE — the advisor loop is retired; nothing below is live.
+in grey rather than amber: a concluded duel is not an incident.
+
+issue-138-advisor-live-unchanged.png — the other direction, live
+----------------------------------------------------------------
+With the SAME profile, one advisor file made fresh
+(advisor_promotion_state.json updated_at_ms := now, nothing else touched),
+the tab returns to exactly its pre-change rendering within one 5s refresh:
+both badges back (LEGACY LIVE SESSION: ARMED · CODEX CANARY: PAUSED), no
+banner, no record, SYSTEM STATUS amber again with no ARCHIVED prefix.
+A loop that restarts one day is not masked.
+
+Not shown in a screenshot, covered by tests instead: a missing/unreadable
+advisor_competition_report.json renders
+"FINAL FROZEN DUEL RECORD UNAVAILABLE …" with no numbers at all
+(tst_advisor_canary_presentation::missing_duel_report_reads_missing).
+
+Scratch profile deleted after capture.
