@@ -401,6 +401,62 @@ class KalshiBotPanelPresentationTest final : public QObject {
         QVERIFY(!view.armed.contains("stake <= $2.00"));
     }
 
+    // --- the LIVE badge (ladder rung 5) -------------------------------------
+
+    void a_paper_ledger_never_shows_a_live_badge() {
+        const qint64 now = 4'000'000'000;
+        const auto view = present_kalshi_bot_panel(QJsonArray{bid_row(now - 5'000, "KXBTCD-B118")},
+                                                   {}, {}, now);
+        QVERIFY(!view.mode_live);
+        QCOMPARE(view.mode, QStringLiteral("PAPER"));
+        QVERIFY(view.status.startsWith("[PAPER]"));
+        QVERIFY(!view.decisions.first().contains("LIVE"));
+    }
+
+    void a_live_tick_shows_the_live_badge_and_marks_its_own_rows() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject row = bid_row(now - 5'000, "KXBTCD-B118");
+        row.insert("mode", "live");
+        row.insert("live_eligible", true);
+        row.insert("submit_status", "filled");
+        row.insert("order_state", "filled");
+        const auto view = present_kalshi_bot_panel(QJsonArray{row}, {}, {}, now);
+        QVERIFY(view.mode_live);
+        QCOMPARE(view.mode, QStringLiteral("LIVE"));
+        QVERIFY(view.status.startsWith("[LIVE]"));
+        const QString line = view.decisions.first();
+        QVERIFY2(line.contains("LIVE"), qPrintable(line));
+        // Whatever the submit path answered, verbatim: a refused order can
+        // never read on the screen as a placed one.
+        QVERIFY2(line.contains("submit filled"), qPrintable(line));
+    }
+
+    void a_live_bid_the_submit_path_refused_says_so_on_its_own_row() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject row = bid_row(now - 5'000, "KXBTCD-B118");
+        row.insert("mode", "live");
+        row.insert("reason_code", "LIVE_ORDER_REJECTED_BY_SUBMIT");
+        row.insert("submit_status", "rejected");
+        const QString line = present_kalshi_bot_panel(QJsonArray{row}, {}, {}, now).decisions.first();
+        QVERIFY2(line.contains("submit rejected"), qPrintable(line));
+        QVERIFY2(line.contains("LIVE_ORDER_REJECTED_BY_SUBMIT"), qPrintable(line));
+    }
+
+    // The badge is read off the NEWEST row, exactly as the signal line is. A
+    // bot that ran live an hour ago and papers now is papering, and a badge
+    // that latched on any live row in the window would keep claiming otherwise.
+    void the_badge_follows_the_newest_tick_not_the_whole_window() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject old_live = bid_row(now - 600'000, "KXBTCD-OLD");
+        old_live.insert("mode", "live");
+        const auto view = present_kalshi_bot_panel(
+            QJsonArray{old_live, bid_row(now - 5'000, "KXBTCD-NEW")}, {}, {}, now);
+        QVERIFY2(!view.mode_live, "a live row an hour back does not make this tick live");
+        QCOMPARE(view.mode, QStringLiteral("PAPER"));
+        // The historical row still says what it was.
+        QVERIFY(view.decisions.last().contains("LIVE"));
+    }
+
     void engaged_kill_switch_is_shown() {
         QJsonObject status = armed_session();
         status.insert("kill_switch", true);

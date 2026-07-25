@@ -21147,6 +21147,18 @@ static int kalshi_auto_backfill_command(const GlobalOpts& opts, QStringList args
     return markets.isEmpty() ? 5 : 0;
 }
 
+// --- forwarders for the `kalshi bot` translation unit -----------------------
+//
+// KalshiBotCommands.cpp is its own SKIP_UNITY TU (MSVC discipline) and cannot
+// see the statics above. These two four-line shims are the whole bridge, in the
+// same style as take_string_option/take_bool_flag: the bot's live path calls
+// the EXISTING prepare_order/submit_order tools and reads the EXISTING armed
+// session status, rather than growing a second copy of either here. Nothing
+// about the feature lives on this side of the boundary.
+int kalshi_bot_call_tool(const GlobalOpts& opts, const QString& tool, const QJsonObject& args,
+                         QJsonObject& out);
+QJsonObject kalshi_bot_live_status();
+
 static QJsonObject kalshi_live_experiment_status(bool expire_stale_drafts = true) {
     constexpr auto kExperiment = "kalshi-micro-live-v1";
     const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -21338,6 +21350,18 @@ static QJsonObject kalshi_live_experiment_status(bool expire_stale_drafts = true
                        {"latest_submission_unknown", latest_submission_unknown},
                        {"pending_approvals", pending_count}, {"latest_pending_draft", pending_draft}};
 }
+
+int kalshi_bot_call_tool(const GlobalOpts& opts, const QString& tool, const QJsonObject& args,
+                         QJsonObject& out) {
+    QJsonObject body;
+    const int rc = call_headless_tool_json(opts, tool, args, body);
+    out = tool_data(body).toObject();
+    return rc;
+}
+
+// Read-only, and deliberately without the stale-draft expiry sweep: the bot
+// reads this to decide whether it may bid, and a read must not mutate drafts.
+QJsonObject kalshi_bot_live_status() { return kalshi_live_experiment_status(false); }
 
 // `control snapshot` intentionally exposes only operational state and decision
 // evidence. It never reads credential values and never mutates an arm, order,

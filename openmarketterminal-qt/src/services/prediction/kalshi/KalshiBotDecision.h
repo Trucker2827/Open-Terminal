@@ -11,9 +11,12 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 /// Pure decision math for the PAPER Kalshi bot (ladder rung 1).
 ///
 /// Turns the spot calibrator's report (calibrator.json: per-contract
-/// calibrated P(YES) plus the calibrator's own Brier track record) into paper
-/// bids. Nothing here reaches an exchange: no method prepares, submits,
-/// amends, or cancels an order, and this rung has no live mode at all.
+/// calibrated P(YES) plus the calibrator's own Brier track record) into bids.
+/// Nothing here reaches an exchange: no method prepares, submits, amends, or
+/// cancels an order. Ladder rung 5 can hand a bid row from here to the
+/// terminal's existing submit path, but the sizing and pricing below are the
+/// paper math either way — this class never learns what mode it is in, and
+/// gains no authority from one.
 ///
 /// Three honesty rules are structural, not stylistic:
 ///   1. **Every decision is journaled, including passes.** `decide()` returns

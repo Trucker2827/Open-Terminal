@@ -1207,7 +1207,7 @@ void KalshiScreen::build_ui() {
     bot_layout->setContentsMargins(10, 10, 10, 10);
     bot_layout->setSpacing(8);
     auto* bot_title = new QLabel(
-        QStringLiteral("KALSHI BOT · PAPER LADDER · READ-ONLY MIRROR OF THE CLI"), bot_page);
+        QStringLiteral("KALSHI BOT · READ-ONLY MIRROR OF THE CLI"), bot_page);
     bot_title->setStyleSheet(
         QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
     bot_layout->addWidget(bot_title);
@@ -1219,7 +1219,9 @@ void KalshiScreen::build_ui() {
     bot_layout->addWidget(bot_role);
     auto* bot_note = new QLabel(
         QStringLiteral("Every number below is read from the same files `kalshi bot` writes — %1 "
-                       "and %2 — so this panel and the CLI cannot disagree. Its one control is the "
+                       "and %2 — so this panel and the CLI cannot disagree. The badge on the "
+                       "status line is the mode of the LAST tick: PAPER, or LIVE when real money "
+                       "went through the terminal's own submit path. Its one control is the "
                        "kill switch (%3): it can stop the bot, and nothing else. It cannot arm, "
                        "size, price, or place anything.")
             .arg(QString::fromLatin1(kKalshiBotLedgerFile), QString::fromLatin1(kKalshiBotGateFile),
@@ -3997,7 +3999,11 @@ void KalshiScreen::refresh_bot_panel() {
         load_kalshi_bot_panel(latest_legacy_live_status_, QDateTime::currentMSecsSinceEpoch());
 
     const QString role = kalshi_bot_state_color_role(view.state);
-    const QString state_color = role == QStringLiteral("green")   ? colors::GREEN()
+    // A LIVE tick paints the chip red whatever the loop state is: real money is
+    // the loudest fact on this panel, and an amber "stale" chip on a bot that
+    // has orders at the exchange would bury it.
+    const QString state_color = view.mode_live                    ? colors::RED()
+                                : role == QStringLiteral("green") ? colors::GREEN()
                                 : role == QStringLiteral("amber") ? colors::WARNING()
                                 : role == QStringLiteral("red")   ? colors::RED()
                                                                   : colors::TEXT_SECONDARY();

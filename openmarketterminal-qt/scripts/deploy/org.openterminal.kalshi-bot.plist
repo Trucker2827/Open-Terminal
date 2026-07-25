@@ -35,6 +35,12 @@
   ledger. The loop sees it at the top of its next tick, journals a BOT_STOPPED
   refusal without bidding, and exits 0 — within one tick (<= 60s).
 
+  PAPER, deliberately and permanently. Ladder rung 5 added `--mode live`, and
+  this job does not use it: `--paper` is passed explicitly below and live mode
+  is never the default anywhere. A live run additionally needs a human-armed,
+  time-bounded session and a fresh PASS from the promotion gate, which a
+  launchd job cannot supply and must not be given.
+
   KeepAlive is deliberately Crashed-only, NOT `true`: a supervisor that
   respawned the loop after a clean kill-switch exit would defeat the kill
   switch. So a crash is restarted; a stop stays stopped. To start bidding

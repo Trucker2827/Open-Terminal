@@ -30,12 +30,28 @@
 // takes no venue action at all, and its orders stay resting and stay counted as
 // exposure rather than being quietly released.
 //
-// This rung has NO live path. There is no order preparation, no submission,
-// no live gate, and no `--mode live` — live mode is refused as unknown, not
-// disabled behind a flag. All decision, lifecycle and verdict math lives in the
-// pure, unit-tested KalshiBotDecision / KalshiBotOrders / KalshiBotGate; this
-// file only does I/O,
-// flags, and printing.
+// Rung 5 adds `--mode live`, and adds NO authority with it. PAPER remains the
+// default in every entry point (`once`, `run`, and the launchd plist); live is
+// admitted only when KalshiBotLive::permit() finds ALL of the charter's
+// carve-out conditions true at once — a human-armed session, bounded in time,
+// whose promotion gate reads a fresh PASS, with the kill switch clear — and
+// `kalshi bot run --mode live` exits non-zero with the refusal code otherwise.
+// When it IS admitted, a bid becomes an intent handed to the EXISTING
+// prepare_order/submit_order tools: submit_order re-reads the kill switch, the
+// arm, the venue, credentials, the stake cap, the all-in ceiling, the rolling
+// hour, the cumulative experiment cap, and the per-contract duplicate guard
+// from the immutable draft, and remains the sole trading authority. This file
+// re-implements none of those checks and can bypass none of them.
+//
+// A live tick does NOT run the paper passes. Settlement, the TTL sweep and the
+// conditional-mid fill model are the PAPER book's; a live order's lifecycle
+// belongs to the venue and to kalshi_live_orders. Applying paper machinery to a
+// live order would invent fills, which is why the mode split is structural
+// (KalshiBotLive::is_live_row) rather than a convention.
+//
+// All decision, lifecycle, verdict and live-admission math lives in the pure,
+// unit-tested KalshiBotDecision / KalshiBotOrders / KalshiBotGate /
+// KalshiBotLive; this file only does I/O, flags, and printing.
 //
 // Own TU, excluded from unity builds like the other cli command families
 // (MSVC front-end capacity; see CommandDispatch.cpp).
@@ -45,6 +61,7 @@
 #include "cli/ServeCommand.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotGate.h"
+#include "services/prediction/kalshi/KalshiBotLive.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
@@ -58,6 +75,7 @@
 #include <QSet>
 #include <QThread>
 
+#include <algorithm>
 #include <cstdio>
 #include <functional>
 
@@ -67,6 +85,16 @@ namespace openmarketterminal::cli {
 // avoid pulling EdgeJournalShared.h's heavier includes into this small TU).
 bool take_string_option(QStringList& args, const QString& flag, QString& out);
 bool take_bool_flag(QStringList& args, const QString& flag);
+
+// The live path's only two doors into the rest of the CLI, both defined in
+// CommandDispatch.cpp (declared here for the same reason as the flag helpers).
+// `kalshi_bot_call_tool` runs an EXISTING headless tool and returns its data
+// object; `kalshi_bot_live_status` is the `kalshi auto live status` object the
+// GUI BOT panel already renders its caps from. Neither is new authority: this
+// file cannot arm anything, and every cap it quotes is re-checked at submit.
+int kalshi_bot_call_tool(const GlobalOpts& opts, const QString& tool, const QJsonObject& args,
+                         QJsonObject& out);
+QJsonObject kalshi_bot_live_status();
 
 namespace {
 
@@ -115,9 +143,32 @@ QJsonObject read_calibrator_report() {
     return document.isObject() ? document.object() : QJsonObject();
 }
 
+/// The published gate verdict (rung 2's kalshi-bot-gate.json), read exactly as
+/// the BOT panel reads it. The verdict is NOT re-derived here: one scorer, many
+/// readers, so the bot and the screen beside it can never disagree about
+/// whether the signal is promoted.
+QJsonObject read_gate_verdict() {
+    QFile file(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile)));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    return document.isObject() ? document.object() : QJsonObject();
+}
+
+/// Re-read from disk on every call: the arm, the gate verdict and the kill
+/// switch are all revocable, so a `run` loop asks again each tick rather than
+/// latching an answer at startup.
+KalshiBotLive::Permission live_permission(qint64 now_ms) {
+    return KalshiBotLive::permit(kalshi_bot_live_status(), read_gate_verdict(),
+                                 kalshi_bot_read_stop_file(bot_stop_path()), now_ms);
+}
+
 struct TickResult {
     int bids = 0;
     int passes = 0;
+    /// Live bids the submit path refused. Counted separately from `bids`: an
+    /// order the venue never took is not a bid the bot placed.
+    int submit_rejected = 0;
+    bool mode_live = false;
     int settled = 0;
     int still_open = 0;
     int filled = 0;
@@ -284,10 +335,124 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     return result;
 }
 
+/// One LIVE tick (ladder rung 5).
+///
+/// Deliberately short, and deliberately NOT a variant of run_tick(): the paper
+/// settlement pass, the TTL sweep and the conditional-mid fill model are the
+/// paper book's machinery and would fabricate a live order's lifecycle. A live
+/// tick reads the report, decides, and hands each bid to the existing
+/// prepare_order/submit_order pair. Everything after that — whether the order
+/// is allowed, sized, priced, counted against the hour and against the
+/// experiment cap, and whether it reaches the exchange at all — is
+/// submit_order's, re-checked from the immutable draft.
+TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config& config,
+                         qint64 now_ms, const KalshiBotStopFile& stop,
+                         const KalshiBotLive::Permission& permission,
+                         double session_opened_usd) {
+    const QString ledger_path = bot_ledger_path();
+    const auto journal = [&ledger_path](const QJsonObject& row) {
+        KalshiEvidenceEngine::append_jsonl(ledger_path, row);
+    };
+    TickResult result;
+    result.mode_live = true;
+    result.session_opened_usd = session_opened_usd;
+
+    // The kill switch short-circuits the whole live tick before the report is
+    // read and before any order is built. decide() checks it again — it owns
+    // the single path to a bid — and this early return is what makes the live
+    // refusal total: no prepare, no submit, no venue contact of any kind.
+    if (stop.engaged) {
+        result.stopped = true;
+        result.state = QString::fromLatin1(KalshiBotDecision::kBotStopped);
+        for (const auto& value : KalshiBotDecision::decide({}, {}, {}, now_ms, config, stop)) {
+            journal(KalshiBotLive::live_row(value.toObject(), permission));
+            ++result.passes;
+        }
+        return result;
+    }
+
+    const QJsonObject report = read_calibrator_report();
+    // No PAPER book is replayed: a live order's fills and lifecycle live at the
+    // venue, and the paper model would invent them. What IS read back is the
+    // bot's own record of which contracts the venue already took an order on
+    // — see KalshiBotLive::live_working() for why submit_order's duplicate
+    // guard does not cover a filled live draft. Those pass ALREADY_HELD.
+    const QJsonArray working = KalshiBotLive::live_working(
+        read_jsonl(ledger_path, is_event(kDecisionEvent)));
+    const QJsonArray rows =
+        KalshiBotDecision::decide(report, working, {}, now_ms, config, stop);
+    for (const auto& value : rows) {
+        const QJsonObject row = value.toObject();
+        if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) {
+            // A live tick's passes are live decisions and are journaled as
+            // such: a tick that bid nothing still has to say why.
+            journal(KalshiBotLive::live_row(row, permission));
+            ++result.passes;
+            continue;
+        }
+
+        QJsonObject submission;
+        const QJsonObject intent = KalshiBotLive::live_intent(row, permission);
+        if (intent.isEmpty()) {
+            submission = QJsonObject{
+                {QStringLiteral("status"), QStringLiteral("rejected")},
+                {QStringLiteral("reason"),
+                 QStringLiteral("the bid row carries no usable contract, price, size, or fee — no "
+                                "order was built")}};
+        } else {
+            QJsonObject prepared;
+            const int rc = kalshi_bot_call_tool(opts, QStringLiteral("prepare_order"), intent,
+                                                prepared);
+            const QString draft_id = prepared.value(QStringLiteral("draft_id")).toString();
+            if (rc != 0 || draft_id.isEmpty() ||
+                prepared.value(QStringLiteral("status")).toString() != QStringLiteral("prepared")) {
+                submission = QJsonObject{
+                    {QStringLiteral("status"), QStringLiteral("rejected")},
+                    {QStringLiteral("reason"),
+                     prepared.value(QStringLiteral("reason"))
+                         .toString(QStringLiteral("prepare_order did not return a usable draft"))}};
+            } else {
+                // The one call that can reach the exchange, and the only one:
+                // every gate in the carve-out is re-run inside it.
+                kalshi_bot_call_tool(opts, QStringLiteral("submit_order"),
+                                     QJsonObject{{QStringLiteral("draft_id"), draft_id},
+                                                 {QStringLiteral("mode"), QStringLiteral("live")}},
+                                     submission);
+                submission.insert(QStringLiteral("draft_id"), draft_id);
+            }
+        }
+
+        const QJsonObject live = KalshiBotLive::live_row(row, submission, permission);
+        journal(live);
+        if (live.value(QStringLiteral("reason_code")).toString() ==
+            QLatin1String(KalshiBotLive::kLiveSubmitted)) {
+            ++result.bids;
+            session_opened_usd += row.value(QStringLiteral("all_in_usd")).toDouble();
+        } else {
+            ++result.submit_rejected;
+        }
+    }
+
+    result.signal_trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    result.state = QStringLiteral("ok");
+    if (rows.size() == 1) {
+        const QString reason =
+            rows.first().toObject().value(QStringLiteral("reason_code")).toString();
+        if (reason == QLatin1String(KalshiBotDecision::kReportMissing) ||
+            reason == QLatin1String(KalshiBotDecision::kReportStale))
+            result.state = reason;
+    }
+    result.session_opened_usd = session_opened_usd;
+    return result;
+}
+
 QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config& config) {
     return QJsonObject{
-        {QStringLiteral("mode"), QStringLiteral("paper")},
-        {QStringLiteral("live_eligible"), false},
+        // Mode-aware, and never optimistic: `live_eligible` is true only on a
+        // tick that was actually admitted to live mode.
+        {QStringLiteral("mode"), tick.mode_live ? QStringLiteral("live") : QStringLiteral("paper")},
+        {QStringLiteral("live_eligible"), tick.mode_live},
+        {QStringLiteral("submit_rejected"), tick.submit_rejected},
         {QStringLiteral("state"), tick.state},
         {QStringLiteral("stopped"), tick.stopped},
         {QStringLiteral("bids"), tick.bids},
@@ -321,10 +486,22 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
                                 .toJson(QJsonDocument::Compact).constData());
         return;
     }
-    std::printf("KALSHI BOT · PAPER · %s\n", qUtf8Printable(tick.state));
+    std::printf("KALSHI BOT · %s · %s\n", tick.mode_live ? "LIVE" : "PAPER",
+                qUtf8Printable(tick.state));
     if (tick.stopped)
         std::printf("  kill switch engaged — this tick placed no bid; refusal journaled as %s\n",
                     KalshiBotDecision::kBotStopped);
+    if (tick.mode_live) {
+        // A live tick reports what the SUBMIT PATH did, not what the decision
+        // math wanted: an order the venue refused is not a bid the bot placed.
+        std::printf("  live orders accepted %d · refused by submit_order %d · passes %d\n",
+                    tick.bids, tick.submit_rejected, tick.passes);
+        std::printf("  session committed $%.2f (all-in of accepted orders) · ledger rows carry "
+                    "mode=live\n", tick.session_opened_usd);
+        std::printf("  ledger %s\n",
+                    qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(kLedgerFile))));
+        return;
+    }
     std::printf("  bids %d · passes %d · open %d\n", tick.bids, tick.passes, tick.still_open);
     // Resting is risk: it is printed on every tick, not only when it changes.
     std::printf("  resting %d ($%.2f at limit) · exposure $%.2f of $%.2f · session $%.2f of $%.2f\n",
@@ -345,7 +522,7 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
 
 void bot_usage() {
     std::fprintf(stderr,
-                 "usage: kalshi bot once|run [--paper] [--edge-threshold X] [--max-stake X]\n"
+                 "usage: kalshi bot once|run [--mode paper|live] [--edge-threshold X] [--max-stake X]\n"
                  "                          [--max-all-in X] [--min-runway-sec N]\n"
                  "                          [--max-report-age-sec N] [--quote-ttl-sec N]\n"
                  "                          [--max-exposure X] [--session-budget X]\n"
@@ -356,11 +533,21 @@ void bot_usage() {
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
                  "\n"
-                 "Paper only. This rung has no live mode: there is no order path here.\n"
-                 "A bid rests until it fills, its TTL expires, or its edge goes; a resting\n"
-                 "remainder counts against --max-exposure at its limit price.\n"
-                 "`gate` scores the paper ledger against sealed, preregistered criteria and\n"
-                 "writes the verdict to %s. It never acts on it.\n",
+                 "PAPER is the default everywhere. A bid rests until it fills, its TTL\n"
+                 "expires, or its edge goes; a resting remainder counts against\n"
+                 "--max-exposure at its limit price.\n"
+                 "`gate` scores the PAPER ledger against sealed, preregistered criteria and\n"
+                 "writes the verdict to %s. It never acts on it.\n"
+                 "\n"
+                 "--mode live is REFUSED (rc 4) unless every one of these holds right now:\n"
+                 "  * a human armed the shared Kalshi live session (`kalshi auto live session`)\n"
+                 "    and the GUI live gate is on — nothing here can set either;\n"
+                 "  * that session is BOUNDED (arm 1h/6h/12h; a 24/7 arm is refused);\n"
+                 "  * kalshi-bot-gate.json reads PASS and is less than an hour old;\n"
+                 "  * the kill switch is clear.\n"
+                 "A permitted live bid becomes a prepare_order/submit_order call with the\n"
+                 "session's own caps; submit_order re-checks all of them and is the only\n"
+                 "thing that can reach the exchange.\n",
                  qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile))));
 }
 
@@ -663,16 +850,25 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
     if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);
 
-    // Paper is the only mode that exists in this rung. `--mode live` is an
-    // unknown mode, not a disabled one: refusing it here is the whole point.
+    // PAPER is the default, and stays the default: `--mode` has to be given
+    // explicitly, and the only other value it accepts is `live`.
     QString mode = QStringLiteral("paper");
     take_string_option(args, QStringLiteral("--mode"), mode);
-    take_bool_flag(args, QStringLiteral("--paper"));
-    if (mode.trimmed().toLower() != QStringLiteral("paper")) {
-        std::fprintf(stderr,
-                     "kalshi bot: unknown mode '%s' — this rung is paper-only and has no live "
-                     "order path at all\n",
+    const bool paper_flag = take_bool_flag(args, QStringLiteral("--paper"));
+    mode = mode.trimmed().toLower();
+    if (mode != QStringLiteral("paper") && mode != QStringLiteral("live")) {
+        std::fprintf(stderr, "kalshi bot: unknown mode '%s' — expected paper or live\n",
                      qUtf8Printable(mode));
+        return 2;
+    }
+    const bool live = mode == QStringLiteral("live");
+    // `--paper` is the launchd job's whole safety story, so it must never be a
+    // flag that silently loses an argument. Escalating a `--paper` invocation
+    // to live because a `--mode live` came after it is the same class of defect
+    // as silently degrading a live one to paper: the conflict is refused.
+    if (paper_flag && live) {
+        std::fprintf(stderr, "kalshi bot: --paper and --mode live contradict each other; "
+                             "refusing rather than picking one\n");
         return 2;
     }
 
@@ -700,10 +896,41 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
         return 2;
     }
 
+    // Live admission, re-asked every tick below. A refusal is journaled to the
+    // same ledger (mode=live, no numbers) and exits non-zero: a live run that
+    // silently degraded to paper would be the dishonest outcome, and one that
+    // said nothing at all would leave no evidence it was attempted.
+    const auto admit = [&](qint64 now_ms) -> KalshiBotLive::Permission {
+        const KalshiBotLive::Permission permission = live_permission(now_ms);
+        if (permission.permitted) return permission;
+        KalshiEvidenceEngine::append_jsonl(bot_ledger_path(),
+                                           KalshiBotLive::refusal_row(permission, now_ms));
+        std::fprintf(stderr, "kalshi bot: LIVE REFUSED · %s\n  %s\n",
+                     qUtf8Printable(permission.reason_code), qUtf8Printable(permission.detail));
+        return permission;
+    };
+    // In live mode the caps the bot may bid inside are the ARMED SESSION's, not
+    // the paper defaults — tightening only, since permit() already clamped them
+    // to the charter's ceilings, and submit_order re-checks them regardless.
+    const auto apply_session_caps = [&config](const KalshiBotLive::Permission& permission) {
+        config.max_stake_usd = std::min(config.max_stake_usd, permission.max_stake_usd);
+        config.max_all_in_usd = std::min(config.max_all_in_usd, permission.max_all_in_usd);
+    };
+
     if (sub == QStringLiteral("once")) {
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        if (live) {
+            const KalshiBotLive::Permission permission = admit(now_ms);
+            if (!permission.permitted) return 4;
+            apply_session_caps(permission);
+            print_tick(opts,
+                       run_live_tick(opts, config, now_ms,
+                                     kalshi_bot_read_stop_file(bot_stop_path()), permission, 0.0),
+                       config);
+            return 0;
+        }
         print_tick(opts,
-                   run_tick(config, QDateTime::currentMSecsSinceEpoch(),
-                            kalshi_bot_read_stop_file(bot_stop_path()), 0.0),
+                   run_tick(config, now_ms, kalshi_bot_read_stop_file(bot_stop_path()), 0.0),
                    config);
         return 0;
     }
@@ -713,11 +940,22 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     double session_opened_usd = 0.0;
     for (int i = 0; iterations == 0 || i < iterations; ++i) {
         if (i > 0) QThread::sleep(static_cast<unsigned long>(interval));
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         // Re-read every tick: a switch thrown while this loop slept must be
         // seen by the very next tick, before that tick can bid.
         const KalshiBotStopFile stop = kalshi_bot_read_stop_file(bot_stop_path());
-        const TickResult tick = run_tick(config, QDateTime::currentMSecsSinceEpoch(), stop,
-                                         session_opened_usd);
+        TickResult tick;
+        if (live) {
+            // Re-asked every tick, not latched at startup: the arm expires, the
+            // gate verdict ages out, and the kill switch is thrown mid-run. A
+            // lapsed permission ends the run rather than riding the old answer.
+            const KalshiBotLive::Permission permission = admit(now_ms);
+            if (!permission.permitted) return 4;
+            apply_session_caps(permission);
+            tick = run_live_tick(opts, config, now_ms, stop, permission, session_opened_usd);
+        } else {
+            tick = run_tick(config, now_ms, stop, session_opened_usd);
+        }
         session_opened_usd = tick.session_opened_usd;
         print_tick(opts, tick, config);
         std::fflush(stdout);

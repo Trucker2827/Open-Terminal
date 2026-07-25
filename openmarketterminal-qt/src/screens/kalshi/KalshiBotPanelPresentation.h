@@ -68,6 +68,8 @@ struct KalshiBotPanelView {
     QString status;             // headline: stopped/running/stale/off plus last-tick age
     QString state;              // "stopped" | "running" | "stale" | "off"
     bool stopped = false;       // the kill switch file exists right now
+    QString mode;               // "LIVE" | "PAPER" — the mode of the LAST tick
+    bool mode_live = false;     // the last tick ran live (rung 5)
     QString armed;              // armed state + the caps in force, or DISARMED
     bool armed_live = false;    // an armed live session exists right now
     QString signal;             // signal-trust state of the most recent tick
@@ -135,6 +137,12 @@ inline QString action_label(const QString& action) {
     return QStringLiteral("PASS");
 }
 
+/// Whether a ledger row was written by a LIVE tick (rung 5). An absent `mode`
+/// is paper — rung 1 wrote rows before modes existed.
+inline bool is_live(const QJsonObject& row) {
+    return row.value(QStringLiteral("mode")).toString() == QStringLiteral("live");
+}
+
 inline QString decision_line(const QJsonObject& row) {
     const auto ts_ms = static_cast<qint64>(row.value(QStringLiteral("ts_ms")).toDouble());
     const QString ticker = row.value(QStringLiteral("ticker")).toString();
@@ -144,6 +152,9 @@ inline QString decision_line(const QJsonObject& row) {
 
     QStringList parts;
     parts << (ts_ms > 0 ? clock(ts_ms) : QStringLiteral("--:--:--"));
+    // Real money is marked on the row itself, not only in a panel-level badge:
+    // a live decision scrolled past a stale badge must still read as live.
+    if (is_live(row)) parts << QStringLiteral("LIVE");
     parts << action_label(action);
     parts << (ticker.isEmpty() ? QStringLiteral("(no contract)") : ticker);
     if (lifecycle) {
@@ -176,6 +187,11 @@ inline QString decision_line(const QJsonObject& row) {
         // "resting" is money committed to a quote nothing has filled yet.
         const QString order_state = row.value(QStringLiteral("order_state")).toString();
         if (!order_state.isEmpty()) parts << order_state;
+        // A live bid is only a bid if the submit path took it. Whatever
+        // submit_order answered is shown verbatim, so a refused order can never
+        // read on the screen as a placed one.
+        const QString submit_status = row.value(QStringLiteral("submit_status")).toString();
+        if (!submit_status.isEmpty()) parts << QStringLiteral("submit %1").arg(submit_status);
     }
     const QJsonValue edge = row.value(QStringLiteral("edge"));
     if (is_number(edge))
@@ -220,6 +236,18 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
         ? QStringLiteral("%1 · %2 decisions in view").arg(status.headline).arg(decisions.size())
         : status.headline;
 
+    // --- LIVE badge (rung 5) ------------------------------------------------
+    // Read off the NEWEST decision row, exactly as `signal` is: the badge says
+    // what the bot is doing NOW, not what it has ever done. A bot that ran live
+    // an hour ago and papers now is papering, and a badge that latched on any
+    // live row in the window would keep claiming otherwise. With no rows at all
+    // there is nothing to claim, so no badge is shown and `mode` stays empty.
+    if (!decisions.isEmpty()) {
+        view.mode_live = kalshi_bot_detail::is_live(decisions.first());
+        view.mode = view.mode_live ? QStringLiteral("LIVE") : QStringLiteral("PAPER");
+        view.status = QStringLiteral("[%1] %2").arg(view.mode, view.status);
+    }
+
     // --- armed state and the caps in force ----------------------------------
     if (live_status.isEmpty()) {
         view.armed = QStringLiteral(
@@ -227,8 +255,8 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
             "cannot be read, so it is not claimed");
     } else if (!live_status.value(QStringLiteral("session_active")).toBool()) {
         view.armed = QStringLiteral(
-            "DISARMED · no armed live session · the bot papers only (every ledger row carries "
-            "mode=paper, live_eligible=false)");
+            "DISARMED · no armed live session · `kalshi bot --mode live` is refused, so every "
+            "decision from here on is journaled mode=paper");
     } else {
         view.armed_live = true;
         const QJsonValue orders = live_status.value(QStringLiteral("max_orders_per_hour"));

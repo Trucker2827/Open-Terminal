@@ -22,6 +22,7 @@
 #include "services/prediction/PredictionExchangeAdapter.h"
 #include "services/prediction/PredictionExchangeRegistry.h"
 #include "services/prediction/PredictionTypes.h"
+#include "services/prediction/kalshi/KalshiBotLive.h"
 #include "storage/repositories/LivePnlRepository.h"
 #include "storage/repositories/OrderDraftRepository.h"
 #include "storage/repositories/PmPaperRepository.h"
@@ -1258,6 +1259,147 @@ class TstPmPaper : public QObject {
                  qPrintable("reason: " + data.value("reason").toString()));
         QCOMPARE(fake_adapter()->place_order_calls_, calls_before);
         verify_no_live_position("live-nosession");
+    }
+
+    // ── the Kalshi bot's own live intent, at the real submit gate (rung 5) ───
+
+    // Criterion 2 of issue #130: a bot bid that violates a cap must be rejected
+    // by the SUBMIT PATH ITSELF, not by anything the bot does first. So this
+    // test builds the intent with the bot's own KalshiBotLive::live_intent()
+    // from a real decision row and a real Permission, and hands it to the real
+    // prepare_order/submit_order pair. Nothing about the order is hand-written.
+    //
+    // One field is re-pointed: the bot names venue "kalshi", and this fixture's
+    // fake adapter is registered as "polymarket". The gate under test —
+    // submit_prediction_order's micro-live cap stack — keys on `experiment_id`,
+    // not on the venue, so swapping the venue exercises exactly the same
+    // branch. Every cap, size, price and session field stays the bot's.
+    QJsonObject bot_live_intent(const QString& market, double all_in_cap, double fee_usd) {
+        namespace bot = openmarketterminal::services::prediction::kalshi_ns;
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        QJsonObject status{
+            {"session_active", true}, {"live_armed", true}, {"trading_allowed", true},
+            {"venue_allowed", true}, {"kill_switch", false},
+            {"per_bet_contract_stake_cap", 1.0},
+            {"per_bet_all_in_tolerance", all_in_cap},
+            {"experiment_cap", 120.0}, {"max_orders_per_hour", 10},
+            {"session", QJsonObject{
+                            {"session_id", "sess-bot-live"},
+                            {"ends_at", QDateTime::fromMSecsSinceEpoch(now_ms + 3'600'000,
+                                                                       QTimeZone::UTC)
+                                            .toString(Qt::ISODateWithMs)}}}};
+        const QJsonObject gate{{"verdict", "PASS"}, {"evaluated", true},
+                               {"ts_ms", static_cast<double>(now_ms - 60'000)}};
+        const bot::KalshiBotLive::Permission permission =
+            bot::KalshiBotLive::permit(status, gate, {}, now_ms);
+        if (!permission.permitted) return {};
+
+        // A bid row in KalshiBotDecision::decide()'s exact shape.
+        const QJsonObject bid{
+            {"event", "kalshi_bot_decision"}, {"ts_ms", static_cast<double>(now_ms)},
+            {"mode", "paper"}, {"live_eligible", false}, {"ticker", market},
+            {"action", "bid"}, {"reason_code", "EDGE_CLEARS_THRESHOLD"},
+            {"side", "YES"}, {"price", 0.45}, {"contracts", 2},
+            {"stake_usd", 0.90}, {"fee_usd", fee_usd}, {"all_in_usd", 0.90 + fee_usd},
+            {"calibrated_p", 0.62}, {"market_mid", 0.45},
+            {"position_id", market + "@1"}};
+        QJsonObject intent = bot::KalshiBotLive::live_intent(bid, permission);
+        if (intent.isEmpty()) return {};
+        // The bot really does name Kalshi; the swap below is the fixture's, not
+        // a weakening of the intent.
+        if (intent.value("venue").toString() != QLatin1String("kalshi")) return {};
+        intent.insert("venue", "polymarket");
+        intent.insert("asset_id", market + ":yes");
+        return intent;
+    }
+
+    void kalshi_bot_live_intent_breaching_a_cap_is_rejected_by_submit_order() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        // The bot's intent is `autonomous`, so submit_order also re-checks the
+        // armed session against the settings the operator's `kalshi auto live
+        // session` wrote. Those are set here to match — nothing the bot can do.
+        set_setting("kalshi.live_automation.enabled", "true");
+        set_setting("kalshi.live_automation.session_id", "sess-bot-live");
+        set_setting("kalshi.live_automation.ends_at",
+                    QDateTime::currentDateTimeUtc().addSecs(3600).toString(Qt::ISODateWithMs));
+        set_setting("kalshi.live_automation.max_orders_per_hour", "10");
+
+        // 2 x $0.45 = $0.90 stake (inside the $1.00 stake cap) but $0.90 + $0.50
+        // fee = $1.40, which breaches the armed session's $1.00 all-in ceiling.
+        const QJsonObject breaching =
+            bot_live_intent(QStringLiteral("mkt-bot-allin"), 1.0, 0.50);
+        QVERIFY2(!breaching.isEmpty(), "the bot must build a live intent for a permitted session");
+        auto prepared = rt_.call_tool("prepare_order", breaching);
+        QVERIFY2(prepared.success, qPrintable("prepare: " + prepared.error));
+        const QString draft_id = prepared.data.toObject().value("draft_id").toString();
+        QVERIFY2(!draft_id.isEmpty(), qPrintable("draft: " + QString::fromUtf8(
+            QJsonDocument(prepared.data.toObject()).toJson(QJsonDocument::Compact))));
+        const int calls_before = fake_adapter()->place_order_calls_;
+
+        arm_live();
+        const auto res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", draft_id}, {"mode", "live"}});
+        disarm_live();
+
+        QVERIFY2(res.success, qPrintable("a cap breach is an auditable decision: " + res.error));
+        const QJsonObject data = res.data.toObject();
+        QCOMPARE(data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(data.value("reason").toString().contains("all-in cap exceeded"),
+                 qPrintable("reason: " + data.value("reason").toString()));
+        // The gate fired BEFORE the adapter: no order left the process.
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before);
+        verify_no_live_position("mkt-bot-allin:yes");
+
+        // Control: the SAME bot intent with an honest fee that fits under the
+        // session ceiling clears the gate and reaches the adapter — so the
+        // rejection above can only have come from the all-in check, and the
+        // bot's intent shape is provably submittable in the first place.
+        const QJsonObject fitting = bot_live_intent(QStringLiteral("mkt-bot-ok"), 1.0, 0.05);
+        QVERIFY(!fitting.isEmpty());
+        auto ok_prepared = rt_.call_tool("prepare_order", fitting);
+        QVERIFY2(ok_prepared.success, qPrintable("prepare: " + ok_prepared.error));
+        const QString ok_draft = ok_prepared.data.toObject().value("draft_id").toString();
+        QVERIFY(!ok_draft.isEmpty());
+        arm_live();
+        const auto ok_res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", ok_draft}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY2(ok_res.success, qPrintable("within-ceiling submit: " + ok_res.error));
+        QCOMPARE(ok_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 1);
+
+        // Documented behaviour, not an aspiration: submit_order's per-contract
+        // duplicate guard counts drafts whose status is in ('submitting',
+        // 'submission_unknown', 'submitted'), but a LIVE submit writes the
+        // VENUE's state onto the draft — the fill above left it 'filled'. The
+        // guard therefore does NOT stop a second order on the same contract,
+        // which is exactly why KalshiBotLive::live_working() suppresses it bot
+        // side. This pins the real behaviour so a change on either side is
+        // visible rather than silent.
+        QCOMPARE(OrderDraftRepository::instance().get(ok_draft).value().status,
+                 QStringLiteral("filled"));
+        const QJsonObject again = bot_live_intent(QStringLiteral("mkt-bot-ok"), 1.0, 0.05);
+        QVERIFY(!again.isEmpty());
+        auto again_prepared = rt_.call_tool("prepare_order", again);
+        const QString again_draft = again_prepared.data.toObject().value("draft_id").toString();
+        QVERIFY(!again_draft.isEmpty());
+        arm_live();
+        const auto again_res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", again_draft}, {"mode", "live"}});
+        disarm_live();
+        QVERIFY2(!again_res.data.toObject().value("reason").toString()
+                      .contains("already submitted an order for this contract"),
+                 "if the submit path now catches a FILLED duplicate itself, delete "
+                 "KalshiBotLive::live_working() and its tests — it exists only because it does not");
+        // Say exactly what happened, not merely what did not: the second order
+        // FILLED and reached the adapter. "no duplicate reason" alone would be
+        // satisfied by any other gate quietly catching it, and this is the
+        // evidence base for both live_working()'s existence and issue #141.
+        QCOMPARE(again_res.data.toObject().value("status").toString(), QStringLiteral("filled"));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before + 2);
     }
 
     void cleanupTestCase() { rt_.shutdown(); }

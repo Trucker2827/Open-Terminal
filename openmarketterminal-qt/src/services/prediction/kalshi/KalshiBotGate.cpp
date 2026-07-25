@@ -1,5 +1,7 @@
 #include "services/prediction/kalshi/KalshiBotGate.h"
 
+#include "services/prediction/kalshi/KalshiBotLive.h"
+
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QFile>
@@ -230,10 +232,17 @@ QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
     const double max_drawdown_limit = params.value(QStringLiteral("max_drawdown_usd")).toDouble();
     const double brier_margin = params.value(QStringLiteral("min_brier_margin")).toDouble();
 
-    // --- the bot's own bids, indexed for the Brier join --------------------
+    // --- the bot's own PAPER bids, indexed for the Brier join --------------
+    // Ladder rung 5 writes live rows into this same ledger, and the carve-out
+    // that permits live bidding at all requires the signal to have passed THIS
+    // gate on paper results. A live outcome scored here would be the bot
+    // grading itself on the trades its own promotion authorised — the filter
+    // lives inside `evaluate()` rather than at the call site precisely because
+    // a caller that forgot it would silently invalidate the seal's whole point.
     QHash<QString, QJsonObject> bid_by_position;
     for (const auto& value : decision_rows) {
         const QJsonObject row = value.toObject();
+        if (KalshiBotLive::is_live_row(row)) continue;
         if (row.value(QStringLiteral("event")).toString() != QLatin1String(kDecisionEvent)) continue;
         if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) continue;
         const QString id = row.value(QStringLiteral("position_id")).toString();
@@ -246,6 +255,7 @@ QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
     int malformed = 0;
     for (const auto& value : settlement_rows) {
         const QJsonObject row = value.toObject();
+        if (KalshiBotLive::is_live_row(row)) continue;
         if (row.value(QStringLiteral("event")).toString() != QLatin1String(kSettlementEvent)) continue;
         const QString id = row.value(QStringLiteral("position_id")).toString();
         // A settlement we cannot identify is not counted as a settled bid: it

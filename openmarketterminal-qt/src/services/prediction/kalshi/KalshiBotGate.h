@@ -34,8 +34,11 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///      scoreable reports `brier_available:false` rather than a 0.0 Brier that
 ///      would read as a perfect forecast.
 ///
-/// Non-goal (rung 5's job): acting on the verdict. Nothing here arms, sizes,
-/// prices, prepares, or submits anything.
+/// Non-goal: acting on the verdict. Nothing here arms, sizes, prices,
+/// prepares, or submits anything. Rung 5 READS the published verdict as one of
+/// its live-admission conditions; it never asks this class to re-score, and it
+/// cannot influence the score — `evaluate()` skips rows a live tick wrote, so a
+/// live outcome can never be counted as the paper evidence that authorised it.
 class KalshiBotGate {
   public:
     /// Verdicts. Stable strings — evidence consumers match on them.
