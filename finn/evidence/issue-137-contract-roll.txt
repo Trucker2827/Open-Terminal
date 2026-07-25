@@ -1,0 +1,352 @@
+# Issue #137 — Kalshi 15-minute contract auto-roll: what was verified by hand,
+# and what was not.
+#
+# This note is written by the session that merged the branch forward onto
+# origin/main fe2ac0cd and re-verified it. The two code commits (546bd01c,
+# 81ce0a98) were inherited from an earlier session whose own evidence could NOT
+# be re-checked here — see "What the earlier session claimed" at the bottom —
+# so everything below is what THIS session observed directly.
+
+## 1. Suite, on the merge-forward tip
+
+    $ ctest --test-dir openmarketterminal-qt/build --output-on-failure
+    ...
+    124/135 Test #124: tst_kalshi_market_roll ..................   Passed    0.01 sec
+    ...
+    100% tests passed, 0 tests failed out of 135
+
+Test #124 confirmed RUN by name and number, not inferred from a green total.
+The binary was rebuilt after the merge (mtime 22:23 against a 22:21 source), so
+the pass is not a stale object. 24 cases:
+
+    Totals: 26 passed, 0 failed, 0 skipped, 0 blacklisted   (24 cases + init/cleanup)
+
+ctest NAME set = origin/main's 134 ∪ {tst_kalshi_market_roll} = 135, compared as
+sets rather than counts, because the merge touched tests/CMakeLists.txt on both
+sides and a dropped add_test would stay green.
+
+## 2. Neuters — six, one at a time, restored to 24/24 between each
+
+Each edit was made in MarketRollPresentation.h; ninja was confirmed to relink
+tst_kalshi_market_roll before the result was trusted.
+
+    in-flight guard removed (`if (false && state.list_fetch_in_flight ...)`)
+        -> 2 red: an_in_flight_fetch_blocks_the_timer,
+                  an_expired_selection_also_cannot_stack_a_second_fetch
+
+    is_expired() always false
+        -> 10 red: an_expired_selection_refreshes_ahead_of_the_periodic_cadence,
+                   a_settled_selection_is_expired_whatever_its_clock_says,
+                   an_expired_selection_rolls_to_the_soonest_successor_in_its_series,
+                   a_roll_ties_are_broken_by_the_lists_own_ranking,
+                   the_successor_search_skips_contracts_that_are_already_dead,
+                   a_settled_contract_rolls_even_before_its_close_time,
+                   an_expired_contract_that_dropped_off_the_list_still_rolls,
+                   an_expiry_with_no_successor_listed_is_not_claimed_as_a_roll,
+                   the_close_grace_keeps_a_roll_from_firing_early,
+                   a_series_without_extras_falls_back_to_the_ticker_prefix
+
+    preservation branch disabled (`if (false && previous_row >= 0 && !expired)`)
+        -> 3 red: a_background_refresh_keeps_the_live_selection_even_when_it_moved_rows,
+                  the_close_grace_keeps_a_roll_from_firing_early,
+                  the_refetched_close_time_overrides_what_the_screen_remembered
+
+    is_selected_contract() always false
+        -> 3 red: the_selected_contract_predicate_matches_by_ticker_only,
+                  a_background_refresh_keeps_the_live_selection_even_when_it_moved_rows,
+                  the_refetched_close_time_overrides_what_the_screen_remembered
+
+    stall escape removed (`if (state.list_fetch_in_flight)`)
+        -> 1 red: a_lost_fetch_releases_the_guard_instead_of_wedging_it
+
+    kMarketCloseGraceMs = 0
+        -> 1 red: the_close_grace_keeps_a_roll_from_firing_early
+
+## 3. The Qt signal contract the roll actually depends on
+
+No unit test can see this, and it is the hinge of the whole fix: the roll only
+reaches the DOM/maker panel and the charts if `market_list_->setCurrentRow(row)`
+re-enters `select_market`. populate_markets clears the list first, so the
+question is whether `clear()` resets the current row (making every later
+setCurrentRow a real change) — if it did not, a roll landing on the same row
+index would be a silent no-op and the pane would stay dead.
+
+Checked empirically with a scratch Qt program (NOT part of the branch) that
+replays populate_markets' exact sequence — clear(); addItem() xN;
+setCurrentRow(row) — with a slot on QListWidget::currentRowChanged:
+
+    after first payload: currentRow=0 signals=1 last=0
+      clear() emitted 1 signal(s), first=-1, currentRow now -1
+      same-row preserve: signals=2 last=0  (select_market re-entered: YES)
+      roll to a new ticker at row 0: signals=2 last=0  (select_market re-entered: YES)
+
+clear()'s -1 hits select_market's `row < 0` early return, so no teardown fires
+on it, and the following setCurrentRow always re-enters select_market — with the
+same ticker (short-circuit, pane untouched) or the successor (full teardown +
+resubscribe). Both branches confirmed reachable.
+
+## 4. Live dev-build session, on the 15-minute cadence
+
+Dev build of this branch, run so that nothing touched the operator's terminal:
+
+    HOME=/tmp/finn137-home \
+    OPENTERMINAL_KALSHI_EVIDENCE_DIR=/tmp/finn137-evidence2 \
+    build/OpenTerminal.app/Contents/MacOS/OpenTerminal --profile finn137
+
+The evidence-dir override is what actually isolates the ledger. HOME alone does
+NOT: kalshi_evidence_path() (ServeCommand.h:204) reads
+QStandardPaths::GenericDataLocation, which on macOS comes from the process's
+real home — a scratch session without the override appends to the operator's own
+kalshi-lifecycle.jsonl. The operator's app (pid 45904) and ledger were untouched.
+
+The screen's cadence is a widget toggle with no action id the local bridge can
+invoke, and its default is hourly, so reaching the 15-minute ladder needed a
+one-line CAPTURE-ONLY build change — `cadence_` initialised to "fifteen_min"
+(KalshiScreen.h:170). It is not in the branch; the tree was restored and
+rebuilt before commit.
+
+What that session produced:
+
+    [2026-07-24 22:58:08.511-04:00] [INFO] [Kalshi.fetch_category]
+        fan-out done: 1 events / 1 markets from 2 series probed (cap 200)
+
+That is a real Kalshi REST fetch on the 15-minute ladder from this branch's
+build — one contract, which is what the 15-minute horizon filter admits at that
+hour. It is the only Kalshi traffic the session produced.
+
+## 5. What could NOT be captured, and why
+
+The machine was at the macOS login screen for the entire session
+(`CGSSessionScreenIsLocked = true`), as it was for the earlier one. Consequences:
+
+  - No screenshot. Synthesized clicks go to the lock window, so the "15 MIN"
+    cadence button could not be pressed by hand either — hence the capture-only
+    default above.
+  - The Prediction Markets dock panel would not stay materialised. Immediately
+    after the fetch above it read back as
+    `state=spawning, has_live_widget=false` from `workspace panels`, and
+    repeated `workspace open polymarket --exclusive` calls returned
+    "Navigated" without spawning a live widget. No second list fetch ever
+    followed the 22:58:08 one, so this session never observed the 30s cadence
+    on a live screen and never reached a 15-minute boundary with a selection
+    alive.
+
+    What that silence means was NOT established, and is not asserted here. The
+    reading consistent with the panel readback is that the screen went
+    not-visible, so `decide_market_refresh` answered "hidden" — the screen has
+    no hideEvent and stops no timer, so `visible` is the only thing that
+    suppresses a tick once the timer has started. But no decision value was
+    read from the running process, and the alternatives were not ruled out:
+    the timer never started (i.e. the 22:58:08 fetch came from something other
+    than showEvent), or `markets_ready` never reached populate_markets so the
+    in-flight guard stayed set — though that one should still have cleared at
+    the 90s stall escape, which is itself evidence against it. Whoever next
+    gets a live screen on this branch should watch for a second fetch ~30s
+    after the first before trusting the cadence end to end.
+  - A `QT_QPA_PLATFORM=offscreen` run (which would have side-stepped the lock
+    entirely) never reached "Application ready" — it stalled after
+    "Pre-warmed 53 dashboard topics during login screen". The network was
+    badly degraded throughout (a single Kalshi REST call took 11.5s; the
+    market-data batch took 43s), which is the likeliest reason.
+
+**Stated plainly: no 15-minute rollover was hand-verified. No roll record was
+produced in kalshi-lifecycle.jsonl this session.** The auto-roll and the
+selection preservation are covered by the pure-function tests and their neuters
+(sections 1–2) and by the signal check (section 3); the end-to-end behaviour on
+a live 15-minute boundary is NOT covered by hand evidence.
+
+## What the earlier session claimed, and why it is not re-quoted here
+
+The first draft of this file (uncommitted, from the session that wrote the two
+code commits) quoted thirteen `Kalshi.fetch_category` lines at 30–35s spacing
+and a 12-fetches / 2-select_market ratio from an 18:07 run, as evidence for the
+periodic cadence and for selection preservation on the live path. Its trailing
+line — "See ROLLOVER section appended below" — was never written; that session
+ended first.
+
+That log is gone: the scratch profile's log rotated twice during this session's
+restarts, and neither openmarketterminal.log nor .log.prev contains any 18:xx
+line. Those figures are therefore unverifiable, and re-printing them as evidence
+would be exactly the staleness-fabrication this repo has been bitten by before.
+They are described here, not claimed.
+
+# ══════════════════════════════════════════════════════════════════════════
+# ROUND 2 — 2026-07-25, screen UNLOCKED. Live capture on a materialised
+# screen, after the review asked for the observability line and one live
+# observation of the cadence.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Everything below was read out of a running process this session. The raw
+# lines are in finn/evidence/issue-137-live-cadence.txt (both runs, unedited);
+# the screenshot is finn/evidence/issue-137-live-screen.png. Isolation as
+# before: --profile finn137b AND OPENTERMINAL_KALSHI_EVIDENCE_DIR, so neither
+# the operator's profile nor the operator's Kalshi ledger was touched. The
+# operator's own instance (pid 82755) kept running throughout and was never
+# driven.
+
+## 6. What the log line reports, and what it showed
+
+`refresh_market_list_if_due` now writes one line per fetch and per change of
+verdict, and `populate_markets` one line per landed payload. Tag
+`Kalshi.market_list`. Both strings come from pure formatters in
+MarketRollPresentation.h (describe_market_refresh / describe_market_selection),
+so "every branch names itself" and "a roll names both tickers" are covered by
+two cases in tst_kalshi_market_roll, each seen failing first.
+
+### 6a. The periodic 30s cadence, on a visible screen (criterion 1)
+
+Run 2, stock build, 13:44–14:33 EDT. The screen materialised (screenshot taken
+at 14:10 — window "Open Terminal [finn137b] … Prediction Markets"), and every
+decision line reads `visible=1`, which is the predicate the review flagged as
+having no prior working path on this screen:
+
+    13:50:47 FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000
+    13:50:52 skip:  reason=waiting  visible=1 in_flight=0 since_last_ms=5000
+    13:51:17 FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30001
+    …
+    14:13:17 FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000
+    14:24:22 FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000
+
+**That is the second list fetch 30s after the first, on a materialised screen.**
+34 `periodic` decisions and 31 `in-flight` refusals across the run; not one
+`hidden`. The screen was never hidden and the timer never stopped.
+
+Where a fetch is spaced ~90s instead of 30s, the line says why: it reads
+`in_flight=1` at fetch time, i.e. the previous reply never came back and the
+90s stall escape released the guard. That is the escape doing its job on a
+genuinely lossy link, visible in the log rather than inferred.
+
+### 6b. Why run 2 never populated a list — and the one build change used
+
+Run 2 issued 34 fetches and populated nothing: every Kalshi per-series /events
+reply died with `[Kalshi.fetch_category.events] HTTP/2 protocol error` and the
+fan-out emitted an empty payload. curl to the same endpoint succeeded (h2 and
+h1.1 both 200, 7–16s), so this is this network, not Kalshi.
+
+To get past it, run 3 used ONE capture-only change, not in the branch:
+`req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false)` at the three
+Kalshi request sites (KalshiRestClient.cpp 221/518/663). It changes the
+transport only; the rollover logic under test never sees it. The tree was
+restored and rebuilt before the branch was pushed — `git diff origin/main`
+touches no file under services/.
+
+### 6c. What run 3 showed once payloads landed (criteria 2 and 3)
+
+    14:50:42 fan-out done: 3 events / 318 markets
+    14:50:42 list populated (background): reason=no-selection row=0 contracts=3
+             - -> KXBTCD-26JUL2515-T64299.99
+    14:52:12 list populated (background): reason=preserved row=1 contracts=3
+             KXBTCD-26JUL2515-T64299.99 -> KXBTCD-26JUL2515-T64299.99
+    14:58:22 list populated (background): reason=vanished row=0 contracts=5
+             KXBTCD-26JUL2515-T64299.99 -> KXBTC-26JUL2515-B64650
+    14:59:28 list populated (background): reason=preserved row=0 contracts=5
+             KXBTC-26JUL2515-B64650 -> KXBTC-26JUL2515-B64650
+
+  - **Selection preservation on the live path (criterion 3):** at 14:52:12 the
+    selected contract came back at row **1** instead of row 0 and the screen
+    kept it. Preservation by ticker, not by row, on real data — the case no
+    unit test can prove is wired.
+  - **The honesty rule, live (criterion 2's non-goal):** at 14:58:22 the
+    selected contract was absent from a payload that carried a different series
+    set. It had NOT expired (closes 19:00:00Z, then 18:58Z), so the screen fell
+    back to the top of the list and named it `vanished` — `rolled` stayed
+    false and no roll record was written. A payload-absence roll would have
+    been a fabricated market event; it did not fire.
+  - Empty payloads read `reason=empty row=-1` and select nothing.
+
+### 6d. The expiry trigger fired on a real boundary (criterion 2)
+
+The selected contract KXBTC-26JUL2515-B64650 closed at 2026-07-25T19:00:00Z =
+15:00:00 EDT. The screenshot at 14:56:33 shows it live and counting down
+(`CLOSE IN 00:03:26`). 36 seconds past the boundary the decision flipped, and
+stayed flipped:
+
+    15:00:36 FETCH: reason=expired visible=1 in_flight=0 selected=KXBTC-26JUL2515-B64650
+    15:00:57 FETCH: reason=expired …  since_last_ms=21249
+    15:01:07 FETCH: reason=expired …  since_last_ms=9757
+
+i.e. the screen recognised its own contract as dead and started asking for the
+list on the expired floor instead of the 30s cadence — automatically, with no
+operator input. That is the trigger the whole issue is about, observed live.
+
+### 6e. THE ROLL — the handoff completed on a live screen
+
+Every reply between 15:00 and 15:41 came back empty (cut off mid-body:
+`Kalshi.fetch_category.events  Connection closed: {"cursor":"","events":[…
+"event_ticker":"KXBTC-26JUL2516" …` — the successor was visibly IN the
+truncated payload), so the screen sat in `reason=expired` re-asking every ~10s
+for 41 minutes. Then one payload landed intact:
+
+    15:41:53.958 fan-out done: 3 events / 318 markets from 2 series probed
+    15:41:53.986 list populated (background): reason=rolled row=2 contracts=24
+                 KXBTC-26JUL2515-B64650 -> KXBTC-26JUL2516-B64450 ROLLED
+    15:41:56.345 FETCH: reason=periodic visible=1 in_flight=0
+                 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+
+**That is the whole issue, end to end, with no operator input:** the 15:00
+contract expired, the screen kept asking, the successor in the same series was
+selected at row 2, and the next tick is back on the 30s cadence carrying the
+NEW ticker and the NEW close time — i.e. `select_market` really was re-entered
+and the screen is live on the successor, which is the step no unit test can
+reach.
+
+It happened again at the next boundary, unattended, while this note was being
+written — so the first one was not a one-off:
+
+    16:21:26.129 list populated (background): reason=rolled row=0 contracts=5
+                 KXBTC-26JUL2516-B64450 -> KXBTC-26JUL2517-B64625 ROLLED
+
+The roll record was written too, closing the "untested and never observed" gap
+the PR body flagged on the JSONL write:
+
+    {"asset":"BTC","cadence":"hourly","event":"kalshi_screen_contract_roll",
+     "from_close":"2026-07-25T19:00:00Z","from_ticker":"KXBTC-26JUL2515-B64650",
+     "live_eligible":false,"reason":"rolled",
+     "rolled_ts":"2026-07-25T19:41:53.986Z","to_ticker":"KXBTC-26JUL2516-B64450"}
+
+**Disclosure — where that record landed.** NOT in the scratch evidence dir.
+`KalshiScreen::evidence_path()` (KalshiScreen.cpp:3108) resolves
+`QStandardPaths::AppLocalDataLocation`; `OPENTERMINAL_KALSHI_EVIDENCE_DIR` is
+read only by the CLI's `kalshi_evidence_path()`. So this scratch session
+appended one row to the shared ledger at
+`~/Library/Application Support/Open Terminal/Open Terminal/kalshi-lifecycle.jsonl`.
+It is a screen-lifecycle row, `live_eligible:false`, no order and no trade —
+but the isolation claimed in section 4 of this file does NOT hold for the
+screen's own writes, and the ledger was not edited afterwards to hide it.
+(This also corrects section 5: that session's "no roll record was produced"
+was a check of the scratch dir, and the shared ledger was never looked at. It
+holds six consecutive `fifteen_min` roll records from 2026-07-25T03:09Z to
+04:23Z — 2300-00 → 2315-15 → 2330-30 → 2345-45 → 0000-00 → 0015-15 → 0030-30,
+i.e. a contract rolling every quarter hour. Only a build carrying this branch
+can write that event at all, which puts the writer at either that session's
+capture-only fifteen_min scratch build or another instance started from the
+same build output; the two cannot be told apart from the record, so this file
+does not pick one.)
+
+## 7. A real 15-MINUTE rollover — observed, but NOT on this scratch profile
+
+The cadence buttons on the scratch profile were left on 1 HOUR, so the boundary
+crossed above is the hourly one. Two 15-minute rollovers were nevertheless
+recorded today, at 18:35:48Z and 19:54:35Z:
+
+    2026-07-25T19:54:35.599Z fifteen_min
+        KXBTC15M-26JUL251500-00 -> KXBTC15M-26JUL251600-00
+
+**Attribution, stated rather than glossed:** these came from the OPERATOR's own
+running instance (pid 82755, started 12:15 EDT from this repo's build output,
+which by then carried this branch), not from the scratch profile. Its own log
+shows the matching decision lines (`selected=KXBTC15M-26JUL251600-00
+closes=2026-07-25T20:00:00Z`). That session was read, never driven — no
+command, click or keystroke was sent to it, per the charter. It is offered as
+corroboration, not as this session's capture: a 15-minute contract rolled to
+its successor on a screen nobody touched.
+
+## 8. What is still NOT covered by hand evidence
+
+  - The 15-minute ladder was never selected on the scratch profile; the
+    quarter-hour boundary above was witnessed on the operator's instance.
+  - Both runs needed a capture-only transport change (6b) to get payloads at
+    all on this network. The rollover code path is unaffected by it, but no
+    run on the stock HTTP/2 build ever populated a list.
+  - `reason=hidden` was never produced: the screen stayed visible for the whole
+    capture, so the suppression branch is covered by its unit test only.

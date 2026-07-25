@@ -1,0 +1,344 @@
+# Issue #137 — live capture, 2026-07-25. Raw lines, unedited.
+#
+# Run 2 (13:44-14:33 EDT): stock build. HTTP/2 kills every Kalshi reply, so
+# the cadence is visible but no payload ever lands.
+
+[2026-07-25 13:48:08.769-04:00] [INFO] [App] Application ready
+[2026-07-25 13:48:17.334-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4784 selected=- closes=-
+[2026-07-25 13:49:17.334-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=64784 selected=- closes=-
+[2026-07-25 13:49:22.335-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=- closes=-
+[2026-07-25 13:50:47.334-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=- closes=-
+[2026-07-25 13:50:52.334-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=5000 selected=- closes=-
+[2026-07-25 13:51:17.335-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30001 selected=- closes=-
+[2026-07-25 13:51:22.336-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 13:52:47.337-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 13:52:52.337-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 13:54:17.338-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 13:54:22.339-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=- closes=-
+[2026-07-25 13:55:47.340-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90002 selected=- closes=-
+[2026-07-25 13:55:52.340-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=5000 selected=- closes=-
+[2026-07-25 13:56:22.339-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=34999 selected=- closes=-
+[2026-07-25 13:56:27.339-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 13:57:27.342-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=65003 selected=- closes=-
+[2026-07-25 13:57:32.342-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 13:59:02.343-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=95001 selected=- closes=-
+[2026-07-25 13:59:07.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:00:27.343-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=85000 selected=- closes=-
+[2026-07-25 14:00:32.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:01:57.343-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=- closes=-
+[2026-07-25 14:02:02.344-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=- closes=-
+[2026-07-25 14:03:27.345-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90002 selected=- closes=-
+[2026-07-25 14:03:32.344-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:04:22.346-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=55001 selected=- closes=-
+[2026-07-25 14:04:27.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4998 selected=- closes=-
+[2026-07-25 14:05:52.347-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=- closes=-
+[2026-07-25 14:05:57.346-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:07:22.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90002 selected=- closes=-
+[2026-07-25 14:07:27.347-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4998 selected=- closes=-
+[2026-07-25 14:08:57.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=95000 selected=- closes=-
+[2026-07-25 14:09:02.351-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5002 selected=- closes=-
+[2026-07-25 14:10:27.352-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90003 selected=- closes=-
+[2026-07-25 14:10:32.350-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4991 selected=- closes=-
+[2026-07-25 14:11:17.352-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=49993 selected=- closes=-
+[2026-07-25 14:11:22.352-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:12:47.353-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 14:12:52.352-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:13:17.353-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000 selected=- closes=-
+[2026-07-25 14:13:22.352-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4998 selected=- closes=-
+[2026-07-25 14:14:47.354-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=- closes=-
+[2026-07-25 14:14:52.355-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:16:18.724-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=91368 selected=- closes=-
+[2026-07-25 14:16:22.356-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=3632 selected=- closes=-
+[2026-07-25 14:17:12.356-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=53632 selected=- closes=-
+[2026-07-25 14:17:17.994-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5638 selected=- closes=-
+[2026-07-25 14:18:42.357-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 14:18:47.358-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:20:12.359-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 14:20:19.997-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=7638 selected=- closes=-
+[2026-07-25 14:21:07.358-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=54999 selected=- closes=-
+[2026-07-25 14:21:12.360-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5002 selected=- closes=-
+[2026-07-25 14:22:19.872-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=72514 selected=- closes=-
+[2026-07-25 14:22:22.361-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=2489 selected=- closes=-
+[2026-07-25 14:23:52.362-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=92490 selected=- closes=-
+[2026-07-25 14:23:52.401-04:00] [WARN] [Kalshi.fetch_category.events] HTTP/2 protocol error: 
+[2026-07-25 14:23:52.402-04:00] [WARN] [Kalshi.fetch_category.events] HTTP/2 protocol error: 
+[2026-07-25 14:23:52.402-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 14:23:52.402-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 - -> -
+[2026-07-25 14:23:57.360-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=4998 selected=- closes=-
+[2026-07-25 14:24:22.362-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000 selected=- closes=-
+[2026-07-25 14:24:27.362-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:25:52.362-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=- closes=-
+[2026-07-25 14:25:57.363-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=- closes=-
+[2026-07-25 14:27:22.363-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 14:27:27.364-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=- closes=-
+[2026-07-25 14:28:27.365-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=65002 selected=- closes=-
+[2026-07-25 14:28:32.364-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:29:32.364-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=64999 selected=- closes=-
+[2026-07-25 14:29:37.365-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:30:37.442-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=65077 selected=- closes=-
+[2026-07-25 14:30:42.366-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4924 selected=- closes=-
+[2026-07-25 14:32:12.368-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=94926 selected=- closes=-
+[2026-07-25 14:32:17.367-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:32:47.368-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=35000 selected=- closes=-
+[2026-07-25 14:32:52.368-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+
+# Run 3 (14:33- EDT): capture-only Http2AllowedAttribute=false (NOT in the
+# branch). Payloads land; preservation, the expiry trigger and two rolls follow.
+
+[2026-07-25 14:46:43.088-04:00] [INFO] [App] Application ready
+[2026-07-25 14:46:51.558-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4751 selected=- closes=-
+[2026-07-25 14:48:21.379-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=94572 selected=- closes=-
+[2026-07-25 14:48:26.379-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=- closes=-
+[2026-07-25 14:49:51.380-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=- closes=-
+[2026-07-25 14:49:56.379-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=- closes=-
+[2026-07-25 14:50:42.026-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 14:50:42.026-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 3 events / 318 markets from 2 series probed (cap 200)
+[2026-07-25 14:50:42.037-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=no-selection row=0 contracts=3 - -> KXBTCD-26JUL2515-T64299.99
+[2026-07-25 14:50:46.381-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=55001 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:50:51.380-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:52:12.118-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 14:52:12.118-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 3 events / 318 markets from 2 series probed (cap 200)
+[2026-07-25 14:52:12.131-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=preserved row=1 contracts=3 KXBTCD-26JUL2515-T64299.99 -> KXBTCD-26JUL2515-T64299.99
+[2026-07-25 14:52:16.382-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=90001 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:52:21.382-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:52:28.523-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 14:52:31.381-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=14999 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:52:46.382-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:52:51.382-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:54:16.384-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90002 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:54:21.384-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=5000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:54:46.384-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:54:51.384-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:55:18.430-04:00] [WARN] [Kalshi.fetch_category.events] Connection closed: {"cursor":"","events":[{"available_on_brokers":true,"category":"Crypto","collateral_return_type":"MECNET","event_ticker":"KXBTC-26JUL2515","exchange_index":0,"last_updated_ts":"2026-07-24T09:06:39.795
+[2026-07-25 14:55:18.430-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 14:55:18.432-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTCD-26JUL2515-T64299.99 -> -
+[2026-07-25 14:55:21.384-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=34999 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:55:26.385-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:56:21.386-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=60002 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:56:26.385-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:57:51.386-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:57:56.386-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTCD-26JUL2515-T64299.99 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:58:22.216-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 6 events / 636 markets from 2 series probed (cap 200)
+[2026-07-25 14:58:22.224-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=vanished row=0 contracts=5 KXBTCD-26JUL2515-T64299.99 -> KXBTC-26JUL2515-B64650
+[2026-07-25 14:58:26.387-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=35001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:58:31.387-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:59:28.477-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 6 events / 636 markets from 2 series probed (cap 200)
+[2026-07-25 14:59:28.486-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=preserved row=0 contracts=5 KXBTC-26JUL2515-B64650 -> KXBTC-26JUL2515-B64650
+[2026-07-25 14:59:31.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=64954 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 14:59:36.341-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:00:36.354-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=65013 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:00:41.339-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4985 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:00:56.695-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: {"cursor":"","events":[{"available_on_brokers":true,"category":"Crypto","collateral_return_type":"DIRECNET","event_ticker":"KXBTCD-26JUL2515","exchange_index":0,"last_updated_ts":"2026-07-25T18:00:08.
+[2026-07-25 15:00:57.603-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=21249 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:01:02.257-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4653 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:01:07.360-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=9757 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:01:12.439-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5079 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:02:42.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94981 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:02:47.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5002 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:04:00.099-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:04:00.099-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 15:04:00.124-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTC-26JUL2515-B64650 -> -
+[2026-07-25 15:04:03.842-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=81501 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:04:07.483-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=3641 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:04:12.355-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=8513 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:04:17.351-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4996 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:05:12.358-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=60003 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:05:17.369-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5011 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:05:22.376-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=10018 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:05:27.378-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5002 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:06:57.355-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94979 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:07:02.356-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:08:07.356-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=70001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:08:12.361-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5005 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:09:42.353-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94997 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:09:47.356-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5003 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:10:57.352-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=74999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:11:02.353-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:11:12.358-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=15005 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:11:17.382-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5024 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:12:47.361-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=95003 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:12:52.362-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:14:22.358-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94997 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:14:27.357-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:15:27.351-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=64993 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:15:32.352-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:15:50.787-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:15:57.085-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=29734 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:15:57.829-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=744 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:17:27.340-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=90255 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:17:32.341-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:17:41.929-04:00] [WARN] [Kalshi.fetch_category.events] Connection closed: {"cursor":"","events":[{"available_on_brokers":true,"category":"Crypto","collateral_return_type":"MECNET","event_ticker":"KXBTC-26JUL2516","exchange_index":0,"last_updated_ts":"2026-07-24T09:06:42.354
+[2026-07-25 15:17:41.929-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 15:17:41.929-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTC-26JUL2515-B64650 -> -
+[2026-07-25 15:17:42.340-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=15000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:17:47.341-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:18:47.340-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=65000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:18:52.340-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:19:17.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=30001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:19:22.340-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:19:37.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=20000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:19:42.340-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:19:52.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=15000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:19:57.341-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:21:22.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=90000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:21:27.341-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:22:57.341-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=95000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:23:02.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5002 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:23:47.343-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=50002 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:23:52.342-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:25:22.342-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:25:27.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:26:52.344-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=90002 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:26:57.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:27:52.342-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=59997 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:27:57.341-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:29:18.818-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=86476 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:29:23.343-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4524 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:30:50.610-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=91791 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:30:55.797-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=5187 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:31:08.680-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=12883 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:32:30.151-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94354 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:32:34.344-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4193 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:34:04.626-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94475 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:34:09.869-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5242 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:34:37.783-04:00] [WARN] [Kalshi.fetch_category.events] Connection closed: 
+[2026-07-25 15:34:50.037-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=45411 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:34:54.829-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4792 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:35:19.269-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:35:22.297-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=32260 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:35:26.118-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=3820 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:36:56.344-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94046 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:37:05.675-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=9330 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:37:18.435-04:00] [WARN] [Kalshi.fetch_category.events] Connection closed: {"cursor":"","events":[{"available_on_brokers":true,"category":"Crypto","collateral_return_type":"MECNET","event_ticker":"KXBTC-26JUL2516","exchange_index":0,"last_updated_ts":"2026-07-24T09:06:42.354
+[2026-07-25 15:37:18.435-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 15:37:18.436-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTC-26JUL2515-B64650 -> -
+[2026-07-25 15:37:21.344-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=25000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:37:26.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:37:29.255-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:37:29.255-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 15:37:29.255-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTC-26JUL2515-B64650 -> -
+[2026-07-25 15:37:31.344-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=10000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:37:36.344-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:38:31.345-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=60001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:38:36.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:38:41.344-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=9999 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:38:46.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:40:11.621-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=90277 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:40:16.596-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4975 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:40:51.636-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=40015 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:40:56.466-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4830 selected=KXBTC-26JUL2515-B64650 closes=2026-07-25T19:00:00Z
+[2026-07-25 15:41:53.958-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:41:53.958-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 3 events / 318 markets from 2 series probed (cap 200)
+[2026-07-25 15:41:53.986-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=rolled row=2 contracts=24 KXBTC-26JUL2515-B64650 -> KXBTC-26JUL2516-B64450 ROLLED
+[2026-07-25 15:41:56.345-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=64709 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:42:06.714-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=10369 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:43:26.345-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:43:31.344-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4999 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:44:56.346-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:45:01.454-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5108 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:45:45.794-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=49448 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:45:50.742-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4945 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:46:00.971-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:46:09.003-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=23206 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:46:20.770-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=34973 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:46:27.314-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=6544 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:46:52.263-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=31493 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:46:57.410-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5146 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:47:57.146-04:00] [WARN] [Kalshi.fetch_category.events] Connection closed: 
+[2026-07-25 15:47:57.147-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 15:47:57.159-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTC-26JUL2516-B64450 -> -
+[2026-07-25 15:47:58.031-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=65767 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:48:03.132-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5098 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:49:29.356-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=91324 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:49:34.377-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5021 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:51:03.432-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=94076 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:51:23.641-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=20208 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:51:48.210-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:51:48.211-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=44778 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:51:52.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4134 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:52:27.761-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=39550 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:52:32.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4584 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:53:14.319-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=46558 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:53:17.345-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=3026 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:54:47.852-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=93533 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:54:52.346-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4494 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:55:02.405-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=14553 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:55:18.721-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30869 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:55:22.874-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4153 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:55:49.139-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30418 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:55:52.468-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=3329 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:57:10.346-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=81207 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:57:17.016-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=6669 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:57:33.027-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 15:57:33.027-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 0 events / 0 markets from 2 series probed (cap 200)
+[2026-07-25 15:57:33.027-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=empty row=-1 contracts=0 KXBTC-26JUL2516-B64450 -> -
+[2026-07-25 15:57:35.346-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=24999 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:57:45.363-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=35016 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:57:50.346-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4983 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:59:19.404-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=94041 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:59:20.831-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=1427 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:59:41.115-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=21711 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:59:50.782-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=31378 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 15:59:56.127-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=5345 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:00:05.943-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=15161 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:00:10.346-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4403 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:00:22.957-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=17014 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:00:28.315-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5358 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:01:33.357-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=70400 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:01:38.346-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4988 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:03:07.102-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=93744 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:03:11.763-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4661 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:04:11.466-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=64364 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:04:20.453-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=8986 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:05:26.246-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=74779 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:05:30.618-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4369 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:05:46.907-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=20658 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:05:51.782-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4874 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:06:30.431-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=43523 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:06:35.440-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5008 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:08:06.290-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=95858 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:08:10.971-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4681 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:09:11.600-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=65310 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:09:16.792-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5192 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:10:42.093-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=90493 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:10:47.775-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5682 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:11:12.321-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=30228 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:11:18.159-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5837 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:12:43.892-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=91570 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:12:49.227-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5335 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:13:35.940-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=52048 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:13:39.579-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=3639 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:15:10.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=94408 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:15:15.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:16:20.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=70000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:16:25.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:17:30.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=70000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:17:35.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:19:00.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=1 since_last_ms=90000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:19:05.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:19:15.347-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=14999 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:19:20.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5001 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:20:05.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=50001 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:20:10.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:21:10.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=expired visible=1 in_flight=0 since_last_ms=65000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:21:15.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2516-B64450 closes=2026-07-25T20:00:00Z
+[2026-07-25 16:21:26.120-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 16:21:26.120-04:00] [INFO] [Kalshi.fetch_category] fan-out done: 3 events / 210 markets from 2 series probed (cap 200)
+[2026-07-25 16:21:26.129-04:00] [INFO] [Kalshi.market_list] list populated (background): reason=rolled row=0 contracts=5 KXBTC-26JUL2516-B64450 -> KXBTC-26JUL2517-B64625 ROLLED
+[2026-07-25 16:21:30.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=waiting visible=1 in_flight=0 since_last_ms=20000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:21:40.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:21:45.349-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:23:10.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:23:15.349-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:24:25.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=75000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:24:30.347-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=4998 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:25:05.348-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=39999 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:25:10.348-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:26:35.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=1 since_last_ms=90001 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:26:40.349-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:27:01.894-04:00] [WARN] [Kalshi.fetch_category.events] Connection closed: 
+[2026-07-25 16:27:05.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=30000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:27:10.349-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:28:06.411-04:00] [WARN] [Kalshi.fetch_category.events] Socket operation timed out: 
+[2026-07-25 16:28:10.349-04:00] [INFO] [Kalshi.market_list] list refresh FETCH: reason=periodic visible=1 in_flight=0 since_last_ms=65000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z
+[2026-07-25 16:28:15.349-04:00] [INFO] [Kalshi.market_list] list refresh skip: reason=in-flight visible=1 in_flight=1 since_last_ms=5000 selected=KXBTC-26JUL2517-B64625 closes=2026-07-25T21:00:00Z

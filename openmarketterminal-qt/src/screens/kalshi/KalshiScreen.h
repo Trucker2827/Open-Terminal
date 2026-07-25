@@ -64,7 +64,12 @@ class KalshiScreen final : public QWidget {
     void build_ui();
     void ensure_workspace_panes_visible();
     void wire_adapter();
-    void refresh();
+    /// Re-fetch the market list. `background` marks a timer-driven refresh:
+    /// list only, no badge flash, and the operator's selection survives it.
+    void refresh(bool background = false);
+    /// Timer tick. Asks decide_market_refresh whether a list fetch is due —
+    /// periodic cadence, or immediately once the selected contract expires.
+    void refresh_market_list_if_due();
     void set_family(const QString& family);
     void set_asset(const QString& asset);
     void set_cadence(const QString& cadence);
@@ -276,6 +281,17 @@ class KalshiScreen final : public QWidget {
     bool trade_ledger_loaded_ = false;
     bool daemon_status_fetching_ = false;
     bool daemon_restarting_ = false;
+    // Market-list rollover state (see MarketRollPresentation.h). The in-flight
+    // pair is the no-storm guard: one list fetch at a time, released when the
+    // payload lands or when it is presumed lost.
+    bool market_list_fetch_in_flight_ = false;
+    qint64 market_list_fetch_started_ms_ = 0;
+    qint64 market_list_last_fetch_ms_ = 0;
+    bool preserve_selection_on_populate_ = false;
+    // Last refresh verdict written to the log, so an unchanged one stays quiet.
+    QString market_list_logged_reason_;
+    QHash<QString, qint64> series_detail_fetched_ms_;
+    QTimer* market_list_timer_ = nullptr;
     QTimer* dom_timer_ = nullptr;
     QTimer* spot_dom_timer_ = nullptr;
     QTimer* reference_dom_reconnect_timer_ = nullptr;
