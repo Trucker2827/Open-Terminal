@@ -1465,6 +1465,63 @@ class TstPmPaper : public QObject {
         }
     }
 
+    // `filled` is the case #141 was filed about, but `resting` is the one with
+    // the widest live consequences: a micro-live evidence draft is submitted at
+    // the human-approved immutable limit precisely SO it can rest, and the
+    // charter counts a resting order as risk. The hand-approved pilot's own
+    // candidate SQL excludes a market with a live `trade_audit` FILLED row and
+    // nothing else — a resting order is invisible to it — so this state is
+    // covered by the shared guard alone, and by nothing else at all.
+    void a_live_order_still_resting_at_the_venue_blocks_the_contract() {
+        set_setting("cli.allowed_venues", "polymarket");
+        set_setting("cli.allow_paper_trading", "true");
+        QVERIFY2(fake_adapter(), "fake adapter must be registered");
+        fake_adapter()->creds_ = true;
+        set_setting("kalshi.live_automation.enabled", "true");
+        set_setting("kalshi.live_automation.session_id", "sess-bot-live");
+        set_setting("kalshi.live_automation.ends_at",
+                    QDateTime::currentDateTimeUtc().addSecs(3600).toString(Qt::ISODateWithMs));
+        set_setting("kalshi.live_automation.max_orders_per_hour", "10");
+
+        const QString market = QStringLiteral("mkt-bot-resting");
+        const QJsonObject first = bot_live_intent(market, 1.0, 0.05);
+        QVERIFY2(!first.isEmpty(), "the bot must build a live intent for a permitted session");
+        auto first_prepared = rt_.call_tool("prepare_order", first);
+        const QString first_draft = first_prepared.data.toObject().value("draft_id").toString();
+        QVERIFY(!first_draft.isEmpty());
+
+        fake_adapter()->filled_override_ = 0.0;  // acknowledged, nothing filled yet
+        fake_adapter()->status_override_ = QStringLiteral("RESTING");
+        arm_live();
+        const auto first_res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", first_draft}, {"mode", "live"}});
+        disarm_live();
+        fake_adapter()->filled_override_ = -1.0;
+        fake_adapter()->status_override_.clear();
+        QVERIFY2(first_res.success, qPrintable("first submit: " + first_res.error));
+        QCOMPARE(first_res.data.toObject().value("status").toString(), QStringLiteral("resting"));
+        QCOMPARE(OrderDraftRepository::instance().get(first_draft).value().status,
+                 QStringLiteral("resting"));
+
+        const QJsonObject second = bot_live_intent(market, 1.0, 0.05);
+        QVERIFY(!second.isEmpty());
+        auto second_prepared = rt_.call_tool("prepare_order", second);
+        const QString second_draft = second_prepared.data.toObject().value("draft_id").toString();
+        QVERIFY(!second_draft.isEmpty());
+        const int calls_before = fake_adapter()->place_order_calls_;
+        arm_live();
+        const auto second_res = rt_.call_tool(
+            "submit_order", QJsonObject{{"draft_id", second_draft}, {"mode", "live"}});
+        disarm_live();
+        const QJsonObject second_data = second_res.data.toObject();
+        QCOMPARE(second_data.value("status").toString(), QStringLiteral("rejected"));
+        QVERIFY2(second_data.value("reason").toString()
+                     .contains("already submitted an order for this contract"),
+                 qPrintable("a resting predecessor must be caught by the duplicate guard, not by "
+                            "some other gate: " + second_data.value("reason").toString()));
+        QCOMPARE(fake_adapter()->place_order_calls_, calls_before);
+    }
+
     void cleanupTestCase() { rt_.shutdown(); }
 };
 
