@@ -174,6 +174,24 @@ class TestKalshiBotRuntime : public QObject {
         QCOMPARE(kalshi_bot_newest_ts_ms(rows), kNow - 500);
     }
 
+    /// Issue #145: a row this build cannot otherwise read still proves the loop
+    /// ticked, as long as it is dated. The ISO `ts` every row carries beside
+    /// `ts_ms` is enough; a reader that needed `ts_ms` would freeze the age at
+    /// the last row it understood and report a running bot as stale.
+    void a_row_dated_only_in_iso_still_counts_as_a_tick() {
+        const QJsonObject iso_only{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_tick")},
+            {QStringLiteral("ts"), QDateTime::fromMSecsSinceEpoch(kNow - 500, QTimeZone::UTC)
+                                       .toString(Qt::ISODateWithMs)}};
+        QCOMPARE(kalshi_bot_row_ts_ms(iso_only), kNow - 500);
+        QCOMPARE(kalshi_bot_row_ts_ms(QJsonObject{{QStringLiteral("event"),
+                                                   QStringLiteral("kalshi_bot_tick")}}),
+                 0LL);  // undated is undated, never "now"
+        QJsonArray rows = ledger({kNow - 5'000});
+        rows.append(iso_only);
+        QCOMPARE(kalshi_bot_newest_ts_ms(rows), kNow - 500);
+    }
+
     void the_tail_reader_drops_the_partial_first_line_not_whole_rows() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());

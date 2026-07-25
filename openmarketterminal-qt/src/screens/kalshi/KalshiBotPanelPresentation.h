@@ -68,8 +68,10 @@ struct KalshiBotPanelView {
     QString status;             // headline: stopped/running/stale/off plus last-tick age
     QString state;              // "stopped" | "running" | "stale" | "off"
     bool stopped = false;       // the kill switch file exists right now
-    QString mode;               // "LIVE" | "PAPER" — the mode of the LAST tick
+    QString mode;               // "LIVE" | "PAPER" | "UNKNOWN" — the mode of the LAST tick
     bool mode_live = false;     // the last tick ran live (rung 5)
+    bool mode_unknown = false;  // the newest row's mode is unreadable — never rendered LIVE
+    QString vintage_hint;       // the launchctl hint, when the ledger is newer than this build
     QString armed;              // armed state + the caps in force, or DISARMED
     bool armed_live = false;    // an armed live session exists right now
     QString signal;             // signal-trust state of the most recent tick
@@ -137,10 +139,49 @@ inline QString action_label(const QString& action) {
     return QStringLiteral("PASS");
 }
 
-/// Whether a ledger row was written by a LIVE tick (rung 5). An absent `mode`
-/// is paper — rung 1 wrote rows before modes existed.
+/// Whether a ledger row was written by a LIVE tick (rung 5). Only the explicit
+/// word `live` marks a row live; every other value, and an absent `mode`, is
+/// not a live claim.
 inline bool is_live(const QJsonObject& row) {
     return row.value(QStringLiteral("mode")).toString() == QStringLiteral("live");
+}
+
+// The ledger events this build understands. A row carrying any other `event`
+// was written by a bot binary this GUI does not know — see `vintage` below.
+inline constexpr auto kDecisionEvent = "kalshi_bot_decision";
+inline constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
+
+/// Where a row sits in the ledger: by timestamp first, by file position only to
+/// break a tie. Two appenders (the launchd loop and a hand-run `kalshi bot
+/// once`) interleave rows, so file position alone is not "newest".
+struct RowStamp {
+    qint64 ts_ms = 0;
+    int index = -1;
+    bool valid() const { return index >= 0; }
+};
+
+inline bool newer(const RowStamp& a, const RowStamp& b) {
+    if (!a.valid()) return false;
+    if (!b.valid()) return true;
+    return a.ts_ms != b.ts_ms ? a.ts_ms > b.ts_ms : a.index > b.index;
+}
+
+/// The mode word a row states about itself, or an empty string when it states
+/// none this build can read. `paper` and `live` are the only readable answers:
+/// a row whose `mode` is missing or unrecognised is a tick of unknown vintage,
+/// not a paper one.
+inline QString stated_mode(const QJsonObject& row) {
+    const QString mode = row.value(QStringLiteral("mode")).toString();
+    return mode == QStringLiteral("live") || mode == QStringLiteral("paper") ? mode : QString();
+}
+
+/// The hint the operator acts on when the ledger's newest row is of a vintage
+/// this build cannot read: the loop is running a binary older (or newer) than
+/// the GUI, which is fixed by restarting the launchd job — the exact command
+/// the job's own plist documents.
+inline QString kalshi_bot_vintage_hint() {
+    return QStringLiteral(
+        "bot binary older than GUI — launchctl kickstart -k gui/$UID/org.openterminal.kalshi-bot");
 }
 
 inline QString decision_line(const QJsonObject& row) {
@@ -219,12 +260,36 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     KalshiBotPanelView view;
 
     // --- what the bot did, newest first ------------------------------------
+    // Two stamps are tracked while scanning: the newest tick whose mode this
+    // build can actually read, and the newest row it cannot read at all (an
+    // unknown `event`, or a tick whose `mode` is absent or unrecognised). If
+    // the unreadable one is the newer, this panel is looking at a ledger a
+    // different binary is writing, and it says so instead of describing the
+    // last row it happened to understand as if it were current.
     QList<QJsonObject> decisions;
-    for (const auto& value : ledger_rows) {
-        const QJsonObject row = value.toObject();
-        if (row.value(QStringLiteral("event")).toString() != QStringLiteral("kalshi_bot_decision"))
-            continue;
-        decisions.prepend(row);
+    RowStamp newest_readable_tick;
+    RowStamp newest_unreadable_row;
+    QString newest_readable_mode;
+    for (int index = 0; index < ledger_rows.size(); ++index) {
+        const QJsonObject row = ledger_rows.at(index).toObject();
+        const QString event = row.value(QStringLiteral("event")).toString();
+        RowStamp stamp;
+        stamp.ts_ms = services::prediction::kalshi_ns::kalshi_bot_row_ts_ms(row);
+        stamp.index = index;
+        if (event == QLatin1String(kDecisionEvent)) {
+            decisions.prepend(row);
+            const QString mode = stated_mode(row);
+            if (mode.isEmpty()) {
+                if (newer(stamp, newest_unreadable_row)) newest_unreadable_row = stamp;
+            } else if (newer(stamp, newest_readable_tick)) {
+                newest_readable_tick = stamp;
+                newest_readable_mode = mode;
+            }
+        } else if (event != QLatin1String(kSettlementEvent)) {
+            // A settlement is the same vintage and is not a tick, so it makes
+            // no claim about the mode either way; anything else is unknown.
+            if (newer(stamp, newest_unreadable_row)) newest_unreadable_row = stamp;
+        }
     }
 
     // --- status chip: classified by the CLI's own classifier ----------------
@@ -236,17 +301,31 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
         ? QStringLiteral("%1 · %2 decisions in view").arg(status.headline).arg(decisions.size())
         : status.headline;
 
-    // --- LIVE badge (rung 5) ------------------------------------------------
-    // Read off the NEWEST decision row, exactly as `signal` is: the badge says
-    // what the bot is doing NOW, not what it has ever done. A bot that ran live
-    // an hour ago and papers now is papering, and a badge that latched on any
-    // live row in the window would keep claiming otherwise. With no rows at all
-    // there is nothing to claim, so no badge is shown and `mode` stays empty.
-    if (!decisions.isEmpty()) {
-        view.mode_live = kalshi_bot_detail::is_live(decisions.first());
+    // --- LIVE badge (rung 5), failing CLOSED (issue #145) -------------------
+    // Read off the NEWEST tick: the badge says what the bot is doing NOW, not
+    // what it has ever done. A bot that ran live an hour ago and papers now is
+    // papering, and a badge that latched on any live row in the window would
+    // keep claiming otherwise.
+    //
+    // LIVE is claimed only when that newest tick explicitly says `mode=live`.
+    // When the newest row is one this build cannot read, the honest badge is
+    // UNKNOWN: reading the mode off the last row that happened to parse is how
+    // a screen ends up announcing LIVE over a ledger that never went live, and
+    // failing open to LIVE is the worst direction to fail in. With no rows at
+    // all there is nothing to claim, so no badge is shown and `mode` stays
+    // empty.
+    if (newest_readable_tick.valid() && !newer(newest_unreadable_row, newest_readable_tick)) {
+        view.mode_live = newest_readable_mode == QStringLiteral("live");
         view.mode = view.mode_live ? QStringLiteral("LIVE") : QStringLiteral("PAPER");
-        view.status = QStringLiteral("[%1] %2").arg(view.mode, view.status);
+    } else if (newest_unreadable_row.valid()) {
+        view.mode_unknown = true;
+        view.mode = QStringLiteral("UNKNOWN");
+        view.vintage_hint = kalshi_bot_vintage_hint();
     }
+    if (!view.mode.isEmpty()) view.status = QStringLiteral("[%1] %2").arg(view.mode, view.status);
+    if (!view.vintage_hint.isEmpty())
+        view.status += QStringLiteral(" · the newest ledger row carries no mode this build can "
+                                      "read, so no mode is claimed · %1").arg(view.vintage_hint);
 
     // --- armed state and the caps in force ----------------------------------
     if (live_status.isEmpty()) {
