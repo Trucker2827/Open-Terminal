@@ -527,10 +527,10 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
         update_observation_strip();
         update_market_health();
         refresh_flow_meter();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
         // Driven by the clock, not by the ladder engine: a cockpit whose
         // engine has stopped must age into STALE, not freeze at its last text.
-        refresh_auto_cockpit_header();
-        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        refresh_auto_cockpit_header(now);
         if (auto* a = adapter(); a && a->has_credentials() &&
             now - last_account_activity_fetch_ms_ >= 30'000) {
             last_account_activity_fetch_ms_ = now;
@@ -3168,7 +3168,13 @@ void KalshiScreen::record_ladder_evidence() {
         if (now - point.quote_observed_at_ms > kCockpitBooksStaleMs)
             ++cockpit_ladder_.legs_quote_past_bound;
     }
-    refresh_auto_cockpit_header();
+    // One classification per pass, taken here — after cockpit_ladder_ has been
+    // repopulated from this pass's surface, and against this pass's `now`. The
+    // gate on the plan summary and the ladder table at the end of this function
+    // reuses it, so the header and the gate cannot disagree about the same pass
+    // because a staleness boundary was crossed while it ran.
+    refresh_auto_cockpit_header(now);
+    const AutoCockpitView cockpit_view = present_auto_cockpit(auto_cockpit_inputs(), now);
     services::edge_radar::KalshiPortfolioConstraints auto_limits;
     auto_limits.max_positions = cadence_ == QStringLiteral("hourly") ? 5 : 3;
     auto_limits.max_same_side = cadence_ == QStringLiteral("hourly") ? 4 : 2;
@@ -3321,6 +3327,16 @@ void KalshiScreen::record_ladder_evidence() {
               .arg(intelligence_calibration.value(QStringLiteral("samples")).toInt())
               .arg(intelligence_calibration.value(QStringLiteral("late_market_stability")).toDouble() * 100.0, 0, 'f', 0)
               .arg(intelligence_calibration.value(QStringLiteral("time_conditioned_confidence")).toDouble() * 100.0, 0, 'f', 0);
+    // Everything below is drawn only while the header calls the inputs live —
+    // the plan summary AND its colour AND the table, gated together. When the
+    // inputs are not live, refresh_auto_cockpit_header owns both widgets and
+    // has already put the stated reason in each; writing here would overwrite
+    // that with `cost $… · expected $… · worst $…` computed from the very
+    // inputs the header just refused to vouch for, painted green whenever the
+    // plan found an opportunity, directly above a table reading LADDER NOT
+    // SHOWN. Numbers that outlive their own freshness are the "silently
+    // degrades" failure, not a convenience.
+    if (!cockpit_view.ladder_trustworthy) return;
     ladder_status_->setText(QStringLiteral("AUTO COCKPIT · RESEARCH + BOUNDED LIVE EXECUTION\n%1 contracts · %2 selected · cost $%3 · expected $%4 · worst $%5\n%6%7%8")
                                 .arg(snapshot.value(QStringLiteral("contracts")).toArray().size())
                                 .arg(auto_plan.legs.size())
@@ -3333,12 +3349,7 @@ void KalshiScreen::record_ladder_evidence() {
     ladder_status_->setStyleSheet(QStringLiteral("color:%1;border-top:1px solid %2;padding-top:8px;")
                                       .arg(opportunities > 0 ? colors::GREEN() : colors::TEXT_SECONDARY(),
                                            colors::BORDER_DIM()));
-    // The ladder is drawn only while the header calls the inputs live. When it
-    // does not, refresh_auto_cockpit_header owns the table and has already put
-    // the stated reason there; redrawing rows here would overwrite it with the
-    // very prices the header just refused to vouch for.
-    if (present_auto_cockpit(auto_cockpit_inputs(), now).ladder_trustworthy)
-        render_ladder_surface(auto_surface, auto_plan, diagnostics);
+    render_ladder_surface(auto_surface, auto_plan, diagnostics);
 }
 
 AutoCockpitInputs KalshiScreen::auto_cockpit_inputs() const {
@@ -3359,10 +3370,9 @@ AutoCockpitInputs KalshiScreen::auto_cockpit_inputs() const {
     return inputs;
 }
 
-void KalshiScreen::refresh_auto_cockpit_header() {
+void KalshiScreen::refresh_auto_cockpit_header(qint64 now_ms) {
     if (!cockpit_state_ || !cockpit_markets_ || !cockpit_books_) return;
-    const AutoCockpitView view =
-        present_auto_cockpit(auto_cockpit_inputs(), QDateTime::currentMSecsSinceEpoch());
+    const AutoCockpitView view = present_auto_cockpit(auto_cockpit_inputs(), now_ms);
 
     const auto role_color = [](const QString& role) {
         if (role == QStringLiteral("green")) return colors::GREEN();
@@ -3386,10 +3396,12 @@ void KalshiScreen::refresh_auto_cockpit_header() {
     if (view.ladder_trustworthy) return;
     // Untrustworthy inputs never leave last-good numbers on screen — and that
     // includes the plan summary, whose dollar figures are computed from the
-    // very inputs the header has just refused to vouch for. record_ladder_
-    // evidence writes that line only on the live path; this tick overwrites it
-    // the moment the state leaves "live", and keeps overwriting it while the
-    // engine is not running at all.
+    // very inputs this header has just refused to vouch for. Ownership of
+    // ladder_status_ and ladder_table_ is split by state and never shared:
+    // record_ladder_evidence returns before writing either one unless its own
+    // view says live (it classifies against the same `now` it hands this
+    // function), so on a not-live pass this is the only writer — including
+    // while the engine is not running at all.
     if (ladder_status_) {
         ladder_status_->setText(auto_cockpit_role() + QLatin1Char('\n') + view.ladder_notice);
         ladder_status_->setStyleSheet(QStringLiteral("color:%1;border-top:1px solid %2;padding-top:8px;")

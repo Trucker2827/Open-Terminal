@@ -102,8 +102,13 @@ class KalshiScreen final : public QWidget {
     /// engine has stopped ages into STALE instead of freezing at its last-good
     /// text. Owns the ladder table whenever the inputs are not live: the rows
     /// are replaced with the stated reason rather than left showing prices
-    /// derived from inputs the header has just called untrustworthy.
-    void refresh_auto_cockpit_header();
+    /// derived from inputs the header has just called untrustworthy — and that
+    /// includes the plan-summary line, which the engine pass writes only on the
+    /// live path. `now_ms` is passed in so a single engine pass classifies its
+    /// inputs against one clock reading: the header and the gate at the end of
+    /// record_ladder_evidence must never straddle a staleness boundary and
+    /// disagree about the same pass.
+    void refresh_auto_cockpit_header(qint64 now_ms);
     /// The cockpit's inputs as they stand right now: live selection and market
     /// list state, plus the ladder-leg freshness carried in cockpit_ladder_.
     AutoCockpitInputs auto_cockpit_inputs() const;
