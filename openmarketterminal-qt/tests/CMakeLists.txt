@@ -921,6 +921,15 @@ target_include_directories(tst_kalshi_bot_panel_presentation PRIVATE ${CMAKE_SOU
 target_link_libraries(tst_kalshi_bot_panel_presentation PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_panel_presentation COMMAND tst_kalshi_bot_panel_presentation)
 
+# Kalshi AUTO COCKPIT header — the freshness classifier for the cockpit's own
+# inputs (market list age, ladder book-feed age, legs priced with no book) and
+# the rule that a not-live cockpit withholds its ladder instead of leaving
+# last-good prices on screen. Header-only, no DB/Widgets.
+add_executable(tst_kalshi_auto_cockpit tst_kalshi_auto_cockpit.cpp)
+target_include_directories(tst_kalshi_auto_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_auto_cockpit PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_auto_cockpit COMMAND tst_kalshi_auto_cockpit)
+
 # Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
 # uses to find the bundled openterminalcli (".exe" on Windows). Header-only,
 # no DB/Widgets.

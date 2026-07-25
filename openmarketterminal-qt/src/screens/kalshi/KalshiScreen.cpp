@@ -528,6 +528,9 @@ KalshiScreen::KalshiScreen(QWidget* parent) : QWidget(parent) {
         update_market_health();
         refresh_flow_meter();
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        // Driven by the clock, not by the ladder engine: a cockpit whose
+        // engine has stopped must age into STALE, not freeze at its last text.
+        refresh_auto_cockpit_header(now);
         if (auto* a = adapter(); a && a->has_credentials() &&
             now - last_account_activity_fetch_ms_ >= 30'000) {
             last_account_activity_fetch_ms_ = now;
@@ -904,6 +907,7 @@ void KalshiScreen::build_ui() {
     center_layout->addWidget(chart_container);
 
     auto* tabs = new QTabWidget(center);
+    center_tabs_ = tabs;
     tabs->setMinimumWidth(0);
     tabs->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     auto* maker_scroll = new QScrollArea(tabs);
@@ -1024,11 +1028,14 @@ void KalshiScreen::build_ui() {
     shadow_status_->setWordWrap(true);
     shadow_status_->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
     maker_layout->addWidget(shadow_status_);
-    ladder_status_ = new QLabel(QStringLiteral("LADDER ENGINE WARMING\nWaiting for complete event books."), maker);
+    // ladder_status_ is the Auto Cockpit's own plan summary. It is built here
+    // with the tab widget as its parent and added to the AUTO COCKPIT tab
+    // below, not to maker_layout: it used to be laid out on MAKER ORDER, which
+    // is why the cockpit tab had no header of any kind.
+    ladder_status_ = new QLabel(QStringLiteral("LADDER ENGINE WARMING\nWaiting for complete event books."), tabs);
     ladder_status_->setWordWrap(true);
     ladder_status_->setStyleSheet(QStringLiteral("color:%1;border-top:1px solid %2;padding-top:8px;")
                                       .arg(colors::WARNING(), colors::BORDER_DIM()));
-    maker_layout->addWidget(ladder_status_);
     recorder_health_ = new QLabel(QStringLiteral("RECORDER STARTING"), maker);
     recorder_health_->setWordWrap(true);
     recorder_health_->setStyleSheet(QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:7px;font-size:10px;")
@@ -1040,10 +1047,83 @@ void KalshiScreen::build_ui() {
     maker_layout->addStretch();
     maker_scroll->setWidget(maker);
     tabs->addTab(maker_scroll, QStringLiteral("MAKER ORDER"));
-    auto* auto_cockpit = new QWidget(tabs);
+    // The cockpit page scrolls, like its MAKER ORDER / BOT / ADVISOR siblings.
+    // Without it the fixed-height pane compresses every widget on the page —
+    // the header chip was squeezed to zero height and rendered blank, which is
+    // the same "reads as broken" failure this tab is being fixed for.
+    auto* auto_cockpit_scroll = new QScrollArea(tabs);
+    auto_cockpit_scroll->setWidgetResizable(true);
+    auto_cockpit_scroll->setFrameShape(QFrame::NoFrame);
+    // The ladder table brings its own horizontal scrolling; letting the page
+    // scroll sideways as well pushes the header's controls off the right edge.
+    auto_cockpit_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* auto_cockpit = new QWidget(auto_cockpit_scroll);
     auto* auto_cockpit_layout = new QVBoxLayout(auto_cockpit);
     auto_cockpit_layout->setContentsMargins(8, 6, 8, 6);
     auto_cockpit_layout->setSpacing(6);
+
+    // --- Cockpit header: what this surface is, and whether its inputs are ---
+    // fresh. Everything here is rendered from AutoCockpitPresentation.h on the
+    // 1s clock tick, never from the 5s ladder engine, so the header cannot
+    // freeze alongside a stopped engine.
+    cockpit_state_ = new QLabel(QStringLiteral("AUTO COCKPIT · classifying inputs…"), auto_cockpit);
+    cockpit_state_->setWordWrap(true);
+    cockpit_state_->setToolTip(QStringLiteral(
+        "Green when the contract list and the ladder's book feed are both inside their freshness "
+        "bounds, amber when one has gone stale, grey when an input has never arrived. A cockpit "
+        "that is not green does not show a ladder — the plan is withheld rather than shown stale."));
+    cockpit_state_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+            .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED()));
+    auto_cockpit_layout->addWidget(cockpit_state_);
+    cockpit_open_bot_ = new QPushButton(QStringLiteral("OPEN THE BOT TAB  →"), auto_cockpit);
+    cockpit_open_bot_->setCursor(Qt::PointingHandCursor);
+    cockpit_open_bot_->setToolTip(bot_surface_role() + QStringLiteral(
+        " This cockpit is a different surface: it never bids on its own."));
+    cockpit_open_bot_->setStyleSheet(QStringLiteral(
+        "QPushButton{background:transparent;color:%1;border:1px solid %1;padding:8px 12px;font-weight:900;}")
+                                         .arg(colors::CYAN()));
+    connect(cockpit_open_bot_, &QPushButton::clicked, this, [this]() {
+        if (center_tabs_ && bot_tab_index_ >= 0) center_tabs_->setCurrentIndex(bot_tab_index_);
+    });
+
+    const auto cockpit_line_style = [](const QString& color) {
+        return QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:6px;font-weight:700;")
+            .arg(color, colors::BG_BASE(), colors::BORDER_DIM());
+    };
+    cockpit_markets_ = new QLabel(QStringLiteral("MARKETS — waiting"), auto_cockpit);
+    cockpit_markets_->setWordWrap(true);
+    cockpit_markets_->setToolTip(QStringLiteral(
+        "Age of the contract list the ladder prices from. A list older than its bound may no "
+        "longer contain the contract that is currently open."));
+    cockpit_markets_->setStyleSheet(cockpit_line_style(colors::TEXT_SECONDARY()));
+    auto_cockpit_layout->addWidget(cockpit_markets_);
+    cockpit_books_ = new QLabel(QStringLiteral("BOOKS — waiting"), auto_cockpit);
+    cockpit_books_->setWordWrap(true);
+    cockpit_books_->setToolTip(QStringLiteral(
+        "Age of the order books behind this event's ladder legs, taken from the same surface the "
+        "ladder below is built from. A leg with no book at all is priced from the cached market "
+        "snapshot, and is counted here rather than passed off as a quote."));
+    cockpit_books_->setStyleSheet(cockpit_line_style(colors::TEXT_SECONDARY()));
+    auto_cockpit_layout->addWidget(cockpit_books_);
+
+    // The three automation surfaces on this screen, and what separates them.
+    cockpit_roles_ = new QLabel(
+        auto_cockpit_role() + QLatin1Char('\n') + bot_surface_role() + QLatin1Char('\n') +
+            advisor_canary_surface_role(),
+        auto_cockpit);
+    cockpit_roles_->setWordWrap(true);
+    cockpit_roles_->setStyleSheet(
+        QStringLiteral("color:%1;font-size:10px;").arg(colors::TEXT_DIM()));
+    auto_cockpit_layout->addWidget(cockpit_roles_);
+    // The cross-link sits under the role lines that name the two surfaces, on
+    // its own row: beside a word-wrapped chip it loses its width and vanishes.
+    auto* cockpit_link_row = new QHBoxLayout;
+    cockpit_link_row->setContentsMargins(0, 0, 0, 0);
+    cockpit_link_row->addWidget(cockpit_open_bot_);
+    cockpit_link_row->addStretch(1);
+    auto_cockpit_layout->addLayout(cockpit_link_row);
+
     auto* live_controls = new QHBoxLayout;
     live_controls->setContentsMargins(0, 0, 0, 0);
     live_controls->setSpacing(6);
@@ -1108,8 +1188,11 @@ void KalshiScreen::build_ui() {
     ladder_table_->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
     ladder_table_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     ladder_table_->setToolTip(QStringLiteral("Timestamped paper-only probability surface and constrained portfolio plan. No live order can be submitted here."));
+    ladder_table_->setMinimumHeight(260);
+    auto_cockpit_layout->addWidget(ladder_status_);
     auto_cockpit_layout->addWidget(ladder_table_, 1);
-    tabs->addTab(auto_cockpit, QStringLiteral("AUTO COCKPIT"));
+    auto_cockpit_scroll->setWidget(auto_cockpit);
+    tabs->addTab(auto_cockpit_scroll, QStringLiteral("AUTO COCKPIT"));
 
     // --- BOT: a read-only mirror of what `kalshi bot` is doing --------------
     // Every value on this page comes out of the two evidence files the CLI
@@ -1128,6 +1211,12 @@ void KalshiScreen::build_ui() {
     bot_title->setStyleSheet(
         QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
     bot_layout->addWidget(bot_title);
+    // Same one-line role the cockpit prints for this surface, from the same
+    // definition, so the two tabs cannot describe the BOT differently.
+    auto* bot_role = new QLabel(bot_surface_role(), bot_page);
+    bot_role->setWordWrap(true);
+    bot_role->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::CYAN()));
+    bot_layout->addWidget(bot_role);
     auto* bot_note = new QLabel(
         QStringLiteral("Every number below is read from the same files `kalshi bot` writes — %1 "
                        "and %2 — so this panel and the CLI cannot disagree. Its one control is the "
@@ -1200,7 +1289,7 @@ void KalshiScreen::build_ui() {
             .arg(colors::TEXT_PRIMARY(), colors::BG_BASE(), colors::BORDER_DIM()));
     bot_layout->addWidget(bot_decisions_, 1);
     bot_scroll->setWidget(bot_page);
-    tabs->addTab(bot_scroll, QStringLiteral("BOT"));
+    bot_tab_index_ = tabs->addTab(bot_scroll, QStringLiteral("BOT"));
 
     auto* advisor_scroll = new QScrollArea(tabs);
     advisor_scroll->setWidgetResizable(true);
@@ -1213,6 +1302,10 @@ void KalshiScreen::build_ui() {
         "CODEX ADVISOR & CANARY · BLIND DUEL PROTOCOL · READ-ONLY CONTROL PLANE"), advisor_page);
     advisor_title->setStyleSheet(QStringLiteral("color:%1;font-weight:900;font-size:13px;").arg(colors::TEXT_PRIMARY()));
     advisor_layout->addWidget(advisor_title);
+    auto* advisor_role = new QLabel(advisor_canary_surface_role(), advisor_page);
+    advisor_role->setWordWrap(true);
+    advisor_role->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::CYAN()));
+    advisor_layout->addWidget(advisor_role);
     auto* advisor_note = new QLabel(QStringLiteral(
         "This panel displays authoritative persisted supervisor state for the blind forecasting "
         "duel (the advisor protocol) — a separate system from the BOT tab, which is the current "
@@ -1869,6 +1962,9 @@ void KalshiScreen::populate_events(const QVector<pred::PredictionEvent>& events)
 
 void KalshiScreen::populate_markets(const QVector<pred::PredictionMarket>& markets) {
     all_markets_ = markets;
+    // The one place the contract list is replaced, so the one place its age
+    // starts from. The Auto Cockpit header measures against this.
+    markets_listed_at_ms_ = QDateTime::currentMSecsSinceEpoch();
     if (auto* kalshi = qobject_cast<kalshi_data::KalshiAdapter*>(adapter())) {
         QSet<QString> series;
         for (const auto& market : all_markets_) {
@@ -1919,6 +2015,8 @@ void KalshiScreen::select_market(int row) {
         adapter()->unsubscribe_market(subscribed_ladder_assets_);
     selected_ = markets_[row];
     has_selection_ = true;
+    // Book ages measured on the previous event say nothing about this one.
+    cockpit_ladder_ = AutoCockpitInputs{};
     last_kalshi_ticker_ms_ = 0;
     last_kalshi_trade_ms_ = 0;
     last_kalshi_book_ms_ = 0;
@@ -3051,6 +3149,32 @@ void KalshiScreen::record_ladder_evidence() {
     }
     const auto auto_surface = services::edge_radar::KalshiAutoEngine::build_surface(
         all_markets_, kalshi_books_, auto_context, selected_.key.event_id);
+
+    // Ladder-leg freshness, taken from the surface the ladder itself is drawn
+    // from. quote_observed_at_ms is 0 exactly when quote_for() found no book
+    // and fell back to the cached market snapshot — both book producers always
+    // stamp a non-zero time — so a zero is "no book", never "age unknown".
+    cockpit_ladder_ = AutoCockpitInputs{};
+    cockpit_ladder_.event_ticker = selected_.key.event_id;
+    cockpit_ladder_.legs_total = static_cast<int>(auto_surface.size());
+    for (const auto& point : auto_surface) {
+        if (point.quote_observed_at_ms <= 0) continue;
+        ++cockpit_ladder_.legs_with_book;
+        cockpit_ladder_.newest_leg_quote_ms =
+            std::max(cockpit_ladder_.newest_leg_quote_ms, point.quote_observed_at_ms);
+        cockpit_ladder_.oldest_leg_quote_ms = cockpit_ladder_.oldest_leg_quote_ms == 0
+            ? point.quote_observed_at_ms
+            : std::min(cockpit_ladder_.oldest_leg_quote_ms, point.quote_observed_at_ms);
+        if (now - point.quote_observed_at_ms > kCockpitBooksStaleMs)
+            ++cockpit_ladder_.legs_quote_past_bound;
+    }
+    // One classification per pass, taken here — after cockpit_ladder_ has been
+    // repopulated from this pass's surface, and against this pass's `now`. The
+    // gate on the plan summary and the ladder table at the end of this function
+    // reuses it, so the header and the gate cannot disagree about the same pass
+    // because a staleness boundary was crossed while it ran.
+    refresh_auto_cockpit_header(now);
+    const AutoCockpitView cockpit_view = present_auto_cockpit(auto_cockpit_inputs(), now);
     services::edge_radar::KalshiPortfolioConstraints auto_limits;
     auto_limits.max_positions = cadence_ == QStringLiteral("hourly") ? 5 : 3;
     auto_limits.max_same_side = cadence_ == QStringLiteral("hourly") ? 4 : 2;
@@ -3203,6 +3327,16 @@ void KalshiScreen::record_ladder_evidence() {
               .arg(intelligence_calibration.value(QStringLiteral("samples")).toInt())
               .arg(intelligence_calibration.value(QStringLiteral("late_market_stability")).toDouble() * 100.0, 0, 'f', 0)
               .arg(intelligence_calibration.value(QStringLiteral("time_conditioned_confidence")).toDouble() * 100.0, 0, 'f', 0);
+    // Everything below is drawn only while the header calls the inputs live —
+    // the plan summary AND its colour AND the table, gated together. When the
+    // inputs are not live, refresh_auto_cockpit_header owns both widgets and
+    // has already put the stated reason in each; writing here would overwrite
+    // that with `cost $… · expected $… · worst $…` computed from the very
+    // inputs the header just refused to vouch for, painted green whenever the
+    // plan found an opportunity, directly above a table reading LADDER NOT
+    // SHOWN. Numbers that outlive their own freshness are the "silently
+    // degrades" failure, not a convenience.
+    if (!cockpit_view.ladder_trustworthy) return;
     ladder_status_->setText(QStringLiteral("AUTO COCKPIT · RESEARCH + BOUNDED LIVE EXECUTION\n%1 contracts · %2 selected · cost $%3 · expected $%4 · worst $%5\n%6%7%8")
                                 .arg(snapshot.value(QStringLiteral("contracts")).toArray().size())
                                 .arg(auto_plan.legs.size())
@@ -3216,6 +3350,69 @@ void KalshiScreen::record_ladder_evidence() {
                                       .arg(opportunities > 0 ? colors::GREEN() : colors::TEXT_SECONDARY(),
                                            colors::BORDER_DIM()));
     render_ladder_surface(auto_surface, auto_plan, diagnostics);
+}
+
+AutoCockpitInputs KalshiScreen::auto_cockpit_inputs() const {
+    AutoCockpitInputs inputs = cockpit_ladder_;
+    inputs.has_selection = has_selection_ && !selected_.key.event_id.isEmpty();
+    if (!inputs.has_selection || inputs.event_ticker != selected_.key.event_id) {
+        // No selection, or the engine has not yet priced the event now
+        // selected: report no legs rather than the previous event's.
+        inputs.event_ticker = inputs.has_selection ? selected_.key.event_id : QString();
+        inputs.legs_total = 0;
+        inputs.legs_with_book = 0;
+        inputs.newest_leg_quote_ms = 0;
+        inputs.oldest_leg_quote_ms = 0;
+        inputs.legs_quote_past_bound = 0;
+    }
+    inputs.markets_total = static_cast<int>(all_markets_.size());
+    inputs.markets_listed_at_ms = markets_listed_at_ms_;
+    return inputs;
+}
+
+void KalshiScreen::refresh_auto_cockpit_header(qint64 now_ms) {
+    if (!cockpit_state_ || !cockpit_markets_ || !cockpit_books_) return;
+    const AutoCockpitView view = present_auto_cockpit(auto_cockpit_inputs(), now_ms);
+
+    const auto role_color = [](const QString& role) {
+        if (role == QStringLiteral("green")) return colors::GREEN();
+        if (role == QStringLiteral("amber")) return colors::WARNING();
+        return colors::TEXT_SECONDARY();
+    };
+    const QString state_color = role_color(view.color_role);
+    cockpit_state_->setText(view.headline);
+    cockpit_state_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:2px solid %1;padding:9px;font-weight:900;")
+            .arg(state_color, colors::BG_RAISED()));
+    const auto line_style = [](const QString& color) {
+        return QStringLiteral("color:%1;background:%2;border:1px solid %3;padding:6px;font-weight:700;")
+            .arg(color, colors::BG_BASE(), colors::BORDER_DIM());
+    };
+    cockpit_markets_->setText(view.markets_line);
+    cockpit_markets_->setStyleSheet(line_style(role_color(view.markets_role)));
+    cockpit_books_->setText(view.books_line);
+    cockpit_books_->setStyleSheet(line_style(role_color(view.books_role)));
+
+    if (view.ladder_trustworthy) return;
+    // Untrustworthy inputs never leave last-good numbers on screen — and that
+    // includes the plan summary, whose dollar figures are computed from the
+    // very inputs this header has just refused to vouch for. Ownership of
+    // ladder_status_ and ladder_table_ is split by state and never shared:
+    // record_ladder_evidence returns before writing either one unless its own
+    // view says live (it classifies against the same `now` it hands this
+    // function), so on a not-live pass this is the only writer — including
+    // while the engine is not running at all.
+    if (ladder_status_) {
+        ladder_status_->setText(auto_cockpit_role() + QLatin1Char('\n') + view.ladder_notice);
+        ladder_status_->setStyleSheet(QStringLiteral("color:%1;border-top:1px solid %2;padding-top:8px;")
+                                          .arg(state_color, colors::BORDER_DIM()));
+    }
+    if (!ladder_table_) return;
+    ladder_table_->clearSpans();
+    ladder_table_->setRowCount(1);
+    ladder_table_->setItem(0, 0, new QTableWidgetItem(view.state.toUpper()));
+    ladder_table_->setItem(0, 1, new QTableWidgetItem(view.ladder_notice));
+    ladder_table_->setSpan(0, 1, 1, ladder_table_->columnCount() - 1);
 }
 
 void KalshiScreen::refresh_volatility_estimate(const QString& symbol, qint64 decision_ts_ms) {
@@ -3337,6 +3534,8 @@ void KalshiScreen::render_ladder_surface(
     const services::edge_radar::KalshiPortfolioPlan& plan,
     const QJsonArray& diagnostics) {
     if (!ladder_table_) return;
+    // Drop the span the header's not-live notice lays across the row.
+    ladder_table_->clearSpans();
     QHash<QString, QJsonObject> stored_signals;
     const qint64 stored_cutoff = QDateTime::currentMSecsSinceEpoch() - 5 * 60'000;
     auto stored = Database::instance().execute(
