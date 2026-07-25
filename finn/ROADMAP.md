@@ -62,6 +62,19 @@ The build ladder, in order — each rung is only as good as its proof:
 6. **Order lifecycle honesty**: quote TTLs, cancel/replace, resting
    orders counted as risk (the #44 ledger is the single source of truth).
 
+7. **THE BOT COCKPIT (operator, 2026-07-25)**: when autotrading is on —
+   paper or live — the window becomes a living cockpit in the Strategy
+   Cockpit's visual language, so anyone watching KNOWS the bot is
+   operating and stays out of its way. Futuristic and beautiful, but
+   every element data-driven: the "decision rain" background is real
+   watched contracts (columns = tickers, glyphs = their live mids/edges/
+   sigmas; a column freezes when its data goes stale, ignites green/red
+   when the bot bids, dissolves on settlement with its P&L), the KPI
+   strip is the real scoreboard (net P&L green/red, drawdown vs the
+   sealed cap), and PAPER vs LIVE changes the whole scene's mood with an
+   unmissable banner. No ambient decoration: a pulse IS a journal row.
+   The same scene serves crypto when its signals run on auto.
+
 Still standing from before (context for every contract decision): sigmas
 and calibrated probabilities with track records on the Kalshi screen,
 settlement history as the user's own scoreboard, the arena reachable from
