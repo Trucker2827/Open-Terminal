@@ -1,0 +1,155 @@
+# Issue #146 — BOT COCKPIT: capture notes
+
+## What the screenshots are
+
+Both PNGs are the real `KalshiBotCockpitView` in the real app, opened by
+clicking **BOT RUNNING — OPEN THE COCKPIT →** on the Predictions screen's BOT
+tab. Nothing is mocked, staged, or drawn by a capture-only build.
+
+* `issue-146-bot-cockpit-paper.png` — PAPER mood, loop running, rain falling.
+* `issue-146-bot-cockpit-frozen.png` — the SAME session ~4 minutes later with
+  the evidence mirror stopped: every column tagged `FROZEN`, the whole scene
+  greyed, and the census stating why ("the report is 4m ago, past the 120s age
+  the bot itself refuses it at").
+
+## How the data got there (and why it is not the operator's ledger)
+
+The app ran on a scratch profile (`--profile finn146`) with
+`OPENTERMINAL_KALSHI_EVIDENCE_DIR=/tmp/finn146-evidence`. That directory was a
+**mirror** of this machine's real bot evidence — `calibrator.json`,
+`kalshi-bot-gate.json`, and the last 400 KB of `kalshi-bot-decisions.jsonl` —
+re-copied every 3 s by a shell loop for the duration of the capture.
+
+The numbers on screen are therefore the operator's real, live ones; the mirror
+exists only so the app under capture could not append its own ladder rows to
+the shared ledger. (Issue #139 learned that `HOME=` does not isolate the Kalshi
+evidence directory — `OPENTERMINAL_KALSHI_EVIDENCE_DIR` does.)
+
+The frozen capture was produced by stopping the mirror and waiting: no file was
+edited, and no timestamp was forged.
+
+## Parity with the CLI (criterion 3)
+
+`issue-146-cli-parity.txt` is `openterminalcli kalshi bot status` run against
+the SAME evidence directory the captured GUI session read, plus the raw gate
+file. The comparison is against the FROZEN capture, which is the stronger case:
+both readers have to agree on a non-trivial classification, not just on a
+healthy one.
+
+| | CLI | cockpit (frozen PNG) |
+|---|---|---|
+| state | `BOT STALE · last decision 5m ago` | `[PAPER] BOT STALE · last decision 3m ago` |
+| threshold | `chip STALE (amber) · stale after 120s` | census: `past the 120s age the bot itself refuses it at` |
+| kill switch | `stop file … (absent)` | `KILL SWITCH: CLEAR · the loop may bid` |
+
+The two ages differ because the readings are 2 minutes apart, and the arithmetic
+closes exactly: the newest ledger row is `2026-07-26T00:35:23Z`; the CLI ran at
+`00:40:29Z` → 5m 06s → "5m ago". The frozen PNG was captured at ~`00:32:30Z`,
+when the newest row was the last mirror copy before the mirror was stopped at
+`00:29:27Z` → ~3m → "3m ago". Same classifier, same threshold, same file.
+
+The gate numbers are byte-for-byte the file's:
+
+| kalshi-bot-gate.json | cockpit |
+|---|---|
+| `verdict FAIL`, 3 of 4 criteria `met` | `SEALED GATE: FAIL · 3/4 criteria met` |
+| `min_settled_bids 4 >= 300 NOT MET` … `max_drawdown_usd 1.55 <= 20 MET` | the identical four lines |
+| `ledger {settled_bids 4, wins 3, losses 1, net_pnl_usd 1.35, fees_usd 0.17, max_drawdown_usd 1.55}` | `SETTLED 4 · W/L 3-1 · NET $1.35 · DRAWDOWN $1.55 / $20.00` |
+| `params.max_drawdown_usd 20` | the `/ $20.00` half of the drawdown entry |
+
+## Parity with the BOT tab, checked on screen
+
+The BOT tab and the cockpit were open in the same session, over the same files:
+
+| | BOT tab | cockpit |
+|---|---|---|
+| status | `[PAPER] BOT RUNNING · last decision 53s ago · 658 decisions in view` | same string, in the banner |
+| scoreboard | `4 settled · net $1.35 after $0.17 fees` | `SETTLEMENTS: 4 settled · 3W / 1L · net $1.35 after $0.17 fees` |
+| gate | `GATE FAIL · min_settled_bids 4 >= 300 NOT MET · net_pnl_usd 1.35 > 0.00 MET · brier_beats_market 0.2241 < 0.2425 MET · max_drawdown_usd 1.55 <= 20.00 MET` | `SEALED GATE: FAIL · 3/4 criteria met ·` then the identical four criterion lines |
+| kill switch | button reads STOP (switch clear) | `KILL SWITCH: CLEAR · the loop may bid` |
+| armed | `DISARMED · no armed live session` | `EXPOSURE: DISARMED · no armed live session, so nothing is exposed through this bot` |
+
+The criterion lines are byte-identical because the cockpit calls the BOT
+panel's own `kalshi_bot_detail::criterion_line`, and a unit test
+(`the_gate_node_prints_the_panels_own_criterion_lines`) asserts that rather than
+leaving it to inspection.
+
+## Perf (criterion 4) — what is proven and what is only observed
+
+**Proven structurally and by test:** the animation timer is started only when
+`scene.motion` is true (`KalshiBotCockpitView::sync_animation_timer`), and both
+timers are stopped in `hideEvent`. `scene.motion` is false with no evidence and
+false when the report is frozen — both are unit-tested
+(`no_evidence_produces_no_motion_and_no_rain`,
+`a_stale_report_freezes_every_column_and_stops_motion`,
+`a_dormant_loop_never_moves_even_on_a_fresh_report`).
+
+**Observed, not controlled:** `top -l` samples of the whole process, which also
+runs the terminal's live feeds, so this is indicative only —
+
+| state | %CPU samples |
+|---|---|
+| cockpit closed (baseline) | 14.6 16.5 11.7 13.6 |
+| cockpit open, scene FROZEN | 14.3 11.9 15.3 |
+| cockpit open, scene MOVING | 27.5 40.4 47.4 32.3 |
+
+A frozen cockpit is indistinguishable from a closed one; a moving one is not.
+Two later "moving" sample windows read 15–22%, which is consistent with macOS
+suppressing paints for an occluded window — stated here rather than dropped,
+because quoting only the clean samples would overstate the measurement.
+
+## Changes made after these captures
+
+Two legibility fixes landed after the PNGs were taken, so the shipped scene
+differs from them in exactly two places:
+
+* The CALIBRATOR node's label is now `CALIBRATOR — ITS OWN TRACK RECORD`. In the
+  captures it read `CALIBRATOR`, which put two different Brier-vs-market numbers
+  (`0.0637 vs 0.0679 on 543 resolved`, and the gate's `0.2241 < 0.2425` over 4
+  settled bids) three boxes apart with nothing on screen saying they measure
+  different things.
+* The KPI strip now paints each entry in a colour role the MODEL assigns —
+  `NET` green/red by sign (grey at exactly zero), and `DRAWDOWN` red when it is
+  past its sealed cap. In the captures the strip was one colour.
+
+Both are covered by tests (`the_calibrator_node_reports_the_reports_own_track_record`,
+`the_net_pnl_and_drawdown_entries_carry_their_own_colour_roles`) and by neuters
+1 and 10 in `issue-146-neuters.txt`. They are stated here rather than left for a
+reviewer to notice as a mismatch between the screenshots and the diff.
+
+**The re-capture was attempted and failed, and the reason is worth recording.**
+The KPI colour change was not a string edit: it replaced one elided `join()`
+draw with a per-entry loop (`horizontalAdvance` per entry, explicit separators,
+and a `"… N more"` overflow branch), so that paint path has never been seen
+rendered. Three relaunches of the scratch instance produced a live process with
+ZERO windows, and a full-screen capture came back solid black — the machine had
+locked, the same failure #137 and #139 both hit. So:
+
+* the shipped `NET` / `DRAWDOWN` colour roles and the CALIBRATOR label are
+  proven by unit test and by neuter, NOT by a screenshot;
+* the KPI overflow branch (`"… N more"`) is unexercised by any evidence in this
+  PR — at 1180 px with the current five entries it should not fire, but that is
+  a reading of the code, not an observation.
+
+Stated rather than quietly left as a gap between the diff and the PNGs.
+
+## Honest gaps
+
+* **Neither PNG shows an ignition or a dissolve.** Both are implemented and
+  tested (`two_bids_on_one_contract_are_two_ignitions`,
+  `a_settled_contract_dissolves_with_its_real_pnl`), but the bot placed no bid
+  and settled no position inside the capture window — every ledger row in it is
+  a `pass` — so no column is lit in either screenshot. Manufacturing one would
+  mean writing a fake ledger row.
+* There is **no widget test**. The suite has no Qt Widgets test target and this
+  change does not add the first one; everything testable was pushed into the
+  pure `present_bot_cockpit` model instead, which is what the issue's first
+  acceptance criterion asks for. The paint routine itself is verified by the two
+  screenshots above and by review.
+* The LIVE mood is **not** shown on a screenshot: this machine has never run a
+  live bot tick, and manufacturing one would mean either forging a ledger row or
+  arming a live session. It is covered by tests instead
+  (`a_live_newest_tick_renders_the_live_mood_and_banner`,
+  `an_all_paper_ledger_never_renders_the_live_mood`,
+  `an_older_live_row_does_not_latch_the_live_mood`,
+  `a_live_tick_outranks_a_stopped_loop_on_the_mood`).

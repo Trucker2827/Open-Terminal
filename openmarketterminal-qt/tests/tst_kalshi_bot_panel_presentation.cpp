@@ -1,9 +1,11 @@
 #include <QtTest>
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QTemporaryDir>
+#include <QTimeZone>
 
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
 
@@ -455,6 +457,144 @@ class KalshiBotPanelPresentationTest final : public QObject {
         QCOMPARE(view.mode, QStringLiteral("PAPER"));
         // The historical row still says what it was.
         QVERIFY(view.decisions.last().contains("LIVE"));
+    }
+
+    // --- schema vintage: the badge fails CLOSED (issue #145) ----------------
+    //
+    // The operator's screenshot showed "[LIVE] BOT STALE · last decision 15h
+    // ago" over a ledger with zero live rows. A panel that reads the badge off
+    // the last row it happens to understand announces a mode nothing in the
+    // ledger claims, and LIVE is the worst direction to fail in.
+
+    /// The reproduction: a live tick, then rows written by a bot binary this
+    /// build does not know. The badge must not keep flying LIVE over them.
+    void an_unreadable_newer_row_never_leaves_the_badge_on_live() {
+        const qint64 now = 4'100'000'000;
+        QJsonObject live = bid_row(now - 3'600'000, "KXBTCD-LIVE");
+        live.insert("mode", "live");
+        const QJsonObject unknown_vintage{{"event", "kalshi_bot_tick"},
+                                          {"ts_ms", double(now - 30'000)},
+                                          {"ticker", "KXBTCD-NEW"}};
+        const auto view = present_kalshi_bot_panel(QJsonArray{live, unknown_vintage}, {}, {}, now);
+        QVERIFY2(!view.mode_live, "an unreadable newest row is not a live tick");
+        QVERIFY(view.mode_unknown);
+        QCOMPARE(view.mode, QStringLiteral("UNKNOWN"));
+        QVERIFY2(!view.status.contains("[LIVE]"), qPrintable(view.status));
+        QVERIFY(view.status.startsWith("[UNKNOWN]"));
+    }
+
+    /// A tick row of the known event whose `mode` this build cannot read is
+    /// just as unreadable: absent is not paper, and it is certainly not live.
+    void a_tick_whose_mode_this_build_cannot_read_reads_unknown() {
+        const qint64 now = 4'200'000'000;
+        QJsonObject undeclared = decision_row(now - 10'000, "KXBTCD-NEW", "EDGE_BELOW_THRESHOLD");
+        undeclared.remove("mode");
+        const auto view = present_kalshi_bot_panel(
+            QJsonArray{decision_row(now - 70'000, "KXBTCD-OLD", "EDGE_BELOW_THRESHOLD"), undeclared},
+            {}, {}, now);
+        QVERIFY(!view.mode_live);
+        QCOMPARE(view.mode, QStringLiteral("UNKNOWN"));
+        QVERIFY2(!view.mode.contains("PAPER"), "an unstated mode is unknown, not paper");
+    }
+
+    /// Freshness is not a function of schema vintage: a row this build cannot
+    /// read at all still proves the loop ticked. Freezing the age at the last
+    /// row that parsed is how a running bot reads as hours stale.
+    void freshness_comes_from_the_newest_row_whatever_its_vintage() {
+        const qint64 now = 4'300'000'000;
+        // Dated the way rows have always been dated in ISO, but with no ts_ms
+        // and an event this build does not know.
+        const QJsonObject unknown_vintage{
+            {"event", "kalshi_bot_tick"},
+            {"ts", QDateTime::fromMSecsSinceEpoch(now - 30'000, QTimeZone::UTC)
+                       .toString(Qt::ISODateWithMs)}};
+        const auto view = present_kalshi_bot_panel(
+            QJsonArray{decision_row(now - 3'600'000, "KXBTCD-OLD", "EDGE_BELOW_THRESHOLD"),
+                       unknown_vintage},
+            {}, {}, now);
+        QCOMPARE(view.state, QStringLiteral("running"));
+        QVERIFY2(view.status.contains("30s ago"), qPrintable(view.status));
+        QVERIFY2(!view.status.contains("BOT STALE"), qPrintable(view.status));
+    }
+
+    /// The mismatch is actionable, so the panel prints the action.
+    void a_vintage_mismatch_surfaces_the_kickstart_hint() {
+        const qint64 now = 4'400'000'000;
+        const QJsonObject unknown_vintage{{"event", "kalshi_bot_tick"},
+                                          {"ts_ms", double(now - 5'000)}};
+        const auto view = present_kalshi_bot_panel(
+            QJsonArray{decision_row(now - 65'000, "KXBTCD-OLD", "EDGE_BELOW_THRESHOLD"),
+                       unknown_vintage},
+            {}, {}, now);
+        QCOMPARE(view.vintage_hint,
+                 QStringLiteral("bot binary older than GUI — launchctl kickstart -k "
+                                "gui/$UID/org.openterminal.kalshi-bot"));
+        QVERIFY2(view.status.contains(view.vintage_hint), qPrintable(view.status));
+    }
+
+    /// The whole point, stated as a property: no mixture of schema vintages
+    /// over a ledger that never went live may produce a LIVE badge.
+    void an_all_paper_ledger_never_renders_live_under_any_schema_mix() {
+        const qint64 now = 4'500'000'000;
+        QJsonObject no_mode = decision_row(now - 20'000, "KXBTCD-NOMODE", "EDGE_BELOW_THRESHOLD");
+        no_mode.remove("mode");
+        QJsonObject odd_mode = decision_row(now - 15'000, "KXBTCD-ODD", "EDGE_BELOW_THRESHOLD");
+        odd_mode.insert("mode", "shadow");
+        const QJsonObject unknown_event{{"event", "kalshi_bot_tick"},
+                                        {"ts_ms", double(now - 10'000)}};
+        const QJsonObject settlement{{"event", "kalshi_bot_paper_settlement"},
+                                     {"ts_ms", double(now - 5'000)},
+                                     {"mode", "paper"},
+                                     {"ticker", "KXBTCD-SETTLED"}};
+        const QJsonObject paper = decision_row(now - 25'000, "KXBTCD-PAPER", "EDGE_BELOW_THRESHOLD");
+        const QList<QJsonArray> mixes{
+            QJsonArray{paper, no_mode},
+            QJsonArray{paper, odd_mode},
+            QJsonArray{paper, unknown_event},
+            QJsonArray{no_mode, unknown_event, settlement},
+            QJsonArray{paper, no_mode, odd_mode, unknown_event, settlement},
+            QJsonArray{unknown_event, paper},
+        };
+        for (const QJsonArray& rows : mixes) {
+            const auto view = present_kalshi_bot_panel(rows, {}, {}, now);
+            QVERIFY2(!view.mode_live, "a ledger with no live row cannot render a live badge");
+            QVERIFY2(view.mode != QStringLiteral("LIVE"), qPrintable(view.mode));
+            QVERIFY2(!view.status.contains("[LIVE]"), qPrintable(view.status));
+            // And what it does render is never a mode nothing stated: the mix
+            // either has a readable newest tick (PAPER) or it says UNKNOWN.
+            QVERIFY2(view.mode == QStringLiteral("PAPER") || view.mode == QStringLiteral("UNKNOWN"),
+                     qPrintable(view.mode));
+        }
+    }
+
+    /// Failing closed must not become failing quiet in the other direction: a
+    /// paper settlement written after a live tick is the same vintage and is
+    /// not a tick at all, so it cannot mask real money at the exchange.
+    void a_settlement_after_a_live_tick_does_not_mask_the_live_badge() {
+        const qint64 now = 4'600'000'000;
+        QJsonObject live = bid_row(now - 20'000, "KXBTCD-LIVE");
+        live.insert("mode", "live");
+        const QJsonObject settlement{{"event", "kalshi_bot_paper_settlement"},
+                                     {"ts_ms", double(now - 5'000)},
+                                     {"mode", "paper"},
+                                     {"ticker", "KXBTCD-OLD"}};
+        const auto view = present_kalshi_bot_panel(QJsonArray{live, settlement}, {}, {}, now);
+        QVERIFY2(view.mode_live, "the last TICK was live; a settlement is not a tick");
+        QCOMPARE(view.mode, QStringLiteral("LIVE"));
+        QVERIFY(!view.mode_unknown);
+    }
+
+    /// Two appenders (the launchd loop and a hand-run `kalshi bot once`)
+    /// interleave rows, so "newest" is the timestamp, not the file position.
+    void the_newest_tick_is_the_newest_timestamp_not_the_last_line() {
+        const qint64 now = 4'700'000'000;
+        QJsonObject live_older = bid_row(now - 60'000, "KXBTCD-LIVE");
+        live_older.insert("mode", "live");
+        const auto view = present_kalshi_bot_panel(
+            QJsonArray{decision_row(now - 10'000, "KXBTCD-NEW", "EDGE_BELOW_THRESHOLD"), live_older},
+            {}, {}, now);
+        QVERIFY2(!view.mode_live, "the newest tick by time papered, whatever order it was appended");
+        QCOMPARE(view.mode, QStringLiteral("PAPER"));
     }
 
     void engaged_kill_switch_is_shown() {

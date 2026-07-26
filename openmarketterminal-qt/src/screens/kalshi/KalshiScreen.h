@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMap>
+#include <QPointer>
 #include <QSet>
 #include <QWidget>
 
@@ -17,6 +18,7 @@
 #include <functional>
 
 class QComboBox;
+class QDialog;
 class QDoubleSpinBox;
 class QJsonArray;
 class QLabel;
@@ -145,6 +147,10 @@ class KalshiScreen final : public QWidget {
     /// through the same shared helper, in-process (never by shelling out, so
     /// the switch does not depend on finding openterminalcli).
     void toggle_bot_kill_switch();
+    /// Opens the BOT COCKPIT — the decision-rain scene over the bot's own
+    /// evidence. Read-only, like the BOT tab it opens from: the scene has no
+    /// control of any kind on it.
+    void open_bot_cockpit();
     void refresh_daemon_status();
     void restart_daemon();
     void run_live_cli(const QStringList& args, const std::function<void(const QJsonObject&, const QString&)>& done);
@@ -239,6 +245,10 @@ class KalshiScreen final : public QWidget {
     // The BOT panel's one control: the kill switch. It can only stop the bot
     // or clear that stop — it cannot arm, size, price, or place anything.
     QPushButton* bot_stop_button_ = nullptr;
+    // Opens the cockpit scene. Its label changes to a suggestion while the
+    // loop is running — the scene model decides that, not this widget.
+    QPushButton* bot_cockpit_button_ = nullptr;
+    QPointer<QDialog> bot_cockpit_dialog_;
     QListWidget* bot_decisions_ = nullptr;
     QLabel* live_positions_summary_ = nullptr;
     QTableWidget* active_positions_table_ = nullptr;

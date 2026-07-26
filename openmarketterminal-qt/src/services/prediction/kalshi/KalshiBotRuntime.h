@@ -214,13 +214,28 @@ inline QJsonArray kalshi_bot_read_ledger_tail(const QString& path,
     return rows;
 }
 
-/// Newest `ts_ms` across ledger rows (decisions and paper settlements alike):
-/// the loop's heartbeat. 0 when no row carries one.
+/// When a ledger row was written, whatever vintage of the bot wrote it: `ts_ms`
+/// when the row carries one, otherwise the ISO `ts` every row this repo has
+/// ever written carries beside it. 0 when the row is undated.
+///
+/// Freshness must never depend on recognising a row's shape (issue #145): a
+/// timestamped row proves the loop ticked even if this build understands
+/// nothing else in it, and a reader that skipped such rows would freeze the age
+/// at the last row it happened to understand — reporting a running bot as
+/// hours stale.
+inline qint64 kalshi_bot_row_ts_ms(const QJsonObject& row) {
+    const QJsonValue ms = row.value(QStringLiteral("ts_ms"));
+    if (ms.isDouble()) return static_cast<qint64>(ms.toDouble());
+    const QDateTime iso =
+        QDateTime::fromString(row.value(QStringLiteral("ts")).toString(), Qt::ISODateWithMs);
+    return iso.isValid() ? iso.toMSecsSinceEpoch() : 0;
+}
+
+/// Newest timestamp across ledger rows (decisions, paper settlements, and rows
+/// of any other vintage alike): the loop's heartbeat. 0 when no row is dated.
 inline qint64 kalshi_bot_newest_ts_ms(const QJsonArray& rows) {
     qint64 newest = 0;
-    for (const auto& value : rows)
-        newest = qMax(newest,
-                      static_cast<qint64>(value.toObject().value(QStringLiteral("ts_ms")).toDouble()));
+    for (const auto& value : rows) newest = qMax(newest, kalshi_bot_row_ts_ms(value.toObject()));
     return newest;
 }
 

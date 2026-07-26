@@ -1,0 +1,91 @@
+BASELINE (unmodified)
+================================================================
+NEUTER: none — baseline
+----------------------------------------------------------------
+Totals: 30 passed, 0 failed, 0 skipped, 0 blacklisted, 7ms
+
+================================================================
+NEUTER: columns never freeze (report_frozen = false)
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::a_stale_report_freezes_every_column_and_stops_motion() 'column.frozen' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::a_report_dated_in_the_future_freezes_rather_than_reads_fresh() 'scene.columns.first().frozen' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::the_freeze_bound_is_the_bots_own_report_refusal_age() 'frozen_at(bound + 1'000)' returned FALSE. ()
+Totals: 27 passed, 3 failed, 0 skipped, 0 blacklisted, 14ms
+
+================================================================
+NEUTER: mood ignores panel.mode_live
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::a_live_newest_tick_renders_the_live_mood_and_banner() 'scene.live' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::a_live_tick_outranks_a_stopped_loop_on_the_mood() Compared values are not the same
+Totals: 28 passed, 2 failed, 0 skipped, 0 blacklisted, 5ms
+
+================================================================
+NEUTER: motion is always true
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::no_evidence_produces_no_motion_and_no_rain() '!scene.motion' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::a_dormant_loop_never_moves_even_on_a_fresh_report() '!scene.motion' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::a_stale_report_freezes_every_column_and_stops_motion() '!scene.motion' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::a_report_dated_in_the_future_freezes_rather_than_reads_fresh() '!scene.motion' returned FALSE. ()
+Totals: 26 passed, 4 failed, 0 skipped, 0 blacklisted, 5ms
+
+================================================================
+NEUTER: an absent gate scores as zeroes
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::an_absent_gate_reads_unavailable_rather_than_zero() '!scene.kpi_available' returned FALSE. ()
+FAIL!  : KalshiBotCockpitTest::an_unevaluated_gate_reads_unavailable() '!scene.kpi_available' returned FALSE. ()
+Totals: 28 passed, 2 failed, 0 skipped, 0 blacklisted, 6ms
+
+================================================================
+NEUTER: ignitions counted per ticker, not per row
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::two_bids_on_one_contract_are_two_ignitions() Compared values are not the same
+Totals: 29 passed, 1 failed, 0 skipped, 0 blacklisted, 3ms
+
+================================================================
+NEUTER: a missing mid reads as 0.000
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::a_prediction_without_a_mid_renders_missing_glyphs() '!column.edge_known' returned FALSE. ()
+Totals: 29 passed, 1 failed, 0 skipped, 0 blacklisted, 6ms
+
+================================================================
+NEUTER: the column cap says nothing about the columns it dropped
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::a_capped_column_set_says_how_many_it_did_not_draw() 'scene.census.contains(QStringLiteral("5 of 40 watched contracts"))' returned FALSE. ()
+Totals: 29 passed, 1 failed, 0 skipped, 0 blacklisted, 4ms
+
+RESTORED
+================================================================
+NEUTER: none — restored
+----------------------------------------------------------------
+Totals: 30 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+
+================================================================
+NEUTER: the cockpit is suggested whatever the loop state
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::the_cockpit_is_suggested_exactly_while_the_loop_is_running() '!present_bot_cockpit(panel_for(stale), {}, {}, stale, {}, kNow).suggest_cockpit' returned FALSE. ()
+Totals: 29 passed, 1 failed, 0 skipped, 0 blacklisted, 3ms
+
+================================================================
+NEUTER: the ledger window span is printed as an age
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::the_decision_rate_counts_the_last_hour_and_states_the_window() 'strip.contains(QStringLiteral("ledger window spans 66m)"))' returned FALSE. ()
+Totals: 29 passed, 1 failed, 0 skipped, 0 blacklisted, 3ms
+
+RESTORED (final)
+================================================================
+NEUTER: none — restored
+----------------------------------------------------------------
+Totals: 30 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+
+================================================================
+NEUTER: the net P&L entry is not coloured by sign
+----------------------------------------------------------------
+FAIL!  : KalshiBotCockpitTest::the_net_pnl_and_drawdown_entries_carry_their_own_colour_roles() Compared values are not the same
+Totals: 29 passed, 1 failed, 0 skipped, 0 blacklisted, 3ms
+
+RESTORED (after colour-role neuter)
+================================================================
+NEUTER: none — restored
+----------------------------------------------------------------
+Totals: 30 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+

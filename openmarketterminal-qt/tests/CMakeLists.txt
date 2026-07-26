@@ -948,6 +948,16 @@ target_include_directories(tst_kalshi_auto_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/s
 target_link_libraries(tst_kalshi_auto_cockpit PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_auto_cockpit COMMAND tst_kalshi_auto_cockpit)
 
+# Kalshi BOT COCKPIT — the decision-rain scene model: no evidence means no
+# motion, a stale calibrator report freezes every column, an all-paper ledger
+# can never reach the LIVE mood, one ignition per real journal row, and every
+# number is the CLI's / the gate file's rather than one the scene computed.
+# Header-only, no DB/Widgets.
+add_executable(tst_kalshi_bot_cockpit tst_kalshi_bot_cockpit.cpp)
+target_include_directories(tst_kalshi_bot_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_cockpit PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_cockpit COMMAND tst_kalshi_bot_cockpit)
+
 # Kalshi CLI locator — the suffix-parameterized probe KalshiScreen::cli_path()
 # uses to find the bundled openterminalcli (".exe" on Windows). Header-only,
 # no DB/Widgets.
