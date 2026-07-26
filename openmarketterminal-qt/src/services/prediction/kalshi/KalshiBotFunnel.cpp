@@ -107,6 +107,11 @@ KalshiBotFunnel KalshiBotFunnel::measure(const QJsonArray& rows, const QJsonValu
         const QString action = str(row, "action");
         if (action == QStringLiteral("bid")) {
             ++funnel.bids;
+            // Rung 1 wrote no `order_state`; replay() books those bids as
+            // assumed fills at the quoted price. They are NOT fills — nothing
+            // observed them fill — so they are counted separately rather than
+            // folded into either side of the fill rate.
+            if (!row.contains(QStringLiteral("order_state"))) ++funnel.legacy_assumed_fill_bids;
         } else if (action == QStringLiteral("fill")) {
             ++funnel.fills;
         } else if (action == QStringLiteral("cancel")) {
@@ -184,6 +189,7 @@ QJsonObject KalshiBotFunnel::to_json(qint64 now_ms) const {
         {QStringLiteral("unconfirmed_cancels"), unconfirmed_cancels},
         {QStringLiteral("settlements"), settlements},
         {QStringLiteral("settlements_unidentifiable"), settlements_unidentifiable},
+        {QStringLiteral("legacy_assumed_fill_bids"), legacy_assumed_fill_bids},
         // Provenance: what was read, and over what stretch of time.
         {QStringLiteral("rows_read"), rows_read},
         {QStringLiteral("live_rows_skipped"), live_rows_skipped},

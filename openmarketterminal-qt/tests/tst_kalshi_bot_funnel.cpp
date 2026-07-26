@@ -373,6 +373,35 @@ class TestKalshiBotFunnel : public QObject {
         QCOMPARE(funnel.fill_rule, QString::fromLatin1(KalshiBotOrders::kFillRule));
     }
 
+    void a_rung1_bid_is_an_assumed_fill_and_says_so() {
+        // Found on the operator's own record: 9 of 304 bids predate the order
+        // lifecycle (no `order_state`), and KalshiBotOrders::replay() books
+        // them as ASSUMED fills at the quoted price. They state no fill_model,
+        // so a funnel that only listed the models rows carry would describe a
+        // record holding 9 assumed fills as purely rung-6.
+        QJsonArray rows = record(4, 2, 0);
+        QJsonObject legacy = bid_row(kNow - kHour, QStringLiteral("rung1"));
+        legacy.remove(QStringLiteral("order_state"));
+        legacy.remove(QStringLiteral("ttl_ms"));
+        rows.append(legacy);
+
+        const KalshiBotFunnel funnel = KalshiBotFunnel::measure(rows, {});
+        QCOMPARE(funnel.legacy_assumed_fill_bids, 1);
+        // It is a BID, and it is NOT a fill: nothing observed it fill.
+        QCOMPARE(funnel.bids, 5);
+        QCOMPARE(funnel.fills, 2);
+        const QStringList lines = kalshi_bot_funnel_lines(published(funnel, kNow), kNow);
+        QVERIFY(lines.last().contains(QStringLiteral("1 bids predate the order lifecycle")));
+        QVERIFY(lines.last().contains(QStringLiteral("ASSUMED fills")));
+    }
+
+    void a_record_with_no_legacy_bids_makes_no_assumed_fill_claim() {
+        const KalshiBotFunnel funnel = KalshiBotFunnel::measure(record(4, 2, 0), {});
+        QCOMPARE(funnel.legacy_assumed_fill_bids, 0);
+        const QStringList lines = kalshi_bot_funnel_lines(published(funnel, kNow), kNow);
+        QVERIFY(!lines.last().contains(QStringLiteral("ASSUMED")));
+    }
+
     void a_record_that_states_no_fill_model_claims_none() {
         const KalshiBotFunnel funnel = KalshiBotFunnel::measure(record(4, 0, 0), {});
         QVERIFY(funnel.fill_models.isEmpty());

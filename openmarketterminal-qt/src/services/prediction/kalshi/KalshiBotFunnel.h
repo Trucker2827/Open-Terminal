@@ -82,6 +82,12 @@ struct KalshiBotFunnel {
     /// Settlement rows the gate would refuse to identify. Reported so the drop
     /// is visible rather than silent.
     int settlements_unidentifiable = 0;
+    /// Bids that predate the order lifecycle (rung 1: no `order_state`), which
+    /// `KalshiBotOrders::replay()` books as ASSUMED fills at the quoted price.
+    /// They are not counted in `fills` — nothing observed them fill — but they
+    /// are stated, because a record holding assumed fills that carry no
+    /// `fill_model` of their own would otherwise read as purely rung-6.
+    int legacy_assumed_fill_bids = 0;
 
     // --- derived, each absent when the record cannot support it -------------
     bool fill_rate_available = false;
@@ -264,12 +270,22 @@ inline QStringList kalshi_bot_funnel_lines(const KalshiBotFunnelFile& file, qint
     for (const auto& value : funnel.value(QStringLiteral("fill_models")).toArray())
         models << value.toString();
     const QString rule = funnel.value(QStringLiteral("fill_rule")).toString();
+    // Rung-1 bids state no model at all, so a record holding them is described
+    // by counting them, never by inventing a name for what they were selected
+    // by. `replay()` books them as assumed fills whatever this line says.
+    const int legacy = count(funnel, "legacy_assumed_fill_bids");
+    const QString assumed =
+        legacy > 0 ? QStringLiteral(" · %1 bids predate the order lifecycle and are replayed as "
+                                    "ASSUMED fills, stating no fill_model of their own").arg(legacy)
+                   : QString();
     lines << (models.isEmpty()
                   ? QStringLiteral("FILL MODEL · not stated — no row in this record carries a "
-                                   "fill_model, so the selection behind these fills is unstated")
-                  : QStringLiteral("FILL MODEL · %1%2")
+                                   "fill_model, so the selection behind these fills is unstated%1")
+                        .arg(assumed)
+                  : QStringLiteral("FILL MODEL · %1%2%3")
                         .arg(models.join(QStringLiteral(" + ")),
-                             rule.isEmpty() ? QString() : QStringLiteral(" — %1").arg(rule))) + age;
+                             rule.isEmpty() ? QString() : QStringLiteral(" — %1").arg(rule),
+                             assumed)) + age;
     return lines;
 }
 
