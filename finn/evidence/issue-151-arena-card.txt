@@ -185,11 +185,18 @@ card genuinely not being reachable.  Measured on the same geometry:
   - It scrolls normally: one click on the scrollbar track above the handle
     (1400, 741) paged it to the top and brought the title into view — that
     is issue-151-arena-heading-clipped.png.  Nothing is unreachable.
+  - Driven to BOTH extremes rather than derived from the handle arithmetic.
+    At the bottom extreme (handle flush at 776..1031) the pane ends with
+    `execution_eligible=false`, the record box's bottom border, and empty
+    pane.  Nothing exists below the card.  The scroll range past the card is
+    therefore phantom — word-wrapped QLabels over-reserving in sizeHint(),
+    not content held back.
 
 So at 1726 x 1032 the pane is ~30 px short of showing the section title and
 the card's last line at the same time.  Either one is reachable by scrolling;
-the CONCLUDED DUEL card itself fits whole in one frame.  Not filed as a
-defect — the reviewer declined to, and it is outside issue #151's criteria.
+the CONCLUDED DUEL card itself fits whole in one frame, and there is nothing
+below it at any scroll position.  Not filed as a defect — the reviewer
+declined to, and it is outside issue #151's criteria.
 
 One half of the reviewer's observation is NOT reproduced or refuted here: the
 claim that wheel events over the pane propagate to the QTabBar and switch
