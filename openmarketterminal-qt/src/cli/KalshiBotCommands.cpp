@@ -117,8 +117,27 @@ std::function<bool(const QJsonObject&)> is_event(const char* name) {
     };
 }
 
-/// Reads a jsonl ledger. `keep` filters rows as they are parsed so a large
-/// evidence file never has to be held in memory whole.
+/// Appends one row to the bot's decision ledger.
+///
+/// EVERY write to that ledger goes through here so the rotation policy cannot
+/// be forgotten at a call site: the ledger is the sealed gate's evidence and
+/// the book's only memory of what is resting and what has resolved, so no
+/// generation of it may ever be recycled (issue #152).
+bool journal_ledger_row(const QString& path, const QJsonObject& row) {
+    return KalshiEvidenceEngine::append_jsonl(path, row,
+                                              KalshiEvidenceEngine::Rotation::KeepAllGenerations);
+}
+
+/// The bot's whole decision record, every generation of it, oldest first.
+/// Thin alias for the shared reader so the CLI and the GUI cannot drift apart.
+QJsonArray read_ledger(const QString& path,
+                       const std::function<bool(const QJsonObject&)>& keep) {
+    return kalshi_bot_read_ledger(path, keep);
+}
+
+/// Reads a jsonl evidence file that is NOT the bot ledger (the ladder and
+/// settlement feeds, which rotate as a window). `keep` filters rows as they are
+/// parsed so a large evidence file never has to be held in memory whole.
 QJsonArray read_jsonl(const QString& path,
                       const std::function<bool(const QJsonObject&)>& keep) {
     QJsonArray rows;
@@ -218,13 +237,13 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         stopped.session_opened_usd = session_opened_usd;
         const QJsonArray rows = KalshiBotDecision::decide({}, {}, {}, now_ms, config, stop);
         for (const auto& value : rows) {
-            KalshiEvidenceEngine::append_jsonl(ledger_path, value.toObject());
+            journal_ledger_row(ledger_path, value.toObject());
             ++stopped.passes;
         }
         // The book is still out there while the bot is stopped; report it
         // rather than printing zeros the ledger does not support.
         const KalshiBotOrders::Book book = KalshiBotOrders::replay(
-            read_jsonl(ledger_path, [](const QJsonObject& row) {
+            read_ledger(ledger_path, [](const QJsonObject& row) {
                 const QString event = row.value(QStringLiteral("event")).toString();
                 return event == QLatin1String(kDecisionEvent) ||
                        event == QLatin1String(kSettlementEvent);
@@ -236,12 +255,12 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         return stopped;
     }
 
-    QJsonArray ledger = read_jsonl(ledger_path, [](const QJsonObject& row) {
+    QJsonArray ledger = read_ledger(ledger_path, [](const QJsonObject& row) {
         const QString event = row.value(QStringLiteral("event")).toString();
         return event == QLatin1String(kDecisionEvent) || event == QLatin1String(kSettlementEvent);
     });
     const auto journal = [&ledger, &ledger_path](const QJsonObject& row) {
-        KalshiEvidenceEngine::append_jsonl(ledger_path, row);
+        journal_ledger_row(ledger_path, row);
         ledger.append(row);
     };
     KalshiBotOrders::Book book = KalshiBotOrders::replay(ledger);
@@ -351,7 +370,7 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
                          double session_opened_usd) {
     const QString ledger_path = bot_ledger_path();
     const auto journal = [&ledger_path](const QJsonObject& row) {
-        KalshiEvidenceEngine::append_jsonl(ledger_path, row);
+        journal_ledger_row(ledger_path, row);
     };
     TickResult result;
     result.mode_live = true;
@@ -657,13 +676,21 @@ int gate_command(const GlobalOpts& opts, QStringList args) {
         return 2;
     }
 
-    const QString ledger_path = kalshi_evidence_path(QString::fromLatin1(kLedgerFile));
+    const QString ledger_path = bot_ledger_path();
+    // What the gate is allowed to know about the record's completeness, read
+    // from disk rather than inferred from the rows: a truncated record is
+    // indistinguishable from a shorter one once it is just an array of rows.
+    KalshiBotGate::RecordIntegrity integrity;
+    integrity.missing_generations = kalshi_bot_ledger_record(ledger_path).missing;
+    integrity.oldest_row_ts_ms = kalshi_bot_oldest_row_ts_ms(ledger_path);
+    integrity.published_first_settled_ts_ms = KalshiBotGate::published_anchor_ms(read_gate_verdict());
+
     const QJsonObject out = KalshiBotGate::evaluate(
         KalshiBotGate::load_params_file(
             kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))),
-        read_jsonl(ledger_path, is_event(kDecisionEvent)),
-        read_jsonl(ledger_path, is_event(kSettlementEvent)),
-        QDateTime::currentMSecsSinceEpoch());
+        read_ledger(ledger_path, is_event(kDecisionEvent)),
+        read_ledger(ledger_path, is_event(kSettlementEvent)),
+        QDateTime::currentMSecsSinceEpoch(), integrity);
 
     const QString evidence_path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
     if (!write_json_file(evidence_path, out))
@@ -903,8 +930,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const auto admit = [&](qint64 now_ms) -> KalshiBotLive::Permission {
         const KalshiBotLive::Permission permission = live_permission(now_ms);
         if (permission.permitted) return permission;
-        KalshiEvidenceEngine::append_jsonl(bot_ledger_path(),
-                                           KalshiBotLive::refusal_row(permission, now_ms));
+        journal_ledger_row(bot_ledger_path(), KalshiBotLive::refusal_row(permission, now_ms));
         std::fprintf(stderr, "kalshi bot: LIVE REFUSED · %s\n  %s\n",
                      qUtf8Printable(permission.reason_code), qUtf8Printable(permission.detail));
         return permission;

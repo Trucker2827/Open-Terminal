@@ -10,6 +10,7 @@
 
 #include "services/prediction/kalshi/KalshiBotGate.h"
 
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -94,8 +95,10 @@ Ledger baseline_ledger(int count = 300, double calibrated_p = 0.75, double marke
     return ledger;
 }
 
-QJsonObject verdict_of(const Ledger& ledger, const QJsonValue& params = sealed_record()) {
-    return KalshiBotGate::evaluate(params, ledger.decisions, ledger.settlements, kNow);
+QJsonObject verdict_of(const Ledger& ledger, const QJsonValue& params = sealed_record(),
+                       const KalshiBotGate::RecordIntegrity& integrity =
+                           KalshiBotGate::RecordIntegrity::whole()) {
+    return KalshiBotGate::evaluate(params, ledger.decisions, ledger.settlements, kNow, integrity);
 }
 
 QString verdict(const QJsonObject& out) {
@@ -472,6 +475,123 @@ class TestKalshiBotGate : public QObject {
         QCOMPARE(summary.value(QStringLiteral("settled_bids")).toInt(), 2);
         QCOMPARE(summary.value(QStringLiteral("net_pnl_usd")).toDouble(), 0.20);
         QCOMPARE(summary.value(QStringLiteral("malformed_settlement_rows")).toInt(), 2);
+    }
+
+    // --- the record must be WHOLE before it is scored (issue #152) ---------
+    //
+    // A truncated record is indistinguishable from a shorter one once it is
+    // just an array of rows, so `evaluate()` is told what the caller could see
+    // of the record on disk. Both checks refuse in the same shape a tampered
+    // params file does: no criteria, no ledger numbers, a named reason.
+
+    void a_hole_in_the_generation_sequence_is_refused_not_scored() {
+        KalshiBotGate::RecordIntegrity holed;
+        holed.missing_generations =
+            QStringList{QStringLiteral("/evidence/kalshi-bot-decisions.jsonl.2")};
+        holed.oldest_row_ts_ms = kNow;
+
+        const QJsonObject out = verdict_of(baseline_ledger(), sealed_record(), holed);
+        QCOMPARE(verdict(out), QString::fromLatin1(KalshiBotGate::kVerdictRecordIncomplete));
+        QCOMPARE(out.value(QStringLiteral("evaluated")).toBool(), false);
+        QVERIFY2(!out.contains(QStringLiteral("criteria")), "a refusal published criteria");
+        QVERIFY2(!out.contains(QStringLiteral("ledger")),
+                 "a refusal published ledger numbers about a record it did not score");
+        QVERIFY(out.value(QStringLiteral("reason")).toString().contains(
+            QStringLiteral("kalshi-bot-decisions.jsonl.2")));
+
+        // The control: the very same rows, contiguous, are a normal verdict.
+        QCOMPARE(verdict(verdict_of(baseline_ledger())),
+                 QString::fromLatin1(KalshiBotGate::kVerdictPass));
+    }
+
+    void a_record_that_begins_after_the_published_anchor_is_refused() {
+        // The truncation a two-generation recycling rotation leaves behind: a
+        // perfectly contiguous record whose beginning is gone. Only the anchor
+        // already on disk can see it.
+        KalshiBotGate::RecordIntegrity truncated;
+        truncated.oldest_row_ts_ms = kNow + 5'000;
+        truncated.published_first_settled_ts_ms = kNow + 1'000;
+
+        const QJsonObject out = verdict_of(baseline_ledger(), sealed_record(), truncated);
+        QCOMPARE(verdict(out), QString::fromLatin1(KalshiBotGate::kVerdictRecordIncomplete));
+        QVERIFY(!out.contains(QStringLiteral("ledger")));
+        const QString reason = out.value(QStringLiteral("reason")).toString();
+        QVERIFY2(reason.contains(QString::number(kNow + 5'000)), qPrintable(reason));
+        QVERIFY2(reason.contains(QString::number(kNow + 1'000)), qPrintable(reason));
+    }
+
+    void a_record_that_still_covers_the_published_anchor_is_scored() {
+        // The state the operator's evidence dir is in if the OLD rotation fires
+        // before this lands: `.1` + base together are the whole record, and the
+        // multi-generation reader repairs it. It must score, not refuse.
+        KalshiBotGate::RecordIntegrity whole;
+        whole.oldest_row_ts_ms = kNow;                      // the first decision row
+        whole.published_first_settled_ts_ms = kNow + 1'000; // the first settlement
+
+        const QJsonObject out = verdict_of(baseline_ledger(), sealed_record(), whole);
+        QCOMPARE(verdict(out), QString::fromLatin1(KalshiBotGate::kVerdictPass));
+        QCOMPARE(out.value(QStringLiteral("ledger")).toObject(),
+                 verdict_of(baseline_ledger()).value(QStringLiteral("ledger")).toObject());
+    }
+
+    void a_record_with_no_dated_row_at_all_is_refused_once_something_was_scored() {
+        KalshiBotGate::RecordIntegrity gone;
+        gone.published_first_settled_ts_ms = kNow + 1'000;
+        QCOMPARE(verdict(verdict_of(Ledger(), sealed_record(), gone)),
+                 QString::fromLatin1(KalshiBotGate::kVerdictRecordIncomplete));
+
+        // But a fresh install — an empty record with nothing ever published —
+        // is not a truncation. It is judged, and it fails on its merits.
+        QCOMPARE(verdict(verdict_of(Ledger())), QString::fromLatin1(KalshiBotGate::kVerdictFail));
+    }
+
+    /// The anchor is the ONLY thing a refusal carries forward, and it has to
+    /// survive being published over the file it came from: without that, the
+    /// first refusal erases the anchor and the next run scores the remainder.
+    void the_anchor_survives_republication_through_a_refusal() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("kalshi-bot-gate.json"));
+        const auto publish = [&path](const QJsonObject& out) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text));
+            file.write(QJsonDocument(out).toJson(QJsonDocument::Indented));
+        };
+        const auto published = [&path]() {
+            QFile file(path);
+            return file.open(QIODevice::ReadOnly | QIODevice::Text)
+                       ? QJsonDocument::fromJson(file.readAll()).object()
+                       : QJsonObject();
+        };
+
+        // 1. a normal verdict is published, and it carries the anchor.
+        publish(verdict_of(baseline_ledger()));
+        QCOMPARE(KalshiBotGate::published_anchor_ms(published()), kNow + 1'000);
+
+        // 2. the record is truncated; the gate refuses and publishes the
+        //    refusal OVER that verdict.
+        KalshiBotGate::RecordIntegrity truncated;
+        truncated.oldest_row_ts_ms = kNow + 5'000;
+        truncated.published_first_settled_ts_ms = KalshiBotGate::published_anchor_ms(published());
+        const QJsonObject refusal = verdict_of(baseline_ledger(), sealed_record(), truncated);
+        QCOMPARE(verdict(refusal), QString::fromLatin1(KalshiBotGate::kVerdictRecordIncomplete));
+        publish(refusal);
+
+        // 3. the next run reads the anchor back out of that refusal and
+        //    refuses again, instead of scoring the remainder.
+        QCOMPARE(KalshiBotGate::published_anchor_ms(published()), kNow + 1'000);
+        truncated.published_first_settled_ts_ms = KalshiBotGate::published_anchor_ms(published());
+        QCOMPARE(verdict(verdict_of(baseline_ledger(), sealed_record(), truncated)),
+                 QString::fromLatin1(KalshiBotGate::kVerdictRecordIncomplete));
+    }
+
+    void a_verdict_that_scored_nothing_carries_no_anchor() {
+        // `first_settled_ts_ms` is null whenever nothing settled: that is "no
+        // anchor", never an anchor at the epoch that would refuse every record.
+        QVERIFY(verdict_of(Ledger()).value(QStringLiteral("ledger")).toObject()
+                    .value(QStringLiteral("first_settled_ts_ms")).isNull());
+        QCOMPARE(KalshiBotGate::published_anchor_ms(verdict_of(Ledger())), 0);
+        QCOMPARE(KalshiBotGate::published_anchor_ms({}), 0);
     }
 
     /// Decision rows are not settlements: passes and unsettled bids move

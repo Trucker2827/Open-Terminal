@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
+#include <QStringList>
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
 
@@ -49,6 +50,13 @@ class KalshiBotGate {
     static constexpr auto kVerdictTampered = "TAMPERED";
     /// No params file at all. Nothing was preregistered, so nothing is judged.
     static constexpr auto kVerdictNotPreregistered = "NOT_PREREGISTERED";
+    /// The paper record the gate was handed is demonstrably not the whole
+    /// record: a generation of the ledger is missing, or its oldest row
+    /// postdates a settlement this gate has already published a score for. A
+    /// truncated record is refused for the same reason tampered params are —
+    /// scoring the remainder and publishing the numbers would be a verdict
+    /// about a record that no longer exists (issue #152).
+    static constexpr auto kVerdictRecordIncomplete = "RECORD_INCOMPLETE";
 
     /// Criterion ids, in report order.
     static constexpr auto kCriterionSettled = "min_settled_bids";
@@ -102,13 +110,50 @@ class KalshiBotGate {
     /// (a non-object, including unparseable JSON, → TAMPERED).
     static QJsonValue load_params_file(const QString& path);
 
-    /// The gate verdict: pure computation over the sealed params and the rung
-    /// 1 ledger. `decision_rows` and `settlement_rows` are raw ledger rows;
-    /// this function does its own event filtering.
+    /// What the caller could see about the RECORD the rows came from — the one
+    /// thing `evaluate()` cannot derive from the rows themselves, because a
+    /// truncated record looks exactly like a shorter one (issue #152).
+    ///
+    /// It is a required argument, never defaulted: a caller that forgot it
+    /// would silently claim "the record is whole", which is the failure this
+    /// struct exists to make impossible.
+    struct RecordIntegrity {
+        /// Ledger generations missing from the sequence, as paths. Non-empty
+        /// means something deleted part of the record.
+        QStringList missing_generations;
+        /// The oldest dated row the reader could see; 0 when the record has no
+        /// dated row at all.
+        qint64 oldest_row_ts_ms = 0;
+        /// `ledger.first_settled_ts_ms` from the verdict this gate published
+        /// last — an anchor already on disk. 0 when nothing was published, or
+        /// when what was published scored no settlement.
+        qint64 published_first_settled_ts_ms = 0;
+
+        /// For records read whole from a single source, e.g. a fixture built in
+        /// memory. Says nothing has been published to compare against.
+        static RecordIntegrity whole(qint64 oldest_row_ts_ms = 0) {
+            RecordIntegrity record;
+            record.oldest_row_ts_ms = oldest_row_ts_ms;
+            return record;
+        }
+    };
+
+    /// The anchor carried by a previously published verdict: its scored
+    /// `ledger.first_settled_ts_ms`, or — when that verdict was itself a
+    /// refusal, which carries no ledger block — the anchor it carried forward.
+    /// 0 when neither is present. Without the carry-forward, one refusal would
+    /// erase the anchor and the next run would score the truncated remainder.
+    static qint64 published_anchor_ms(const QJsonObject& published_verdict);
+
+    /// The gate verdict: pure computation over the sealed params, the rung 1
+    /// ledger, and what the caller could see of that ledger's completeness.
+    /// `decision_rows` and `settlement_rows` are raw ledger rows; this function
+    /// does its own event filtering.
     static QJsonObject evaluate(const QJsonValue& params_record,
                                 const QJsonArray& decision_rows,
                                 const QJsonArray& settlement_rows,
-                                qint64 now_ms);
+                                qint64 now_ms,
+                                const RecordIntegrity& record);
 };
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

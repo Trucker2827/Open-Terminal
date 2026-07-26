@@ -31,7 +31,22 @@ class KalshiEvidenceEngine {
     static QJsonObject settlement_label(const PredictionMarket& market,
                                         const QString& features_path);
 
-    static bool append_jsonl(const QString& path, const QJsonObject& row);
+    /// What happens to the previous generation when an evidence file reaches
+    /// the 64 MB rotation threshold.
+    enum class Rotation {
+        /// Two generations, the older discarded: the default for the snapshot
+        /// and tick evidence whose value is the recent window.
+        RecycleOldest,
+        /// Every generation kept forever, under a name never used before. For
+        /// files that are a RECORD rather than a window — the bot's decision
+        /// ledger is the promotion gate's evidence and the order book's only
+        /// memory, so deleting a generation of it deletes settled results and
+        /// resting orders (issue #152).
+        KeepAllGenerations,
+    };
+
+    static bool append_jsonl(const QString& path, const QJsonObject& row,
+                             Rotation rotation = Rotation::RecycleOldest);
 
     /// Formats the spot calibrator's per-contract prediction (calibrator.json)
     /// for display. Returns {"state": "ok"|"stale"|"missing", "headline",

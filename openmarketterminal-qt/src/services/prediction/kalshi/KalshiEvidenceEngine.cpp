@@ -1,5 +1,9 @@
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
+// For the generation naming scheme. Writer and readers must agree on it byte
+// for byte, so it is defined once, beside the readers (issue #152).
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -383,12 +387,22 @@ QJsonObject KalshiEvidenceEngine::ladder_snapshot(
                        {QStringLiteral("live_eligible"), false}};
 }
 
-bool KalshiEvidenceEngine::append_jsonl(const QString& path, const QJsonObject& row) {
+bool KalshiEvidenceEngine::append_jsonl(const QString& path, const QJsonObject& row,
+                                        Rotation rotation) {
     constexpr qint64 max_bytes = 64LL * 1024 * 1024;
     if (QFileInfo::exists(path) && QFileInfo(path).size() >= max_bytes) {
-        QFile::remove(path + QStringLiteral(".1"));
-        if (!QFile::rename(path, path + QStringLiteral(".1")))
-            return false;
+        if (rotation == Rotation::KeepAllGenerations) {
+            // The next generation is one past the newest that exists, and it is
+            // never removed first: if something already occupies that name this
+            // append fails rather than overwriting a record it cannot replace.
+            const QString target = kalshi_bot_next_generation_path(path);
+            if (QFileInfo::exists(target)) return false;
+            if (!QFile::rename(path, target)) return false;
+        } else {
+            QFile::remove(path + QStringLiteral(".1"));
+            if (!QFile::rename(path, path + QStringLiteral(".1")))
+                return false;
+        }
     }
     QFile file(path);
     QDir().mkpath(QFileInfo(file).absolutePath());
