@@ -148,6 +148,7 @@ inline constexpr qint64 kAdvisorRetiredAfterMs = 6LL * 60 * 60 * 1000;
 struct AdvisorDuelRetirement {
     bool retired = false;       // every advisor file is silent past the threshold
     qint64 last_update_ms = 0;  // newest advisor write seen, 0 when nothing is known
+    bool skewed = false;        // an advisor file is dated in the future: unreadable
 };
 
 inline AdvisorDuelRetirement advisor_duel_retirement(const QJsonObject& loop,
@@ -178,6 +179,7 @@ inline AdvisorDuelRetirement advisor_duel_retirement(const QJsonObject& loop,
     // Fail closed twice over: absent files are not evidence of retirement, and
     // a future-dated write is unreadable rather than old. Both keep the
     // existing UNKNOWN / FAIL CLOSED rendering rather than declaring an end.
+    out.skewed = skewed;
     out.retired = !skewed && out.last_update_ms > 0 &&
                   now_ms - out.last_update_ms > kAdvisorRetiredAfterMs;
     return out;
@@ -188,6 +190,16 @@ struct AdvisorDuelArchive {
     QString record;                // the frozen final record, or why it is unavailable
     bool record_available = false; // a readable advisor_competition_report.json
 };
+
+// scoring_infrastructure_hash covers a fixed manifest, and the report JSON does
+// not carry its length — so the count is quoted from the manifest itself:
+// competition_report.py's SCORING_INFRASTRUCTURE tuple, seven runtime Python
+// components (advisor_core, advisor_loop, blind_prompt, claude_cli_forecaster,
+// codex_forecaster, competition_report, ../prediction_kalshi). Those are the
+// same seven files the charter freezes, so the number cannot drift without a
+// charter exception. It is a reference to the manifest, never a figure derived
+// from the report.
+inline constexpr int kAdvisorScoringManifestFiles = 7;
 
 inline QString advisor_retired_age_text(qint64 age_ms) {
     if (age_ms < 7'200'000) return QStringLiteral("%1m").arg(age_ms / 60'000);
@@ -211,7 +223,7 @@ inline AdvisorDuelArchive present_advisor_duel_archive(const QJsonObject& compet
         : QString();
     archive.headline =
         QStringLiteral("DUEL CONCLUDED · ADVISOR LOOP RETIRED — last advisor write %1%2\n"
-                       "No advisor state has changed since. Nothing below this banner is live; "
+                       "No advisor state has changed since. Nothing in this card is live; "
                        "the current Kalshi automation path is the BOT tab.")
             .arg(when, age);
 
@@ -245,7 +257,8 @@ inline AdvisorDuelArchive present_advisor_duel_archive(const QJsonObject& compet
                        "RESULT %1 · %2 / %3 jointly resolved of %4 opportunities\n"
                        "EPOCHS claude=%5 · codex=%6\n"
                        "COVERAGE claude %7% · codex %8% (minimum %9% each)\n"
-                       "SCORING FROZEN · infrastructure %10 · shadow_only=%11 · execution_eligible=%12")
+                       "SCORING FROZEN · infrastructure %10 (SHA-256 over the %13-file "
+                       "SCORING_INFRASTRUCTURE manifest) · shadow_only=%11 · execution_eligible=%12")
             .arg(verdict)
             .arg(competition_report.value(QStringLiteral("jointly_resolved")).toInt())
             .arg(thresholds.value(QStringLiteral("minimum_jointly_resolved")).toInt())
@@ -258,8 +271,91 @@ inline AdvisorDuelArchive present_advisor_duel_archive(const QJsonObject& compet
             .arg(competition_report.value(QStringLiteral("shadow_only")).toBool()
                      ? QStringLiteral("true") : QStringLiteral("false"))
             .arg(competition_report.value(QStringLiteral("execution_eligible")).toBool()
-                     ? QStringLiteral("true") : QStringLiteral("false"));
+                     ? QStringLiteral("true") : QStringLiteral("false"))
+            .arg(kAdvisorScoringManifestFiles);
     return archive;
+}
+
+// ---------------------------------------------------------------------------
+// The concluded duel as an Alpha Arena card (issue #151).
+//
+// The ADVISOR & CANARY tab is gone from the Kalshi tab row — a permanently
+// dead control among living ones. What survives is the record, rendered
+// beside the arena context from the same archived advisor evidence the
+// retired tab read.
+//
+// Three states, and the third is why `retired` alone cannot drive this card.
+// advisor_duel_retirement fails closed twice over: absent files and a
+// future-dated write both come back `retired == false`. So "not retired"
+// spans BOTH "the loop is writing again" and "there is nothing to read", and
+// reading the second as a resurrection would put the dead tab back on a
+// machine that never ran the duel. LIVE AGAIN is claimed only on positive
+// evidence of a recent advisor write — the same fail-closed reflex, pointed
+// in the other direction.
+// ---------------------------------------------------------------------------
+
+enum class AdvisorDuelPresence {
+    Archived,    // every advisor file silent past kAdvisorRetiredAfterMs
+    LiveAgain,   // an advisor file was written recently: the loop restarted
+    NoEvidence,  // nothing readable, or a future-dated write: neither is claimed
+};
+
+inline AdvisorDuelPresence advisor_duel_presence(const AdvisorDuelRetirement& retirement) {
+    if (retirement.retired) return AdvisorDuelPresence::Archived;
+    if (retirement.skewed || retirement.last_update_ms <= 0)
+        return AdvisorDuelPresence::NoEvidence;
+    return AdvisorDuelPresence::LiveAgain;
+}
+
+struct ConcludedDuelCard {
+    AdvisorDuelPresence presence = AdvisorDuelPresence::NoEvidence;
+    QString state;                 // ARCHIVED / LIVE AGAIN / NO ADVISOR EVIDENCE
+    QString record;                // the frozen final record, or why it is unavailable
+    bool record_available = false; // a readable advisor_competition_report.json
+    // The resurrection guard: on LIVE AGAIN the old ADVISOR & CANARY panel
+    // comes back into the tab row, so a restarted loop is never invisible.
+    bool advisor_panel_reachable = false;
+};
+
+inline ConcludedDuelCard present_concluded_duel_card(const QJsonObject& competition_report,
+                                                     const AdvisorDuelRetirement& retirement,
+                                                     qint64 now_ms) {
+    ConcludedDuelCard card;
+    card.presence = advisor_duel_presence(retirement);
+    // The frozen record is on disk whatever the loop is doing, so it is never
+    // gated on the verdict: dropping it in the states that are not ARCHIVED
+    // would lose data the retired tab used to show.
+    const AdvisorDuelArchive archive =
+        present_advisor_duel_archive(competition_report, retirement.last_update_ms, now_ms);
+    card.record = archive.record;
+    card.record_available = archive.record_available;
+
+    switch (card.presence) {
+        case AdvisorDuelPresence::Archived:
+            card.state = QStringLiteral("CONCLUDED DUEL (v5) · ARCHIVED\n") + archive.headline;
+            break;
+        case AdvisorDuelPresence::LiveAgain: {
+            card.advisor_panel_reachable = true;
+            const qint64 age = qMax<qint64>(0, now_ms - retirement.last_update_ms);
+            card.state = QStringLiteral(
+                "CONCLUDED DUEL (v5) · LIVE AGAIN — an advisor file was written %1 ago. "
+                "The advisor loop is running, so this is no longer an archive: the "
+                "ADVISOR & CANARY panel is back in the tab row with the live readout.")
+                             .arg(advisor_retired_age_text(age));
+            break;
+        }
+        case AdvisorDuelPresence::NoEvidence:
+            card.state = retirement.skewed
+                ? QStringLiteral(
+                      "CONCLUDED DUEL (v5) · NO READABLE ADVISOR STATE — an advisor file is "
+                      "dated in the future (clock skew). Neither retirement nor a running "
+                      "loop is claimed.")
+                : QStringLiteral(
+                      "CONCLUDED DUEL (v5) · NO ADVISOR EVIDENCE — no advisor state files on "
+                      "this machine. Neither retirement nor a running loop is claimed.");
+            break;
+    }
+    return card;
 }
 
 } // namespace openmarketterminal::screens::kalshi

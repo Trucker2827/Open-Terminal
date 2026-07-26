@@ -1317,9 +1317,17 @@ void KalshiScreen::build_ui() {
     bot_scroll->setWidget(bot_page);
     bot_tab_index_ = tabs->addTab(bot_scroll, QStringLiteral("BOT"));
 
+    // The ADVISOR & CANARY panel is built but NOT added to the tab row: the v5
+    // duel is concluded and a permanently dead control does not belong beside
+    // the living ones (issue #151). It is parented to the tab widget and
+    // explicitly hidden so showing the screen cannot surface it, and
+    // refresh_advisor_canary_status() inserts it after ARENA if the advisor
+    // loop is ever seen writing again.
     auto* advisor_scroll = new QScrollArea(tabs);
     advisor_scroll->setWidgetResizable(true);
     advisor_scroll->setFrameShape(QFrame::NoFrame);
+    advisor_scroll->hide();
+    advisor_panel_page_ = advisor_scroll;
     auto* advisor_page = new QWidget(advisor_scroll);
     auto* advisor_layout = new QVBoxLayout(advisor_page);
     advisor_layout->setContentsMargins(10, 10, 10, 10);
@@ -1333,9 +1341,11 @@ void KalshiScreen::build_ui() {
     advisor_role->setStyleSheet(QStringLiteral("color:%1;font-weight:800;").arg(colors::CYAN()));
     advisor_layout->addWidget(advisor_role);
     auto* advisor_note = new QLabel(QStringLiteral(
-        "This panel displays authoritative persisted supervisor state for the blind forecasting "
-        "duel (the advisor protocol) — a separate system from the BOT tab, which is the current "
-        "Kalshi automation path. It cannot enable trading, edit safety state, or submit orders."), advisor_page);
+        "This tab is only in the row because the advisor loop is writing again — the concluded "
+        "v5 duel's record lives on the ARENA tab. It displays authoritative persisted supervisor "
+        "state for the blind forecasting duel (the advisor protocol) — a separate system from "
+        "the BOT tab, which is the current Kalshi automation path. It cannot enable trading, "
+        "edit safety state, or submit orders."), advisor_page);
     advisor_note->setWordWrap(true);
     advisor_note->setStyleSheet(QStringLiteral("color:%1;").arg(colors::TEXT_SECONDARY()));
     advisor_layout->addWidget(advisor_note);
@@ -1349,46 +1359,6 @@ void KalshiScreen::build_ui() {
         badges->addWidget(badge, 1);
     }
     advisor_layout->addLayout(badges);
-    // The retired state: hidden while any advisor file is fresh, so a loop that
-    // restarts one day renders exactly as it does today.
-    advisor_retired_banner_ = new QLabel(advisor_page);
-    advisor_retired_banner_->setWordWrap(true);
-    advisor_retired_banner_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    advisor_retired_banner_->setVisible(false);
-    advisor_layout->addWidget(advisor_retired_banner_);
-    advisor_duel_record_ = new QLabel(advisor_page);
-    advisor_duel_record_->setWordWrap(true);
-    advisor_duel_record_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    advisor_duel_record_->setVisible(false);
-    advisor_layout->addWidget(advisor_duel_record_);
-    auto* arena_strip = new QHBoxLayout;
-    arena_context_status_ = new QLabel(
-        QStringLiteral("ARENA OFFLINE · no arena-report.json — is the arena loop running?"),
-        advisor_page);
-    arena_context_status_->setWordWrap(true);
-    arena_context_status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    arena_context_status_->setStyleSheet(
-        QStringLiteral("color:%1;background:%2;border:1px solid %1;padding:9px;font-weight:700;")
-            .arg(colors::WARNING(), colors::BG_RAISED()));
-    arena_context_status_->setToolTip(QStringLiteral(
-        "Alpha Arena leaderboard context from arena-report.json — the blind forecasting "
-        "duel every contract decision sits inside. Read-only evidence; no execution authority."));
-    arena_strip->addWidget(arena_context_status_, 1);
-    arena_open_button_ = new QPushButton(QStringLiteral("OPEN ALPHA ARENA"), advisor_page);
-    arena_open_button_->setCursor(Qt::PointingHandCursor);
-    arena_open_button_->setToolTip(
-        QStringLiteral("Open the Alpha Arena screen: full leaderboard and live rounds."));
-    arena_open_button_->setStyleSheet(QStringLiteral(
-        "QPushButton{background:%1;color:%2;border:1px solid %3;padding:9px 12px;font-weight:900;}")
-        .arg(colors::BG_RAISED(), colors::CYAN(), colors::CYAN()));
-    connect(arena_open_button_, &QPushButton::clicked, this, []() {
-        CommandContext ctx;
-        ctx.shell = &TerminalShell::instance();
-        ctx.focused_frame = WindowCycler::instance().focused_frame();
-        ActionRegistry::instance().invoke(QStringLiteral("screen.alpha_arena"), ctx);
-    });
-    arena_strip->addWidget(arena_open_button_, 0, Qt::AlignTop);
-    advisor_layout->addLayout(arena_strip);
     auto add_advisor_card = [advisor_page, advisor_layout](const QString& title, QLabel*& value) {
         auto* heading = new QLabel(title, advisor_page);
         heading->setStyleSheet(QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
@@ -1406,7 +1376,71 @@ void KalshiScreen::build_ui() {
     add_advisor_card(QStringLiteral("LATEST ACTIVITY"), advisor_activity_status_);
     advisor_layout->addStretch();
     advisor_scroll->setWidget(advisor_page);
-    tabs->addTab(advisor_scroll, QStringLiteral("ADVISOR & CANARY"));
+
+    // ARENA — the Alpha Arena context that used to sit inside the advisor tab,
+    // plus the concluded v5 duel's frozen record as one card. The arena is a
+    // living surface; the duel is its history, and history reads as history.
+    auto* arena_scroll = new QScrollArea(tabs);
+    arena_scroll->setWidgetResizable(true);
+    arena_scroll->setFrameShape(QFrame::NoFrame);
+    auto* arena_page = new QWidget(arena_scroll);
+    auto* arena_layout = new QVBoxLayout(arena_page);
+    arena_layout->setContentsMargins(10, 10, 10, 10);
+    arena_layout->setSpacing(8);
+    auto* arena_title = new QLabel(
+        QStringLiteral("ALPHA ARENA · BLIND FORECASTING CONTEXT"), arena_page);
+    arena_title->setStyleSheet(QStringLiteral("color:%1;font-weight:900;font-size:13px;")
+                                   .arg(colors::TEXT_PRIMARY()));
+    arena_layout->addWidget(arena_title);
+    auto* arena_strip = new QHBoxLayout;
+    arena_context_status_ = new QLabel(
+        QStringLiteral("ARENA OFFLINE · no arena-report.json — is the arena loop running?"),
+        arena_page);
+    arena_context_status_->setWordWrap(true);
+    arena_context_status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    arena_context_status_->setStyleSheet(
+        QStringLiteral("color:%1;background:%2;border:1px solid %1;padding:9px;font-weight:700;")
+            .arg(colors::WARNING(), colors::BG_RAISED()));
+    arena_context_status_->setToolTip(QStringLiteral(
+        "Alpha Arena leaderboard context from arena-report.json — the blind forecasting "
+        "duel every contract decision sits inside. Read-only evidence; no execution authority."));
+    arena_strip->addWidget(arena_context_status_, 1);
+    arena_open_button_ = new QPushButton(QStringLiteral("OPEN ALPHA ARENA"), arena_page);
+    arena_open_button_->setCursor(Qt::PointingHandCursor);
+    arena_open_button_->setToolTip(
+        QStringLiteral("Open the Alpha Arena screen: full leaderboard and live rounds."));
+    arena_open_button_->setStyleSheet(QStringLiteral(
+        "QPushButton{background:%1;color:%2;border:1px solid %3;padding:9px 12px;font-weight:900;}")
+        .arg(colors::BG_RAISED(), colors::CYAN(), colors::CYAN()));
+    connect(arena_open_button_, &QPushButton::clicked, this, []() {
+        CommandContext ctx;
+        ctx.shell = &TerminalShell::instance();
+        ctx.focused_frame = WindowCycler::instance().focused_frame();
+        ActionRegistry::instance().invoke(QStringLiteral("screen.alpha_arena"), ctx);
+    });
+    arena_strip->addWidget(arena_open_button_, 0, Qt::AlignTop);
+    arena_layout->addLayout(arena_strip);
+    auto* duel_heading = new QLabel(QStringLiteral("CONCLUDED DUEL (v5)"), arena_page);
+    duel_heading->setStyleSheet(QStringLiteral("color:%1;font-weight:900;").arg(colors::CYAN()));
+    arena_layout->addWidget(duel_heading);
+    concluded_duel_state_ = new QLabel(arena_page);
+    concluded_duel_state_->setWordWrap(true);
+    concluded_duel_state_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    concluded_duel_state_->setToolTip(QStringLiteral(
+        "State of the archived Claude-vs-Codex advisor duel, read from the advisor_* files. "
+        "ARCHIVED means every one of them has been silent for more than six hours."));
+    arena_layout->addWidget(concluded_duel_state_);
+    concluded_duel_record_ = new QLabel(arena_page);
+    concluded_duel_record_->setWordWrap(true);
+    concluded_duel_record_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    concluded_duel_record_->setToolTip(QStringLiteral(
+        "The frozen final record from advisor_competition_report.json, printed as the report "
+        "states it. A report that declares no winner is never talked into one."));
+    arena_layout->addWidget(concluded_duel_record_);
+    arena_layout->addStretch();
+    arena_scroll->setWidget(arena_page);
+    arena_tab_page_ = arena_scroll;
+    tabs->addTab(arena_scroll, QStringLiteral("ARENA"));
 
     auto* pnl_page = new QWidget(tabs);
     auto* pnl_layout = new QVBoxLayout(pnl_page);
@@ -4242,9 +4276,10 @@ void KalshiScreen::toggle_bot_kill_switch() {
 }
 
 void KalshiScreen::refresh_advisor_canary_status() {
-    if (!legacy_live_badge_ || !canary_badge_ || !advisor_system_status_ ||
-        !advisor_qualification_status_ || !advisor_safety_status_ || !advisor_activity_status_)
-        return;
+    // One reader for the advisor files: the ARENA card and the resurrectable
+    // panel are two renderings of the same pass. There is deliberately no
+    // early return on the panel's labels — that guard used to sit here, and it
+    // would have skipped the card's text as well.
     const QString root = ProfileManager::instance().profile_root() + QStringLiteral("/daemon/");
     const QJsonObject loop = read_json_object(root + QStringLiteral("advisor_loop_state.json"));
     const QJsonObject qualification = read_json_object(root + QStringLiteral("advisor_qualification_report.json"));
@@ -4259,32 +4294,48 @@ void KalshiScreen::refresh_advisor_canary_status() {
     // is a live poll and stays out of it, so a concluded duel never hides an arm.
     const AdvisorDuelRetirement retirement =
         advisor_duel_retirement(loop, qualification, promotion, safety, canary, latest, now);
-    if (retirement.retired && !advisor_duel_report_read_) {
+    // The frozen report is read once and is NOT gated on the verdict: it is on
+    // disk whatever the loop is doing, and gating it would make the card read
+    // UNAVAILABLE for a record that is right there. ~750KB, hence the latch.
+    if (!advisor_duel_report_read_) {
         advisor_duel_report_read_ = true;
         advisor_duel_report_ = read_json_object(root + QStringLiteral("advisor_competition_report.json"));
     }
-    if (advisor_retired_banner_ && advisor_duel_record_) {
-        advisor_retired_banner_->setVisible(retirement.retired);
-        advisor_duel_record_->setVisible(retirement.retired);
-        if (retirement.retired) {
-            const AdvisorDuelArchive archive = present_advisor_duel_archive(
-                advisor_duel_report_, retirement.last_update_ms, now);
-            advisor_retired_banner_->setText(archive.headline);
-            advisor_retired_banner_->setStyleSheet(QStringLiteral(
-                "color:%1;background:%2;border:2px solid %1;padding:10px;font-weight:900;")
-                .arg(colors::TEXT_SECONDARY(), colors::BG_RAISED()));
-            advisor_duel_record_->setText(archive.record);
-            advisor_duel_record_->setStyleSheet(QStringLiteral(
-                "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
-                .arg(archive.record_available ? colors::CYAN() : colors::WARNING(),
-                     colors::BG_RAISED(), colors::BORDER_DIM()));
+    const ConcludedDuelCard card =
+        present_concluded_duel_card(advisor_duel_report_, retirement, now);
+    if (concluded_duel_state_ && concluded_duel_record_) {
+        concluded_duel_state_->setText(card.state);
+        concluded_duel_state_->setStyleSheet(QStringLiteral(
+            "color:%1;background:%2;border:2px solid %1;padding:10px;font-weight:900;")
+            .arg(card.presence == AdvisorDuelPresence::LiveAgain ? colors::CYAN()
+                                                                 : colors::TEXT_SECONDARY(),
+                 colors::BG_RAISED()));
+        concluded_duel_record_->setText(card.record);
+        concluded_duel_record_->setStyleSheet(QStringLiteral(
+            "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
+            .arg(card.record_available ? colors::CYAN() : colors::WARNING(),
+                 colors::BG_RAISED(), colors::BORDER_DIM()));
+    }
+    // The resurrection guard. The panel returns to the tab row exactly while
+    // the advisor loop is writing again, and leaves when it falls silent —
+    // never on absent or future-dated files, which claim nothing either way.
+    if (center_tabs_ && advisor_panel_page_ && arena_tab_page_) {
+        const int present_at = center_tabs_->indexOf(advisor_panel_page_);
+        if (card.advisor_panel_reachable && present_at < 0) {
+            const int after_arena = center_tabs_->indexOf(arena_tab_page_) + 1;
+            center_tabs_->insertTab(after_arena, advisor_panel_page_,
+                                    QStringLiteral("ADVISOR & CANARY"));
+        } else if (!card.advisor_panel_reachable && present_at >= 0) {
+            center_tabs_->removeTab(present_at);
+            // removeTab does not delete the page and does not re-own it: left
+            // parentless a visible page becomes a stray top-level window.
+            advisor_panel_page_->setParent(center_tabs_);
+            advisor_panel_page_->hide();
         }
     }
-    // The canary badge is advisor-file state: once retired it is archive, not
-    // status, so it stops posing as a live badge — unless it claims the canary
-    // is enabled, which is never hidden.
-    canary_badge_->setVisible(!retirement.retired ||
-                              canary.value(QStringLiteral("enabled")).toBool());
+    if (!legacy_live_badge_ || !canary_badge_ || !advisor_system_status_ ||
+        !advisor_qualification_status_ || !advisor_safety_status_ || !advisor_activity_status_)
+        return;
 
     legacy_live_badge_->setText(view.legacy_badge);
     legacy_live_badge_->setStyleSheet(QStringLiteral(
@@ -4303,22 +4354,17 @@ void KalshiScreen::refresh_advisor_canary_status() {
             .arg(view.legacy_live || view.canary_live ? colors::RED() : view.critical
                       ? colors::WARNING() : colors::CYAN(), colors::BG_RAISED()));
     }
-    // Under the retired banner the four cards are the loop's archived final
-    // state, so they are labelled as such and drop the alarm colour: a
-    // concluded duel is not an incident.
-    advisor_system_status_->setText(retirement.retired
-        ? QStringLiteral("ARCHIVED FINAL STATE — the advisor loop is retired; nothing below is live.\n") +
-              view.system
-        : view.system);
+    // The four cards are the live readout only. The archived rendering they
+    // used to carry moved to the ARENA card, which is where a retired loop is
+    // now described — these labels are only on screen while it is running.
+    advisor_system_status_->setText(view.system);
     advisor_qualification_status_->setText(view.qualification);
     advisor_safety_status_->setText(view.safety);
     advisor_activity_status_->setText(view.activity);
     advisor_system_status_->setStyleSheet(QStringLiteral(
         "color:%1;background:%2;border:1px solid %3;padding:9px;font-weight:700;")
-        .arg(retirement.retired ? colors::TEXT_SECONDARY()
-                                : view.critical ? colors::WARNING() : colors::GREEN(),
-             colors::BG_RAISED(),
-             retirement.retired || !view.critical ? colors::BORDER_DIM() : colors::WARNING()));
+        .arg(view.critical ? colors::WARNING() : colors::GREEN(), colors::BG_RAISED(),
+             view.critical ? colors::WARNING() : colors::BORDER_DIM()));
 }
 
 void KalshiScreen::refresh_arena_context_status() {

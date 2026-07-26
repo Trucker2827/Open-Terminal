@@ -199,6 +199,146 @@ class AdvisorCanaryPresentationTest final : public QObject {
         QVERIFY(!archive.record.contains("WINNER"));
         QVERIFY(!archive.record.contains("0 / 0"));
     }
+
+    // ---- the record as an Alpha Arena card (issue #151) --------------------
+    //
+    // The ADVISOR & CANARY tab is off the Kalshi tab row; the duel's frozen
+    // record renders beside the arena context instead. These are the
+    // both-directions retirement tests above, re-pointed at the surface the
+    // behaviour moved to: a dead loop must not put the tab back, and a loop
+    // that starts writing again must.
+
+    void an_archived_duel_reads_archived_and_keeps_the_tab_off_the_row() {
+        const qint64 now = 1'800'000'000'000;
+        const qint64 wrote = now - 28LL * 3'600'000;
+        const auto retirement = advisor_duel_retirement(stale_loop(wrote), {}, {}, {}, {}, {}, now);
+        QVERIFY(retirement.retired);
+        const auto card = present_concluded_duel_card(report_v5(), retirement, now);
+        QCOMPARE(card.presence, AdvisorDuelPresence::Archived);
+        QVERIFY(!card.advisor_panel_reachable);
+        QVERIFY(card.state.contains("CONCLUDED DUEL (v5) · ARCHIVED"));
+        QVERIFY(card.state.contains("DUEL CONCLUDED"));
+        QVERIFY(!card.state.contains("LIVE AGAIN"));
+    }
+
+    // The resurrection guard, one advisor write timestamp at a time: exactly
+    // the fields any_fresh_advisor_file_is_not_retired covers.
+    void a_restarted_advisor_loop_brings_the_panel_back() {
+        const qint64 now = 1'800'000'000'000;
+        const qint64 wrote = now - 28LL * 3'600'000;
+        const qint64 fresh = now - 30'000;
+        const QStringList fields{"loop.heartbeat_at_ms", "loop.updated_at_ms",
+            "qualification.updated_at_ms", "promotion.updated_at_ms", "safety.updated_at_ms",
+            "canary.updated_at_ms", "latest.opened_at_ms"};
+        for (int i = 0; i < fields.size(); ++i) {
+            QJsonObject loop = stale_loop(wrote);
+            QJsonObject qualification{{"updated_at_ms",double(wrote)}};
+            QJsonObject promotion{{"updated_at_ms",double(wrote)}};
+            QJsonObject safety{{"updated_at_ms",double(wrote)}};
+            QJsonObject canary{{"updated_at_ms",double(wrote)}};
+            QJsonObject latest{{"opened_at_ms",double(wrote)}};
+            switch (i) {
+                case 0: loop["heartbeat_at_ms"] = double(fresh); break;
+                case 1: loop["updated_at_ms"] = double(fresh); break;
+                case 2: qualification["updated_at_ms"] = double(fresh); break;
+                case 3: promotion["updated_at_ms"] = double(fresh); break;
+                case 4: safety["updated_at_ms"] = double(fresh); break;
+                case 5: canary["updated_at_ms"] = double(fresh); break;
+                default: latest["opened_at_ms"] = double(fresh); break;
+            }
+            const auto card = present_concluded_duel_card(report_v5(),
+                advisor_duel_retirement(loop,qualification,promotion,safety,canary,latest,now), now);
+            QVERIFY2(card.presence == AdvisorDuelPresence::LiveAgain,
+                     qPrintable(QStringLiteral("fresh %1 did not read LIVE AGAIN").arg(fields.at(i))));
+            QVERIFY2(card.advisor_panel_reachable,
+                     qPrintable(QStringLiteral("fresh %1 left the panel unreachable").arg(fields.at(i))));
+            QVERIFY(card.state.contains("LIVE AGAIN"));
+            QVERIFY(card.state.contains("ADVISOR & CANARY"));
+        }
+    }
+
+    // The half `retired` alone cannot express. Both of these come back
+    // retired == false, and reading that as a resurrection would put the dead
+    // tab back on a machine with no duel to show.
+    void absent_or_future_dated_advisor_state_is_not_a_resurrection() {
+        const qint64 now = 1'800'000'000'000;
+        const auto absent = advisor_duel_retirement({}, {}, {}, {}, {}, {}, now);
+        QVERIFY(!absent.retired);
+        QVERIFY(!absent.skewed);
+        const auto absent_card = present_concluded_duel_card({}, absent, now);
+        QCOMPARE(absent_card.presence, AdvisorDuelPresence::NoEvidence);
+        QVERIFY(!absent_card.advisor_panel_reachable);
+        QVERIFY(absent_card.state.contains("NO ADVISOR EVIDENCE"));
+        QVERIFY(!absent_card.state.contains("LIVE AGAIN"));
+
+        const auto skewed = advisor_duel_retirement(stale_loop(now - 28LL*3'600'000), {}, {}, {},
+            QJsonObject{{"updated_at_ms",double(now+60'000)}}, {}, now);
+        QVERIFY(!skewed.retired);
+        QVERIFY(skewed.skewed);
+        QCOMPARE(skewed.last_update_ms, now - 28LL*3'600'000);  // old, and still not live
+        const auto skewed_card = present_concluded_duel_card(report_v5(), skewed, now);
+        QCOMPARE(skewed_card.presence, AdvisorDuelPresence::NoEvidence);
+        QVERIFY(!skewed_card.advisor_panel_reachable);
+        QVERIFY(skewed_card.state.contains("clock skew"));
+        QVERIFY(!skewed_card.state.contains("LIVE AGAIN"));
+    }
+
+    // Criterion: the record relocates whole. Verdict, epochs, settled counts
+    // and the scoring freeze are on the card in every state — the report is on
+    // disk whatever the loop is doing.
+    void the_card_carries_the_whole_frozen_record_in_every_state() {
+        const qint64 now = 1'800'000'000'000;
+        const QList<AdvisorDuelRetirement> states{
+            advisor_duel_retirement(stale_loop(now - 28LL*3'600'000), {}, {}, {}, {}, {}, now),
+            advisor_duel_retirement(stale_loop(now - 30'000), {}, {}, {}, {}, {}, now),
+            advisor_duel_retirement({}, {}, {}, {}, {}, {}, now)};
+        for (const auto& retirement : states) {
+            const auto card = present_concluded_duel_card(report_v5(), retirement, now);
+            QVERIFY(card.record_available);
+            QVERIFY(card.record.contains("NO WINNER DECLARED — INSUFFICIENT_PAIRED_DATA"));
+            QVERIFY(card.record.contains("53 / 200 jointly resolved of 264 opportunities"));
+            QVERIFY(card.record.contains("claude=kalshi-blind-claude-cli-v5-latency-neutral"));
+            QVERIFY(card.record.contains("codex=kalshi-blind-codex-v4-zero-capability-latency-neutral"));
+            QVERIFY(card.record.contains("SCORING FROZEN · infrastructure 2876e683b880"));
+        }
+    }
+
+    // The count is quoted from competition_report.py's SCORING_INFRASTRUCTURE
+    // tuple, which is also the charter's frozen-file list. It is a reference
+    // to the manifest, and the card says so rather than printing a bare 7.
+    void the_scoring_freeze_note_references_the_seven_file_manifest() {
+        QCOMPARE(kAdvisorScoringManifestFiles, 7);
+        const auto card = present_concluded_duel_card(report_v5(),
+            advisor_duel_retirement(stale_loop(1'800'000'000'000 - 28LL*3'600'000), {}, {}, {}, {},
+                                    {}, 1'800'000'000'000), 1'800'000'000'000);
+        QVERIFY(card.record.contains("SHA-256 over the 7-file SCORING_INFRASTRUCTURE manifest"));
+    }
+
+    // A machine with no report still gets an honest card, not a blank one.
+    void a_missing_report_still_states_the_duel_is_archived() {
+        const qint64 now = 1'800'000'000'000;
+        const auto card = present_concluded_duel_card({},
+            advisor_duel_retirement(stale_loop(now - 28LL*3'600'000), {}, {}, {}, {}, {}, now), now);
+        QCOMPARE(card.presence, AdvisorDuelPresence::Archived);
+        QVERIFY(!card.record_available);
+        QVERIFY(card.state.contains("ARCHIVED"));
+        QVERIFY(card.record.contains("FINAL FROZEN DUEL RECORD UNAVAILABLE"));
+        QVERIFY(!card.record.contains("WINNER"));
+    }
+
+  private:
+    // The frozen report this machine actually holds, field for field.
+    static QJsonObject report_v5() {
+        return QJsonObject{{"result_state","INSUFFICIENT_PAIRED_DATA"},
+            {"jointly_resolved",53}, {"opportunities",264},
+            {"epoch_pair",QJsonObject{{"claude","kalshi-blind-claude-cli-v5-latency-neutral"},
+                {"codex","kalshi-blind-codex-v4-zero-capability-latency-neutral"}}},
+            {"coverage",QJsonObject{{"claude",0.25},{"codex",0.9848484848484849}}},
+            {"thresholds",QJsonObject{{"minimum_jointly_resolved",200},{"minimum_coverage_each",0.8}}},
+            {"scoring_infrastructure_hash",
+             "2876e683b880cdc77c82a5dcc1e32662cd54188668434d51cdccb19d6c3b7a48"},
+            {"shadow_only",true},{"execution_eligible",false}};
+    }
 };
 
 QTEST_GUILESS_MAIN(AdvisorCanaryPresentationTest)
