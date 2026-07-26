@@ -4321,9 +4321,12 @@ void KalshiScreen::refresh_advisor_canary_status() {
     // never on absent or future-dated files, which claim nothing either way.
     if (center_tabs_ && advisor_panel_page_ && arena_tab_page_) {
         const int present_at = center_tabs_->indexOf(advisor_panel_page_);
-        if (card.advisor_panel_reachable && present_at < 0) {
-            const int after_arena = center_tabs_->indexOf(arena_tab_page_) + 1;
-            center_tabs_->insertTab(after_arena, advisor_panel_page_,
+        // indexOf returns -1 for a page this row does not hold, and -1 + 1 == 0
+        // would insert at the front and slide bot_tab_index_ off by one. An
+        // anchor that cannot be found is a reason to do nothing.
+        const int arena_at = center_tabs_->indexOf(arena_tab_page_);
+        if (card.advisor_panel_reachable && present_at < 0 && arena_at >= 0) {
+            center_tabs_->insertTab(arena_at + 1, advisor_panel_page_,
                                     QStringLiteral("ADVISOR & CANARY"));
         } else if (!card.advisor_panel_reachable && present_at >= 0) {
             center_tabs_->removeTab(present_at);
