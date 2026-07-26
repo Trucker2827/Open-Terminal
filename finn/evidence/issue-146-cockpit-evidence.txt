@@ -117,6 +117,22 @@ Both are covered by tests (`the_calibrator_node_reports_the_reports_own_track_re
 1 and 10 in `issue-146-neuters.txt`. They are stated here rather than left for a
 reviewer to notice as a mismatch between the screenshots and the diff.
 
+**The re-capture was attempted and failed, and the reason is worth recording.**
+The KPI colour change was not a string edit: it replaced one elided `join()`
+draw with a per-entry loop (`horizontalAdvance` per entry, explicit separators,
+and a `"… N more"` overflow branch), so that paint path has never been seen
+rendered. Three relaunches of the scratch instance produced a live process with
+ZERO windows, and a full-screen capture came back solid black — the machine had
+locked, the same failure #137 and #139 both hit. So:
+
+* the shipped `NET` / `DRAWDOWN` colour roles and the CALIBRATOR label are
+  proven by unit test and by neuter, NOT by a screenshot;
+* the KPI overflow branch (`"… N more"`) is unexercised by any evidence in this
+  PR — at 1180 px with the current five entries it should not fire, but that is
+  a reading of the code, not an observation.
+
+Stated rather than quietly left as a gap between the diff and the PNGs.
+
 ## Honest gaps
 
 * **Neither PNG shows an ignition or a dissolve.** Both are implemented and
