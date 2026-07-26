@@ -372,15 +372,15 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
     }
 
     const QJsonObject report = read_calibrator_report();
-    // No PAPER book is replayed: a live order's fills and lifecycle live at the
-    // venue, and the paper model would invent them. What IS read back is the
-    // bot's own record of which contracts the venue already took an order on
-    // — see KalshiBotLive::live_working() for why submit_order's duplicate
-    // guard does not cover a filled live draft. Those pass ALREADY_HELD.
-    const QJsonArray working = KalshiBotLive::live_working(
-        read_jsonl(ledger_path, is_event(kDecisionEvent)));
+    // No book of any kind is replayed here. A live order's fills and lifecycle
+    // live at the venue, and the paper model would invent them; and the bot's
+    // own ledger is not the authority on what the venue holds. One bot order
+    // per contract is enforced where the authority is — submit_order's
+    // per-contract duplicate guard, against the immutable drafts (#141). A
+    // re-bid therefore reaches submit_order and is refused there, before the
+    // adapter, and the refusal is journaled like any other.
     const QJsonArray rows =
-        KalshiBotDecision::decide(report, working, {}, now_ms, config, stop);
+        KalshiBotDecision::decide(report, {}, {}, now_ms, config, stop);
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         if (row.value(QStringLiteral("action")).toString() != QStringLiteral("bid")) {
