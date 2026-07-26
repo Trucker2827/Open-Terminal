@@ -4115,7 +4115,10 @@ void KalshiScreen::refresh_bot_panel() {
     // A LIVE tick paints the chip red whatever the loop state is: real money is
     // the loudest fact on this panel, and an amber "stale" chip on a bot that
     // has orders at the exchange would bury it.
+    // An unreadable mode never paints green either: a ticking loop this build
+    // cannot read is a warning, not a healthy bot (issue #145).
     const QString state_color = view.mode_live                    ? colors::RED()
+                                : view.mode_unknown               ? colors::WARNING()
                                 : role == QStringLiteral("green") ? colors::GREEN()
                                 : role == QStringLiteral("amber") ? colors::WARNING()
                                 : role == QStringLiteral("red")   ? colors::RED()
