@@ -60,6 +60,7 @@
 
 #include "cli/ServeCommand.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
+#include "services/prediction/kalshi/KalshiBotFunnel.h"
 #include "services/prediction/kalshi/KalshiBotGate.h"
 #include "services/prediction/kalshi/KalshiBotLive.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
@@ -152,6 +153,32 @@ QJsonArray read_jsonl(const QString& path,
     return rows;
 }
 
+bool write_json_file(const QString& path, const QJsonObject& object) {
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
+    return file.commit();
+}
+
+/// Publishes the conversion funnel over the record this PAPER tick just
+/// replayed (issue #153), atomically, so the file is exactly as fresh as the
+/// loop and no reader has to re-read a 38 MB ledger to learn the denominators.
+///
+/// Called only from the paper tick, and deliberately: a LIVE tick replays no
+/// paper book (its orders' lifecycle belongs to the venue), so it has nothing
+/// to measure and publishes nothing. The resulting age of the file is what the
+/// renderers show — a funnel older than two tick intervals carries its age on
+/// every line rather than being quietly presented as current.
+void publish_funnel(const QJsonArray& ledger, qint64 now_ms) {
+    const KalshiBotFunnel funnel = KalshiBotFunnel::measure(
+        ledger, KalshiBotGate::load_params_file(
+                    kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))));
+    const QString path = kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile));
+    if (!write_json_file(path, funnel.to_json(now_ms)))
+        std::fprintf(stderr, "kalshi bot: cannot write %s — the funnel is not published this tick\n",
+                     qUtf8Printable(path));
+}
+
 /// The calibrator's live report. An unreadable or unparseable file returns an
 /// empty object, which KalshiBotDecision::decide() journals as REPORT_MISSING
 /// — the bot never substitutes a previous report for a missing one.
@@ -242,16 +269,21 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         }
         // The book is still out there while the bot is stopped; report it
         // rather than printing zeros the ledger does not support.
-        const KalshiBotOrders::Book book = KalshiBotOrders::replay(
-            read_ledger(ledger_path, [](const QJsonObject& row) {
-                const QString event = row.value(QStringLiteral("event")).toString();
-                return event == QLatin1String(kDecisionEvent) ||
-                       event == QLatin1String(kSettlementEvent);
-            }));
+        const QJsonArray record = read_ledger(ledger_path, [](const QJsonObject& row) {
+            const QString event = row.value(QStringLiteral("event")).toString();
+            return event == QLatin1String(kDecisionEvent) ||
+                   event == QLatin1String(kSettlementEvent);
+        });
+        const KalshiBotOrders::Book book = KalshiBotOrders::replay(record);
         stopped.still_open = static_cast<int>(book.positions.size());
         stopped.resting = static_cast<int>(book.resting.size());
         stopped.exposure_usd = book.exposure_usd;
         stopped.resting_usd = book.resting_usd;
+        // The record is no less real for the loop being stopped, and its
+        // denominators do not change when bidding halts: a stopped tick that
+        // let the funnel go stale would make the file's age look like the
+        // record's age.
+        publish_funnel(record, now_ms);
         return stopped;
     }
 
@@ -351,6 +383,10 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     result.exposure_usd = book.exposure_usd;
     result.resting_usd = book.resting_usd;
     result.session_opened_usd = session_opened_usd;
+    // Over `ledger`, which now holds the whole record INCLUDING every row this
+    // tick just journaled — the same rows the book above was replayed from, so
+    // the funnel and the exposure can never be describing different records.
+    publish_funnel(ledger, now_ms);
     return result;
 }
 
@@ -572,13 +608,6 @@ void bot_usage() {
 
 // --- gate (rung 2) --------------------------------------------------------
 
-bool write_json_file(const QString& path, const QJsonObject& object) {
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
-    return file.commit();
-}
-
 /// Criterion numbers are printed as they were measured: the settled-bid count
 /// is a count, money and Brier are printed to four places. A criterion with
 /// nothing to measure prints its note instead of a number.
@@ -707,7 +736,13 @@ KalshiBotLoopStatus current_loop_status(qint64 now_ms) {
                                   kalshi_bot_read_stop_file(bot_stop_path()), now_ms);
 }
 
-QJsonObject status_summary(const KalshiBotLoopStatus& status, qint64 now_ms) {
+KalshiBotFunnelFile current_funnel_file() {
+    return kalshi_bot_read_funnel_file(
+        kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile)));
+}
+
+QJsonObject status_summary(const KalshiBotLoopStatus& status, qint64 now_ms,
+                           const KalshiBotFunnelFile& funnel) {
     QJsonObject out{
         {QStringLiteral("mode"), QStringLiteral("paper")},
         {QStringLiteral("state"), status.state},
@@ -730,6 +765,29 @@ QJsonObject status_summary(const KalshiBotLoopStatus& status, qint64 now_ms) {
         if (!status.stop.reason.isEmpty())
             out.insert(QStringLiteral("stop_reason"), status.stop.reason);
     }
+
+    // --- the conversion funnel (issue #153) ---------------------------------
+    // The published file's own object, verbatim: its absent keys stay absent
+    // here, so a record with no bid carries NO `fill_rate` rather than a 0.0 a
+    // script would read as "nothing ever fills". An unavailable file publishes
+    // its reason and NO counts at all.
+    out.insert(QStringLiteral("funnel_file"),
+               kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile)));
+    out.insert(QStringLiteral("funnel_available"), funnel.available);
+    if (funnel.available) {
+        out.insert(QStringLiteral("funnel"), funnel.object);
+        const auto published_ms =
+            static_cast<qint64>(funnel.object.value(QStringLiteral("ts_ms")).toDouble());
+        if (published_ms > 0 && now_ms >= published_ms)
+            out.insert(QStringLiteral("funnel_age_ms"), static_cast<double>(now_ms - published_ms));
+    } else {
+        out.insert(QStringLiteral("funnel_unavailable_reason"), funnel.why);
+    }
+    // The rendered lines, from the ONE formatter the BOT panel renders from —
+    // so `--json` and the human text below can never say different things, and
+    // neither can the window (criterion 5).
+    out.insert(QStringLiteral("funnel_lines"),
+               QJsonArray::fromStringList(kalshi_bot_funnel_lines(funnel, now_ms)));
     return out;
 }
 
@@ -745,8 +803,9 @@ int bot_status_command(const GlobalOpts& opts, QStringList& args) {
     }
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
     const KalshiBotLoopStatus status = current_loop_status(now_ms);
+    const KalshiBotFunnelFile funnel = current_funnel_file();
     if (opts.json) {
-        std::printf("%s\n", QJsonDocument(status_summary(status, now_ms))
+        std::printf("%s\n", QJsonDocument(status_summary(status, now_ms, funnel))
                                 .toJson(QJsonDocument::Compact).constData());
         return 0;
     }
@@ -756,6 +815,12 @@ int bot_status_command(const GlobalOpts& opts, QStringList& args) {
     std::printf("  chip %s (%s) · stale after %llds\n", qUtf8Printable(status.state.toUpper()),
                 qUtf8Printable(kalshi_bot_state_color_role(status.state)),
                 static_cast<long long>(kKalshiBotStaleMs / 1000));
+    // The funnel, from the same formatter the BOT panel and `--json` render
+    // from. Unavailable prints one refusal line and no numbers at all.
+    for (const QString& line : kalshi_bot_funnel_lines(funnel, now_ms))
+        std::printf("  %s\n", qUtf8Printable(line));
+    std::printf("  funnel %s\n",
+                qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile))));
     std::printf("  ledger %s\n", qUtf8Printable(bot_ledger_path()));
     std::printf("  stop file %s%s\n", qUtf8Printable(bot_stop_path()),
                 status.stop.engaged ? " (PRESENT — kill switch engaged)" : " (absent)");

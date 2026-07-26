@@ -653,6 +653,14 @@ target_include_directories(tst_kalshi_bot_ledger_generations PRIVATE ${CMAKE_SOU
 target_link_libraries(tst_kalshi_bot_ledger_generations PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_ledger_generations COMMAND tst_kalshi_bot_ledger_generations)
 
+# The conversion funnel and the pace to the sealed gate (issue #153): the
+# denominators the scoreboard's numerator was missing, absence that is an absent
+# key rather than a zero, and the one formatter both surfaces render from.
+add_executable(tst_kalshi_bot_funnel tst_kalshi_bot_funnel.cpp)
+target_include_directories(tst_kalshi_bot_funnel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_funnel PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_funnel COMMAND tst_kalshi_bot_funnel)
+
 # Sealed promotion gate (rung 2): preregistered criteria, mechanical verdict,
 # and a seal that is verified through the disk, not just in memory.
 add_executable(tst_kalshi_bot_gate tst_kalshi_bot_gate.cpp)
@@ -919,6 +927,17 @@ add_test(NAME e2e_kalshi_bot_live_refusal
 add_test(NAME e2e_kalshi_bot_ledger_rotation
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_ledger_rotation.sh)
+
+# Issue #153 — the conversion funnel and the pace to the sealed gate, proved
+# against the real openterminalcli: a paper tick publishes kalshi-bot-funnel.json
+# over the record it replayed, `kalshi bot status` renders it in both human and
+# --json form from ONE formatter (the same one the BOT panel renders), a stale
+# file carries its age beside every number, and an absent or unparseable file
+# renders the refusal and no numbers. Offline, temp evidence dir, kill switch
+# thrown before the tick — no venue action of any kind.
+add_test(NAME e2e_kalshi_bot_funnel
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_funnel.sh)
 
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately

@@ -1367,6 +1367,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
     src/services/prediction/kalshi/KalshiSettlementScoreboard.cpp
     src/services/prediction/kalshi/KalshiBotDecision.cpp
+    src/services/prediction/kalshi/KalshiBotFunnel.cpp
     src/services/prediction/kalshi/KalshiBotGate.cpp
     src/services/prediction/kalshi/KalshiBotLive.cpp
     src/services/prediction/kalshi/KalshiBotOrders.cpp

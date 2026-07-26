@@ -660,6 +660,71 @@ class KalshiBotPanelPresentationTest final : public QObject {
         for (const auto& value : rows)
             QVERIFY(!value.toObject().value(QStringLiteral("ticker")).toString().isEmpty());
     }
+
+    // --- the conversion funnel (issue #153) ---------------------------------
+    // The window and `kalshi bot status` must never round differently or
+    // disagree about a denominator, so the panel is a PASS-THROUGH of the one
+    // formatter rather than a second derivation of the same file.
+
+    void the_panels_funnel_lines_are_the_shared_formatters_output() {
+        KalshiBotFunnelFile file;
+        file.available = true;
+        file.object = QJsonObject{{"ts_ms", 9'000'000'000.0},
+                                  {"bids", 304},
+                                  {"fills", 5},
+                                  {"settlements", 4},
+                                  {"resting_now", 12},
+                                  {"canceled_ttl", 288},
+                                  {"canceled_edge_gone", 3},
+                                  {"canceled_market_settled", 1},
+                                  {"unconfirmed_cancels", 0},
+                                  {"rows_read", 63'305},
+                                  {"span_ms", 168'480'000.0},
+                                  {"fill_rate", 5.0 / 304.0},
+                                  {"settled_per_day", 2.0512},
+                                  {"gate_required", 300},
+                                  {"settled_remaining", 296},
+                                  {"days_to_gate_at_observed_rate", 144.3},
+                                  {"fill_models", QJsonArray{"rung6_conditional_mid"}},
+                                  {"fill_rule", "a stated model, not a measured fill"}};
+        const qint64 now = 9'000'060'000;
+        const auto view = present_kalshi_bot_panel({}, {}, {}, now, 8, {}, file);
+        // Character-for-character the same lines the CLI prints and puts in
+        // `funnel_lines` — one formatter, one rounding.
+        QCOMPARE(view.funnel, kalshi_bot_funnel_lines(file, now));
+        QVERIFY(view.funnel.size() == 5);
+        QVERIFY(view.funnel.at(0).contains(QStringLiteral("304 bids → 5 fills → 4 settled")));
+        QVERIFY(view.funnel.at(1).contains(QStringLiteral("5 of 304 bids")));
+        QVERIFY(view.funnel.at(3).contains(QStringLiteral("296 more settled bids needed of 300")));
+    }
+
+    void an_unpublished_funnel_puts_no_number_on_the_panel() {
+        // No file read: one refusal line, and the scoreboard/gate cards are
+        // untouched by it.
+        const auto view = present_kalshi_bot_panel({}, evaluated_gate("FAIL", 4, 1.35, true), {},
+                                                   9'100'000'000);
+        QCOMPARE(view.funnel.size(), 1);
+        QVERIFY(view.funnel.first().startsWith(QStringLiteral("FUNNEL UNAVAILABLE")));
+        QVERIFY(view.scoreboard.contains(QStringLiteral("4 settled")));
+    }
+
+    void the_panel_reads_the_same_file_the_cli_publishes() {
+        QTemporaryDir evidence;
+        QVERIFY(evidence.isValid());
+        qputenv("OPENTERMINAL_KALSHI_EVIDENCE_DIR", evidence.path().toUtf8());
+        QFile funnel(kalshi_bot_funnel_path());
+        QVERIFY(funnel.open(QIODevice::WriteOnly | QIODevice::Text));
+        funnel.write(QJsonDocument(QJsonObject{{"ts_ms", 9'200'000'000.0}, {"bids", 7}, {"fills", 1},
+                                               {"settlements", 0}, {"fill_rate", 1.0 / 7.0}})
+                         .toJson());
+        funnel.close();
+        const auto file = kalshi_bot_read_funnel_file(kalshi_bot_funnel_path());
+        qunsetenv("OPENTERMINAL_KALSHI_EVIDENCE_DIR");
+        QVERIFY(file.available);
+        QVERIFY(kalshi_bot_funnel_lines(file, 9'200'000'000)
+                    .at(1)
+                    .contains(QStringLiteral("1 of 7 bids")));
+    }
 };
 
 QTEST_GUILESS_MAIN(KalshiBotPanelPresentationTest)

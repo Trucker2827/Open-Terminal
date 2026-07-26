@@ -24,6 +24,7 @@
 // what makes "the CLI mirrors the chip" a property rather than a claim.
 
 #include "cli/ServeCommand.h"
+#include "services/prediction/kalshi/KalshiBotFunnel.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
 
 #include <QDateTime>
@@ -44,6 +45,20 @@ using services::prediction::kalshi_ns::kalshi_bot_state_color_role;
 using services::prediction::kalshi_ns::KalshiBotLoopStatus;
 using services::prediction::kalshi_ns::KalshiBotStopFile;
 using services::prediction::kalshi_ns::kKalshiBotStaleMs;
+
+// The conversion funnel (issue #153) is rendered by the CLI's own formatter
+// over the CLI's own published file — the panel derives none of it a second
+// time, so the window and `kalshi bot status` cannot round differently or
+// disagree about a denominator.
+using services::prediction::kalshi_ns::kalshi_bot_funnel_lines;
+using services::prediction::kalshi_ns::kalshi_bot_read_funnel_file;
+using services::prediction::kalshi_ns::KalshiBotFunnelFile;
+inline constexpr auto kKalshiBotFunnelFile =
+    services::prediction::kalshi_ns::kKalshiBotFunnelFile;
+
+inline QString kalshi_bot_funnel_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile));
+}
 
 // The evidence files `kalshi bot` (rungs 1 and 4) and the promotion gate
 // (rung 2) write. All three resolve through the one path module every consumer
@@ -78,6 +93,11 @@ struct KalshiBotPanelView {
     QString scoreboard;         // paper scoreboard, straight from the gate file
     QString gate;               // PASS / FAIL / refusal, with its numbers
     bool gate_pass = false;     // the gate evaluated and every criterion is met
+    // The conversion funnel, its denominator sentence and the pace to the
+    // sealed gate — verbatim from kalshi_bot_funnel_lines(), the same formatter
+    // `kalshi bot status` prints. Exactly one line when the file is missing or
+    // unparseable, and that line carries no numbers.
+    QStringList funnel;
     QStringList decisions;      // most recent decisions first, passes included
 };
 
@@ -255,9 +275,17 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
                                                    const QJsonObject& live_status,
                                                    qint64 now_ms,
                                                    int max_decisions = 8,
-                                                   const KalshiBotStopFile& stop = {}) {
+                                                   const KalshiBotStopFile& stop = {},
+                                                   const KalshiBotFunnelFile& funnel = {}) {
     using namespace kalshi_bot_detail;
     KalshiBotPanelView view;
+
+    // --- the conversion funnel: rendered, never re-derived (issue #153) -----
+    // A pass-through of the CLI's formatter over the CLI's published file. The
+    // panel deliberately does NOT measure the ledger itself: a second
+    // derivation is exactly how the window and the CLI end up quoting two
+    // different fill rates for one record.
+    view.funnel = kalshi_bot_funnel_lines(funnel, now_ms);
 
     // --- what the bot did, newest first ------------------------------------
     // Two stamps are tracked while scanning: the newest tick whose mode this
@@ -467,7 +495,8 @@ inline KalshiBotStopFile read_kalshi_bot_stop_file() {
 /// the unified path module, nothing else consulted.
 inline KalshiBotPanelView load_kalshi_bot_panel(const QJsonObject& live_status, qint64 now_ms) {
     return present_kalshi_bot_panel(read_kalshi_bot_ledger_tail(), read_kalshi_bot_gate(),
-                                    live_status, now_ms, 8, read_kalshi_bot_stop_file());
+                                    live_status, now_ms, 8, read_kalshi_bot_stop_file(),
+                                    kalshi_bot_read_funnel_file(kalshi_bot_funnel_path()));
 }
 
 } // namespace openmarketterminal::screens::kalshi

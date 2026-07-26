@@ -241,6 +241,9 @@ class KalshiScreen final : public QWidget {
     QLabel* bot_armed_ = nullptr;
     QLabel* bot_signal_ = nullptr;
     QLabel* bot_scoreboard_ = nullptr;
+    // The conversion funnel and the pace to the sealed gate (issue #153) —
+    // the scoreboard's missing denominator.
+    QLabel* bot_funnel_ = nullptr;
     QLabel* bot_gate_ = nullptr;
     // The BOT panel's one control: the kill switch. It can only stop the bot
     // or clear that stop — it cannot arm, size, price, or place anything.
