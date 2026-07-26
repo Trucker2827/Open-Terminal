@@ -4,15 +4,24 @@ Branch finn/151-retire-advisor-canary-tab.  Captured 2026-07-26 on macOS.
 
 WHAT THIS FILE IS
 -----------------
-Criterion 5 asked for a screenshot of the arena card in its archived state.
-That screenshot could NOT be taken — see "CRITERION 5 UNMET" at the bottom.
-What is here instead is the shipped presentation code run over the operator's
-own archived advisor evidence: the same functions the widget calls
-(advisor_duel_retirement + present_concluded_duel_card from
+The shipped presentation code run over the operator's own archived advisor
+evidence: the same functions the widget calls (advisor_duel_retirement +
+present_concluded_duel_card from
 src/screens/kalshi/AdvisorCanaryPresentation.h), printing the exact two label
 strings the ARENA tab sets. It evidences criterion 2 ("no numbers invented,
-none dropped") and criterion 3 (the resurrection guard, both directions). It
-does NOT evidence criterion 1 (the tab row), which needs a real window.
+none dropped") and criterion 3 (the resurrection guard, both directions),
+which are the halves a widget shot cannot show.
+
+Criterion 5's screenshot was UNMET at first capture (the machine was at the
+macOS lock screen) and is now MET — the console was unlocked on 2026-07-26
+and the card was captured in the running app. See "CRITERION 5 — CAPTURED"
+at the bottom, and
+
+  finn/evidence/issue-151-arena-card-archived.png
+  finn/evidence/issue-151-arena-heading-clipped.png
+
+The first of those also witnesses criterion 1 (the tab row), which nothing in
+this text file can.
 
 
 SEEDED SCRATCH PROFILE
@@ -126,34 +135,76 @@ does not key off it: advisor_duel_retirement returns retired=false here, so
 the duel. Missing data reads missing.
 
 
-CRITERION 5 UNMET — no screenshot
-----------------------------------
-The machine is at the macOS lock screen and cannot be unlocked from here.
+CRITERION 5 — CAPTURED (2026-07-26 17:49 EDT, console unlocked)
+----------------------------------------------------------------
+The first attempt failed environmentally: the machine was at the macOS lock
+screen, `screencapture -x` returned the lock screen, and
+CGWindowListCopyWindowInfo reported ZERO OpenTerminal windows — including for
+the operator's own pre-existing instance pid 99428, which is what proved it
+was the session lock and not the change under test. Same failure issue #137
+hit on this machine. No substitute image was produced then, and none is
+substituted now: the images below are the shipped widget.
 
-  - the app WAS launched and DID come up on the scratch profile: pid 6534,
-    window title "Open Terminal [finn151] — Dashboard", and
-    `openterminalcli --profile finn151 status` reported
-    `attached endpoint=http://127.0.0.1:55357 pid=6534`.
-  - the display then slept; `caffeinate -d -u` wakes it to the LOCK SCREEN
-    (captured: Sun Jul 26 14:11, "Touch ID or Enter Password").
-  - `screencapture -x` therefore returns the lock screen, and
-    CGWindowListCopyWindowInfo reports ZERO OpenTerminal windows — including
-    for the operator's own pre-existing instance pid 99428, which is the proof
-    this is the session lock and not the change under test.
+  binary   openmarketterminal-qt/build/OpenTerminal.app/Contents/MacOS/OpenTerminal
+           built 2026-07-26 17:26 from this branch (no src file is newer)
+  process  pid 51208, launched with --profile finn151
+  window   "Open Terminal [finn151] — autosave — Prediction Markets"
+  geometry position (0, 33), size 1726 x 1032 — the autosaved window size,
+           not resized for the capture; the same geometry the reviewer used
+  screen   Built-in Liquid Retina XDR, capture is 2x (3452 x 2064 px)
+  data     profiles/finn151/daemon/ — the operator's real advisor files,
+           unmodified; the card reads exactly STATE 1 above
 
-This is the same environmental failure issue #137 hit on this machine.
+issue-151-arena-card-archived.png — THE DELIVERABLE
+  Tab row: MAKER ORDER · AUTO COCKPIT · BOT · ARENA · POSITIONS / PL ·
+  ORDER BOOK · RECENT TRADES · RULES.  No ADVISOR & CANARY: criterion 1,
+  witnessed rather than argued.  ARENA selected.  The whole CONCLUDED DUEL
+  (v5) card is in one frame, unclipped — heading, the ARCHIVED state label,
+  and the full frozen record down to `execution_eligible=false`, with ~46 px
+  of empty pane below it.  Every line is character-for-character STATE 1.
 
-No substitute image was produced. Rendering the two labels in a throwaway Qt
-program with copy-pasted stylesheets would be a second renderer of the same
-card, and it would show nothing at all about the tab row — the primary change.
+issue-151-arena-heading-clipped.png — the pane-height report-back
+  The same window, the ARENA pane scrolled to its top instead.  The section
+  title `ALPHA ARENA · BLIND FORECASTING CONTEXT` is now visible and the
+  card's last line `execution_eligible=false` is cut off at the pane's
+  bottom edge.  See "ARENA PANE HEIGHT" below.
 
-REPRO for the operator, one unlocked session away (the seeded profile is left
-in place):
+
+ARENA PANE HEIGHT — the reviewer's clipping question, settled
+--------------------------------------------------------------
+The reviewer saw `CONCLUDED DUEL (v5)` clipped at the pane edge at
+1726 x 1032 and could not tell whether that was their window geometry or the
+card genuinely not being reachable.  Measured on the same geometry:
+
+  - A scrollbar IS present in the ARENA pane, at x = 1398..1402.  Its handle
+    spans y = 755..1031 in a track of y = 730..1064 — 276 px of 334, so the
+    pane's content is about 1.2x its viewport, roughly 70 px taller.
+  - The pane opens scrolled ~30 px down from its top, which is why the
+    `ALPHA ARENA · BLIND FORECASTING CONTEXT` title is not visible in the
+    deliverable shot.
+  - It scrolls normally: one click on the scrollbar track above the handle
+    (1400, 741) paged it to the top and brought the title into view — that
+    is issue-151-arena-heading-clipped.png.  Nothing is unreachable.
+
+So at 1726 x 1032 the pane is ~30 px short of showing the section title and
+the card's last line at the same time.  Either one is reachable by scrolling;
+the CONCLUDED DUEL card itself fits whole in one frame.  Not filed as a
+defect — the reviewer declined to, and it is outside issue #151's criteria.
+
+One half of the reviewer's observation is NOT reproduced or refuted here: the
+claim that wheel events over the pane propagate to the QTabBar and switch
+tabs.  The automation available in this session can click and type but cannot
+synthesise wheel events, so that was not tested.  Reported as untested rather
+than as working.
+
+REPRO (the seeded profile is left in place):
 
   ./build/OpenTerminal.app/Contents/MacOS/OpenTerminal --profile finn151 &
   ./build/openterminalcli --profile finn151 open kalshi
   # Predictions screen -> ARENA tab. Expect: no ADVISOR & CANARY tab in the
   # row, and the CONCLUDED DUEL (v5) card reading exactly STATE 1 above.
+  # Selecting BOT floats the "Kalshi BOT COCKPIT" window over the tab row;
+  # close it before capturing.
 
 
 TESTS
