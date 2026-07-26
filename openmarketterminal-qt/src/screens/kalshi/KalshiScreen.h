@@ -227,10 +227,10 @@ class KalshiScreen final : public QWidget {
     QLabel* advisor_separation_status_ = nullptr;
     QLabel* legacy_live_badge_ = nullptr;
     QLabel* canary_badge_ = nullptr;
-    // Shown only once every advisor_* file has fallen silent past
-    // kAdvisorRetiredAfterMs: the duel is over and the tab says so.
-    QLabel* advisor_retired_banner_ = nullptr;
-    QLabel* advisor_duel_record_ = nullptr;
+    // The concluded duel's record, on the ARENA tab. Always present: the card
+    // states ARCHIVED / LIVE AGAIN / NO ADVISOR EVIDENCE rather than hiding.
+    QLabel* concluded_duel_state_ = nullptr;
+    QLabel* concluded_duel_record_ = nullptr;
     QLabel* advisor_system_status_ = nullptr;
     QLabel* advisor_qualification_status_ = nullptr;
     QLabel* advisor_safety_status_ = nullptr;
@@ -276,6 +276,12 @@ class KalshiScreen final : public QWidget {
     // which a later rename would break silently.
     QTabWidget* center_tabs_ = nullptr;
     int bot_tab_index_ = -1;
+    // The ARENA tab's page, and the retired ADVISOR & CANARY page which is
+    // built but NOT in the tab row. It is inserted after ARENA only while the
+    // advisor loop is demonstrably writing again (the resurrection guard), and
+    // removed when it falls silent — so the row holds only living surfaces.
+    QWidget* arena_tab_page_ = nullptr;
+    QWidget* advisor_panel_page_ = nullptr;
     // When populate_markets last replaced all_markets_. 0 = never listed.
     qint64 markets_listed_at_ms_ = 0;
     // Ladder-leg freshness carried over from the last surface the engine built
@@ -354,7 +360,8 @@ class KalshiScreen final : public QWidget {
     QJsonObject calibrator_report_;
     qint64 calibrator_report_read_ms_ = 0;
     // advisor_competition_report.json is ~750KB and frozen once the duel ends,
-    // so it is read at most once per session — only when retirement is detected.
+    // so it is read at most once per session. Not gated on the verdict: the
+    // ARENA card shows the record whether or not the loop is writing again.
     QJsonObject advisor_duel_report_;
     bool advisor_duel_report_read_ = false;
     bool live_status_fetching_ = false;

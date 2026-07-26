@@ -1,0 +1,236 @@
+issue #151 — ADVISOR & CANARY tab retired, duel record relocated to an ARENA card
+================================================================================
+Branch finn/151-retire-advisor-canary-tab.  Captured 2026-07-26 on macOS.
+
+WHAT THIS FILE IS
+-----------------
+The shipped presentation code run over the operator's own archived advisor
+evidence: the same functions the widget calls (advisor_duel_retirement +
+present_concluded_duel_card from
+src/screens/kalshi/AdvisorCanaryPresentation.h), printing the exact two label
+strings the ARENA tab sets. It evidences criterion 2 ("no numbers invented,
+none dropped") and criterion 3 (the resurrection guard, both directions),
+which are the halves a widget shot cannot show.
+
+Criterion 5's screenshot was UNMET at first capture (the machine was at the
+macOS lock screen) and is now MET — the console was unlocked on 2026-07-26
+and the card was captured in the running app. See "CRITERION 5 — CAPTURED"
+at the bottom, and
+
+  finn/evidence/issue-151-arena-card-archived.png
+  finn/evidence/issue-151-arena-heading-clipped.png
+
+The first of those also witnesses criterion 1 (the tab row), which nothing in
+this text file can.
+
+
+SEEDED SCRATCH PROFILE
+----------------------
+The seven advisor_* files were copied verbatim from the operator's default
+profile daemon dir into a scratch profile, so the card is reading real, frozen
+evidence and no fixture:
+
+  src ~/Library/Application Support/org.openterminal.OpenTerminal/daemon/
+  dst ~/Library/Application Support/org.openterminal.OpenTerminal/profiles/finn151/daemon/
+
+  advisor_loop_state.json              385 bytes
+  advisor_qualification_report.json   2214
+  advisor_promotion_state.json         283
+  advisor_safety_state.json            795
+  advisor_canary_config.json           331
+  advisor_competition_report.json   766208
+  advisor_opportunities.jsonl      5564706
+
+Newest advisor write in that set: 1784816685044 = 2026-07-23 14:24 UTC, i.e.
+74 hours before capture — far past kAdvisorRetiredAfterMs (6 h).
+
+
+STATE 1 — ARCHIVED (the operator's real files, unmodified)
+----------------------------------------------------------
+now_ms=1785089773637
+retirement: retired=1 skewed=0 last_update_ms=1784816685044
+presence=0 (Archived)  record_available=1  advisor_panel_reachable=0
+
+  --- state label ---
+  CONCLUDED DUEL (v5) · ARCHIVED
+  DUEL CONCLUDED · ADVISOR LOOP RETIRED — last advisor write 2026-07-23 14:24 UTC (3d ago)
+  No advisor state has changed since. Nothing in this card is live; the current Kalshi automation path is the BOT tab.
+
+  --- record label ---
+  FINAL FROZEN DUEL RECORD (advisor_competition_report.json)
+  RESULT NO WINNER DECLARED — INSUFFICIENT_PAIRED_DATA · 53 / 200 jointly resolved of 264 opportunities
+  EPOCHS claude=kalshi-blind-claude-cli-v5-latency-neutral · codex=kalshi-blind-codex-v4-zero-capability-latency-neutral
+  COVERAGE claude 25.0% · codex 98.5% (minimum 80.0% each)
+  SCORING FROZEN · infrastructure 2876e683b880 (SHA-256 over the 7-file SCORING_INFRASTRUCTURE manifest) · shadow_only=true · execution_eligible=false
+
+advisor_panel_reachable=0 is the tab-row half of criterion 1: on this machine
+the ADVISOR & CANARY page is never inserted.
+
+
+EVERY NUMBER ON THE CARD, TRACED TO ITS SOURCE
+----------------------------------------------
+Read straight out of advisor_competition_report.json (nothing derived, nothing
+rounded away, nothing filled in):
+
+  result_state         INSUFFICIENT_PAIRED_DATA   -> "NO WINNER DECLARED — INSUFFICIENT_PAIRED_DATA"
+  jointly_resolved     53                         -> "53 / 200"
+  thresholds.minimum_jointly_resolved  200
+  opportunities        264                        -> "of 264 opportunities"
+  epoch_pair.claude    kalshi-blind-claude-cli-v5-latency-neutral
+  epoch_pair.codex     kalshi-blind-codex-v4-zero-capability-latency-neutral
+  coverage.claude      0.25               -> 25.0%
+  coverage.codex       0.9848484848484849 -> 98.5%
+  thresholds.minimum_coverage_each 0.8    -> 80.0%
+  scoring_infrastructure_hash 2876e683b880cdc77c82a5dcc1e32662cd54188668434d51cdccb19d6c3b7a48 -> first 12
+  shadow_only          true
+  execution_eligible   false
+
+The one figure NOT in the report is the manifest length. "7-file" is quoted
+from the manifest itself — competition_report.py's SCORING_INFRASTRUCTURE
+tuple, counted at capture time:
+
+  7 files: advisor_core.py, advisor_loop.py, blind_prompt.py,
+           claude_cli_forecaster.py, codex_forecaster.py,
+           competition_report.py, ../prediction_kalshi.py
+
+which is the charter's frozen-file list exactly. The provenance is stated in a
+comment above kAdvisorScoringManifestFiles rather than left as a bare 7.
+
+
+STATE 2 — LIVE AGAIN (the resurrection guard, on the same real files)
+---------------------------------------------------------------------
+The seven files were copied again and ONE advisor write timestamp was moved
+forward (advisor_promotion_state.json updated_at_ms -> now-30s). Nothing else
+changed.
+
+now_ms=1785090420337
+retirement: retired=0 skewed=0 last_update_ms=1785090390305
+presence=1 (LiveAgain)  record_available=1  advisor_panel_reachable=1
+
+  --- state label ---
+  CONCLUDED DUEL (v5) · LIVE AGAIN — an advisor file was written 0m ago. The advisor loop is running, so this is no longer an archive: the ADVISOR & CANARY panel is back in the tab row with the live readout.
+
+  --- record label ---
+  (identical to state 1 — the frozen record is on disk whatever the loop does)
+
+advisor_panel_reachable flipped 0 -> 1 on one file's timestamp: that is the
+guard criterion 3 asks to survive.
+
+
+STATE 3 — NO ADVISOR EVIDENCE (empty daemon dir)
+-------------------------------------------------
+now_ms=1785090420354
+retirement: retired=0 skewed=0 last_update_ms=0
+presence=2 (NoEvidence)  record_available=0  advisor_panel_reachable=0
+
+  --- state label ---
+  CONCLUDED DUEL (v5) · NO ADVISOR EVIDENCE — no advisor state files on this machine. Neither retirement nor a running loop is claimed.
+
+  --- record label ---
+  FINAL FROZEN DUEL RECORD UNAVAILABLE — advisor_competition_report.json is missing or unreadable. The duel's record cannot be shown, and nothing is inferred from its absence.
+
+This is the state `retired` alone could not express, and the reason the card
+does not key off it: advisor_duel_retirement returns retired=false here, so
+"not retired" would have resurrected the dead tab on a machine that never ran
+the duel. Missing data reads missing.
+
+
+CRITERION 5 — CAPTURED (2026-07-26 17:49 EDT, console unlocked)
+----------------------------------------------------------------
+The first attempt failed environmentally: the machine was at the macOS lock
+screen, `screencapture -x` returned the lock screen, and
+CGWindowListCopyWindowInfo reported ZERO OpenTerminal windows — including for
+the operator's own pre-existing instance pid 99428, which is what proved it
+was the session lock and not the change under test. Same failure issue #137
+hit on this machine. No substitute image was produced then, and none is
+substituted now: the images below are the shipped widget.
+
+  binary   openmarketterminal-qt/build/OpenTerminal.app/Contents/MacOS/OpenTerminal
+           built 2026-07-26 17:26 from this branch (no src file is newer)
+  process  pid 51208, launched with --profile finn151
+  window   "Open Terminal [finn151] — autosave — Prediction Markets"
+  geometry position (0, 33), size 1726 x 1032 — the autosaved window size,
+           not resized for the capture; the same geometry the reviewer used
+  screen   Built-in Liquid Retina XDR, capture is 2x (3452 x 2064 px)
+  data     profiles/finn151/daemon/ — the operator's real advisor files,
+           unmodified; the card reads exactly STATE 1 above
+
+issue-151-arena-card-archived.png — THE DELIVERABLE
+  Tab row: MAKER ORDER · AUTO COCKPIT · BOT · ARENA · POSITIONS / PL ·
+  ORDER BOOK · RECENT TRADES · RULES.  No ADVISOR & CANARY: criterion 1,
+  witnessed rather than argued.  ARENA selected.  The whole CONCLUDED DUEL
+  (v5) card is in one frame, unclipped — heading, the ARCHIVED state label,
+  and the full frozen record down to `execution_eligible=false`, with ~46 px
+  of empty pane below it.  Every line is character-for-character STATE 1.
+
+issue-151-arena-heading-clipped.png — the pane-height report-back
+  The same window, the ARENA pane scrolled to its top instead.  The section
+  title `ALPHA ARENA · BLIND FORECASTING CONTEXT` is now visible and the
+  card's last line `execution_eligible=false` is cut off at the pane's
+  bottom edge.  See "ARENA PANE HEIGHT" below.
+
+
+ARENA PANE HEIGHT — the reviewer's clipping question, settled
+--------------------------------------------------------------
+The reviewer saw `CONCLUDED DUEL (v5)` clipped at the pane edge at
+1726 x 1032 and could not tell whether that was their window geometry or the
+card genuinely not being reachable.  Measured on the same geometry:
+
+  - A scrollbar IS present in the ARENA pane, at x = 1398..1402.  Its handle
+    spans y = 755..1031 in a track of y = 730..1064 — 276 px of 334, so the
+    pane's content is about 1.2x its viewport, roughly 70 px taller.
+  - The pane opens scrolled ~30 px down from its top, which is why the
+    `ALPHA ARENA · BLIND FORECASTING CONTEXT` title is not visible in the
+    deliverable shot.
+  - It scrolls normally: one click on the scrollbar track above the handle
+    (1400, 741) paged it to the top and brought the title into view — that
+    is issue-151-arena-heading-clipped.png.  Nothing is unreachable.
+  - Driven to BOTH extremes rather than derived from the handle arithmetic.
+    At the bottom extreme (handle flush at 776..1031) the pane ends with
+    `execution_eligible=false`, the record box's bottom border, and empty
+    pane.  Nothing exists below the card.  The scroll range past the card is
+    therefore phantom — word-wrapped QLabels over-reserving in sizeHint(),
+    not content held back.
+
+So at 1726 x 1032 the pane is ~30 px short of showing the section title and
+the card's last line at the same time.  Either one is reachable by scrolling;
+the CONCLUDED DUEL card itself fits whole in one frame, and there is nothing
+below it at any scroll position.  Not filed as a defect — the reviewer
+declined to, and it is outside issue #151's criteria.
+
+One half of the reviewer's observation is NOT reproduced or refuted here: the
+claim that wheel events over the pane propagate to the QTabBar and switch
+tabs.  The automation available in this session can click and type but cannot
+synthesise wheel events, so that was not tested.  Reported as untested rather
+than as working.
+
+REPRO (the seeded profile is left in place):
+
+  ./build/OpenTerminal.app/Contents/MacOS/OpenTerminal --profile finn151 &
+  ./build/openterminalcli --profile finn151 open kalshi
+  # Predictions screen -> ARENA tab. Expect: no ADVISOR & CANARY tab in the
+  # row, and the CONCLUDED DUEL (v5) card reading exactly STATE 1 above.
+  # Selecting BOT floats the "Kalshi BOT COCKPIT" window over the tab row;
+  # close it before capturing.
+
+
+TESTS
+-----
+tst_advisor_canary_presentation, ctest Test #121: 20 passed / 0 failed
+(18 cases; 12 pre-existing, 6 new). Full suite 138/138.
+
+Five neuters, one at a time, each rebuilt (Linking confirmed, zero compile
+errors) and restored to 20/20 between:
+
+  drop the last_update_ms<=0 arm of advisor_duel_presence
+      -> absent_or_future_dated_advisor_state_is_not_a_resurrection RED
+  out.skewed = false
+      -> absent_or_future_dated_advisor_state_is_not_a_resurrection RED
+  card.record blanked unless Archived
+      -> the_card_carries_the_whole_frozen_record_in_every_state RED
+  advisor_panel_reachable = false on LIVE AGAIN
+      -> a_restarted_advisor_loop_brings_the_panel_back RED
+  drop the manifest clause from the SCORING FROZEN line
+      -> the_scoring_freeze_note_references_the_seven_file_manifest RED
+
+Each turned exactly its own test red (19 passed / 1 failed every time).
