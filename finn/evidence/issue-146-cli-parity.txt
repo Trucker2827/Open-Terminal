@@ -1,0 +1,21 @@
+=== date -u ===
+Sun Jul 26 00:40:29 UTC 2026
+
+=== openterminalcli kalshi bot status (same evidence dir as the captured GUI session) ===
+BOT STALE · last decision 5m ago
+  chip STALE (amber) · stale after 120s
+  ledger /tmp/finn146-evidence/kalshi-bot-decisions.jsonl
+  stop file /tmp/finn146-evidence/kalshi-bot-stop.json (absent)
+
+=== newest ledger row timestamp ===
+<stdin>:9: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+1785026123727 2026-07-26T00:35:23.727000Z
+
+=== kalshi-bot-gate.json: verdict + criteria as the file states them ===
+verdict FAIL | evaluated True
+  min_settled_bids 4 >= 300 NOT MET
+  net_pnl_usd 1.35 > 0 MET
+  brier_beats_market 0.2240535707751851 < 0.242525 MET
+  max_drawdown_usd 1.55 <= 20 MET
+ledger {"settled_bids": 4, "wins": 3, "losses": 1, "net_pnl_usd": 1.35, "fees_usd": 0.17, "max_drawdown_usd": 1.55}
+params.max_drawdown_usd 20

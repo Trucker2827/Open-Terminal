@@ -1,6 +1,8 @@
 #include "screens/kalshi/KalshiScreen.h"
 #include "screens/kalshi/AdvisorCanaryPresentation.h"
 #include "screens/kalshi/ArenaContextPresentation.h"
+#include "screens/kalshi/BotCockpitPresentation.h"
+#include "screens/kalshi/KalshiBotCockpitView.h"
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
 #include "screens/kalshi/MarketRollPresentation.h"
 #include "screens/kalshi/CliLocator.h"
@@ -1269,6 +1271,19 @@ void KalshiScreen::build_ui() {
             .arg(QString::fromLatin1(kKalshiBotStopFile)));
     connect(bot_stop_button_, &QPushButton::clicked, this, &KalshiScreen::toggle_bot_kill_switch);
     bot_layout->addWidget(bot_stop_button_);
+    // The cockpit. Read-only like the rest of this page — it opens a scene over
+    // the same four evidence files and carries no control of any kind.
+    bot_cockpit_button_ = new QPushButton(QStringLiteral("OPEN THE BOT COCKPIT"), bot_page);
+    bot_cockpit_button_->setCursor(Qt::PointingHandCursor);
+    bot_cockpit_button_->setToolTip(
+        QStringLiteral("A live scene over the bot's own evidence: one falling column per contract "
+                       "%1 is predicting, one ignition per bid row in %2, the sealed gate's "
+                       "verdict, and the kill switch. It reads the same files this page reads and "
+                       "has no controls.")
+            .arg(QString::fromLatin1(kKalshiCalibratorFile),
+                 QString::fromLatin1(kKalshiBotLedgerFile)));
+    connect(bot_cockpit_button_, &QPushButton::clicked, this, &KalshiScreen::open_bot_cockpit);
+    bot_layout->addWidget(bot_cockpit_button_);
     add_bot_card(QStringLiteral("ARMED STATE & CAPS IN FORCE"),
                  QStringLiteral("Read from the live session status. An unreadable status is "
                                 "reported as unknown and fails closed; it is never shown as armed."),
@@ -4153,12 +4168,53 @@ void KalshiScreen::refresh_bot_panel() {
                 .arg(view.stopped ? colors::GREEN() : colors::RED(), colors::BG_RAISED()));
     }
 
+    if (bot_cockpit_button_) {
+        // Suggested exactly while the loop is running, decided by the scene
+        // model's own rule rather than by a second test on the state string.
+        const bool suggested = bot_cockpit_suggested(view);
+        bot_cockpit_button_->setText(suggested
+                                         ? QStringLiteral("BOT RUNNING — OPEN THE COCKPIT  →")
+                                         : QStringLiteral("OPEN THE BOT COCKPIT"));
+        const QString accent = view.mode_live ? colors::RED()
+                               : suggested    ? colors::CYAN()
+                                              : colors::BORDER_DIM();
+        bot_cockpit_button_->setStyleSheet(
+            QStringLiteral("QPushButton{color:%1;background:%2;border:%3px solid %1;padding:8px;"
+                           "font-weight:900;}")
+                .arg(suggested ? accent : colors::TEXT_SECONDARY(), colors::BG_RAISED())
+                .arg(suggested ? 2 : 1));
+    }
+
     bot_decisions_->clear();
     if (view.decisions.isEmpty())
         bot_decisions_->addItem(
             QStringLiteral("No decisions journaled yet — run `openterminalcli kalshi bot once`."));
     else
         bot_decisions_->addItems(view.decisions);
+}
+
+void KalshiScreen::open_bot_cockpit() {
+    // One cockpit at a time: re-clicking raises the open one rather than
+    // starting a second set of timers over the same files.
+    if (bot_cockpit_dialog_) {
+        bot_cockpit_dialog_->raise();
+        bot_cockpit_dialog_->activateWindow();
+        return;
+    }
+    auto* dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(QStringLiteral("Kalshi BOT COCKPIT"));
+    dialog->resize(1180, 760);
+    auto* layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto* view = new KalshiBotCockpitView(dialog);
+    // The scene reads the evidence itself; the only thing the screen supplies
+    // is the live-session poll it already holds, so the cockpit and the BOT
+    // panel are looking at the same armed state.
+    view->set_live_status_provider([this]() { return latest_legacy_live_status_; });
+    layout->addWidget(view);
+    bot_cockpit_dialog_ = dialog;
+    dialog->show();
 }
 
 void KalshiScreen::toggle_bot_kill_switch() {
