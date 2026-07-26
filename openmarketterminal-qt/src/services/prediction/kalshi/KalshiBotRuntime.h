@@ -32,12 +32,17 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QTimeZone>
+
+#include <functional>
 
 namespace openmarketterminal::services::prediction::kalshi_ns {
 
@@ -46,6 +51,84 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 /// rename cannot leave one reader looking at the old path.
 inline constexpr auto kKalshiBotDecisionLedgerFile = "kalshi-bot-decisions.jsonl";
 inline constexpr auto kKalshiBotStopFileName = "kalshi-bot-stop.json";
+
+// --- the record and its generations -----------------------------------------
+//
+// The decision ledger is not a rolling window over recent activity: it is the
+// sealed promotion gate's entire evidence, and it is the book's only memory of
+// what is resting, what is filled, and which contracts have already resolved.
+// So it rotates by NAMING a new generation and never by discarding one (issue
+// #152): `kalshi-bot-decisions.jsonl.1` is the OLDEST chunk, then `.2`, …, and
+// the base file is the newest, still being appended to.
+//
+// The writer (KalshiEvidenceEngine::append_jsonl) and every reader share the
+// four functions below, so a generation the writer creates cannot be one a
+// reader does not look at — the failure mode this issue is about was exactly
+// that split.
+
+/// The base path for generation 0 (the live file), `base.N` otherwise.
+inline QString kalshi_bot_generation_path(const QString& base_path, int generation) {
+    return generation <= 0 ? base_path : base_path + QStringLiteral(".%1").arg(generation);
+}
+
+/// The generation index `file_name` encodes relative to `base_name`, or -1 when
+/// it is not a generation of it. Only a bare positive integer suffix counts:
+/// `.jsonl.1` is generation 1, while `.jsonl.1.gz`, `.jsonl.old` and
+/// `.jsonl.01` are somebody else's files and are never read as the record.
+inline int kalshi_bot_generation_index(const QString& base_name, const QString& file_name) {
+    if (!file_name.startsWith(base_name + QLatin1Char('.'))) return -1;
+    const QString suffix = file_name.mid(base_name.size() + 1);
+    bool ok = false;
+    const int index = suffix.toInt(&ok);
+    if (!ok || index < 1 || suffix != QString::number(index)) return -1;
+    return index;
+}
+
+/// The record as it is on disk right now.
+struct KalshiBotLedgerRecord {
+    /// The files that exist, in CHRONOLOGICAL order: `.1`, `.2`, …, then the
+    /// base file last. `KalshiBotOrders::replay()` is order-dependent (a fill
+    /// only lands on an order it has already seen opened), so this order is a
+    /// contract, not a convenience.
+    QStringList paths;
+    /// Generations missing from the 1..newest run. Generations are only ever
+    /// created in order, so a gap is not a naming quirk — it is a chunk of the
+    /// record that something deleted, and the gate refuses to score it.
+    QStringList missing;
+    /// The highest generation index on disk; 0 when the ledger has never
+    /// rotated.
+    int newest_generation = 0;
+};
+
+inline KalshiBotLedgerRecord kalshi_bot_ledger_record(const QString& base_path) {
+    KalshiBotLedgerRecord record;
+    const QFileInfo base_info(base_path);
+    const QString base_name = base_info.fileName();
+    QSet<int> present;
+    const QDir dir(base_info.absolutePath());
+    const auto entries =
+        dir.entryList(QStringList{base_name + QStringLiteral(".*")}, QDir::Files);
+    for (const QString& name : entries) {
+        const int index = kalshi_bot_generation_index(base_name, name);
+        if (index < 0) continue;
+        present.insert(index);
+        record.newest_generation = qMax(record.newest_generation, index);
+    }
+    for (int i = 1; i <= record.newest_generation; ++i)
+        (present.contains(i) ? record.paths : record.missing)
+            .append(kalshi_bot_generation_path(base_path, i));
+    if (QFileInfo::exists(base_path)) record.paths.append(base_path);
+    return record;
+}
+
+/// Where the next rotation must move the live file: one past the NEWEST
+/// generation that exists, never the first free slot. Backfilling a gap would
+/// both put a newer chunk under an older name (breaking replay order) and heal
+/// the hole that tells the gate the record is incomplete.
+inline QString kalshi_bot_next_generation_path(const QString& base_path) {
+    return kalshi_bot_generation_path(base_path,
+                                      kalshi_bot_ledger_record(base_path).newest_generation + 1);
+}
 
 /// `kalshi bot run` and the launchd job (org.openterminal.kalshi-bot) tick on
 /// this interval. Two missed ticks is the staleness line: one skipped tick can
@@ -193,23 +276,43 @@ inline bool kalshi_bot_clear_stop_file(const QString& path) {
 }
 
 /// The tail of the decision ledger. Only the recent end is needed (freshness,
-/// signal trust, the latest decisions) and the file grows without bound, so a
-/// fixed window is read rather than the whole ledger.
+/// signal trust, the latest decisions) and the record grows without bound, so a
+/// fixed window is read rather than every generation.
+///
+/// The window spans generations backwards from the newest (issue #152): the
+/// tick right after a rotation leaves a base file holding one row, and a reader
+/// that only ever looked at the base file would report a running bot as `off`
+/// for the rest of the window it could not see.
 inline QJsonArray kalshi_bot_read_ledger_tail(const QString& path,
                                               qint64 window_bytes = 512LL * 1024) {
+    const KalshiBotLedgerRecord record = kalshi_bot_ledger_record(path);
+    QList<QByteArray> chunks;  // oldest first, so the rows come out in order
+    qint64 remaining = window_bytes;
+    for (qsizetype i = record.paths.size() - 1; i >= 0 && remaining > 0; --i) {
+        QFile file(record.paths.at(i));
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= 0) continue;
+        // Only the OLDEST file the window reaches into is seeked into mid-file;
+        // every newer generation is read whole from byte 0. Dropping a first
+        // line per file would silently eat a real row from each of them.
+        const bool truncated = file.size() > remaining;
+        if (truncated) file.seek(file.size() - remaining);
+        remaining -= file.size();
+        QByteArray bytes = file.readAll();
+        if (truncated) {
+            // A window that starts mid-file starts mid-line; that first
+            // fragment is dropped rather than parsed as a partial row.
+            const qsizetype newline = bytes.indexOf('\n');
+            bytes = newline < 0 ? QByteArray() : bytes.mid(newline + 1);
+        }
+        chunks.prepend(bytes);
+    }
     QJsonArray rows;
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= 0) return rows;
-    const bool truncated = file.size() > window_bytes;
-    if (truncated) file.seek(file.size() - window_bytes);
-    QList<QByteArray> lines = file.readAll().split('\n');
-    // A window that starts mid-file starts mid-line; that first fragment is
-    // dropped rather than parsed as a partial row.
-    if (truncated && !lines.isEmpty()) lines.removeFirst();
-    for (const QByteArray& line : lines) {
-        if (line.trimmed().isEmpty()) continue;
-        const QJsonDocument document = QJsonDocument::fromJson(line);
-        if (document.isObject()) rows.append(document.object());
+    for (const QByteArray& chunk : chunks) {
+        for (const QByteArray& line : chunk.split('\n')) {
+            if (line.trimmed().isEmpty()) continue;
+            const QJsonDocument document = QJsonDocument::fromJson(line);
+            if (document.isObject()) rows.append(document.object());
+        }
     }
     return rows;
 }
@@ -237,6 +340,50 @@ inline qint64 kalshi_bot_newest_ts_ms(const QJsonArray& rows) {
     qint64 newest = 0;
     for (const auto& value : rows) newest = qMax(newest, kalshi_bot_row_ts_ms(value.toObject()));
     return newest;
+}
+
+/// EVERY row of the record, oldest generation first — the one whole-record
+/// reader (issue #152). The tick's replay, the stopped tick's book and the gate
+/// all go through this, so none of them can be looking at a different record
+/// than the others.
+///
+/// `keep` filters rows as they are parsed, so a record of any size is never
+/// held in memory whole; an empty `keep` accepts everything.
+inline QJsonArray kalshi_bot_read_ledger(
+    const QString& base_path, const std::function<bool(const QJsonObject&)>& keep = {}) {
+    QJsonArray rows;
+    for (const QString& path : kalshi_bot_ledger_record(base_path).paths) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        while (!file.atEnd()) {
+            const QJsonDocument document = QJsonDocument::fromJson(file.readLine());
+            if (!document.isObject()) continue;
+            const QJsonObject row = document.object();
+            if (!keep || keep(row)) rows.append(row);
+        }
+    }
+    return rows;
+}
+
+/// The oldest dated row in the whole record, or 0 when it carries none. Rows
+/// are appended in time order, so this is the first dated row of the oldest
+/// generation that has one — read without loading the record.
+///
+/// This is the anchor the gate compares against what it has already published:
+/// a record whose oldest row postdates a settlement the gate has already scored
+/// is a record something has truncated.
+inline qint64 kalshi_bot_oldest_row_ts_ms(const QString& base_path) {
+    for (const QString& path : kalshi_bot_ledger_record(base_path).paths) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        while (!file.atEnd()) {
+            const QJsonDocument document = QJsonDocument::fromJson(file.readLine());
+            if (!document.isObject()) continue;
+            const qint64 ts = kalshi_bot_row_ts_ms(document.object());
+            if (ts > 0) return ts;
+        }
+    }
+    return 0;
 }
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns

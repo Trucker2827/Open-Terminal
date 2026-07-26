@@ -453,7 +453,8 @@ class TstKalshiBotLive : public QObject {
             settlements.append(pair.second);
         }
         const QJsonObject paper_verdict =
-            KalshiBotGate::evaluate(params, decisions, settlements, kNow);
+            KalshiBotGate::evaluate(params, decisions, settlements, kNow,
+                                    KalshiBotGate::RecordIntegrity::whole());
         const int paper_settled =
             paper_verdict.value(QStringLiteral("ledger")).toObject()
                 .value(QStringLiteral("settled_bids")).toInt();
@@ -465,7 +466,8 @@ class TstKalshiBotLive : public QObject {
             decisions.append(pair.first);
             settlements.append(pair.second);
         }
-        const QJsonObject mixed = KalshiBotGate::evaluate(params, decisions, settlements, kNow);
+        const QJsonObject mixed = KalshiBotGate::evaluate(
+            params, decisions, settlements, kNow, KalshiBotGate::RecordIntegrity::whole());
         const QJsonObject ledger = mixed.value(QStringLiteral("ledger")).toObject();
         QCOMPARE(ledger.value(QStringLiteral("settled_bids")).toInt(), paper_settled);
         QCOMPARE(ledger.value(QStringLiteral("net_pnl_usd")).toDouble(),

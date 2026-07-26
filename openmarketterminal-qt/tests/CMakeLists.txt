@@ -644,6 +644,15 @@ target_include_directories(tst_kalshi_bot_runtime PRIVATE ${CMAKE_SOURCE_DIR}/sr
 target_link_libraries(tst_kalshi_bot_runtime PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_runtime COMMAND tst_kalshi_bot_runtime)
 
+# The decision ledger's generations (issue #152): rotation names a new
+# generation and deletes none, the shared reader concatenates them oldest
+# first, and a resting order's exposure survives the rotation that used to
+# erase it. Drives the real append_jsonl → read → replay path over temp files.
+add_executable(tst_kalshi_bot_ledger_generations tst_kalshi_bot_ledger_generations.cpp)
+target_include_directories(tst_kalshi_bot_ledger_generations PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_bot_ledger_generations PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_bot_ledger_generations COMMAND tst_kalshi_bot_ledger_generations)
+
 # Sealed promotion gate (rung 2): preregistered criteria, mechanical verdict,
 # and a seal that is verified through the disk, not just in memory.
 add_executable(tst_kalshi_bot_gate tst_kalshi_bot_gate.cpp)
@@ -900,6 +909,16 @@ add_test(NAME e2e_kalshi_bot_kill_switch
 add_test(NAME e2e_kalshi_bot_live_refusal
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_live_refusal.sh)
+
+# Issue #152 — the decision ledger's generations, proved against the real
+# openterminalcli: `kalshi bot gate` reports the same ledger numbers before and
+# after the record is split into two generations, and refuses — non-zero, no
+# criteria, no numbers — a record with a hole in its generation sequence or one
+# whose oldest row postdates the settlement its own published verdict scored.
+# Offline, temp evidence dir; the gate only reads files.
+add_test(NAME e2e_kalshi_bot_ledger_rotation
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_ledger_rotation.sh)
 
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately

@@ -24,6 +24,8 @@ namespace {
 constexpr auto kSealField = "seal_sha256";
 constexpr auto kParamsEvent = "kalshi_bot_gate_params";
 constexpr auto kVerdictEvent = "kalshi_bot_gate";
+/// Where a refusal keeps the truncation anchor alive across publications.
+constexpr auto kAnchorField = "record_anchor_first_settled_ts_ms";
 
 /// Money is reported in whole cents, like the rest of the Kalshi ledger.
 double round_cents(double dollars) { return std::round(dollars * 100.0) / 100.0; }
@@ -42,17 +44,27 @@ QJsonObject criterion(const char* id, const QString& description, bool met) {
                        {QStringLiteral("met"), met}};
 }
 
-QJsonObject refusal(const char* verdict, const QString& reason, qint64 now_ms) {
+QJsonObject refusal(const char* verdict, const QString& reason, qint64 now_ms,
+                    qint64 carried_anchor_ms = 0) {
     // A refusal carries NO criteria and NO ledger numbers: the gate did not
     // evaluate, and an empty criteria array must not read as "nothing passed".
-    return QJsonObject{{QStringLiteral("schema"), 1},
-                       {QStringLiteral("event"), QString::fromLatin1(kVerdictEvent)},
-                       {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
-                       {QStringLiteral("ts"), iso(now_ms)},
-                       {QStringLiteral("mode"), QStringLiteral("paper")},
-                       {QStringLiteral("verdict"), QString::fromLatin1(verdict)},
-                       {QStringLiteral("evaluated"), false},
-                       {QStringLiteral("reason"), reason}};
+    QJsonObject out{{QStringLiteral("schema"), 1},
+                    {QStringLiteral("event"), QString::fromLatin1(kVerdictEvent)},
+                    {QStringLiteral("ts_ms"), static_cast<double>(now_ms)},
+                    {QStringLiteral("ts"), iso(now_ms)},
+                    {QStringLiteral("mode"), QStringLiteral("paper")},
+                    {QStringLiteral("verdict"), QString::fromLatin1(verdict)},
+                    {QStringLiteral("evaluated"), false},
+                    {QStringLiteral("reason"), reason}};
+    // The one thing a refusal DOES carry: the truncation anchor it was handed.
+    // This refusal is about to be written over the verdict file it came from,
+    // and an anchor that only lived in a scored `ledger` block would be erased
+    // by the first refusal — after which the next run would see no anchor and
+    // score the remainder of a record it had already refused. It is not a
+    // number about the current record; it is the earlier verdict's, echoed.
+    if (carried_anchor_ms > 0)
+        out.insert(QString::fromLatin1(kAnchorField), static_cast<double>(carried_anchor_ms));
+    return out;
 }
 
 } // namespace
@@ -193,28 +205,42 @@ QJsonValue KalshiBotGate::load_params_file(const QString& path) {
     return QJsonValue(false);
 }
 
+qint64 KalshiBotGate::published_anchor_ms(const QJsonObject& published_verdict) {
+    const QJsonValue scored = published_verdict.value(QStringLiteral("ledger"))
+                                  .toObject()
+                                  .value(QStringLiteral("first_settled_ts_ms"));
+    // `null` whenever the published verdict scored no settlement: that is "no
+    // anchor", not an anchor at the epoch.
+    if (is_number(scored)) return static_cast<qint64>(scored.toDouble());
+    const QJsonValue carried = published_verdict.value(QString::fromLatin1(kAnchorField));
+    return is_number(carried) ? static_cast<qint64>(carried.toDouble()) : 0;
+}
+
 QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
                                     const QJsonArray& decision_rows,
                                     const QJsonArray& settlement_rows,
-                                    qint64 now_ms) {
+                                    qint64 now_ms,
+                                    const RecordIntegrity& ledger_record) {
+    const qint64 anchor = ledger_record.published_first_settled_ts_ms;
+
     // --- the criteria must be trustworthy before the ledger is read at all --
     if (params_record.isUndefined() || params_record.isNull())
         return refusal(kVerdictNotPreregistered,
                        QStringLiteral("no sealed gate params exist — nothing was preregistered, so "
                                       "there is nothing to judge the paper record against"),
-                       now_ms);
+                       now_ms, anchor);
     if (!params_record.isObject())
         return refusal(kVerdictTampered,
                        QStringLiteral("the gate params file is not a JSON object — refusing to guess "
                                       "what was preregistered"),
-                       now_ms);
+                       now_ms, anchor);
 
     const QJsonObject record = params_record.toObject();
     if (!seal_valid(record))
         return refusal(kVerdictTampered,
                        QStringLiteral("the gate params failed their seal check — the preregistered "
                                       "criteria were altered (or never sealed) after preregistration"),
-                       now_ms);
+                       now_ms, anchor);
 
     // Re-validated on every read, not only at seal time: a correctly sealed
     // file that preregisters below-floor criteria is still not a gate.
@@ -225,7 +251,45 @@ QJsonObject KalshiBotGate::evaluate(const QJsonValue& params_record,
         return refusal(kVerdictTampered,
                        QStringLiteral("the sealed gate params are not valid criteria: %1")
                            .arg(parse_error),
-                       now_ms);
+                       now_ms, anchor);
+
+    // --- and the record must be the WHOLE record before it is scored --------
+    // Two independent checks, because they catch different truncations. The
+    // sequence check sees a generation deleted from the middle of the record;
+    // the anchor check sees a record whose oldest surviving row is newer than a
+    // settlement this gate has already scored, which is what a two-generation
+    // recycling rotation leaves behind — a perfectly contiguous record with its
+    // beginning gone.
+    if (!ledger_record.missing_generations.isEmpty()) {
+        QStringList missing = ledger_record.missing_generations;
+        missing.sort();
+        return refusal(kVerdictRecordIncomplete,
+                       QStringLiteral("the paper record is missing %1 of its generations [%2] — a "
+                                      "gap in the sequence is a deleted chunk of the ledger, and "
+                                      "the remainder is not the record these criteria judge")
+                           .arg(missing.size())
+                           .arg(missing.join(QStringLiteral(", "))),
+                       now_ms, anchor);
+    }
+    if (anchor > 0 && ledger_record.oldest_row_ts_ms <= 0)
+        return refusal(kVerdictRecordIncomplete,
+                       QStringLiteral("the paper record carries no dated row at all, yet this gate "
+                                      "has already published a verdict scoring a settlement at %1 "
+                                      "(%2) — the record it scored is gone")
+                           .arg(anchor)
+                           .arg(iso(anchor)),
+                       now_ms, anchor);
+    if (anchor > 0 && ledger_record.oldest_row_ts_ms > anchor)
+        return refusal(kVerdictRecordIncomplete,
+                       QStringLiteral("the paper record now begins at %1 (%2), after the first "
+                                      "settlement this gate has already scored at %3 (%4) — the "
+                                      "earlier record has been truncated, so the remainder is not "
+                                      "scored")
+                           .arg(ledger_record.oldest_row_ts_ms)
+                           .arg(iso(ledger_record.oldest_row_ts_ms))
+                           .arg(anchor)
+                           .arg(iso(anchor)),
+                       now_ms, anchor);
 
     const int min_settled = params.value(QStringLiteral("min_settled_bids")).toInt();
     const double min_net_pnl = params.value(QStringLiteral("min_net_pnl_usd")).toDouble();
