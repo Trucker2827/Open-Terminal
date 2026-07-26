@@ -231,8 +231,12 @@ inline QStringList kalshi_bot_funnel_lines(const KalshiBotFunnelFile& file, qint
     // never printed without the count it came from.
     const QJsonValue fill_rate = funnel.value(QStringLiteral("fill_rate"));
     lines << (is_number(fill_rate)
-                  ? QStringLiteral("FILL RATE · %1% — %2 of %3 bids filled; the other %4 are quotes "
-                                   "the market never came to")
+                  // "never observed to fill", not "the market never came to
+                  // them": rung-1 bids are booked as ASSUMED fills by the
+                  // replay, and this line must not read as contradicting the
+                  // FILL MODEL line below that discloses them.
+                  ? QStringLiteral("FILL RATE · %1% — %2 of %3 bids filled; the other %4 were never "
+                                   "observed to fill")
                         .arg(fill_rate.toDouble() * 100.0, 0, 'f', 1)
                         .arg(fills)
                         .arg(bids)
