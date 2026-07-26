@@ -1296,6 +1296,13 @@ void KalshiScreen::build_ui() {
                  QStringLiteral("Settled bids, net P&L after fees, and Brier vs the market — as "
                                 "published by the promotion gate, not recomputed here."),
                  bot_scoreboard_);
+    add_bot_card(QStringLiteral("CONVERSION FUNNEL & PACE TO THE GATE"),
+                 QStringLiteral("The scoreboard above is a numerator. This is its denominator: how "
+                                "many quotes became fills and settlements, at what rate, and how "
+                                "far the sealed gate is at that rate. Read from %1, published by "
+                                "the paper tick — not recomputed here.")
+                     .arg(QString::fromLatin1(kKalshiBotFunnelFile)),
+                 bot_funnel_);
     add_bot_card(QStringLiteral("PROMOTION GATE"),
                  QStringLiteral("The sealed gate's verdict and every criterion's numbers. No "
                                 "verdict file means no verdict is claimed."),
@@ -4151,8 +4158,8 @@ void KalshiScreen::refresh_live_automation_status() {
 }
 
 void KalshiScreen::refresh_bot_panel() {
-    if (!bot_status_ || !bot_armed_ || !bot_signal_ || !bot_scoreboard_ || !bot_gate_ ||
-        !bot_decisions_)
+    if (!bot_status_ || !bot_armed_ || !bot_signal_ || !bot_scoreboard_ || !bot_funnel_ ||
+        !bot_gate_ || !bot_decisions_)
         return;
     // latest_legacy_live_status_ is the `kalshi auto live status` object the
     // screen already polls; empty until the first poll answers, which the
@@ -4190,6 +4197,10 @@ void KalshiScreen::refresh_bot_panel() {
                                               : colors::TEXT_SECONDARY()));
     bot_scoreboard_->setText(view.scoreboard);
     bot_scoreboard_->setStyleSheet(card_style(colors::TEXT_SECONDARY()));
+    // One line per funnel sentence, exactly as the presenter (and therefore
+    // `kalshi bot status`) produced them. Nothing is reformatted here.
+    bot_funnel_->setText(view.funnel.join(QStringLiteral("\n")));
+    bot_funnel_->setStyleSheet(card_style(colors::TEXT_SECONDARY()));
     bot_gate_->setText(view.gate);
     bot_gate_->setStyleSheet(card_style(view.gate_pass ? colors::GREEN() : colors::TEXT_SECONDARY()));
 
