@@ -1,0 +1,56 @@
+Issue #153 · criterion 5 witness — the window shows the same lines as the CLI
+=============================================================================
+
+Build      : openmarketterminal-qt/build, binary mtime 2026-07-26 19:28:32
+GUI        : pid 76913, `OpenTerminal --profile finn153`, started 19:29:35
+             (a leftover pid 51208 --profile finn151 from iteration #151 was
+             also running; the window was identified by its TITLE, which
+             carries the profile name, NOT by `first process whose unix id is`,
+             which matched the WRONG instance here exactly as journalled)
+Evidence   : OPENTERMINAL_KALSHI_EVIDENCE_DIR=/tmp/finn153-gui — a COPY of the
+             operator's real evidence dir (kalshi-bot-decisions.jsonl,
+             kalshi-bot-gate-params.json 0444, kalshi-bot-gate.json). The
+             operator's own directory was never written to. The kill switch was
+             thrown in the copy BEFORE the tick, so the stopped path took no
+             venue action and did not sweep 55h of expired TTLs.
+
+Both surfaces read the SAME kalshi-bot-funnel.json, published by that tick.
+
+`openterminalcli kalshi bot status` (issue-153-cli-status-funnel-lines.txt):
+
+  FUNNEL · 304 bids -> 5 fills -> 4 settled · 0 resting now · canceled 288 TTL
+      / 2 edge gone / 0 market settled · 0 unconfirmed · as of 3m ago
+  FILL RATE · 1.6% - 5 of 304 bids filled; the other 299 were never observed to
+      fill · as of 3m ago
+  SETTLEMENT RATE · 1.72 settled per day - 4 settlements measured over 2.3d of
+      record · as of 3m ago
+  PACE TO THE SEALED GATE · 296 more settled bids needed of 300 · ~172 days at
+      the observed rate · as of 3m ago
+  FILL MODEL · rung6_conditional_mid - <the ledger's own fill_rule, verbatim>
+      · 9 bids predate the order lifecycle and are replayed as ASSUMED fills,
+      stating no fill_model of their own · as of 3m ago
+
+BOT panel, CONVERSION FUNNEL & PACE TO THE GATE card:
+  issue-153-bot-panel-funnel-top.png            — lines 1-2, directly beneath
+                                                  the PAPER SCOREBOARD card
+  issue-153-bot-panel-funnel-pace-and-gate.png  — lines 3-5, directly above the
+                                                  PROMOTION GATE card reading
+                                                  `min_settled_bids 4 >= 300
+                                                  NOT MET` — the numerator this
+                                                  issue gives a denominator to
+
+The two are character-for-character the same because they are the same
+function: `kalshi_bot_funnel_lines()` in KalshiBotFunnel.h. The panel unit test
+asserts `view.funnel == kalshi_bot_funnel_lines(file, now)`; the e2e asserts the
+CLI's human lines are the JSON's `funnel_lines` array. Neither surface derives
+a number of its own.
+
+Every line carries `· as of 3m ago` because the funnel file is older than two
+tick intervals (kKalshiBotStaleMs) — criterion 4's staleness rule, rendering in
+both places.
+
+Known, NOT introduced here: the `â` in the FILL MODEL line is on disk.
+KalshiBotOrders.cpp:291 writes a UTF-8 em-dash source literal through
+QString::fromLatin1(), so every fill row since rung 6 carries the mojibake.
+Criterion 4 requires printing the ledger's own value, so this renderer
+faithfully reproduces it. Filed separately rather than fixed here.

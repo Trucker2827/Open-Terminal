@@ -1,0 +1,5 @@
+  FUNNEL · 304 bids → 5 fills → 4 settled · 0 resting now · canceled 288 TTL / 2 edge gone / 0 market settled · 0 unconfirmed · as of 3m ago
+  FILL RATE · 1.6% — 5 of 304 bids filled; the other 299 were never observed to fill · as of 3m ago
+  SETTLEMENT RATE · 1.72 settled per day — 4 settlements measured over 2.3d of record · as of 3m ago
+  PACE TO THE SEALED GATE · 296 more settled bids needed of 300 · ~172 days at the observed rate · as of 3m ago
+  FILL MODEL · rung6_conditional_mid — paper: calibrator.json carries no book, so its market mid is the ask proxy â a resting limit fills only once an observed mid is at or through the limit, and then at the limit, never better; all-or-nothing, because nothing in the report could evidence a partial. A stated model, not a measured fill: it selects on the market having moved to the quote. · 9 bids predate the order lifecycle and are replayed as ASSUMED fills, stating no fill_model of their own · as of 3m ago
