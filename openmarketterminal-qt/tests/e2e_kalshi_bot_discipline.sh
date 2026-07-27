@@ -72,14 +72,16 @@ def contract(book):
     return entry
 
 json.dump({
-    "schema": 1,
+    "schema": 2,
     "event": "spot_calibrator",
     "advisory_only": True,
     "generated_at_ms": int(time.time() * 1000),
     "resolved_contracts": 371,
-    "training_samples": 500,
+    "scored_contracts": 244,
+    "training_observations": 12049,
     "brier_full": 0.1079,
-    "brier_market_baseline": 0.1083,
+    "brier_market_mid_raw": 0.1083,
+    "brier_market_trained_logit": 0.1101,
     "adds_value_over_market": trusted == "True",
     "predictions": {thin: contract(False), tight: contract(True)},
 }, open(path, "w"))

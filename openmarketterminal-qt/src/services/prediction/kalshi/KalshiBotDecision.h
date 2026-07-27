@@ -35,8 +35,9 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///   4. **The signal's trust is re-read live every call, and an untrusted
 ///      signal does not bid at all** (issue #165). `signal_trusted()` reads the
 ///      report's own `adds_value_over_market`, which the calibrator only sets
-///      true once its Brier beats the market baseline over its ≥100-sample gate
-///      (`spot_calibrator.py:289`), AND requires the track record that claim is
+///      true once its per-contract Brier beats the RAW MARKET MID over its
+///      ≥100-CONTRACT gate (`spot_calibrator.MIN_SCORED_CONTRACTS`, issue
+///      #171), AND requires the track record that claim is
 ///      made of to actually be present. When the signal fails that rule the
 ///      tick is a journaled PASS with `reason_code=SIGNAL_UNTRUSTED` — no
 ///      order, paper or otherwise. Rung 1 papered those bids and labelled them;
@@ -270,10 +271,14 @@ class KalshiBotDecision {
     ///
     /// True only when the calibrator claims to add value over the market AND
     /// the track record that claim is made of is actually in the report. The
-    /// claim's own sample floor is the calibrator's (`spot_calibrator.py:289`
-    /// requires ≥100 scored samples and `brier_full < brier_market_baseline`),
-    /// and is deliberately not restated here — one floor, in the process that
-    /// measures it. What IS restated is presence: this reads a file another
+    /// claim's own sample floor is the calibrator's (`build_report` requires
+    /// `scored_contracts >= MIN_SCORED_CONTRACTS` and
+    /// `brier_full < brier_market_mid_raw`), and is deliberately not restated
+    /// here — one floor, in the process that measures it. The presence check
+    /// names the raw mid rather than the trained one-feature logit on purpose:
+    /// the logit is a handicapped baseline, so a report carrying only it is
+    /// not carrying the record its claim is made of (issue #171).
+    /// What IS restated is presence: this reads a file another
     /// process rewrites every cycle, and a report asserting value while
     /// carrying no Brier at all is contradicting itself. Unmeasured is not
     /// trusted, the same way an unknown spread is not a free one.

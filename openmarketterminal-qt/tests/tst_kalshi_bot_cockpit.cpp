@@ -73,14 +73,16 @@ QJsonObject prediction(double p_yes, double mid, double sigma = 3.5) {
 
 QJsonObject calibrator_report(qint64 generated_at_ms, const QJsonObject& predictions,
                               bool adds_value = true) {
-    return QJsonObject{{"schema", 1},
+    return QJsonObject{{"schema", 2},
                        {"event", "spot_calibrator"},
                        {"advisory_only", true},
                        {"generated_at_ms", double(generated_at_ms)},
                        {"resolved_contracts", 537},
-                       {"training_samples", 500},
+                       {"scored_contracts", 318},
+                       {"training_observations", 15'702},
                        {"brier_full", 0.0698},
-                       {"brier_market_baseline", 0.0729},
+                       {"brier_market_mid_raw", 0.0729},
+                       {"brier_market_trained_logit", 0.0741},
                        {"adds_value_over_market", adds_value},
                        {"predictions", predictions}};
 }
@@ -632,8 +634,14 @@ class KalshiBotCockpitTest : public QObject {
         // brier_beats_market criterion is a different measure over different
         // contracts and sits three boxes away on the same scene.
         QCOMPARE(node->label, QStringLiteral("CALIBRATOR — ITS OWN TRACK RECORD"));
-        QVERIFY(node->value.contains(QStringLiteral("Brier 0.0698 vs market 0.0729")));
-        QVERIFY(node->value.contains(QStringLiteral("537 resolved")));
+        // Issue #171: the opponent is named (the RAW MID, not the gate's own
+        // settled bids), and the count beside the score is the Brier's actual
+        // denominator. `resolved_contracts` is a lifetime total; printing it
+        // here read as 537 contracts of evidence behind a score computed over
+        // a fraction of that.
+        QVERIFY(node->value.contains(QStringLiteral("Brier 0.0698 vs raw mid 0.0729")));
+        QVERIFY(node->value.contains(QStringLiteral("318 scored contracts")));
+        QVERIFY(!node->value.contains(QStringLiteral("537")));
         QVERIFY(node->value.contains(QStringLiteral("ADDS VALUE")));
 
         // A report with no track record is not scored as zero.
