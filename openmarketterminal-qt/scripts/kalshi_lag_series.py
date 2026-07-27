@@ -49,6 +49,21 @@ HONESTY RULES THIS FILE OBEYS.
     provenance (`source`, `series_row`) and the two facts already implied by
     the ticker string (`book_sided`, `seconds_to_close`).
 
+WHY THERE IS NO BACKFILL BEYOND THE LIVE ROTATIONS. This series can only start
+from what is still on disk when it first runs, and no other evidence log can
+honestly extend it. The one long-retained log carrying a `yes_bid`/`yes_ask`
+pair for these markets, `kalshi-crypto-decisions.jsonl` (~10 days), was measured
+against the ticker feed over their overlap: of 1,977 rows only 46 (2.3%) match
+the recorded top of book, and the mismatch is systematic — its `yes_bid` is
+`ask - 0.005`, i.e. the MIDPOINT, not a bid. Distilling it into a "top-of-book"
+series would fabricate a book. `kalshi-venue-features.jsonl` (16 days) fails the
+same way and was measured too: over 1,805 overlapping rows its
+`kalshi_yes_price` equals the recorded bid 75 times (4.2%) and `1 -
+kalshi_no_price` equals the recorded ask 88 times (4.9%) — it carries a midpoint
+and its complement, so pairing the two into a spread would be exactly the
+`1 - no_bid` completion this file refuses to perform. The window therefore grows
+forwards only, at the rate the job runs.
+
 SCHEMA. Retained rows are written in the SOURCE logs' own schemas (a field
 subset plus the provenance keys above), so every existing reader works on them
 unchanged — `scripts/research/kalshi_edge_common.read_jsonl` treats the series
