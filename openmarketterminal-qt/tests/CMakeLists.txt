@@ -54,6 +54,18 @@ add_test(NAME test_alpha_arena
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_alpha_arena.py -v)
 
+# Issue #170 — the retained paired spot + top-of-book series: what it keeps
+# (threshold contracts near expiry, on change plus a heartbeat shorter than
+# q1's staleness bound), what it refuses to invent (a one-sided book stays
+# one-sided; a rotated-away span is a recorded gap), that its retention is by
+# TIME and its manifest states span/rows/cadence without a rescan — and that
+# q1_quote_lag.py, byte-for-byte unchanged, reports a wider paired window and
+# more detected events once the series holds history the live log has dropped.
+# Offline, temp evidence dir; the compactor opens existing evidence read-only.
+add_test(NAME test_kalshi_lag_series
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_lag_series.py -v)
+
 # Issue #86 — openterminal_paths as single source of truth for evidence/data
 # paths: default values, env-override semantics, and a sweep asserting no
 # script outside the module (and the frozen v5 duel files) hardcodes them.
