@@ -37,7 +37,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "..",
                                                 "openmarketterminal-qt", "scripts")))
 from openterminal_paths import evidence_dir  # noqa: E402
-import kalshi_lag_series  # noqa: E402  (same directory; defines the series only)
+# From the same directory as openterminal_paths above. Imported for the series'
+# paths and constants only — nothing here runs the compactor, so reading
+# evidence still writes nothing.
+import kalshi_lag_series  # noqa: E402
 
 # Kalshi rotates each evidence log at ~67 MB into a single `.1` sibling, which
 # the next rotation overwrites. Retention is therefore a property of the file's
