@@ -5,6 +5,7 @@
 #include "services/prediction/kalshi/KalshiBotOrders.h"
 
 #include <QDateTime>
+#include <QMap>
 #include <QSet>
 #include <QTimeZone>
 
@@ -59,6 +60,15 @@ KalshiBotFunnel KalshiBotFunnel::measure(const QJsonArray& rows, const QJsonValu
 
     QSet<QString> settled_positions;
     QSet<QString> models;
+    // Keyed by `quote_style`, and a QMap rather than a QHash because the
+    // published order is part of the answer: whichever way the rows arrive, the
+    // file and the rendered sentence must come out the same (#158's defect was
+    // exactly an order-dependent disclosure).
+    struct Tier {
+        int fills = 0;
+        QSet<QString> rules;
+    };
+    QMap<QString, Tier> tiers;
     for (const auto& value : rows) {
         const QJsonObject row = value.toObject();
         // Honesty rule 3, and the same filter (for the same reason) that lives
@@ -98,11 +108,7 @@ KalshiBotFunnel KalshiBotFunnel::measure(const QJsonArray& rows, const QJsonValu
         }
 
         const QString model = str(row, "fill_model");
-        if (!model.isEmpty()) {
-            models.insert(model);
-            const QString rule = str(row, "fill_rule");
-            if (!rule.isEmpty()) funnel.fill_rule = rule;
-        }
+        if (!model.isEmpty()) models.insert(model);
 
         const QString action = str(row, "action");
         if (action == QStringLiteral("bid")) {
@@ -114,6 +120,17 @@ KalshiBotFunnel KalshiBotFunnel::measure(const QJsonArray& rows, const QJsonValu
             if (!row.contains(QStringLiteral("order_state"))) ++funnel.legacy_assumed_fill_bids;
         } else if (action == QStringLiteral("fill")) {
             ++funnel.fills;
+            // Bucketed by the tier the DECIDING tick journaled on the order,
+            // never by matching the rule's prose. Every fill lands in exactly
+            // one bucket — including one carrying no rule at all — so the
+            // per-tier counts sum to `fills` and cannot under-report a tier by
+            // omitting the rows that stated nothing.
+            const QString style = str(row, "quote_style");
+            Tier& tier = tiers[style.isEmpty() ? QString::fromLatin1(kKalshiBotFunnelUnstatedTier)
+                                               : style];
+            ++tier.fills;
+            const QString rule = str(row, "fill_rule");
+            if (!rule.isEmpty()) tier.rules.insert(rule);
         } else if (action == QStringLiteral("cancel")) {
             const QString reason = str(row, "reason_code");
             if (reason == QLatin1String(KalshiBotOrders::kCanceledTtl))
@@ -128,6 +145,20 @@ KalshiBotFunnel KalshiBotFunnel::measure(const QJsonArray& rows, const QJsonValu
     }
     funnel.fill_models = QStringList(models.constBegin(), models.constEnd());
     funnel.fill_models.sort();
+
+    // One entry per tier, in key order. A tier whose rows disagreed about the
+    // rule quotes NO sentence: picking one of two contradicting disclosures is
+    // the last-writer bug this whole structure replaces, one level down.
+    for (auto it = tiers.constBegin(); it != tiers.constEnd(); ++it) {
+        FillRule entry;
+        entry.quote_style = it.key();
+        entry.fills = it.value().fills;
+        if (it.value().rules.size() == 1)
+            entry.rule = *it.value().rules.constBegin();
+        else if (it.value().rules.size() > 1)
+            entry.rules_disagree = true;
+        funnel.fill_rules.append(entry);
+    }
 
     // One authority for "what is still working": the book replay the tick and
     // the exposure sum already use, over the same rows.
@@ -197,7 +228,19 @@ QJsonObject KalshiBotFunnel::to_json(qint64 now_ms) const {
         {QStringLiteral("last_ts_ms"), static_cast<double>(last_ts_ms)},
         {QStringLiteral("span_ms"), static_cast<double>(span_ms)},
         {QStringLiteral("fill_models"), QJsonArray::fromStringList(fill_models)}};
-    if (!fill_rule.isEmpty()) out.insert(QStringLiteral("fill_rule"), fill_rule);
+    // One disclosure per tier, keyed by the tier. A missing `rule` is a MISSING
+    // KEY, exactly like every other absent number here: a tier whose rows
+    // carried no sentence, or two contradicting ones, publishes no sentence.
+    if (!fill_rules.isEmpty()) {
+        QJsonObject rules;
+        for (const FillRule& tier : fill_rules) {
+            QJsonObject entry{{QStringLiteral("fills"), tier.fills}};
+            if (!tier.rule.isEmpty()) entry.insert(QStringLiteral("rule"), tier.rule);
+            if (tier.rules_disagree) entry.insert(QStringLiteral("rules_disagree"), true);
+            rules.insert(tier.quote_style, entry);
+        }
+        out.insert(QStringLiteral("fill_rules"), rules);
+    }
     // Absent is an ABSENT KEY. A reader that finds no `fill_rate` has nothing
     // to print; a 0.0 would read as "nothing ever fills", which is a different
     // and unsupported claim.

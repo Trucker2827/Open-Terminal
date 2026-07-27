@@ -78,22 +78,29 @@ first = now - span
 step = span // 39
 rule = ("paper: calibrator.json carries no book, so its market mid is the ask proxy — a resting "
         "limit fills only once an observed mid is at or through the limit")
+# The crossing tier (#158) states the OPPOSITE inference over the same ledger,
+# so one of the six fills is priced by it: the funnel has to publish one rule
+# per tier, and a scalar would have published whichever row came last.
+cross_rule = ("paper, crossing tier: this order was quoted AT the side's observed ask, so the "
+              "fill model's condition was already satisfied by the book that priced it")
 rows = []
 for i in range(40):
     ts = first + i * step
     ticker = f"KXBTC15M-E2E{i}"
     pid = f"{ticker}@{ts}"
+    crossed = i == 0
+    tier = "cross" if crossed else "rest"
     rows.append({"event": "kalshi_bot_decision", "ts_ms": ts, "mode": "paper",
                  "ticker": ticker, "action": "bid", "reason_code": "EDGE_CLEARS_THRESHOLD",
                  "calibrated_p": 0.75, "market_mid": 0.50, "side": "YES", "price": 0.50,
-                 "contracts": 4, "stake_usd": 2.0, "fee_usd": 0.07,
+                 "contracts": 4, "stake_usd": 2.0, "fee_usd": 0.07, "quote_style": tier,
                  "order_state": "resting", "ttl_ms": 120000, "position_id": pid})
     if i < 6:
         rows.append({"event": "kalshi_bot_decision", "ts_ms": ts + 1, "mode": "paper",
                      "ticker": ticker, "action": "fill", "reason_code": "FILLED_AT_LIMIT",
                      "position_id": pid, "contracts": 4, "price": 0.50, "fee_usd": 0.07,
                      "order_state": "filled", "fill_model": "rung6_conditional_mid",
-                     "fill_rule": rule})
+                     "quote_style": tier, "fill_rule": cross_rule if crossed else rule})
         if i < 4:
             won = i % 3 != 2
             rows.append({"event": "kalshi_bot_paper_settlement", "ts_ms": ts + 2,
@@ -137,6 +144,18 @@ assert funnel["gate_required"] == 300, funnel["gate_required"]
 assert funnel["settled_remaining"] == 296, funnel["settled_remaining"]
 assert 140 < funnel["days_to_gate_at_observed_rate"] < 160, funnel
 assert funnel["fill_models"] == ["rung6_conditional_mid"], funnel["fill_models"]
+# One disclosure per quoting tier, keyed by the tier the deciding row journaled
+# (#158). A single string here would state one tier's sentence over both, and
+# which one it stated would depend on which fill row came last in the ledger.
+rules = funnel["fill_rules"]
+assert sorted(rules) == ["cross", "rest"], rules
+assert rules["cross"]["fills"] == 1, rules
+assert rules["rest"]["fills"] == 5, rules
+assert rules["cross"]["fills"] + rules["rest"]["fills"] == funnel["fills"], (rules, funnel["fills"])
+assert rules["cross"]["rule"] != rules["rest"]["rule"], rules
+assert "crossing tier" in rules["cross"]["rule"], rules
+assert "crossing tier" not in rules["rest"]["rule"], rules
+assert "fill_rule" not in funnel, "a scalar rule survived beside the keyed ones"
 assert funnel["span_ms"] > 47 * 3600 * 1000, funnel["span_ms"]
 assert funnel["rows_read"] > 80, funnel["rows_read"]
 PY
@@ -156,6 +175,12 @@ grep -q "296 more settled bids needed of 300" "$HELPERS/status.txt" ||
     fail "the pace to the sealed gate is missing"
 grep -q "FILL MODEL · rung6_conditional_mid" "$HELPERS/status.txt" ||
     fail "the fill model the record was selected by is not named"
+grep -q "cross (1 fill)" "$HELPERS/status.txt" ||
+    fail "the crossing tier's disclosure is not stated over the fill it priced"
+grep -q "rest (5 fills)" "$HELPERS/status.txt" ||
+    fail "the passive tier's disclosure is not stated over the fills it priced"
+grep -q "crossing tier" "$HELPERS/status.txt" ||
+    fail "the crossing sentence never reached the screen"
 
 "$CLI" --json kalshi bot status > "$HELPERS/status.json" ||
     fail "--json kalshi bot status exited non-zero"

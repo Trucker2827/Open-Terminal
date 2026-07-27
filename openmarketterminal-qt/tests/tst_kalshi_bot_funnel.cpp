@@ -24,6 +24,7 @@
 //      line and NO digits, and a file older than two tick intervals carries its
 //      age on every line.
 
+#include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotFunnel.h"
 #include "services/prediction/kalshi/KalshiBotGate.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
@@ -38,12 +39,14 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotFunnel;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotFunnelFile;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotGate;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotOrders;
 using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_funnel_lines;
 using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_read_funnel_file;
+using openmarketterminal::services::prediction::kalshi_ns::kKalshiBotFunnelUnstatedTier;
 using openmarketterminal::services::prediction::kalshi_ns::kKalshiBotStaleMs;
 
 namespace {
@@ -67,19 +70,27 @@ QJsonObject bid_row(qint64 ts_ms, const QString& id, const QString& ticker = QSt
                        {QStringLiteral("order_state"), QStringLiteral("resting")}};
 }
 
-QJsonObject fill_row(qint64 ts_ms, const QString& id) {
-    return QJsonObject{{QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
-                       {QStringLiteral("ts_ms"), static_cast<double>(ts_ms)},
-                       {QStringLiteral("mode"), QStringLiteral("paper")},
-                       {QStringLiteral("action"), QStringLiteral("fill")},
-                       {QStringLiteral("reason_code"), QString::fromLatin1(KalshiBotOrders::kFilledAtLimit)},
-                       {QStringLiteral("position_id"), id},
-                       {QStringLiteral("ticker"), QStringLiteral("KX")},
-                       {QStringLiteral("contracts"), 3},
-                       {QStringLiteral("price"), 0.67},
-                       {QStringLiteral("order_state"), QStringLiteral("filled")},
-                       {QStringLiteral("fill_model"), QString::fromLatin1(KalshiBotOrders::kFillModel)},
-                       {QStringLiteral("fill_rule"), QString::fromLatin1(KalshiBotOrders::kFillRule)}};
+/// A fill row as `KalshiBotOrders::reconcile()` writes one. `quote_style` is the
+/// tier that priced the order and `rule` the disclosure it carries; the defaults
+/// are a row that names no tier and states the passive sentence, which is every
+/// fill written before #158. A null `rule` is a row that discloses nothing.
+QJsonObject fill_row(qint64 ts_ms, const QString& id, const char* quote_style = nullptr,
+                     const char* rule = KalshiBotOrders::kFillRule) {
+    QJsonObject row{{QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+                    {QStringLiteral("ts_ms"), static_cast<double>(ts_ms)},
+                    {QStringLiteral("mode"), QStringLiteral("paper")},
+                    {QStringLiteral("action"), QStringLiteral("fill")},
+                    {QStringLiteral("reason_code"), QString::fromLatin1(KalshiBotOrders::kFilledAtLimit)},
+                    {QStringLiteral("position_id"), id},
+                    {QStringLiteral("ticker"), QStringLiteral("KX")},
+                    {QStringLiteral("contracts"), 3},
+                    {QStringLiteral("price"), 0.67},
+                    {QStringLiteral("order_state"), QStringLiteral("filled")},
+                    {QStringLiteral("fill_model"), QString::fromLatin1(KalshiBotOrders::kFillModel)}};
+    if (rule != nullptr) row.insert(QStringLiteral("fill_rule"), QString::fromLatin1(rule));
+    if (quote_style != nullptr)
+        row.insert(QStringLiteral("quote_style"), QString::fromLatin1(quote_style));
+    return row;
 }
 
 QJsonObject cancel_row(qint64 ts_ms, const QString& id, const char* reason) {
@@ -142,6 +153,25 @@ QJsonValue sealed_params(const QString& dir, int min_settled = 300) {
                                            {QStringLiteral("max_drawdown_usd"), 5.0}},
                                kNow - 10 * kDay, &error);
     return KalshiBotGate::load_params_file(path);
+}
+
+/// A record holding one PASSIVE fill and one CROSSING fill — the shape a single
+/// `fill_rule` string had no honest answer for (#158 round 2). `cross_first`
+/// swaps which tier's pair ARRIVES first; every row keeps its own timestamp, so
+/// nothing but the arrival order differs between the two.
+QJsonArray mixed_tier_record(bool cross_first) {
+    QJsonArray rest;
+    rest.append(bid_row(kNow - kDay, QStringLiteral("rest1")));
+    rest.append(fill_row(kNow - kDay + 1, QStringLiteral("rest1"), KalshiBotDecision::kQuoteRest));
+    QJsonArray cross;
+    cross.append(bid_row(kNow - kHour, QStringLiteral("cross1")));
+    cross.append(fill_row(kNow - kHour + 1, QStringLiteral("cross1"),
+                          KalshiBotDecision::kQuoteCross, KalshiBotOrders::kCrossFillRule));
+
+    QJsonArray rows;
+    for (const auto& value : cross_first ? cross : rest) rows.append(value);
+    for (const auto& value : cross_first ? rest : cross) rows.append(value);
+    return rows;
 }
 
 bool has_digit(const QString& text) {
@@ -370,7 +400,158 @@ class TestKalshiBotFunnel : public QObject {
         const KalshiBotFunnel funnel = KalshiBotFunnel::measure(record(4, 2, 0), {});
         QCOMPARE(funnel.fill_models,
                  QStringList{QString::fromLatin1(KalshiBotOrders::kFillModel)});
-        QCOMPARE(funnel.fill_rule, QString::fromLatin1(KalshiBotOrders::kFillRule));
+        // `record()`'s fills predate #158 and journal no tier, so the rule they
+        // do carry is stated under the tier they DON'T: `unstated`, never
+        // `rest`. (The keying itself is pinned below.)
+        QCOMPARE(funnel.fill_rules.size(), 1);
+        QCOMPARE(funnel.fill_rules.at(0).quote_style,
+                 QString::fromLatin1(kKalshiBotFunnelUnstatedTier));
+        QCOMPARE(funnel.fill_rules.at(0).rule, QString::fromLatin1(KalshiBotOrders::kFillRule));
+        QCOMPARE(funnel.fill_rules.at(0).fills, 2);
+    }
+
+    // --- #158: two quoting tiers, two disclosures, one record ----------------
+
+    void a_mixed_tier_record_publishes_one_rule_per_tier() {
+        // The defect: `fill_rule` was a scalar written by every fill row in
+        // turn, so a record holding a passive fill AND a crossing fill
+        // published whichever came last — and the passive sentence ("its
+        // market mid is the ask proxy … it selects on the market having moved
+        // to the quote") is false of every crossing fill.
+        const KalshiBotFunnel funnel = KalshiBotFunnel::measure(mixed_tier_record(false), {});
+        QCOMPARE(funnel.fills, 2);
+        QCOMPARE(funnel.fill_rules.size(), 2);
+
+        // Keyed by the tier the deciding tick journaled, in key order — the
+        // ledger's order is not an input to this.
+        QCOMPARE(funnel.fill_rules.at(0).quote_style,
+                 QString::fromLatin1(KalshiBotDecision::kQuoteCross));
+        QCOMPARE(funnel.fill_rules.at(0).rule,
+                 QString::fromLatin1(KalshiBotOrders::kCrossFillRule));
+        QCOMPARE(funnel.fill_rules.at(0).fills, 1);
+        QCOMPARE(funnel.fill_rules.at(1).quote_style,
+                 QString::fromLatin1(KalshiBotDecision::kQuoteRest));
+        QCOMPARE(funnel.fill_rules.at(1).rule, QString::fromLatin1(KalshiBotOrders::kFillRule));
+        QCOMPARE(funnel.fill_rules.at(1).fills, 1);
+
+        // The published file carries both, each under its own tier.
+        const QJsonObject published_rules =
+            funnel.to_json(kNow).value(QStringLiteral("fill_rules")).toObject();
+        QCOMPARE(published_rules.keys(),
+                 QStringList({QString::fromLatin1(KalshiBotDecision::kQuoteCross),
+                              QString::fromLatin1(KalshiBotDecision::kQuoteRest)}));
+        QCOMPARE(published_rules.value(QString::fromLatin1(KalshiBotDecision::kQuoteCross))
+                     .toObject()
+                     .value(QStringLiteral("rule"))
+                     .toString(),
+                 QString::fromLatin1(KalshiBotOrders::kCrossFillRule));
+        QCOMPARE(published_rules.value(QString::fromLatin1(KalshiBotDecision::kQuoteRest))
+                     .toObject()
+                     .value(QStringLiteral("rule"))
+                     .toString(),
+                 QString::fromLatin1(KalshiBotOrders::kFillRule));
+        // No scalar survives beside them: one string over a mixed record is
+        // the bug, and a reader must not be able to find one.
+        QVERIFY(!funnel.to_json(kNow).contains(QStringLiteral("fill_rule")));
+
+        // And the operator reads BOTH sentences, each next to its tier.
+        const QString line = kalshi_bot_funnel_lines(published(funnel, kNow), kNow).last();
+        QVERIFY(line.contains(QString::fromLatin1(KalshiBotOrders::kCrossFillRule)));
+        QVERIFY(line.contains(QString::fromLatin1(KalshiBotOrders::kFillRule)));
+        QVERIFY(line.contains(QStringLiteral("cross (1 fill)")));
+        QVERIFY(line.contains(QStringLiteral("rest (1 fill)")));
+    }
+
+    void which_rule_is_published_never_depends_on_row_order() {
+        // The reviewer's own measurement: the same two fills, the crossing pair
+        // first instead of second, used to swap the published sentence.
+        const KalshiBotFunnel first = KalshiBotFunnel::measure(mixed_tier_record(false), {});
+        const KalshiBotFunnel second = KalshiBotFunnel::measure(mixed_tier_record(true), {});
+        QCOMPARE(second.fills, first.fills);
+        QCOMPARE(second.to_json(kNow), first.to_json(kNow));
+        QCOMPARE(kalshi_bot_funnel_lines(published(second, kNow), kNow),
+                 kalshi_bot_funnel_lines(published(first, kNow), kNow));
+    }
+
+    void every_fill_is_counted_under_exactly_one_tier() {
+        // A per-tier count that only counted the rows carrying a rule would
+        // under-report the record — the same defect class one level down. A
+        // fill that discloses nothing is still a fill, and is still SOMEWHERE.
+        QJsonArray rows = mixed_tier_record(false);
+        rows.append(bid_row(kNow - kHour + 10, QStringLiteral("cross2")));
+        rows.append(fill_row(kNow - kHour + 11, QStringLiteral("cross2"),
+                             KalshiBotDecision::kQuoteCross, KalshiBotOrders::kCrossFillRule));
+        rows.append(bid_row(kNow - kHour + 20, QStringLiteral("mute")));
+        rows.append(fill_row(kNow - kHour + 21, QStringLiteral("mute"), nullptr, nullptr));
+
+        const KalshiBotFunnel funnel = KalshiBotFunnel::measure(rows, {});
+        QCOMPARE(funnel.fills, 4);
+        int counted = 0;
+        for (const auto& tier : funnel.fill_rules) counted += tier.fills;
+        QCOMPARE(counted, funnel.fills);
+        QCOMPARE(funnel.fill_rules.size(), 3);
+        QCOMPARE(funnel.fill_rules.at(0).fills, 2);   // cross
+        QCOMPARE(funnel.fill_rules.at(1).fills, 1);   // rest
+        // The silent one: counted, and quoted no sentence it did not carry.
+        QCOMPARE(funnel.fill_rules.at(2).quote_style,
+                 QString::fromLatin1(kKalshiBotFunnelUnstatedTier));
+        QCOMPARE(funnel.fill_rules.at(2).fills, 1);
+        QVERIFY(funnel.fill_rules.at(2).rule.isEmpty());
+        QVERIFY(!funnel.to_json(kNow)
+                     .value(QStringLiteral("fill_rules"))
+                     .toObject()
+                     .value(QString::fromLatin1(kKalshiBotFunnelUnstatedTier))
+                     .toObject()
+                     .contains(QStringLiteral("rule")));
+        QVERIFY(kalshi_bot_funnel_lines(published(funnel, kNow), kNow)
+                    .last()
+                    .contains(QStringLiteral("state no fill_rule of their own")));
+    }
+
+    void a_tier_whose_rows_disagree_quotes_neither_sentence() {
+        // Nothing this codebase writes can do this — the sentence is a function
+        // of the tier — so it means a hand-edited or a future record. Picking
+        // one of two contradicting disclosures is exactly the last-writer bug,
+        // so the tier states that they disagree and quotes no sentence at all.
+        QJsonArray rows;
+        rows.append(bid_row(kNow - kDay, QStringLiteral("a")));
+        rows.append(fill_row(kNow - kDay + 1, QStringLiteral("a"), KalshiBotDecision::kQuoteRest));
+        rows.append(bid_row(kNow - kHour, QStringLiteral("b")));
+        rows.append(fill_row(kNow - kHour + 1, QStringLiteral("b"), KalshiBotDecision::kQuoteRest,
+                             "paper: a different sentence entirely"));
+
+        const KalshiBotFunnel funnel = KalshiBotFunnel::measure(rows, {});
+        QCOMPARE(funnel.fill_rules.size(), 1);
+        QCOMPARE(funnel.fill_rules.at(0).fills, 2);
+        QVERIFY(funnel.fill_rules.at(0).rules_disagree);
+        QVERIFY(funnel.fill_rules.at(0).rule.isEmpty());
+        const QJsonObject entry = funnel.to_json(kNow)
+                                      .value(QStringLiteral("fill_rules"))
+                                      .toObject()
+                                      .value(QString::fromLatin1(KalshiBotDecision::kQuoteRest))
+                                      .toObject();
+        QVERIFY(!entry.contains(QStringLiteral("rule")));
+        QVERIFY(entry.value(QStringLiteral("rules_disagree")).toBool());
+        const QString line = kalshi_bot_funnel_lines(published(funnel, kNow), kNow).last();
+        QVERIFY(line.contains(QStringLiteral("DIFFERENT fill rules")));
+        QVERIFY(!line.contains(QString::fromLatin1(KalshiBotOrders::kFillRule)));
+    }
+
+    void a_fill_that_states_no_tier_is_never_relabelled_as_one() {
+        // Every fill on the operator's record predates #158. They were in fact
+        // passive — but the ROW does not say so, and the funnel must not fill
+        // that in. The sentence they carry is still printed; the tier is not
+        // invented.
+        const KalshiBotFunnel funnel = KalshiBotFunnel::measure(record(4, 2, 0), {});
+        const QJsonObject rules =
+            funnel.to_json(kNow).value(QStringLiteral("fill_rules")).toObject();
+        QCOMPARE(rules.keys(), QStringList{QString::fromLatin1(kKalshiBotFunnelUnstatedTier)});
+        QVERIFY(!rules.contains(QString::fromLatin1(KalshiBotDecision::kQuoteRest)));
+        QVERIFY(!rules.contains(QString::fromLatin1(KalshiBotDecision::kQuoteCross)));
+        const QString line = kalshi_bot_funnel_lines(published(funnel, kNow), kNow).last();
+        QVERIFY(line.contains(QStringLiteral("unstated (2 fills)")));
+        QVERIFY(line.contains(QString::fromLatin1(KalshiBotOrders::kFillRule)));
+        QVERIFY(!line.contains(QString::fromLatin1(KalshiBotOrders::kCrossFillRule)));
     }
 
     void a_rung1_bid_is_an_assumed_fill_and_says_so() {

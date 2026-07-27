@@ -422,6 +422,11 @@ class TestKalshiBotOrders : public QObject {
         QCOMPARE(field(crossing_row, "fill_rule"),
                  QString::fromLatin1(KalshiBotOrders::kCrossFillRule));
         QVERIFY(field(crossing_row, "fill_rule") != QString::fromLatin1(KalshiBotOrders::kFillRule));
+        // The KEY the sentence was selected by, carried on the fill row beside
+        // it. Without it the funnel could only bucket these fills by matching
+        // the prose — and a reader of the row alone could not check the
+        // selection at all.
+        QCOMPARE(field(crossing_row, "quote_style"), QStringLiteral("cross"));
         // Prose only: the mechanics are the ones this rung already had. A
         // cross still fills AT its own limit, under rung 6's model.
         QCOMPARE(crossing_row.value(QStringLiteral("price")).toDouble(), 0.84);
@@ -439,6 +444,7 @@ class TestKalshiBotOrders : public QObject {
                  QString::fromLatin1(KalshiBotOrders::kFillRule));
         QVERIFY(field(row_at(rest_fill, 0), "fill_rule") !=
                 QString::fromLatin1(KalshiBotOrders::kCrossFillRule));
+        QCOMPARE(field(row_at(rest_fill, 0), "quote_style"), QStringLiteral("rest"));
 
         // And a rung-6 row written BEFORE #158 names no tier at all: it was
         // passive, because the crossing tier did not exist to write it.
@@ -451,6 +457,11 @@ class TestKalshiBotOrders : public QObject {
         QCOMPARE(legacy_fill.size(), 1);
         QCOMPARE(field(row_at(legacy_fill, 0), "fill_rule"),
                  QString::fromLatin1(KalshiBotOrders::kFillRule));
+        // ...and states none on its fill either. The funnel counts it under
+        // `unstated` rather than under `rest`: the row was passive, but it
+        // never said so, and that is the difference between reading a ledger
+        // and completing it.
+        QVERIFY(!row_at(legacy_fill, 0).contains(QStringLiteral("quote_style")));
     }
 
     void a_quote_the_market_never_reached_does_not_fill() {

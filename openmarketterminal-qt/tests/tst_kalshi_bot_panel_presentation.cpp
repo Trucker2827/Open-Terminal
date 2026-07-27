@@ -782,7 +782,18 @@ class KalshiBotPanelPresentationTest final : public QObject {
                                   {"settled_remaining", 296},
                                   {"days_to_gate_at_observed_rate", 144.3},
                                   {"fill_models", QJsonArray{"rung6_conditional_mid"}},
-                                  {"fill_rule", "a stated model, not a measured fill"}};
+                                  // Keyed by quoting tier since #158: a mixed
+                                  // record states one sentence per tier, and
+                                  // the panel prints whatever the file holds.
+                                  {"fill_rules",
+                                   QJsonObject{{"rest",
+                                                QJsonObject{{"fills", 4},
+                                                            {"rule", "a stated model, not a "
+                                                                     "measured fill"}}},
+                                               {"cross",
+                                                QJsonObject{{"fills", 1},
+                                                            {"rule", "quoted AT the observed "
+                                                                     "ask"}}}}}};
         const qint64 now = 9'000'060'000;
         const auto view = present_kalshi_bot_panel({}, {}, {}, now, 8, {}, file);
         // Character-for-character the same lines the CLI prints and puts in
