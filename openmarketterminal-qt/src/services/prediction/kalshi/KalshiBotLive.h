@@ -76,9 +76,13 @@ class KalshiBotLive {
     /// settled paper record that keeps growing — with the pilot's ten orders an
     /// hour against a 300-settled-bid denominator, a verdict a working day old
     /// is scoring a materially different record than the one that exists. An
-    /// hour is roughly one 15-minute-contract cycle's worth of drift, and
-    /// re-running `kalshi bot gate` costs one command, so the bound is set
-    /// where it actually binds rather than where it is convenient.
+    /// hour is roughly one 15-minute-contract cycle's worth of drift. Since
+    /// #167 the PAPER loop re-evaluates the gate every tick, so this bound is
+    /// normally satisfied automatically; a LIVE tick never re-evaluates its
+    /// own gate (self-authorisation). `KalshiBotRuntime::kKalshiBotGateStaleMs`
+    /// is a DISPLAY threshold — whether the screen is current — while this
+    /// bound decides whether a verdict may admit real money. They are
+    /// deliberately different; neither should be changed to match the other.
     static constexpr qint64 kMaxGateAgeMs = 60LL * 60 * 1000;
 
     /// Whether live bidding is permitted, and if not, exactly why.

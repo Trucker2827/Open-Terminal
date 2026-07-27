@@ -17,6 +17,14 @@
 // the record was read (rung 2). It only reads and reports; acting on the
 // verdict is a later rung's job.
 //
+// Since issue #167 the gate also re-evaluates ITSELF, on every paper tick,
+// through the very same writer (publish_gate_verdict) — the verdict that
+// decides paper->live must not depend on someone remembering to run a CLI
+// command. The `gate` subcommand is unchanged and still writes the same file;
+// what changed is that it is no longer the only thing that does. A LIVE tick
+// deliberately does NOT re-evaluate: refreshing the verdict that admits it to
+// live is self-authorisation, whatever the arithmetic says.
+//
 // Rung 4 (the observable loop) adds three subcommands and one file:
 //   `kalshi bot stop`   — throws the kill switch (writes kalshi-bot-stop.json)
 //   `kalshi bot resume` — clears it (removes that file)
@@ -203,6 +211,52 @@ QJsonObject read_gate_verdict() {
     return document.isObject() ? document.object() : QJsonObject();
 }
 
+/// Evaluates the sealed promotion gate and publishes the verdict — the ONE
+/// writer of kalshi-bot-gate.json (issue #167).
+///
+/// `kalshi bot gate` and every paper tick call this same function, so an
+/// automated evaluation is the same computation, over the same inputs, written
+/// through the same path as a manual one. There is deliberately no second
+/// implementation and no "automated" flag: a refusal (TAMPERED,
+/// NOT_PREREGISTERED, RECORD_INCOMPLETE) is therefore identical whether a human
+/// or the loop asked, which is the property that makes automation safe here.
+///
+/// `record_rows` are the ledger's decision AND settlement rows; `evaluate()`
+/// does its own event filtering, so the tick hands the array it already read
+/// rather than paying a second full-record read. Passing an empty array reads
+/// the record from disk (the CLI command's path).
+///
+/// A failed write is reported and NOT swallowed: the previous verdict stays on
+/// disk, and because the surfaces now render a verdict's age, that stale file
+/// shows as STALE rather than as current.
+QJsonObject publish_gate_verdict(qint64 now_ms, const QJsonArray& record_rows) {
+    const QString ledger_path = bot_ledger_path();
+    // What the gate is allowed to know about the record's completeness, read
+    // from disk rather than inferred from the rows: a truncated record is
+    // indistinguishable from a shorter one once it is just an array of rows.
+    KalshiBotGate::RecordIntegrity integrity;
+    integrity.missing_generations = kalshi_bot_ledger_record(ledger_path).missing;
+    integrity.oldest_row_ts_ms = kalshi_bot_oldest_row_ts_ms(ledger_path);
+    integrity.published_first_settled_ts_ms = KalshiBotGate::published_anchor_ms(read_gate_verdict());
+
+    const QJsonValue params = KalshiBotGate::load_params_file(
+        kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile)));
+    const QJsonObject out =
+        record_rows.isEmpty()
+            ? KalshiBotGate::evaluate(params, read_ledger(ledger_path, is_event(kDecisionEvent)),
+                                      read_ledger(ledger_path, is_event(kSettlementEvent)), now_ms,
+                                      integrity)
+            // The same array twice: `evaluate()` filters decision rows out of
+            // the first and settlement rows out of the second itself.
+            : KalshiBotGate::evaluate(params, record_rows, record_rows, now_ms, integrity);
+
+    const QString path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
+    if (!write_json_file(path, out))
+        std::fprintf(stderr, "kalshi bot: cannot write %s — the verdict on disk is the previous "
+                             "one and its age says so\n", qUtf8Printable(path));
+    return out;
+}
+
 /// Re-read from disk on every call: the arm, the gate verdict and the kill
 /// switch are all revocable, so a `run` loop asks again each tick rather than
 /// latching an answer at startup.
@@ -287,6 +341,12 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         // let the funnel go stale would make the file's age look like the
         // record's age.
         publish_funnel(record, now_ms);
+        // And the verdict, for the same reason (issue #167): the paper record a
+        // stopped tick refuses to add to is the record the gate scores, so its
+        // verdict is exactly as valid — and exactly as current — as it was one
+        // tick ago. Letting it age here would make the operator's screen show a
+        // stale verdict the moment the kill switch went on.
+        publish_gate_verdict(now_ms, record);
         return stopped;
     }
 
@@ -391,7 +451,20 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
     // Over `ledger`, which now holds the whole record INCLUDING every row this
     // tick just journaled — the same rows the book above was replayed from, so
     // the funnel and the exposure can never be describing different records.
+    //
+    // (`journal` appends to `ledger` without checking the disk write, so a row
+    // that failed to land is still measured here. That is the funnel's existing
+    // exposure and the verdict below now shares it; the alternative — measuring
+    // a record the tick knows it just added to — would be the worse lie, and
+    // KeepAllGenerations makes a failed append loud rather than silent.)
     publish_funnel(ledger, now_ms);
+    // The promotion verdict, re-evaluated on the SAME rows, every tick (issue
+    // #167). The gate used to be written only when a human ran `kalshi bot
+    // gate`, so the cockpit could show a five-hour-old verdict as current. The
+    // evaluation is pure computation over rows this tick has already read, so
+    // the marginal cost is the computation and one small write — no second
+    // full-record read.
+    publish_gate_verdict(now_ms, ledger);
     return result;
 }
 
@@ -729,25 +802,11 @@ int gate_command(const GlobalOpts& opts, QStringList args) {
         return 2;
     }
 
-    const QString ledger_path = bot_ledger_path();
-    // What the gate is allowed to know about the record's completeness, read
-    // from disk rather than inferred from the rows: a truncated record is
-    // indistinguishable from a shorter one once it is just an array of rows.
-    KalshiBotGate::RecordIntegrity integrity;
-    integrity.missing_generations = kalshi_bot_ledger_record(ledger_path).missing;
-    integrity.oldest_row_ts_ms = kalshi_bot_oldest_row_ts_ms(ledger_path);
-    integrity.published_first_settled_ts_ms = KalshiBotGate::published_anchor_ms(read_gate_verdict());
-
-    const QJsonObject out = KalshiBotGate::evaluate(
-        KalshiBotGate::load_params_file(
-            kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kParamsFile))),
-        read_ledger(ledger_path, is_event(kDecisionEvent)),
-        read_ledger(ledger_path, is_event(kSettlementEvent)),
-        QDateTime::currentMSecsSinceEpoch(), integrity);
-
+    // The manual evaluation, through the SAME writer the loop tick uses (issue
+    // #167). It reads the record from disk (no tick has handed it one) and is
+    // otherwise identical — same inputs, same refusals, same file.
+    const QJsonObject out = publish_gate_verdict(QDateTime::currentMSecsSinceEpoch(), {});
     const QString evidence_path = kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile));
-    if (!write_json_file(evidence_path, out))
-        std::fprintf(stderr, "kalshi bot gate: cannot write %s\n", qUtf8Printable(evidence_path));
     print_gate(opts, out, evidence_path);
     // A refusal is not a verdict about the record, so it does not exit 0.
     return out.value(QStringLiteral("evaluated")).toBool() ? 0 : 3;

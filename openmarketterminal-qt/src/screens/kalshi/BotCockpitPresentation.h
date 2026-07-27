@@ -489,8 +489,10 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         pulse.kind = QStringLiteral("gate");
         pulse.key = QStringLiteral("gate:%1:%2").arg(gate_ts).arg(verdict);
         pulse.ts_ms = gate_ts;
-        pulse.role = panel.gate_pass ? QStringLiteral("green") : QStringLiteral("amber");
-        pulse.text = QStringLiteral("SEALED GATE %1").arg(verdict);
+        // The panel's role, not `gate_pass`: a stale PASS pulses amber like the
+        // node it sits beside, so the scene has one answer about currency.
+        pulse.role = panel.gate_role;
+        pulse.text = QStringLiteral("SEALED GATE %1 · %2").arg(verdict, panel.gate_age);
         pulses << pulse;
     }
 
@@ -706,12 +708,16 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         }
         const QString verdict =
             gate.value(QStringLiteral("verdict")).toString(QStringLiteral("VERDICT MISSING"));
+        // The age comes second, right after the verdict word, and the node's
+        // colour is the panel's own role (issue #167): a PASS the loop has not
+        // re-evaluated within the staleness window is amber here exactly as it
+        // is on the panel, never a green that reads as current.
         add_node(QStringLiteral("gate"), QStringLiteral("SEALED GATE"),
-                 QStringLiteral("%1 · %2/%3 criteria met · %4")
-                     .arg(verdict).arg(met).arg(criteria.size())
+                 QStringLiteral("%1 · %2 · %3/%4 criteria met · %5")
+                     .arg(verdict, panel.gate_age).arg(met).arg(criteria.size())
                      .arg(lines.isEmpty() ? QStringLiteral("the verdict carries no criteria")
                                           : lines.join(QStringLiteral(" · "))),
-                 panel.gate_pass ? QStringLiteral("green") : QStringLiteral("amber"), true);
+                 panel.gate_role, true);
     }
 
     // KILL SWITCH — the panel's own reading of the stop file.

@@ -42,6 +42,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QSaveFile>
 #include <QSet>
 #include <QString>
@@ -227,6 +228,68 @@ inline KalshiBotLoopStatus kalshi_bot_loop_status(qint64 newest_ledger_ms,
     status.headline =
         QStringLiteral("BOT RUNNING · last decision %1").arg(kalshi_bot_age_text(status.age_ms));
     return status;
+}
+
+/// How old a published gate verdict may be before the surfaces render it as
+/// stale. Two tick intervals, the same line the status chip and the funnel go
+/// stale on: since issue #167 the paper loop re-evaluates the gate on EVERY
+/// tick, so a verdict older than two ticks means the evaluation is not
+/// happening, exactly as a ledger older than two ticks means the loop is not
+/// looping.
+///
+/// Deliberately NOT the same threshold as KalshiBotLive::kMaxGateAgeMs (one
+/// hour), and neither should be "fixed" to match the other: this one asks "is
+/// the screen showing a current verdict?", that one asks "is this verdict
+/// recent enough to admit real money?". They answer different questions and a
+/// display threshold has no business gating live admission.
+inline constexpr qint64 kKalshiBotGateStaleMs = kKalshiBotStaleMs;
+
+/// The age of a published verdict, as BOTH surfaces render it next to the
+/// verdict word. One formatter, so the BOT panel and the cockpit can never
+/// disagree about whether what they are showing is current.
+///
+/// `stale` is true for every reason the age cannot be vouched for — too old, a
+/// timestamp in the future, or no timestamp at all — because each of those is a
+/// verdict that must not render as silently current (issue #167).
+struct KalshiBotGateFreshness {
+    bool dated = false;    ///< the verdict carries a usable, non-future ts_ms
+    qint64 age_ms = -1;    ///< -1 when there is no age to state
+    bool stale = true;     ///< an undated verdict is stale, never current
+    QString text;          ///< "evaluated 12s ago" / "… · STALE" / the refusal
+};
+
+/// `gate` is kalshi-bot-gate.json as published (an empty object means no file,
+/// which has no age at all and yields an empty reading).
+inline KalshiBotGateFreshness kalshi_bot_gate_freshness(
+    const QJsonObject& gate, qint64 now_ms, qint64 stale_after_ms = kKalshiBotGateStaleMs) {
+    KalshiBotGateFreshness freshness;
+    if (gate.isEmpty()) return freshness;  // no file: the caller says NOT EVALUATED
+    const QJsonValue ts = gate.value(QStringLiteral("ts_ms"));
+    if (!ts.isDouble()) {
+        // A verdict that does not say when it was evaluated is not treated as
+        // fresh: the whole point of this reading is that a displayed verdict
+        // carries its age, and "no age" is not "no problem".
+        freshness.text = QStringLiteral("evaluated at an UNKNOWN time · the verdict carries no "
+                                        "ts_ms, so its age cannot be stated");
+        return freshness;
+    }
+    const auto published_ms = static_cast<qint64>(ts.toDouble());
+    if (published_ms > now_ms) {
+        // Mistrusted rather than clamped to zero, exactly as the status chip
+        // mistrusts a future heartbeat.
+        freshness.text = QStringLiteral("evaluated at a timestamp in the FUTURE, so its age is not "
+                                        "trusted");
+        return freshness;
+    }
+    freshness.dated = true;
+    freshness.age_ms = now_ms - published_ms;
+    freshness.stale = freshness.age_ms > stale_after_ms;
+    freshness.text = QStringLiteral("evaluated %1").arg(kalshi_bot_age_text(freshness.age_ms));
+    if (freshness.stale)
+        freshness.text += QStringLiteral(" · STALE (the loop re-evaluates every tick; this verdict "
+                                         "is older than %1s)")
+                              .arg(stale_after_ms / 1000);
+    return freshness;
 }
 
 /// Parses a stop file that is known to exist. Contents never un-engage the

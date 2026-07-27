@@ -53,6 +53,13 @@ using services::prediction::kalshi_ns::kKalshiBotStaleMs;
 using services::prediction::kalshi_ns::kalshi_bot_vintage_hint;
 using services::prediction::kalshi_ns::KalshiBotMode;
 
+// The verdict's age (issue #167) is the runtime's reading too: the loop now
+// re-evaluates the gate every tick, and the age of what is on screen is the
+// only thing that says whether that is happening.
+using services::prediction::kalshi_ns::kalshi_bot_gate_freshness;
+using services::prediction::kalshi_ns::KalshiBotGateFreshness;
+using services::prediction::kalshi_ns::kKalshiBotGateStaleMs;
+
 // The conversion funnel (issue #153) is rendered by the CLI's own formatter
 // over the CLI's own published file — the panel derives none of it a second
 // time, so the window and `kalshi bot status` cannot round differently or
@@ -98,8 +105,16 @@ struct KalshiBotPanelView {
     bool armed_live = false;    // an armed live session exists right now
     QString signal;             // signal-trust state of the most recent tick
     QString scoreboard;         // paper scoreboard, straight from the gate file
-    QString gate;               // PASS / FAIL / refusal, with its numbers
+    QString gate;               // PASS / FAIL / refusal, with its age and numbers
     bool gate_pass = false;     // the gate evaluated and every criterion is met
+    // How old the displayed verdict is (issue #167). `gate_age` is the sentence
+    // rendered next to the verdict word; `gate_stale` is true when the age
+    // cannot be vouched for — older than the threshold, in the future, or
+    // undated — and `gate_role` is the colour intent both surfaces paint from,
+    // so a stale PASS can never render as a healthy green.
+    QString gate_age;
+    bool gate_stale = false;
+    QString gate_role = QStringLiteral("grey");
     // The conversion funnel, its denominator sentence and the pace to the
     // sealed gate — verbatim from kalshi_bot_funnel_lines(), the same formatter
     // `kalshi bot status` prints. Exactly one line when the file is missing or
@@ -355,6 +370,16 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     }
 
     // --- scoreboard and gate verdict, both from the gate file ---------------
+    // How old the verdict is, first: since issue #167 the loop re-evaluates the
+    // gate every tick, so a verdict's age is a fact about the LOOP, and it is
+    // rendered next to the verdict in every branch below — including the
+    // refusals, because a five-hour-old TAMPERED is as misleading as a
+    // five-hour-old PASS. The reading is the runtime's, the same one the
+    // cockpit uses.
+    const KalshiBotGateFreshness freshness = kalshi_bot_gate_freshness(gate, now_ms);
+    view.gate_age = freshness.text;
+    view.gate_stale = !gate.isEmpty() && freshness.stale;
+
     if (gate.isEmpty()) {
         view.scoreboard = QStringLiteral(
             "PAPER SCOREBOARD UNAVAILABLE · no %1 — the promotion gate has not scored the paper "
@@ -368,9 +393,10 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
         view.scoreboard = QStringLiteral(
             "PAPER SCOREBOARD UNAVAILABLE · the gate refused to evaluate (%1), so it published no "
             "scoreboard numbers").arg(verdict);
-        view.gate = QStringLiteral("GATE %1 · %2")
-                        .arg(verdict, gate.value(QStringLiteral("reason"))
-                                          .toString(QStringLiteral("no reason given")));
+        view.gate = QStringLiteral("GATE %1 · %2 · %3")
+                        .arg(verdict, freshness.text,
+                             gate.value(QStringLiteral("reason"))
+                                 .toString(QStringLiteral("no reason given")));
     } else {
         const QJsonObject ledger = gate.value(QStringLiteral("ledger")).toObject();
         const QJsonArray criteria = gate.value(QStringLiteral("criteria")).toArray();
@@ -404,11 +430,23 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
         view.gate_pass = verdict == QStringLiteral("PASS");
         QStringList lines;
         for (const auto& value : criteria) lines << criterion_line(value.toObject());
-        view.gate = QStringLiteral("GATE %1 · %2")
-                        .arg(verdict, lines.isEmpty()
-                                          ? QStringLiteral("the verdict carries no criteria")
-                                          : lines.join(QStringLiteral(" · ")));
+        view.gate = QStringLiteral("GATE %1 · %2 · %3")
+                        .arg(verdict, freshness.text,
+                             lines.isEmpty() ? QStringLiteral("the verdict carries no criteria")
+                                             : lines.join(QStringLiteral(" · ")));
     }
+
+    // The colour intent, so the mapping itself is testable and both surfaces
+    // paint from one rule: green ONLY for a PASS whose age is vouched for. A
+    // stale PASS is amber — the verdict may be true of a record that has since
+    // moved, and rendering it green would be the silent currency this issue
+    // exists to remove.
+    if (gate.isEmpty())
+        view.gate_role = QStringLiteral("grey");
+    else if (view.gate_pass && !view.gate_stale)
+        view.gate_role = QStringLiteral("green");
+    else
+        view.gate_role = QStringLiteral("amber");
 
     for (const QJsonObject& row : decisions) {
         if (view.decisions.size() >= max_decisions) break;
