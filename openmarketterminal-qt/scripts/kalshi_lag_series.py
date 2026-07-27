@@ -138,7 +138,24 @@ BRTI_INDEX = "BRTI"
 
 MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
-EASTERN = datetime.timezone(datetime.timedelta(hours=-4))   # EDT
+# EDT, a FIXED -4 offset — inherited deliberately from
+# `kalshi_edge_common.EASTERN_JULY`, whose name carries the caveat this one
+# must not lose: it is correct only while US daylight time is in force. US DST
+# ends 2026-11-01, after which a ticker's close computes ONE HOUR EARLY
+# (verified: `KXBTCD-26NOV0114` resolves to 18:00 UTC where the true ET close is
+# 19:00), so the in-band filter would retain the second-to-last hour before
+# expiry and drop the last one — the inverse of the population this series
+# exists to keep. Not fixed here on purpose: the same offset decides which rows
+# `q1_quote_lag.py` analyses, and a series that parsed close times differently
+# from the analysis reading it would be worse than one that is uniformly wrong.
+# Both must move together — see issue #176. Until then the assumption is stated
+# in every day-file header and in the manifest.
+EASTERN_EDT = datetime.timezone(datetime.timedelta(hours=-4))
+CLOSE_TIME_ASSUMPTION = ("ticker close times are read as US/Eastern at a FIXED "
+                         "UTC-4 (EDT), matching kalshi_edge_common.EASTERN_JULY. "
+                         "Correct while US daylight time holds; from 2026-11-01 "
+                         "it computes one hour early and the in-band filter "
+                         "shifts by an hour (issue #176)")
 _TICKER_DATE = re.compile(r"^(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})?$")
 _TICKER_STRIKE = re.compile(r"-T(\d+(?:\.\d+)?)$")
 
@@ -202,7 +219,7 @@ def parse_threshold_ticker(ticker):
     if mon not in MONTHS:
         return None
     close = datetime.datetime(2000 + int(yy), MONTHS[mon], int(dd),
-                              int(hh), int(mm or 0), tzinfo=EASTERN)
+                              int(hh), int(mm or 0), tzinfo=EASTERN_EDT)
     return {"family": parts[0],
             "close_ms": int(close.timestamp() * 1000),
             "strike": float(strike.group(1))}
@@ -440,6 +457,7 @@ def header_row(day):
         "one_sided_rule": ("a one-sided book is retained as one-sided "
                            "(book_sided); no midpoint is ever completed from "
                            "1 - no_bid or from a missing side"),
+        "close_time_assumption": CLOSE_TIME_ASSUMPTION,
         "sources": [SOURCE_TICKERS, SOURCE_BRTI],
     }
 
@@ -580,6 +598,7 @@ def build_manifest(state):
             "quote_heartbeat_ms": HEARTBEAT_MS,
             "quote_rule": ("top-of-book change, plus a heartbeat at least every "
                            "%d ms per in-band market" % HEARTBEAT_MS),
+            "close_time_assumption": CLOSE_TIME_ASSUMPTION,
         },
         "series": {
             "days": len(files),

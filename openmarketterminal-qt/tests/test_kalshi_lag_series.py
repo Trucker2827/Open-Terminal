@@ -36,7 +36,7 @@ HOUR_MS = 3_600_000
 
 def ticker_for(close_ms, strike):
     """The ticker string Kalshi would use for an hourly threshold contract."""
-    close = datetime.datetime.fromtimestamp(close_ms / 1000.0, series.EASTERN)
+    close = datetime.datetime.fromtimestamp(close_ms / 1000.0, series.EASTERN_EDT)
     months = {v: k for k, v in series.MONTHS.items()}
     return "KXBTCD-%02d%s%02d%02d-T%s" % (close.year % 100, months[close.month],
                                           close.day, close.hour, strike)
@@ -261,6 +261,11 @@ class RetentionTest(EvidenceCase):
             header = json.loads(handle.readline())
         self.assertEqual(header["event"], "kalshi_lag_series_header")
         self.assertEqual(header["retention_days"], series.RETENTION_DAYS)
+        # The close-time assumption is stated in the file too: it is a fixed
+        # UTC-4 offset that goes wrong when US daylight time ends (issue #176),
+        # and a series read months later must be able to see that from its own
+        # header rather than from this repository's history.
+        self.assertIn("2026-11-01", header["close_time_assumption"])
         self.assertIn("30 days", header["retention"])
         self.assertIn("NEVER rotated by size", header["retention"])
 
