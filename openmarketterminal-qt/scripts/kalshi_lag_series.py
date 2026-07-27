@@ -363,15 +363,51 @@ def default_state():
             "markets": {}, "files": {}, "gaps": []}
 
 
+class StateRefused(Exception):
+    """A state file this build cannot read. Refuse; never reset over it."""
+
+
+def recovered_state():
+    """Rebuild the cursors from the retained rows when state.json is gone.
+
+    Starting from zero instead would be a silent corruption, not a fresh start:
+    day files are appended to, so a run whose cursors reset re-reads the whole
+    source and writes a SECOND copy of everything still on disk, inflating the
+    manifest's counts and q1's row totals with rows that were never observed
+    twice. The series itself remembers where it got to — the newest retained
+    row per stream — so recovery reads it back out of the day files.
+    """
+    state = default_state()
+    state["files"] = {name: file_stats(series_path(name)) for name in day_files()}
+    for stream, key in ((SOURCE_TICKERS, "quote_last_ts_ms"),
+                        (SOURCE_BRTI, "brti_last_ts_ms")):
+        stamps = [stats.get(key) for stats in state["files"].values()
+                  if stats.get(key) is not None]
+        if stamps:
+            state["cursors"][stream] = max(stamps)
+    if state["cursors"].get(SOURCE_BRTI) is not None:
+        state["emitted"]["brti_ms"] = state["cursors"][SOURCE_BRTI]
+    return state
+
+
 def load_state():
     path = series_path(STATE_NAME)
     if not os.path.exists(path):
-        return default_state()
+        return recovered_state()
     try:
         with open(path, "r", encoding="utf-8") as handle:
             state = json.load(handle)
     except ValueError:
-        return default_state()
+        return recovered_state()
+    schema = state.get("schema")
+    if isinstance(schema, int) and schema > SCHEMA_VERSION:
+        # Fail CLOSED on a record this build cannot read: a newer writer may
+        # keep fields whose absence here would change what gets emitted, and
+        # overwriting it with our own shape would destroy that writer's state.
+        raise StateRefused(
+            "%s carries schema %d and this build understands %d — refusing to "
+            "compact rather than overwrite a newer writer's state"
+            % (path, schema, SCHEMA_VERSION))
     base = default_state()
     base.update({k: state.get(k, v) for k, v in base.items()})
     return base
@@ -572,7 +608,16 @@ def build_manifest(state):
 
 # ── compaction ───────────────────────────────────────────────────────────────
 def note_gap(state, stream, oldest_available_ms):
-    """Record a span the source rotated away before this job reached it."""
+    """Record a span the source rotated away before this job reached it.
+
+    Deliberately compares the cursor (the newest row this job CONSUMED, which
+    for the ticker stream advances only on in-band rows) against the oldest row
+    the source still holds (any row at all). The asymmetry can over-report — a
+    stretch in which nothing in-band was quoted while the log kept writing band
+    markets, followed by a rotation, reads as a gap although no in-band data was
+    lost. That is the safe direction: an over-reported hole costs a reader some
+    caution, an under-reported one costs them a wrong measurement.
+    """
     cursor = state["cursors"].get(stream)
     if cursor is None or oldest_available_ms is None:
         return None
@@ -787,10 +832,16 @@ def main(argv=None):
             print(render_status(manifest))
         return 0 if manifest is not None else 1
 
-    if args.command == "rebuild-manifest":
-        manifest = rebuild_manifest()
-    else:
-        result = compact()
+    try:
+        if args.command == "rebuild-manifest":
+            manifest = rebuild_manifest()
+            result = None
+        else:
+            result = compact()
+    except StateRefused as refusal:
+        print("STATE REFUSED · %s" % refusal, file=sys.stderr)
+        return 2
+    if result is not None:
         manifest = result["manifest"]
         if not args.json:
             print("compacted %d quote rows + %d BRTI rows read -> %d retained"

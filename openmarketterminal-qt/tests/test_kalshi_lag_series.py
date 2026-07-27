@@ -277,8 +277,9 @@ class RetentionTest(EvidenceCase):
         self._seed_day(self.close_ms - 30 * 60_000)
         names = series.day_files()
         self.assertEqual(len(names), 1)
-        self.assertNotIn(old_ticker[7:15],
-                         " ".join(names))            # the old day is gone
+        self.assertNotIn(series.day_file_name(old_close - 30 * 60_000),
+                         names)                      # the old day is gone
+        self.assertIn(series.day_file_name(self.close_ms - 30 * 60_000), names)
         # No size rotation exists anywhere in the series.
         self.assertEqual([n for n in os.listdir(series.series_dir())
                           if n.endswith(".1")], [])
@@ -360,6 +361,105 @@ class IncrementalTest(EvidenceCase):
         rows = read_series_rows(series.series_dir())
         self.assertEqual(len(rows), 6)
         self.assertEqual(len({row["ts_ms"] for row in rows}), 6)
+
+
+class PricePathTest(EvidenceCase):
+    """Downsampling is lossless for the quantity q1 actually measures.
+
+    q1's statistic is sign(spot move) x (mid at t+h - mid at t), read through
+    `QuoteBook.at()` — the last quote at or before an instant. Because a row is
+    retained on every distinct (bid, ask) transition, that lookup returns the
+    same book on the retained series as on the raw log it was distilled from,
+    at every instant. What downsampling drops is size churn and repeated
+    restatements of an unchanged quote; the heartbeat exists only to keep the
+    15 s staleness rule from reading a live book as missing.
+    """
+
+    def test_retained_book_reproduces_the_raw_price_path(self):
+        ticker = ticker_for(self.close_ms, "64000.00")
+        base = self.close_ms - 45 * 60_000
+        raw = []
+        bid = 0.40
+        for i in range(600):                   # 30 minutes at 3 s
+            if i % 17 == 0:                    # the price moves now and then
+                bid = 0.30 + ((i // 17) % 20) * 0.01
+            raw.append(quote_row(ticker, base + i * 3_000, "%.4f" % bid,
+                                 "%.4f" % (bid + 0.02),
+                                 bid_size="%d.00" % (100 + i)))  # size churns
+        write_jsonl(self.path(series.SOURCE_TICKERS), raw)
+        series.compact()
+        retained = read_series_rows(series.series_dir())
+        self.assertLess(len(retained), len(raw) / 2)
+
+        def book(rows, key):
+            return sorted((int(r[key]), r["yes_bid_dollars"], r["yes_ask_dollars"])
+                          for r in rows)
+
+        def at(sorted_rows, ts_ms):
+            best = None
+            for row in sorted_rows:
+                if row[0] > ts_ms:
+                    break
+                best = row
+            return None if best is None else (best[1], best[2])
+
+        raw_book, retained_book = book(raw, "ts_ms"), book(retained, "ts_ms")
+        probes = range(base, base + 30 * 60_000, 1_000)
+        self.assertTrue(any(at(raw_book, ts) for ts in probes))
+        for ts in probes:
+            self.assertEqual(at(retained_book, ts), at(raw_book, ts),
+                             "book differs at %d" % ts)
+
+
+class StateRecoveryTest(EvidenceCase):
+    """A lost state file must resume, not silently write a second copy."""
+
+    def _seed(self):
+        ticker = ticker_for(self.close_ms, "64000.00")
+        base = self.close_ms - 30 * 60_000
+        write_jsonl(self.path(series.SOURCE_TICKERS),
+                    [quote_row(ticker, base + i * 5_000, "0.45%02d" % i, "0.4700")
+                     for i in range(8)])
+        write_jsonl(self.path(series.SOURCE_BRTI),
+                    [brti_row(base + i * 2_500, 64000.0 + i) for i in range(8)])
+        return series.compact()
+
+    def test_lost_state_resumes_from_the_retained_rows(self):
+        first = self._seed()
+        before = read_series_rows(series.series_dir())
+        os.remove(series.series_path(series.STATE_NAME))
+        again = series.compact()
+        after = read_series_rows(series.series_dir())
+        self.assertEqual(again["rows_written"], 0)
+        self.assertEqual(len(after), len(before))
+        self.assertEqual(len(after), first["rows_written"])
+        stamps = [(row["source"], int(row.get("ts_ms", row.get("time"))))
+                  for row in after]
+        self.assertEqual(len(set(stamps)), len(stamps))
+        self.assertEqual(series.read_manifest()["series"]["rows"], len(after))
+
+    def test_unreadable_state_recovers_rather_than_restarting(self):
+        self._seed()
+        before = len(read_series_rows(series.series_dir()))
+        with open(series.series_path(series.STATE_NAME), "w") as handle:
+            handle.write("{ this is not json")
+        series.compact()
+        self.assertEqual(len(read_series_rows(series.series_dir())), before)
+
+    def test_a_newer_schema_is_refused_not_overwritten(self):
+        self._seed()
+        path = series.series_path(series.STATE_NAME)
+        with open(path, encoding="utf-8") as handle:
+            state = json.load(handle)
+        state["schema"] = series.SCHEMA_VERSION + 1
+        series.write_json_atomic(path, state)
+        with self.assertRaises(series.StateRefused):
+            series.compact()
+        self.assertEqual(series.main(["compact"]), 2)
+        # And the newer writer's state is still there, untouched.
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["schema"],
+                             series.SCHEMA_VERSION + 1)
 
 
 class ReaderTest(EvidenceCase):
