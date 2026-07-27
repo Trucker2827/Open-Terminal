@@ -929,6 +929,16 @@ add_test(NAME e2e_kalshi_bot_crossing
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_crossing.sh)
 
+# Issue #165 — bot discipline, proved against the real openterminalcli: an
+# untrusted signal places NO order (zero rows, zero resting, zero exposure on
+# the tick summary itself), and a resting quote must clear the base threshold
+# PLUS the adverse-selection premium while a crossing quote with the SAME edge
+# still fires. Both halves carry a positive control, so neither refusal can be
+# blamed on the fixture. Offline, paper-only, temp evidence dir.
+add_test(NAME e2e_kalshi_bot_discipline
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_discipline.sh)
+
 # Issue #152 — the decision ledger's generations, proved against the real
 # openterminalcli: `kalshi bot gate` reports the same ledger numbers before and
 # after the record is split into two generations, and refuses — non-zero, no

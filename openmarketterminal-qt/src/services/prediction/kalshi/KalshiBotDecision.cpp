@@ -66,6 +66,16 @@ QJsonObject track_record(const QJsonObject& report) {
 
 } // namespace
 
+bool KalshiBotDecision::signal_trusted(const QJsonObject& report) {
+    // The claim, and the measurement it is a claim about. `track_record()`
+    // already calls a report without both Briers unavailable; a report that
+    // asserts value over a track record it does not carry is contradicting
+    // itself, and this fails closed on it rather than believing the flag.
+    return report.value(QStringLiteral("adds_value_over_market")).toBool() &&
+           report.value(QStringLiteral("brier_full")).isDouble() &&
+           report.value(QStringLiteral("brier_market_baseline")).isDouble();
+}
+
 QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
                                      const QJsonArray& open_positions,
                                      const QJsonArray& settled_positions,
@@ -119,7 +129,7 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
     // Signal trust is re-read from the live report on every call: the
     // calibrator sets adds_value_over_market only once its Brier beats the
     // market baseline across its own >=100-sample gate.
-    const bool trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    const bool trusted = signal_trusted(report);
     const QJsonObject record = track_record(report);
     const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
 
@@ -128,6 +138,18 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         row.insert(QStringLiteral("track_record"), record);
         return row;
     };
+
+    // --- an untrusted signal does not bid (issue #165) ----------------------
+    // Betting a self-reportedly edgeless signal into adverse selection minus
+    // fees loses by construction, so the untrusted-bid path is gone: the tick
+    // is one journaled PASS carrying the track record that refused it. It sits
+    // beside the report's own refusals because trust is a property of the
+    // REPORT, not of any one contract — the same reason REPORT_STALE is one
+    // row and EDGE_BELOW_THRESHOLD is one per contract. Nothing downstream can
+    // reinstate the bid: this returns before a single contract is priced.
+    if (!trusted)
+        return QJsonArray{finish(base_row(now_ms, QString(), QStringLiteral("pass"),
+                                          QString::fromLatin1(kSignalUntrusted)))};
 
     if (predictions.isEmpty())
         return QJsonArray{finish(base_row(now_ms, QString(), QStringLiteral("pass"),
@@ -284,6 +306,10 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         row.insert(QStringLiteral("quote_style_reason"), QString::fromLatin1(style_reason));
         row.insert(QStringLiteral("rest_price"), rest_price);
         row.insert(QStringLiteral("cross_margin_usd"), config.cross_margin_usd);
+        // |edge| by construction, and the quantity BOTH hurdles are judged
+        // against — so it is on every priced row, not only the book-priced
+        // ones, now that the resting tier has a hurdle of its own.
+        row.insert(QStringLiteral("side_edge"), side_edge);
         if (book_priced) {
             // The arithmetic that chose the tier, on the rows of BOTH tiers:
             // a rest that was priced against a real book has to show the sum
@@ -291,11 +317,33 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             row.insert(QStringLiteral("side_ask"), side_ask);
             if (bid_value.isDouble()) row.insert(QStringLiteral("side_bid"), bid_value.toDouble());
             row.insert(QStringLiteral("cross_price"), cross_price);
-            row.insert(QStringLiteral("side_edge"), side_edge);
             row.insert(QStringLiteral("spread_cost_usd"), spread_cost);
             row.insert(QStringLiteral("cross_fee_usd"), cross_fee);
             row.insert(QStringLiteral("cross_cost_usd"), spread_cost + cross_fee);
             row.insert(QStringLiteral("net_ev_usd"), net_ev);
+        }
+
+        // --- the resting tier's adverse-selection premium (issue #165) ------
+        // A resting fill arrives when the market came to the quote, which is
+        // disproportionately when the market moved AGAINST it; the crossing
+        // tier's fill is bought outright. So the same edge is worth less
+        // resting, and a rest demands more of it. The hurdle is journaled in
+        // full — threshold, premium, the sum, and the edge judged against it —
+        // so a refusal is checkable from the ledger alone rather than asserted.
+        //
+        // Deliberately asymmetric: the crossing hurdle above is untouched, so a
+        // contract can clear the cross arithmetic and fail this one, and it
+        // crosses. Nothing here is a second chance for a cross to rest.
+        if (!cross) {
+            const double rest_threshold = config.edge_threshold + config.rest_premium_usd;
+            row.insert(QStringLiteral("rest_premium_usd"), config.rest_premium_usd);
+            row.insert(QStringLiteral("rest_threshold"), rest_threshold);
+            if (side_edge < rest_threshold - 1e-9) {
+                row.insert(QStringLiteral("reason_code"),
+                           QString::fromLatin1(kRestEdgeBelowPremium));
+                rows.append(finish(row));
+                continue;
+            }
         }
 
         // Size down until BOTH ceilings hold: stake alone, and stake plus the
@@ -345,19 +393,14 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         session_opened_usd = round_cents(session_opened_usd + all_in);
 
         row.insert(QStringLiteral("action"), QStringLiteral("bid"));
-        // An untrusted signal does not stop the paper bid — it labels it, on
-        // every single bid, so no paper record can be read as a validated one.
-        // A contract whose own quote this tick's TTL pass just pulled is the
-        // replace half of cancel/replace, and says so — except when the signal
-        // is untrusted, which outranks everything: rung 1's rule is that EVERY
-        // bid made on an unvalidated signal is labelled as one. A requote made
-        // under that label still carries `requote` and `replaces_position_id`,
-        // so the replace is never invisible either way.
+        // Every bid that reaches here was made on a TRUSTED signal — the
+        // untrusted tick returned before any contract was priced (#165), so
+        // SIGNAL_UNTRUSTED is a pass code now and cannot label a bid. A
+        // contract whose own quote this tick's TTL pass just pulled is the
+        // replace half of cancel/replace, and says so.
         const QString replaces = exposure.requoted.value(ticker).toString();
         row.insert(QStringLiteral("reason_code"),
-                   QString::fromLatin1(!trusted            ? kSignalUntrusted
-                                       : !replaces.isEmpty() ? kRequoted
-                                                             : kEdgeClearsThreshold));
+                   QString::fromLatin1(!replaces.isEmpty() ? kRequoted : kEdgeClearsThreshold));
         if (!replaces.isEmpty()) {
             row.insert(QStringLiteral("requote"), true);
             row.insert(QStringLiteral("replaces_position_id"), replaces);

@@ -63,7 +63,7 @@ QJsonObject one(double p_full, double market_mid, double minutes_left = 10.0, bo
 /// The bot's opening order on kTicker: YES at $0.83 × 2 (stake $1.66, fee
 /// $0.02, all-in $1.68), resting.
 QJsonArray opening_bid(qint64 now_ms = kNow) {
-    return KalshiBotDecision::decide(one(0.95, 0.83, 10.0, true, now_ms), {}, {}, now_ms, {});
+    return KalshiBotDecision::decide(one(0.98, 0.83, 10.0, true, now_ms), {}, {}, now_ms, {});
 }
 
 /// The same contract with a real book behind it (#158), which is what lets
@@ -193,7 +193,7 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config tight;
         tight.max_open_exposure_usd = 3.00;
         const QJsonArray refused =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, tight, {}, exposure);
+            KalshiBotDecision::decide(one(0.98, 0.83), {}, {}, kNow, tight, {}, exposure);
         QCOMPARE(refused.size(), 1);
         QCOMPARE(field(row_at(refused, 0), "action"), QStringLiteral("pass"));
         QCOMPARE(field(row_at(refused, 0), "reason_code"),
@@ -206,7 +206,7 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config roomy;
         roomy.max_open_exposure_usd = 5.00;
         const QJsonArray allowed =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, roomy, {}, exposure);
+            KalshiBotDecision::decide(one(0.98, 0.83), {}, {}, kNow, roomy, {}, exposure);
         QCOMPARE(field(row_at(allowed, 0), "action"), QStringLiteral("bid"));
     }
 
@@ -216,13 +216,13 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config config;
         config.session_budget_usd = 3.00;
         const QJsonArray refused =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, config, {}, exposure);
+            KalshiBotDecision::decide(one(0.98, 0.83), {}, {}, kNow, config, {}, exposure);
         QCOMPARE(field(row_at(refused, 0), "reason_code"),
                  QStringLiteral("SESSION_BUDGET_BLOCKS_BID"));
         QCOMPARE(row_at(refused, 0).value(QStringLiteral("exposure_used_usd")).toDouble(), 2.00);
 
         config.session_budget_usd = 10.00;
-        QCOMPARE(field(row_at(KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, config,
+        QCOMPARE(field(row_at(KalshiBotDecision::decide(one(0.98, 0.83), {}, {}, kNow, config,
                                                         {}, exposure), 0),
                        "action"),
                  QStringLiteral("bid"));
@@ -232,8 +232,8 @@ class TestKalshiBotOrders : public QObject {
         // Two contracts, $1.68 all-in each, under a $3.00 ceiling: the first
         // fits, the second must see the first one's exposure.
         const QJsonObject two =
-            report(QJsonObject{{QStringLiteral("KXBTC15M-A"), prediction(0.95, 0.83, 10.0)},
-                               {QStringLiteral("KXBTC15M-B"), prediction(0.95, 0.83, 10.0)}});
+            report(QJsonObject{{QStringLiteral("KXBTC15M-A"), prediction(0.98, 0.83, 10.0)},
+                               {QStringLiteral("KXBTC15M-B"), prediction(0.98, 0.83, 10.0)}});
         KalshiBotDecision::Config config;
         config.max_open_exposure_usd = 3.00;
         const QJsonArray rows = KalshiBotDecision::decide(two, {}, {}, kNow, config, {}, {});
@@ -336,7 +336,7 @@ class TestKalshiBotOrders : public QObject {
         // no settlement row either — so only the replayed settled set can stop
         // the next tick from bidding a market that has already resolved.
         QCOMPARE(book.settled.size(), 1);
-        const QJsonArray next = KalshiBotDecision::decide(one(0.95, 0.83, 10.0, true, kNow + 2000),
+        const QJsonArray next = KalshiBotDecision::decide(one(0.98, 0.83, 10.0, true, kNow + 2000),
                                                           book.positions, book.settled, kNow + 2000,
                                                           {}, {});
         QCOMPARE(field(row_at(next, 0), "action"), QStringLiteral("pass"));
@@ -361,7 +361,7 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Config tight;
         tight.max_open_exposure_usd = 3.00;
         const QJsonArray refused = KalshiBotDecision::decide(
-            report(QJsonObject{{QStringLiteral("KXBTC15M-OTHER-15"), prediction(0.95, 0.83, 10.0)}}),
+            report(QJsonObject{{QStringLiteral("KXBTC15M-OTHER-15"), prediction(0.98, 0.83, 10.0)}}),
             {}, {}, kNow, tight, {}, exposure);
         QCOMPARE(field(row_at(refused, 0), "reason_code"),
                  QStringLiteral("EXPOSURE_CAP_BLOCKS_BID"));
@@ -369,7 +369,7 @@ class TestKalshiBotOrders : public QObject {
         tight.max_open_exposure_usd = 5.00;
         QCOMPARE(field(row_at(KalshiBotDecision::decide(
                                   report(QJsonObject{{QStringLiteral("KXBTC15M-OTHER-15"),
-                                                      prediction(0.95, 0.83, 10.0)}}),
+                                                      prediction(0.98, 0.83, 10.0)}}),
                                   {}, {}, kNow, tight, {}, exposure), 0),
                        "action"),
                  QStringLiteral("bid"));
@@ -534,7 +534,7 @@ class TestKalshiBotOrders : public QObject {
         exposure.resting = KalshiBotOrders::replay(opening_bid()).resting;
         exposure.at_risk_usd = 1.66;
         const QJsonArray rows =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, {}, {}, exposure);
+            KalshiBotDecision::decide(one(0.98, 0.83), {}, {}, kNow, {}, {}, exposure);
         QCOMPARE(field(row_at(rows, 0), "action"), QStringLiteral("pass"));
         QCOMPARE(field(row_at(rows, 0), "reason_code"), QStringLiteral("QUOTE_RESTING"));
     }
@@ -543,19 +543,24 @@ class TestKalshiBotOrders : public QObject {
         KalshiBotDecision::Exposure exposure;
         exposure.requoted = QJsonObject{{QString::fromLatin1(kTicker), QStringLiteral("old@1")}};
         const QJsonArray rows =
-            KalshiBotDecision::decide(one(0.95, 0.83), {}, {}, kNow, {}, {}, exposure);
+            KalshiBotDecision::decide(one(0.98, 0.83), {}, {}, kNow, {}, {}, exposure);
         QCOMPARE(field(row_at(rows, 0), "action"), QStringLiteral("bid"));
         QCOMPARE(field(row_at(rows, 0), "reason_code"), QStringLiteral("REQUOTED"));
         QCOMPARE(field(row_at(rows, 0), "replaces_position_id"), QStringLiteral("old@1"));
 
-        // An untrusted signal still outranks it — rung 1's rule that EVERY bid
-        // on an unvalidated signal says so is not weakened by a requote — but
-        // the replace stays visible on the row.
+        // An untrusted signal outranks the requote, and now by refusing it
+        // outright (#165): the replace half of cancel/replace is still a bid,
+        // so there is no bid, no replacement quote, and nothing back in the
+        // book. The cancel that freed the ticker stands; the bot simply does
+        // not re-quote it.
         const QJsonArray untrusted = KalshiBotDecision::decide(
-            one(0.95, 0.83, 10.0, false), {}, {}, kNow, {}, {}, exposure);
+            one(0.98, 0.83, 10.0, false), {}, {}, kNow, {}, {}, exposure);
+        QCOMPARE(untrusted.size(), 1);
+        QCOMPARE(field(row_at(untrusted, 0), "action"), QStringLiteral("pass"));
         QCOMPARE(field(row_at(untrusted, 0), "reason_code"), QStringLiteral("SIGNAL_UNTRUSTED"));
-        QCOMPARE(row_at(untrusted, 0).value(QStringLiteral("requote")).toBool(), true);
-        QCOMPARE(field(row_at(untrusted, 0), "replaces_position_id"), QStringLiteral("old@1"));
+        QVERIFY(!row_at(untrusted, 0).contains(QStringLiteral("requote")));
+        QCOMPARE(KalshiBotOrders::replay(untrusted).resting.size(), 0);
+        QCOMPARE(KalshiBotOrders::replay(untrusted).exposure_usd, 0.0);
     }
 
     // --- the ledger rung 1 already wrote ------------------------------------

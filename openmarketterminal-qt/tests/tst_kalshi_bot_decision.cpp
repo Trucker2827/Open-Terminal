@@ -90,7 +90,7 @@ class TestKalshiBotDecision : public QObject {
     /// asserted in the same test, so a passing result cannot come from a
     /// report that would not have bid anyway.
     void an_engaged_kill_switch_refuses_the_bid_it_would_otherwise_place() {
-        const QJsonObject bidding_report = report(0.95, 0.83, 10.0);
+        const QJsonObject bidding_report = report(0.98, 0.83, 10.0);
         const QJsonArray without_stop = KalshiBotDecision::decide(bidding_report, {}, {}, kNow, {});
         QCOMPARE(action(without_stop), QStringLiteral("bid"));  // positive control
 
@@ -160,13 +160,13 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(config.max_report_age_ms, 120'000LL);
         // 119.9s old: still fresh, the contract is decided normally.
         const QJsonArray fresh =
-            KalshiBotDecision::decide(report(0.95, 0.83, 10.0, true, kNow - 119'900),
+            KalshiBotDecision::decide(report(0.98, 0.83, 10.0, true, kNow - 119'900),
                                       {}, {}, kNow, config);
         QCOMPARE(fresh.size(), 1);
         QCOMPARE(action(fresh), QStringLiteral("bid"));
         // Exactly 120s old: refused.
         const QJsonArray stale =
-            KalshiBotDecision::decide(report(0.95, 0.83, 10.0, true, kNow - 120'000),
+            KalshiBotDecision::decide(report(0.98, 0.83, 10.0, true, kNow - 120'000),
                                       {}, {}, kNow, config);
         QCOMPARE(stale.size(), 1);
         QCOMPARE(reason(stale), QStringLiteral("REPORT_STALE"));
@@ -187,8 +187,9 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(only_row(thin).value(QStringLiteral("edge")).toDouble(), 0.07);
         QVERIFY(!only_row(thin).contains(QStringLiteral("price")));
 
-        // |0.95 − 0.83| = 0.12 ≥ 0.10 → YES bid.
-        const QJsonArray fat = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, config);
+        // |0.98 − 0.83| = 0.15 clears the base threshold AND the resting
+        // tier's premium on top of it (#165) → YES bid.
+        const QJsonArray fat = KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, config);
         QCOMPARE(action(fat), QStringLiteral("bid"));
         QCOMPARE(reason(fat), QStringLiteral("EDGE_CLEARS_THRESHOLD"));
         QCOMPARE(only_row(fat).value(QStringLiteral("side")).toString(), QStringLiteral("YES"));
@@ -209,6 +210,11 @@ class TestKalshiBotDecision : public QObject {
     ///     The no-book report is the control — the two prices must agree.
     void an_edge_below_the_crossing_cost_rests_exactly_as_before() {
         KalshiBotDecision::Config config;
+        // The resting tier's own premium (#165) is not what this test is
+        // about — zeroed so the CROSSING arithmetic alone decides, exactly as
+        // this test was written for #158. Its premium is proved separately in
+        // a_rest_must_clear_the_premium_and_a_cross_need_not.
+        config.rest_premium_usd = 0.0;
         // |0.95 − 0.83| = 0.12 clears the edge threshold, so this contract
         // reaches pricing; a 10-cent ask spread is what it cannot clear.
         const QJsonArray control =
@@ -308,7 +314,7 @@ class TestKalshiBotDecision : public QObject {
         // Nothing at all: the report every calibrator build before this rung
         // wrote. It rests, and it invents no arithmetic to explain itself.
         const QJsonObject bare = only_row(
-            KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, config));
+            KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, config));
         QCOMPARE(bare.value(QStringLiteral("quote_style")).toString(), QStringLiteral("rest"));
         QCOMPARE(bare.value(QStringLiteral("quote_style_reason")).toString(),
                  QStringLiteral("REST_NO_BOOK"));
@@ -330,7 +336,7 @@ class TestKalshiBotDecision : public QObject {
         // An ask BELOW the mid it is supposed to be half of. Crossing here
         // would price a negative spread cost — a free lunch, fabricated.
         const QJsonObject contradictory = only_row(KalshiBotDecision::decide(
-            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_ask"), 0.80}}),
+            with_book(report(0.98, 0.83, 10.0), {{QStringLiteral("market_yes_ask"), 0.80}}),
             {}, {}, kNow, config));
         QCOMPARE(contradictory.value(QStringLiteral("quote_style")).toString(),
                  QStringLiteral("rest"));
@@ -343,7 +349,7 @@ class TestKalshiBotDecision : public QObject {
         // tier is still perfectly valid, so the contract rests rather than
         // being dropped as malformed.
         const QJsonObject dollar = only_row(KalshiBotDecision::decide(
-            with_book(report(0.98, 0.85, 10.0), {{QStringLiteral("market_yes_ask"), 0.999}}),
+            with_book(report(0.99, 0.85, 10.0), {{QStringLiteral("market_yes_ask"), 0.999}}),
             {}, {}, kNow, config));
         QCOMPARE(action(QJsonArray{dollar}), QStringLiteral("bid"));
         QCOMPARE(dollar.value(QStringLiteral("quote_style_reason")).toString(),
@@ -356,6 +362,9 @@ class TestKalshiBotDecision : public QObject {
     void the_taker_fee_alone_can_flip_the_tier() {
         KalshiBotDecision::Config config;
         config.cross_margin_usd = 0.0;
+        // Both tiers' discretionary hurdles zeroed for the same reason: the
+        // FEE is the only thing allowed to decide here.
+        config.rest_premium_usd = 0.0;
         const QJsonObject book{{QStringLiteral("market_yes_bid"), 0.30},
                                {QStringLiteral("market_yes_ask"), 0.50}};
 
@@ -423,7 +432,7 @@ class TestKalshiBotDecision : public QObject {
         config.max_all_in_usd = 3.00;
         // Limit price floors 0.835 → 0.83; 2 contracts cost $1.66, 3 would be
         // $2.49 > $2.00.
-        const QJsonObject row = only_row(KalshiBotDecision::decide(report(0.95, 0.835, 10.0), {}, {}, kNow, config));
+        const QJsonObject row = only_row(KalshiBotDecision::decide(report(0.98, 0.835, 10.0), {}, {}, kNow, config));
         QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.83);
         QCOMPARE(row.value(QStringLiteral("contracts")).toInt(), 2);
         QCOMPARE(row.value(QStringLiteral("stake_usd")).toDouble(), 1.66);
@@ -437,14 +446,14 @@ class TestKalshiBotDecision : public QObject {
         // headroom no size clears stake + fee, so the bot refuses rather than
         // bidding a size it cannot afford.
         config.max_all_in_usd = 0.05;
-        const QJsonArray blocked = KalshiBotDecision::decide(report(0.95, 0.835, 10.0), {}, {}, kNow, config);
+        const QJsonArray blocked = KalshiBotDecision::decide(report(0.98, 0.835, 10.0), {}, {}, kNow, config);
         QCOMPARE(action(blocked), QStringLiteral("pass"));
         QCOMPARE(reason(blocked), QStringLiteral("SIZE_CAP_BLOCKS_BID"));
 
         // One contract costing more than the whole stake cap is refused too.
         config.max_all_in_usd = 3.00;
         config.max_stake_usd = 0.50;
-        const QJsonArray too_dear = KalshiBotDecision::decide(report(0.95, 0.835, 10.0), {}, {}, kNow, config);
+        const QJsonArray too_dear = KalshiBotDecision::decide(report(0.98, 0.835, 10.0), {}, {}, kNow, config);
         QCOMPARE(reason(too_dear), QStringLiteral("SIZE_CAP_BLOCKS_BID"));
     }
 
@@ -466,13 +475,40 @@ class TestKalshiBotDecision : public QObject {
 
     // --- signal trust ----------------------------------------------------
 
-    void untrusted_signal_still_papers_but_every_bid_says_so() {
-        const QJsonObject untrusted =
-            only_row(KalshiBotDecision::decide(report(0.95, 0.83, 10.0, false), {}, {}, kNow, {}));
-        QCOMPARE(untrusted.value(QStringLiteral("action")).toString(), QStringLiteral("bid"));
+    /// Issue #165, criterion (a): an untrusted signal PASSES. Not a labelled
+    /// paper bid — no order at all, however large the edge. The positive
+    /// control is the same report with the trust flag flipped, so a passing
+    /// result cannot come from a report that would not have bid anyway.
+    void an_untrusted_signal_passes_and_puts_no_order_in_the_book() {
+        // A 0.60 edge: far past the base threshold and past the resting
+        // premium, so nothing but the trust rule can be refusing it.
+        const QJsonArray trusted_rows =
+            KalshiBotDecision::decide(report(0.95, 0.35, 10.0, true), {}, {}, kNow, {});
+        QCOMPARE(action(trusted_rows), QStringLiteral("bid"));  // positive control
+
+        const QJsonArray rows =
+            KalshiBotDecision::decide(report(0.95, 0.35, 10.0, false), {}, {}, kNow, {});
+        QCOMPARE(rows.size(), 1);
+        const QJsonObject untrusted = only_row(rows);
+        QCOMPARE(untrusted.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
         QCOMPARE(untrusted.value(QStringLiteral("reason_code")).toString(),
                  QStringLiteral("SIGNAL_UNTRUSTED"));
         QCOMPARE(untrusted.value(QStringLiteral("signal_trusted")).toBool(), false);
+        // Not one bid row anywhere in the tick, and — the criterion as written
+        // — nothing in the BOOK either: no resting order, no exposure, no
+        // position. The ledger the orders layer replays is the audit surface,
+        // so it is the one asserted against.
+        for (const auto& value : rows)
+            QVERIFY(value.toObject().value(QStringLiteral("action")).toString() !=
+                    QStringLiteral("bid"));
+        const KalshiBotOrders::Book book = KalshiBotOrders::replay(rows);
+        QCOMPARE(book.resting.size(), 0);
+        QCOMPARE(book.positions.size(), 0);
+        QCOMPARE(book.exposure_usd, 0.0);
+        // A refusal invents no price or size: the contract was never priced.
+        QVERIFY(!untrusted.contains(QStringLiteral("price")));
+        QVERIFY(!untrusted.contains(QStringLiteral("contracts")));
+        QVERIFY(!untrusted.contains(QStringLiteral("quote_style")));
 
         // Every row — bid or pass — carries the track-record snapshot that
         // produced it, so the ledger is auditable without the report.
@@ -497,14 +533,119 @@ class TestKalshiBotDecision : public QObject {
         QVERIFY(!record.contains(QStringLiteral("brier_market_baseline")));
     }
 
+    /// A report claiming value over a track record it does not carry is
+    /// contradicting itself, and the trust rule fails closed on it (#165) —
+    /// the same reason an unknown spread is not a free one. The flag's own
+    /// sample floor stays where it is measured (spot_calibrator.py); what is
+    /// checked here is that the measurement is present at all.
+    void a_value_claim_without_a_track_record_is_not_trusted() {
+        QJsonObject claiming = report(0.95, 0.35, 10.0, true);
+        QVERIFY(KalshiBotDecision::signal_trusted(claiming));           // positive control
+        claiming.remove(QStringLiteral("brier_full"));
+        QVERIFY(!KalshiBotDecision::signal_trusted(claiming));
+        QCOMPARE(reason(KalshiBotDecision::decide(claiming, {}, {}, kNow, {})),
+                 QStringLiteral("SIGNAL_UNTRUSTED"));
+
+        QJsonObject no_baseline = report(0.95, 0.35, 10.0, true);
+        no_baseline.insert(QStringLiteral("brier_market_baseline"), QJsonValue::Null);
+        QVERIFY(!KalshiBotDecision::signal_trusted(no_baseline));
+        QCOMPARE(action(KalshiBotDecision::decide(no_baseline, {}, {}, kNow, {})),
+                 QStringLiteral("pass"));
+    }
+
+    // --- the resting tier's adverse-selection premium (issue #165) ---------
+
+    /// Criteria (b) and (c): the same edge that is too thin to REST is allowed
+    /// to CROSS, and one cent more of it rests. The asymmetry is the point —
+    /// a resting fill is adversely selected, a crossing fill is bought.
+    void a_rest_must_clear_the_premium_and_a_cross_need_not() {
+        KalshiBotDecision::Config config;
+        QCOMPARE(config.edge_threshold, 0.10);
+        QCOMPARE(config.rest_premium_usd, 0.03);
+
+        // |0.95 − 0.83| = 0.12: past the 0.10 base threshold, short of the
+        // 0.13 the resting tier now demands. No book, so it can only rest.
+        const QJsonObject thin =
+            only_row(KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, config));
+        QCOMPARE(thin.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
+        QCOMPARE(thin.value(QStringLiteral("reason_code")).toString(),
+                 QStringLiteral("REST_EDGE_BELOW_PREMIUM"));
+        // It is NOT the base threshold refusing this: the row's own edge is
+        // above it, and the row says so.
+        QVERIFY(thin.value(QStringLiteral("edge")).toDouble() >
+                thin.value(QStringLiteral("edge_threshold")).toDouble());
+        QVERIFY(!thin.contains(QStringLiteral("contracts")));
+
+        // (d) The hurdle arithmetic, journaled: edge, threshold, premium, sum.
+        QCOMPARE(thin.value(QStringLiteral("quote_style")).toString(), QStringLiteral("rest"));
+        QCOMPARE(thin.value(QStringLiteral("side_edge")).toDouble(), 0.12);
+        QCOMPARE(thin.value(QStringLiteral("edge_threshold")).toDouble(), 0.10);
+        QCOMPARE(thin.value(QStringLiteral("rest_premium_usd")).toDouble(), 0.03);
+        QCOMPARE(thin.value(QStringLiteral("rest_threshold")).toDouble(), 0.13);
+        QCOMPARE(thin.value(QStringLiteral("rest_threshold")).toDouble(),
+                 thin.value(QStringLiteral("edge_threshold")).toDouble() +
+                     thin.value(QStringLiteral("rest_premium_usd")).toDouble());
+        QVERIFY(thin.value(QStringLiteral("side_edge")).toDouble() <
+                thin.value(QStringLiteral("rest_threshold")).toDouble());
+
+        // (b) The SAME contract and the SAME edge, with a book tight enough to
+        // clear the crossing arithmetic: it crosses. The crossing hurdle is
+        // untouched by the premium, which is exactly the asymmetry #165 wants.
+        const QJsonObject crossing = only_row(KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_bid"), 0.82},
+                                                 {QStringLiteral("market_yes_ask"), 0.84}}),
+            {}, {}, kNow, config));
+        QCOMPARE(crossing.value(QStringLiteral("action")).toString(), QStringLiteral("bid"));
+        QCOMPARE(crossing.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(crossing.value(QStringLiteral("price")).toDouble(), 0.84);
+        QCOMPARE(crossing.value(QStringLiteral("side_edge")).toDouble(),
+                 thin.value(QStringLiteral("side_edge")).toDouble());
+        // The premium is the resting tier's hurdle and is not claimed of a
+        // cross: a crossing row that carried it would read as having cleared
+        // something it was never judged against.
+        QVERIFY(!crossing.contains(QStringLiteral("rest_threshold")));
+
+        // (c) One more cent of edge — the only thing changed — and the same
+        // bookless contract rests exactly as it did before this rung.
+        const QJsonObject clears =
+            only_row(KalshiBotDecision::decide(report(0.96, 0.83, 10.0), {}, {}, kNow, config));
+        QCOMPARE(clears.value(QStringLiteral("action")).toString(), QStringLiteral("bid"));
+        QCOMPARE(clears.value(QStringLiteral("reason_code")).toString(),
+                 QStringLiteral("EDGE_CLEARS_THRESHOLD"));
+        QCOMPARE(clears.value(QStringLiteral("quote_style")).toString(), QStringLiteral("rest"));
+        QCOMPARE(clears.value(QStringLiteral("price")).toDouble(), 0.83);
+        // A resting BID shows the hurdle it cleared, not only the ones that failed.
+        QCOMPARE(clears.value(QStringLiteral("rest_threshold")).toDouble(), 0.13);
+        QCOMPARE(clears.value(QStringLiteral("rest_premium_usd")).toDouble(), 0.03);
+        QVERIFY(clears.value(QStringLiteral("side_edge")).toDouble() >=
+                clears.value(QStringLiteral("rest_threshold")).toDouble());
+    }
+
+    /// The premium is configuration, not a constant: raising it refuses a bid
+    /// the default allows, and the row states the raised number it failed.
+    void the_rest_premium_is_configurable_and_binds_at_the_configured_value() {
+        KalshiBotDecision::Config config;
+        config.rest_premium_usd = 0.20;   // 0.10 + 0.20 = 0.30 demanded
+        const QJsonObject row =
+            only_row(KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, config));
+        QCOMPARE(row.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
+        QCOMPARE(row.value(QStringLiteral("reason_code")).toString(),
+                 QStringLiteral("REST_EDGE_BELOW_PREMIUM"));
+        QCOMPARE(row.value(QStringLiteral("rest_threshold")).toDouble(), 0.30);
+        // ... and the same report bids under the default, so the refusal is
+        // the premium's doing and nothing else's.
+        QCOMPARE(action(KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, {})),
+                 QStringLiteral("bid"));
+    }
+
     // --- idempotency across ticks ----------------------------------------
 
     void a_contract_already_held_is_not_bid_again() {
-        const QJsonArray first = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, {});
+        const QJsonArray first = KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, {});
         QCOMPARE(action(first), QStringLiteral("bid"));
         const QJsonArray held{first.first()};
         const QJsonArray second =
-            KalshiBotDecision::decide(report(0.95, 0.83, 10.0), held, {}, kNow + 60'000, {});
+            KalshiBotDecision::decide(report(0.98, 0.83, 10.0), held, {}, kNow + 60'000, {});
         QCOMPARE(action(second), QStringLiteral("pass"));
         QCOMPARE(reason(second), QStringLiteral("ALREADY_HELD"));
     }
@@ -513,7 +654,7 @@ class TestKalshiBotDecision : public QObject {
         // The report's runway comes from the daemon snapshot the calibrator
         // read, which can be stale under a freshly generated report — so a
         // resolved contract can still look like it has ten minutes to run.
-        const QJsonArray bid = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, {});
+        const QJsonArray bid = KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, {});
         QCOMPARE(action(bid), QStringLiteral("bid"));
         const QJsonArray settled = KalshiBotDecision::settle_paper(
             bid,
@@ -523,7 +664,7 @@ class TestKalshiBotDecision : public QObject {
             kNow);
         QCOMPARE(settled.size(), 1);
         const QJsonArray again =
-            KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, settled, kNow + 60'000, {});
+            KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, settled, kNow + 60'000, {});
         QCOMPARE(action(again), QStringLiteral("pass"));
         QCOMPARE(reason(again), QStringLiteral("CONTRACT_SETTLED"));
     }
@@ -579,9 +720,9 @@ class TestKalshiBotDecision : public QObject {
     void paper_positions_settle_on_the_real_result_and_otherwise_stay_open() {
         // A bid is an order (rung 6); it settles only once something filled
         // it, so the position under test comes from the replayed book.
-        const QJsonArray order = KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, {});
+        const QJsonArray order = KalshiBotDecision::decide(report(0.98, 0.83, 10.0), {}, {}, kNow, {});
         const QJsonArray fill = KalshiBotOrders::reconcile(
-            KalshiBotOrders::replay(order), report(0.95, 0.82, 10.0, true, kNow + 1000), {},
+            KalshiBotOrders::replay(order), report(0.98, 0.82, 10.0, true, kNow + 1000), {},
             kNow + 1000, {}, [](const QJsonObject&, const QString&) { return true; });
         QJsonArray ledger = order;
         for (const auto& value : fill) ledger.append(value);

@@ -88,7 +88,9 @@ QJsonObject one(double p_full, double market_mid, qint64 generated_ms = kNow) {
 /// The bot's real opening order on kTicker: YES at $0.83 × 2, resting, $1.66 of
 /// limit-price exposure. Produced by decide(), not hand-written.
 QJsonArray opening_bid(qint64 now_ms = kNow) {
-    return KalshiBotDecision::decide(one(0.95, 0.83, now_ms), {}, {}, now_ms, {});
+    // 0.15 of edge: past the base threshold AND the resting tier's
+    // adverse-selection premium (#165), so this really is an order.
+    return KalshiBotDecision::decide(one(0.98, 0.83, now_ms), {}, {}, now_ms, {});
 }
 
 /// An undated filler row, for bulking a fixture out.

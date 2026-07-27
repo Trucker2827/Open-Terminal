@@ -350,8 +350,8 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
                 "SIGNAL TRUSTED · the calibrator's measured Brier beats its market baseline");
         else
             view.signal = QStringLiteral(
-                "SIGNAL UNTRUSTED · the calibrator has not beaten the market baseline; every bid "
-                "is journaled SIGNAL_UNTRUSTED");
+                "SIGNAL UNTRUSTED · the calibrator has not beaten the market baseline; the bot "
+                "places NO order and journals SIGNAL_UNTRUSTED");
     }
 
     // --- scoreboard and gate verdict, both from the gate file ---------------
