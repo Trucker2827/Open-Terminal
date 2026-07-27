@@ -41,6 +41,16 @@ QJsonArray ledger(const QList<qint64>& timestamps) {
     return rows;
 }
 
+/// One decision row stating `mode`. An empty `mode` writes NO key at all — the
+/// "a tick that states nothing" case, distinct from one that states nonsense.
+QJsonObject tick(qint64 ts_ms, const QString& mode) {
+    QJsonObject row{{QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+                    {QStringLiteral("ts_ms"), static_cast<double>(ts_ms)},
+                    {QStringLiteral("action"), QStringLiteral("pass")}};
+    if (!mode.isEmpty()) row.insert(QStringLiteral("mode"), mode);
+    return row;
+}
+
 } // namespace
 
 class TestKalshiBotRuntime : public QObject {
@@ -217,6 +227,119 @@ class TestKalshiBotRuntime : public QObject {
         QVERIFY(!window.isEmpty());
         QVERIFY(window.size() < 40);
         QCOMPARE(kalshi_bot_newest_ts_ms(window), kNow + 39);
+    }
+
+    // --- the mode word both surfaces render (issue #155) --------------------
+    // The rule itself is the BOT badge's, moved here so `kalshi bot status` can
+    // render the same answer instead of the literal "paper" it used to print.
+
+    void the_mode_is_the_newest_ticks_own_word() {
+        QCOMPARE(kalshi_bot_mode(QJsonArray{tick(kNow - 30'000, QStringLiteral("paper"))}).mode,
+                 QStringLiteral("paper"));
+        QCOMPARE(kalshi_bot_mode(QJsonArray{tick(kNow - 30'000, QStringLiteral("live"))}).mode,
+                 QStringLiteral("live"));
+        QVERIFY(kalshi_bot_mode(QJsonArray{tick(kNow - 30'000, QStringLiteral("live"))}).live);
+        QVERIFY(!kalshi_bot_mode(QJsonArray{tick(kNow - 30'000, QStringLiteral("paper"))}).live);
+        // Badges are the uppercase of the same one word — no second spelling.
+        QCOMPARE(kalshi_bot_mode(QJsonArray{tick(kNow, QStringLiteral("live"))}).badge(),
+                 QStringLiteral("LIVE"));
+    }
+
+    /// The rule is NEWEST, not "ever": a bot that ran live an hour ago and
+    /// papers now is papering. Ordering is by timestamp, not file position —
+    /// two appenders interleave rows (issue #145).
+    void a_live_row_further_back_does_not_make_this_tick_live() {
+        const auto mode = kalshi_bot_mode(QJsonArray{tick(kNow - 20'000, QStringLiteral("paper")),
+                                                     tick(kNow - 3'600'000, QStringLiteral("live"))});
+        QCOMPARE(mode.mode, QStringLiteral("paper"));
+        QVERIFY(!mode.live);
+    }
+
+    /// Fail CLOSED: the newest row being one this build cannot read means the
+    /// loop is a different binary's, and reading the mode off the last row that
+    /// happened to parse is how a surface announces LIVE over a paper record.
+    void an_unreadable_newest_row_reads_unknown_never_paper_and_never_live() {
+        const QJsonObject odd_event{{QStringLiteral("event"), QStringLiteral("kalshi_bot_tick")},
+                                    {QStringLiteral("ts_ms"), double(kNow - 1'000)}};
+        for (const QJsonArray& rows :
+             {QJsonArray{tick(kNow - 20'000, QStringLiteral("live")), odd_event},
+              QJsonArray{tick(kNow - 20'000, QStringLiteral("paper")), odd_event},
+              // A known tick whose own `mode` is absent or unrecognised is
+              // unknown too — an unstated mode is not a paper claim.
+              QJsonArray{tick(kNow - 20'000, QStringLiteral("paper")), tick(kNow - 1'000, QString())},
+              QJsonArray{tick(kNow - 1'000, QStringLiteral("shadow"))}}) {
+            const auto mode = kalshi_bot_mode(rows);
+            QCOMPARE(mode.mode, QStringLiteral("unknown"));
+            QVERIFY(mode.unknown);
+            QVERIFY2(!mode.live, "an unreadable newest row must never read live");
+        }
+    }
+
+    /// A paper settlement is written by the same binary and is NOT a tick, so
+    /// it makes no claim about the mode either way. Treating one as unreadable
+    /// would blank a real LIVE badge; treating it as a paper tick would mask
+    /// real money at the exchange.
+    void a_settlement_is_not_a_tick_and_claims_no_mode() {
+        const QJsonObject settlement{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_paper_settlement")},
+            {QStringLiteral("ts_ms"), double(kNow - 500)}};
+        const auto mode =
+            kalshi_bot_mode(QJsonArray{tick(kNow - 20'000, QStringLiteral("live")), settlement});
+        QCOMPARE(mode.mode, QStringLiteral("live"));
+        QVERIFY(!mode.unknown);
+        // And a record of settlements ALONE claims nothing at all — dated rows,
+        // a running loop, but no tick has stated a mode.
+        QVERIFY(!kalshi_bot_mode(QJsonArray{settlement}).stated());
+    }
+
+    /// Absent is absent, the same rule `last_decision_age_ms` follows: nothing
+    /// that could claim a mode means NO mode word, never a default `paper`.
+    ///
+    /// "Nothing to claim" is not the same as "nothing dated": a record of dated
+    /// settlements alone (previous case) claims no mode either, while a row
+    /// this build cannot read at all claims UNKNOWN rather than nothing —
+    /// an unreadable row is evidence of a binary, and saying so is the point.
+    void a_record_with_no_tick_claims_no_mode_at_all() {
+        const auto empty = kalshi_bot_mode({});
+        QVERIFY2(!empty.stated(), qPrintable(empty.mode));
+        QVERIFY(empty.badge().isEmpty());
+        QVERIFY(!empty.live);
+        QVERIFY(!empty.unknown);
+
+        // A row with no `event` at all is not "no row" — it is a row this build
+        // cannot read, and that is UNKNOWN.
+        QCOMPARE(kalshi_bot_mode(QJsonArray{QJsonObject{}}).mode, QStringLiteral("unknown"));
+    }
+
+    /// An undated tick still STATES a mode, and dropping it would let a mode
+    /// nothing claimed win by default — the stamp's validity is "came off a
+    /// row", not "that row was dated".
+    void an_undated_tick_still_states_its_mode() {
+        QJsonObject undated = tick(0, QStringLiteral("paper"));
+        undated.remove(QStringLiteral("ts_ms"));
+        QCOMPARE(kalshi_bot_mode(QJsonArray{undated}).mode, QStringLiteral("paper"));
+    }
+
+    /// The `[MODE] status` form `kalshi bot status` prints and the BOT panel
+    /// paints, from one function — including the UNKNOWN reason and the
+    /// launchctl hint, so neither surface can word it differently.
+    void the_headline_carries_the_badge_and_unknown_carries_its_reason() {
+        const QString headline = QStringLiteral("BOT RUNNING · last decision 30s ago");
+        QCOMPARE(kalshi_bot_mode_headline(
+                     headline, kalshi_bot_mode(QJsonArray{tick(kNow, QStringLiteral("live"))})),
+                 QStringLiteral("[LIVE] ") + headline);
+        QCOMPARE(kalshi_bot_mode_headline(
+                     headline, kalshi_bot_mode(QJsonArray{tick(kNow, QStringLiteral("paper"))})),
+                 QStringLiteral("[PAPER] ") + headline);
+        // Nothing to claim prints the headline bare — no `[PAPER]` by default.
+        QCOMPARE(kalshi_bot_mode_headline(headline, kalshi_bot_mode({})), headline);
+
+        const QString unknown =
+            kalshi_bot_mode_headline(headline, kalshi_bot_mode(QJsonArray{
+                                                   tick(kNow, QStringLiteral("shadow"))}));
+        QVERIFY(unknown.startsWith(QStringLiteral("[UNKNOWN] ")));
+        QVERIFY2(unknown.contains(QStringLiteral("no mode is claimed")), qPrintable(unknown));
+        QVERIFY2(unknown.contains(kalshi_bot_vintage_hint()), qPrintable(unknown));
     }
 };
 

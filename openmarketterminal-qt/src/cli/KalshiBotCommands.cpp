@@ -21,8 +21,11 @@
 //   `kalshi bot stop`   — throws the kill switch (writes kalshi-bot-stop.json)
 //   `kalshi bot resume` — clears it (removes that file)
 //   `kalshi bot status` — prints exactly what the GUI BOT chip shows, from the
-//                         same classifier and the same staleness constant
-//                         (KalshiBotRuntime.h). Two renderers, one truth.
+//                         same classifiers and the same staleness constant
+//                         (KalshiBotRuntime.h). Two renderers, one truth. That
+//                         includes the MODE word since issue #155: it was the
+//                         literal "paper" here, so a live tick read LIVE in the
+//                         window and paper in the shell.
 // The loop re-reads the stop file at the top of EVERY tick, before any bid;
 // `once` refuses that tick, `run` journals the refusal and exits, so the
 // switch halts bidding within one tick either way. The stop short-circuits the
@@ -731,9 +734,21 @@ int gate_command(const GlobalOpts& opts, QStringList args) {
 
 // --- the kill switch and the status the GUI chip mirrors --------------------
 
-KalshiBotLoopStatus current_loop_status(qint64 now_ms) {
-    return kalshi_bot_loop_status(kalshi_bot_newest_ts_ms(kalshi_bot_read_ledger_tail(bot_ledger_path())),
-                                  kalshi_bot_read_stop_file(bot_stop_path()), now_ms);
+/// The loop as `kalshi bot status` reports it: the freshness classification and
+/// the mode word, both derived from the SAME ledger tail in one read. Two reads
+/// could straddle a tick and describe two different ledgers.
+struct BotStatusReading {
+    KalshiBotLoopStatus status;
+    KalshiBotMode mode;
+};
+
+BotStatusReading current_loop_status(qint64 now_ms) {
+    // The panel's window (KalshiBotPanelPresentation.h's read_kalshi_bot_ledger_tail),
+    // so both surfaces classify over the same rows.
+    const QJsonArray rows = kalshi_bot_read_ledger_tail(bot_ledger_path());
+    return {kalshi_bot_loop_status(kalshi_bot_newest_ts_ms(rows),
+                                   kalshi_bot_read_stop_file(bot_stop_path()), now_ms),
+            kalshi_bot_mode(rows)};
 }
 
 KalshiBotFunnelFile current_funnel_file() {
@@ -741,10 +756,10 @@ KalshiBotFunnelFile current_funnel_file() {
         kalshi_evidence_path(QString::fromLatin1(kKalshiBotFunnelFile)));
 }
 
-QJsonObject status_summary(const KalshiBotLoopStatus& status, qint64 now_ms,
+QJsonObject status_summary(const BotStatusReading& reading, qint64 now_ms,
                            const KalshiBotFunnelFile& funnel) {
+    const KalshiBotLoopStatus& status = reading.status;
     QJsonObject out{
-        {QStringLiteral("mode"), QStringLiteral("paper")},
         {QStringLiteral("state"), status.state},
         {QStringLiteral("color_role"), kalshi_bot_state_color_role(status.state)},
         {QStringLiteral("headline"), status.headline},
@@ -754,6 +769,12 @@ QJsonObject status_summary(const KalshiBotLoopStatus& status, qint64 now_ms,
         {QStringLiteral("now_ms"), static_cast<double>(now_ms)},
         {QStringLiteral("ledger"), bot_ledger_path()},
         {QStringLiteral("stop_file"), bot_stop_path()}};
+    // The mode of the last tick, from the classifier the BOT badge renders
+    // (issue #155). It was the literal "paper" here until then, which reported
+    // a live tick as paper and an unreadable one as paper too. A record that
+    // claims no mode carries NO key, the same absent-is-absent rule
+    // `last_decision_age_ms` follows below — never a `paper` nothing stated.
+    if (reading.mode.stated()) out.insert(QStringLiteral("mode"), reading.mode.mode);
     // An age the ledger cannot support is absent, not zero.
     if (status.age_ms >= 0)
         out.insert(QStringLiteral("last_decision_age_ms"), static_cast<double>(status.age_ms));
@@ -802,16 +823,19 @@ int bot_status_command(const GlobalOpts& opts, QStringList& args) {
         return 2;
     }
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    const KalshiBotLoopStatus status = current_loop_status(now_ms);
+    const BotStatusReading reading = current_loop_status(now_ms);
+    const KalshiBotLoopStatus& status = reading.status;
     const KalshiBotFunnelFile funnel = current_funnel_file();
     if (opts.json) {
-        std::printf("%s\n", QJsonDocument(status_summary(status, now_ms, funnel))
+        std::printf("%s\n", QJsonDocument(status_summary(reading, now_ms, funnel))
                                 .toJson(QJsonDocument::Compact).constData());
         return 0;
     }
-    // Same headline, same state, same colour role the chip paints — this text
-    // is produced by kalshi_bot_loop_status(), not re-derived here.
-    std::printf("%s\n", qUtf8Printable(status.headline));
+    // Same headline, same state, same colour role, same `[MODE]` prefix the chip
+    // paints — this text is produced by kalshi_bot_loop_status() and
+    // kalshi_bot_mode_headline(), not re-derived here. A record that claims no
+    // mode gets no badge rather than a word the shell invented.
+    std::printf("%s\n", qUtf8Printable(kalshi_bot_mode_headline(status.headline, reading.mode)));
     std::printf("  chip %s (%s) · stale after %llds\n", qUtf8Printable(status.state.toUpper()),
                 qUtf8Printable(kalshi_bot_state_color_role(status.state)),
                 static_cast<long long>(kKalshiBotStaleMs / 1000));

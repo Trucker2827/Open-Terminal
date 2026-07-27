@@ -939,6 +939,17 @@ add_test(NAME e2e_kalshi_bot_funnel
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_funnel.sh)
 
+# Issue #155 — the MODE word `kalshi bot status` reports, proved against the
+# real openterminalcli: it was the literal "paper", so a live tick read LIVE in
+# the window and paper in the shell. Four ledgers (live / paper / a newer row
+# this build cannot read / no tick at all) through both `--json` and the human
+# renderer; the badge half of the same property is asserted in
+# tst_kalshi_bot_panel_presentation, against the same classifier. Offline,
+# read-only, temp evidence dir — `kalshi bot status` runs no tick.
+add_test(NAME e2e_kalshi_bot_status_mode
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_status_mode.sh)
+
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately
 # with the cause and fix, and a passing probe must leave the success path
