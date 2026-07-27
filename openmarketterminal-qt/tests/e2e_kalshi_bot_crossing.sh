@@ -167,6 +167,19 @@ tick
 [ "$(row_field fill "$TIGHT" price)" = "0.85" ] || fail "the fill was not at the price paid: $(row_field fill "$TIGHT" price)"
 [ "$(row_field fill "$TIGHT" observed_mid)" = "0.835" ] || fail "the fill did not record the mid it was observed against"
 [ "$(row_field fill "$TIGHT" fill_model)" = "rung6_conditional_mid" ] || fail "the fill did not state its model"
+# The disclosure has to be the CROSSING one. The passive sentence claims the
+# report carries no book, that the mid is the ask proxy, and that the fill
+# selects on the market having moved to the quote: three clauses this very row
+# falsifies. Matched on the phrase only the crossing sentence contains, and
+# refused on the phrase only the passive one contains.
+case "$(row_field fill "$TIGHT" fill_rule)" in
+  *"crossing tier"*) ;;
+  *) fail "the crossing fill did not carry the crossing disclosure: $(row_field fill "$TIGHT" fill_rule)" ;;
+esac
+case "$(row_field fill "$TIGHT" fill_rule)" in
+  *"ask proxy"*) fail "the crossing fill still carries the passive tier's disclosure" ;;
+esac
+echo "ok: the crossing fill discloses the crossing model, not the passive one"
 [ "$(count_rows fill "$WIDE")" -eq 0 ] || fail "the resting quote filled at floor(mid); the model was not left alone"
 OPEN="$("$CLI" --json kalshi bot once --paper --quote-ttl-sec 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["open_positions"])')"
 [ "$OPEN" -ge 1 ] || fail "the fill did not become a position (open_positions=$OPEN)"

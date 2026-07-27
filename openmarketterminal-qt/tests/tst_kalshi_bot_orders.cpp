@@ -66,6 +66,24 @@ QJsonArray opening_bid(qint64 now_ms = kNow) {
     return KalshiBotDecision::decide(one(0.95, 0.83, 10.0, true, now_ms), {}, {}, now_ms, {});
 }
 
+/// The same contract with a real book behind it (#158), which is what lets
+/// decide() price the crossing tier at all.
+QJsonObject one_with_book(double p_full, double market_mid, double yes_bid, double yes_ask,
+                          qint64 generated_ms = kNow) {
+    QJsonObject quoted = prediction(p_full, market_mid, 10.0);
+    quoted.insert(QStringLiteral("market_yes_bid"), yes_bid);
+    quoted.insert(QStringLiteral("market_yes_ask"), yes_ask);
+    return report(QJsonObject{{QString::fromLatin1(kTicker), quoted}}, true, generated_ms);
+}
+
+/// A CROSSING order on kTicker: the $0.12 edge clears the $0.01 spread to the
+/// $0.84 ask, the $0.01 taker fee there and the default $0.02 margin, so the
+/// bot pays the ask instead of resting at floor(mid) = $0.83.
+QJsonArray crossing_bid(qint64 now_ms = kNow) {
+    return KalshiBotDecision::decide(one_with_book(0.95, 0.83, 0.82, 0.84, now_ms), {}, {}, now_ms,
+                                     {});
+}
+
 QJsonObject row_at(const QJsonArray& rows, int index) { return rows.at(index).toObject(); }
 
 QString field(const QJsonObject& row, const char* key) {
@@ -382,6 +400,57 @@ class TestKalshiBotOrders : public QObject {
         QCOMPARE(book.positions.size(), 1);
         QCOMPARE(row_at(book.positions, 0).value(QStringLiteral("contracts")).toDouble(), 2.0);
         QCOMPARE(book.exposure_usd, 1.66);  // filled quantity is still at risk
+    }
+
+    void a_fill_states_the_tier_that_actually_quoted_it() {
+        // The review of #163: every clause of the passive `kFillRule` is false
+        // for a crossing bid (the report DID carry a book, the mid was not the
+        // ask proxy, and the quote moved to the market rather than the market
+        // to the quote) — and it was being stamped on crossing fills anyway.
+        // Each tier now discloses its own fill, selected on `quote_style`.
+        const QJsonArray crossed = crossing_bid();
+        QCOMPARE(field(row_at(crossed, 0), "quote_style"), QStringLiteral("cross"));
+        QCOMPARE(row_at(crossed, 0).value(QStringLiteral("price")).toDouble(), 0.84);
+        const QJsonArray cross_fill = KalshiBotOrders::reconcile(
+            KalshiBotOrders::replay(crossed), one(0.95, 0.83, 10.0, true, kNow + 1000), {},
+            kNow + 1000, {}, confirming_cancel);
+        QCOMPARE(cross_fill.size(), 1);
+        const QJsonObject crossing_row = row_at(cross_fill, 0);
+        QCOMPARE(field(crossing_row, "reason_code"), QStringLiteral("FILLED_AT_LIMIT"));
+        // The whole sentence, compared to the constant: a one-sided substring
+        // match is what let the wrong sentence ride on these rows unnoticed.
+        QCOMPARE(field(crossing_row, "fill_rule"),
+                 QString::fromLatin1(KalshiBotOrders::kCrossFillRule));
+        QVERIFY(field(crossing_row, "fill_rule") != QString::fromLatin1(KalshiBotOrders::kFillRule));
+        // Prose only: the mechanics are the ones this rung already had. A
+        // cross still fills AT its own limit, under rung 6's model.
+        QCOMPARE(crossing_row.value(QStringLiteral("price")).toDouble(), 0.84);
+        QCOMPARE(crossing_row.value(QStringLiteral("observed_mid")).toDouble(), 0.83);
+        QCOMPARE(field(crossing_row, "fill_model"), QStringLiteral("rung6_conditional_mid"));
+
+        // A passive quote keeps the passive sentence, which is true of it.
+        const QJsonArray rested = opening_bid();
+        QCOMPARE(field(row_at(rested, 0), "quote_style"), QStringLiteral("rest"));
+        const QJsonArray rest_fill = KalshiBotOrders::reconcile(
+            KalshiBotOrders::replay(rested), one(0.95, 0.82, 10.0, true, kNow + 1000), {},
+            kNow + 1000, {}, confirming_cancel);
+        QCOMPARE(rest_fill.size(), 1);
+        QCOMPARE(field(row_at(rest_fill, 0), "fill_rule"),
+                 QString::fromLatin1(KalshiBotOrders::kFillRule));
+        QVERIFY(field(row_at(rest_fill, 0), "fill_rule") !=
+                QString::fromLatin1(KalshiBotOrders::kCrossFillRule));
+
+        // And a rung-6 row written BEFORE #158 names no tier at all: it was
+        // passive, because the crossing tier did not exist to write it.
+        QJsonObject pre_158 = row_at(rested, 0);
+        pre_158.remove(QStringLiteral("quote_style"));
+        pre_158.remove(QStringLiteral("quote_style_reason"));
+        const QJsonArray legacy_fill = KalshiBotOrders::reconcile(
+            KalshiBotOrders::replay(QJsonArray{pre_158}),
+            one(0.95, 0.82, 10.0, true, kNow + 1000), {}, kNow + 1000, {}, confirming_cancel);
+        QCOMPARE(legacy_fill.size(), 1);
+        QCOMPARE(field(row_at(legacy_fill, 0), "fill_rule"),
+                 QString::fromLatin1(KalshiBotOrders::kFillRule));
     }
 
     void a_quote_the_market_never_reached_does_not_fill() {

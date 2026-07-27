@@ -288,7 +288,16 @@ QJsonArray KalshiBotOrders::reconcile(const Book& book,
             row.insert(QStringLiteral("observed_mid"), market_mid);
             row.insert(QStringLiteral("order_state"), QString::fromLatin1(kFilled));
             row.insert(QStringLiteral("fill_model"), QString::fromLatin1(kFillModel));
-            row.insert(QStringLiteral("fill_rule"), QString::fromLatin1(kFillRule));
+            // Which tier's disclosure, read off the order's OWN journaled
+            // `quote_style` rather than re-derived from prices here: the
+            // decision function already recorded which tier priced this order,
+            // and a second derivation is a second truth that can disagree with
+            // the ledger. A row written before #158 carries no tier and was
+            // passive, so it keeps the passive sentence.
+            const bool crossed =
+                str(working, "quote_style") == QLatin1String(KalshiBotDecision::kQuoteCross);
+            row.insert(QStringLiteral("fill_rule"),
+                       QString::fromLatin1(crossed ? kCrossFillRule : kFillRule));
             rows.append(row);
             continue;
         }
