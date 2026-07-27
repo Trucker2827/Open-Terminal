@@ -46,6 +46,13 @@ using services::prediction::kalshi_ns::KalshiBotLoopStatus;
 using services::prediction::kalshi_ns::KalshiBotStopFile;
 using services::prediction::kalshi_ns::kKalshiBotStaleMs;
 
+// The mode word is the CLI's too (issue #155): the newest-readable-tick rule,
+// its fail-closed UNKNOWN, and the `[MODE] status` form it is printed in all
+// come from the runtime header, so the badge and `kalshi bot status` render one
+// answer rather than two that happen to agree.
+using services::prediction::kalshi_ns::kalshi_bot_vintage_hint;
+using services::prediction::kalshi_ns::KalshiBotMode;
+
 // The conversion funnel (issue #153) is rendered by the CLI's own formatter
 // over the CLI's own published file — the panel derives none of it a second
 // time, so the window and `kalshi bot status` cannot round differently or
@@ -166,43 +173,13 @@ inline bool is_live(const QJsonObject& row) {
     return row.value(QStringLiteral("mode")).toString() == QStringLiteral("live");
 }
 
-// The ledger events this build understands. A row carrying any other `event`
-// was written by a bot binary this GUI does not know — see `vintage` below.
-inline constexpr auto kDecisionEvent = "kalshi_bot_decision";
-inline constexpr auto kSettlementEvent = "kalshi_bot_paper_settlement";
-
-/// Where a row sits in the ledger: by timestamp first, by file position only to
-/// break a tie. Two appenders (the launchd loop and a hand-run `kalshi bot
-/// once`) interleave rows, so file position alone is not "newest".
-struct RowStamp {
-    qint64 ts_ms = 0;
-    int index = -1;
-    bool valid() const { return index >= 0; }
-};
-
-inline bool newer(const RowStamp& a, const RowStamp& b) {
-    if (!a.valid()) return false;
-    if (!b.valid()) return true;
-    return a.ts_ms != b.ts_ms ? a.ts_ms > b.ts_ms : a.index > b.index;
-}
-
-/// The mode word a row states about itself, or an empty string when it states
-/// none this build can read. `paper` and `live` are the only readable answers:
-/// a row whose `mode` is missing or unrecognised is a tick of unknown vintage,
-/// not a paper one.
-inline QString stated_mode(const QJsonObject& row) {
-    const QString mode = row.value(QStringLiteral("mode")).toString();
-    return mode == QStringLiteral("live") || mode == QStringLiteral("paper") ? mode : QString();
-}
-
-/// The hint the operator acts on when the ledger's newest row is of a vintage
-/// this build cannot read: the loop is running a binary older (or newer) than
-/// the GUI, which is fixed by restarting the launchd job — the exact command
-/// the job's own plist documents.
-inline QString kalshi_bot_vintage_hint() {
-    return QStringLiteral(
-        "bot binary older than GUI — launchctl kickstart -k gui/$UID/org.openterminal.kalshi-bot");
-}
+// The ledger events this build understands — the runtime's names, not a second
+// copy of them. A row carrying any other `event` was written by a bot binary
+// this GUI does not know, which is what `kalshi_bot_mode()` fails closed on.
+inline constexpr auto kDecisionEvent =
+    services::prediction::kalshi_ns::kKalshiBotDecisionEvent;
+inline constexpr auto kSettlementEvent =
+    services::prediction::kalshi_ns::kKalshiBotSettlementEvent;
 
 inline QString decision_line(const QJsonObject& row) {
     const auto ts_ms = static_cast<qint64>(row.value(QStringLiteral("ts_ms")).toDouble());
@@ -288,36 +265,11 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     view.funnel = kalshi_bot_funnel_lines(funnel, now_ms);
 
     // --- what the bot did, newest first ------------------------------------
-    // Two stamps are tracked while scanning: the newest tick whose mode this
-    // build can actually read, and the newest row it cannot read at all (an
-    // unknown `event`, or a tick whose `mode` is absent or unrecognised). If
-    // the unreadable one is the newer, this panel is looking at a ledger a
-    // different binary is writing, and it says so instead of describing the
-    // last row it happened to understand as if it were current.
     QList<QJsonObject> decisions;
-    RowStamp newest_readable_tick;
-    RowStamp newest_unreadable_row;
-    QString newest_readable_mode;
-    for (int index = 0; index < ledger_rows.size(); ++index) {
-        const QJsonObject row = ledger_rows.at(index).toObject();
-        const QString event = row.value(QStringLiteral("event")).toString();
-        RowStamp stamp;
-        stamp.ts_ms = services::prediction::kalshi_ns::kalshi_bot_row_ts_ms(row);
-        stamp.index = index;
-        if (event == QLatin1String(kDecisionEvent)) {
+    for (const auto& value : ledger_rows) {
+        const QJsonObject row = value.toObject();
+        if (row.value(QStringLiteral("event")).toString() == QLatin1String(kDecisionEvent))
             decisions.prepend(row);
-            const QString mode = stated_mode(row);
-            if (mode.isEmpty()) {
-                if (newer(stamp, newest_unreadable_row)) newest_unreadable_row = stamp;
-            } else if (newer(stamp, newest_readable_tick)) {
-                newest_readable_tick = stamp;
-                newest_readable_mode = mode;
-            }
-        } else if (event != QLatin1String(kSettlementEvent)) {
-            // A settlement is the same vintage and is not a tick, so it makes
-            // no claim about the mode either way; anything else is unknown.
-            if (newer(stamp, newest_unreadable_row)) newest_unreadable_row = stamp;
-        }
     }
 
     // --- status chip: classified by the CLI's own classifier ----------------
@@ -330,30 +282,16 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
         : status.headline;
 
     // --- LIVE badge (rung 5), failing CLOSED (issue #145) -------------------
-    // Read off the NEWEST tick: the badge says what the bot is doing NOW, not
-    // what it has ever done. A bot that ran live an hour ago and papers now is
-    // papering, and a badge that latched on any live row in the window would
-    // keep claiming otherwise.
-    //
-    // LIVE is claimed only when that newest tick explicitly says `mode=live`.
-    // When the newest row is one this build cannot read, the honest badge is
-    // UNKNOWN: reading the mode off the last row that happened to parse is how
-    // a screen ends up announcing LIVE over a ledger that never went live, and
-    // failing open to LIVE is the worst direction to fail in. With no rows at
-    // all there is nothing to claim, so no badge is shown and `mode` stays
-    // empty.
-    if (newest_readable_tick.valid() && !newer(newest_unreadable_row, newest_readable_tick)) {
-        view.mode_live = newest_readable_mode == QStringLiteral("live");
-        view.mode = view.mode_live ? QStringLiteral("LIVE") : QStringLiteral("PAPER");
-    } else if (newest_unreadable_row.valid()) {
-        view.mode_unknown = true;
-        view.mode = QStringLiteral("UNKNOWN");
-        view.vintage_hint = kalshi_bot_vintage_hint();
-    }
-    if (!view.mode.isEmpty()) view.status = QStringLiteral("[%1] %2").arg(view.mode, view.status);
-    if (!view.vintage_hint.isEmpty())
-        view.status += QStringLiteral(" · the newest ledger row carries no mode this build can "
-                                      "read, so no mode is claimed · %1").arg(view.vintage_hint);
+    // The newest-readable-tick rule is NOT applied here: it is the runtime's
+    // `kalshi_bot_mode()`, which `kalshi bot status` renders too (issue #155).
+    // The panel keeps no copy of it, so the badge and the shell's mode word
+    // cannot disagree any more than the chip and the CLI's state can.
+    const KalshiBotMode mode = services::prediction::kalshi_ns::kalshi_bot_mode(ledger_rows);
+    view.mode = mode.badge();
+    view.mode_live = mode.live;
+    view.mode_unknown = mode.unknown;
+    if (mode.unknown) view.vintage_hint = kalshi_bot_vintage_hint();
+    view.status = services::prediction::kalshi_ns::kalshi_bot_mode_headline(view.status, mode);
 
     // --- armed state and the caps in force ----------------------------------
     if (live_status.isEmpty()) {

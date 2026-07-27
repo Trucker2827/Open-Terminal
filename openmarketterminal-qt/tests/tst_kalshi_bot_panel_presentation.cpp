@@ -597,6 +597,75 @@ class KalshiBotPanelPresentationTest final : public QObject {
         QCOMPARE(view.mode, QStringLiteral("PAPER"));
     }
 
+    /// Issue #155, criterion 4 — the GUI leg of CLI/GUI mode agreement.
+    ///
+    /// The badge is no longer the panel's own derivation: it is
+    /// `kalshi_bot_mode()`, the classifier `kalshi bot status` renders too. Over
+    /// ONE fixture ledger this asserts the panel's rendering IS that function's
+    /// answer, in all four cases, badge and headline alike. The CLI leg — the
+    /// same four ledgers through the real `openterminalcli --json kalshi bot
+    /// status` — is e2e_kalshi_bot_status_mode.sh; neutering the classifier
+    /// turns both red, which is the property this issue buys.
+    void the_badge_is_the_shared_classifiers_answer_not_a_second_derivation() {
+        using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_mode;
+        const qint64 now = 4'800'000'000;
+
+        QJsonObject live = bid_row(now - 20'000, "KXBTCD-AGREE-LIVE");
+        live.insert("mode", "live");
+        const QJsonObject paper = decision_row(now - 20'000, "KXBTCD-AGREE", "EDGE_BELOW_THRESHOLD");
+        const QJsonObject unreadable{{"event", "kalshi_bot_tick"}, {"ts_ms", double(now - 5'000)}};
+        const QJsonObject settlement{{"event", "kalshi_bot_paper_settlement"},
+                                     {"ts_ms", double(now - 1'000)},
+                                     {"mode", "paper"},
+                                     {"position_id", "KXBTCD-AGREE@1"}};
+
+        struct Case {
+            const char* name;
+            QJsonArray rows;
+            QString expected;  // the word the classifier must answer, "" for none
+        };
+        const QList<Case> cases{
+            {"live", QJsonArray{paper, live}, QStringLiteral("live")},
+            {"paper", QJsonArray{live, paper}, QStringLiteral("paper")},
+            {"unknown", QJsonArray{live, unreadable}, QStringLiteral("unknown")},
+            // No tick at all: dated settlement rows, a running loop, and still
+            // nothing that states a mode — so no badge, not a default PAPER.
+            {"no tick", QJsonArray{settlement}, QString()},
+        };
+
+        for (const Case& item : cases) {
+            const auto mode = kalshi_bot_mode(item.rows);
+            QCOMPARE(mode.mode, item.expected);
+            const auto view = present_kalshi_bot_panel(item.rows, {}, {}, now);
+            // The badge IS the classifier's word, uppercased — no second rule.
+            QVERIFY2(view.mode == mode.badge(),
+                     qPrintable(QStringLiteral("%1: badge %2 vs classifier %3")
+                                    .arg(QString::fromLatin1(item.name), view.mode, mode.badge())));
+            QCOMPARE(view.mode_live, mode.live);
+            QCOMPARE(view.mode_unknown, mode.unknown);
+            // ...and so is the `[MODE] status` line, reason text and hint
+            // included, so the window and the shell cannot word it differently.
+            // The undecorated headline is the CLI's own loop classifier plus
+            // the panel's decision count; everything after that is the shared
+            // `kalshi_bot_mode_headline()` and nothing else.
+            int decisions = 0;
+            for (const auto& value : item.rows)
+                if (value.toObject().value("event").toString() == "kalshi_bot_decision") ++decisions;
+            const auto loop = openmarketterminal::services::prediction::kalshi_ns::
+                kalshi_bot_loop_status(openmarketterminal::services::prediction::kalshi_ns::
+                                           kalshi_bot_newest_ts_ms(item.rows),
+                                       {}, now);
+            const QString bare =
+                loop.state == QStringLiteral("running")
+                    ? QStringLiteral("%1 · %2 decisions in view").arg(loop.headline).arg(decisions)
+                    : loop.headline;
+            QCOMPARE(view.status, openmarketterminal::services::prediction::kalshi_ns::
+                                      kalshi_bot_mode_headline(bare, mode));
+            if (item.expected.isEmpty())
+                QVERIFY2(!view.status.startsWith(QStringLiteral("[")), qPrintable(view.status));
+        }
+    }
+
     void engaged_kill_switch_is_shown() {
         QJsonObject status = armed_session();
         status.insert("kill_switch", true);

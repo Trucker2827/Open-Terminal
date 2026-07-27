@@ -12,6 +12,12 @@
 // ledger tail reader and the stop-file format all live here once, and both
 // sides are thin renderers over `kalshi_bot_loop_status()`.
 //
+// Issue #155 moved the MODE word in here for the same reason. The chip derived
+// it from the newest readable tick and failed closed to UNKNOWN; the CLI's copy
+// was the literal `"paper"`, so a live tick read LIVE in the window and paper in
+// the shell — the worst direction for a second truth to point. There is now one
+// `kalshi_bot_mode()`, and both surfaces render its answer.
+//
 // Three honesty rules are structural here too:
 //   1. **The kill switch fails CLOSED.** The stop file's EXISTENCE is the
 //      switch. Its contents are audit metadata (who, when, why) and are never
@@ -384,6 +390,126 @@ inline qint64 kalshi_bot_oldest_row_ts_ms(const QString& base_path) {
         }
     }
     return 0;
+}
+
+// --- the mode word both surfaces render (issue #155) -------------------------
+
+/// The ledger events this build understands. A row carrying any other `event`
+/// was written by a bot binary neither surface knows — see `kalshi_bot_mode`.
+inline constexpr auto kKalshiBotDecisionEvent = "kalshi_bot_decision";
+inline constexpr auto kKalshiBotSettlementEvent = "kalshi_bot_paper_settlement";
+
+/// Where a row sits in the record: by timestamp first, by position only to break
+/// a tie. Two appenders (the launchd loop and a hand-run `kalshi bot once`)
+/// interleave rows, so position alone is not "newest" (issue #145).
+///
+/// `valid()` is "this stamp came off a row", NOT "that row was dated": an
+/// undated row still states a mode, and dropping it would let a mode nothing
+/// claimed win by default.
+struct KalshiBotRowStamp {
+    qint64 ts_ms = 0;
+    int index = -1;
+    bool valid() const { return index >= 0; }
+};
+
+inline bool kalshi_bot_row_newer(const KalshiBotRowStamp& a, const KalshiBotRowStamp& b) {
+    if (!a.valid()) return false;
+    if (!b.valid()) return true;
+    return a.ts_ms != b.ts_ms ? a.ts_ms > b.ts_ms : a.index > b.index;
+}
+
+/// The mode word a row states about itself, or an empty string when it states
+/// none this build can read. `paper` and `live` are the only readable answers:
+/// a row whose `mode` is missing or unrecognised is a tick of unknown vintage,
+/// not a paper one.
+inline QString kalshi_bot_stated_mode(const QJsonObject& row) {
+    const QString mode = row.value(QStringLiteral("mode")).toString();
+    return mode == QStringLiteral("live") || mode == QStringLiteral("paper") ? mode : QString();
+}
+
+/// The hint the operator acts on when the record's newest row is of a vintage
+/// this build cannot read: the loop is running a binary older (or newer) than
+/// the reader, which is fixed by restarting the launchd job — the exact command
+/// the job's own plist documents.
+inline QString kalshi_bot_vintage_hint() {
+    return QStringLiteral(
+        "bot binary older than GUI — launchctl kickstart -k gui/$UID/org.openterminal.kalshi-bot");
+}
+
+/// What the bot's most recent TICK was doing, as the ledger states it.
+///
+/// `mode` is `live`, `paper`, `unknown`, or EMPTY when no row claims anything —
+/// the same absent-is-absent rule `last_decision_age_ms` follows. Renderers
+/// print `badge()` (`LIVE` / `PAPER` / `UNKNOWN`).
+struct KalshiBotMode {
+    QString mode;
+    bool live = false;     ///< the newest tick explicitly said `mode=live`
+    bool unknown = false;  ///< the newest row is one this build cannot read
+    bool stated() const { return !mode.isEmpty(); }
+    QString badge() const { return mode.toUpper(); }
+};
+
+/// The mode classifier, failing CLOSED (issue #145, moved here by #155).
+///
+/// Read off the NEWEST tick: the answer is what the bot is doing NOW, not what
+/// it has ever done. A bot that ran live an hour ago and papers now is papering,
+/// and a reader that latched on any live row in the window would keep claiming
+/// otherwise.
+///
+/// LIVE is claimed only when that newest tick explicitly says `mode=live`. When
+/// the newest row is one this build cannot read (an unknown `event`, or a
+/// decision row whose `mode` is absent or unrecognised) the honest answer is
+/// UNKNOWN: reading the mode off the last row that happened to parse is how a
+/// surface ends up announcing LIVE over a record that never went live, and
+/// failing open to LIVE is the worst direction to fail in. A paper settlement is
+/// the same vintage and is not a tick, so it makes no claim either way. With
+/// nothing to read there is nothing to claim, and `mode` stays empty.
+inline KalshiBotMode kalshi_bot_mode(const QJsonArray& rows) {
+    KalshiBotRowStamp newest_readable_tick;
+    KalshiBotRowStamp newest_unreadable_row;
+    QString newest_readable_mode;
+    for (int index = 0; index < rows.size(); ++index) {
+        const QJsonObject row = rows.at(index).toObject();
+        const QString event = row.value(QStringLiteral("event")).toString();
+        KalshiBotRowStamp stamp;
+        stamp.ts_ms = kalshi_bot_row_ts_ms(row);
+        stamp.index = index;
+        if (event == QLatin1String(kKalshiBotDecisionEvent)) {
+            const QString stated = kalshi_bot_stated_mode(row);
+            if (stated.isEmpty()) {
+                if (kalshi_bot_row_newer(stamp, newest_unreadable_row))
+                    newest_unreadable_row = stamp;
+            } else if (kalshi_bot_row_newer(stamp, newest_readable_tick)) {
+                newest_readable_tick = stamp;
+                newest_readable_mode = stated;
+            }
+        } else if (event != QLatin1String(kKalshiBotSettlementEvent)) {
+            if (kalshi_bot_row_newer(stamp, newest_unreadable_row)) newest_unreadable_row = stamp;
+        }
+    }
+
+    KalshiBotMode mode;
+    if (newest_readable_tick.valid() &&
+        !kalshi_bot_row_newer(newest_unreadable_row, newest_readable_tick)) {
+        mode.live = newest_readable_mode == QStringLiteral("live");
+        mode.mode = newest_readable_mode;
+    } else if (newest_unreadable_row.valid()) {
+        mode.unknown = true;
+        mode.mode = QStringLiteral("unknown");
+    }
+    return mode;
+}
+
+/// The status line both surfaces print: `[MODE] <status>`, and — when the mode
+/// is UNKNOWN — why nothing is claimed plus the launchctl hint. One sentence,
+/// so the window and `kalshi bot status` cannot word it differently.
+inline QString kalshi_bot_mode_headline(const QString& status_text, const KalshiBotMode& mode) {
+    if (!mode.stated()) return status_text;
+    QString line = QStringLiteral("[%1] %2").arg(mode.badge(), status_text);
+    if (mode.unknown)
+        line += QStringLiteral(" · the newest ledger row carries no mode this build can read, so "
+                               "no mode is claimed · %1").arg(kalshi_bot_vintage_hint());
+    return line;
 }
 
 } // namespace openmarketterminal::services::prediction::kalshi_ns
