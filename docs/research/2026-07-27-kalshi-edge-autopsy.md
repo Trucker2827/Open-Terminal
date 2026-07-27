@@ -5,7 +5,7 @@
 gate or ledger was changed, and every script runs read-only against the live
 evidence directory.
 
-All numbers below were produced at **as-of 2026-07-27T21:41Z** by the scripts in
+All numbers below were produced at **as-of 2026-07-27T21:52Z** by the scripts in
 `scripts/research/`. The evidence logs are live and still being written, so a
 re-run will not reproduce these figures exactly; it will reproduce the method,
 the tables and — the point of the exercise — the verdicts. Each section names
@@ -23,7 +23,7 @@ signal it is built on does not contain information the market price lacks.
    better, and worse in almost every slice we cut.
 2. **Its own self-report says otherwise, and the self-report is measuring the
    wrong thing** — against a handicapped baseline, on a sample whose effective
-   size is ~8–33 contracts rather than the 500 it displays. This is a
+   size is **~8–10 contracts** rather than the 500 it displays. This is a
    measurement defect in the calibrator's bookkeeping, not a modelling opinion.
 3. **There is no recalibration headroom.** Walk-forward Platt and isotonic
    corrections make it *worse* (−0.0074 / −0.0096 Brier). Even a fully
@@ -53,15 +53,15 @@ report.
 
 | Log | Rows | Retained span (UTC) | Hours | Cadence | Used for |
 |---|---:|---|---:|---:|---|
-| `kalshi-cf-benchmarks.jsonl` (+`.1`) | 161,476 | 07-23 01:18 → 07-27 21:41 | 116.4 | 2.6 s | BRTI index — Q1 events, Q2/Q3 outcomes, volatility |
-| `kalshi-tickers.jsonl` (+`.1`) | 232,067 | 07-27 13:42 → 07-27 21:41 | **8.0** | 0.12 s | Kalshi top-of-book — Q1 quote series |
-| `kalshi-bot-decisions.jsonl` | 87,801 | 07-24 15:48 → 07-27 21:40 | 77.9 | 3.2 s | `calibrated_p`, `market_mid`, bids/fills — Q2/Q3/Q4 |
-| `kalshi-settlements.jsonl` | 170,695 | (no ms field) | — | — | recorded outcomes — Q2/Q3 ground truth |
-| `kalshi-venue-features.jsonl` (+`.1`) | 88,128 | (no ms field) | — | — | pre-joined spot+Kalshi snapshots |
+| `kalshi-cf-benchmarks.jsonl` (+`.1`) | 162,161 | 07-23 01:18 → 07-27 21:52 | 116.6 | 2.6 s | BRTI index — Q1 events, Q2/Q3 outcomes, volatility |
+| `kalshi-tickers.jsonl` (+`.1`) | 235,634 | 07-27 13:42 → 07-27 21:52 | **8.2** | 0.12 s | Kalshi top-of-book — Q1 quote series |
+| `kalshi-bot-decisions.jsonl` | 87,811 | 07-24 15:48 → 07-27 21:52 | 78.1 | 3.2 s | `calibrated_p`, `market_mid`, bids/fills — Q2/Q3/Q4 |
+| `kalshi-settlements.jsonl` | 170,920 | (no ms field) | — | — | recorded outcomes — Q2/Q3 ground truth |
+| `kalshi-venue-features.jsonl` (+`.1`) | 88,243 | (no ms field) | — | — | **not read** — the obvious alternative for Q1, passed over: ~7.5 s cadence cannot resolve sub-minute repricing |
 
-**The retention asymmetry is the finding.** The BRTI spot feed keeps 116 hours;
+**The retention asymmetry is the finding.** The BRTI spot feed keeps 117 hours;
 the Kalshi ticker feed, writing 20× faster, keeps 8. Any question needing both
-is capped at 8 hours. This is not a gap in what the terminal captures — it
+is capped at ~8 hours. This is not a gap in what the terminal captures — it
 captures everything needed, at sub-second resolution — it is a gap in what it
 *keeps*. See follow-up F1.
 
@@ -89,10 +89,12 @@ Contracts resolvable by neither source (215, mostly `KXBTC15M` directional
 contracts whose ticker carries no strike) are **dropped and counted**, never
 imputed.
 
-Final Q2/Q3 sample: **5,011 forecast rows across 239 contracts** (81 recorded,
-167 derived (some tickers with no forecast rows), 30,210 rows discarded for
-being logged at or after the close — a forecast made after the outcome is known
-is not a forecast).
+Final Q2/Q3 sample: **5,011 forecast rows across 239 contracts.** Outcomes were
+resolved for 248 tickers (81 recorded, 167 derived); 9 of those contributed no
+pre-close forecast row and drop out, leaving **77 recorded / 162 derived**
+scored — the split the `by_outcome_source` table reports. A further 30,210 rows
+were discarded for being logged at or after the close: a forecast made after the
+outcome is known is not a forecast.
 
 ---
 
@@ -100,11 +102,25 @@ is not a forecast).
 
 `python3 scripts/research/q1_quote_lag.py`
 
-**Data:** BRTI (161k ticks) paired with the Kalshi ticker feed (123,260
-two-sided quotes across 169 markets). Paired window **8.0 hours**,
-2026-07-27 13:42 → 21:41 UTC. 107,955 quote rows were dropped as one-sided — a
+**Data:** BRTI (162k ticks) paired with the Kalshi ticker feed (126,129
+two-sided quotes across 169 markets, 110 of them threshold). Paired window **8.2 hours**,
+2026-07-27 13:42 → 21:52 UTC. 109,511 quote rows were dropped as one-sided — a
 book with no ask has no midpoint, and inventing one from `1 - no_bid` would
 fabricate the very quantity being measured.
+
+**One whole market family is excluded, deliberately.** The 169 quoted markets
+are **110 `KXBTCD` threshold** contracts (`-T63999.99`, settles YES above the
+strike) and **59 `KXBTC` band** contracts (`-B65050`, a $100-wide band —
+verified against the settlement feed, where exactly one band per event settles
+YES, the one containing `expiration_value`). Only the threshold family is
+analysed, and the filter counts it (`excluded_band_market`: 2,065 pairs at 2σ,
+708 at 3σ) rather than silently dropping it. The reason is not sample size: the
+statistic below multiplies a mid change by the **sign of the spot move**, which
+presumes YES is monotone in spot. For a band it is not — a large up-move can
+push spot straight through and *out* of the band, lowering its YES while the
+move was upward. Including band markets would not be a bigger measurement, it
+would be a wrong one. (The calibrator declines them for the same reason:
+`extract_features` returns None for range markets.)
 
 **Method — deliberately model-free.** Pricing a Gaussian implied probability off
 fresh spot and calling the distance to the Kalshi mid an "edge" mostly measures
@@ -116,7 +132,7 @@ cents, directly comparable to what you would pay to take it.
 Events: |60-second BRTI log return| ≥ k·σ, σ = trailing 30-minute realized
 per-minute volatility computed from BRTI itself (no evidence file carries a
 ready-made vol number for this window). Events ≥5 minutes apart. Markets:
-threshold contracts closing in 2–60 minutes, mid in [0.05, 0.95].
+`KXBTCD` threshold contracts closing in 2–60 minutes, mid in [0.05, 0.95].
 
 ### Aligned mid drift after the move (contested markets)
 
@@ -124,10 +140,10 @@ Positive = the book moved the way the *already-known* spot move implied.
 
 | k | Events | Markets | Horizon | n | Mean drift | t | Half-spread | Fee | Net if taking | Net vs fee only |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 2σ | 21 | 56 | 5 s | 115 | +0.53¢ | 2.43 | 0.53¢ | 1.51¢ | −1.51¢ | −0.98¢ |
-| 2σ | 21 | 56 | **15 s** | 115 | **+1.24¢** | **3.59** | 0.53¢ | 1.51¢ | −0.80¢ | −0.27¢ |
-| 2σ | 21 | 56 | 30 s | 115 | +0.54¢ | 0.87 | 0.53¢ | 1.51¢ | −1.50¢ | −0.97¢ |
-| 2σ | 21 | 56 | 60 s | 115 | +0.45¢ | 0.84 | 0.53¢ | 1.51¢ | −1.60¢ | −1.07¢ |
+| 2σ | 22 | 56 | 5 s | 116 | +0.53¢ | 2.42 | 0.53¢ | 1.52¢ | −1.52¢ | −0.99¢ |
+| 2σ | 22 | 56 | **15 s** | 116 | **+1.22¢** | **3.52** | 0.53¢ | 1.52¢ | −0.83¢ | −0.30¢ |
+| 2σ | 22 | 56 | 30 s | 116 | +0.55¢ | 0.90 | 0.53¢ | 1.52¢ | −1.50¢ | −0.97¢ |
+| 2σ | 22 | 56 | 60 s | 116 | +0.47¢ | 0.89 | 0.53¢ | 1.52¢ | −1.58¢ | −1.05¢ |
 | 3σ | 8 | 28 | 5 s | 44 | +1.08¢ | 2.12 | 0.53¢ | 1.55¢ | −1.00¢ | −0.47¢ |
 | 3σ | 8 | 28 | **15 s** | 44 | **+2.07¢** | **2.50** | 0.53¢ | 1.55¢ | −0.01¢ | **+0.52¢** |
 | 3σ | 8 | 28 | 30 s | 44 | +1.84¢ | 2.55 | 0.53¢ | 1.55¢ | −0.24¢ | +0.30¢ |
@@ -138,7 +154,7 @@ so the statistic stops measuring lag and starts measuring momentum. (They are in
 the JSON, flagged as such.)
 
 **Verdict.** The lag is real and statistically clear at the 15-second horizon
-(t = 3.59 at 2σ, t = 2.50 at 3σ), and it decays by 60 seconds — the book catches
+(t = 3.52 at 2σ, t = 2.50 at 3σ), and it decays by 60 seconds — the book catches
 up inside a minute. The magnitude is the problem: after a 3σ move the mid drifts
 2.07¢, and taking that quote costs 2.08¢. **The Kalshi fee, not the spread, is
 the wall** — the market is tight (half-spread 0.53¢) and the fee is 1.55¢, three
@@ -147,7 +163,7 @@ one that could capture it at fee-only cost would clear roughly +0.5¢ per event
 at 3σ. That is a thin, real, and *structurally different* edge from the one the
 bot is currently pursuing.
 
-**The honest caveat: 8 events at 3σ, 21 at 2σ.** This is directionally
+**The honest caveat: 8 events at 3σ, 22 at 2σ.** This is directionally
 suggestive, not established. The t-statistics treat (event, market) pairs as
 independent, and markets sharing an event are not — the effective n is closer to
 the event count than the sample count. This is precisely the measurement that a
@@ -171,10 +187,18 @@ contract contributes up to `MAX_OBS_PER_TICKER = 60`:
 
 | What the calibrator reports | Value | What it actually means |
 |---|---:|---|
-| `training_samples` | 500 | ~8–33 *contracts* of heavily correlated rows |
+| `training_samples` | 500 | **~8–10 *contracts*** of heavily correlated rows |
 | `resolved_contracts` | 976 | lifetime count, unrelated to the 500 scored |
-| `brier_full` | 0.0465 | over that ~8–33 contract effective sample |
+| `brier_full` | 0.0465 | over that ~8–10 contract effective sample |
 | `brier_market_baseline` | 0.0416 | **a trained 1-feature logit on the mid, not the mid** |
+
+The ~8–10 is **measured, not assumed from `MAX_OBS_PER_TICKER`**. The state
+file's own `pending` map holds the observation list each ticker will train on
+when it settles; across the 35 pending contracts at as-of time that distribution
+is min 2 / median 60 / mean 49.4 / max 60 observations per contract. So 500
+stored pairs is **10.1 contracts at the mean, 8.3 at the dense end**. (The
+theoretical bound is 8–500, printed as `implied_contract_count_bound`; the
+observed cadence sits hard against the dense end of it.)
 
 `adds_value_over_market` gates on `len(brier_full) >= 100` — a threshold those
 500 correlated rows clear after about two contracts settle. **This fully
@@ -380,7 +404,7 @@ Filed as `agent-ready`, `finn`. Each cites the numbers above as its Why.
 
 **F1 — Retain a downsampled paired spot + top-of-book series.** *(highest)* — filed as [#170](https://github.com/Trucker2827/Open-Terminal/issues/170)
 Q1 found the only structural edge in this report and could only measure it over
-**8.0 hours / 8 events at 3σ**, because `kalshi-tickers.jsonl` rotates at 67 MB
+**8.2 hours / 8 events at 3σ**, because `kalshi-tickers.jsonl` rotates at 67 MB
 and keeps 8 hours while BRTI keeps 116. Capture already exists at sub-second
 resolution — nothing new needs recording, only *keeping*. A compact retained
 series (1 Hz BRTI + per-market top-of-book on change, threshold contracts inside
@@ -389,8 +413,8 @@ within a week and settle whether the +0.52¢ fee-only margin is real.
 
 **F2 — Fix the calibrator's Brier bookkeeping** ([#171](https://github.com/Trucker2827/Open-Terminal/issues/171))**.** Cheap, and it removes a live
 source of false confidence. Three defects, all in `spot_calibrator.py`:
-`brier_full` stores one pair per *observation* (up to 60/contract) so
-`training_samples: 500` overstates the effective sample by 15–60×;
+`brier_full` stores one pair per *observation* (measured median 60/contract) so
+`training_samples: 500` is really ~8–10 contracts;
 `adds_value_over_market` gates on ≥100 of those correlated rows, which two
 settled contracts satisfy; and `brier_market_baseline` is a *trained* 1-feature
 logit rather than the raw mid, so "beats the market" does not mean beating the

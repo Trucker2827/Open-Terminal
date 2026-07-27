@@ -141,8 +141,22 @@ def observe(events, book, brti, threshold_sigma):
         direction = 1.0 if event["move_bps"] > 0 else -1.0
         for ticker in book.series:
             parsed = common.parse_ticker(ticker)
-            if parsed is None or parsed["strike"] is None:
-                considered["no_strike"] += 1
+            if parsed is None:
+                considered["unparseable_ticker"] += 1
+                continue
+            if parsed["strike"] is None:
+                # `KXBTC-...-B65050` is a BAND market, not a threshold one:
+                # exactly one $100-wide band settles YES per event (verified
+                # against the settlement feed — the YES band is the one
+                # containing `expiration_value`). Excluded deliberately, and
+                # counted separately rather than lumped under a generic
+                # "no strike": this statistic multiplies a mid change by the
+                # SIGN of the spot move, which presumes YES is monotone in
+                # spot. For a band it is not — a large up-move can push spot
+                # straight through and OUT of the band, lowering its YES while
+                # the move was upward. Applying the statistic here would not be
+                # a smaller measurement, it would be a wrong one.
+                considered["excluded_band_market"] += 1
                 continue
             seconds_to_close = (parsed["close_ms"] - t) / 1000.0
             if not MIN_SECONDS_TO_CLOSE <= seconds_to_close <= MAX_SECONDS_TO_CLOSE:
@@ -267,6 +281,7 @@ def main():
         return 1
     book = QuoteBook(quotes)
     quote_span = book.span()
+    families = collections.Counter(t.split("-")[0] for t in quotes)
     brti_span = brti.span_ms
     start = max(quote_span[0], brti_span[0])
     end = min(quote_span[1], brti_span[1])
@@ -282,6 +297,12 @@ def main():
             "brti_span_utc": [common.iso(t) for t in brti_span],
             "quote_files": quote_inventory,
             "quote_markets": len(quotes),
+            "quote_markets_by_family": dict(families),
+            "quote_market_families": {
+                "KXBTCD": "hourly THRESHOLD contracts (-T strike) — analysed",
+                "KXBTC": ("hourly BAND contracts (-B level, $100 wide) — "
+                          "EXCLUDED, see excluded_band_market below"),
+            },
             "quote_rows_two_sided": sum(len(v) for v in quotes.values()),
             "quote_rows_dropped": quote_dropped,
             "quote_span_utc": [common.iso(t) for t in quote_span],
@@ -298,8 +319,11 @@ def main():
                       f"{forecast_history.VOL_LOOKBACK_MS // 60000}-minute realized "
                       "per-minute volatility of BRTI itself"),
             "cooldown_s": EVENT_COOLDOWN_MS // 1000,
-            "markets": (f"threshold contracts closing in "
-                        f"[{MIN_SECONDS_TO_CLOSE}, {MAX_SECONDS_TO_CLOSE}]s"),
+            "markets": (f"KXBTCD -T THRESHOLD contracts closing in "
+                        f"[{MIN_SECONDS_TO_CLOSE}, {MAX_SECONDS_TO_CLOSE}]s. "
+                        "KXBTC -B band markets are excluded: the statistic "
+                        "presumes YES is monotone in spot, which holds for a "
+                        "threshold and not for a band"),
             "statistic": ("sign(spot move) * (Kalshi YES mid at t+h - mid at t); "
                           "positive means the book moved after the fact"),
             "cost": "half-spread at the event + Kalshi fee ceil(0.07*P*(1-P)*100)c",

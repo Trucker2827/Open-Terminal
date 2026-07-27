@@ -154,6 +154,28 @@ def calibrator_self_report():
         return {"available": False, "error": str(exc)}
     full = [(p, y) for p, y in state.get("brier_full", [])]
     market = [(p, y) for p, y in state.get("brier_market", [])]
+
+    # How many observations a contract actually contributes is not a constant
+    # to be asserted — it is recorded, in the calibrator's own `pending` map,
+    # which holds the obs list it will train on when each ticker settles. That
+    # distribution is the honest denominator for turning 500 stored pairs into
+    # an effective contract count, so it is measured here rather than assumed
+    # from MAX_OBS_PER_TICKER.
+    pending_obs = sorted(len(entry.get("obs") or [])
+                         for entry in (state.get("pending") or {}).values())
+    effective = None
+    if pending_obs:
+        mean_obs = sum(pending_obs) / len(pending_obs)
+        effective = {
+            "pending_contracts_measured": len(pending_obs),
+            "obs_per_contract_min": pending_obs[0],
+            "obs_per_contract_median": pending_obs[len(pending_obs) // 2],
+            "obs_per_contract_mean": mean_obs,
+            "obs_per_contract_max": pending_obs[-1],
+            "effective_contracts_at_mean_obs": len(full) / mean_obs if mean_obs else None,
+            "effective_contracts_at_max_obs": (len(full) / pending_obs[-1]
+                                               if pending_obs[-1] else None),
+        }
     return {
         "available": True,
         "resolved_contracts_lifetime": state.get("resolved"),
@@ -162,14 +184,18 @@ def calibrator_self_report():
         "brier_market_baseline": common.brier(market),
         "stored_pairs": len(full),
         "pairs_are_observations_not_contracts": True,
-        "max_obs_per_contract": 60,
-        "implied_contract_count_range": [len(full) // 60 if full else 0,
+        "max_obs_per_contract_constant": 60,
+        "effective_sample": effective,
+        # The theoretical bound, kept alongside the measured figure so the two
+        # are never confused: one pair per contract at worst, 60 at best.
+        "implied_contract_count_bound": [len(full) // 60 if full else 0,
                                          len(full)],
         "caveat": ("brier_full holds one pair per OBSERVATION (up to 60 per "
-                   "contract) truncated to the last 500, so its effective "
-                   "sample is roughly 8-33 contracts, not 500 forecasts; "
-                   "brier_market_baseline is a trained 1-feature logit on the "
-                   "mid, not the mid itself"),
+                   "contract) truncated to the last 500, so 'training_samples: "
+                   "500' is a far smaller number of contracts — see "
+                   "effective_sample, measured from this state file's own "
+                   "pending obs distribution; brier_market_baseline is a "
+                   "trained 1-feature logit on the mid, not the mid itself"),
     }
 
 

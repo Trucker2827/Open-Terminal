@@ -40,7 +40,10 @@ FILES = (
      "public settlement feed — recorded outcomes (Q2/Q3 ground truth)"),
     ("kalshi-venue-features.jsonl",
      lambda r: None,
-     "pre-joined spot + Kalshi price snapshots (Q1 cross-check)"),
+     "pre-joined spot + Kalshi price snapshots — NOT read by any analysis "
+     "script; listed because it is the obvious alternative source for Q1 and "
+     "a reader should know it was passed over (its ~7.5s cadence cannot "
+     "resolve the sub-minute repricing Q1 measures)"),
 )
 
 
