@@ -28,9 +28,12 @@ TIME bound (30 days) is affordable where a size bound is not:
             THRESHOLD contracts within MAX_SECONDS_TO_CLOSE of expiry.
 
 The restriction is what makes the series small: measured over one full ticker
-rotation, 93.9k in-band rows carried only 6.5k top-of-book changes (6.9%), and
-the whole retained series costs ~27 MB/day — 0.8 GB for 30 days against a
-source stream that spends 67 MB every 5.7 hours.
+rotation, 93.9k in-band rows carried only 6.5k top-of-book changes (6.9%).
+Measured on the first production backfill (201,492 rows kept from 117.7 h of
+BRTI and 6.0 h of quotes), the retained cost is ~66 MB/day — 20 for BRTI, 46 for
+quotes — against the ~322 MB/day the two source streams spend, so 30 days costs
+about 2.0 GB. That is a 4.9x reduction, and it is what turns a size bound of
+hours into a time bound of a month.
 
 HONESTY RULES THIS FILE OBEYS.
   * Read-only against every existing evidence log. This process opens the
