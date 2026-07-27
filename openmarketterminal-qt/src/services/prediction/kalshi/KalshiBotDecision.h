@@ -41,6 +41,36 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 /// Runway is computed as of *now*, not as of the report: the report's
 /// `sqrt_minutes_left` feature was measured at `generated_at_ms`, so the
 /// elapsed time since generation is subtracted before the runway gate runs.
+///
+/// **Two-tier quoting (issue #158).** A bid that only ever rests at the mid is
+/// an opinion nobody paid for: rung 6's first 24 hours rested 151 quotes,
+/// canceled 147 and filled 4, because a resting bid at floor(mid) fills only
+/// when the market comes DOWN through it. So when the edge is big enough to
+/// PAY for a fill, the bot crosses: it quotes at the side's real ask instead,
+/// which is marketable by construction. The hurdle is net of everything the
+/// cross costs —
+///
+///     cross  ⇔  side_edge > spread_cost + taker_fee + cross_margin_usd
+///           ⇔  side_p − cross_price − taker_fee > cross_margin_usd
+///
+/// — the same inequality written two ways, and both are journaled so the
+/// arithmetic can be checked from the ledger alone. Anything below the hurdle
+/// rests at floor(mid) exactly as before.
+///
+/// The tier decision **fails closed to resting** in both directions data can
+/// fail. A report that carries no ask for the side being bid rests
+/// (`REST_NO_BOOK`) — an unknown spread is not a free one. So does a report
+/// whose ask contradicts the mid it is supposed to be half of, or that rounds
+/// to a full dollar (`REST_BOOK_INCONSISTENT`): a negative spread cost would
+/// make crossing look cheaper than resting, which is a fabricated free lunch
+/// rather than a strategy. Until the calibrator that writes the report carries
+/// book data at all, EVERY contract takes that path and the bot quotes exactly
+/// as it did before.
+///
+/// The paper fill model is untouched by this (KalshiBotOrders): a crossing bid
+/// is still filled only against an observed mid at or through its limit, and
+/// still fills AT its limit, never at the mid — it pays what it offered to pay.
+/// Bid rows state that model by name so no row's fill can be read as measured.
 class KalshiBotDecision {
   public:
     /// Reason codes written to every ledger row. Stable strings — the ledger
@@ -61,6 +91,20 @@ class KalshiBotDecision {
     static constexpr auto kExposureCapBlocksBid = "EXPOSURE_CAP_BLOCKS_BID";
     static constexpr auto kSessionBudgetBlocksBid = "SESSION_BUDGET_BLOCKS_BID";
     static constexpr auto kRequoted = "REQUOTED";
+
+    /// Which tier priced a quote, journaled on every row that reached pricing.
+    /// A separate field from `reason_code` on purpose: the reason a bid exists
+    /// (its edge cleared the threshold) and the way it is quoted are different
+    /// questions, and collapsing them would rewrite the reason codes the gate
+    /// and the panel already read.
+    static constexpr auto kQuoteCross = "cross";
+    static constexpr auto kQuoteRest = "rest";
+
+    /// Why that tier and not the other — the audit trail for `quote_style`.
+    static constexpr auto kCrossEdgeClearsCost = "CROSS_EDGE_CLEARS_COST";
+    static constexpr auto kRestEdgeBelowCost = "REST_EDGE_BELOW_COST";
+    static constexpr auto kRestNoBook = "REST_NO_BOOK";
+    static constexpr auto kRestBookInconsistent = "REST_BOOK_INCONSISTENT";
 
     /// Paper sizing/pricing policy. Defaults are deliberately conservative and
     /// mirror the charter's live ceilings ($2 stake, $3 all-in) so rung 1's
@@ -92,6 +136,15 @@ class KalshiBotDecision {
         /// experiment (CommandDispatch.cpp's `tightened(..., 120.0)`), reused
         /// rather than invented so paper is measured under the live fence.
         double max_open_exposure_usd = 120.00;
+        /// Net expected value per contract, in dollars, that must REMAIN after
+        /// paying the spread AND the conservative taker fee before the bot will
+        /// cross the spread instead of resting at the mid. Equivalently — and
+        /// the row journals both forms — the edge must clear
+        /// `spread_cost + fee + margin`. Conservative by default: two cents of
+        /// modelled edge per contract have to survive the round trip before the
+        /// bot pays for a fill, which is a wide hurdle against a signal whose
+        /// Brier only just beats the market baseline.
+        double cross_margin_usd = 0.02;
         /// Ceiling on the all-in a single bot run may newly commit. A bounded
         /// run is the charter's first carve-out condition; this is the money
         /// half of that bound. Defaults to the same ceiling, so it constrains

@@ -51,6 +51,20 @@ QJsonObject report(double p_full, double market_mid, double minutes_left,
     };
 }
 
+/// The same report with the daemon's observed top-of-book passed through, as
+/// spot_calibrator.py's extract_book() writes it. A side the book does not
+/// quote is simply not among the keys — absent, never zero.
+QJsonObject with_book(QJsonObject full, const QJsonObject& book) {
+    QJsonObject predictions = full.value(QStringLiteral("predictions")).toObject();
+    const QString ticker = predictions.keys().first();
+    QJsonObject entry = predictions.value(ticker).toObject();
+    for (auto it = book.constBegin(); it != book.constEnd(); ++it)
+        entry.insert(it.key(), it.value());
+    predictions.insert(ticker, entry);
+    full.insert(QStringLiteral("predictions"), predictions);
+    return full;
+}
+
 QJsonObject only_row(const QJsonArray& rows) {
     return rows.isEmpty() ? QJsonObject() : rows.first().toObject();
 }
@@ -186,6 +200,214 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(action(short_side), QStringLiteral("bid"));
         QCOMPARE(only_row(short_side).value(QStringLiteral("side")).toString(), QStringLiteral("NO"));
         QCOMPARE(only_row(short_side).value(QStringLiteral("price")).toDouble(), 0.17);
+    }
+
+    // --- two-tier quoting: pay to fill (issue #158) -----------------------
+
+    /// (a) An edge that does NOT clear the spread + fee + margin quotes
+    ///     exactly where it quoted before this rung existed: floor(mid).
+    ///     The no-book report is the control — the two prices must agree.
+    void an_edge_below_the_crossing_cost_rests_exactly_as_before() {
+        KalshiBotDecision::Config config;
+        // |0.95 − 0.83| = 0.12 clears the edge threshold, so this contract
+        // reaches pricing; a 10-cent ask spread is what it cannot clear.
+        const QJsonArray control =
+            KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, config);
+        const QJsonArray wide = KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_bid"), 0.82},
+                                                 {QStringLiteral("market_yes_ask"), 0.93}}),
+            {}, {}, kNow, config);
+
+        QCOMPARE(action(wide), QStringLiteral("bid"));
+        QCOMPARE(reason(wide), QStringLiteral("EDGE_CLEARS_THRESHOLD"));
+        QCOMPARE(only_row(wide).value(QStringLiteral("quote_style")).toString(),
+                 QStringLiteral("rest"));
+        QCOMPARE(only_row(wide).value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_EDGE_BELOW_COST"));
+        // The price is rung 1's, to the cent, and identical to the control's.
+        QCOMPARE(only_row(wide).value(QStringLiteral("price")).toDouble(), 0.83);
+        QCOMPARE(only_row(wide).value(QStringLiteral("price")).toDouble(),
+                 only_row(control).value(QStringLiteral("price")).toDouble());
+        QCOMPARE(only_row(wide).value(QStringLiteral("limit_price")).toDouble(), 0.83);
+        // 0.12 of edge against 0.10 of spread + 0.01 of fee + 0.02 of margin.
+        QCOMPARE(only_row(wide).value(QStringLiteral("side_edge")).toDouble(), 0.12);
+        QCOMPARE(only_row(wide).value(QStringLiteral("spread_cost_usd")).toDouble(), 0.10);
+        QCOMPARE(only_row(wide).value(QStringLiteral("cross_fee_usd")).toDouble(), 0.01);
+        QCOMPARE(only_row(wide).value(QStringLiteral("cross_margin_usd")).toDouble(), 0.02);
+        QVERIFY(only_row(wide).value(QStringLiteral("net_ev_usd")).toDouble() <= 0.02);
+    }
+
+    /// (b) An edge that DOES clear it crosses: the bid is quoted at the ask,
+    ///     and the row carries the arithmetic that justified paying for it.
+    void an_edge_above_the_crossing_cost_quotes_at_the_ask() {
+        KalshiBotDecision::Config config;
+        const QJsonArray rows = KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_bid"), 0.82},
+                                                 {QStringLiteral("market_yes_ask"), 0.84}}),
+            {}, {}, kNow, config);
+        const QJsonObject row = only_row(rows);
+
+        QCOMPARE(action(rows), QStringLiteral("bid"));
+        QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(row.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("CROSS_EDGE_CLEARS_COST"));
+        QCOMPARE(row.value(QStringLiteral("side")).toString(), QStringLiteral("YES"));
+        // AT the ask, not at the mid: 0.84, where resting would have been 0.83.
+        QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.84);
+        QCOMPARE(row.value(QStringLiteral("limit_price")).toDouble(), 0.84);
+        QCOMPARE(row.value(QStringLiteral("rest_price")).toDouble(), 0.83);
+        QCOMPARE(row.value(QStringLiteral("side_ask")).toDouble(), 0.84);
+        QCOMPARE(row.value(QStringLiteral("side_bid")).toDouble(), 0.82);
+        // Both forms of the same inequality, net of BOTH costs.
+        QCOMPARE(row.value(QStringLiteral("spread_cost_usd")).toDouble(), 0.01);
+        QCOMPARE(row.value(QStringLiteral("cross_fee_usd")).toDouble(), 0.01);
+        QCOMPARE(row.value(QStringLiteral("cross_cost_usd")).toDouble(), 0.02);
+        QCOMPARE(row.value(QStringLiteral("net_ev_usd")).toDouble(), 0.10);
+        QVERIFY(row.value(QStringLiteral("side_edge")).toDouble() >
+                row.value(QStringLiteral("cross_cost_usd")).toDouble() +
+                    row.value(QStringLiteral("cross_margin_usd")).toDouble());
+        // The order still starts life resting under the SAME stated model —
+        // no self-flattery: nothing here fills anything.
+        QCOMPARE(row.value(QStringLiteral("order_state")).toString(), QStringLiteral("resting"));
+        QCOMPARE(row.value(QStringLiteral("fill_model")).toString(),
+                 QString::fromLatin1(KalshiBotOrders::kFillModel));
+        QVERIFY(row.value(QStringLiteral("fill_rule")).toString().contains(
+            QStringLiteral("never better")));
+    }
+
+    /// A NO bid crosses at the NO book's OWN ask. Kalshi's NO book is a book,
+    /// not `1 − yes_bid`; the fixture's two books are deliberately not mirrors
+    /// so an inference from the YES side would produce a different price.
+    void a_no_side_cross_uses_the_no_books_own_ask() {
+        KalshiBotDecision::Config config;
+        const QJsonArray rows = KalshiBotDecision::decide(
+            with_book(report(0.20, 0.60, 10.0), {{QStringLiteral("market_yes_bid"), 0.59},
+                                                 {QStringLiteral("market_yes_ask"), 0.61},
+                                                 {QStringLiteral("market_no_bid"), 0.39},
+                                                 {QStringLiteral("market_no_ask"), 0.42}}),
+            {}, {}, kNow, config);
+        const QJsonObject row = only_row(rows);
+
+        QCOMPARE(row.value(QStringLiteral("side")).toString(), QStringLiteral("NO"));
+        QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.42);   // the NO ask
+        QVERIFY(row.value(QStringLiteral("price")).toDouble() != 0.41);  // NOT 1 − yes_bid
+        QCOMPARE(row.value(QStringLiteral("side_bid")).toDouble(), 0.39);
+        QCOMPARE(row.value(QStringLiteral("rest_price")).toDouble(), 0.40);
+    }
+
+    /// (c) No spread data → rest, always. An unknown spread is not a free one,
+    ///     and a book that contradicts its own mid is a species of unknown.
+    void a_contract_without_usable_book_data_never_crosses() {
+        KalshiBotDecision::Config config;
+
+        // Nothing at all: the report every calibrator build before this rung
+        // wrote. It rests, and it invents no arithmetic to explain itself.
+        const QJsonObject bare = only_row(
+            KalshiBotDecision::decide(report(0.95, 0.83, 10.0), {}, {}, kNow, config));
+        QCOMPARE(bare.value(QStringLiteral("quote_style")).toString(), QStringLiteral("rest"));
+        QCOMPARE(bare.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_NO_BOOK"));
+        QCOMPARE(bare.value(QStringLiteral("price")).toDouble(), 0.83);
+        for (const char* absent : {"side_ask", "side_bid", "cross_price", "spread_cost_usd",
+                                   "cross_fee_usd", "cross_cost_usd", "net_ev_usd"})
+            QVERIFY2(!bare.contains(QLatin1String(absent)), absent);
+
+        // The NO book is missing while the YES book is present: the side being
+        // bid is the one that has to be quoted, so this still rests.
+        const QJsonObject wrong_side = only_row(KalshiBotDecision::decide(
+            with_book(report(0.20, 0.60, 10.0), {{QStringLiteral("market_yes_bid"), 0.59},
+                                                 {QStringLiteral("market_yes_ask"), 0.61}}),
+            {}, {}, kNow, config));
+        QCOMPARE(wrong_side.value(QStringLiteral("side")).toString(), QStringLiteral("NO"));
+        QCOMPARE(wrong_side.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_NO_BOOK"));
+
+        // An ask BELOW the mid it is supposed to be half of. Crossing here
+        // would price a negative spread cost — a free lunch, fabricated.
+        const QJsonObject contradictory = only_row(KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_ask"), 0.80}}),
+            {}, {}, kNow, config));
+        QCOMPARE(contradictory.value(QStringLiteral("quote_style")).toString(),
+                 QStringLiteral("rest"));
+        QCOMPARE(contradictory.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_BOOK_INCONSISTENT"));
+        QCOMPARE(contradictory.value(QStringLiteral("price")).toDouble(), 0.83);
+        QVERIFY(!contradictory.contains(QStringLiteral("net_ev_usd")));
+
+        // An ask that rounds up to a whole dollar cannot be paid; the passive
+        // tier is still perfectly valid, so the contract rests rather than
+        // being dropped as malformed.
+        const QJsonObject dollar = only_row(KalshiBotDecision::decide(
+            with_book(report(0.98, 0.85, 10.0), {{QStringLiteral("market_yes_ask"), 0.999}}),
+            {}, {}, kNow, config));
+        QCOMPARE(action(QJsonArray{dollar}), QStringLiteral("bid"));
+        QCOMPARE(dollar.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_BOOK_INCONSISTENT"));
+        QCOMPARE(dollar.value(QStringLiteral("price")).toDouble(), 0.85);
+    }
+
+    /// (d) The fee is part of the hurdle, and a one-cent-quantised fee is
+    ///     enough to flip the tier. Margin zeroed so the fee alone decides.
+    void the_taker_fee_alone_can_flip_the_tier() {
+        KalshiBotDecision::Config config;
+        config.cross_margin_usd = 0.0;
+        const QJsonObject book{{QStringLiteral("market_yes_bid"), 0.30},
+                               {QStringLiteral("market_yes_ask"), 0.50}};
+
+        // 0.12 of edge against 0.10 of spread: it clears the SPREAD. The fee
+        // at $0.50 is 2¢ — exactly enough to take it back, so it rests.
+        const QJsonObject eaten = only_row(KalshiBotDecision::decide(
+            with_book(report(0.52, 0.40, 10.0), book), {}, {}, kNow, config));
+        QCOMPARE(eaten.value(QStringLiteral("side_edge")).toDouble(), 0.12);
+        QCOMPARE(eaten.value(QStringLiteral("spread_cost_usd")).toDouble(), 0.10);
+        QCOMPARE(eaten.value(QStringLiteral("cross_fee_usd")).toDouble(), 0.02);
+        QVERIFY(eaten.value(QStringLiteral("side_edge")).toDouble() >
+                eaten.value(QStringLiteral("spread_cost_usd")).toDouble());   // spread alone: cleared
+        QCOMPARE(eaten.value(QStringLiteral("quote_style")).toString(), QStringLiteral("rest"));
+        QCOMPARE(eaten.value(QStringLiteral("quote_style_reason")).toString(),
+                 QStringLiteral("REST_EDGE_BELOW_COST"));
+        QCOMPARE(eaten.value(QStringLiteral("price")).toDouble(), 0.40);
+
+        // One more cent of edge — the only thing changed — and the same
+        // contract, the same book and the same fee now clear the hurdle.
+        const QJsonObject clears = only_row(KalshiBotDecision::decide(
+            with_book(report(0.53, 0.40, 10.0), book), {}, {}, kNow, config));
+        QCOMPARE(clears.value(QStringLiteral("cross_fee_usd")).toDouble(), 0.02);
+        QCOMPARE(clears.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(clears.value(QStringLiteral("price")).toDouble(), 0.50);
+    }
+
+    /// A fractional ask rounds UP to the cent. Paying is a cost, and rounding
+    /// a cost down would flatter the hurdle it has to clear.
+    void a_fractional_ask_rounds_up_never_down() {
+        KalshiBotDecision::Config config;
+        const QJsonObject row = only_row(KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_ask"), 0.835}}),
+            {}, {}, kNow, config));
+        QCOMPARE(row.value(QStringLiteral("side_ask")).toDouble(), 0.835);
+        QCOMPARE(row.value(QStringLiteral("cross_price")).toDouble(), 0.84);
+        QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.84);
+    }
+
+    /// A crossing quote is money committed like any other: it reserves budget
+    /// against the same caps, and SESSION_BUDGET_BLOCKS_BID still refuses it.
+    void a_crossing_bid_reserves_budget_like_a_resting_one() {
+        KalshiBotDecision::Config config;
+        config.session_budget_usd = 0.50;
+        KalshiBotDecision::Exposure exposure;
+        exposure.session_opened_usd = 0.40;
+        const QJsonObject row = only_row(KalshiBotDecision::decide(
+            with_book(report(0.95, 0.83, 10.0), {{QStringLiteral("market_yes_ask"), 0.84}}),
+            {}, {}, kNow, config, {}, exposure));
+        QCOMPARE(row.value(QStringLiteral("action")).toString(), QStringLiteral("pass"));
+        QCOMPARE(row.value(QStringLiteral("reason_code")).toString(),
+                 QStringLiteral("SESSION_BUDGET_BLOCKS_BID"));
+        // The refusal names the tier it was pricing: refused at the ask is a
+        // different fact from refused at the mid.
+        QCOMPARE(row.value(QStringLiteral("quote_style")).toString(), QStringLiteral("cross"));
+        QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.84);
     }
 
     // --- sizing ----------------------------------------------------------

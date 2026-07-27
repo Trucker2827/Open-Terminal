@@ -225,6 +225,12 @@ inline QString decision_line(const QJsonObject& row) {
         // "resting" is money committed to a quote nothing has filled yet.
         const QString order_state = row.value(QStringLiteral("order_state")).toString();
         if (!order_state.isEmpty()) parts << order_state;
+        // Which tier priced it (#158). "cross" is a bid that PAID the spread to
+        // be marketable; "rest" is one waiting at the mid. Two orders of the
+        // same size at the same contract are different acts, and the operator
+        // watching the fill rate move has to be able to see which is which.
+        const QString quote_style = row.value(QStringLiteral("quote_style")).toString();
+        if (!quote_style.isEmpty()) parts << quote_style;
         // A live bid is only a bid if the submit path took it. Whatever
         // submit_order answered is shown verbatim, so a refused order can never
         // read on the screen as a placed one.

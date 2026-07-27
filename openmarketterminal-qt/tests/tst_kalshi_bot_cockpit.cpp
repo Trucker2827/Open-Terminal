@@ -671,6 +671,27 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(live_scene.envelope_role, QStringLiteral("red"));
     }
 
+    /// Issue #158: the envelope is the one line a passing glance catches, so
+    /// it has to say whether the bot PAID for that fill or is still waiting.
+    /// A row from a build that quoted only one way claims neither.
+    void the_envelope_says_whether_the_bid_crossed_or_rested() {
+        QJsonObject crossed = bid_row(kNow - 3'000, QStringLiteral("KX-B"));
+        crossed.insert(QStringLiteral("quote_style"), QStringLiteral("cross"));
+        const QJsonArray crossing{crossed};
+        QCOMPARE(present_bot_cockpit(panel_for(crossing), {}, {}, crossing, {}, kNow).envelope,
+                 QStringLiteral("BID YES $0.42 x4 · CROSS"));
+
+        QJsonObject rested = bid_row(kNow - 3'000, QStringLiteral("KX-B"));
+        rested.insert(QStringLiteral("quote_style"), QStringLiteral("rest"));
+        const QJsonArray resting{rested};
+        QCOMPARE(present_bot_cockpit(panel_for(resting), {}, {}, resting, {}, kNow).envelope,
+                 QStringLiteral("BID YES $0.42 x4 · REST"));
+
+        const QJsonArray silent{bid_row(kNow - 3'000, QStringLiteral("KX-B"))};
+        QCOMPARE(present_bot_cockpit(panel_for(silent), {}, {}, silent, {}, kNow).envelope,
+                 QStringLiteral("BID YES $0.42 x4"));
+    }
+
     // ── criterion 2: the BOT tab suggests the cockpit while running ────────
 
     void the_cockpit_is_suggested_exactly_while_the_loop_is_running() {

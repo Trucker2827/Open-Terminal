@@ -63,6 +63,55 @@ class OnlineLogitTest(unittest.TestCase):
         self.assertAlmostEqual(model.predict(cal.extract_features(snapshot())), 0.5)
 
 
+class BookPassthroughTest(unittest.TestCase):
+    """Issue #158: the report carries the daemon's real top-of-book so the bot
+    can price a crossing bid against the spread it would actually pay."""
+
+    def execution(self, **sides):
+        return {"execution": {side: quote for side, quote in sides.items()}}
+
+    def test_both_books_pass_through_untouched(self):
+        book = cal.extract_book(self.execution(
+            yes={"bid": 0.82, "ask": 0.84}, no={"bid": 0.16, "ask": 0.18}))
+        self.assertEqual(book, {"market_yes_bid": 0.82, "market_yes_ask": 0.84,
+                                "market_no_bid": 0.16, "market_no_ask": 0.18})
+
+    def test_unquoted_levels_are_omitted_never_zeroed(self):
+        # The daemon writes 0.0 for a side of the book with no levels. A zero
+        # ask would read as a free contract, so it is dropped, not carried.
+        book = cal.extract_book(self.execution(
+            yes={"bid": 0.999, "ask": 0.0}, no={"bid": 0.0, "ask": None}))
+        self.assertEqual(book, {"market_yes_bid": 0.999})
+        self.assertEqual(cal.extract_book({}), {})
+        self.assertEqual(cal.extract_book({"execution": {"yes": {"ask": "n/a"}}}), {})
+
+    def test_observe_cycle_carries_the_book_beside_the_prediction(self):
+        snap = snapshot()
+        snap["execution"] = {"yes": {"bid": 0.61, "ask": 0.63},
+                             "no": {"bid": 0.37, "ask": 0.39}}
+        predictions = cal.observe_cycle(cal.default_state(),
+                                        {"snapshots": {"KXBTC-T1": snap}}, 1_000_000)
+        entry = predictions["KXBTC-T1"]
+        self.assertEqual(entry["market_yes_ask"], 0.63)
+        self.assertEqual(entry["market_no_ask"], 0.39)
+        # A report with no execution block at all still predicts; the bot's
+        # rule is to fail closed to passive quoting when the book is absent.
+        bare = cal.observe_cycle(cal.default_state(),
+                                 {"snapshots": {"KXBTC-T2": snapshot()}}, 1_000_000)
+        self.assertNotIn("market_yes_ask", bare["KXBTC-T2"])
+
+    def test_the_book_is_not_a_model_feature(self):
+        # The trained models' input tuples round-trip through the saved state.
+        # Adding a book field to either would retrain nothing and invalidate
+        # everything, so the passthrough must stay outside both.
+        for name in ("market_yes_ask", "market_no_ask", "yes_ask", "no_ask"):
+            self.assertNotIn(name, cal.FULL_FEATURES)
+            self.assertNotIn(name, cal.MARKET_FEATURES)
+        snap = snapshot()
+        snap["execution"] = {"yes": {"bid": 0.61, "ask": 0.63}}
+        self.assertEqual(cal.extract_features(snap), cal.extract_features(snapshot()))
+
+
 class SettleCycleTest(unittest.TestCase):
     def test_observe_then_settle_trains_and_scores(self):
         state = cal.default_state()
