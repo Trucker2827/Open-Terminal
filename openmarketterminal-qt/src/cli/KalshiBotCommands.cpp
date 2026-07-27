@@ -527,6 +527,7 @@ QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config
         {QStringLiteral("session_opened_usd"), tick.session_opened_usd},
         {QStringLiteral("signal_trusted"), tick.signal_trusted},
         {QStringLiteral("edge_threshold"), config.edge_threshold},
+        {QStringLiteral("cross_margin_usd"), config.cross_margin_usd},
         {QStringLiteral("max_stake_usd"), config.max_stake_usd},
         {QStringLiteral("max_all_in_usd"), config.max_all_in_usd},
         {QStringLiteral("quote_ttl_seconds"), config.quote_ttl_seconds},
@@ -584,6 +585,7 @@ void bot_usage() {
                  "                          [--max-all-in X] [--min-runway-sec N]\n"
                  "                          [--max-report-age-sec N] [--quote-ttl-sec N]\n"
                  "                          [--max-exposure X] [--session-budget X]\n"
+                 "                          [--cross-margin X]\n"
                  "       kalshi bot run [--interval N] [--iterations N]\n"
                  "       kalshi bot gate [--json]\n"
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
@@ -594,6 +596,11 @@ void bot_usage() {
                  "PAPER is the default everywhere. A bid rests until it fills, its TTL\n"
                  "expires, or its edge goes; a resting remainder counts against\n"
                  "--max-exposure at its limit price.\n"
+                 "A bid quotes at the mid and waits UNLESS the edge still clears\n"
+                 "--cross-margin after paying the real spread and the taker fee, in which\n"
+                 "case it crosses and quotes at the ask. Every row says which tier priced\n"
+                 "it (quote_style) and shows the arithmetic. A contract whose report\n"
+                 "carries no ask always rests.\n"
                  "`gate` scores the PAPER ledger against sealed, preregistered criteria and\n"
                  "writes the verdict to %s. It never acts on it.\n"
                  "\n"
@@ -991,6 +998,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     KalshiBotDecision::Config config;
     bool bad = false;
     take_double(args, QStringLiteral("--edge-threshold"), config.edge_threshold, bad);
+    take_double(args, QStringLiteral("--cross-margin"), config.cross_margin_usd, bad);
     take_double(args, QStringLiteral("--max-stake"), config.max_stake_usd, bad);
     take_double(args, QStringLiteral("--max-all-in"), config.max_all_in_usd, bad);
     take_int(args, QStringLiteral("--min-runway-sec"), config.min_runway_seconds, bad);

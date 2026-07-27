@@ -75,6 +75,34 @@ def extract_features(snapshot):
     }
 
 
+def extract_book(snapshot):
+    """The daemon's observed top-of-book for both sides, passed through whole.
+
+    Nothing here is modeled, learned, or derived: these are the quotes the
+    daemon saw (kalshi_flow_execution_to_json in ServeCommand.cpp, the same
+    normalized book `yes_mid` is the midpoint of), carried into the report so
+    the bot can price a crossing bid against the spread it would actually pay
+    instead of guessing one.
+
+    A side the book does not quote is OMITTED, never zeroed: the bot's rule is
+    to fail closed to passive quoting when it cannot see the ask it would have
+    to cross, and a fabricated 0.0 would read as a free contract. Each side's
+    own book is reported — Kalshi's NO book is a book, not `1 - yes_bid`.
+    """
+    execution = snapshot.get("execution") or {}
+    book = {}
+    for side in ("yes", "no"):
+        quote = execution.get(side) or {}
+        for level in ("bid", "ask"):
+            try:
+                price = float(quote.get(level))
+            except (TypeError, ValueError):
+                continue
+            if 0.0 < price < 1.0:
+                book["market_%s_%s" % (side, level)] = price
+    return book
+
+
 class OnlineLogit:
     """Dependency-free online logistic regression with running z-scoring.
 
@@ -214,6 +242,12 @@ def observe_cycle(state, evidence, now_ms):
             "market_yes_mid": features["yes_mid"],
             "features": features,
         }
+        # Book passthrough, deliberately OUTSIDE `features`: FULL_FEATURES and
+        # MARKET_FEATURES are the trained models' input tuples and round-trip
+        # through the saved state, so adding to them would retrain nothing and
+        # invalidate everything. These keys are evidence for the reader (and
+        # for the bot's crossing tier), not signal for the model.
+        predictions[ticker].update(extract_book(snapshot))
     return predictions
 
 

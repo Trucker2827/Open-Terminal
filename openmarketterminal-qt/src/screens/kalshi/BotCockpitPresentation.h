@@ -286,12 +286,17 @@ inline QString envelope_text(const QJsonObject& row, QString* role) {
         const QString side = row.value(QStringLiteral("side")).toString(QStringLiteral("?"));
         const QJsonValue price = row.value(QStringLiteral("price"));
         const QJsonValue contracts = row.value(QStringLiteral("contracts"));
+        // The tier is part of the act, not a footnote: a CROSS paid the spread
+        // to be filled now, a REST is waiting at the mid (#158).
+        const QString quote_style = row.value(QStringLiteral("quote_style")).toString();
         if (role) *role = side == QStringLiteral("NO") ? QStringLiteral("red")
                                                        : QStringLiteral("green");
-        return QStringLiteral("BID %1 %2 x%3")
+        return QStringLiteral("BID %1 %2 x%3%4")
             .arg(side,
                  is_number(price) ? money(price.toDouble()) : QStringLiteral("price ?"),
-                 is_number(contracts) ? QString::number(contracts.toInt()) : QStringLiteral("?"));
+                 is_number(contracts) ? QString::number(contracts.toInt()) : QStringLiteral("?"),
+                 quote_style.isEmpty() ? QString()
+                                       : QStringLiteral(" · ") + quote_style.toUpper());
     }
     if (action == QStringLiteral("fill")) {
         if (role) *role = QStringLiteral("green");

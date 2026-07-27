@@ -918,6 +918,17 @@ add_test(NAME e2e_kalshi_bot_live_refusal
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_live_refusal.sh)
 
+# Issue #158 — pay-to-fill quoting, proved against the real openterminalcli:
+# two contracts with the same edge and the same mid, differing only in spread,
+# take different tiers; the crossing one fills on the next tick AT THE PRICE IT
+# PAID and becomes a position, the resting one never fills and TTL-cancels. The
+# control (the same report with no book) rests both and fills neither, so the
+# fill is attributable to the crossing rather than to the fixture. Offline,
+# paper-only, temp evidence dir.
+add_test(NAME e2e_kalshi_bot_crossing
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_crossing.sh)
+
 # Issue #152 — the decision ledger's generations, proved against the real
 # openterminalcli: `kalshi bot gate` reports the same ledger numbers before and
 # after the record is split into two generations, and refuses — non-zero, no

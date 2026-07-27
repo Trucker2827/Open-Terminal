@@ -1,6 +1,12 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
+// For the fill model's NAME only (kFillModel), so a bid row can state the model
+// that will decide whether it ever becomes a position instead of restating it
+// in a second literal that could drift. A .cpp-only include:
+// KalshiBotOrders.h includes this header, and the decision math still knows
+// nothing about the order lifecycle.
+#include "services/prediction/kalshi/KalshiBotOrders.h"
 
 #include <QDateTime>
 #include <QSet>
@@ -206,16 +212,90 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             continue;
         }
 
-        // Paper pricing: calibrator.json carries only the mid, so the bid is a
-        // limit at the mid, floored to the cent (never pay above the mid) on
-        // whichever side the edge points. Live rungs price off the real book.
+        // --- two-tier pricing (issue #158) ----------------------------------
+        // The PASSIVE tier is rung 1's, unchanged: a limit at the mid, floored
+        // to the cent (never pay above the mid) on whichever side the edge
+        // points. It fills only when the market comes down through it, which
+        // is why 147 of rung 6's first 151 quotes were canceled instead.
         const bool yes_side = edge > 0.0;
-        const double raw_price = yes_side ? market_mid : 1.0 - market_mid;
-        const double price = std::floor(raw_price * 100.0 + 1e-9) / 100.0;
+        const double side_mid = yes_side ? market_mid : 1.0 - market_mid;
+        const double side_p = yes_side ? calibrated_p : 1.0 - calibrated_p;
+        const double side_edge = side_p - side_mid;   // == |edge|, by construction
+        const double rest_price = std::floor(side_mid * 100.0 + 1e-9) / 100.0;
+
+        // The CROSSING tier prices off the side's own REAL ask, as observed by
+        // the daemon and passed through by the calibrator. Kalshi's NO book is
+        // a book: the NO ask is read directly, never inferred from the YES bid.
+        const QJsonValue ask_value = prediction.value(
+            yes_side ? QStringLiteral("market_yes_ask") : QStringLiteral("market_no_ask"));
+        const QJsonValue bid_value = prediction.value(
+            yes_side ? QStringLiteral("market_yes_bid") : QStringLiteral("market_no_bid"));
+
+        const char* style_reason = nullptr;
+        double cross_price = 0.0;
+        const double side_ask = ask_value.toDouble(0.0);
+        if (!ask_value.isDouble()) {
+            // No ask for this side. An unknown spread is not a free one.
+            style_reason = kRestNoBook;
+        } else if (!(side_ask > 0.0 && side_ask < 1.0) || side_ask < side_mid - 1e-9) {
+            // An ask below the mid it is supposed to be half of is data
+            // contradicting itself, and it would yield a NEGATIVE spread cost
+            // — crossing would look cheaper than resting. Inconsistent is a
+            // species of unavailable, and both rest.
+            style_reason = kRestBookInconsistent;
+        } else {
+            // Rounded UP to the cent: paying is a cost, and rounding a cost
+            // down would flatter the hurdle it has to clear.
+            cross_price = std::ceil(side_ask * 100.0 - 1e-9) / 100.0;
+            if (!(cross_price > 0.0 && cross_price < 1.0)) style_reason = kRestBookInconsistent;
+        }
+
+        const bool book_priced = style_reason == nullptr;
+        double spread_cost = 0.0;
+        double cross_fee = 0.0;
+        double net_ev = 0.0;
+        bool cross = false;
+        if (book_priced) {
+            spread_cost = cross_price - side_mid;
+            // The hurdle is judged per contract, at n=1: the fee schedule
+            // ceils to the whole cent for the whole order, so the size the
+            // caps end up allowing cannot be known before the tier is. A
+            // one-contract ceil overstates the hurdle, which is the safe
+            // direction. The order's ACTUAL total fee is `fee_usd`, sized
+            // below at the price this choice picks.
+            cross_fee = KalshiEvidenceEngine::conservative_taker_fee(cross_price, 1.0);
+            net_ev = side_p - cross_price - cross_fee;
+            cross = net_ev > config.cross_margin_usd + 1e-9;
+            style_reason = cross ? kCrossEdgeClearsCost : kRestEdgeBelowCost;
+        }
+
+        const double price = cross ? cross_price : rest_price;
         if (!(price > 0.0 && price < 1.0)) {
             row.insert(QStringLiteral("reason_code"), QString::fromLatin1(kMalformedPrediction));
             rows.append(finish(row));
             continue;
+        }
+
+        // Attached before the caps run, so a refusal row says which tier it
+        // was pricing too — a bid refused for size at the ask is a different
+        // fact from one refused at the mid.
+        row.insert(QStringLiteral("quote_style"),
+                   QString::fromLatin1(cross ? kQuoteCross : kQuoteRest));
+        row.insert(QStringLiteral("quote_style_reason"), QString::fromLatin1(style_reason));
+        row.insert(QStringLiteral("rest_price"), rest_price);
+        row.insert(QStringLiteral("cross_margin_usd"), config.cross_margin_usd);
+        if (book_priced) {
+            // The arithmetic that chose the tier, on the rows of BOTH tiers:
+            // a rest that was priced against a real book has to show the sum
+            // it failed, or "the edge did not clear the cost" is an assertion.
+            row.insert(QStringLiteral("side_ask"), side_ask);
+            if (bid_value.isDouble()) row.insert(QStringLiteral("side_bid"), bid_value.toDouble());
+            row.insert(QStringLiteral("cross_price"), cross_price);
+            row.insert(QStringLiteral("side_edge"), side_edge);
+            row.insert(QStringLiteral("spread_cost_usd"), spread_cost);
+            row.insert(QStringLiteral("cross_fee_usd"), cross_fee);
+            row.insert(QStringLiteral("cross_cost_usd"), spread_cost + cross_fee);
+            row.insert(QStringLiteral("net_ev_usd"), net_ev);
         }
 
         // Size down until BOTH ceilings hold: stake alone, and stake plus the
@@ -297,6 +377,21 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         // Until then its remainder counts as exposure at the limit price.
         row.insert(QStringLiteral("order_state"), QStringLiteral("resting"));
         row.insert(QStringLiteral("limit_price"), price);
+        // The disclosure, promoted from a comment to the row (#158): whether
+        // this order ever becomes a position is decided by a stated MODEL, not
+        // by a venue. A crossing bid satisfies that model's condition the
+        // moment it is placed — which is the whole point of paying for it, and
+        // exactly why the row has to say the fill was modelled.
+        //
+        // The model's NAME only. `KalshiBotOrders::kFillRule`, the prose beside
+        // it, describes the passive tier in terms this rung has falsified for a
+        // crossing bid ("calibrator.json carries no book"; "its market mid is
+        // the ask proxy"; "it selects on the market having moved to the quote"
+        // — a cross moves the quote to the market). Stamping that sentence onto
+        // a crossing bid would be a false disclosure on the rows this change is
+        // meant to make the majority. What is true of THIS row is already on it,
+        // in `quote_style`, `quote_style_reason` and the cost arithmetic.
+        row.insert(QStringLiteral("fill_model"), QString::fromLatin1(KalshiBotOrders::kFillModel));
         row.insert(QStringLiteral("filled_count"), 0);
         row.insert(QStringLiteral("remaining_count"), contracts);
         row.insert(QStringLiteral("ttl_ms"), static_cast<double>(config.quote_ttl_seconds) * 1000.0);

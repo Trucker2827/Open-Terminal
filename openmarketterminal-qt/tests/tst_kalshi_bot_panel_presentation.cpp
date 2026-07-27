@@ -211,6 +211,33 @@ class KalshiBotPanelPresentationTest final : public QObject {
         QVERIFY(view.decisions.first().contains("resting"));
     }
 
+    /// Issue #158: two bids of the same size at the same contract are
+    /// different acts depending on whether they PAID the spread. The operator
+    /// watching the fill rate move has to be able to tell them apart, and a
+    /// row from a build that quoted only one way must not claim either.
+    void a_bid_row_says_which_tier_quoted_it() {
+        const qint64 now = 4'000'000'000;
+        QJsonObject crossed = bid_row(now - 5'000, "KXBTCD-B118");
+        crossed.insert("order_state", "resting");
+        crossed.insert("quote_style", "cross");
+        QVERIFY(present_kalshi_bot_panel(QJsonArray{crossed}, {}, {}, now)
+                    .decisions.first()
+                    .contains("cross"));
+
+        QJsonObject rested = bid_row(now - 5'000, "KXBTCD-B118");
+        rested.insert("quote_style", "rest");
+        QVERIFY(present_kalshi_bot_panel(QJsonArray{rested}, {}, {}, now)
+                    .decisions.first()
+                    .contains("rest"));
+
+        // A row written before this rung says nothing about a tier, so the
+        // line says nothing either — no default is invented for it.
+        const QString silent = present_kalshi_bot_panel(
+            QJsonArray{bid_row(now - 5'000, "KXBTCD-B118")}, {}, {}, now).decisions.first();
+        QVERIFY(!silent.contains("cross"));
+        QVERIFY(!silent.contains("rest"));
+    }
+
     void a_cancel_is_shown_as_a_cancel_and_never_as_a_pass() {
         const qint64 now = 4'000'000'000;
         QJsonObject row = decision_row(now - 5'000, "KXBTCD-B118", "CANCELED_TTL");
@@ -755,7 +782,18 @@ class KalshiBotPanelPresentationTest final : public QObject {
                                   {"settled_remaining", 296},
                                   {"days_to_gate_at_observed_rate", 144.3},
                                   {"fill_models", QJsonArray{"rung6_conditional_mid"}},
-                                  {"fill_rule", "a stated model, not a measured fill"}};
+                                  // Keyed by quoting tier since #158: a mixed
+                                  // record states one sentence per tier, and
+                                  // the panel prints whatever the file holds.
+                                  {"fill_rules",
+                                   QJsonObject{{"rest",
+                                                QJsonObject{{"fills", 4},
+                                                            {"rule", "a stated model, not a "
+                                                                     "measured fill"}}},
+                                               {"cross",
+                                                QJsonObject{{"fills", 1},
+                                                            {"rule", "quoted AT the observed "
+                                                                     "ask"}}}}}};
         const qint64 now = 9'000'060'000;
         const auto view = present_kalshi_bot_panel({}, {}, {}, now, 8, {}, file);
         // Character-for-character the same lines the CLI prints and puts in

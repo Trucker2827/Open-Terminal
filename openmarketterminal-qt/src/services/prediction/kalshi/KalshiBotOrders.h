@@ -35,13 +35,17 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///      journaled UNCONFIRMED_CANCEL, leaves the order resting, keeps it in
 ///      the exposure sum, and is retried on the next tick.
 ///
-///   3. **No fill is invented.** Paper has no order book: calibrator.json
-///      carries a mid and nothing else. A resting paper order is therefore
-///      filled only once an OBSERVED mid is at or through its limit, and then
-///      at its own limit price, never better; fills are all-or-nothing because
-///      nothing in the report could evidence a partial. That inference is
-///      stated on every row it produces (`fill_model`, `fill_rule`) exactly as
-///      rung 1 stated its own — it is a model, not a measurement. The
+///   3. **No fill is invented.** A paper order is filled only once an OBSERVED
+///      price for its side is at or through its limit, and then at its own
+///      limit price, never better; fills are all-or-nothing because nothing in
+///      the report could evidence a partial. The two quoting tiers (#158) meet
+///      that condition in opposite ways, so each states its OWN inference: a
+///      PASSIVE order rests at floor(mid) and waits for the market to come to
+///      it (`kFillRule`), while a CROSSING order was quoted at the observed
+///      ask and so satisfies the condition the moment it is placed
+///      (`kCrossFillRule`). `fill_rule` is selected on the order's journaled
+///      `quote_style`; `fill_model` names the model either way, exactly as
+///      rung 1 named its own — it is a model, not a measurement. The
 ///      remainder arithmetic is nevertheless kept general so a live rung's
 ///      real partial fills flow through the same code.
 ///
@@ -82,6 +86,24 @@ class KalshiBotOrders {
         "limit fills only once an observed mid is at or through the limit, and then at the limit, "
         "never better; all-or-nothing, because nothing in the report could evidence a partial. A "
         "stated model, not a measured fill: it selects on the market having moved to the quote.";
+    /// The crossing tier's disclosure (#158). `kFillRule` above describes the
+    /// PASSIVE tier, and every clause of it is false for a bid quoted at the
+    /// ask: the report did carry a book (that book is what priced the order),
+    /// the mid was not the ask proxy, and the fill selects on the quote having
+    /// moved to the market rather than the reverse. So a crossing order says
+    /// what is true of a crossing order. Deliberately ASCII-only: this string
+    /// reaches the ledger through `QString::fromLatin1`, which mangles the
+    /// UTF-8 punctuation above (#164 owns that bug; a new string must not
+    /// join it).
+    static constexpr auto kCrossFillRule =
+        "paper, crossing tier: this order was quoted AT the side's observed ask (rounded up to "
+        "the cent), so the fill model's condition, an observed price for its side at or through "
+        "the limit, was already satisfied by the book that priced it. It does not wait for the "
+        "market to come to the quote; it misses only if the next observed price for its side is "
+        "above the limit, or the contract settles, or the report goes stale first. It fills at "
+        "its own limit, the price paid, never at the mid and never better, and all-or-nothing, "
+        "because the report evidences an ask but never the depth resting at it. A stated model, "
+        "not a measured fill.";
 
     /// The bot's order book, replayed from its own ledger.
     struct Book {

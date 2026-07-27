@@ -288,7 +288,23 @@ QJsonArray KalshiBotOrders::reconcile(const Book& book,
             row.insert(QStringLiteral("observed_mid"), market_mid);
             row.insert(QStringLiteral("order_state"), QString::fromLatin1(kFilled));
             row.insert(QStringLiteral("fill_model"), QString::fromLatin1(kFillModel));
-            row.insert(QStringLiteral("fill_rule"), QString::fromLatin1(kFillRule));
+            // Which tier's disclosure, read off the order's OWN journaled
+            // `quote_style` rather than re-derived from prices here: the
+            // decision function already recorded which tier priced this order,
+            // and a second derivation is a second truth that can disagree with
+            // the ledger. A row written before #158 carries no tier and was
+            // passive, so it keeps the passive sentence.
+            const QString quote_style = str(working, "quote_style");
+            const bool crossed = quote_style == QLatin1String(KalshiBotDecision::kQuoteCross);
+            row.insert(QStringLiteral("fill_rule"),
+                       QString::fromLatin1(crossed ? kCrossFillRule : kFillRule));
+            // The KEY the sentence above was selected by, carried beside it, so
+            // a reader of this row alone can check the selection instead of
+            // matching prose — and so the funnel can bucket fills by the tier
+            // that priced them rather than by their rule text. A row whose
+            // order stated no tier states none here either: absent is absent.
+            if (!quote_style.isEmpty())
+                row.insert(QStringLiteral("quote_style"), quote_style);
             rows.append(row);
             continue;
         }

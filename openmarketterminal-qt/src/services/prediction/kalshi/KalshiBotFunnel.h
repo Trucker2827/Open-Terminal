@@ -61,6 +61,13 @@ inline constexpr auto kKalshiBotFunnelFile = "kalshi-bot-funnel.json";
 /// the pace is absent rather than extrapolated (honesty rule 2).
 inline constexpr qint64 kKalshiBotFunnelMinPaceSpanMs = 60LL * 60 * 1000;
 
+/// The bucket a fill row that journals no `quote_style` is counted under. It is
+/// NOT `rest`: every fill written before #158 was in fact passive, but the row
+/// does not say so, and a funnel that filled that in would be asserting a tier
+/// the ledger never stated (honesty rule 1). The sentence such a row carries is
+/// still printed — what is unstated is the tier, not the rule.
+inline constexpr auto kKalshiBotFunnelUnstatedTier = "unstated";
+
 /// The conversion funnel over one set of ledger rows, plus the provenance of
 /// what was measured. Every `*_available` flag is the difference between "the
 /// record does not support this number" and "this number is zero".
@@ -112,11 +119,41 @@ struct KalshiBotFunnel {
     qint64 last_ts_ms = 0;              ///< newest dated paper row; 0 when none
     qint64 span_ms = 0;                 ///< last - first; 0 when the record is undated
     /// The fill model(s) the record's own rows stamped on themselves, sorted
-    /// and deduped, and the rule text stated beside them. Printed verbatim: the
-    /// selection the paper record was made by is the ledger's claim, not this
-    /// module's.
+    /// and deduped. Printed verbatim: the selection the paper record was made
+    /// by is the ledger's claim, not this module's.
     QStringList fill_models;
-    QString fill_rule;
+
+    /// One quoting tier's disclosure, over the fills that tier priced.
+    ///
+    /// Why this is keyed rather than a single string (#158): the crossing tier
+    /// gave the ledger a SECOND fill rule, and the two say opposite things
+    /// about how a fill was selected. A scalar could only hold one of them, so
+    /// a record containing both published whichever row happened to come last
+    /// — the panel then stated, over crossing fills, the passive sentence that
+    /// is false for every one of them. Which tier is not a matter of opinion:
+    /// it is the `quote_style` the deciding tick journaled on the order, and it
+    /// is read here, never re-derived from the rule's prose.
+    struct FillRule {
+        /// The row's own `quote_style`, or `kKalshiBotFunnelUnstatedTier` for
+        /// rows that state none (every fill written before #158). Never
+        /// inferred: a row that named no tier is not relabelled as one.
+        QString quote_style;
+        /// The one sentence the rows under this tier carried. EMPTY when they
+        /// carried none, and empty when they disagreed — see below.
+        QString rule;
+        /// Set when rows under one tier carried DIFFERENT rule texts. Nothing
+        /// this codebase writes can do that (the sentence is a function of the
+        /// tier), so it means a hand-edited or a future record; picking one of
+        /// them would be the same last-writer bug this struct exists to kill.
+        bool rules_disagree = false;
+        /// Fills counted under this tier. Every `action: fill` row lands in
+        /// exactly one bucket, so these sum to `fills` whether or not the rows
+        /// carried a rule at all.
+        int fills = 0;
+    };
+    /// Every tier the record's fills were priced by, sorted by `quote_style`
+    /// so the published file and the rendered line cannot depend on row order.
+    QList<FillRule> fill_rules;
 
     /// The whole funnel over `rows`, scored against the SEALED gate params.
     ///
@@ -187,6 +224,35 @@ inline QString span_text(qint64 span_ms) {
     const double hours = static_cast<double>(span_ms) / 3'600'000.0;
     return hours < 48.0 ? QStringLiteral("%1h").arg(hours, 0, 'f', 1)
                         : QStringLiteral("%1d").arg(hours / 24.0, 0, 'f', 1);
+}
+
+/// Every tier's disclosure, each next to the tier it describes and the fills it
+/// was stated over (#158). A mixed record states BOTH sentences, because both
+/// are true of the fills they are keyed to and neither is true of the others.
+/// `QJsonObject::keys()` is sorted, so which row came last cannot change a
+/// character of this.
+inline QString fill_rules_text(const QJsonObject& funnel) {
+    const QJsonObject rules = funnel.value(QStringLiteral("fill_rules")).toObject();
+    QStringList parts;
+    for (const QString& tier : rules.keys()) {
+        const QJsonObject entry = rules.value(tier).toObject();
+        const int fills = entry.value(QStringLiteral("fills")).toInt();
+        const QString rule = entry.value(QStringLiteral("rule")).toString();
+        QString said;
+        if (!rule.isEmpty())
+            said = rule;
+        else if (entry.value(QStringLiteral("rules_disagree")).toBool())
+            said = QStringLiteral("the rows under this tier state DIFFERENT fill rules, so none is "
+                                  "quoted for them");
+        else
+            said = QStringLiteral("these fills state no fill_rule of their own");
+        parts << QStringLiteral("%1 (%2 %3): %4")
+                     .arg(tier)
+                     .arg(fills)
+                     .arg(fills == 1 ? QStringLiteral("fill") : QStringLiteral("fills"), said);
+    }
+    return parts.isEmpty() ? QString()
+                           : QStringLiteral(" — %1").arg(parts.join(QStringLiteral(" · ")));
 }
 
 } // namespace kalshi_bot_funnel_detail
@@ -273,7 +339,7 @@ inline QStringList kalshi_bot_funnel_lines(const KalshiBotFunnelFile& file, qint
     QStringList models;
     for (const auto& value : funnel.value(QStringLiteral("fill_models")).toArray())
         models << value.toString();
-    const QString rule = funnel.value(QStringLiteral("fill_rule")).toString();
+    const QString rules = fill_rules_text(funnel);
     // Rung-1 bids state no model at all, so a record holding them is described
     // by counting them, never by inventing a name for what they were selected
     // by. `replay()` books them as assumed fills whatever this line says.
@@ -284,12 +350,10 @@ inline QStringList kalshi_bot_funnel_lines(const KalshiBotFunnelFile& file, qint
                    : QString();
     lines << (models.isEmpty()
                   ? QStringLiteral("FILL MODEL · not stated — no row in this record carries a "
-                                   "fill_model, so the selection behind these fills is unstated%1")
-                        .arg(assumed)
+                                   "fill_model, so the selection behind these fills is unstated%1%2")
+                        .arg(rules, assumed)
                   : QStringLiteral("FILL MODEL · %1%2%3")
-                        .arg(models.join(QStringLiteral(" + ")),
-                             rule.isEmpty() ? QString() : QStringLiteral(" — %1").arg(rule),
-                             assumed)) + age;
+                        .arg(models.join(QStringLiteral(" + ")), rules, assumed)) + age;
     return lines;
 }
 
