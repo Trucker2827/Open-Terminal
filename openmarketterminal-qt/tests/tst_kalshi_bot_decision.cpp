@@ -271,8 +271,12 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(row.value(QStringLiteral("order_state")).toString(), QStringLiteral("resting"));
         QCOMPARE(row.value(QStringLiteral("fill_model")).toString(),
                  QString::fromLatin1(KalshiBotOrders::kFillModel));
-        QVERIFY(row.value(QStringLiteral("fill_rule")).toString().contains(
-            QStringLiteral("never better")));
+        // The model's NAME, and not the prose beside it: KalshiBotOrders'
+        // fill_rule describes the passive tier ("calibrator.json carries no
+        // book", "its market mid is the ask proxy", "it selects on the market
+        // having moved to the quote") and every clause of that is false of a
+        // crossing bid. A false disclosure is worse than none.
+        QVERIFY(!row.contains(QStringLiteral("fill_rule")));
     }
 
     /// A NO bid crosses at the NO book's OWN ask. Kalshi's NO book is a book,

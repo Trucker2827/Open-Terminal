@@ -1,9 +1,9 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
-// For the fill model's NAME only (kFillModel / kFillRule), so a bid row can
-// state the model that will decide whether it ever becomes a position instead
-// of restating it in a second literal that could drift. A .cpp-only include:
+// For the fill model's NAME only (kFillModel), so a bid row can state the model
+// that will decide whether it ever becomes a position instead of restating it
+// in a second literal that could drift. A .cpp-only include:
 // KalshiBotOrders.h includes this header, and the decision math still knows
 // nothing about the order lifecycle.
 #include "services/prediction/kalshi/KalshiBotOrders.h"
@@ -382,8 +382,16 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
         // by a venue. A crossing bid satisfies that model's condition the
         // moment it is placed — which is the whole point of paying for it, and
         // exactly why the row has to say the fill was modelled.
+        //
+        // The model's NAME only. `KalshiBotOrders::kFillRule`, the prose beside
+        // it, describes the passive tier in terms this rung has falsified for a
+        // crossing bid ("calibrator.json carries no book"; "its market mid is
+        // the ask proxy"; "it selects on the market having moved to the quote"
+        // — a cross moves the quote to the market). Stamping that sentence onto
+        // a crossing bid would be a false disclosure on the rows this change is
+        // meant to make the majority. What is true of THIS row is already on it,
+        // in `quote_style`, `quote_style_reason` and the cost arithmetic.
         row.insert(QStringLiteral("fill_model"), QString::fromLatin1(KalshiBotOrders::kFillModel));
-        row.insert(QStringLiteral("fill_rule"), QString::fromLatin1(KalshiBotOrders::kFillRule));
         row.insert(QStringLiteral("filled_count"), 0);
         row.insert(QStringLiteral("remaining_count"), contracts);
         row.insert(QStringLiteral("ttl_ms"), static_cast<double>(config.quote_ttl_seconds) * 1000.0);

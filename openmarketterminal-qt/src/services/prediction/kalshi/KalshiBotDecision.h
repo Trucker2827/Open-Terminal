@@ -70,7 +70,10 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 /// The paper fill model is untouched by this (KalshiBotOrders): a crossing bid
 /// is still filled only against an observed mid at or through its limit, and
 /// still fills AT its limit, never at the mid — it pays what it offered to pay.
-/// Bid rows state that model by name so no row's fill can be read as measured.
+/// Bid rows state that model BY NAME (`fill_model`) so no row's fill can be
+/// read as measured. Only the name: `KalshiBotOrders::kFillRule`, the prose
+/// beside it, describes the passive tier in terms a crossing bid falsifies, and
+/// a false disclosure is worse than none.
 class KalshiBotDecision {
   public:
     /// Reason codes written to every ledger row. Stable strings — the ledger
