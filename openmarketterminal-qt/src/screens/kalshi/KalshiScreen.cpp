@@ -4202,7 +4202,15 @@ void KalshiScreen::refresh_bot_panel() {
     bot_funnel_->setText(view.funnel.join(QStringLiteral("\n")));
     bot_funnel_->setStyleSheet(card_style(colors::TEXT_SECONDARY()));
     bot_gate_->setText(view.gate);
-    bot_gate_->setStyleSheet(card_style(view.gate_pass ? colors::GREEN() : colors::TEXT_SECONDARY()));
+    // The presenter's own role (issue #167). Green is reserved for a PASS whose
+    // age the loop still vouches for; a verdict older than the staleness window
+    // paints amber, so an unrefreshed gate can never sit on this screen looking
+    // current. The card text carries the age in words either way.
+    bot_gate_->setStyleSheet(card_style(view.gate_role == QStringLiteral("green")
+                                            ? colors::GREEN()
+                                        : view.gate_role == QStringLiteral("amber")
+                                            ? colors::WARNING()
+                                            : colors::TEXT_SECONDARY()));
 
     if (bot_stop_button_) {
         bot_stop_button_->setText(view.stopped ? QStringLiteral("RESUME THE BOT (CLEAR KILL SWITCH)")

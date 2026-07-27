@@ -97,7 +97,7 @@ QJsonObject criterion(const QString& id, double observed, double required,
 /// A verdict shaped exactly like KalshiBotGate::evaluate() writes it, including
 /// the `ledger` block the KPI strip reads verbatim.
 QJsonObject evaluated_gate(const QString& verdict, int settled, int wins, int losses,
-                           double net_pnl, double drawdown) {
+                           double net_pnl, double drawdown, qint64 ts_ms = kNow - 60'000) {
     QJsonObject brier{{"id", "brier_beats_market"},
                       {"met", true},
                       {"brier_available", true},
@@ -113,7 +113,7 @@ QJsonObject evaluated_gate(const QString& verdict, int settled, int wins, int lo
         {"event", "kalshi_bot_gate"},
         {"verdict", verdict},
         {"evaluated", true},
-        {"ts_ms", double(kNow - 60'000)},
+        {"ts_ms", double(ts_ms)},
         {"mode", "paper"},
         {"params", QJsonObject{{"min_settled_bids", 300},
                                {"min_net_pnl_usd", 0},
@@ -536,9 +536,51 @@ class KalshiBotCockpitTest : public QObject {
             present_bot_cockpit(panel_for(ledger, gate), {}, gate, ledger, {}, kNow);
         const BotCockpitNode* node = scene.node(QStringLiteral("gate"));
         QVERIFY(node != nullptr);
-        QVERIFY(node->value.startsWith(QStringLiteral("FAIL · 3/4 criteria met")));
+        QVERIFY(node->value.startsWith(QStringLiteral("FAIL · evaluated 60s ago · 3/4 criteria "
+                                                      "met")));
         for (const auto& value : gate.value(QStringLiteral("criteria")).toArray())
             QVERIFY(node->value.contains(kalshi_bot_detail::criterion_line(value.toObject())));
+    }
+
+    // --- the verdict's age in the cockpit (issue #167) ----------------------
+
+    // The gate node states when the verdict was evaluated, right after the
+    // verdict word, from the panel's own reading — one age, two surfaces.
+    void the_gate_node_states_the_evaluations_age() {
+        const QJsonObject gate = evaluated_gate(QStringLiteral("PASS"), 340, 200, 140, 1.35, 1.55);
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KX-A"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const KalshiBotPanelView panel = panel_for(ledger, gate);
+        const BotCockpitScene scene =
+            present_bot_cockpit(panel, {}, gate, ledger, {}, kNow);
+        const BotCockpitNode* node = scene.node(QStringLiteral("gate"));
+        QVERIFY(node != nullptr);
+        QVERIFY2(node->value.contains(panel.gate_age), qPrintable(node->value));
+        QCOMPARE(node->role, QStringLiteral("green"));
+    }
+
+    // A PASS the loop has not re-evaluated inside the staleness window renders
+    // visibly stale — amber node, amber pulse, and the age in words. It must
+    // never sit on the cockpit looking like a current promotion.
+    void a_stale_pass_renders_amber_in_the_cockpit_not_green() {
+        const QJsonObject gate = evaluated_gate(QStringLiteral("PASS"), 340, 200, 140, 1.35, 1.55,
+                                                kNow - 5LL * 3'600'000);
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KX-A"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const KalshiBotPanelView panel = panel_for(ledger, gate);
+        QVERIFY(panel.gate_pass);
+        const BotCockpitScene scene = present_bot_cockpit(panel, {}, gate, ledger, {}, kNow);
+        const BotCockpitNode* node = scene.node(QStringLiteral("gate"));
+        QVERIFY(node != nullptr);
+        QCOMPARE(node->role, QStringLiteral("amber"));
+        QVERIFY2(node->value.contains(QStringLiteral("evaluated 5h ago")), qPrintable(node->value));
+        QVERIFY2(node->value.contains(QStringLiteral("STALE")), qPrintable(node->value));
+        for (const BotCockpitPulse& pulse : scene.pulses)
+            if (pulse.kind == QStringLiteral("gate")) {
+                QCOMPARE(pulse.role, QStringLiteral("amber"));
+                QVERIFY2(pulse.text.contains(QStringLiteral("evaluated 5h ago")),
+                         qPrintable(pulse.text));
+            }
     }
 
     void the_exposure_node_quotes_the_sessions_caps_or_states_their_absence() {

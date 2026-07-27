@@ -971,6 +971,18 @@ add_test(NAME e2e_kalshi_bot_status_mode
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_status_mode.sh)
 
+# Issue #167 — the promotion gate re-evaluates itself on the loop's cadence,
+# proved against the real openterminalcli: a paper tick (running and stopped)
+# publishes kalshi-bot-gate.json, the tick's verdict is byte-identical to the
+# one `kalshi bot gate` writes for the same record, repeat ticks are stable
+# (verdict, criteria, ledger block and record anchor unchanged, only ts_ms
+# advancing), tampered params under the cadence produce the same refusal with no
+# numbers a human gets, and the `gate` command still exits 0 / 3 with unchanged
+# output. Offline, PAPER only, temp evidence dir — no venue action of any kind.
+add_test(NAME e2e_kalshi_bot_gate_cadence
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_gate_cadence.sh)
+
 # Issue #91 — tools/sign-release.sh probes notary credentials before any
 # download/sign work: a locked keychain (locked screen) must exit immediately
 # with the cause and fix, and a passing probe must leave the success path

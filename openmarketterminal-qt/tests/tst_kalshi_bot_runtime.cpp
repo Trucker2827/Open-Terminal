@@ -341,6 +341,75 @@ class TestKalshiBotRuntime : public QObject {
         QVERIFY2(unknown.contains(QStringLiteral("no mode is claimed")), qPrintable(unknown));
         QVERIFY2(unknown.contains(kalshi_bot_vintage_hint()), qPrintable(unknown));
     }
+
+    // --- the gate verdict's age, one reading for both surfaces (#167) -------
+
+    /// A verdict the loop re-evaluated within the window states its age and is
+    /// NOT stale. The sentence is the issue's own form ("evaluated Xs/Xm ago").
+    void a_fresh_verdict_states_its_age_and_is_not_stale() {
+        const KalshiBotGateFreshness fresh = kalshi_bot_gate_freshness(
+            QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")},
+                        {QStringLiteral("ts_ms"), static_cast<double>(kNow - 12'000)}},
+            kNow);
+        QVERIFY(fresh.dated);
+        QVERIFY(!fresh.stale);
+        QCOMPARE(fresh.age_ms, 12'000);
+        QCOMPARE(fresh.text, QStringLiteral("evaluated 12s ago"));
+    }
+
+    /// Older than the staleness window: the age is still stated, and the
+    /// reading says STALE so no surface can paint it as current. The threshold
+    /// is the chip's own two-tick constant.
+    void a_verdict_older_than_the_window_reads_stale() {
+        const KalshiBotGateFreshness stale = kalshi_bot_gate_freshness(
+            QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")},
+                        {QStringLiteral("ts_ms"),
+                         static_cast<double>(kNow - 5LL * 3'600'000)}},
+            kNow);
+        QVERIFY(stale.dated);
+        QVERIFY(stale.stale);
+        QVERIFY2(stale.text.startsWith(QStringLiteral("evaluated 5h ago")), qPrintable(stale.text));
+        QVERIFY2(stale.text.contains(QStringLiteral("STALE")), qPrintable(stale.text));
+        // The display threshold is deliberately the chip's, not the live
+        // admission bound — a change to either must not silently move the other.
+        QCOMPARE(kKalshiBotGateStaleMs, kKalshiBotStaleMs);
+        QVERIFY(!kalshi_bot_gate_freshness(
+                     QJsonObject{{QStringLiteral("ts_ms"),
+                                  static_cast<double>(kNow - kKalshiBotGateStaleMs)}},
+                     kNow)
+                     .stale);
+        QVERIFY(kalshi_bot_gate_freshness(
+                    QJsonObject{{QStringLiteral("ts_ms"),
+                                 static_cast<double>(kNow - kKalshiBotGateStaleMs - 1)}},
+                    kNow)
+                    .stale);
+    }
+
+    /// Every reason the age cannot be vouched for reads stale rather than
+    /// current: no timestamp at all, and a timestamp in the future.
+    void an_unvouchable_age_is_stale_never_current() {
+        const KalshiBotGateFreshness undated = kalshi_bot_gate_freshness(
+            QJsonObject{{QStringLiteral("verdict"), QStringLiteral("PASS")}}, kNow);
+        QVERIFY(!undated.dated);
+        QVERIFY(undated.stale);
+        QCOMPARE(undated.age_ms, -1);
+        QVERIFY2(undated.text.contains(QStringLiteral("UNKNOWN")), qPrintable(undated.text));
+
+        const KalshiBotGateFreshness future = kalshi_bot_gate_freshness(
+            QJsonObject{{QStringLiteral("ts_ms"), static_cast<double>(kNow + 60'000)}}, kNow);
+        QVERIFY(!future.dated);
+        QVERIFY(future.stale);
+        QVERIFY2(future.text.contains(QStringLiteral("FUTURE")), qPrintable(future.text));
+    }
+
+    /// No file is not an age. The empty reading carries no sentence at all —
+    /// the caller says NOT EVALUATED, which is a different fact from "old".
+    void an_absent_verdict_has_no_age_to_state() {
+        const KalshiBotGateFreshness absent = kalshi_bot_gate_freshness({}, kNow);
+        QVERIFY(absent.text.isEmpty());
+        QCOMPARE(absent.age_ms, -1);
+        QVERIFY(!absent.dated);
+    }
 };
 
 QTEST_APPLESS_MAIN(TestKalshiBotRuntime)

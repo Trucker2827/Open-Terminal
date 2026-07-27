@@ -48,7 +48,11 @@ QJsonObject criterion(const QString& id, double observed, double required, const
 }
 
 /// A verdict shaped exactly like KalshiBotGate::evaluate() writes it.
-QJsonObject evaluated_gate(const QString& verdict, int settled, double net_pnl, bool brier_met) {
+/// `ts_ms` is when the gate evaluated (issue #167). 0 writes NO key — the
+/// "verdict that does not say when it was evaluated" case, which is distinct
+/// from an old one.
+QJsonObject evaluated_gate(const QString& verdict, int settled, double net_pnl, bool brier_met,
+                           qint64 ts_ms = 0) {
     QJsonObject brier{{"id", "brier_beats_market"},
                       {"met", brier_met},
                       {"brier_available", true},
@@ -59,7 +63,7 @@ QJsonObject evaluated_gate(const QString& verdict, int settled, double net_pnl, 
                       {"brier_margin", 0.0},
                       {"required", 0.2400},
                       {"comparison", "brier_bot < brier_market_baseline - brier_margin"}};
-    return QJsonObject{
+    QJsonObject out{
         {"schema", 1},
         {"event", "kalshi_bot_gate"},
         {"verdict", verdict},
@@ -78,6 +82,8 @@ QJsonObject evaluated_gate(const QString& verdict, int settled, double net_pnl, 
                                {"max_drawdown_usd", 0.5},
                                {"scored_contracts", settled},
                                {"unscored_contracts", 0}}}};
+    if (ts_ms > 0) out.insert("ts_ms", double(ts_ms));
+    return out;
 }
 
 QJsonObject armed_session() {
@@ -355,11 +361,77 @@ class KalshiBotPanelPresentationTest final : public QObject {
     }
 
     void gate_pass_reads_pass() {
-        const auto view = present_kalshi_bot_panel({}, evaluated_gate("PASS", 340, 2.15, true), {},
-                                                   6'200'000'000);
+        const qint64 now = 6'200'000'000;
+        const auto view =
+            present_kalshi_bot_panel({}, evaluated_gate("PASS", 340, 2.15, true, now - 30'000), {},
+                                     now);
         QVERIFY(view.gate_pass);
         QVERIFY(view.gate.startsWith("GATE PASS"));
         QVERIFY(view.gate.contains("min_settled_bids 340 >= 300 MET"));
+    }
+
+    // --- the verdict's age, beside the verdict (issue #167) -----------------
+
+    /// The loop re-evaluates every tick, so a fresh verdict says so in words —
+    /// right after the verdict, before its numbers — and paints green.
+    void a_fresh_verdict_carries_its_age_next_to_the_verdict() {
+        const qint64 now = 6'400'000'000;
+        const auto view =
+            present_kalshi_bot_panel({}, evaluated_gate("PASS", 340, 2.15, true, now - 25'000), {},
+                                     now);
+        QVERIFY2(view.gate.startsWith("GATE PASS · evaluated 25s ago"), qPrintable(view.gate));
+        QCOMPARE(view.gate_age, QStringLiteral("evaluated 25s ago"));
+        QVERIFY(!view.gate_stale);
+        QCOMPARE(view.gate_role, QStringLiteral("green"));
+    }
+
+    /// The operator's own bug: a five-hour-old verdict displayed as current.
+    /// It now states its age and paints amber — a PASS included, because the
+    /// record it judged has had five hours to move underneath it.
+    void a_stale_pass_states_its_age_and_paints_amber() {
+        const qint64 now = 6'500'000'000;
+        const auto view = present_kalshi_bot_panel(
+            {}, evaluated_gate("PASS", 340, 2.15, true, now - 5LL * 3'600'000), {}, now);
+        QVERIFY(view.gate_pass);  // the verdict itself is unchanged…
+        QVERIFY(view.gate_stale); // …but it is not current, and says so
+        QCOMPARE(view.gate_role, QStringLiteral("amber"));
+        QVERIFY2(view.gate.contains("evaluated 5h ago"), qPrintable(view.gate));
+        QVERIFY2(view.gate.contains("STALE"), qPrintable(view.gate));
+    }
+
+    /// A refusal carries its age too: a stale TAMPERED is as misleading as a
+    /// stale PASS, and it still publishes no numbers.
+    void a_refusal_carries_its_age_and_still_publishes_no_numbers() {
+        const qint64 now = 6'600'000'000;
+        const QJsonObject refusal{{"verdict", "TAMPERED"},
+                                  {"evaluated", false},
+                                  {"ts_ms", double(now - 3LL * 3'600'000)},
+                                  {"reason", "the gate params failed their seal check"}};
+        const auto view = present_kalshi_bot_panel({}, refusal, {}, now);
+        QVERIFY2(view.gate.startsWith("GATE TAMPERED · evaluated 3h ago"), qPrintable(view.gate));
+        QVERIFY(view.gate_stale);
+        QCOMPARE(view.gate_role, QStringLiteral("amber"));
+        QVERIFY(view.scoreboard.contains("UNAVAILABLE"));
+        QVERIFY(!view.gate_pass);
+    }
+
+    /// A verdict with no timestamp is never rendered as current — it says the
+    /// age is unknown and paints amber.
+    void an_undated_verdict_is_never_rendered_as_current() {
+        const auto view =
+            present_kalshi_bot_panel({}, evaluated_gate("PASS", 340, 2.15, true), {}, 6'700'000'000);
+        QVERIFY(view.gate_stale);
+        QCOMPARE(view.gate_role, QStringLiteral("amber"));
+        QVERIFY2(view.gate.contains("UNKNOWN time"), qPrintable(view.gate));
+    }
+
+    /// No gate file is a different fact from an old one: nothing is claimed
+    /// about an age, and the card is grey rather than amber.
+    void an_absent_gate_claims_no_age_at_all() {
+        const auto view = present_kalshi_bot_panel({}, {}, {}, 6'800'000'000);
+        QVERIFY(view.gate_age.isEmpty());
+        QVERIFY(!view.gate_stale);
+        QCOMPARE(view.gate_role, QStringLiteral("grey"));
     }
 
     void refused_gate_publishes_no_numbers() {
