@@ -1,0 +1,71 @@
+# Issue #167 — the verdict's age on the cockpit, captured live
+
+## What the screenshots are
+
+Both PNGs are the real `KalshiBotCockpitView` in the real app (dev build of
+this branch), rendering the real `kalshi-bot-gate.json` that a real
+`kalshi bot once` tick wrote. Nothing is mocked and no timestamp is forged:
+the two frames are the SAME verdict file, in the SAME app session, ~2 minutes
+apart. All that changed between them is elapsed time.
+
+* `issue-167-cockpit-gate-fresh.png` — SEALED GATE node **green**:
+  `PASS · evaluated 8s ago · 4/4 criteria met · min_settled_bids 320 >= 300 MET
+  · net_pnl_usd 253.80 > 0.00 MET · brier_beats_market 0.1382 < 0.2191 MET ·
+  max_drawdown_usd 1.71 <= 5.00 MET`.
+  The LEDGER STREAM gate pulse is green too: `SEALED GATE PASS · evaluated 8s ago`.
+
+* `issue-167-cockpit-gate-stale.png` — the SAME PASS, ~2 minutes later, with no
+  tick in between. SEALED GATE node now **amber**:
+  `PASS · evaluated 2m ago · STALE (the loop re-evaluates every tick; this
+  verdict is older than 120s) · 4/4 criteria met · …`, and the gate pulse amber:
+  `SEALED GATE PASS · evaluated 2m ago · STALE (the loop r…`.
+
+That second frame is the whole point of the issue: a PASS that the loop has not
+refreshed does not get to sit on the screen looking current. Before this change
+the same card read `PASS · 4/4 criteria met · …` at any age, including five
+hours.
+
+## How the data got there (and why it is not the operator's ledger)
+
+The app ran on a scratch profile (`--profile finn167`) with
+`OPENTERMINAL_KALSHI_EVIDENCE_DIR=/tmp/finn167-evidence` — a throwaway
+directory, so the operator's real ledger and sealed gate were never touched
+(issue #139 learned that `HOME=` does not isolate the Kalshi evidence
+directory; `OPENTERMINAL_KALSHI_EVIDENCE_DIR` does). The directory has since
+been deleted.
+
+The ledger in it is SYNTHETIC and says so here: 320 paper bids, each filled and
+settled, resolving YES five times in six, written over a 20-day span. It exists
+because a PASS is the only verdict that can prove the green→amber transition,
+and a PASS needs 320 settled bids that the operator's real record does not yet
+have. The numbers on the cards were not typed into the fixture: the real
+`KalshiBotGate::evaluate()` scored that record through the real
+`kalshi bot once` tick and the real sealed params
+(`{"min_settled_bids":300,"max_drawdown_usd":5}`, sealed by the real
+`kalshi bot gate seal`), and the CLI agrees:
+
+    KALSHI BOT GATE · PASS
+      gate 42fd3473-5b93-4954-bd63-6259b6e4b283 · sealed 1785173226227
+      settled 320 (267 won / 53 lost) · scored 320 · unscored 0
+      [MET]     min_settled_bids  observed 320 · required 300 (observed >= required)
+      [MET]     net_pnl_usd  observed 253.8000 · required 0.0000 (observed > required)
+      [MET]     brier_beats_market  observed 0.1382 · required 0.2191 (…)
+      [MET]     max_drawdown_usd  observed 1.7100 · required 5.0000 (observed <= required)
+
+Those are the same four lines the cockpit node renders, through the BOT panel's
+own criterion formatter.
+
+## What this does NOT prove
+
+The BOT panel's own gate card (`KalshiScreen.cpp`'s `bot_gate_`) is below the
+fold of that tab and was not captured. It renders from the same
+`KalshiBotPanelView::gate` / `gate_role` the cockpit node uses — the cockpit is
+built FROM the panel view, so the strings in these PNGs are the panel's — but
+the panel widget's own colour mapping is asserted only by
+`tst_kalshi_bot_panel_presentation` (`gate_role`), not by a capture.
+
+Nothing was armed for these captures. The EXPOSURE card shows caps because the
+scratch profile inherited a pre-existing 24/7 session record from 2026-07-20;
+`global_live_gate_armed` and `live_armed` both read false throughout, a 24/7 arm
+is refused by `KalshiBotLive::permit()` anyway, and every tick in this capture
+ran PAPER.
