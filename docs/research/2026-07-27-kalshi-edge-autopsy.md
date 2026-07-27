@@ -378,7 +378,7 @@ crossing fill in the ledger.** There is no contrast to measure. (Of 395 bids,
 
 Filed as `agent-ready`, `finn`. Each cites the numbers above as its Why.
 
-**F1 — Retain a downsampled paired spot + top-of-book series.** *(highest)*
+**F1 — Retain a downsampled paired spot + top-of-book series.** *(highest)* — filed as [#170](https://github.com/Trucker2827/Open-Terminal/issues/170)
 Q1 found the only structural edge in this report and could only measure it over
 **8.0 hours / 8 events at 3σ**, because `kalshi-tickers.jsonl` rotates at 67 MB
 and keeps 8 hours while BRTI keeps 116. Capture already exists at sub-second
@@ -387,7 +387,7 @@ series (1 Hz BRTI + per-market top-of-book on change, threshold contracts inside
 60 minutes of expiry) would take the 3σ estimate from 8 events to hundreds
 within a week and settle whether the +0.52¢ fee-only margin is real.
 
-**F2 — Fix the calibrator's Brier bookkeeping.** Cheap, and it removes a live
+**F2 — Fix the calibrator's Brier bookkeeping** ([#171](https://github.com/Trucker2827/Open-Terminal/issues/171))**.** Cheap, and it removes a live
 source of false confidence. Three defects, all in `spot_calibrator.py`:
 `brier_full` stores one pair per *observation* (up to 60/contract) so
 `training_samples: 500` overstates the effective sample by 15–60×;
@@ -396,7 +396,7 @@ settled contracts satisfy; and `brier_market_baseline` is a *trained* 1-feature
 logit rather than the raw mid, so "beats the market" does not mean beating the
 market. Score per contract, and compare against the raw mid.
 
-**F3 — Measure the high-volatility exception properly.** The single
+**F3 — Measure the high-volatility exception properly** ([#172](https://github.com/Trucker2827/Open-Terminal/issues/172))**.** The single
 non-trivial slice where the calibrator beats the mid: Brier **0.1151 vs
 0.1218** over 116 contracts in the top volatility tercile (>3.82 bps/min),
 while it loses in both lower terciles. It is also mechanistically consistent
