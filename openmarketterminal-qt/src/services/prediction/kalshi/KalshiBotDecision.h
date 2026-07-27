@@ -32,11 +32,18 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 ///      before any bid" is a structural property rather than a caller's
 ///      promise. The refused tick still journals one `BOT_STOPPED` row: a
 ///      silent stop would be indistinguishable from a dead loop.
-///   4. **The signal's trust is re-read live every call.** `signal_trusted`
-///      comes from the report's own `adds_value_over_market`, which the
-///      calibrator only sets true once its Brier beats the market baseline
-///      over its ≥100-sample gate. When it is false the bot still papers, but
-///      every bid is journaled `reason_code=SIGNAL_UNTRUSTED`.
+///   4. **The signal's trust is re-read live every call, and an untrusted
+///      signal does not bid at all** (issue #165). `signal_trusted()` reads the
+///      report's own `adds_value_over_market`, which the calibrator only sets
+///      true once its Brier beats the market baseline over its ≥100-sample gate
+///      (`spot_calibrator.py:289`), AND requires the track record that claim is
+///      made of to actually be present. When the signal fails that rule the
+///      tick is a journaled PASS with `reason_code=SIGNAL_UNTRUSTED` — no
+///      order, paper or otherwise. Rung 1 papered those bids and labelled them;
+///      24 hours of rung 6 showed what that buys (42% of bids placed on a
+///      self-reportedly edgeless signal, and 11 of 27 fills from them), so the
+///      operator superseded that clause. Historical rows stand: the record is
+///      the record, and discipline starts at the next tick.
 ///
 /// Runway is computed as of *now*, not as of the report: the report's
 /// `sqrt_minutes_left` feature was measured at `generated_at_ms`, so the
@@ -66,6 +73,22 @@ namespace openmarketterminal::services::prediction::kalshi_ns {
 /// rather than a strategy. Until the calibrator that writes the report carries
 /// book data at all, EVERY contract takes that path and the bot quotes exactly
 /// as it did before.
+///
+/// **The resting tier pays an adverse-selection premium (issue #165).** The two
+/// tiers do not face the same hurdle, because they do not face the same
+/// counterparty. A crossing quote is filled by whoever is already offering; a
+/// RESTING quote is filled only when the market comes to it, which is
+/// disproportionately when the market has moved against it. So a rest must
+/// demand MORE modelled edge than a cross, not the same:
+///
+///     rest   ⇔  |edge| ≥ edge_threshold + rest_premium_usd
+///     cross  ⇔  side_edge > spread_cost + taker_fee + cross_margin_usd
+///
+/// — two independent hurdles, and the asymmetry is the point: a contract whose
+/// edge clears the crossing arithmetic but not the resting premium CROSSES
+/// rather than passing, and one that clears neither passes with
+/// `REST_EDGE_BELOW_PREMIUM`. The crossing hurdle is untouched by this. Both
+/// tiers journal the full arithmetic they were judged against.
 ///
 /// The paper fill model is untouched by this (KalshiBotOrders): a crossing bid
 /// is still filled only against an observed mid at or through its limit, and
@@ -109,6 +132,13 @@ class KalshiBotDecision {
     static constexpr auto kRestNoBook = "REST_NO_BOOK";
     static constexpr auto kRestBookInconsistent = "REST_BOOK_INCONSISTENT";
 
+    /// A resting quote whose edge cleared the base threshold but not the
+    /// adverse-selection premium the resting tier adds to it (#165). A
+    /// `reason_code`, not a `quote_style_reason`: the tier was chosen and then
+    /// the tier's own hurdle refused the bid, which is a different fact from
+    /// EDGE_BELOW_THRESHOLD (that one never reached pricing at all).
+    static constexpr auto kRestEdgeBelowPremium = "REST_EDGE_BELOW_PREMIUM";
+
     /// Paper sizing/pricing policy. Defaults are deliberately conservative and
     /// mirror the charter's live ceilings ($2 stake, $3 all-in) so rung 1's
     /// paper record is measured under the same size discipline a later live
@@ -148,6 +178,17 @@ class KalshiBotDecision {
         /// bot pays for a fill, which is a wide hurdle against a signal whose
         /// Brier only just beats the market baseline.
         double cross_margin_usd = 0.02;
+        /// Extra edge, in dollars per contract (probability units — a Kalshi
+        /// contract pays $1), that a RESTING quote must demand on top of
+        /// `edge_threshold` before it is placed. A resting fill is adversely
+        /// selected by construction: it arrives when the market came to the
+        /// quote, i.e. disproportionately when the market moved against it, so
+        /// the same edge is worth less resting than crossing. Three cents
+        /// against a ten-cent base threshold — the operator's conservative
+        /// default (#165), chosen to sit above the one-cent tick the mid is
+        /// floored to and below the crossing tier's own hurdle, so the rest
+        /// tier tightens without the cross tier moving at all.
+        double rest_premium_usd = 0.03;
         /// Ceiling on the all-in a single bot run may newly commit. A bounded
         /// run is the charter's first carve-out condition; this is the money
         /// half of that bound. Defaults to the same ceiling, so it constrains
@@ -222,6 +263,21 @@ class KalshiBotDecision {
                              qint64 now_ms,
                              const Config& config,
                              const KalshiBotStopFile& stop = {});
+
+    /// The one definition of "the signal may be traded", so `decide()` and
+    /// every readout that reports trust cannot drift apart: a tick that passed
+    /// every contract SIGNAL_UNTRUSTED must never be printed as TRUSTED.
+    ///
+    /// True only when the calibrator claims to add value over the market AND
+    /// the track record that claim is made of is actually in the report. The
+    /// claim's own sample floor is the calibrator's (`spot_calibrator.py:289`
+    /// requires ≥100 scored samples and `brier_full < brier_market_baseline`),
+    /// and is deliberately not restated here — one floor, in the process that
+    /// measures it. What IS restated is presence: this reads a file another
+    /// process rewrites every cycle, and a report asserting value while
+    /// carrying no Brier at all is contradicting itself. Unmeasured is not
+    /// trusted, the same way an unknown spread is not a free one.
+    static bool signal_trusted(const QJsonObject& report);
 
     /// Flattens the terminal's two real settlement ledgers into
     /// `{ticker, market_result, settled_time, source}` rows. Rows without a

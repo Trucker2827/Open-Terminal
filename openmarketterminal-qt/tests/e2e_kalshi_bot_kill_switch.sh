@@ -31,7 +31,9 @@ STOP="$EVIDENCE/kalshi-bot-stop.json"
 fail() { echo "FAIL: $*"; exit 1; }
 
 # A calibrator report generated NOW (the bot refuses one >= 120s old) carrying
-# one contract with a 12-point edge and 10 minutes of runway — the same shape
+# one contract with a 15-point edge and 10 minutes of runway — enough to clear
+# the resting tier's edge threshold plus its adverse-selection premium (#165) —
+# the same shape
 # spot_calibrator.py's build_report() writes.
 write_report() {
   python3 - "$EVIDENCE/calibrator.json" <<'PY'
@@ -49,7 +51,7 @@ json.dump({
     "adds_value_over_market": True,
     "predictions": {
         "KXBTC15M-E2ETEST-15": {
-            "p_yes_full": 0.95,
+            "p_yes_full": 0.98,
             "p_yes_market_baseline": 0.83,
             "market_yes_mid": 0.83,
             "features": {

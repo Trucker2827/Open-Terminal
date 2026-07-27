@@ -371,7 +371,9 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
             ++result.passes;
         }
     }
-    result.signal_trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    // The decision math's own predicate, not a second reading of the flag: a
+    // tick that passed every contract SIGNAL_UNTRUSTED must never print TRUSTED.
+    result.signal_trusted = KalshiBotDecision::signal_trusted(report);
     result.state = QStringLiteral("ok");
     if (rows.size() == 1) {
         const QString reason = rows.first().toObject().value(QStringLiteral("reason_code")).toString();
@@ -491,7 +493,9 @@ TickResult run_live_tick(const GlobalOpts& opts, const KalshiBotDecision::Config
         }
     }
 
-    result.signal_trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
+    // The decision math's own predicate, not a second reading of the flag: a
+    // tick that passed every contract SIGNAL_UNTRUSTED must never print TRUSTED.
+    result.signal_trusted = KalshiBotDecision::signal_trusted(report);
     result.state = QStringLiteral("ok");
     if (rows.size() == 1) {
         const QString reason =
@@ -528,6 +532,7 @@ QJsonObject tick_summary(const TickResult& tick, const KalshiBotDecision::Config
         {QStringLiteral("signal_trusted"), tick.signal_trusted},
         {QStringLiteral("edge_threshold"), config.edge_threshold},
         {QStringLiteral("cross_margin_usd"), config.cross_margin_usd},
+        {QStringLiteral("rest_premium_usd"), config.rest_premium_usd},
         {QStringLiteral("max_stake_usd"), config.max_stake_usd},
         {QStringLiteral("max_all_in_usd"), config.max_all_in_usd},
         {QStringLiteral("quote_ttl_seconds"), config.quote_ttl_seconds},
@@ -572,9 +577,11 @@ void print_tick(const GlobalOpts& opts, const TickResult& tick,
     if (tick.settled > 0)
         std::printf("  settled %d · realized $%.2f\n", tick.settled, tick.settled_pnl);
     if (tick.state == QLatin1String("ok"))
-        std::printf("  signal %s\n", tick.signal_trusted
-                                         ? "TRUSTED (calibrator beats market baseline)"
-                                         : "UNTRUSTED — every bid journaled SIGNAL_UNTRUSTED");
+        std::printf("  signal %s\n",
+                    tick.signal_trusted
+                        ? "TRUSTED (calibrator beats market baseline)"
+                        : "UNTRUSTED — the tick placed NO bid; refusal journaled as "
+                          "SIGNAL_UNTRUSTED");
     std::printf("  ledger %s\n",
                 qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(kLedgerFile))));
 }
@@ -585,7 +592,7 @@ void bot_usage() {
                  "                          [--max-all-in X] [--min-runway-sec N]\n"
                  "                          [--max-report-age-sec N] [--quote-ttl-sec N]\n"
                  "                          [--max-exposure X] [--session-budget X]\n"
-                 "                          [--cross-margin X]\n"
+                 "                          [--cross-margin X] [--rest-premium X]\n"
                  "       kalshi bot run [--interval N] [--iterations N]\n"
                  "       kalshi bot gate [--json]\n"
                  "       kalshi bot gate seal '{\"min_settled_bids\":300,\"max_drawdown_usd\":5}'\n"
@@ -601,6 +608,13 @@ void bot_usage() {
                  "case it crosses and quotes at the ask. Every row says which tier priced\n"
                  "it (quote_style) and shows the arithmetic. A contract whose report\n"
                  "carries no ask always rests.\n"
+                 "A RESTING quote is adversely selected — it fills when the market came to\n"
+                 "it — so it must clear --edge-threshold PLUS --rest-premium; the crossing\n"
+                 "hurdle is unchanged, so a contract can cross where it may not rest\n"
+                 "(REST_EDGE_BELOW_PREMIUM).\n"
+                 "When the calibrator's own track record says it does not beat the market\n"
+                 "(or carries no Brier at all), the tick places NO order in either mode and\n"
+                 "journals one SIGNAL_UNTRUSTED pass.\n"
                  "`gate` scores the PAPER ledger against sealed, preregistered criteria and\n"
                  "writes the verdict to %s. It never acts on it.\n"
                  "\n"
@@ -999,6 +1013,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     bool bad = false;
     take_double(args, QStringLiteral("--edge-threshold"), config.edge_threshold, bad);
     take_double(args, QStringLiteral("--cross-margin"), config.cross_margin_usd, bad);
+    take_double(args, QStringLiteral("--rest-premium"), config.rest_premium_usd, bad);
     take_double(args, QStringLiteral("--max-stake"), config.max_stake_usd, bad);
     take_double(args, QStringLiteral("--max-all-in"), config.max_all_in_usd, bad);
     take_int(args, QStringLiteral("--min-runway-sec"), config.min_runway_seconds, bad);

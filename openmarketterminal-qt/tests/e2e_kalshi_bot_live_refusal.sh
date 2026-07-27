@@ -55,7 +55,7 @@ json.dump({
     "adds_value_over_market": True,
     "predictions": {
         "KXBTC15M-E2ELIVE-15": {
-            "p_yes_full": 0.95,
+            "p_yes_full": 0.98,
             "p_yes_market_baseline": 0.83,
             "market_yes_mid": 0.83,
             "features": {
