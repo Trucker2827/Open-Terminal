@@ -7,7 +7,14 @@ concentrated?", because `spot-calibrator-state.json` keeps only the trailing
 no ticker and no timestamp to any of them (see `spot_calibrator.settle_cycle`).
 Worse for interpretation, `settle_cycle` appends ONE PAIR PER OBSERVATION and
 each contract contributes up to `MAX_OBS_PER_TICKER = 60` of them, so those 500
-"training_samples" are roughly 8–33 contracts' worth of heavily correlated rows.
+"training_samples" are a far smaller effective sample of heavily correlated
+rows: ~8–10 CONTRACTS, measured at the report's as-of time from the state
+file's own `pending` obs distribution (mean 49.4 obs per contract, so 500 pairs
+÷ 49.4 ≈ 10.1 contracts; 8.3 at the dense end). That is a dated measurement,
+not a constant — it is remeasured on every run and printed as
+`calibrator_self_report.effective_sample` by `q2_calibrator_error_anatomy.py`.
+Do not read it as the merely theoretical bound printed beside it,
+`implied_contract_count_bound` = 8–500, which assumes nothing about cadence.
 
 The bot's decision log carries what the state file discards: for every tick it
 logged the ticker, the wall clock, the calibrator's `calibrated_p` and the
