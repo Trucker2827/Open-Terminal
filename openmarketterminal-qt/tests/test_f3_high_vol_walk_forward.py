@@ -365,6 +365,19 @@ class EpisodeStructureTest(unittest.TestCase):
         self.assertEqual(result["episode_count"], 0)
         self.assertEqual(result["episodes"], [])
 
+    def test_volatility_by_day_shows_a_calm_day_could_not_contribute(self):
+        """A day under the threshold must report 0 rows above it, not silence."""
+        base = 1_753_000_000_000          # 2026-07-20T10:13:20Z
+        calm = self._rows_at("CALM", base + 5 * HOUR_MS, [base])
+        calm["rows"][0]["vol_per_min_bps"] = 1.5
+        fast = self._rows_at("FAST", base + 30 * HOUR_MS, [base + 25 * HOUR_MS])
+        days = f3.volatility_by_utc_day([calm, fast])
+        self.assertEqual(len(days), 2)
+        self.assertEqual(days[0]["rows_above_frozen_threshold"], 0)
+        self.assertEqual(days[0]["max_bps"], 1.5)
+        self.assertEqual(days[1]["rows_above_frozen_threshold"], 1)
+        self.assertEqual(days[1]["share_above_frozen_threshold"], 1.0)
+
     def test_rows_by_day_counts_every_row_once(self):
         base = 1_753_000_000_000
         contracts = [self._rows_at(f"T{i}", base + 100 * HOUR_MS,

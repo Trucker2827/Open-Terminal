@@ -352,6 +352,35 @@ def episode_structure(contracts, gap_ms=EPISODE_GAP_MS):
     }
 
 
+def volatility_by_utc_day(contracts):
+    """Where the fast markets actually were, over ALL rows and not just the cut.
+
+    The episode table alone shows the selected rows clustering on two days; this
+    shows the days with none had no fast markets to select, rather than a join
+    that quietly lost them. A day whose maximum volatility sits under the
+    threshold could not have contributed a single row.
+    """
+    per_day = collections.defaultdict(list)
+    for contract in contracts:
+        for row in contract["rows"]:
+            vol = row.get("vol_per_min_bps")
+            if vol is not None:
+                per_day[common.iso(row["ts_ms"])[:10]].append(vol)
+    out = []
+    for day in sorted(per_day):
+        vols = sorted(per_day[day])
+        above = sum(1 for v in vols if v > FROZEN_VOL_THRESHOLD_BPS)
+        out.append({
+            "day_utc": day,
+            "rows_with_volatility": len(vols),
+            "median_bps": vols[len(vols) // 2],
+            "max_bps": vols[-1],
+            "rows_above_frozen_threshold": above,
+            "share_above_frozen_threshold": above / len(vols),
+        })
+    return out
+
+
 # ── the rejected alternative, reported rather than asserted ──────────────────
 def prefix_derived_threshold_diagnostic(contracts, fraction=PREFIX_FRACTION):
     """Would an in-time prefix have produced a usable 'high volatility' cut?
@@ -519,6 +548,7 @@ def main():
             "rows_dropped_without_volatility": dropped_no_vol,
             "contracts_total": len(contracts),
         },
+        "volatility_by_utc_day": volatility_by_utc_day(contracts),
         "high_vol_walk_forward": high_result,
         "high_vol_episode_structure": episodes,
         "low_mid_control_walk_forward": control_result,
