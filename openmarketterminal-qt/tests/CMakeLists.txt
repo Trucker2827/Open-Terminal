@@ -1000,6 +1000,18 @@ add_test(NAME e2e_kalshi_bot_funnel
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_funnel.sh)
 
+# Issue #174 — `kalshi bot lessons` against the real openterminalcli: the
+# parity rule (human text and --json `lines` are the same strings, from the one
+# formatter the BOT panel and the cockpit render), the sample size on every
+# line in the question's own unit, an INSUFFICIENT_DATA lesson that is present
+# rather than dropped, a stale artifact that says so on every line and paints
+# nothing green, a future-dated one that is mistrusted rather than clamped, and
+# an absent or unparseable one that renders one refusal with no numbers.
+# Offline, temp evidence dir, fixture artifacts — `--refresh` is not run here.
+add_test(NAME e2e_kalshi_bot_lessons
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_lessons.sh)
+
 # Issue #155 — the MODE word `kalshi bot status` reports, proved against the
 # real openterminalcli: it was the literal "paper", so a live tick read LIVE in
 # the window and paper in the shell. Four ledgers (live / paper / a newer row

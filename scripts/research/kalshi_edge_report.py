@@ -149,10 +149,23 @@ def _brier_text(value):
 
 
 def _hours_between(from_iso, to_iso):
-    try:
-        start = datetime.datetime.fromisoformat(from_iso)
-        end = datetime.datetime.fromisoformat(to_iso)
-    except (TypeError, ValueError):
+    # The two feeds spell UTC differently: `common.iso()` emits `+00:00` while
+    # the bot ledger's own `ts` field ends in `Z`, and `fromisoformat` only
+    # accepts `Z` from Python 3.11. Normalising here rather than relying on the
+    # interpreter keeps Q4's span from silently degrading to "span unstated"
+    # on an older one — a span that quietly disappears is the kind of absence
+    # nobody notices.
+    def parse(value):
+        if not isinstance(value, str):
+            return None
+        try:
+            return datetime.datetime.fromisoformat(
+                value[:-1] + "+00:00" if value.endswith("Z") else value)
+        except ValueError:
+            return None
+
+    start, end = parse(from_iso), parse(to_iso)
+    if start is None or end is None:
         return None
     return (end - start).total_seconds() / 3600.0
 

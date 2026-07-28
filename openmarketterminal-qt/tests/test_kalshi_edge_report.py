@@ -73,9 +73,13 @@ def q3_payload(contracts=239, platt=-0.0074, isotonic=-0.0096, versus_market=0.0
 
 
 def q4_payload(settled=15, net=-7.03, fees=0.71, wins=8, losses=7, required=300):
+    # The `Z` suffix is deliberate: the bot ledger's own `ts` field is spelled
+    # that way (the other three questions get `+00:00` from common.iso()), and
+    # `fromisoformat` only accepts it natively from Python 3.11. A fixture
+    # using the friendlier spelling would hide a span that silently vanishes.
     return {"question": "Q4",
             "data": {"rows": 87801,
-                     "span_utc": ["2026-07-24T15:48:00+00:00", "2026-07-27T21:40:00+00:00"]},
+                     "span_utc": ["2026-07-24T15:48:00.292Z", "2026-07-27T21:40:00.100Z"]},
             "gate": {"available": True, "params": {"min_settled_bids": required}},
             "outcome_summary": {"settled": settled, "wins": wins, "losses": losses,
                                 "net_realized_pnl_usd": net, "fees_usd": fees,
@@ -247,6 +251,20 @@ class Q4Test(unittest.TestCase):
     def test_losing_before_fees_too_is_no_edge(self):
         lesson = ker.reduce_q4(Q4, q4_payload(settled=400, net=-30.0, fees=9.0))
         self.assertEqual(lesson["verdict"], ker.NO_EDGE)
+
+    def test_the_span_survives_the_ledgers_own_Z_suffixed_timestamps(self):
+        lesson = ker.reduce_q4(Q4, q4_payload())
+        self.assertIsNotNone(lesson["data_span"])
+        self.assertAlmostEqual(lesson["data_span"]["hours"], 77.87, places=1)
+        self.assertIn("of record", lesson["data_span"]["text"])
+        self.assertNotIn("span unstated", lesson["data_span"]["text"])
+
+    def test_an_unparseable_span_is_absent_rather_than_zero(self):
+        payload = q4_payload()
+        payload["data"]["span_utc"] = ["not a timestamp", "nor this"]
+        lesson = ker.reduce_q4(Q4, payload)
+        self.assertIsNone(lesson["data_span"]["hours"])
+        self.assertIn("span unstated", lesson["data_span"]["text"])
 
     def test_a_gate_with_no_sealed_minimum_falls_back_to_the_charters(self):
         payload = q4_payload(settled=299)
