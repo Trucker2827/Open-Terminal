@@ -75,6 +75,16 @@ add_test(NAME test_f3_high_vol_walk_forward
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_f3_high_vol_walk_forward.py -v)
 
+# Issue #174 — the recurring lessons artifact's REDUCER: #169's four question
+# payloads become four short conclusions, and the verdict enum is derived from
+# each run's numbers rather than copied from the 2026-07-27 report. Every
+# question is asserted twice — once on a payload shaped like the published
+# record (which must reproduce that verdict) and once with the numbers moved
+# (which must not). Pure: synthetic payloads, no evidence dir, no subprocess.
+add_test(NAME test_kalshi_edge_report
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_edge_report.py -v)
+
 # Issue #86 — openterminal_paths as single source of truth for evidence/data
 # paths: default values, env-override semantics, and a sweep asserting no
 # script outside the module (and the frozen v5 duel files) hardcodes them.
@@ -682,6 +692,15 @@ target_include_directories(tst_kalshi_bot_funnel PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_link_libraries(tst_kalshi_bot_funnel PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_funnel COMMAND tst_kalshi_bot_funnel)
 
+# WHAT THE RECORD TEACHES (issue #174): the lessons card's one formatter — the
+# sample size on every line in the question's own unit, a stale artifact that
+# cannot paint a green line, undated and future-dated both classified stale,
+# and an absent artifact rendering one refusal with no digits.
+add_executable(tst_kalshi_edge_lessons tst_kalshi_edge_lessons.cpp)
+target_include_directories(tst_kalshi_edge_lessons PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_edge_lessons PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_edge_lessons COMMAND tst_kalshi_edge_lessons)
+
 # Sealed promotion gate (rung 2): preregistered criteria, mechanical verdict,
 # and a seal that is verified through the disk, not just in memory.
 add_executable(tst_kalshi_bot_gate tst_kalshi_bot_gate.cpp)
@@ -980,6 +999,18 @@ add_test(NAME e2e_kalshi_bot_ledger_rotation
 add_test(NAME e2e_kalshi_bot_funnel
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_funnel.sh)
+
+# Issue #174 — `kalshi bot lessons` against the real openterminalcli: the
+# parity rule (human text and --json `lines` are the same strings, from the one
+# formatter the BOT panel and the cockpit render), the sample size on every
+# line in the question's own unit, an INSUFFICIENT_DATA lesson that is present
+# rather than dropped, a stale artifact that says so on every line and paints
+# nothing green, a future-dated one that is mistrusted rather than clamped, and
+# an absent or unparseable one that renders one refusal with no numbers.
+# Offline, temp evidence dir, fixture artifacts — `--refresh` is not run here.
+add_test(NAME e2e_kalshi_bot_lessons
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_lessons.sh)
 
 # Issue #155 — the MODE word `kalshi bot status` reports, proved against the
 # real openterminalcli: it was the literal "paper", so a live tick read LIVE in

@@ -1307,6 +1307,15 @@ void KalshiScreen::build_ui() {
                  QStringLiteral("The sealed gate's verdict and every criterion's numbers. No "
                                 "verdict file means no verdict is claimed."),
                  bot_gate_);
+    add_bot_card(QStringLiteral("WHAT THE RECORD TEACHES"),
+                 QStringLiteral("The edge autopsy's standing conclusions — one line per question, "
+                                "each with its verdict, its key numbers, the SAMPLE SIZE it was "
+                                "measured on and the span it covers. Read from %1, published by "
+                                "the weekly research job (`kalshi bot lessons --refresh` runs it "
+                                "on demand). Display only: no lesson here changes what the bot "
+                                "does — that takes its own issue and review.")
+                     .arg(QString::fromLatin1(kKalshiEdgeReportFile)),
+                 bot_lessons_);
     auto* bot_decisions_heading =
         new QLabel(QStringLiteral("LATEST DECISIONS (PASSES INCLUDED)"), bot_page);
     bot_decisions_heading->setStyleSheet(
@@ -4159,7 +4168,7 @@ void KalshiScreen::refresh_live_automation_status() {
 
 void KalshiScreen::refresh_bot_panel() {
     if (!bot_status_ || !bot_armed_ || !bot_signal_ || !bot_scoreboard_ || !bot_funnel_ ||
-        !bot_gate_ || !bot_decisions_)
+        !bot_gate_ || !bot_lessons_ || !bot_decisions_)
         return;
     // latest_legacy_live_status_ is the `kalshi auto live status` object the
     // screen already polls; empty until the first poll answers, which the
@@ -4211,6 +4220,20 @@ void KalshiScreen::refresh_bot_panel() {
                                         : view.gate_role == QStringLiteral("amber")
                                             ? colors::WARNING()
                                             : colors::TEXT_SECONDARY()));
+
+    // WHAT THE RECORD TEACHES (issue #174). One line per lesson, exactly as
+    // the presenter (and therefore `kalshi bot lessons`) produced them —
+    // nothing is reformatted here, and the sample size the presenter put on
+    // every line stays on every line. The card's colour is the STRONGEST role
+    // among its lines: an EDGE line makes the card worth reading, while a
+    // stale artifact has already demoted every green to amber upstream, so a
+    // stale report cannot make this card green whatever its verdicts say.
+    bot_lessons_->setText(view.lessons.join(QStringLiteral("\n")));
+    const QString lessons_color =
+        view.lessons_roles.contains(QStringLiteral("green"))  ? colors::GREEN()
+        : view.lessons_roles.contains(QStringLiteral("amber")) ? colors::WARNING()
+                                                               : colors::TEXT_SECONDARY();
+    bot_lessons_->setStyleSheet(card_style(lessons_color));
 
     if (bot_stop_button_) {
         bot_stop_button_->setText(view.stopped ? QStringLiteral("RESUME THE BOT (CLEAR KILL SWITCH)")

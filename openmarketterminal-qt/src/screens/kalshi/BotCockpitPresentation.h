@@ -187,6 +187,23 @@ struct BotCockpitScene {
     bool kpi_available = false;
     QString kpi_unavailable_reason;
 
+    // ── what the record teaches (issue #174) ───────────────────────────────
+    /// The edge autopsy's standing conclusions, header first — taken from the
+    /// BOT panel's view rather than re-read here, for the same reason the mood
+    /// is taken from it: a second reader of one artifact is a second thing to
+    /// disagree with the CLI. `lessons_roles` is one colour role per line at
+    /// the same index; a stale artifact arrives with its greens already
+    /// demoted, so this scene cannot paint a stale lesson healthy.
+    QStringList lessons;
+    QStringList lessons_roles;
+    /// The same lines without the claim and key numbers, for the widths this
+    /// scene actually has. Drawing `lessons` in a fixed-width scene elides
+    /// from the right, which is where the sample size is — so a narrow cockpit
+    /// would show conclusions with no denominator. Same indices as `lessons`.
+    QStringList lessons_compact;
+    bool lessons_available = false;
+    bool lessons_stale = false;
+
     /// The BOT tab suggests the cockpit exactly while the loop is running.
     bool suggest_cockpit = false;
 
@@ -370,6 +387,15 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                              "mode is claimed")
             : QStringLiteral("the loop is not running (%1)").arg(panel.state);
     }
+
+    // ── what the record teaches (issue #174) ───────────────────────────────
+    // Straight off the panel's view: same artifact, same formatter, same
+    // sample sizes and same roles the BOT tab and `kalshi bot lessons` show.
+    scene.lessons = panel.lessons;
+    scene.lessons_roles = panel.lessons_roles;
+    scene.lessons_compact = panel.lessons_compact;
+    scene.lessons_available = panel.lessons_available;
+    scene.lessons_stale = panel.lessons_stale;
 
     // ── rain: one column per prediction in the report ──────────────────────
     const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();
@@ -775,8 +801,12 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
 inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qint64 now_ms) {
     const QJsonArray ledger = read_kalshi_bot_ledger_tail();
     const QJsonObject gate = read_kalshi_bot_gate();
-    const KalshiBotPanelView panel = present_kalshi_bot_panel(ledger, gate, live_status, now_ms, 8,
-                                                              read_kalshi_bot_stop_file());
+    // The lessons artifact is read here and handed to the panel presenter, so
+    // the cockpit's card comes out of the same call the BOT tab's does.
+    const KalshiBotPanelView panel =
+        present_kalshi_bot_panel(ledger, gate, live_status, now_ms, 8,
+                                 read_kalshi_bot_stop_file(), {},
+                                 kalshi_edge_read_report_file(kalshi_edge_report_path()));
     QJsonObject report;
     QFile file(kalshi_calibrator_path());
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
