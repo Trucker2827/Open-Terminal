@@ -92,10 +92,11 @@ recovered. `git checkout`, a rename and `git clean` all had that power, and
 nothing surfaced the failure but a log nobody was reading.
 
 So `install` copies this script (and `openterminal_paths.py`, its only import)
-into a directory git never touches, and `deploy/org.openterminal.lag-series.plist`
-names THAT path:
-
-    ~/Library/Application Support/org.openterminal.OpenTerminal/libexec/
+into a directory git never touches — `libexec/` under the app data root, i.e.
+`openterminal_paths.app_data_dir()`, beside the `data/` and `logs/` this job
+already writes to — and `deploy/org.openterminal.lag-series.plist` names THAT
+path. (The literal is deliberately not spelled here: `openterminal_paths` is the
+single source of truth for it, and `test_openterminal_paths.py` enforces that.)
 
 The installed copy is a SNAPSHOT: editing this file changes nothing the job runs
 until `install` is run again. That is the trade — the recorder stops tracking the
