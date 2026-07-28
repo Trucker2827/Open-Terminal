@@ -75,6 +75,17 @@ add_test(NAME test_f3_high_vol_walk_forward
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_f3_high_vol_walk_forward.py -v)
 
+# Issue #179 — the Q1 quote-lag regeneration on the retained lag-series
+# window: the interval clustered on the SPOT MOVE (100 samples across 2 moves
+# must not read as 100 independent ones; one move gets no interval at all),
+# the move-size and time-to-expiry bucket edges, and the maker-side filing
+# gate at 29 / 30 moves on both signs. Also guards that the estimator itself
+# stays imported from q1_quote_lag rather than copied. Hermetic — synthetic
+# values, no evidence dir, no clock.
+add_test(NAME test_f1_quote_lag_strata
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_f1_quote_lag_strata.py -v)
+
 # Issue #174 — the recurring lessons artifact's REDUCER: #169's four question
 # payloads become four short conclusions, and the verdict enum is derived from
 # each run's numbers rather than copied from the 2026-07-27 report. Every
