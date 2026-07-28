@@ -3,14 +3,28 @@
 <!--
   Retained paired spot + top-of-book series (issue #170). DOCUMENTED, NOT
   AUTO-LOADED — live infrastructure is bounced deliberately: the operator
-  copies this file into ~/Library/LaunchAgents/ and loads it by hand:
+  INSTALLS the script, copies this file into ~/Library/LaunchAgents/ and loads
+  it by hand:
 
+      python3 openmarketterminal-qt/scripts/kalshi_lag_series.py install
       cp org.openterminal.lag-series.plist ~/Library/LaunchAgents/
       launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.lag-series.plist
 
-  Every 15 minutes it runs scripts/kalshi_lag_series.py (stdlib only, opens
-  every existing evidence log read-only) and appends a downsampled distillate
-  of kalshi-tickers.jsonl and kalshi-cf-benchmarks.jsonl to
+  THE FIRST STEP IS NOT OPTIONAL, AND IT IS ALSO THE STEP TO REPEAT AFTER ANY
+  EDIT TO THE SCRIPT (issue #183). This job used to run the script straight out
+  of the git working tree. That made the recorder's uptime a side effect of
+  whichever commit a developer's tree happened to sit on: on 2026-07-28 a
+  checkout of a commit older than the script left every 15-minute invocation
+  dying with `[Errno 2] No such file or directory` for ~10 hours — past the
+  rotation horizon below, i.e. book history that no later run can recover. A
+  rename or a `git clean` had the same power. It now runs an installed copy
+  under the app data root, where git has no opinion:
+
+      ~/Library/Application Support/org.openterminal.OpenTerminal/libexec/
+
+  Every 15 minutes it appends a downsampled distillate of kalshi-tickers.jsonl
+  and kalshi-cf-benchmarks.jsonl (stdlib only, every evidence log opened
+  read-only) to
 
       ~/Library/Application Support/Open Terminal/Open Terminal/kalshi-lag-series/
 
@@ -22,19 +36,25 @@
   cursor against the oldest row the source still holds and records the
   uncovered span in the manifest's `gaps`.
 
-  Verify after the first run:
+  Verify after the first run, and whenever you want to know it is still alive:
 
       python3 openmarketterminal-qt/scripts/kalshi_lag_series.py status
+      python3 openmarketterminal-qt/scripts/kalshi_lag_series.py doctor
 
-  which prints the retained span, row counts, cadence and any gaps. If this
-  job never runs, the series directory is simply absent, the research scripts
-  read exactly the logs they read before it existed, and nothing is fabricated.
+  `status` prints the retained span, row counts, cadence, any gaps and the age
+  of the last successful compaction — shouting, and exiting nonzero, once that
+  age passes the rotation horizon. `doctor` reads the plist actually loaded in
+  ~/Library/LaunchAgents and says whether the file it names exists and is the
+  installed copy, which is the failure launchctl reports only as "status 2".
+  If this job never runs, the series directory is simply absent, the research
+  scripts read exactly the logs they read before it existed, and nothing is
+  fabricated.
 -->
 <plist version="1.0"><dict>
   <key>Label</key><string>org.openterminal.lag-series</string>
   <key>ProgramArguments</key><array>
     <string>/usr/bin/python3</string>
-    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/kalshi_lag_series.py</string>
+    <string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/libexec/kalshi_lag_series.py</string>
     <string>compact</string>
   </array>
   <key>StartInterval</key><integer>900</integer>
