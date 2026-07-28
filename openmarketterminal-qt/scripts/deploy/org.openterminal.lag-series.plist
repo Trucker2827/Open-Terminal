@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Retained paired spot + top-of-book series (issue #170). DOCUMENTED, NOT
+  AUTO-LOADED — live infrastructure is bounced deliberately: the operator
+  copies this file into ~/Library/LaunchAgents/ and loads it by hand:
+
+      cp org.openterminal.lag-series.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.lag-series.plist
+
+  Every 15 minutes it runs scripts/kalshi_lag_series.py (stdlib only, opens
+  every existing evidence log read-only) and appends a downsampled distillate
+  of kalshi-tickers.jsonl and kalshi-cf-benchmarks.jsonl to
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/kalshi-lag-series/
+
+  THE INTERVAL IS LOAD-BEARING. kalshi-tickers.jsonl rotates by SIZE, turning
+  over in ~5.7 hours at the current write rate, and the rotation it displaces
+  is gone. Anything that keeps this job from running for longer than that
+  loses book history permanently — which is the whole defect issue #170
+  exists to fix. A missed window is not silent: the compactor compares its
+  cursor against the oldest row the source still holds and records the
+  uncovered span in the manifest's `gaps`.
+
+  Verify after the first run:
+
+      python3 openmarketterminal-qt/scripts/kalshi_lag_series.py status
+
+  which prints the retained span, row counts, cadence and any gaps. If this
+  job never runs, the series directory is simply absent, the research scripts
+  read exactly the logs they read before it existed, and nothing is fabricated.
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.lag-series</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/scripts/kalshi_lag_series.py</string>
+    <string>compact</string>
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/lag-series.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/lag-series.err.log</string>
+</dict></plist>

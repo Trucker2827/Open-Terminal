@@ -37,11 +37,26 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "..",
                                                 "openmarketterminal-qt", "scripts")))
 from openterminal_paths import evidence_dir  # noqa: E402
+# From the same directory as openterminal_paths above. Imported for the series'
+# paths and constants only — nothing here runs the compactor, so reading
+# evidence still writes nothing.
+import kalshi_lag_series  # noqa: E402
 
 # Kalshi rotates each evidence log at ~67 MB into a single `.1` sibling, which
 # the next rotation overwrites. Retention is therefore a property of the file's
 # write rate, not of time — see the report's data-inventory table.
 ROTATIONS = ("{name}.1", "{name}")
+
+# Issue #170: the retained lag series (`kalshi-lag-series/`) is a downsampled,
+# TIME-bounded copy of these two streams, written by
+# openmarketterminal-qt/scripts/kalshi_lag_series.py. It is read here as the
+# OLDEST ROTATION of the same stream — the rows are in the source schema, so
+# every reader above (q1 in particular) sees a longer history and needs no
+# edit. The key is what each stream's own consumer already uses for time:
+# `load_brti` reads BRTI's `time` (int), while a ticker row's `ts_ms` is the
+# instant q1 bisects on.
+RETAINED_TS_KEY = {kalshi_lag_series.SOURCE_TICKERS: "ts_ms",
+                   kalshi_lag_series.SOURCE_BRTI: "time"}
 
 MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
@@ -77,8 +92,73 @@ def iter_jsonl(name, rotations=ROTATIONS):
                     continue
 
 
+def _row_ts_ms(record, key):
+    """The row's own instant, coerced — BRTI writes `ts_ms` as a string."""
+    try:
+        return int(float(record.get(key)))
+    except (TypeError, ValueError):
+        return None
+
+
+def read_retained(name, before_ms):
+    """(records, inventory) from the retained lag series, oldest day first.
+
+    Only rows STRICTLY OLDER than `before_ms` — the first instant the live logs
+    still hold — are returned, so the overlap between the series and the log it
+    was distilled from is resolved in favour of the full-fidelity live rows and
+    nothing is double counted. `before_ms` of None means the live log holds
+    nothing (it just rotated), and then the whole series is in play.
+
+    A row is attributed to its stream by the `source` field the compactor
+    stamps on it; the per-day header row carries no `source` and is therefore
+    invisible to every consumer.
+    """
+    key = RETAINED_TS_KEY.get(name)
+    if key is None:
+        return [], []
+    records = []
+    inventory = []
+    for file_name in kalshi_lag_series.day_files():
+        path = kalshi_lag_series.series_path(file_name)
+        good = bad = skipped = 0
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    bad += 1
+                    continue
+                if record.get("source") != name:
+                    continue
+                ts_ms = _row_ts_ms(record, key)
+                if ts_ms is None:
+                    continue
+                if before_ms is not None and ts_ms >= before_ms:
+                    skipped += 1
+                    continue
+                records.append(record)
+                good += 1
+        if good or bad or skipped:
+            inventory.append({"file": os.path.join(kalshi_lag_series.SERIES_DIR_NAME,
+                                                   file_name),
+                              "bytes": os.path.getsize(path),
+                              "rows": good, "unparseable_rows": bad,
+                              "rows_superseded_by_live_log": skipped,
+                              "retention_days": kalshi_lag_series.RETENTION_DAYS})
+    return records, inventory
+
+
 def read_jsonl(name, rotations=ROTATIONS):
-    """(records, inventory) — inventory is the per-file audit for the report."""
+    """(records, inventory) — inventory is the per-file audit for the report.
+
+    For the two streams the lag series retains (issue #170), the series is read
+    first and prepended: it is the same stream, recorded by the same writer,
+    kept longer. Callers sort by timestamp anyway, and the inventory names every
+    file the numbers came from — including which of them is the retained copy.
+    """
     records = []
     inventory = []
     for pattern in rotations:
@@ -99,7 +179,16 @@ def read_jsonl(name, rotations=ROTATIONS):
         inventory.append({"file": os.path.basename(path),
                           "bytes": os.path.getsize(path),
                           "rows": good, "unparseable_rows": bad})
-    return records, inventory
+    key = RETAINED_TS_KEY.get(name)
+    if key is None:
+        return records, inventory
+    live_start = None
+    for record in records:
+        ts_ms = _row_ts_ms(record, key)
+        if ts_ms is not None and (live_start is None or ts_ms < live_start):
+            live_start = ts_ms
+    retained, retained_inventory = read_retained(name, live_start)
+    return retained + records, retained_inventory + inventory
 
 
 def parse_ticker(ticker):
@@ -114,6 +203,11 @@ def parse_ticker(ticker):
 
     Returns None when the ticker does not match either shape; a caller that
     cannot parse a ticker must drop it and say so, not guess a close time.
+
+    `kalshi_lag_series.parse_threshold_ticker` decomposes the same strings to
+    decide what the retained series keeps. The two must agree about close time
+    and strike or the series would retain a different population than this
+    analysis asks about; `test_kalshi_lag_series.py` asserts they do.
     """
     parts = ticker.split("-")
     if len(parts) < 2:

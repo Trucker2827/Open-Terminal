@@ -65,6 +65,29 @@ is capped at ~8 hours. This is not a gap in what the terminal captures — it
 captures everything needed, at sub-second resolution — it is a gap in what it
 *keeps*. See follow-up F1.
 
+> **Update 2026-07-27 22:59 UTC (issue #170).** The retained series now exists:
+> `kalshi-lag-series/` beside these logs, written by
+> `openmarketterminal-qt/scripts/kalshi_lag_series.py`, bounded by **time (30
+> days)** and never rotated by size. Its first compaction kept everything the
+> rotations still held — 201,492 rows: BRTI 07-23 01:18 → 07-27 22:59 (117.7 h)
+> plus 36,131 top-of-book rows across the 6.0 h of ticker history that survived.
+>
+> **The Q1 table below is deliberately NOT regenerated yet.** A ticker rotation
+> landed at 22:38 UTC and took the older half of the window with it, so the
+> retained quote span at that moment (5.98 h) is *narrower* than the 8.2 h this
+> report measured. The series can only start from what was still retained; it
+> passes this report's window at the first rotation after the compactor starts
+> running (~5.7 h of accrual) and grows to 30 days from there. Regenerating on a
+> narrower window would be worse than not regenerating.
+>
+> `q1_quote_lag.py` consumes the series with **no edit at all** — the retained
+> rows are written in the source logs' schema and read as the oldest rotation of
+> the same stream. Run today with the series present it is byte-identical to the
+> run without it (paired window 5.98 h, 72,768 two-sided rows, 27 events at 2σ /
+> 14 at 3σ over 07-27 17:00 → 22:59), because every retained row is still
+> superseded by the live log. That equality is the point: the series adds
+> history, never a second copy of it.
+
 ### Outcome sourcing, and how it was validated
 
 Joining the bot's watched tickers to the public settlement feed yields only
@@ -410,6 +433,13 @@ resolution — nothing new needs recording, only *keeping*. A compact retained
 series (1 Hz BRTI + per-market top-of-book on change, threshold contracts inside
 60 minutes of expiry) would take the 3σ estimate from 8 events to hundreds
 within a week and settle whether the +0.52¢ fee-only margin is real.
+*Implemented 2026-07-27 — see the update in [Data inventory](#data-inventory).
+The series accrues from the day it starts running; no backfill beyond what the
+rotations still held is possible, and the one longer-retained log that carries a
+`yes_bid`/`yes_ask` pair, `kalshi-crypto-decisions.jsonl`, was measured and
+rejected: over 1,977 rows overlapping the ticker feed only 46 (2.3%) match the
+recorded top of book, because its `yes_bid` is systematically the midpoint
+(`ask − 0.005`) rather than a bid.*
 
 **F2 — Fix the calibrator's Brier bookkeeping** ([#171](https://github.com/Trucker2827/Open-Terminal/issues/171))**.** Cheap, and it removes a live
 source of false confidence. Three defects, all in `spot_calibrator.py`:
