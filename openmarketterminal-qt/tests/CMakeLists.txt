@@ -66,6 +66,15 @@ add_test(NAME test_kalshi_lag_series
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/test_kalshi_lag_series.py -v)
 
+# Issue #172 (follow-up F3 of the #169 edge autopsy) — the methodology
+# guarantees of the high-volatility walk-forward: contract-wise (never
+# row-wise) folds, a volatility threshold frozen before evaluation, missing
+# volatility read as missing, and a contract count beside every row count.
+# Hermetic — synthetic contracts only, no evidence directory is read.
+add_test(NAME test_f3_high_vol_walk_forward
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/test_f3_high_vol_walk_forward.py -v)
+
 # Issue #86 — openterminal_paths as single source of truth for evidence/data
 # paths: default values, env-override semantics, and a sweep asserting no
 # script outside the module (and the frozen v5 duel files) hardcodes them.
