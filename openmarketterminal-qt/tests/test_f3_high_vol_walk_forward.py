@@ -139,16 +139,35 @@ class FoldSplitTest(unittest.TestCase):
                             "a fold is not strictly in the future of the last")
 
     def test_shared_close_time_never_straddles_a_boundary(self):
-        """Contracts closing at the same instant belong to the same fold."""
+        """Contracts closing at the same instant belong to the same fold.
+
+        The group size (7) must NOT divide the fold size (40/4 = 10), or the
+        unsnapped boundaries land on group edges and the test asserts nothing —
+        so the fixture's non-vacuity is asserted first, in the same terms the
+        splitter uses. Review found the original 10-per-instant version passing
+        with the snap block deleted; the assertion below is what makes that
+        deletion visible.
+        """
         base = 1_753_000_000_000
+        total, folds, per_instant = 40, 4, 7
         contracts = []
-        for i in range(40):
-            # ten contracts per close instant — boundaries must snap past them
-            contracts.append(make_contract(f"T{i}", base + (i // 10) * HOUR_MS,
-                                           [(9.0, 0.5, 0.5)]))
+        for i in range(total):
+            contracts.append(
+                make_contract(f"T{i}", base + (i // per_instant) * HOUR_MS,
+                              [(9.0, 0.5, 0.5)]))
         contracts.sort(key=lambda c: (c["close_ms"], c["ticker"]))
+
+        # what an unsnapped splitter would do: at least one boundary must fall
+        # strictly INSIDE a close-time group, or there is nothing to snap past
+        naive = [int(round(index * total / folds)) for index in range(1, folds)]
+        straddling = [edge for edge in naive
+                      if contracts[edge]["close_ms"] == contracts[edge - 1]["close_ms"]]
+        self.assertTrue(straddling,
+                        "fixture is vacuous: no unsnapped boundary splits a "
+                        "close-time group, so snapping is never exercised")
+
         fold_of = {}
-        for index, (start, end) in enumerate(f3.fold_slices(contracts, 4)):
+        for index, (start, end) in enumerate(f3.fold_slices(contracts, folds)):
             for contract in contracts[start:end]:
                 fold_of.setdefault(contract["close_ms"], index)
                 self.assertEqual(fold_of[contract["close_ms"]], index,
