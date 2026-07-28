@@ -9,9 +9,37 @@ orders; its output is one more evidence file beside the order books.
 Two models are trained in parallel and BOTH are always reported:
   - "full":   physics features (signed distance, ambient vol, time, realized
               move) plus the market mid.
-  - "market": the market mid alone.
-If the full model's Brier score is not beating the market baseline, the
-calibrator is adding nothing and the report says so — by construction.
+  - "market": the market mid alone — a TRAINED one-feature logit, which is a
+              handicapped baseline, not the market. It is reported as
+              `brier_market_trained_logit` so its name says what it is.
+The market itself is scored separately and untrained, as `brier_market_mid_raw`
+(the mid used verbatim as a probability). "Adds value over market" means
+beating THAT, because that is the price the bot would otherwise take.
+
+HOW THE BRIER IS SCORED (issue #171). Schema 1 appended one
+`[probability, outcome]` pair per OBSERVATION, and a contract contributes up to
+`MAX_OBS_PER_TICKER = 60` of them, all sharing one outcome. A trailing window of
+500 such pairs is ~8–10 contracts of heavily correlated rows, so the old
+`training_samples: 500` overstated the evidence by roughly fiftyfold and the
+≥100 gate cleared after about two contracts settled
+(docs/research/2026-07-27-kalshi-edge-autopsy.md, Q2).
+
+Schema 2 scores ONE NUMBER PER RESOLVED CONTRACT. The rule, applied identically
+to all three scorers:
+
+    a contract's score = the MEAN squared error over that contract's own
+    observations, using predictions taken BEFORE the models train on it.
+
+Equal weight per contract (not per observation), so a 60-observation contract
+and a 2-observation contract count the same; and out-of-sample with respect to
+the contract being scored, because every prediction is read off the models as
+they stood before that contract's outcome reached them. The autopsy's
+reconstruction scored the same data row-weighted (0.1043 calibrated vs 0.0989
+raw mid over 239 contracts); contract-weighting is a different estimator of the
+same quantity, so the numbers here will not reproduce those digit for digit.
+
+Training is unchanged: both models still learn from every observation. Only the
+BOOKKEEPING is per contract.
 
 Commands:  once | run [--interval 60] | report
 """
@@ -35,7 +63,11 @@ FULL_FEATURES = ("signed_distance_bps", "per_min_vol_bps", "sqrt_minutes_left",
 MARKET_FEATURES = ("yes_mid",)
 MAX_OBS_PER_TICKER = 60
 MIN_STANDARDIZE_SAMPLES = 8
-BRIER_WINDOW = 500
+STATE_SCHEMA = 2
+# Both in CONTRACTS, never observations. See the module header for why the
+# distinction is the whole point of schema 2.
+SCORED_CONTRACT_WINDOW = 500
+MIN_SCORED_CONTRACTS = 100
 
 
 def extract_features(snapshot):
@@ -178,6 +210,19 @@ def brier(history):
     return sum((p - (1.0 if y else 0.0)) ** 2 for p, y in history) / len(history)
 
 
+def mean_or_none(values):
+    """Mean of already-computed per-contract scores; None when empty.
+
+    Distinct from `brier()` on purpose: `brier()` takes forecast pairs and is
+    the WITHIN-contract step, this takes one number per contract and is the
+    ACROSS-contract step. Collapsing them would be exactly the conflation
+    schema 2 exists to remove.
+    """
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
 def resolve_outcome_kalshi(ticker, fetcher=None):
     """True/False once the market settled, None while open or on any error."""
     try:
@@ -196,19 +241,47 @@ def resolve_outcome_kalshi(ticker, fetcher=None):
 
 
 def default_state():
-    return {"schema": 1, "advisory_only": True,
+    # The three score lists hold ONE FLOAT PER RESOLVED CONTRACT — that
+    # contract's mean squared error — not forecast pairs. Same contracts, same
+    # order, in all three, so they are always comparable like for like.
+    return {"schema": STATE_SCHEMA, "advisory_only": True,
             "full": OnlineLogit(FULL_FEATURES).to_json(),
             "market": OnlineLogit(MARKET_FEATURES).to_json(),
-            "pending": {},          # ticker -> {"close_ms": int, "obs": [features...]}
-            "brier_full": [],       # trailing [probability, outcome] pairs
-            "brier_market": [],
+            "pending": {},                    # ticker -> {"close_ms": int, "obs": [features...]}
+            "contract_scores_full": [],
+            "contract_scores_market_trained_logit": [],
+            "contract_scores_market_mid_raw": [],
             "resolved": 0, "skipped_unmodeled": 0}
+
+
+def migrate_state(state):
+    """Bring a state file up to `STATE_SCHEMA`, discarding what it cannot mean.
+
+    A schema-1 file's `brier_full` holds per-OBSERVATION pairs. There is no
+    honest way to turn 500 of those into contract scores — the file does not
+    record which pairs belonged to which contract — so they are DROPPED and
+    counted, never reinterpreted as if they had been contracts all along. The
+    calibrator then reads as having scored zero contracts, which is the truth,
+    and stays below the gate until real contracts settle under the new rule.
+
+    The trained models and the pending map survive untouched: the weights were
+    always fitted per observation and that has not changed.
+    """
+    if int(state.get("schema") or 0) >= STATE_SCHEMA:
+        return state
+    fresh = default_state()
+    for key in ("full", "market", "pending", "resolved", "skipped_unmodeled"):
+        if key in state:
+            fresh[key] = state[key]
+    fresh["migrated_from_schema"] = state.get("schema")
+    fresh["discarded_observation_pairs"] = len(state.get("brier_full") or [])
+    return fresh
 
 
 def load_state(path=STATE_PATH):
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            return json.load(fh)
+            return migrate_state(json.load(fh))
     except (OSError, ValueError):
         return default_state()
 
@@ -252,7 +325,15 @@ def observe_cycle(state, evidence, now_ms):
 
 
 def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
-    """Train both models on every pending ticker whose market has settled."""
+    """Train both models on every pending ticker whose market has settled.
+
+    Scoring and training are deliberately two passes over the same
+    observations. The scoring pass runs FIRST and uses `predict()`, so all
+    three scores for a contract are read off the models as they stood before
+    this contract's outcome existed for them; the training pass then updates
+    the weights observation by observation as it always has. One score per
+    contract goes into each list (see the module header for the rule).
+    """
     full = OnlineLogit.from_json(state["full"])
     market = OnlineLogit.from_json(state["market"])
     for ticker in list(state["pending"].keys()):
@@ -264,30 +345,66 @@ def settle_cycle(state, now_ms, resolver=resolve_outcome_kalshi):
             if now_ms > entry["close_ms"] + 24 * 3600 * 1000:
                 del state["pending"][ticker]       # unresolvable; drop, don't guess
             continue
-        for features in entry["obs"]:
-            p_full = full.update(features, outcome)
-            p_market = market.update(features, outcome)
-            state["brier_full"].append([p_full, bool(outcome)])
-            state["brier_market"].append([p_market, bool(outcome)])
+        observations = entry["obs"]
+        if not observations:
+            # Settled with nothing observed: there is no forecast to score, so
+            # none is recorded. It still leaves pending — an empty contract is
+            # resolved, not evidence.
+            del state["pending"][ticker]
+            continue
+        # One pre-training score per model, over this contract's own rows.
+        state["contract_scores_full"].append(
+            brier([(full.predict(f), outcome) for f in observations]))
+        state["contract_scores_market_trained_logit"].append(
+            brier([(market.predict(f), outcome) for f in observations]))
+        state["contract_scores_market_mid_raw"].append(
+            brier([(f["yes_mid"], outcome) for f in observations]))
+        for features in observations:
+            full.update(features, outcome)
+            market.update(features, outcome)
         state["resolved"] += 1
         del state["pending"][ticker]
-    state["brier_full"] = state["brier_full"][-BRIER_WINDOW:]
-    state["brier_market"] = state["brier_market"][-BRIER_WINDOW:]
+    for key in ("contract_scores_full", "contract_scores_market_trained_logit",
+                "contract_scores_market_mid_raw"):
+        state[key] = state[key][-SCORED_CONTRACT_WINDOW:]
     state["full"] = full.to_json()
     state["market"] = market.to_json()
 
 
 def build_report(state, predictions, now_ms):
-    b_full = brier([(p, y) for p, y in state["brier_full"]])
-    b_market = brier([(p, y) for p, y in state["brier_market"]])
+    """The report every consumer reads. Contracts and observations never share
+    a field: `scored_contracts` is the Brier's denominator, `resolved_contracts`
+    is the lifetime settled count, and `training_observations` is how many rows
+    the weights were fitted on. After a schema-1 migration the first two
+    disagree loudly (hundreds resolved, zero scored) — that is the migration
+    reading as insufficient, exactly as intended.
+    """
+    scored = state["contract_scores_full"]
+    b_full = mean_or_none(scored)
+    b_logit = mean_or_none(state["contract_scores_market_trained_logit"])
+    b_mid_raw = mean_or_none(state["contract_scores_market_mid_raw"])
+    # The gate, stated where it is enforced: at least MIN_SCORED_CONTRACTS = 100
+    # CONTRACTS (not observations), and a Brier strictly better than the RAW
+    # MID — the price the bot would otherwise take. Beating the trained logit
+    # is reported beside it but does not confer trust: that baseline is
+    # handicapped, so clearing it is not the claim the field name makes.
+    enough = len(scored) >= MIN_SCORED_CONTRACTS
     return {
-        "schema": 1, "event": "spot_calibrator", "advisory_only": True,
+        "schema": 2, "event": "spot_calibrator", "advisory_only": True,
         "generated_at_ms": now_ms,
         "resolved_contracts": state["resolved"],
-        "training_samples": len(state["brier_full"]),
-        "brier_full": b_full, "brier_market_baseline": b_market,
-        "adds_value_over_market": (b_full is not None and b_market is not None
-                                   and len(state["brier_full"]) >= 100 and b_full < b_market),
+        "scored_contracts": len(scored),
+        "training_observations": int((state.get("full") or {}).get("n_seen") or 0),
+        "scoring_rule": ("one score per contract: mean squared error over that "
+                         "contract's observations, predicted before training on it"),
+        "min_scored_contracts": MIN_SCORED_CONTRACTS,
+        "brier_full": b_full,
+        "brier_market_mid_raw": b_mid_raw,
+        "brier_market_trained_logit": b_logit,
+        "adds_value_over_market": (b_full is not None and b_mid_raw is not None
+                                   and enough and b_full < b_mid_raw),
+        "beats_trained_logit_baseline": (b_full is not None and b_logit is not None
+                                         and enough and b_full < b_logit),
         "predictions": predictions,
     }
 

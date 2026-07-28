@@ -152,6 +152,36 @@ def calibrator_self_report():
             state = json.load(handle)
     except (OSError, ValueError) as exc:
         return {"available": False, "error": str(exc)}
+
+    # Issue #171 fixed the defect this whole block was written to expose, so the
+    # block now says which schema it is looking at instead of `.get`-degrading
+    # to zeros against the new one. The schema-1 branch below is kept verbatim:
+    # it is the autopsy's published evidence and must stay reproducible against
+    # an archived schema-1 state file.
+    schema = int(state.get("schema") or 1)
+    if schema >= 2:
+        scored = state.get("contract_scores_full") or []
+        mean = (lambda values: sum(values) / len(values) if values else None)
+        return {
+            "available": True,
+            "state_schema": schema,
+            "resolved_contracts_lifetime": state.get("resolved"),
+            "skipped_unmodeled": state.get("skipped_unmodeled"),
+            "scored_contracts": len(scored),
+            "training_observations": (state.get("full") or {}).get("n_seen"),
+            "brier_full": mean(scored),
+            "brier_market_mid_raw": mean(state.get("contract_scores_market_mid_raw") or []),
+            "brier_market_trained_logit":
+                mean(state.get("contract_scores_market_trained_logit") or []),
+            "discarded_observation_pairs": state.get("discarded_observation_pairs"),
+            "note": ("schema 2 scores one number per CONTRACT (mean squared error "
+                     "over that contract's observations, predicted before "
+                     "training on it), so scored_contracts IS the effective "
+                     "sample and no per-observation correction applies; "
+                     "brier_market_mid_raw is the untrained mid, "
+                     "brier_market_trained_logit the handicapped 1-feature fit"),
+        }
+
     full = [(p, y) for p, y in state.get("brier_full", [])]
     market = [(p, y) for p, y in state.get("brier_market", [])]
 
@@ -178,6 +208,7 @@ def calibrator_self_report():
         }
     return {
         "available": True,
+        "state_schema": schema,
         "resolved_contracts_lifetime": state.get("resolved"),
         "skipped_unmodeled": state.get("skipped_unmodeled"),
         "brier_full": common.brier(full),
