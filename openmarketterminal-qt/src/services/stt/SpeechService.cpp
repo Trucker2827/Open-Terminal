@@ -14,6 +14,9 @@
 //   {"fatal": "..."}       → unrecoverable error (process exits)
 
 #include "services/stt/SpeechService.h"
+#ifdef __APPLE__
+#include "services/stt/AppleSpeechProvider.h"
+#endif
 
 #include "core/config/AppConfig.h"
 #include "core/logging/Logger.h"
@@ -388,6 +391,10 @@ QString SpeechService::configured_provider() {
     QString v = cfg.get("voice/stt/provider", "").toString().toLower();
     if (v.isEmpty())
         v = cfg.get("voice/provider", "google").toString().toLower();
+#ifdef __APPLE__
+    if (v != "deepgram")
+        return QStringLiteral("apple");
+#endif
     return (v == "deepgram") ? QStringLiteral("deepgram") : QStringLiteral("google");
 }
 
@@ -463,6 +470,10 @@ void SpeechService::install_provider() {
 
     if (id == QStringLiteral("deepgram"))
         provider_ = std::make_unique<DeepgramSttProvider>(this);
+#ifdef __APPLE__
+    else if (id == QStringLiteral("apple"))
+        provider_ = create_apple_speech_provider();
+#endif
     else
         provider_ = std::make_unique<GoogleSttProvider>(this);
 

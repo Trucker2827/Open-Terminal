@@ -2719,6 +2719,18 @@ else()
     set(_OPENMARKETTERMINAL_PLATFORM_SOURCES "")
 endif()
 
+# Standalone Nora avatar component shared with the Quick Chat overlay.
+set(NORA_QUICKCHAT_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/NoraQuickChat"
+    CACHE PATH "Path to the standalone NoraQuickChat Qt component")
+if(EXISTS "${NORA_QUICKCHAT_SOURCE_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        "${NORA_QUICKCHAT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/NoraQuickChat")
+else()
+    message(FATAL_ERROR "NoraQuickChat not found at ${NORA_QUICKCHAT_SOURCE_DIR}")
+endif()
+
 # ── GUI-coupled files pulled OUT of the core groups so openterminal_core stays
 # GUI-free at the LINK boundary. These compile into the GUI exe, not the lib.
 # Placed here (after every source group is defined) so each list(REMOVE_ITEM …)
@@ -2874,7 +2886,9 @@ add_executable(OpenMarketTerminal ${_OPENMARKETTERMINAL_EXE_FLAGS}
     ${APP_SOURCES}
     ${_OPENMARKETTERMINAL_PLATFORM_SOURCES}
 )
-target_link_libraries(OpenMarketTerminal PRIVATE openterminal_core)
+target_link_libraries(OpenMarketTerminal PRIVATE
+    openterminal_core
+    NoraQuickChat::NoraQuickChat)
 
 set_target_properties(OpenMarketTerminal PROPERTIES
     OUTPUT_NAME "OpenTerminal"
@@ -3246,6 +3260,12 @@ target_link_libraries(OpenMarketTerminal PRIVATE
 # they currently fall back to the machine-derived key, so no extra libs there.
 if(APPLE)
     target_link_libraries(OpenMarketTerminal PRIVATE "-framework Security" "-framework CoreFoundation")
+    target_sources(OpenMarketTerminal PRIVATE src/services/stt/AppleSpeechProvider.mm)
+    set_source_files_properties(src/services/stt/AppleSpeechProvider.mm
+        PROPERTIES
+            COMPILE_OPTIONS "-fobjc-arc"
+            SKIP_PRECOMPILE_HEADERS ON)
+    target_link_libraries(OpenMarketTerminal PRIVATE "-framework AVFoundation")
     # Apple Speech-to-text fallback for caption-less video transcription.
     target_sources(OpenMarketTerminal PRIVATE src/web/AppleSpeechTranscriber.mm)
     set_source_files_properties(src/web/AppleSpeechTranscriber.mm
@@ -3270,6 +3290,15 @@ if(APPLE)
             -c "Add :NSSpeechRecognitionUsageDescription string 'Open Terminal transcribes video news clips on your device using Apple Speech Recognition.'"
             "$<TARGET_BUNDLE_CONTENT_DIR:OpenMarketTerminal>/Info.plist"
         COMMENT "Injecting NSSpeechRecognitionUsageDescription into Info.plist..."
+    )
+    add_custom_command(TARGET OpenMarketTerminal POST_BUILD
+        COMMAND /usr/libexec/PlistBuddy
+            -c "Set :NSMicrophoneUsageDescription 'Nora uses the microphone to transcribe Quick Chat questions.'"
+            "$<TARGET_BUNDLE_CONTENT_DIR:OpenMarketTerminal>/Info.plist"
+            || /usr/libexec/PlistBuddy
+            -c "Add :NSMicrophoneUsageDescription string 'Nora uses the microphone to transcribe Quick Chat questions.'"
+            "$<TARGET_BUNDLE_CONTENT_DIR:OpenMarketTerminal>/Info.plist"
+        COMMENT "Injecting NSMicrophoneUsageDescription into Info.plist..."
     )
 endif()
 

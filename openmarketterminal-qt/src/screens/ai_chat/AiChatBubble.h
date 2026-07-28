@@ -31,6 +31,10 @@
 
 #include <vector>
 
+namespace NoraQuickChat {
+class NoraAvatarWidget;
+}
+
 namespace openmarketterminal {
 
 class AiChatBubble : public QWidget {
@@ -81,6 +85,7 @@ class AiChatBubble : public QWidget {
     QPushButton*    voice_mode_btn_   = nullptr;
     QPushButton*    new_btn_          = nullptr;
     QPushButton*    close_btn_        = nullptr;
+    NoraQuickChat::NoraAvatarWidget* nora_widget_ = nullptr;
 
     // Keeps Quick Chat on the SAME active LLM as the AI Chat tab: when the active
     // provider/model changes (llm.provider_changed), reload the shared LlmService.
@@ -131,6 +136,7 @@ class AiChatBubble : public QWidget {
     void stop_listening();
     void speak_text(const QString& text);
     void stop_tts();
+    void update_nora();
 
     // ── Status / mic visuals ─────────────────────────────────────────────────
     void render_status();                  // derive Status from flags + paint

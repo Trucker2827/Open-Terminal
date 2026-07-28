@@ -204,7 +204,7 @@ void LlmService::ensure_config() const {
 
     if (provider_ == "ollama" &&
         (model_.isEmpty() || model_ == QLatin1String("openmarketterminal-llm")))
-        model_.clear(); // Ollama: model picked in Settings or left for server default
+        model_ = QStringLiteral("qwen3:latest");
 
     auto gs = LlmConfigRepository::instance().get_global_settings();
     if (gs.is_ok()) {
@@ -229,7 +229,7 @@ void LlmService::ensure_config() const {
         // call tools, discover more via tool_list, keep going until done. Adding more
         // than this measurably degrades small models (they fall back to text tool calls).
         system_prompt_ =
-            "You are OpenMarketTerminal AI, a finance assistant embedded in the "
+            "Your name is Nora. You are OpenMarketTerminal's finance assistant, embedded in the "
             "OpenMarketTerminal desktop app. You have TOOLS for live market data, SEC "
             "filings, watchlists, portfolios, news, Python analytics and report building.\n"
             "How to work:\n"
@@ -247,7 +247,7 @@ void LlmService::ensure_config() const {
             "Be concise, accurate, and finance-focused.";
     } else if (system_prompt_.trimmed().isEmpty()) {
         system_prompt_ =
-            "You are OpenMarketTerminal AI, the intelligent assistant embedded inside the OpenMarketTerminal — "
+            "Your name is Nora. You are OpenMarketTerminal's intelligent assistant, embedded inside the OpenMarketTerminal — "
             "a professional desktop financial intelligence application. You have access to tools that "
             "let you interact with the terminal directly: navigate screens, fetch live market data, "
             "manage watchlists, query portfolios, paper-trade, run Python analytics, search SEC Edgar "

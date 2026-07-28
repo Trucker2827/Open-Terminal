@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/nora">
+    <file alias="neutral.png">nora-neutral.png</file>
+    <file alias="wave.png">nora-wave.png</file>
+    <file alias="conversation.png">nora-talk.png</file>
+  </qresource>
+</RCC>
