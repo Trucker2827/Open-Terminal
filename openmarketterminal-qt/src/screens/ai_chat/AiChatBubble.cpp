@@ -22,6 +22,8 @@
 #include "ui/theme/Theme.h"
 #include "ui/theme/ThemeManager.h"
 
+#include <NoraQuickChat/NoraAvatarWidget.h>
+
 #include <QDateTime>
 #include <QEvent>
 #include <QGraphicsOpacityEffect>
@@ -186,10 +188,12 @@ void AiChatBubble::build_bubble_button() {
     bubble_btn_->setStyleSheet(QString("background:%1;border:2px solid %2;border-radius:0px;")
                                    .arg(col::BG_SURFACE(), col::BORDER_BRIGHT()));
 
-    auto* lbl = new QLabel("⬡", bubble_btn_);
+    auto* lbl = new QLabel(bubble_btn_);
     lbl->setAlignment(Qt::AlignCenter);
-    lbl->setGeometry(0, 0, BTN_SIZE, BTN_SIZE);
-    lbl->setStyleSheet(QString("color:%1;font-size:24px;background:transparent;")
+    lbl->setText(QStringLiteral("CHAT"));
+    lbl->setGeometry(2, 0, BTN_SIZE - 4, BTN_SIZE);
+    lbl->setStyleSheet(QString("color:%1;background:transparent;border:none;"
+                               "font-size:9px;font-weight:800;letter-spacing:0.5px;")
                            .arg(col::TEXT_PRIMARY()));
 
     unread_badge_ = new QLabel(bubble_btn_);
@@ -243,6 +247,11 @@ void AiChatBubble::build_chat_panel() {
 
     build_welcome_widget();
     show_welcome_if_empty();
+
+    nora_widget_ = new NoraQuickChat::NoraAvatarWidget(chat_panel_);
+    nora_widget_->setObjectName("noraQuickChat");
+    nora_widget_->show();
+    update_nora();
 
     // ── Divider ──────────────────────────────────────────────────────────────
     auto* sep = new QFrame;
@@ -453,6 +462,7 @@ void AiChatBubble::show_welcome_if_empty() {
         msg_layout_->insertWidget(msg_layout_->count() - 1, welcome_widget_);
         welcome_widget_->show();
     }
+    update_nora();
 }
 
 void AiChatBubble::hide_welcome() {
@@ -461,6 +471,7 @@ void AiChatBubble::hide_welcome() {
         welcome_widget_->setParent(nullptr);
         welcome_widget_->hide();
     }
+    update_nora();
 }
 
 // ── Open / Close ──────────────────────────────────────────────────────────────
@@ -476,6 +487,8 @@ void AiChatBubble::open_panel() {
     raise();
     input_box_->setFocus();
     render_status();
+    if (chat_history_.empty() && nora_widget_)
+        nora_widget_->wave();
 }
 
 void AiChatBubble::close_panel() {
@@ -803,6 +816,8 @@ void AiChatBubble::render_status() {
     else if (is_listening_)      s = Status::Listening;
     else if (streaming_)         s = Status::Thinking;
 
+    update_nora();
+
     QString color, text;
     bool show_stop = false;
     switch (s) {
@@ -834,6 +849,31 @@ void AiChatBubble::render_status() {
     status_lbl_->setStyleSheet(QString("color:%1;font-size:11px;background:transparent;").arg(color));
     status_lbl_->setToolTip(text);
     stop_speech_btn_->setVisible(show_stop);
+}
+
+void AiChatBubble::update_nora() {
+    if (!nora_widget_ || !chat_panel_)
+        return;
+
+    using NoraState = NoraQuickChat::NoraAvatarWidget::State;
+    NoraState state = NoraState::Idle;
+    if (!error_msg_.isEmpty())
+        state = NoraState::Error;
+    else if (is_speaking_)
+        state = NoraState::Speaking;
+    else if (is_listening_)
+        state = NoraState::Listening;
+    else if (streaming_)
+        state = NoraState::Thinking;
+
+    nora_widget_->setState(state);
+    const bool welcome = chat_history_.empty() && !streaming_;
+    if (welcome)
+        nora_widget_->setGeometry(PANEL_W - 188, HEADER_H + 108, 178, 292);
+    else
+        nora_widget_->setGeometry(PANEL_W - 108, HEADER_H + 214, 98, 170);
+    nora_widget_->show();
+    nora_widget_->raise();
 }
 
 void AiChatBubble::set_mic_listening_visual(bool on) {
