@@ -33,10 +33,42 @@ import q1_quote_lag                         # noqa: E402
 Q1_PATH = os.path.join(RESEARCH, "q1_quote_lag.py")
 HOUR_MS = 3_600_000
 
+# Issue #176 — the close instant of a ticker on each side of the 2026-11-01 US
+# DST transition, written out as LITERAL UTC rather than re-derived from the
+# same library the code under test uses, so these assertions pin a value and not
+# a tautology. `drift_minutes` is how far the previous FIXED UTC-4 parse landed
+# from the truth: zero while daylight time holds, a full hour after it ends.
+# 01:00 ET occurs twice on that day; the fold=0 (first, EDT) occurrence both
+# parsers deliberately take happens to coincide with the fixed offset, which is
+# why the ambiguous hour is NOT where the old parse broke.
+CLOSE_TIME_CASES = (
+    ("KXBTCD-26JUL2719-T64000.00", "2026-07-27T23:00:00+00:00", 0,
+     "EDT — the window the series shipped in, unchanged by this fix"),
+    ("KXBTCD-26NOV0100-T64000.00", "2026-11-01T04:00:00+00:00", 0,
+     "the last unambiguous EDT hour before the transition"),
+    ("KXBTCD-26NOV0101-T64000.00", "2026-11-01T05:00:00+00:00", 0,
+     "the AMBIGUOUS hour — 01:00 ET happens twice; fold=0 takes the first"),
+    ("KXBTCD-26NOV0102-T64000.00", "2026-11-01T07:00:00+00:00", 60,
+     "the first EST hour — a fixed UTC-4 computes 06:00Z, an hour early"),
+    ("KXBTCD-26NOV0114-T64000.00", "2026-11-01T19:00:00+00:00", 60,
+     "the issue's own example — a fixed UTC-4 computes 18:00Z"),
+    ("KXBTCD-26DEC1509-T64000.00", "2026-12-15T14:00:00+00:00", 60,
+     "deep in EST, weeks after the transition"),
+)
+
+
+def utc_iso(ts_ms):
+    return datetime.datetime.fromtimestamp(
+        ts_ms / 1000.0, datetime.timezone.utc).isoformat()
+
+
+def utc_ms(text):
+    return int(datetime.datetime.fromisoformat(text).timestamp() * 1000)
+
 
 def ticker_for(close_ms, strike):
     """The ticker string Kalshi would use for an hourly threshold contract."""
-    close = datetime.datetime.fromtimestamp(close_ms / 1000.0, series.EASTERN_EDT)
+    close = datetime.datetime.fromtimestamp(close_ms / 1000.0, series.EASTERN)
     months = {v: k for k, v in series.MONTHS.items()}
     return "KXBTCD-%02d%s%02d%02d-T%s" % (close.year % 100, months[close.month],
                                           close.day, close.hour, strike)
@@ -180,9 +212,102 @@ class DownsamplingTest(EvidenceCase):
                 self.assertIsNotNone(mine)
                 self.assertEqual(mine["close_ms"], theirs["close_ms"])
                 self.assertEqual(mine["strike"], theirs["strike"])
+        # Issue #176: the agreement has to hold on the far side of a DST
+        # transition too, not only inside the July window the series shipped in.
+        # These are literal tickers rather than round-trips through `ticker_for`
+        # so the dates cannot drift with the clock this suite runs at.
+        for ticker, _, _, note in CLOSE_TIME_CASES:
+            mine = series.parse_threshold_ticker(ticker)
+            theirs = common.parse_ticker(ticker)
+            self.assertIsNotNone(mine, ticker)
+            self.assertEqual(mine["close_ms"], theirs["close_ms"],
+                             "%s (%s)" % (ticker, note))
+            self.assertEqual(mine["strike"], theirs["strike"], ticker)
         # And both refuse the same non-threshold shapes.
         self.assertIsNone(series.parse_threshold_ticker("KXBTC-26JUL2719-B64450"))
         self.assertIsNone(series.parse_threshold_ticker("garbage"))
+        self.assertIsNone(common.parse_ticker("garbage"))
+
+
+class DaylightSavingTest(EvidenceCase):
+    """Issue #176 — close times resolve through the real US/Eastern zone.
+
+    A ticker names a wall-clock hour in US/Eastern. Reading that hour at a FIXED
+    UTC-4 was correct only while daylight time held: from 2026-11-01 it computes
+    an hour early, and the failure is entirely silent — no error, no gap entry,
+    no manifest signal. It just shifts WHICH hour before expiry the series keeps
+    and which slice `q1_quote_lag.py` analyses, at the moment the series has
+    finally accrued enough history to be worth reading.
+    """
+
+    def test_close_instants_on_both_sides_of_the_transition(self):
+        for ticker, expected, _, note in CLOSE_TIME_CASES:
+            where = "%s (%s)" % (ticker, note)
+            mine = series.parse_threshold_ticker(ticker)
+            theirs = common.parse_ticker(ticker)
+            self.assertIsNotNone(mine, where)
+            self.assertEqual(utc_iso(mine["close_ms"]), expected, where)
+            self.assertEqual(utc_iso(theirs["close_ms"]), expected, where)
+            # The analysis also publishes the instant as a datetime; it must
+            # carry the same answer as the milliseconds beside it.
+            self.assertEqual(theirs["close_utc"].isoformat(), expected, where)
+
+    def test_a_fixed_utc4_offset_is_an_hour_early_after_the_transition(self):
+        """The positive control: name the error, in minutes, per case."""
+        fixed = datetime.timezone(datetime.timedelta(hours=-4))
+        for ticker, expected, drift_minutes, note in CLOSE_TIME_CASES:
+            where = "%s (%s)" % (ticker, note)
+            matched = series._TICKER_DATE.match(ticker.split("-")[1])
+            yy, mon, dd, hh, mm = matched.groups()
+            old = datetime.datetime(2000 + int(yy), series.MONTHS[mon], int(dd),
+                                    int(hh), int(mm or 0), tzinfo=fixed)
+            drift = (utc_ms(expected) / 1000.0 - old.timestamp()) / 60.0
+            self.assertEqual(drift, drift_minutes, where)
+
+    def test_the_ambiguous_hour_takes_the_first_occurrence(self):
+        # 01:00 ET happens twice on 2026-11-01 and the ticker names only the
+        # wall clock, so the parse has to CHOOSE. Both modules choose fold=0,
+        # the first (EDT) occurrence, and say so at the definition.
+        self.assertEqual(series.CLOSE_FOLD, 0)
+        self.assertEqual(common.CLOSE_FOLD, series.CLOSE_FOLD)
+        second = datetime.datetime(2026, 11, 1, 1, 0, tzinfo=series.EASTERN,
+                                   fold=1).astimezone(datetime.timezone.utc)
+        self.assertEqual(second.isoformat(), "2026-11-01T06:00:00+00:00")
+        parsed = series.parse_threshold_ticker("KXBTCD-26NOV0101-T64000.00")
+        self.assertEqual(utc_iso(parsed["close_ms"]), "2026-11-01T05:00:00+00:00")
+
+    def test_the_in_band_filter_keeps_the_last_hour_after_the_transition(self):
+        # Consequence 1 of the issue, end to end. With the close computed an
+        # hour early, a row 30 minutes before the REAL close reads as -1800 s
+        # and is DROPPED while one 90 minutes before reads as +1800 s and is
+        # KEPT — the series would retain the second-to-last hour before expiry
+        # and discard the last, the inverse of what it exists to keep.
+        ticker = "KXBTCD-26NOV0114-T64000.00"
+        close_ms = utc_ms("2026-11-01T19:00:00+00:00")
+        thirty_before = close_ms - 30 * 60_000
+        ninety_before = close_ms - 90 * 60_000
+        write_jsonl(self.path(series.SOURCE_TICKERS), [
+            quote_row(ticker, ninety_before, "0.4400", "0.4600"),
+            quote_row(ticker, thirty_before, "0.4500", "0.4700"),
+        ])
+        series.compact()
+        rows = read_series_rows(series.series_dir())
+        self.assertEqual([row["ts_ms"] for row in rows], [thirty_before])
+
+    def test_q1_selects_the_same_post_transition_population(self):
+        # Criterion 6: q1 is not edited by this issue — it filters on
+        # `common.parse_ticker`, so the corrected close is the ONLY thing that
+        # moves. The band it applies is [120, 3600] s, tighter than the series'.
+        ticker = "KXBTCD-26NOV0114-T64000.00"
+        close_ms = utc_ms("2026-11-01T19:00:00+00:00")
+        parsed = common.parse_ticker(ticker)
+        for minutes, in_band in ((30, True), (90, False), (1, False)):
+            at = close_ms - minutes * 60_000
+            seconds_to_close = (parsed["close_ms"] - at) / 1000.0
+            self.assertEqual(
+                (q1_quote_lag.MIN_SECONDS_TO_CLOSE <= seconds_to_close
+                 <= q1_quote_lag.MAX_SECONDS_TO_CLOSE),
+                in_band, "%d minutes before the real close" % minutes)
 
 
 class HonestyTest(EvidenceCase):
@@ -261,13 +386,51 @@ class RetentionTest(EvidenceCase):
             header = json.loads(handle.readline())
         self.assertEqual(header["event"], "kalshi_lag_series_header")
         self.assertEqual(header["retention_days"], series.RETENTION_DAYS)
-        # The close-time assumption is stated in the file too: it is a fixed
-        # UTC-4 offset that goes wrong when US daylight time ends (issue #176),
-        # and a series read months later must be able to see that from its own
-        # header rather than from this repository's history.
-        self.assertIn("2026-11-01", header["close_time_assumption"])
+        # The close-time assumption is stated in the file too, so a series read
+        # months later can see which rule produced its rows from its own header
+        # rather than from this repository's history. Since issue #176 that rule
+        # is the real US/Eastern zone, and the header must name it.
+        assumption = header["close_time_assumption"]
+        self.assertIn("America/New_York", assumption)
+        self.assertIn("fold=0", assumption)
+        self.assertNotIn("FIXED UTC-4 (EDT)", assumption)
+        self.assertEqual(assumption, series.CLOSE_TIME_ASSUMPTION)
+        self.assertEqual(series.read_manifest()["cadence"]["close_time_assumption"],
+                         assumption)
         self.assertIn("30 days", header["retention"])
         self.assertIn("NEVER rotated by size", header["retention"])
+
+    def test_a_day_file_written_under_the_old_rule_is_left_as_written(self):
+        # Criterion 4's second half and criterion 5: existing day files keep
+        # their ORIGINAL header and their already-retained rows. The header is
+        # how a reader tells which parse produced them, so rewriting it would
+        # destroy exactly the disclosure it exists to carry — and rewriting the
+        # rows would back-correct history this issue explicitly does not.
+        base = self.close_ms - 30 * 60_000
+        self._seed_day(base)
+        name = series.day_files()[0]
+        path = series.series_path(name)
+        with open(path, "r", encoding="utf-8") as handle:
+            before = handle.readlines()
+        self.assertGreater(len(before), 1)
+
+        marker = "a DIFFERENT close-time rule entirely"
+        previous = series.CLOSE_TIME_ASSUMPTION
+        series.CLOSE_TIME_ASSUMPTION = marker
+        try:
+            write_jsonl(self.path(series.SOURCE_TICKERS),
+                        [quote_row(ticker_for(self.close_ms, "64000.00"),
+                                   base + 20_000, "0.4600", "0.4800")],
+                        mode="a")
+            series.compact()
+        finally:
+            series.CLOSE_TIME_ASSUMPTION = previous
+
+        with open(path, "r", encoding="utf-8") as handle:
+            after = handle.readlines()
+        self.assertEqual(after[:len(before)], before)   # byte-identical prefix
+        self.assertGreater(len(after), len(before))     # and it did append
+        self.assertNotIn(marker, "".join(after))
 
     def test_pruning_is_by_time_and_never_by_size(self):
         old_close = self.close_ms - 40 * 86_400_000

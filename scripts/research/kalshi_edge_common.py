@@ -11,9 +11,12 @@ Three things in this module are judgement calls rather than recorded facts, and
 each is labelled at its definition so the report can cite it as derived:
 
   1. `parse_ticker` reads the close time out of the ticker string as US/Eastern
-     (EDT, UTC-4, for the July window analysed). This is validated empirically,
-     not assumed — see `validate_settlement_rule`, which reproduces Kalshi's own
-     recorded `expiration_value` from BRTI at that instant to within a dollar.
+     — through the real zone, never a fixed offset (issue #176). That the zone
+     is US/Eastern at all is validated empirically, not assumed: see
+     `validate_settlement_rule`, which reproduces Kalshi's own recorded
+     `expiration_value` from BRTI at that instant to within a dollar over the
+     July (EDT) window. Which UTC offset that zone carries on a given day is
+     then `zoneinfo`'s answer, not this module's.
   2. `derive_outcome` resolves a threshold contract from the BRTI 60-second
      average versus the strike encoded in the ticker. Validated the same way,
      against every recorded settlement available.
@@ -32,6 +35,7 @@ import math
 import os
 import re
 import sys
+import zoneinfo
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(_HERE, "..", "..",
@@ -60,7 +64,26 @@ RETAINED_TS_KEY = {kalshi_lag_series.SOURCE_TICKERS: "ts_ms",
 
 MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
-EASTERN_JULY = datetime.timezone(datetime.timedelta(hours=-4))   # EDT
+# US/Eastern as a REAL ZONE, never a fixed offset (issue #176). This was
+# `EASTERN_JULY = UTC-4`, correct only while US daylight time held: US DST ends
+# 2026-11-01, after which `KXBTCD-26NOV0114` computes 18:00 UTC where the true
+# ET close is 19:00 — an hour of silent error in the population every filter
+# downstream selects on.
+#
+# `kalshi_lag_series.EASTERN` names the same zone. The two are declared
+# SEPARATELY, not aliased, so the analysis and the retained series remain
+# independent implementations that
+# `test_kalshi_lag_series.test_ticker_parsing_agrees_with_the_analysis`
+# cross-checks; an alias would make that cross-check unable to fail.
+EASTERN = zoneinfo.ZoneInfo("America/New_York")
+
+# JUDGEMENT CALL, labelled at its definition as this module's docstring
+# requires. On the fall-back day the wall-clock hour 01:00 ET happens TWICE and
+# an hourly ticker names only the wall clock, so `KXBTCD-26NOV0101` cannot say
+# which. The FIRST occurrence (still EDT, UTC-4) is taken. `fold=0` is Python's
+# default; it is passed explicitly here and in `kalshi_lag_series` so the choice
+# reads as a decision rather than as an omission.
+CLOSE_FOLD = 0
 
 _TICKER_DATE = re.compile(r"^(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})?$")
 _TICKER_STRIKE = re.compile(r"-T(\d+(?:\.\d+)?)$")
@@ -217,7 +240,8 @@ def parse_ticker(ticker):
         return None
     yy, mon, dd, hh, mm = matched.groups()
     close = datetime.datetime(2000 + int(yy), MONTHS[mon], int(dd),
-                              int(hh), int(mm or 0), tzinfo=EASTERN_JULY)
+                              int(hh), int(mm or 0), tzinfo=EASTERN,
+                              fold=CLOSE_FOLD)
     strike_match = _TICKER_STRIKE.search(ticker)
     return {"ticker": ticker,
             "family": parts[0],
