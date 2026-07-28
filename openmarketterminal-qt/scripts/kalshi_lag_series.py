@@ -92,6 +92,7 @@ import json
 import os
 import re
 import sys
+import zoneinfo
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -141,24 +142,41 @@ BRTI_INDEX = "BRTI"
 
 MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
-# EDT, a FIXED -4 offset — inherited deliberately from
-# `kalshi_edge_common.EASTERN_JULY`, whose name carries the caveat this one
-# must not lose: it is correct only while US daylight time is in force. US DST
-# ends 2026-11-01, after which a ticker's close computes ONE HOUR EARLY
-# (verified: `KXBTCD-26NOV0114` resolves to 18:00 UTC where the true ET close is
-# 19:00), so the in-band filter would retain the second-to-last hour before
-# expiry and drop the last one — the inverse of the population this series
-# exists to keep. Not fixed here on purpose: the same offset decides which rows
-# `q1_quote_lag.py` analyses, and a series that parsed close times differently
-# from the analysis reading it would be worse than one that is uniformly wrong.
-# Both must move together — see issue #176. Until then the assumption is stated
-# in every day-file header and in the manifest.
-EASTERN_EDT = datetime.timezone(datetime.timedelta(hours=-4))
-CLOSE_TIME_ASSUMPTION = ("ticker close times are read as US/Eastern at a FIXED "
-                         "UTC-4 (EDT), matching kalshi_edge_common.EASTERN_JULY. "
-                         "Correct while US daylight time holds; from 2026-11-01 "
-                         "it computes one hour early and the in-band filter "
-                         "shifts by an hour (issue #176)")
+# US/Eastern as a REAL ZONE, never a fixed offset (issue #176). This was a
+# fixed UTC-4 inherited from `kalshi_edge_common.EASTERN_JULY`, correct only
+# while US daylight time was in force: US DST ends 2026-11-01, after which a
+# ticker's close computed ONE HOUR EARLY (`KXBTCD-26NOV0114` resolved to 18:00
+# UTC where the true ET close is 19:00), so the in-band filter would have
+# retained the second-to-last hour before expiry and dropped the last one — the
+# inverse of the population this series exists to keep, in a job that runs
+# forever and would have failed exactly when the series was finally long enough
+# to be worth something.
+#
+# `kalshi_edge_common.EASTERN` names the same zone and both parsers moved in the
+# SAME change, because a series that parsed close times differently from the
+# analysis reading it would be worse than one uniformly wrong. They are declared
+# separately rather than aliased so that the two remain independent
+# implementations for `test_kalshi_lag_series.py` to cross-check.
+EASTERN = zoneinfo.ZoneInfo("America/New_York")
+
+# JUDGEMENT CALL. On the fall-back day the wall-clock hour 01:00 ET happens
+# TWICE and an hourly ticker names only the wall clock, so `KXBTCD-26NOV0101`
+# cannot say which. The FIRST occurrence (still EDT, UTC-4) is taken. `fold=0`
+# is Python's default; it is passed explicitly here and in `kalshi_edge_common`
+# so the choice reads as a decision rather than as an omission.
+CLOSE_FOLD = 0
+
+CLOSE_TIME_ASSUMPTION = ("ticker close times are resolved through the real "
+                         "US/Eastern zone, zoneinfo.ZoneInfo(\"America/"
+                         "New_York\"), so they follow the DST transitions "
+                         "instead of a fixed offset; the same rule as "
+                         "kalshi_edge_common.parse_ticker. On the fall-back day "
+                         "an hourly ticker names a wall-clock hour that occurs "
+                         "twice and the string cannot distinguish them: the "
+                         "first occurrence (fold=0, EDT) is taken. Day files "
+                         "whose header instead states a FIXED UTC-4 were "
+                         "written before this rule and are left as written "
+                         "(issue #176)")
 _TICKER_DATE = re.compile(r"^(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})?$")
 _TICKER_STRIKE = re.compile(r"-T(\d+(?:\.\d+)?)$")
 
@@ -222,7 +240,8 @@ def parse_threshold_ticker(ticker):
     if mon not in MONTHS:
         return None
     close = datetime.datetime(2000 + int(yy), MONTHS[mon], int(dd),
-                              int(hh), int(mm or 0), tzinfo=EASTERN_EDT)
+                              int(hh), int(mm or 0), tzinfo=EASTERN,
+                              fold=CLOSE_FOLD)
     return {"family": parts[0],
             "close_ms": int(close.timestamp() * 1000),
             "strike": float(strike.group(1))}
