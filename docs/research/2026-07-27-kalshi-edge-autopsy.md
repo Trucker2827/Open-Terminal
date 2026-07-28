@@ -192,6 +192,13 @@ independent, and markets sharing an event are not — the effective n is closer 
 the event count than the sample count. This is precisely the measurement that a
 longer paired window would settle, and it is why F1 is the first follow-up.
 
+> **Superseded 2026-07-28 (issue #179).** F1's retained series has since carried
+> this table to a wider window and to intervals clustered on the spot move. The
+> 3σ row above does **not** replicate and the 2σ row does — see
+> [the 2026-07-28 update](#2026-07-28-update--q1-regenerated-on-the-retained-window-issue-179)
+> at the end of this report. The numbers in this section are left exactly as
+> published on 2026-07-27; they are what was true of 8.2 hours of book.
+
 ---
 
 ## Q2 — Calibrator error anatomy
@@ -473,6 +480,7 @@ python3 scripts/research/q1_quote_lag.py
 python3 scripts/research/q2_calibrator_error_anatomy.py
 python3 scripts/research/q3_recalibration_headroom.py
 python3 scripts/research/q4_bid_postmortem.py
+python3 scripts/research/f1_quote_lag_strata.py    # the 2026-07-28 Q1 regeneration
 ```
 
 Each prints JSON including its own `as_of_utc`, the files and row counts it
@@ -480,3 +488,168 @@ read, and every number quoted above. All five open evidence strictly read-only;
 none imports or calls `spot_calibrator.run_once()`, which would rewrite the
 operator's live calibrator state as a side effect of reading it. Point them at a
 copy with `OPENTERMINAL_EVIDENCE_DIR` if you want to freeze the inputs.
+
+---
+
+## 2026-07-28 update — Q1 regenerated on the retained window (issue [#179](https://github.com/Trucker2827/Open-Terminal/issues/179))
+
+```
+python3 scripts/research/q1_quote_lag.py            # unchanged, wider window
+python3 scripts/research/f1_quote_lag_strata.py     # the decomposition below
+```
+
+All numbers in this section are from a single frozen run at **as-of
+2026-07-28T13:13:45Z**. The evidence logs are live, so a re-run will show a
+different window and slightly different counts — one slice below sits exactly on
+its threshold, and it is stated as of this instant rather than re-rolled.
+
+`q1_quote_lag.py` is **not edited**: `f1_quote_lag_strata.py` imports its
+`detect_events`, `observe`, `load_quote_series` and `QuoteBook` and adds only
+what #179 asked for — buckets by move size and time to expiry, and intervals
+clustered on the spot move. (`test_f1_quote_lag_strata.py` asserts the estimator
+is imported and not shadowed.) The close-time parser changed underneath both in
+the interim ([#176](https://github.com/Trucker2827/Open-Terminal/issues/176):
+fixed UTC-4 → the real `America/New_York` zone), which is a no-op inside this
+July window — EDT is UTC-4 — so the comparison with the published table is
+like-for-like.
+
+### The window: 20.2 hours of span, 9.5 hours of book
+
+| | Published (2026-07-27) | This run |
+|---|---:|---:|
+| Paired window span | 8.2 h | **20.2 h** |
+| …of which covered by two-sided quotes | not measured | **9.5 h** |
+| Two-sided quote rows | 126,129 | 96,714 |
+| Kept moves at 2σ / 3σ (contested) | 22 / 8 | **30 / 14** |
+
+**Span is not coverage, and here the difference is most of the window.** The
+analysed book is the retained series (07-27 17:00Z → 07-28 01:19Z) concatenated
+with the live log (01:19Z → now), which meet without a hole — but the *feed
+itself* went quiet overnight. `f1_quote_lag_strata.py` scans the pooled
+two-sided quote stream for holes longer than the 5-minute event cooldown and
+reports them rather than averaging them away:
+
+| Gap (UTC) | Hours |
+|---|---:|
+| 07-28 05:10 → 10:22 | **5.19** |
+| 07-27 18:59 → 20:36 | 1.61 |
+| 07-28 11:36 → 13:00 | 1.41 |
+| six more, 0.09–0.86 h each | 2.51 |
+| **total not covered** | **10.72** |
+
+The 5.19-hour hole is not a recorder failure: the ticker log holds exactly **two
+rows** in that interval, both at its edges. Overnight the in-band books stop
+being quoted at all. The like-for-like measure of growth is therefore the kept
+move count, not the window: **8 → 14 moves at 3σ and 22 → 30 at 2σ**, not the
+2.4× the span implies. (The published window's *coverage* was never measured —
+only its span — so there is no honest ratio to quote between 8.2 h and 9.5 h.)
+
+### The regenerated table (contested markets, `q1_quote_lag.py` unchanged)
+
+The published columns, plus the interval clustered on the spot move. The
+published table's own caveat was that *"the t-statistics treat (event, market)
+pairs as independent, and markets sharing an event are not"*; the last two
+columns are that caveat discharged.
+
+| k | Moves | Horizon | n | Mean drift | naive t | **clustered t** | **95% CI (clustered)** | Net if taking | Net vs fee only |
+|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|
+| 2σ | 30 | 5 s | 107 | +2.18¢ | 4.59 | **2.71** | **[+0.53, +3.82]** | +0.08¢ | +0.66¢ |
+| 2σ | 30 | **15 s** | 121 | **+2.25¢** | 4.39 | **2.59** | **[+0.47, +4.02]** | +0.18¢ | +0.75¢ |
+| 2σ | 30 | 30 s | 121 | +0.99¢ | 1.47 | 0.93 | [−1.19, +3.17] | −1.08¢ | −0.51¢ |
+| 2σ | 29 | 60 s | 113 | +0.56¢ | 0.71 | 0.41 | [−2.24, +3.35] | −1.51¢ | −0.94¢ |
+| 3σ | 14 | 5 s | 55 | +1.72¢ | 1.93 | 1.18 | [−1.44, +4.87] | −0.44¢ | +0.17¢ |
+| 3σ | 14 | **15 s** | 66 | **+1.38¢** | 1.50 | **0.90** | **[−1.95, +4.70]** | −0.73¢ | −0.14¢ |
+| 3σ | 14 | 30 s | 66 | +2.20¢ | 2.47 | 1.52 | [−0.93, +5.33] | +0.09¢ | +0.68¢ |
+| 3σ | 14 | 60 s | 65 | +0.91¢ | 0.88 | 0.60 | [−2.36, +4.18] | −1.21¢ | −0.62¢ |
+
+Mean half-spread 0.57–0.61¢, mean fee 1.50–1.55¢ — unchanged from the published
+run, and the fee is still ~2.6× the spread.
+
+### Drift by move size — the 3σ result does not replicate
+
+One `detect_events` pass at 3σ, partitioned by |z|. The 5-minute cooldown is
+therefore applied once, at 3σ: separate passes would have found 25 / 11 / 4
+events at 3 / 4 / 5σ, and the partition below holds 20 / 4 / 1, because a 4σ
+move five minutes behind a 3σ one is suppressed here and would not be there.
+Stated, not hidden — the counts are in the JSON as `separate_pass_counts`.
+
+| Move size | Moves | Horizon | n | Mean drift | 95% CI (clustered) | Net vs fee only |
+|---|---:|---:|---:|---:|---|---:|
+| [3σ, 4σ) | 10 | 15 s | 44 | +0.28¢ | [−3.00, +3.57] | −1.26¢ |
+| [4σ, 5σ) | 3 | 15 s | 18 | +0.22¢ | [−8.05, +8.49] | −1.22¢ |
+| ≥ 5σ | **1** | 15 s | 4 | +18.62¢ | **none — one move** | +17.12¢ |
+
+The ≥5σ row is one spot move quoted by four markets. Its drift is enormous and
+it is worth exactly nothing: a single move cannot bound its own sampling error,
+so no interval is reported rather than one that would narrow with the number of
+markets watching that one move. It is the single most likely number in this
+document to be quoted out of context.
+
+### Drift by time to expiry
+
+| Time to close | Moves | Horizon | n | Mean drift | 95% CI (clustered) | Net if taking |
+|---|---:|---:|---:|---:|---|---:|
+| 2–10 min | 3 | 15 s | 9 | −0.89¢ | [−6.33, +4.55] | −3.00¢ |
+| 10–30 min | 4 | 15 s | 16 | +1.22¢ | [−18.72, +21.16] | −1.13¢ |
+| 30–60 min | 7 | 15 s | 41 | +1.94¢ | [−0.88, +4.76] | −0.07¢ |
+
+What lag there is lives **furthest from expiry**, not nearest it — the opposite
+of the intuition that the last minutes are the stalest. In the final ten minutes
+the drift is negative at every horizon out to 60 s (−0.89¢ at 15 s, −8.69¢ at
+60 s over 3 moves): near expiry the book is not lagging spot, it is being pulled
+by settlement. No cell here has enough moves to carry weight on its own; the
+crossed move-size × expiry cells are thinner still and are in the JSON only.
+
+### Maker-side capture: testable, by one move, and not distinguishable from zero
+
+The rule was fixed in code before the numbers were read: a slice is testable at
+**≥30 moves** — distinct spot events contributing kept samples, not samples — and
+positive when mean drift net of the **fee alone** exceeds zero.
+
+Exactly one slice qualifies, the 2σ / 15 s row, at exactly 30 moves:
+**+0.75¢ per contract, 95% CI [−1.02, +2.52]¢.** The point estimate is positive;
+the interval spans zero. Filed as
+[#182](https://github.com/Trucker2827/Open-Terminal/issues/182) as #179 requires,
+with the explicit caveat that mid drift is not a fill: a resting quote pays no
+half-spread but accepts non-fill and adverse selection, and this statistic
+measures neither. None of the 3σ+ slices reaches the threshold — the largest
+holds 14 moves.
+
+### Verdict: the fee-eaten conclusion holds; the number it rested on does not
+
+* **Holds.** No slice at any threshold clears the cost of *taking* with an
+  interval excluding zero. The best cell in the report — 2σ at 15 s — nets
+  **+0.18¢, CI [−1.54, +1.90]** after the half-spread and the fee. The fee is
+  still the wall: 1.50¢ against a 0.57¢ half-spread.
+* **Cracks, in its most-quoted specific.** The published "+2.07¢ drift vs 2.08¢
+  cost at 3σ/15 s over 8 events" does not replicate. On 14 moves it is
+  **+1.38¢** with a clustered interval of [−1.95, +4.70] — at 3σ the drift is no
+  longer distinguishable from zero at all, so the near-tie with cost was never
+  the finding it read as.
+* **Tightens, where it survived.** At 2σ the lag *is* real after the clustering
+  correction (+2.25¢, CI [+0.47, +4.02], 30 moves), and it still decays by 30 s.
+  Most of the published table's apparent significance was the artifact its own
+  caveat warned about: the move-clustered standard error is **1.7× the naive
+  one**, taking t from 4.39 to 2.59. What is left still clears zero.
+
+  **With one qualification the row does not carry on its own.** It is the single
+  surviving slice out of ~20 examined here (two thresholds, three move-size
+  buckets, three expiry buckets, nine crossed cells, four horizons each), its
+  interval is nominal and unadjusted for that multiplicity, and it is also the
+  estimate that moved *most* between windows — 2σ/15 s went +1.22¢ → +2.25¢
+  while 3σ/15 s went +2.07¢ → +1.38¢. On the next regeneration it is as likely
+  to be the row that recedes as the row that confirms.
+
+**One consequence, data-driven and uninvited:** the recurring lessons artifact
+(`kalshi_edge_report.py`, #174) picks the highest-σ stratum with ≥10 events —
+now 3σ, at clustered-invisible t = 1.50 — and therefore reduces Q1 to
+`NO_EDGE`: *"the Kalshi book does not measurably keep moving after a spot move
+it already knows about"*. No code changed; the artifact simply reads this run.
+The 2σ row above says that verdict is threshold-dependent, not settled.
+
+**Recorder note.** The compactor was down 03:15Z → 13:0xZ (its launchd job runs
+the script out of a working tree that had moved), and no data was lost only
+because the live rotations still reached back past the hole. Filed as
+[#183](https://github.com/Trucker2827/Open-Terminal/issues/183); the retention
+window keeps growing toward 30 days from here, so the next regeneration should
+have hundreds of moves rather than tens.
