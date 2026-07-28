@@ -76,15 +76,21 @@
 #include "services/prediction/kalshi/KalshiBotLive.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
+#include "services/prediction/kalshi/KalshiEdgeLessons.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QSaveFile>
 #include <QSet>
+#include <QStandardPaths>
 #include <QThread>
 
 #include <algorithm>
@@ -672,6 +678,13 @@ void bot_usage() {
                  "       kalshi bot stop [--reason \"why\"]   throw the kill switch\n"
                  "       kalshi bot resume                  clear it\n"
                  "       kalshi bot status                  what the GUI BOT chip shows\n"
+                 "       kalshi bot lessons [--refresh]     what the record teaches (issue #174)\n"
+                 "\n"
+                 "`lessons` renders %s — the edge autopsy's conclusions, one short line per\n"
+                 "question, each with its verdict, its key numbers, the SAMPLE SIZE it was\n"
+                 "measured on and the span it covers. --refresh re-runs the analysis first\n"
+                 "(minutes; the same publisher the weekly launchd job runs). It is display\n"
+                 "only: no lesson changes what the bot does.\n"
                  "\n"
                  "PAPER is the default everywhere. A bid rests until it fills, its TTL\n"
                  "expires, or its edge goes; a resting remainder counts against\n"
@@ -700,6 +713,7 @@ void bot_usage() {
                  "A permitted live bid becomes a prepare_order/submit_order call with the\n"
                  "session's own caps; submit_order re-checks all of them and is the only\n"
                  "thing that can reach the exchange.\n",
+                 qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(kKalshiEdgeReportFile))),
                  qUtf8Printable(kalshi_evidence_path(QString::fromLatin1(KalshiBotGate::kVerdictFile))));
 }
 
@@ -990,6 +1004,157 @@ int bot_resume_command(const GlobalOpts& opts, QStringList& args) {
     return 0;
 }
 
+// --- WHAT THE RECORD TEACHES (issue #174) ----------------------------------
+//
+// `kalshi bot lessons` renders kalshi-edge-report.json through the SAME
+// formatter the BOT tab and the cockpit render — one artifact, two renderers,
+// exactly as the funnel is. Nothing here derives a conclusion: the verdicts
+// are the driver's, computed from #169's scripts over the live ledgers.
+//
+// `--refresh` runs that driver, which is also what the weekly launchd job
+// runs. Two writers of one artifact is how a scheduled number and an on-demand
+// number end up disagreeing, so there is exactly one.
+
+QString bot_lessons_path() {
+    return kalshi_evidence_path(QString::fromLatin1(kKalshiEdgeReportFile));
+}
+
+/// The publisher script, resolved the way `cli_script_path` resolves the other
+/// repo scripts — from the executable's own directory first, then the working
+/// directory. Empty when it cannot be found, which is reported rather than
+/// papered over with a "refresh failed" that says nothing.
+QString edge_report_script_path() {
+    const QString relative = QStringLiteral("scripts/research/kalshi_edge_report.py");
+    const QDir exe_dir(QCoreApplication::applicationDirPath());
+    const QStringList candidates = {
+        // …/openmarketterminal-qt/build/openterminalcli → repo root
+        exe_dir.absoluteFilePath(QStringLiteral("../../") + relative),
+        exe_dir.absoluteFilePath(relative),
+        QDir::current().absoluteFilePath(relative),
+        QDir::current().absoluteFilePath(QStringLiteral("../") + relative),
+    };
+    for (const QString& candidate : candidates)
+        if (QFileInfo::exists(candidate)) return QFileInfo(candidate).canonicalFilePath();
+    return {};
+}
+
+/// How long the whole refresh may take. The driver bounds each question
+/// itself (Q1 pairs ~160k spot ticks against ~126k quotes and is the slow
+/// one); this is the outer bound on all four plus start-up, so a wedged
+/// interpreter cannot hang a shell forever.
+constexpr int kLessonsRefreshTimeoutMs = 3'900'000;
+
+/// Runs the publisher. Returns a CLI exit code; 0 means an artifact was
+/// written this run.
+int refresh_lessons() {
+    const QString script = edge_report_script_path();
+    if (script.isEmpty()) {
+        std::fprintf(stderr,
+                     "kalshi bot lessons --refresh: scripts/research/kalshi_edge_report.py not "
+                     "found next to the binary or under the working directory — the artifact is "
+                     "NOT refreshed\n");
+        return 5;
+    }
+    const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    if (python.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot lessons --refresh: python3 not found — the artifact is "
+                             "NOT refreshed\n");
+        return 5;
+    }
+    std::fprintf(stderr, "kalshi bot lessons: refreshing via %s (this reads the ledgers end to "
+                         "end and takes minutes)\n", qUtf8Printable(script));
+    std::fflush(stderr);
+    QProcess process;
+    // Forwarded, so the driver's own per-question progress and any refusal it
+    // prints reach the operator verbatim rather than being summarised here.
+    process.setProcessChannelMode(QProcess::ForwardedChannels);
+    process.start(python, QStringList{script});
+    if (!process.waitForStarted(30'000)) {
+        std::fprintf(stderr, "kalshi bot lessons --refresh: %s would not start — the artifact is "
+                             "NOT refreshed\n", qUtf8Printable(python));
+        return 1;
+    }
+    if (!process.waitForFinished(kLessonsRefreshTimeoutMs)) {
+        process.kill();
+        process.waitForFinished(5'000);
+        std::fprintf(stderr, "kalshi bot lessons --refresh: the publisher did not finish within "
+                             "%ds and was killed — the PREVIOUS artifact is left intact (the "
+                             "driver writes atomically)\n", kLessonsRefreshTimeoutMs / 1000);
+        return 1;
+    }
+    const int code = process.exitCode();
+    if (process.exitStatus() != QProcess::NormalExit || (code != 0 && code != 3)) {
+        std::fprintf(stderr, "kalshi bot lessons --refresh: the publisher exited %d — the "
+                             "artifact below may be the PREVIOUS one\n", code);
+        return 1;
+    }
+    // 3 is the driver's "every question came back INSUFFICIENT_DATA": a
+    // well-formed artifact saying nothing could be measured. It IS published,
+    // and the card will say so, so this is a warning rather than a failure.
+    if (code == 3)
+        std::fprintf(stderr, "kalshi bot lessons --refresh: published, but EVERY question came "
+                             "back INSUFFICIENT_DATA\n");
+    return 0;
+}
+
+int bot_lessons_command(const GlobalOpts& opts, QStringList& args) {
+    const bool refresh = take_bool_flag(args, QStringLiteral("--refresh"));
+    if (!args.isEmpty()) {
+        std::fprintf(stderr, "kalshi bot lessons: unknown option '%s' (JSON is the global flag: "
+                             "`openterminalcli --json kalshi bot lessons`)\n",
+                     qUtf8Printable(args.first()));
+        return 2;
+    }
+    if (refresh) {
+        const int rc = refresh_lessons();
+        // A failed refresh still renders whatever artifact is on disk — with
+        // its real age, which is the point: the card must never show a stale
+        // report as if the refresh had succeeded.
+        if (rc != 0 && !opts.json) {
+            const KalshiEdgeLessonsView stale_view = kalshi_edge_lessons(
+                kalshi_edge_read_report_file(bot_lessons_path()),
+                QDateTime::currentMSecsSinceEpoch());
+            for (const QString& line : stale_view.lines())
+                std::printf("%s\n", qUtf8Printable(line));
+            return rc;
+        }
+        if (rc != 0) return rc;
+    }
+
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const KalshiEdgeReportFile file = kalshi_edge_read_report_file(bot_lessons_path());
+    const KalshiEdgeLessonsView view = kalshi_edge_lessons(file, now_ms);
+
+    if (opts.json) {
+        QJsonArray rendered;
+        for (const KalshiEdgeLesson& lesson : view.lessons)
+            rendered.append(QJsonObject{{QStringLiteral("id"), lesson.id},
+                                        {QStringLiteral("verdict"), lesson.verdict},
+                                        {QStringLiteral("role"), lesson.role},
+                                        {QStringLiteral("line"), lesson.text}});
+        QJsonObject out{
+            {QStringLiteral("report_file"), bot_lessons_path()},
+            {QStringLiteral("available"), view.available},
+            {QStringLiteral("stale"), view.stale},
+            {QStringLiteral("header"), view.header},
+            {QStringLiteral("lines"), QJsonArray::fromStringList(view.lines())},
+            {QStringLiteral("lessons"), rendered}};
+        // The artifact's own object verbatim when there is one: its absent
+        // keys stay absent, so a machine reader never sees a fabricated zero.
+        if (file.available) out.insert(QStringLiteral("report"), file.object);
+        else out.insert(QStringLiteral("unavailable_reason"), file.why);
+        std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        return view.available ? 0 : 3;
+    }
+
+    for (const QString& line : view.lines()) std::printf("%s\n", qUtf8Printable(line));
+    std::printf("  report %s\n", qUtf8Printable(bot_lessons_path()));
+    std::printf("  a lesson here changes NOTHING about what the bot does — it becomes strategy "
+                "only through its own issue and review\n");
+    // An absent artifact is not a successful read of an empty record.
+    return view.available ? 0 : 3;
+}
+
 /// Parses a double flag; returns whether the flag was present. An unparseable
 /// or non-positive cap sets `bad` — a bad cap is refused, never silently
 /// replaced by the default.
@@ -1031,7 +1196,8 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     const QString sub = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     static const QStringList kSubcommands{QStringLiteral("once"),   QStringLiteral("run"),
                                           QStringLiteral("gate"),   QStringLiteral("status"),
-                                          QStringLiteral("stop"),   QStringLiteral("resume")};
+                                          QStringLiteral("stop"),   QStringLiteral("resume"),
+                                          QStringLiteral("lessons")};
     if (opts.help || sub.isEmpty() || !kSubcommands.contains(sub)) {
         bot_usage();
         return opts.help ? 0 : 2;
@@ -1045,6 +1211,7 @@ int kalshi_bot_command(const GlobalOpts& opts, QStringList args) {
     if (sub == QStringLiteral("status")) return bot_status_command(opts, args);
     if (sub == QStringLiteral("stop")) return bot_stop_command(opts, args);
     if (sub == QStringLiteral("resume")) return bot_resume_command(opts, args);
+    if (sub == QStringLiteral("lessons")) return bot_lessons_command(opts, args);
 
     // PAPER is the default, and stays the default: `--mode` has to be given
     // explicitly, and the only other value it accepts is `live`.

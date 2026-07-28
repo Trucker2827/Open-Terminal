@@ -26,6 +26,7 @@
 #include "cli/ServeCommand.h"
 #include "services/prediction/kalshi/KalshiBotFunnel.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
+#include "services/prediction/kalshi/KalshiEdgeLessons.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -59,6 +60,23 @@ using services::prediction::kalshi_ns::KalshiBotMode;
 using services::prediction::kalshi_ns::kalshi_bot_gate_freshness;
 using services::prediction::kalshi_ns::KalshiBotGateFreshness;
 using services::prediction::kalshi_ns::kKalshiBotGateStaleMs;
+
+// WHAT THE RECORD TEACHES (issue #174) is the same arrangement one level out:
+// the artifact is published by a scheduled research job rather than by a tick,
+// and the panel renders it through the one formatter `kalshi bot lessons`
+// renders. The panel derives no conclusion and re-reads no ledger for it — a
+// second derivation of a LESSON would be worse than a second fill rate.
+using services::prediction::kalshi_ns::kalshi_edge_lessons;
+using services::prediction::kalshi_ns::kalshi_edge_read_report_file;
+using services::prediction::kalshi_ns::KalshiEdgeLesson;
+using services::prediction::kalshi_ns::KalshiEdgeLessonsView;
+using services::prediction::kalshi_ns::KalshiEdgeReportFile;
+inline constexpr auto kKalshiEdgeReportFile =
+    services::prediction::kalshi_ns::kKalshiEdgeReportFile;
+
+inline QString kalshi_edge_report_path() {
+    return cli::kalshi_evidence_path(QString::fromLatin1(kKalshiEdgeReportFile));
+}
 
 // The conversion funnel (issue #153) is rendered by the CLI's own formatter
 // over the CLI's own published file — the panel derives none of it a second
@@ -120,6 +138,16 @@ struct KalshiBotPanelView {
     // `kalshi bot status` prints. Exactly one line when the file is missing or
     // unparseable, and that line carries no numbers.
     QStringList funnel;
+    // WHAT THE RECORD TEACHES (issue #174) — the edge autopsy's standing
+    // conclusions, verbatim from kalshi_edge_lessons(), the same lines
+    // `kalshi bot lessons` prints. `lessons_roles` is one colour intent per
+    // line at the same index, decided beside the verdict rather than
+    // re-derived by the widget from the rendered text; `lessons_stale` is the
+    // artifact's own freshness, which already demoted every green role.
+    QStringList lessons;
+    QStringList lessons_roles;
+    bool lessons_available = false;
+    bool lessons_stale = false;
     QStringList decisions;      // most recent decisions first, passes included
 };
 
@@ -274,9 +302,21 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
                                                    qint64 now_ms,
                                                    int max_decisions = 8,
                                                    const KalshiBotStopFile& stop = {},
-                                                   const KalshiBotFunnelFile& funnel = {}) {
+                                                   const KalshiBotFunnelFile& funnel = {},
+                                                   const KalshiEdgeReportFile& lessons = {}) {
     using namespace kalshi_bot_detail;
     KalshiBotPanelView view;
+
+    // --- what the record teaches: rendered, never re-derived (issue #174) ---
+    // An absent artifact yields exactly one line — the refusal — so the card
+    // can never look like a card with nothing to say.
+    const KalshiEdgeLessonsView lessons_view = kalshi_edge_lessons(lessons, now_ms);
+    view.lessons_available = lessons_view.available;
+    view.lessons_stale = lessons_view.stale;
+    view.lessons = lessons_view.lines();
+    view.lessons_roles << lessons_view.header_role;
+    for (const KalshiEdgeLesson& lesson : lessons_view.lessons)
+        view.lessons_roles << lesson.role;
 
     // --- the conversion funnel: rendered, never re-derived (issue #153) -----
     // A pass-through of the CLI's formatter over the CLI's published file. The
@@ -478,7 +518,8 @@ inline KalshiBotStopFile read_kalshi_bot_stop_file() {
 inline KalshiBotPanelView load_kalshi_bot_panel(const QJsonObject& live_status, qint64 now_ms) {
     return present_kalshi_bot_panel(read_kalshi_bot_ledger_tail(), read_kalshi_bot_gate(),
                                     live_status, now_ms, 8, read_kalshi_bot_stop_file(),
-                                    kalshi_bot_read_funnel_file(kalshi_bot_funnel_path()));
+                                    kalshi_bot_read_funnel_file(kalshi_bot_funnel_path()),
+                                    kalshi_edge_read_report_file(kalshi_edge_report_path()));
 }
 
 } // namespace openmarketterminal::screens::kalshi

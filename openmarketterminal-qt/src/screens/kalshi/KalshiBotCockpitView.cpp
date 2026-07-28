@@ -184,13 +184,41 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
     painter.drawText(census, Qt::AlignVCenter | Qt::AlignLeft,
                      elide(small_metrics, scene_.census, census.width()));
 
+    // ── WHAT THE RECORD TEACHES (issue #174) ───────────────────────────────
+    // The autopsy's standing conclusions, above the rain: what the record has
+    // already taught frames what the bot is doing right now. Every line is the
+    // presenter's — the same text the BOT tab and `kalshi bot lessons` show,
+    // sample size included — and its colour is the presenter's role, so a
+    // stale artifact arrives here with its greens already demoted to amber.
+    const int lesson_line_height = small_metrics.lineSpacing() + 2;
+    const int lessons_lines = static_cast<int>(scene_.lessons.size());
+    const QRect lessons_rect(kMargin, census.bottom() + 6, width() - (2 * kMargin),
+                             lessons_lines > 0 ? (lessons_lines * lesson_line_height) + 10 : 0);
+    if (lessons_lines > 0) {
+        painter.fillRect(lessons_rect, with_alpha(QColor(colors::BG_RAISED()), dormant ? 70 : 120));
+        painter.setPen(QPen(with_alpha(QColor(scene_.lessons_stale ? colors::WARNING()
+                                                                   : colors::CYAN()), 110), 1));
+        painter.drawRect(lessons_rect);
+        painter.setFont(small_font);
+        for (int i = 0; i < lessons_lines; ++i) {
+            const QString role = i < scene_.lessons_roles.size() ? scene_.lessons_roles.at(i)
+                                                                 : QString();
+            painter.setPen(role_color(role));
+            const QRect line(lessons_rect.left() + 8,
+                             lessons_rect.top() + 5 + (i * lesson_line_height),
+                             lessons_rect.width() - 16, lesson_line_height);
+            painter.drawText(line, Qt::AlignVCenter | Qt::AlignLeft,
+                             elide(small_metrics, scene_.lessons.at(i), line.width()));
+        }
+    }
+
     // ── layout of the lower furniture ──────────────────────────────────────
     const QRect kpi_rect(kMargin, height() - kMargin - kKpiHeight, width() - (2 * kMargin),
                          kKpiHeight);
     const QRect node_rect(kMargin, kpi_rect.top() - 6 - kNodeRowHeight, width() - (2 * kMargin),
                           kNodeRowHeight);
-    QRect field(kMargin, census.bottom() + 6, width() - (2 * kMargin),
-                node_rect.top() - census.bottom() - 12);
+    const int field_top = (lessons_lines > 0 ? lessons_rect.bottom() : census.bottom()) + 6;
+    QRect field(kMargin, field_top, width() - (2 * kMargin), node_rect.top() - field_top - 6);
     if (field.height() < 120) field.setHeight(120);
 
     // ── the ledger stream, on the right of the field ───────────────────────

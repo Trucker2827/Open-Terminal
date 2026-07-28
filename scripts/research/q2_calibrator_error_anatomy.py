@@ -246,11 +246,20 @@ def main():
 
     recorded = [r for r in rows if r["outcome_source"] == "recorded"]
 
+    # The window these contracts closed over. Published (issue #174) because a
+    # Brier comparison without the span it was measured over is undated, and
+    # the recurring lessons artifact renders the span beside every conclusion.
+    # Same expression q3 already publishes, over the same reconstruction — this
+    # states a fact the script had in hand, it does not measure anything new.
+    closes = sorted(c["close_ms"] for c in history["contracts"])
+
     common.emit({
         "as_of_utc": common.as_of(),
         "question": "Q2 — calibrator error anatomy",
         "command": "python3 scripts/research/q2_calibrator_error_anatomy.py",
         "audit": history["audit"],
+        "contract_span_utc": [common.iso(closes[0]), common.iso(closes[-1])]
+                             if closes else None,
         "calibrator_self_report": calibrator_self_report(),
         "overall": score(rows),
         "overall_recorded_settlements_only": score(recorded),

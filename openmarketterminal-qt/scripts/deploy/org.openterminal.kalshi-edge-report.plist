@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  WHAT THE RECORD TEACHES — the weekly edge-autopsy artifact (issue #174).
+  DOCUMENTED, NOT AUTO-LOADED — live infrastructure is bounced deliberately, so
+  the operator installs and loads this by hand:
+
+      cp org.openterminal.kalshi-edge-report.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.kalshi-edge-report.plist
+
+  UNINSTALL:
+
+      launchctl bootout gui/$UID/org.openterminal.kalshi-edge-report
+      rm ~/Library/LaunchAgents/org.openterminal.kalshi-edge-report.plist
+
+  WHAT IT DOES: every Sunday at 05:30 it runs `openterminalcli kalshi bot
+  lessons --refresh`, which runs scripts/research/kalshi_edge_report.py, which
+  runs issue #169's four question scripts (q1..q4) over the evidence ledgers
+  and reduces each to ONE short, dated, sample-sized conclusion in
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/kalshi-edge-report.json
+
+  The BOT tab's WHAT THE RECORD TEACHES card, the bot cockpit and `kalshi bot
+  lessons` all render that one file through one formatter.
+
+  IT GOES THROUGH THE CLI ON PURPOSE. The scheduled refresh and the on-demand
+  `kalshi bot lessons --refresh` must be the same act: two entry points that
+  each wrote the artifact their own way is how a weekly number and a manual
+  number end up disagreeing about the same record.
+
+  READ-ONLY against every ledger. The question scripts open evidence strictly
+  for reading — including their deliberate refusal to import spot_calibrator,
+  whose run_once() would rewrite the operator's live calibrator state as a side
+  effect of reading it — and the artifact is written temp-then-renamed, so a run
+  that dies half way leaves the previous artifact intact rather than a truncated
+  one that reads as fresh.
+
+  IT CHANGES NOTHING. No verdict this job publishes is read by the bot's
+  decision path, the sealed gate, or the live permission path. A lesson becomes
+  strategy only through its own issue and review.
+
+  RunAtLoad is false: bootstrapping this must not kick off a multi-minute
+  ledger scan at an arbitrary moment. Run it by hand once to verify.
+
+  VERIFY after the first run: `openterminalcli kalshi bot lessons` should print
+  a WHAT THE RECORD TEACHES header whose age is minutes, then one line per
+  question carrying a verdict (EDGE / NO_EDGE / FEE_EATEN / INSUFFICIENT_DATA),
+  its key numbers and its SAMPLE SIZE. A question that could not be measured
+  reads INSUFFICIENT_DATA with the reason — never a missing line. The logs
+  below carry the driver's own per-question progress.
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.kalshi-edge-report</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/build/openterminalcli</string>
+    <string>kalshi</string><string>bot</string><string>lessons</string>
+    <string>--refresh</string>
+  </array>
+  <key>StartCalendarInterval</key><dict>
+    <key>Weekday</key><integer>0</integer>
+    <key>Hour</key><integer>5</integer><key>Minute</key><integer>30</integer>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+  <key>WorkingDirectory</key><string>/Users/haydarevich/src/Open-Terminal/openmarketterminal-qt/build</string>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kalshi-edge-report.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kalshi-edge-report.err.log</string>
+</dict></plist>

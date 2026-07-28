@@ -245,6 +245,9 @@ class KalshiScreen final : public QWidget {
     // the scoreboard's missing denominator.
     QLabel* bot_funnel_ = nullptr;
     QLabel* bot_gate_ = nullptr;
+    // WHAT THE RECORD TEACHES (issue #174) — the edge autopsy's standing
+    // conclusions, one line per question with its sample size. Display only.
+    QLabel* bot_lessons_ = nullptr;
     // The BOT panel's one control: the kill switch. It can only stop the bot
     // or clear that stop — it cannot arm, size, price, or place anything.
     QPushButton* bot_stop_button_ = nullptr;
