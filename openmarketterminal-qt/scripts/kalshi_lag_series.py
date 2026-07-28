@@ -79,25 +79,50 @@ USAGE (read-only against evidence; writes only the series directory):
     python3 kalshi_lag_series.py status            # print the manifest
     python3 kalshi_lag_series.py status --json     # ... as JSON
     python3 kalshi_lag_series.py rebuild-manifest  # rescan the day files
+    python3 kalshi_lag_series.py install           # copy to the stable location
+    python3 kalshi_lag_series.py doctor            # is the job pointed at it?
 
-Deployment: `deploy/org.openterminal.lag-series.plist` (documented, not
-auto-loaded — live infrastructure is bounced deliberately). The job must run
-more often than the source rotates: kalshi-tickers.jsonl turns over in ~5.7
-hours at the current write rate, so the plist runs it every 15 minutes and any
-longer outage shows up as a gap rather than as silence.
+DEPLOYMENT — THE RECORDER DOES NOT RUN FROM THIS TREE (issue #183). It used to.
+The plist named this file at its path inside the git working tree, so the job's
+uptime was a side effect of whichever commit a developer's tree happened to sit
+on: on 2026-07-28 a checkout of a commit older than the script left the job
+running `[Errno 2] No such file or directory` every 15 minutes for ~10 hours —
+longer than the source rotation below, which is book history that cannot be
+recovered. `git checkout`, a rename and `git clean` all had that power, and
+nothing surfaced the failure but a log nobody was reading.
+
+So `install` copies this script (and `openterminal_paths.py`, its only import)
+into a directory git never touches — `libexec/` under the app data root, i.e.
+`openterminal_paths.app_data_dir()`, beside the `data/` and `logs/` this job
+already writes to — and `deploy/org.openterminal.lag-series.plist` names THAT
+path. (The literal is deliberately not spelled here: `openterminal_paths` is the
+single source of truth for it, and `test_openterminal_paths.py` enforces that.)
+
+The installed copy is a SNAPSHOT: editing this file changes nothing the job runs
+until `install` is run again. That is the trade — the recorder stops tracking the
+tree in both directions — so `install` is the documented step after any change
+here, and `doctor` reports which copy the loaded job actually runs.
+
+The job must run more often than the source rotates: kalshi-tickers.jsonl turns
+over in ~5.7 hours at the current write rate, so the plist runs it every 15
+minutes, `status` says loudly when the last successful compaction is older than
+that horizon, and any outage that outlives the source shows up as a recorded gap
+rather than as silence.
 """
 import argparse
 import datetime
 import json
 import os
+import plistlib
 import re
+import shutil
 import sys
 import zoneinfo
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from openterminal_paths import evidence_dir  # noqa: E402
+from openterminal_paths import app_data_dir, evidence_dir  # noqa: E402
 
 SCHEMA_VERSION = 1
 SERIES_DIR_NAME = "kalshi-lag-series"
@@ -133,6 +158,33 @@ MAX_SECONDS_TO_CLOSE = 3600
 SOURCE_TICKERS = "kalshi-tickers.jsonl"
 SOURCE_BRTI = "kalshi-cf-benchmarks.jsonl"
 ROTATIONS = ("{name}.1", "{name}")
+
+# ── deployment (issue #183) ──────────────────────────────────────────────────
+# Where the job's copy of this script lives: under the app data root, beside
+# `data/` and `logs/`, because that directory is not a git working tree and no
+# checkout, rename or `git clean` can move a file out from under launchd there.
+# The env override exists so the tests can install into a temp dir; production
+# never sets it, and `deploy/org.openterminal.lag-series.plist` names the
+# default path literally.
+INSTALL_DIR_NAME = "libexec"
+INSTALL_DIR_ENV = "OPENTERMINAL_LAG_SERIES_LIBEXEC"
+# This file plus its only non-stdlib import, which the installed copy resolves
+# out of its own directory (`_HERE` above).
+INSTALLED_FILES = ("kalshi_lag_series.py", "openterminal_paths.py")
+
+PLIST_LABEL = "org.openterminal.lag-series"
+LAUNCH_AGENTS_DIR = "~/Library/LaunchAgents"
+
+# THE FRESHNESS HORIZON, and why it is this number. kalshi-tickers.jsonl rotates
+# by SIZE, turning over in ~5.7 h at the measured write rate (#170), and the
+# rotation it displaces is overwritten. An outage shorter than this loses
+# nothing — the compactor catches up out of the still-present `.1`. An outage
+# longer than it is book history that no later run can recover, so this is where
+# `status` stops being a report and starts being an alarm. It is deliberately
+# the SOURCE's horizon and not the job's 15-minute interval: a few missed ticks
+# are not a defect, and an alarm that cries at every one would be ignored by the
+# time it mattered.
+ROTATION_HORIZON_HOURS = 5.7
 
 # A source row older than its stream's cursor by more than this is evidence the
 # log rotated away before we compacted it — i.e. a hole in the series.
@@ -212,6 +264,23 @@ def day_files():
         return []
     return sorted(name for name in os.listdir(directory)
                   if name.startswith(FILE_PREFIX) and name.endswith(".jsonl"))
+
+
+def install_dir():
+    """Where the job's copy lives — a directory git has no opinion about."""
+    return os.environ.get(INSTALL_DIR_ENV,
+                          os.path.join(app_data_dir(), INSTALL_DIR_NAME))
+
+
+def installed_script():
+    """The path `deploy/org.openterminal.lag-series.plist` must name."""
+    return os.path.join(install_dir(), INSTALLED_FILES[0])
+
+
+def launch_agents_plist():
+    """The loaded job's plist, i.e. the one that actually decides what runs."""
+    return os.path.join(os.path.expanduser(LAUNCH_AGENTS_DIR),
+                        "%s.plist" % PLIST_LABEL)
 
 
 # ── ticker parsing ───────────────────────────────────────────────────────────
@@ -397,9 +466,15 @@ def default_state():
     newest RETAINED BRTI instant, so the 1 Hz cap survives a restart; `markets`
     the last quote emitted per market, so neither the change test nor the
     heartbeat clock resets at a run boundary.
+
+    `last_compact_ms` is when a compaction last COMPLETED (issue #183) — the one
+    fact that distinguishes a job that is running and finding nothing from a job
+    that is not running at all. It stays None until this build writes it, and
+    None renders as "unknown", never as "just now": a stamp that defaulted to
+    the current time would report a dead recorder as fresh.
     """
     return {"schema": SCHEMA_VERSION, "cursors": {}, "emitted": {},
-            "markets": {}, "files": {}, "gaps": []}
+            "markets": {}, "files": {}, "gaps": [], "last_compact_ms": None}
 
 
 class StateRefused(Exception):
@@ -607,6 +682,17 @@ def build_manifest(state):
         "issue": 170,
         "generated_at_utc": iso(now_ms()),
         "written_by": "openmarketterminal-qt/scripts/kalshi_lag_series.py",
+        # WHICH COPY ACTUALLY WROTE THIS (issue #183). `written_by` names the
+        # source of record; after `install` the running file is a copy of it
+        # elsewhere, and the difference is exactly what the 2026-07-28 outage
+        # was about. One glance here says whether the tree-bound script or the
+        # installed one is doing the recording.
+        "written_by_path": os.path.abspath(__file__),
+        # When a compaction last COMPLETED. None means no run of a build that
+        # records it has finished yet — unknown, which is not the same as never.
+        "last_compact_ms": state.get("last_compact_ms"),
+        "last_compact_utc": iso(state.get("last_compact_ms")),
+        "rotation_horizon_hours": ROTATION_HORIZON_HOURS,
         "retention": {
             "policy": "time",
             "days": RETENTION_DAYS,
@@ -792,6 +878,10 @@ def compact(now=None):
     written = append_rows(selected, state)
     prune_market_state(state, MAX_SECONDS_TO_CLOSE * 1000)
     removed = prune(state, now=now)
+    # Stamped here, at the END of a pass that did not raise: this is the fact
+    # `status` measures its alarm against, so it must mean "a compaction
+    # completed", not "a compaction was attempted".
+    state["last_compact_ms"] = now if now is not None else now_ms()
     write_json_atomic(series_path(STATE_NAME), state)
     manifest = build_manifest(state)
     write_json_atomic(series_path(MANIFEST_NAME), manifest)
@@ -819,16 +909,155 @@ def read_manifest():
         return json.load(handle)
 
 
-def render_status(manifest):
+# ── deployment (issue #183) ──────────────────────────────────────────────────
+def install(source_dir=None):
+    """Copy this script and its import into the stable location.
+
+    A SNAPSHOT, deliberately: after this the job runs a file that no checkout of
+    this repository can remove, which also means edits here do not reach it
+    until `install` runs again. `doctor` is what makes that visible instead of
+    silent. Copying is preferred to a symlink for the same reason — a symlink
+    into the working tree would dangle on exactly the checkout that started this.
+    """
+    source_dir = source_dir or _HERE
+    target = install_dir()
+    os.makedirs(target, exist_ok=True)
+    copied = []
+    for name in INSTALLED_FILES:
+        src = os.path.join(source_dir, name)
+        dst = os.path.join(target, name)
+        if os.path.exists(dst) and os.path.samefile(src, dst):
+            # Running `install` from the installed copy: nothing to do, and
+            # copy2 onto itself would truncate the file it is reading.
+            copied.append({"file": name, "path": dst, "action": "unchanged"})
+            continue
+        shutil.copy2(src, dst)
+        copied.append({"file": name, "path": dst, "action": "copied"})
+    os.chmod(os.path.join(target, INSTALLED_FILES[0]), 0o755)
+    return {"install_dir": target, "installed_from": os.path.abspath(source_dir),
+            "files": copied, "plist_should_name": installed_script()}
+
+
+def plist_program_script(data):
+    """The .py file a launchd plist's ProgramArguments runs, or None."""
+    for argument in data.get("ProgramArguments") or []:
+        if isinstance(argument, str) and argument.endswith(".py"):
+            return argument
+    return None
+
+
+def inspect_plist(path=None):
+    """Does the job's plist point at a script that exists, and the right one?
+
+    This is the check the 2026-07-28 outage needed and did not have: launchctl
+    reported status 2 and nothing else surfaced it, because a plist naming a
+    path that is not there is not a launchd error — it is a job that starts,
+    fails to open a file, and exits, forever, quietly.
+
+    Absent reads as absent: an uninstalled plist is reported as not installed,
+    never as healthy.
+    """
+    path = path or launch_agents_plist()
+    report = {"plist": path, "exists": os.path.exists(path), "script": None,
+              "script_exists": None, "is_installed_copy": None,
+              "expected_script": installed_script(), "problems": []}
+    if not report["exists"]:
+        report["problems"].append(
+            "%s does not exist — no lag-series job is installed" % path)
+        return report
+    try:
+        with open(path, "rb") as handle:
+            data = plistlib.load(handle)
+    except Exception as error:               # noqa: BLE001 - report, never raise
+        report["problems"].append("%s could not be parsed: %s" % (path, error))
+        return report
+    report["label"] = data.get("Label")
+    report["script"] = plist_program_script(data)
+    if report["script"] is None:
+        report["problems"].append(
+            "%s runs no python script: ProgramArguments = %r"
+            % (path, data.get("ProgramArguments")))
+        return report
+    report["script_exists"] = os.path.exists(report["script"])
+    report["is_installed_copy"] = (
+        os.path.abspath(report["script"]) == os.path.abspath(installed_script()))
+    if not report["script_exists"]:
+        report["problems"].append(
+            "%s names %s, which DOES NOT EXIST — every run of this job fails "
+            "and no book history is being retained"
+            % (path, report["script"]))
+    elif not report["is_installed_copy"]:
+        report["problems"].append(
+            "%s runs %s, not the installed copy %s — that path can be moved by "
+            "a checkout, which is issue #183; run `install` and reload the job"
+            % (path, report["script"], installed_script()))
+    return report
+
+
+def render_doctor(report):
+    """Human summary of `inspect_plist`. Problems are stated, never softened."""
+    lines = ["LAG SERIES JOB · %s" % report["plist"],
+             "  installed   %s" % ("yes" if report["exists"] else "NO"),
+             "  runs        %s" % (report["script"] or "n/a"),
+             "  that file   %s" % ("exists" if report["script_exists"]
+                                   else "MISSING" if report["exists"] else "n/a"),
+             "  expected    %s" % report["expected_script"],
+             "  this copy   %s" % os.path.abspath(__file__)]
+    if report["problems"]:
+        lines.append("  PROBLEMS")
+        for problem in report["problems"]:
+            lines.append("    ! %s" % problem)
+    else:
+        lines.append("  ok          the loaded job runs the installed copy")
+    return "\n".join(lines)
+
+
+def freshness(manifest, now=None):
+    """How long since a compaction completed, against the rotation horizon."""
+    last = (manifest or {}).get("last_compact_ms")
+    horizon = (manifest or {}).get("rotation_horizon_hours",
+                                   ROTATION_HORIZON_HOURS)
+    if last is None:
+        return {"last_compact_ms": None, "last_compact_utc": None,
+                "age_hours": None, "horizon_hours": horizon,
+                "unknown": True, "stale": False}
+    age = ((now if now is not None else now_ms()) - last) / 3_600_000.0
+    return {"last_compact_ms": last, "last_compact_utc": iso(last),
+            "age_hours": age, "horizon_hours": horizon,
+            "unknown": False, "stale": age > horizon}
+
+
+def render_status(manifest, now=None):
     """Human summary. An absent manifest reads as absent, never as zero."""
     if manifest is None:
         return ("LAG SERIES UNAVAILABLE · %s has never been written; nothing "
                 "has been retained yet" % series_path(MANIFEST_NAME))
     series = manifest["series"]
-    lines = [
+    fresh = freshness(manifest, now=now)
+    lines = []
+    if fresh["stale"]:
+        # THE ALARM. Loud, first, and above the numbers, because the numbers
+        # below are still perfectly well-formed while the recorder is dead —
+        # that is precisely how ten hours went by unnoticed on 2026-07-28.
+        lines += [
+            "!! STALE · the last successful compaction was %.2f h ago, past the "
+            "%.2f h" % (fresh["age_hours"], fresh["horizon_hours"]),
+            "!! source rotation horizon. kalshi-tickers.jsonl has turned over "
+            "since then,",
+            "!! so book history is being lost right now and no later run can "
+            "recover it.",
+            "!! diagnose: python3 kalshi_lag_series.py doctor",
+        ]
+    lines += [
         "KALSHI LAG SERIES · %s" % series_dir(),
         "  retention   %d days (time-bounded, never size-rotated)"
         % manifest["retention"]["days"],
+        "  last run    %s"
+        % ("unknown — no completed compaction is recorded; this is not "
+           "evidence of freshness" if fresh["unknown"] else
+           "%s (%.2f h ago%s, horizon %.2f h)"
+           % (fresh["last_compact_utc"], fresh["age_hours"],
+              " — STALE" if fresh["stale"] else "", fresh["horizon_hours"])),
         "  span        %s -> %s (%s h over %d day files)"
         % (series["first_utc"], series["last_utc"],
            "%.2f" % series["span_hours"] if series["span_hours"] is not None else "n/a",
@@ -860,10 +1089,38 @@ def render_status(manifest):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("command", nargs="?", default="compact",
-                        choices=("compact", "status", "rebuild-manifest"))
+                        choices=("compact", "status", "rebuild-manifest",
+                                 "install", "doctor"))
     parser.add_argument("--json", action="store_true",
                         help="print JSON instead of the human summary")
+    parser.add_argument("--plist", default=None,
+                        help="plist `doctor` inspects (default: the loaded "
+                             "job in ~/Library/LaunchAgents)")
     args = parser.parse_args(argv)
+
+    if args.command == "install":
+        report = install()
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            for entry in report["files"]:
+                print("%-9s %s" % (entry["action"], entry["path"]))
+            print("the plist must name: %s" % report["plist_should_name"])
+            print("reload the job (deliberately, by hand) with:")
+            print("    launchctl bootout gui/$UID/%s" % PLIST_LABEL)
+            print("    launchctl bootstrap gui/$UID %s" % launch_agents_plist())
+        return 0
+
+    if args.command == "doctor":
+        report = inspect_plist(args.plist)
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            print(render_doctor(report))
+        # Nonzero on any problem, so a caller that never reads the text still
+        # learns the recorder is not wired up. Nothing consumed these codes
+        # before this change.
+        return 1 if report["problems"] else 0
 
     if args.command == "status":
         manifest = read_manifest()
@@ -871,7 +1128,11 @@ def main(argv=None):
             print(json.dumps(manifest, indent=2, sort_keys=True))
         else:
             print(render_status(manifest))
-        return 0 if manifest is not None else 1
+        if manifest is None:
+            return 1
+        # A stale series is a failure state, not a report: exit nonzero so it
+        # is visible to anything that runs this without reading the output.
+        return 1 if freshness(manifest)["stale"] else 0
 
     try:
         if args.command == "rebuild-manifest":

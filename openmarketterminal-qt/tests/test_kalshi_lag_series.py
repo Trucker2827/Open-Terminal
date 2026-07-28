@@ -781,5 +781,253 @@ class QuoteLagWindowTest(EvidenceCase):
                             for entry in with_series["data"]["quote_files"]))
 
 
+class DeploymentTest(EvidenceCase):
+    """Issue #183 — the recorder must not run out of the git working tree.
+
+    The 2026-07-28 outage was not a bug in any line of code: the plist named
+    this repository's copy of the script, a checkout of an older commit removed
+    it, and the job failed silently for ~10 hours — longer than the source
+    rotation, so the book history for that span is gone. These tests pin the
+    three things that made it possible: the plist pointed into a mutable tree,
+    nothing detected a plist naming a file that is not there, and `status`
+    reported a healthy-looking series while nothing was being recorded.
+    """
+
+    # The tail every honest install path must end with. Spelled out here rather
+    # than imported so the assertions below pin a value instead of restating
+    # the code under test, and home-relative so it holds on the Linux CI too.
+    INSTALL_TAIL = os.path.join("org.openterminal.OpenTerminal", "libexec",
+                                "kalshi_lag_series.py")
+    PLIST = os.path.join(SCRIPTS, "deploy", "org.openterminal.lag-series.plist")
+
+    def setUp(self):
+        super().setUp()
+        self.libexec = os.path.join(self.evidence, "libexec")
+        self._prev_libexec = os.environ.get(series.INSTALL_DIR_ENV)
+        os.environ[series.INSTALL_DIR_ENV] = self.libexec
+
+    def tearDown(self):
+        if self._prev_libexec is None:
+            os.environ.pop(series.INSTALL_DIR_ENV, None)
+        else:
+            os.environ[series.INSTALL_DIR_ENV] = self._prev_libexec
+        super().tearDown()
+
+    def _plist_script(self, path=None):
+        import plistlib
+        with open(path or self.PLIST, "rb") as handle:
+            return series.plist_program_script(plistlib.load(handle))
+
+    # ── the shipped plist ────────────────────────────────────────────────────
+    def test_the_shipped_plist_does_not_name_the_working_tree(self):
+        script = self._plist_script()
+        self.assertIsNotNone(script, "the plist runs no python script at all")
+        # The exact regression: the old plist named
+        # .../src/Open-Terminal/openmarketterminal-qt/scripts/kalshi_lag_series.py,
+        # a path `git checkout` can empty. Two independent ways of saying so, so
+        # that neither a rename of the repo directory nor of the script hides it.
+        self.assertNotIn("openmarketterminal-qt", script)
+        repo_root = os.path.abspath(os.path.join(_HERE, "..", ".."))
+        self.assertFalse(os.path.abspath(script).startswith(repo_root + os.sep),
+                         "%s is inside the working tree at %s" % (script, repo_root))
+
+    def test_the_shipped_plist_names_exactly_the_install_target(self):
+        # One source of truth: the path the plist names and the path `install`
+        # writes to must be the same file, or the operator can install the
+        # script and still leave the job pointing somewhere else.
+        os.environ.pop(series.INSTALL_DIR_ENV, None)      # the production default
+        try:
+            default_target = series.installed_script()
+        finally:
+            os.environ[series.INSTALL_DIR_ENV] = self.libexec
+        self.assertTrue(default_target.endswith(self.INSTALL_TAIL),
+                        "install target %s does not end with %s"
+                        % (default_target, self.INSTALL_TAIL))
+        self.assertTrue(self._plist_script().endswith(self.INSTALL_TAIL))
+
+    # ── install ──────────────────────────────────────────────────────────────
+    def test_install_copies_the_script_and_its_import(self):
+        report = series.install()
+        for name in series.INSTALLED_FILES:
+            self.assertTrue(os.path.exists(os.path.join(self.libexec, name)),
+                            "%s was not installed" % name)
+        self.assertEqual(report["install_dir"], self.libexec)
+        self.assertEqual(report["plist_should_name"],
+                         os.path.join(self.libexec, "kalshi_lag_series.py"))
+
+    def test_the_installed_copy_runs_standalone(self):
+        # The point of the copy: it must work with the repository gone, which
+        # is simulated here by running it with a CWD and sys.path that contain
+        # nothing of this tree.
+        series.install()
+        env = dict(os.environ, OPENTERMINAL_EVIDENCE_DIR=self.evidence,
+                   PYTHONPATH="")
+        proc = subprocess.run(
+            [sys.executable, os.path.join(self.libexec, "kalshi_lag_series.py"),
+             "compact"],
+            cwd=tempfile.gettempdir(), env=env, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        manifest = series.read_manifest()
+        self.assertIsNotNone(manifest)
+        # And it says so: the manifest names the copy that actually wrote it.
+        self.assertEqual(manifest["written_by_path"],
+                         os.path.join(self.libexec, "kalshi_lag_series.py"))
+
+    def test_installing_over_the_installed_copy_does_not_destroy_it(self):
+        series.install()
+        installed = os.path.join(self.libexec, "kalshi_lag_series.py")
+        with open(installed, "rb") as handle:
+            before = handle.read()
+        again = series.install(source_dir=self.libexec)          # src is dst
+        self.assertEqual([e["action"] for e in again["files"]],
+                         ["unchanged"] * len(series.INSTALLED_FILES))
+        with open(installed, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    # ── doctor: a plist naming a script that is not there ────────────────────
+    def _write_plist(self, script_path, name="loaded.plist"):
+        import plistlib
+        path = os.path.join(self.evidence, name)
+        with open(path, "wb") as handle:
+            plistlib.dump({"Label": series.PLIST_LABEL,
+                           "ProgramArguments": ["/usr/bin/python3", script_path,
+                                                "compact"],
+                           "StartInterval": 900}, handle)
+        return path
+
+    def test_a_plist_naming_a_missing_script_is_detected(self):
+        """The check that did not exist on 2026-07-28."""
+        series.install()
+        missing = os.path.join(self.evidence, "gone", "kalshi_lag_series.py")
+        report = series.inspect_plist(self._write_plist(missing))
+        self.assertFalse(report["script_exists"])
+        self.assertTrue(report["problems"])
+        self.assertIn("DOES NOT EXIST", " ".join(report["problems"]))
+        self.assertIn("DOES NOT EXIST", series.render_doctor(report))
+        self.assertEqual(series.main(["doctor", "--plist",
+                                      self._write_plist(missing)]), 1)
+
+    def test_a_plist_naming_the_working_tree_copy_is_detected(self):
+        # Present, readable, and still wrong: this is the state the machine was
+        # in for months before the checkout that exposed it.
+        series.install()
+        tree_copy = os.path.join(SCRIPTS, "kalshi_lag_series.py")
+        report = series.inspect_plist(self._write_plist(tree_copy))
+        self.assertTrue(report["script_exists"])
+        self.assertFalse(report["is_installed_copy"])
+        self.assertIn("#183", " ".join(report["problems"]))
+
+    def test_a_plist_naming_the_installed_copy_is_clean(self):
+        series.install()
+        report = series.inspect_plist(
+            self._write_plist(os.path.join(self.libexec, "kalshi_lag_series.py")))
+        self.assertEqual(report["problems"], [])
+        self.assertEqual(series.main(["doctor", "--plist", self._write_plist(
+            os.path.join(self.libexec, "kalshi_lag_series.py"))]), 0)
+
+    def test_an_absent_plist_reads_as_absent_not_as_healthy(self):
+        report = series.inspect_plist(os.path.join(self.evidence, "nope.plist"))
+        self.assertFalse(report["exists"])
+        self.assertTrue(report["problems"])
+        self.assertIn("no lag-series job is installed", " ".join(report["problems"]))
+
+    # ── status: the age of the last successful run ───────────────────────────
+    def _seed(self):
+        ticker = ticker_for(self.close_ms, "64000.00")
+        base = self.close_ms - 30 * 60_000
+        write_jsonl(self.path(series.SOURCE_TICKERS),
+                    [quote_row(ticker, base + i * 5_000, "0.45%02d" % i, "0.4700")
+                     for i in range(5)])
+        series.compact()
+
+    def test_status_reports_the_age_of_the_last_successful_run(self):
+        self._seed()
+        manifest = series.read_manifest()
+        self.assertIsNotNone(manifest["last_compact_ms"])
+        fresh = series.freshness(manifest)
+        self.assertFalse(fresh["unknown"])
+        self.assertFalse(fresh["stale"])
+        self.assertLess(fresh["age_hours"], 0.1)
+        rendered = series.render_status(manifest)
+        self.assertIn("last run", rendered)
+        self.assertNotIn("STALE", rendered)
+        self.assertEqual(series.main(["status"]), 0)
+
+    def test_status_shouts_once_the_age_passes_the_rotation_horizon(self):
+        self._seed()
+        manifest = series.read_manifest()
+        horizon_ms = int(series.ROTATION_HORIZON_HOURS * 3_600_000)
+        # The incident's own duration: ~10 h, past the ~5.7 h horizon.
+        now = manifest["last_compact_ms"] + 10 * 3_600_000
+        fresh = series.freshness(manifest, now=now)
+        self.assertTrue(fresh["stale"])
+        rendered = series.render_status(manifest, now=now)
+        self.assertIn("!! STALE", rendered)
+        self.assertIn("book history is being lost", rendered)
+        # ... and not one minute before the horizon, so the alarm stays worth
+        # reading: a few missed 15-minute ticks lose nothing.
+        just_inside = manifest["last_compact_ms"] + horizon_ms - 60_000
+        self.assertFalse(series.freshness(manifest, now=just_inside)["stale"])
+        self.assertNotIn("!! STALE", series.render_status(manifest,
+                                                          now=just_inside))
+
+    def test_status_exits_nonzero_when_the_series_is_stale(self):
+        self._seed()
+        # Rewind the stamp rather than mocking the clock: this is exactly the
+        # on-disk state a dead recorder leaves behind.
+        state_path = series.series_path(series.STATE_NAME)
+        with open(state_path, encoding="utf-8") as handle:
+            state = json.load(handle)
+        state["last_compact_ms"] -= 10 * 3_600_000
+        series.write_json_atomic(state_path, state)
+        series.write_json_atomic(series.series_path(series.MANIFEST_NAME),
+                                 series.build_manifest(state))
+        self.assertEqual(series.main(["status"]), 1)
+
+    def test_an_unknown_last_run_never_reads_as_fresh(self):
+        self._seed()
+        manifest = series.read_manifest()
+        manifest.pop("last_compact_ms")           # a state file predating #183
+        fresh = series.freshness(manifest)
+        self.assertTrue(fresh["unknown"])
+        self.assertIsNone(fresh["age_hours"])
+        rendered = series.render_status(manifest)
+        self.assertIn("unknown", rendered)
+        self.assertNotIn("0.00 h ago", rendered)
+
+    def test_the_stamp_survives_a_state_round_trip(self):
+        self._seed()
+        with open(series.series_path(series.STATE_NAME), encoding="utf-8") as h:
+            stamp = json.load(h)["last_compact_ms"]
+        self.assertIsNotNone(stamp)
+        # load_state() keeps only keys default_state() declares; the stamp must
+        # be one of them or every second run would report "unknown".
+        self.assertEqual(series.load_state()["last_compact_ms"], stamp)
+        self.assertIn("last_compact_ms", series.default_state())
+
+    def test_lost_state_reports_unknown_rather_than_now(self):
+        self._seed()
+        os.remove(series.series_path(series.STATE_NAME))
+        recovered = series.recovered_state()
+        self.assertIsNone(recovered["last_compact_ms"])
+        self.assertTrue(series.freshness(series.build_manifest(recovered))["unknown"])
+
+    # ── the criterion #170 already met, kept ─────────────────────────────────
+    def test_gaps_are_still_recorded_after_an_outage(self):
+        """Missing stays missing: #183 must not have weakened #170's gap record."""
+        ticker = ticker_for(self.close_ms, "64000.00")
+        source = self.path(series.SOURCE_TICKERS)
+        base = self.close_ms - 50 * 60_000
+        write_jsonl(source, [quote_row(ticker, base, "0.4500", "0.4700")])
+        series.compact()
+        # The job is down; the source rotates the covered span away entirely.
+        write_jsonl(source, [quote_row(ticker, base + 20 * 60_000,
+                                       "0.5000", "0.5200")])
+        result = series.compact()
+        self.assertTrue(result["gaps_recorded"])
+        self.assertIn("gaps        1 recorded",
+                      series.render_status(series.read_manifest()))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
