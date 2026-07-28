@@ -1105,21 +1105,15 @@ int bot_lessons_command(const GlobalOpts& opts, QStringList& args) {
                      qUtf8Printable(args.first()));
         return 2;
     }
-    if (refresh) {
-        const int rc = refresh_lessons();
-        // A failed refresh still renders whatever artifact is on disk — with
-        // its real age, which is the point: the card must never show a stale
-        // report as if the refresh had succeeded.
-        if (rc != 0 && !opts.json) {
-            const KalshiEdgeLessonsView stale_view = kalshi_edge_lessons(
-                kalshi_edge_read_report_file(bot_lessons_path()),
-                QDateTime::currentMSecsSinceEpoch());
-            for (const QString& line : stale_view.lines())
-                std::printf("%s\n", qUtf8Printable(line));
-            return rc;
-        }
-        if (rc != 0) return rc;
-    }
+    // A failed refresh does not suppress the card: BOTH renderers still show
+    // whatever artifact is on disk, carrying its real age, and the command
+    // exits with the refresh's code. That is the honest pair — the operator
+    // sees the previous conclusions and can see they are old, rather than
+    // seeing nothing (which reads as "no lessons") or seeing them presented as
+    // if the refresh had worked. `--json` gets the same treatment as the human
+    // text for the same reason the two share a formatter at all.
+    int refresh_rc = 0;
+    if (refresh) refresh_rc = refresh_lessons();
 
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
     const KalshiEdgeReportFile file = kalshi_edge_read_report_file(bot_lessons_path());
@@ -1143,15 +1137,22 @@ int bot_lessons_command(const GlobalOpts& opts, QStringList& args) {
         // keys stay absent, so a machine reader never sees a fabricated zero.
         if (file.available) out.insert(QStringLiteral("report"), file.object);
         else out.insert(QStringLiteral("unavailable_reason"), file.why);
+        // A refresh that failed is stated as a FIELD, not just as an exit code:
+        // a reader that only parsed stdout would otherwise take this object for
+        // the result of a successful refresh.
+        if (refresh) out.insert(QStringLiteral("refreshed"), refresh_rc == 0);
         std::printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
-        return view.available ? 0 : 3;
+        return refresh_rc != 0 ? refresh_rc : (view.available ? 0 : 3);
     }
 
     for (const QString& line : view.lines()) std::printf("%s\n", qUtf8Printable(line));
     std::printf("  report %s\n", qUtf8Printable(bot_lessons_path()));
     std::printf("  a lesson here changes NOTHING about what the bot does — it becomes strategy "
                 "only through its own issue and review\n");
-    // An absent artifact is not a successful read of an empty record.
+    // A failed refresh outranks the read: the artifact above is real, but it
+    // is not the one this invocation asked for. An absent artifact is not a
+    // successful read of an empty record either.
+    if (refresh_rc != 0) return refresh_rc;
     return view.available ? 0 : 3;
 }
 

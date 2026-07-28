@@ -230,6 +230,38 @@ if grep -qE "^Q[0-9] " "$HELPERS/broken.txt"; then
     fail "an unparseable artifact rendered lesson lines anyway"
 fi
 
+# --- a FAILED --refresh renders the previous artifact through BOTH renderers -
+# The publisher is unreachable here (a working directory with no repo under it
+# and no python3 on PATH), so --refresh fails. What must NOT happen: the card
+# vanishing, the two renderers behaving differently, or the previous artifact
+# being presented as if the refresh had worked.
+write_report 0
+( cd "$HELPERS" && PATH=/nonexistent-for-this-test \
+    "$CLI" kalshi bot lessons --refresh > "$HELPERS/refresh-fail.txt" 2> "$HELPERS/refresh-fail.err"
+  echo "$?" > "$HELPERS/refresh-fail.rc" ) || true
+[ "$(cat "$HELPERS/refresh-fail.rc")" != "0" ] ||
+    fail "a --refresh that could not run exited 0"
+grep -q "NOT refreshed" "$HELPERS/refresh-fail.err" ||
+    fail "a failed --refresh did not say so on stderr"
+# The card is still rendered, with the artifact's real age.
+grep -q "WHAT THE RECORD TEACHES · 4 lessons" "$HELPERS/refresh-fail.txt" ||
+    fail "a failed --refresh suppressed the previous artifact instead of rendering it"
+
+( cd "$HELPERS" && PATH=/nonexistent-for-this-test \
+    "$CLI" --json kalshi bot lessons --refresh > "$HELPERS/refresh-fail.json" 2>/dev/null
+  echo "$?" > "$HELPERS/refresh-fail-json.rc" ) || true
+[ "$(cat "$HELPERS/refresh-fail-json.rc")" = "$(cat "$HELPERS/refresh-fail.rc")" ] ||
+    fail "--json and the human renderer disagreed on a failed refresh's exit code"
+assert_parity "$HELPERS/refresh-fail.txt" "$HELPERS/refresh-fail.json"
+python3 - "$HELPERS/refresh-fail.json" <<'PY'
+import json, sys
+out = json.load(open(sys.argv[1]))
+# The artifact is real and is rendered; the failure is a stated field, not an
+# exit code a stdout-only reader would miss.
+assert out["available"] is True, out
+assert out["refreshed"] is False, "a failed refresh was not stated in the JSON: %r" % out
+PY
+
 # --- an unknown option is refused, not ignored -------------------------------
 set +e
 "$CLI" kalshi bot lessons --nonsense > "$HELPERS/badopt.txt" 2>&1
