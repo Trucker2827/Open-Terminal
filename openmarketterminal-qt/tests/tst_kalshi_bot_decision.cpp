@@ -32,19 +32,25 @@ QJsonObject prediction(double p_full, double market_mid, double minutes_left) {
 }
 
 /// A trusted report (adds_value_over_market true, past the calibrator's own
-/// ≥100-sample gate) carrying one contract.
+/// ≥100-CONTRACT gate) carrying one contract. Schema 2 (issue #171): the Brier
+/// is scored per contract, `scored_contracts` is its denominator, and the
+/// claim is measured against the RAW MID, not the trained logit baseline.
 QJsonObject report(double p_full, double market_mid, double minutes_left,
                    bool trusted = true, qint64 generated_ms = kNow) {
     return QJsonObject{
-        {QStringLiteral("schema"), 1},
+        {QStringLiteral("schema"), 2},
         {QStringLiteral("event"), QStringLiteral("spot_calibrator")},
         {QStringLiteral("advisory_only"), true},
         {QStringLiteral("generated_at_ms"), static_cast<double>(generated_ms)},
         {QStringLiteral("resolved_contracts"), 371},
-        {QStringLiteral("training_samples"), 500},
+        {QStringLiteral("scored_contracts"), 244},
+        {QStringLiteral("training_observations"), 12'049},
+        {QStringLiteral("min_scored_contracts"), 100},
         {QStringLiteral("brier_full"), 0.1079},
-        {QStringLiteral("brier_market_baseline"), 0.1083},
+        {QStringLiteral("brier_market_mid_raw"), 0.1083},
+        {QStringLiteral("brier_market_trained_logit"), 0.1101},
         {QStringLiteral("adds_value_over_market"), trusted},
+        {QStringLiteral("beats_trained_logit_baseline"), true},
         {QStringLiteral("predictions"),
          QJsonObject{{QStringLiteral("KXBTC15M-26JUL241015-15"),
                       prediction(p_full, market_mid, minutes_left)}}},
@@ -514,23 +520,50 @@ class TestKalshiBotDecision : public QObject {
         // produced it, so the ledger is auditable without the report.
         const QJsonObject record = untrusted.value(QStringLiteral("track_record")).toObject();
         QCOMPARE(record.value(QStringLiteral("resolved_contracts")).toInt(), 371);
-        QCOMPARE(record.value(QStringLiteral("training_samples")).toInt(), 500);
         QCOMPARE(record.value(QStringLiteral("brier_full")).toDouble(), 0.1079);
-        QCOMPARE(record.value(QStringLiteral("brier_market_baseline")).toDouble(), 0.1083);
+        QCOMPARE(record.value(QStringLiteral("brier_market_mid_raw")).toDouble(), 0.1083);
         QCOMPARE(record.value(QStringLiteral("adds_value_over_market")).toBool(), false);
+        // Issue #171: the ledger row carries the Brier's own denominator and
+        // the observation count separately, so a later audit cannot mistake
+        // 12,049 correlated rows for 244 contracts of evidence. The old
+        // `training_samples` reported the former under a name that read as
+        // the latter, and is gone rather than silently repurposed.
+        QCOMPARE(record.value(QStringLiteral("scored_contracts")).toInt(), 244);
+        QCOMPARE(record.value(QStringLiteral("training_observations")).toInt(), 12'049);
+        QVERIFY(!record.contains(QStringLiteral("training_samples")));
+        // The handicapped baseline stays visible, distinctly named.
+        QCOMPARE(record.value(QStringLiteral("brier_market_trained_logit")).toDouble(), 0.1101);
     }
 
     void a_report_without_a_brier_says_unavailable_rather_than_zero() {
         QJsonObject untrained = report(0.95, 0.83, 10.0, false);
         untrained.remove(QStringLiteral("brier_full"));
-        untrained.insert(QStringLiteral("brier_market_baseline"), QJsonValue::Null);
+        untrained.insert(QStringLiteral("brier_market_mid_raw"), QJsonValue::Null);
         const QJsonArray rows = KalshiBotDecision::decide(untrained, {}, {}, kNow, {});
         QCOMPARE(rows.size(), 1);
         const QJsonObject record = only_row(rows).value(QStringLiteral("track_record")).toObject();
         QVERIFY(record.contains(QStringLiteral("brier_available")));
         QCOMPARE(record.value(QStringLiteral("brier_available")).toBool(), false);
         QVERIFY(!record.contains(QStringLiteral("brier_full")));
-        QVERIFY(!record.contains(QStringLiteral("brier_market_baseline")));
+        QVERIFY(!record.contains(QStringLiteral("brier_market_mid_raw")));
+    }
+
+    /// Issue #171: a schema-1 report — the one shape that carries
+    /// `brier_market_baseline` and no raw mid — cannot buy trust. The
+    /// calibrator rewrites the file every cycle, so this only matters across
+    /// a version skew; it fails closed rather than believing a flag that was
+    /// measured against a handicapped baseline.
+    void a_schema_one_report_is_not_trusted() {
+        QJsonObject old_schema = report(0.95, 0.35, 10.0, true);
+        QVERIFY(KalshiBotDecision::signal_trusted(old_schema));          // positive control
+        old_schema.remove(QStringLiteral("brier_market_mid_raw"));
+        old_schema.remove(QStringLiteral("scored_contracts"));
+        old_schema.insert(QStringLiteral("schema"), 1);
+        old_schema.insert(QStringLiteral("training_samples"), 500);
+        old_schema.insert(QStringLiteral("brier_market_baseline"), 0.1083);
+        QVERIFY(!KalshiBotDecision::signal_trusted(old_schema));
+        QCOMPARE(reason(KalshiBotDecision::decide(old_schema, {}, {}, kNow, {})),
+                 QStringLiteral("SIGNAL_UNTRUSTED"));
     }
 
     /// A report claiming value over a track record it does not carry is
@@ -547,7 +580,7 @@ class TestKalshiBotDecision : public QObject {
                  QStringLiteral("SIGNAL_UNTRUSTED"));
 
         QJsonObject no_baseline = report(0.95, 0.35, 10.0, true);
-        no_baseline.insert(QStringLiteral("brier_market_baseline"), QJsonValue::Null);
+        no_baseline.insert(QStringLiteral("brier_market_mid_raw"), QJsonValue::Null);
         QVERIFY(!KalshiBotDecision::signal_trusted(no_baseline));
         QCOMPARE(action(KalshiBotDecision::decide(no_baseline, {}, {}, kNow, {})),
                  QStringLiteral("pass"));

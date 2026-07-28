@@ -60,14 +60,16 @@ constexpr qint64 kRotationBytes = 64LL * 1024 * 1024;
 /// The calibrator report shape rung 1's tests use, with one trusted contract.
 QJsonObject one(double p_full, double market_mid, qint64 generated_ms = kNow) {
     return QJsonObject{
-        {QStringLiteral("schema"), 1},
+        {QStringLiteral("schema"), 2},
         {QStringLiteral("event"), QStringLiteral("spot_calibrator")},
         {QStringLiteral("advisory_only"), true},
         {QStringLiteral("generated_at_ms"), static_cast<double>(generated_ms)},
         {QStringLiteral("resolved_contracts"), 371},
-        {QStringLiteral("training_samples"), 500},
+        {QStringLiteral("scored_contracts"), 244},
+        {QStringLiteral("training_observations"), 12'049},
         {QStringLiteral("brier_full"), 0.1079},
-        {QStringLiteral("brier_market_baseline"), 0.1083},
+        {QStringLiteral("brier_market_mid_raw"), 0.1083},
+        {QStringLiteral("brier_market_trained_logit"), 0.1101},
         {QStringLiteral("adds_value_over_market"), true},
         {QStringLiteral("predictions"),
          QJsonObject{

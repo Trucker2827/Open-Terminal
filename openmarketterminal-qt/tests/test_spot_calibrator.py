@@ -128,8 +128,9 @@ class SettleCycleTest(unittest.TestCase):
         cal.settle_cycle(state, later, resolver=lambda t: True)
         self.assertNotIn("KXBTC-T1", state["pending"])
         self.assertEqual(state["resolved"], 1)
-        self.assertEqual(len(state["brier_full"]), 1)
-        self.assertEqual(len(state["brier_market"]), 1)
+        self.assertEqual(len(state["contract_scores_full"]), 1)
+        self.assertEqual(len(state["contract_scores_market_trained_logit"]), 1)
+        self.assertEqual(len(state["contract_scores_market_mid_raw"]), 1)
 
     def test_unresolved_market_is_retried_then_dropped(self):
         state = cal.default_state()
@@ -141,22 +142,176 @@ class SettleCycleTest(unittest.TestCase):
         self.assertEqual(state["resolved"], 0)
 
     def test_report_withholds_value_verdict_until_sample(self):
-        state = cal.default_state()
-        state["brier_full"] = [[0.8, True]] * 10
-        state["brier_market"] = [[0.6, True]] * 10
+        state = scored_state(full=0.05, mid_raw=0.09, logit=0.09, contracts=10)
         report = cal.build_report(state, {}, 0)
-        self.assertFalse(report["adds_value_over_market"])      # <100 samples
-        state["brier_full"] = [[0.8, True]] * 100
-        state["brier_market"] = [[0.6, True]] * 100
-        self.assertTrue(cal.build_report(state, {}, 0)["adds_value_over_market"])
-        # And never claims value when the market baseline is sharper.
-        state["brier_full"], state["brier_market"] = state["brier_market"], state["brier_full"]
-        self.assertFalse(cal.build_report(state, {}, 0)["adds_value_over_market"])
+        self.assertFalse(report["adds_value_over_market"])      # <100 CONTRACTS
+        full = scored_state(full=0.05, mid_raw=0.09, logit=0.09, contracts=100)
+        self.assertTrue(cal.build_report(full, {}, 0)["adds_value_over_market"])
+        # And never claims value when the raw mid is sharper.
+        losing = scored_state(full=0.09, mid_raw=0.05, logit=0.09, contracts=100)
+        self.assertFalse(cal.build_report(losing, {}, 0)["adds_value_over_market"])
 
     def test_brier(self):
         self.assertIsNone(cal.brier([]))
         self.assertAlmostEqual(cal.brier([(1.0, True), (0.0, False)]), 0.0)
         self.assertAlmostEqual(cal.brier([(0.5, True)]), 0.25)
+
+    def test_mean_or_none_is_the_across_contract_step(self):
+        self.assertIsNone(cal.mean_or_none([]))
+        self.assertAlmostEqual(cal.mean_or_none([0.1, 0.3]), 0.2)
+
+
+def scored_state(full, mid_raw, logit, contracts):
+    """A state whose per-contract score lists are already populated."""
+    state = cal.default_state()
+    state["contract_scores_full"] = [full] * contracts
+    state["contract_scores_market_mid_raw"] = [mid_raw] * contracts
+    state["contract_scores_market_trained_logit"] = [logit] * contracts
+    state["resolved"] = contracts
+    return state
+
+
+class PerContractScoringTest(unittest.TestCase):
+    """Issue #171: the Brier is scored per CONTRACT, not per observation.
+
+    Schema 1 appended one pair per observation and a contract contributes up to
+    MAX_OBS_PER_TICKER = 60 of them, so `training_samples: 500` was ~8-10
+    contracts and the >=100 gate cleared after about two settled.
+    """
+
+    def settle_one_contract(self, state, ticker, observations, outcome, close_at=0):
+        """Observe `observations` snapshots of one ticker, then settle it."""
+        for _ in range(observations):
+            cal.observe_cycle(state, {"snapshots": {ticker: snapshot()}}, close_at)
+        cal.settle_cycle(state, close_at + 900 * 1000 + 121_000,
+                         resolver=lambda t: outcome)
+
+    def test_one_contract_scores_once_however_many_observations(self):
+        state = cal.default_state()
+        self.settle_one_contract(state, "KXBTC-T1", 60, True)
+        self.assertEqual(state["resolved"], 1)
+        self.assertEqual(len(state["contract_scores_full"]), 1)
+        self.assertEqual(len(state["contract_scores_market_mid_raw"]), 1)
+        # ...and the model still TRAINED on all 60 rows. Only the bookkeeping
+        # is per contract.
+        self.assertEqual(state["full"]["n_seen"], 60)
+        report = cal.build_report(state, {}, 0)
+        self.assertEqual(report["scored_contracts"], 1)
+        self.assertEqual(report["training_observations"], 60)
+
+    def test_dense_observations_do_not_clear_the_contract_gate(self):
+        # The defect, encoded: two contracts x 60 observations cleared the old
+        # >=100 gate outright. Under the contract count it is 2 of 100.
+        state = cal.default_state()
+        for i in range(2):
+            self.settle_one_contract(state, "KXBTC-T%d" % i, 60, i % 2 == 0)
+        report = cal.build_report(state, {}, 0)
+        self.assertEqual(report["scored_contracts"], 2)
+        self.assertEqual(report["training_observations"], 120)
+        self.assertLess(report["scored_contracts"], cal.MIN_SCORED_CONTRACTS)
+        self.assertFalse(report["adds_value_over_market"])
+
+    def test_every_contract_weighs_the_same(self):
+        # 60 observations and 2 observations are one score each, so a densely
+        # sampled contract cannot outvote a sparse one.
+        state = cal.default_state()
+        self.settle_one_contract(state, "KXBTC-DENSE", 60, True)
+        self.settle_one_contract(state, "KXBTC-SPARSE", 2, True, close_at=10_000_000)
+        self.assertEqual(len(state["contract_scores_full"]), 2)
+        self.assertAlmostEqual(cal.build_report(state, {}, 0)["brier_full"],
+                               sum(state["contract_scores_full"]) / 2.0)
+
+    def test_scores_are_taken_before_training_on_the_contract(self):
+        # A cold model predicts 0.5, so its first contract must score exactly
+        # 0.25 — anything lower means the outcome leaked into its own score.
+        state = cal.default_state()
+        self.settle_one_contract(state, "KXBTC-T1", 5, True)
+        self.assertAlmostEqual(state["contract_scores_full"][0], 0.25)
+        self.assertAlmostEqual(state["contract_scores_market_trained_logit"][0], 0.25)
+
+    def test_a_settled_contract_with_no_observations_scores_nothing(self):
+        state = cal.default_state()
+        state["pending"]["KXBTC-EMPTY"] = {"close_ms": 0, "obs": []}
+        cal.settle_cycle(state, 200_000, resolver=lambda t: True)
+        self.assertNotIn("KXBTC-EMPTY", state["pending"])
+        self.assertEqual(state["contract_scores_full"], [])
+
+
+class RawMidBaselineTest(unittest.TestCase):
+    """Issue #171: 'beats the market' must mean beating the raw mid.
+
+    MARKET_FEATURES = ("yes_mid",) is a TRAINED one-feature logit — a
+    handicapped baseline. Both are reported; only the raw mid confers trust.
+    """
+
+    def test_raw_mid_is_the_untrained_mid(self):
+        state = cal.default_state()
+        # yes_mid 0.62 on a contract that settles YES: (0.62 - 1)^2.
+        cal.observe_cycle(state, {"snapshots": {"KXBTC-T1": snapshot(yes_mid=0.62)}}, 0)
+        cal.settle_cycle(state, 900 * 1000 + 121_000, resolver=lambda t: True)
+        self.assertAlmostEqual(state["contract_scores_market_mid_raw"][0], (0.62 - 1.0) ** 2)
+
+    def test_tying_the_raw_mid_is_not_adding_value(self):
+        tied = scored_state(full=0.0989, mid_raw=0.0989, logit=0.2, contracts=239)
+        report = cal.build_report(tied, {}, 0)
+        self.assertFalse(report["adds_value_over_market"])       # tie is not a win
+        self.assertTrue(report["beats_trained_logit_baseline"])  # ...and says so
+        beating = scored_state(full=0.0988, mid_raw=0.0989, logit=0.2, contracts=239)
+        self.assertTrue(cal.build_report(beating, {}, 0)["adds_value_over_market"])
+
+    def test_beating_only_the_handicapped_baseline_is_not_value(self):
+        # The autopsy's measured shape: the calibrator loses to the raw mid
+        # (0.1043 vs 0.0989) while clearing a trained logit.
+        state = scored_state(full=0.1043, mid_raw=0.0989, logit=0.1100, contracts=239)
+        report = cal.build_report(state, {}, 0)
+        self.assertFalse(report["adds_value_over_market"])
+        self.assertTrue(report["beats_trained_logit_baseline"])
+        # Both stay visible, distinctly named.
+        self.assertAlmostEqual(report["brier_market_mid_raw"], 0.0989)
+        self.assertAlmostEqual(report["brier_market_trained_logit"], 0.1100)
+
+
+class MigrationTest(unittest.TestCase):
+    """Issue #171: a schema-1 state reads as insufficient, never reinterpreted."""
+
+    def old_state(self, pairs=500):
+        state = cal.default_state()
+        del state["contract_scores_full"]
+        del state["contract_scores_market_trained_logit"]
+        del state["contract_scores_market_mid_raw"]
+        state["schema"] = 1
+        state["brier_full"] = [[0.8, True]] * pairs
+        state["brier_market"] = [[0.9, True]] * pairs
+        state["resolved"] = 976
+        state["full"]["n_seen"] = 24_700
+        return state
+
+    def test_observation_pairs_are_discarded_not_recounted_as_contracts(self):
+        migrated = cal.migrate_state(self.old_state())
+        self.assertEqual(migrated["schema"], cal.STATE_SCHEMA)
+        self.assertEqual(migrated["contract_scores_full"], [])
+        self.assertEqual(migrated["migrated_from_schema"], 1)
+        self.assertEqual(migrated["discarded_observation_pairs"], 500)
+        report = cal.build_report(migrated, {}, 0)
+        self.assertEqual(report["scored_contracts"], 0)          # not 500
+        self.assertIsNone(report["brier_full"])
+        self.assertFalse(report["adds_value_over_market"])
+        # The lifetime count and the training rows survive: they were never
+        # the thing that was miscounted.
+        self.assertEqual(report["resolved_contracts"], 976)
+        self.assertEqual(report["training_observations"], 24_700)
+
+    def test_migration_keeps_the_trained_weights_and_pending_work(self):
+        old = self.old_state()
+        old["pending"] = {"KXBTC-T1": {"close_ms": 5, "obs": [cal.extract_features(snapshot())]}}
+        old["full"]["w"] = [0.5] * (len(cal.FULL_FEATURES) + 1)
+        migrated = cal.migrate_state(old)
+        self.assertEqual(migrated["full"]["w"], [0.5] * (len(cal.FULL_FEATURES) + 1))
+        self.assertIn("KXBTC-T1", migrated["pending"])
+
+    def test_a_current_state_is_left_alone(self):
+        state = scored_state(full=0.1, mid_raw=0.2, logit=0.3, contracts=4)
+        self.assertIs(cal.migrate_state(state), state)
 
 
 if __name__ == "__main__":

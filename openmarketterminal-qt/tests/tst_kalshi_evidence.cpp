@@ -227,13 +227,16 @@ QJsonObject calibrator_report(qint64 generated_ms, bool adds_value, double per_m
                                  {QStringLiteral("p_yes_market_baseline"), 0.0206},
                                  {QStringLiteral("market_yes_mid"), 0.0035},
                                  {QStringLiteral("features"), features}};
-    return QJsonObject{{QStringLiteral("schema"), 1},
+    return QJsonObject{{QStringLiteral("schema"), 2},
                        {QStringLiteral("event"), QStringLiteral("spot_calibrator")},
                        {QStringLiteral("advisory_only"), true},
                        {QStringLiteral("generated_at_ms"), generated_ms},
                        {QStringLiteral("resolved_contracts"), 162},
+                       {QStringLiteral("scored_contracts"), 118},
+                       {QStringLiteral("training_observations"), 5'831},
                        {QStringLiteral("brier_full"), 0.109},
-                       {QStringLiteral("brier_market_baseline"), 0.102},
+                       {QStringLiteral("brier_market_mid_raw"), 0.102},
+                       {QStringLiteral("brier_market_trained_logit"), 0.114},
                        {QStringLiteral("adds_value_over_market"), adds_value},
                        {QStringLiteral("predictions"),
                         QJsonObject{{QStringLiteral("KXBTC15M-26JUL230800-00"), prediction}}}};
@@ -257,14 +260,18 @@ void TestKalshiEvidence::formatsCalibratorReadoutWithHonestRecord() {
     QVERIFY(headline.contains(QStringLiteral("MARKET MID 0.4%")));
     const QString record = readout.value(QStringLiteral("record")).toString();
     QVERIFY(record.contains(QStringLiteral("162 resolved")));
-    QVERIFY(record.contains(QStringLiteral("Brier 0.109 vs market 0.102")));
-    QVERIFY(record.contains(QStringLiteral("does NOT beat market — opinion, not signal")));
+    // Issue #171: the score is stated against the RAW MID and over the count
+    // it was actually computed on. The lifetime `resolved` total stays on the
+    // line but is no longer the number printed beside the Brier — it read as
+    // the sample size of a score computed over far fewer contracts.
+    QVERIFY(record.contains(QStringLiteral("Brier 0.109 vs raw mid 0.102 on 118 scored")));
+    QVERIFY(record.contains(QStringLiteral("does NOT beat the mid — opinion, not signal")));
     QCOMPARE(readout.value(QStringLiteral("trusted")).toBool(), false);
 
     const QJsonObject beats = KalshiEvidenceEngine::calibrator_readout(
         calibrator_report(now - 60'000, true, 2.069), ticker, now);
     QVERIFY(beats.value(QStringLiteral("record")).toString()
-                .contains(QStringLiteral("beats market baseline")));
+                .contains(QStringLiteral("beats the raw mid")));
     QCOMPARE(beats.value(QStringLiteral("trusted")).toBool(), true);
 
     // A zero ambient vol makes required_move_sigma meaningless; the readout

@@ -16,6 +16,14 @@ not a constant — it is remeasured on every run and printed as
 Do not read it as the merely theoretical bound printed beside it,
 `implied_contract_count_bound` = 8–500, which assumes nothing about cadence.
 
+That defect was fixed in issue #171: schema 2 of the state file scores one
+number per CONTRACT and the `[probability, outcome]` pairs are gone, so
+`calibrator_self_report()` branches on `schema` and the paragraph above
+describes only a schema-1 file. What is still true either way — and is why this
+module exists — is that the state file attaches no features, ticker or
+timestamp to anything it scores, so it cannot answer "where is the error
+concentrated?" and the reconstruction below is still the only thing that can.
+
 The bot's decision log carries what the state file discards: for every tick it
 logged the ticker, the wall clock, the calibrator's `calibrated_p` and the
 `market_mid` it was compared against. Joining that to an outcome per contract

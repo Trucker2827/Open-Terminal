@@ -595,16 +595,21 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     // other, and the label says which is which — two Brier-vs-market numbers
     // three boxes apart, distinguishable only by a header comment, is the
     // thirty-second-legibility failure.
+    // Both Brier-vs-market numbers now name their opponent — this one the RAW
+    // MID, the gate's the bot's own settled bids — so the two are no longer
+    // told apart only by the comment above (issue #171). The count shown is
+    // `scored_contracts`, the Brier's actual denominator; `resolved_contracts`
+    // is a lifetime total and was overstating the evidence by ~50x.
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
-    const QJsonValue brier_baseline = report.value(QStringLiteral("brier_market_baseline"));
-    if (is_number(brier_full) && is_number(brier_baseline)) {
+    const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
+    if (is_number(brier_full) && is_number(brier_mid_raw)) {
         const bool adds_value = report.value(QStringLiteral("adds_value_over_market")).toBool();
         add_node(QStringLiteral("calibrator"),
                  QStringLiteral("CALIBRATOR — ITS OWN TRACK RECORD"),
-                 QStringLiteral("Brier %1 vs market %2 on %3 resolved · %4")
+                 QStringLiteral("Brier %1 vs raw mid %2 on %3 scored contracts · %4")
                      .arg(brier_full.toDouble(), 0, 'f', 4)
-                     .arg(brier_baseline.toDouble(), 0, 'f', 4)
-                     .arg(report.value(QStringLiteral("resolved_contracts")).toInt())
+                     .arg(brier_mid_raw.toDouble(), 0, 'f', 4)
+                     .arg(report.value(QStringLiteral("scored_contracts")).toInt())
                      .arg(adds_value ? QStringLiteral("ADDS VALUE") : QStringLiteral("NO EDGE YET")),
                  adds_value ? QStringLiteral("green") : QStringLiteral("amber"), true);
     } else {

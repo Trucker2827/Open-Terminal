@@ -46,21 +46,34 @@ QJsonObject base_row(qint64 now_ms, const QString& ticker, const QString& action
 /// The calibrator's own track record, copied verbatim onto every row so the
 /// ledger can be audited without the report that produced it. A Brier the
 /// calibrator has not computed yet is reported as unavailable, never as 0.0.
+///
+/// Schema 2 (issue #171) separates three counts that schema 1 conflated, and
+/// all three are carried: `scored_contracts` is the Brier's denominator,
+/// `resolved_contracts` is the lifetime settled count, `training_observations`
+/// is how many rows the weights were fitted on. The market is scored twice —
+/// `brier_market_mid_raw` (the mid, untrained: the price this bot would
+/// otherwise take) and `brier_market_trained_logit` (a fitted one-feature
+/// baseline, kept for contrast). Only the raw mid backs the value claim.
 QJsonObject track_record(const QJsonObject& report) {
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
-    const QJsonValue brier_market = report.value(QStringLiteral("brier_market_baseline"));
-    const bool brier_available = brier_full.isDouble() && brier_market.isDouble();
+    const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
+    const QJsonValue brier_logit = report.value(QStringLiteral("brier_market_trained_logit"));
+    const bool brier_available = brier_full.isDouble() && brier_mid_raw.isDouble();
     QJsonObject record{
         {QStringLiteral("resolved_contracts"), report.value(QStringLiteral("resolved_contracts")).toInt()},
-        {QStringLiteral("training_samples"), report.value(QStringLiteral("training_samples")).toInt()},
+        {QStringLiteral("scored_contracts"), report.value(QStringLiteral("scored_contracts")).toInt()},
+        {QStringLiteral("training_observations"),
+         report.value(QStringLiteral("training_observations")).toInt()},
         {QStringLiteral("adds_value_over_market"),
          report.value(QStringLiteral("adds_value_over_market")).toBool()},
         {QStringLiteral("brier_available"), brier_available},
         {QStringLiteral("generated_at_ms"), report.value(QStringLiteral("generated_at_ms"))}};
     if (brier_available) {
         record.insert(QStringLiteral("brier_full"), brier_full.toDouble());
-        record.insert(QStringLiteral("brier_market_baseline"), brier_market.toDouble());
+        record.insert(QStringLiteral("brier_market_mid_raw"), brier_mid_raw.toDouble());
     }
+    if (brier_logit.isDouble())
+        record.insert(QStringLiteral("brier_market_trained_logit"), brier_logit.toDouble());
     return record;
 }
 
@@ -73,7 +86,7 @@ bool KalshiBotDecision::signal_trusted(const QJsonObject& report) {
     // itself, and this fails closed on it rather than believing the flag.
     return report.value(QStringLiteral("adds_value_over_market")).toBool() &&
            report.value(QStringLiteral("brier_full")).isDouble() &&
-           report.value(QStringLiteral("brier_market_baseline")).isDouble();
+           report.value(QStringLiteral("brier_market_mid_raw")).isDouble();
 }
 
 QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
@@ -127,8 +140,8 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
     }
 
     // Signal trust is re-read from the live report on every call: the
-    // calibrator sets adds_value_over_market only once its Brier beats the
-    // market baseline across its own >=100-sample gate.
+    // calibrator sets adds_value_over_market only once its Brier beats the raw
+    // market mid across its own >=100-CONTRACT gate (issue #171).
     const bool trusted = signal_trusted(report);
     const QJsonObject record = track_record(report);
     const QJsonObject predictions = report.value(QStringLiteral("predictions")).toObject();

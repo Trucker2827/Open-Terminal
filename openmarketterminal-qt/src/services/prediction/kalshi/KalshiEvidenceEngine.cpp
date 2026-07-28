@@ -207,19 +207,25 @@ QJsonObject KalshiEvidenceEngine::calibrator_readout(const QJsonObject& report,
              percent(prediction.value(QStringLiteral("p_yes_full")).toDouble()),
              percent(prediction.value(QStringLiteral("market_yes_mid")).toDouble()));
 
+    // `resolved_contracts` is a lifetime count and is NOT the Brier's
+    // denominator — printing it beside the score read as "976 contracts of
+    // evidence" when the score covered eight (issue #171). The sample size
+    // shown is the one the score was actually computed over.
     const int resolved = report.value(QStringLiteral("resolved_contracts")).toInt();
+    const int scored = report.value(QStringLiteral("scored_contracts")).toInt();
     const QJsonValue brier_full = report.value(QStringLiteral("brier_full"));
-    const QJsonValue brier_market = report.value(QStringLiteral("brier_market_baseline"));
+    const QJsonValue brier_mid_raw = report.value(QStringLiteral("brier_market_mid_raw"));
     const bool trusted = report.value(QStringLiteral("adds_value_over_market")).toBool();
-    const QString record = !brier_full.isDouble() || !brier_market.isDouble()
-        ? QStringLiteral("TRACK RECORD · %1 resolved · Brier unavailable — opinion, not signal")
+    const QString record = !brier_full.isDouble() || !brier_mid_raw.isDouble()
+        ? QStringLiteral("TRACK RECORD · %1 resolved · 0 scored · Brier unavailable — opinion, not signal")
               .arg(resolved)
-        : QStringLiteral("TRACK RECORD · %1 resolved · Brier %2 vs market %3 · %4")
+        : QStringLiteral("TRACK RECORD · %1 resolved · Brier %2 vs raw mid %3 on %4 scored · %5")
               .arg(resolved)
               .arg(brier_full.toDouble(), 0, 'f', 3)
-              .arg(brier_market.toDouble(), 0, 'f', 3)
-              .arg(trusted ? QStringLiteral("beats market baseline")
-                           : QStringLiteral("does NOT beat market — opinion, not signal"));
+              .arg(brier_mid_raw.toDouble(), 0, 'f', 3)
+              .arg(scored)
+              .arg(trusted ? QStringLiteral("beats the raw mid")
+                           : QStringLiteral("does NOT beat the mid — opinion, not signal"));
     return QJsonObject{{QStringLiteral("state"), QStringLiteral("ok")},
                        {QStringLiteral("headline"), headline},
                        {QStringLiteral("record"), record},
