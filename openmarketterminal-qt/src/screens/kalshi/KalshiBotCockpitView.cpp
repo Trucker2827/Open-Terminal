@@ -207,8 +207,18 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
             const QRect line(lessons_rect.left() + 8,
                              lessons_rect.top() + 5 + (i * lesson_line_height),
                              lessons_rect.width() - 16, lesson_line_height);
+            // The full line when it fits, the presenter's compact form when it
+            // does not. Eliding the full line cuts from the RIGHT, which is
+            // where the sample size sits — a conclusion drawn here without its
+            // denominator is the one thing this card must never show. Both
+            // strings come from the presenter; nothing is composed here.
+            const QString full = scene_.lessons.at(i);
+            const QString compact = i < scene_.lessons_compact.size()
+                                        ? scene_.lessons_compact.at(i) : full;
+            const QString drawn =
+                small_metrics.horizontalAdvance(full) <= line.width() ? full : compact;
             painter.drawText(line, Qt::AlignVCenter | Qt::AlignLeft,
-                             elide(small_metrics, scene_.lessons.at(i), line.width()));
+                             elide(small_metrics, drawn, line.width()));
         }
     }
 

@@ -196,6 +196,11 @@ struct BotCockpitScene {
     /// demoted, so this scene cannot paint a stale lesson healthy.
     QStringList lessons;
     QStringList lessons_roles;
+    /// The same lines without the claim and key numbers, for the widths this
+    /// scene actually has. Drawing `lessons` in a fixed-width scene elides
+    /// from the right, which is where the sample size is — so a narrow cockpit
+    /// would show conclusions with no denominator. Same indices as `lessons`.
+    QStringList lessons_compact;
     bool lessons_available = false;
     bool lessons_stale = false;
 
@@ -388,6 +393,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     // sample sizes and same roles the BOT tab and `kalshi bot lessons` show.
     scene.lessons = panel.lessons;
     scene.lessons_roles = panel.lessons_roles;
+    scene.lessons_compact = panel.lessons_compact;
     scene.lessons_available = panel.lessons_available;
     scene.lessons_stale = panel.lessons_stale;
 

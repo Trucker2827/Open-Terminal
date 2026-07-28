@@ -176,6 +176,17 @@ struct KalshiEdgeLesson {
     QString id;
     QString verdict;
     QString text;
+    /// The same lesson with the claim and the key numbers dropped, for a
+    /// surface too narrow to draw `text` without eliding it.
+    ///
+    /// This exists because of rule 1 and nothing else. The cockpit draws one
+    /// line per lesson in a fixed-width scene; eliding `text` there cuts from
+    /// the RIGHT, which is exactly where the sample size sits, so a narrow
+    /// window silently produced the one rendering this card must never have —
+    /// a conclusion with no denominator attached. `compact` front-loads the
+    /// sample size so it survives any width, and a widget chooses between the
+    /// two strings rather than composing a third.
+    QString compact;
     QString role = QStringLiteral("grey");
 };
 
@@ -296,16 +307,21 @@ inline KalshiEdgeLessonsView kalshi_edge_lessons(const KalshiEdgeReportFile& fil
         if (freshness.stale && out.role == QStringLiteral("green"))
             out.role = QStringLiteral("amber");
 
-        QStringList parts;
-        parts << QStringLiteral("%1 %2").arg(
+        const QString head = QStringLiteral("%1 %2").arg(
             out.id, lesson.value(QStringLiteral("title")).toString(QStringLiteral("(untitled)")));
-        parts << out.verdict;
+        const QString sample = sample_text(lesson);   // rule 1: on every line, always
+        const QString span = span_text(lesson);
+
+        QStringList parts;
+        parts << head << out.verdict;
         parts << lesson.value(QStringLiteral("claim")).toString(QStringLiteral("no claim stated"));
         const QString numbers = numbers_text(lesson);
         if (!numbers.isEmpty()) parts << numbers;
-        parts << sample_text(lesson);   // rule 1: on every line, always
-        parts << span_text(lesson);
+        parts << sample << span;
         out.text = parts.join(QStringLiteral(" · ")) + age_suffix;
+        // Sample size third, ahead of everything a narrow surface would cut.
+        out.compact = QStringList{head, out.verdict, sample, span}.join(QStringLiteral(" · ")) +
+                      age_suffix;
         view.lessons << out;
     }
     return view;

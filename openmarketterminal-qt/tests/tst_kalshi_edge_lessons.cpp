@@ -161,6 +161,37 @@ class TestKalshiEdgeLessons : public QObject {
         QVERIFY(view.lessons.at(1).text.contains(QStringLiteral("n=271 settled contracts")));
     }
 
+    /// The cockpit draws one line per lesson in a fixed-width scene and elides
+    /// from the right — which is where the sample size is. The compact form
+    /// exists so that surface still carries it, so it must front-load the
+    /// sample and be short enough to be worth choosing.
+    void the_compact_line_keeps_the_sample_size_a_narrow_surface_would_cut() {
+        const KalshiEdgeLessonsView view =
+            kalshi_edge_lessons(published(report(kDay, four_lessons())), kNow);
+        for (const auto& rendered : view.lessons) {
+            QVERIFY2(rendered.compact.contains(QStringLiteral("n=")),
+                     qUtf8Printable(rendered.compact));
+            QVERIFY2(rendered.compact.size() < rendered.text.size(),
+                     qUtf8Printable(rendered.compact));
+            // The verdict survives too — a compact line that dropped it would
+            // be a sample size attached to nothing.
+            QVERIFY(rendered.compact.contains(rendered.verdict));
+            // The sample must sit ahead of the span, so elision eats the span
+            // first and never the denominator.
+            QVERIFY(rendered.compact.indexOf(QStringLiteral("n=")) <
+                    rendered.compact.indexOf(QStringLiteral("of record")));
+        }
+        QVERIFY(view.lessons.at(3).compact.contains(QStringLiteral("n=25 settled positions")));
+    }
+
+    void a_stale_compact_line_still_carries_the_age() {
+        const KalshiEdgeLessonsView view =
+            kalshi_edge_lessons(published(report(30 * kDay, four_lessons())), kNow);
+        for (const auto& rendered : view.lessons)
+            QVERIFY2(rendered.compact.contains(QStringLiteral("STALE")),
+                     qUtf8Printable(rendered.compact));
+    }
+
     void a_lesson_that_states_no_sample_size_says_so_rather_than_showing_zero() {
         const QJsonArray lessons{lesson(QStringLiteral("Q1"),
                                         QStringLiteral("INSUFFICIENT_DATA"), -1,
@@ -275,6 +306,31 @@ class TestKalshiEdgeLessons : public QObject {
     void the_stale_boundary_is_exact() {
         QVERIFY(!kalshi_edge_report_freshness(report(kKalshiEdgeReportStaleMs, {}), kNow).stale);
         QVERIFY(kalshi_edge_report_freshness(report(kKalshiEdgeReportStaleMs + 1, {}), kNow).stale);
+    }
+
+    /// Pinned in ABSOLUTE days, deliberately. Every other staleness assertion
+    /// here is written against `kKalshiEdgeReportStaleMs`, so widening that
+    /// constant moves the tests with it and they all keep passing — which is
+    /// exactly what a neuter check found. These two do not move: they say what
+    /// the threshold must be worth in days, not that it equals itself.
+    void the_threshold_is_pinned_in_days_not_to_its_own_constant() {
+        QVERIFY2(!kalshi_edge_report_freshness(report(14 * kDay, {}), kNow).stale,
+                 "a fortnight-old report (one missed weekly run) must still read fresh");
+        QVERIFY2(kalshi_edge_report_freshness(report(16 * kDay, {}), kNow).stale,
+                 "a report older than two cadences plus slack must read stale");
+        QVERIFY2(kalshi_edge_report_freshness(report(30 * kDay, {}), kNow).stale,
+                 "a month-old report must read stale");
+    }
+
+    void a_month_old_report_cannot_paint_a_green_line() {
+        const KalshiEdgeLessonsView view =
+            kalshi_edge_lessons(published(report(30 * kDay, four_lessons())), kNow);
+        QVERIFY(view.stale);
+        QCOMPARE(view.header_role, QStringLiteral("amber"));
+        QCOMPARE(view.lessons.at(2).verdict, QStringLiteral("EDGE"));
+        QCOMPARE(view.lessons.at(2).role, QStringLiteral("amber"));
+        for (const QString& line : view.lines())
+            QVERIFY2(line.contains(QStringLiteral("STALE")), qUtf8Printable(line));
     }
 
     void an_undated_report_is_stale_never_current() {

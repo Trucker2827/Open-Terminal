@@ -1,0 +1,38 @@
+# issue #174 — WHAT THE RECORD TEACHES, the CLI renderer (2026-07-28)
+
+$ openterminalcli kalshi bot lessons
+WHAT THE RECORD TEACHES · 4 lessons from the edge autopsy · generated 13m ago
+Q1 QUOTE LAG VS SPOT · NO_EDGE · the Kalshi book does not measurably keep moving after a spot move it already knows about · mid drift @15s +1.49¢ · t 1.14 · half-spread 0.63¢ · fee 1.50¢ · net if taking -0.64¢ · net vs fee only -0.01¢ · n=10 spot moves at 3.0σ (46 aligned observations across 36 markets) · 9.2h of record
+Q2 CALIBRATOR VS THE MARKET MID · NO_EDGE · the calibrator is not mistuned, it is uninformative: the raw market mid scores better · calibrator Brier 0.0988 · raw market mid 0.0955 · delta vs mid +0.0033 · n=271 settled contracts (5852 forecast rows, scored per contract) · 3.4d of record
+Q3 RECALIBRATION HEADROOM · NO_EDGE · correction moves the signal but does not carry it past the market mid — there is no headroom worth trading · Platt gain +0.0017 · isotonic gain -0.0004 · corrected vs mid +0.0015 · n=251 out-of-sample contracts (5 walk-forward folds, contracts never split by row) · 3.4d of record
+Q4 THE BOT'S OWN SETTLED BIDS · INSUFFICIENT_DATA · the bot's own record is too short to teach anything about which bids work · net after fees -18.99 USD · fees 1.30 USD · win rate 44% · n=25 settled positions (11 won / 14 lost) · 3.4d of record
+  report /Users/haydarevich/Library/Application Support/Open Terminal/Open Terminal/kalshi-edge-report.json
+  a lesson here changes NOTHING about what the bot does — it becomes strategy only through its own issue and review
+
+$ openterminalcli --json kalshi bot lessons | jq '{stale, verdicts: [.lessons[] | {id, verdict}]}'
+{
+  "available": true,
+  "stale": false,
+  "verdicts": [
+    {
+      "id": "Q1",
+      "verdict": "NO_EDGE",
+      "role": "grey"
+    },
+    {
+      "id": "Q2",
+      "verdict": "NO_EDGE",
+      "role": "grey"
+    },
+    {
+      "id": "Q3",
+      "verdict": "NO_EDGE",
+      "role": "grey"
+    },
+    {
+      "id": "Q4",
+      "verdict": "INSUFFICIENT_DATA",
+      "role": "grey"
+    }
+  ]
+}

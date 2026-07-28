@@ -146,6 +146,10 @@ struct KalshiBotPanelView {
     // artifact's own freshness, which already demoted every green role.
     QStringList lessons;
     QStringList lessons_roles;
+    /// The same lines with the claim and key numbers dropped, for a surface
+    /// that would otherwise elide the sample size off the right-hand end.
+    /// Same indices, same header at 0.
+    QStringList lessons_compact;
     bool lessons_available = false;
     bool lessons_stale = false;
     QStringList decisions;      // most recent decisions first, passes included
@@ -315,8 +319,11 @@ inline KalshiBotPanelView present_kalshi_bot_panel(const QJsonArray& ledger_rows
     view.lessons_stale = lessons_view.stale;
     view.lessons = lessons_view.lines();
     view.lessons_roles << lessons_view.header_role;
-    for (const KalshiEdgeLesson& lesson : lessons_view.lessons)
+    view.lessons_compact << lessons_view.header;
+    for (const KalshiEdgeLesson& lesson : lessons_view.lessons) {
         view.lessons_roles << lesson.role;
+        view.lessons_compact << lesson.compact;
+    }
 
     // --- the conversion funnel: rendered, never re-derived (issue #153) -----
     // A pass-through of the CLI's formatter over the CLI's published file. The
