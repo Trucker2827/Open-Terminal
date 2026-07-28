@@ -47,6 +47,17 @@ subset the calibrator loses by **+0.0112 with t = 3.13**, the direction and
 strength #169 reported. When there is a real effect in this data, this machinery
 reports it.
 
+**A note on the script's own headline, which is deliberately weaker.** Running
+the script prints `The exception is WEIGHTING-DEPENDENT …`, because that string
+is assembled mechanically from the two Brier signs and is not allowed to editorialise.
+The report states the stronger conclusion because of what the same
+`verdict` string goes on to say — *"but those contracts are only 3 volatility
+episode(s), the largest carrying 96% of the rows — the effective n"*. A
+weighting-dependent result measured over one episode is not a surviving
+exception. The difference between the two sentences is judgement about sample
+structure, applied on top of the arithmetic, and it is stated here rather than
+quietly folded into the script's output.
+
 ---
 
 ## Method
@@ -98,7 +109,10 @@ selected row start a new episode.
 | 3 | 07-27 19:05 → 19:11 | 0.1 | 47 | 11 | 0.1167 | 0.0927 | **+0.0240** |
 
 `volatility_by_utc_day` — over **all** scored rows, so the two empty days are
-shown to be a calm market rather than a join that lost them:
+shown to be a calm market rather than a join that lost them. This is a
+row-level diagnostic of where the fast markets were, not a scoring cell: it
+reports no Brier and therefore carries no contract count, unlike every table
+below it.
 
 | Day (UTC) | Rows with vol | Median | Max | Rows > 3.82 |
 |---|---:|---:|---:|---:|
