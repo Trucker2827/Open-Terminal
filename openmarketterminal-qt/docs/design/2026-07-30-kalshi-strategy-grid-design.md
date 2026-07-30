@@ -169,3 +169,34 @@ clustered effective_n, walk-forward split by close time, correction arithmetic, 
    human report.
 5. Consumers: CLI reader verb; bot advisory panel line. (Live preview + MCP verb +
    maker variants are explicit follow-ons.)
+
+## Amendments during implementation (2026-07-30)
+
+Recorded so this spec matches the shipped `scripts/research/strategy_grid.py` (final review):
+
+- **Survivor rule now requires beating BOTH nulls, positively.** A variant is
+  `trust: "measured"` iff it clears Benjamini–Hochberg AND `effective_n ≥ 30` AND
+  **`delta_vs_hold > 0` AND `delta_vs_market > 0`** AND `sign(walkforward_delta) ==
+  sign(delta_vs_hold)`. The earlier rule only checked the sign match, which could
+  have flagged a reliably-LOSING variant (two-sided-significant, negative edge,
+  negative walk-forward) as a survivor. Requiring both deltas positive makes the
+  `-latest.json` "beats hold+market" headline literally true. Note the market null
+  is structurally harder: `market_pnl` uses the entry mid, so `delta_vs_market <
+  delta_vs_hold` almost always (by ~half the spread).
+- **Bonferroni is reported** (design pre-registration) as
+  `data.bonferroni_significant_count` (variants with `p < alpha/m`); it is a
+  reference anchor and does not gate.
+- **Walk-forward is a single time-ordered final holdout, not 5 separate folds.**
+  `_fold_bounds` computes 5 expanding boundaries but the sign check uses the last
+  (~final 20% of contracts by close time) as the out-of-sample test. This realises
+  the "train/test split by close time" intent; the literal "5 folds" is not
+  implemented (on small samples the holdout can hold few clusters — a known
+  weakness of the sign gate until more data accrues).
+- **Full-grid JSON keys.** Each variant record uses `band`/`gate` (not
+  `entry_band`/`entry_gate`), carries `trust`, and reports `delta_vs_hold`/
+  `delta_vs_market`/`effective_n`/`ci95`/`walkforward_delta`/`win_rate`/`p_value`/
+  `ungateable`/`survives_correction` rather than `mean_pnl`/`total_pnl`/`roi`/
+  `clustered_t`. Consumers read `-latest.json`, whose schema is as designed.
+- **`run(evidence)` param is currently unused** (all loaders resolve paths via
+  `OPENTERMINAL_EVIDENCE_DIR`); kept for signature stability, documented as a
+  footgun to wire through or drop when a caller needs a non-default dir.

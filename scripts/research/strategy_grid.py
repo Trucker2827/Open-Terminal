@@ -356,6 +356,10 @@ def run(evidence):
         pvals.append(pval)
 
     rejected = benjamini_hochberg(pvals, alpha=0.05) if pvals else []
+    # Bonferroni reported alongside for reference (design pre-registration): the
+    # strictest correction, p < alpha/m. Not used to gate; a sanity anchor.
+    m_tests = len(pvals)
+    bonferroni_count = sum(1 for p in pvals if m_tests and p < 0.05 / m_tests)
 
     variants_out = []
     survivor_count = 0
@@ -366,9 +370,16 @@ def run(evidence):
         delta_vs_market = score.get("delta_vs_market")
         wf = score.get("walkforward_delta")
         survives = bool(rejected[idx])
+        # "measured" means the variant clears BH significance AND has enough
+        # effective sample AND POSITIVELY beats BOTH nulls (hold and market) AND
+        # keeps its sign out-of-sample. Requiring delta_vs_market > 0 makes the
+        # "beats hold+market" label literally true; requiring delta_vs_hold > 0
+        # stops a reliably-LOSING variant (negative edge, negative walk-forward,
+        # two-sided-significant) from ever being named a survivor.
         is_survivor = (survives and effective_n >= SURVIVOR_MIN_EFF_N and
-                      wf is not None and delta_vs_hold is not None and
-                      _sign(wf) == _sign(delta_vs_hold))
+                      delta_vs_hold is not None and delta_vs_hold > 0.0 and
+                      delta_vs_market is not None and delta_vs_market > 0.0 and
+                      wf is not None and _sign(wf) == _sign(delta_vs_hold))
         if is_survivor:
             trust = "measured"
             survivor_count += 1
@@ -409,6 +420,7 @@ def run(evidence):
             "contracts_considered": contracts_considered,
             "calibrator_tickers_with_signal": len(calib_by_ticker),
             "survivor_count": survivor_count,
+            "bonferroni_significant_count": bonferroni_count,
         },
         "method": {
             "families": list(BAND_FAMILY_PREFIX),
@@ -417,10 +429,12 @@ def run(evidence):
             "market_pnl": ("(1 if won else 0) - entry_mid - fee(entry_mid); "
                            "entry_mid is the bet-side mid at entry"),
             "correction": ("Benjamini-Hochberg over every variant's p-value on "
-                           "delta_vs_hold, alpha=0.05"),
+                           "delta_vs_hold, alpha=0.05; Bonferroni (p<alpha/m) "
+                           "reported for reference in data.bonferroni_significant_count"),
             "survivor_rule": (
-                "survives_correction AND effective_n >= %d AND "
-                "sign(walkforward_delta) == sign(delta_vs_hold)" % SURVIVOR_MIN_EFF_N),
+                "survives_correction AND effective_n >= %d AND delta_vs_hold > 0 "
+                "AND delta_vs_market > 0 AND sign(walkforward_delta) == "
+                "sign(delta_vs_hold)" % SURVIVOR_MIN_EFF_N),
             "trust_levels": ["measured", "insufficient_sample", "rejected"],
         },
         "variants": variants_out,
