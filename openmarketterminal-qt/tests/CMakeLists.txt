@@ -664,6 +664,14 @@ target_include_directories(tst_kalshi_evidence PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_evidence PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_evidence COMMAND tst_kalshi_evidence)
 
+# Kalshi 15m subscription-reconcile policy — pure filter/dedupe/cap of desired
+# market_ids by family prefix, and set-difference reconcile (to_subscribe /
+# to_unsubscribe) against a held set. No I/O, no Qt objects beyond containers.
+add_executable(tst_kalshi_15m_reconcile tst_kalshi_15m_reconcile.cpp)
+target_include_directories(tst_kalshi_15m_reconcile PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_15m_reconcile PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_15m_reconcile COMMAND tst_kalshi_15m_reconcile)
+
 add_executable(tst_kalshi_settlement_scoreboard tst_kalshi_settlement_scoreboard.cpp)
 target_include_directories(tst_kalshi_settlement_scoreboard PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_settlement_scoreboard PRIVATE openterminal_core Qt6::Core Qt6::Test)

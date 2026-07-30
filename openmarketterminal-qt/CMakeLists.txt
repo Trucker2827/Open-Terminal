@@ -1362,6 +1362,7 @@ set(SERVICE_SOURCES
     src/services/prediction/polymarket/PolymarketTypeMap.cpp
     src/services/prediction/polymarket/PolymarketAdapter.cpp
     src/services/prediction/kalshi/KalshiRestClient.cpp
+    src/services/prediction/kalshi/Kalshi15mCaptureController.cpp
     src/services/prediction/kalshi/KalshiStrategyGridView.cpp
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
@@ -1372,6 +1373,7 @@ set(SERVICE_SOURCES
     src/services/prediction/kalshi/KalshiBotGate.cpp
     src/services/prediction/kalshi/KalshiBotLive.cpp
     src/services/prediction/kalshi/KalshiBotOrders.cpp
+    src/services/prediction/kalshi/Kalshi15mReconcile.cpp
     # Phase 4 — internal prediction-market adapter (demo mode until
     # `openmarketterminal.markets_endpoint` is configured and `openmarketterminal_market` lands).
     src/services/prediction/openmarketterminal_internal/OpenMarketTerminalInternalAdapter.cpp
