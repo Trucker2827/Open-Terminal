@@ -20,13 +20,13 @@
 - **Families:** `KXBTCD` (recorded + validated-derived outcomes) and `KXBTC15M` (recorded-only); exclude `KXBTC` band, counted.
 - **Schema versioned** — output JSON carries `schema_version` (start at `1`).
 
-Paths are relative to `openmarketterminal-qt/`. Run tests from `openmarketterminal-qt/`.
+**PATH NOTE (corrected):** the research modules live at **repo-root** `scripts/research/`, NOT under `openmarketterminal-qt/`. So `strategy_grid.py` sits at repo-root `scripts/research/strategy_grid.py` beside `kalshi_edge_common.py`/`q1_quote_lag.py`. The test lives at `openmarketterminal-qt/tests/test_strategy_grid.py` and reaches the modules with `sys.path.insert(0, join(dirname(__file__), "..", "..", "scripts", "research"))` plus `join(..., "..", "scripts")` (the `kalshi_lag_series` dir kalshi_edge_common needs) — identical to `test_kalshi_lag_series.py:23-27`. Run tests from `openmarketterminal-qt/`.
 
 ## File Structure
 
-- `scripts/research/strategy_grid.py` — **create**: the whole sweep (grid, sim, gates, stats, artifacts, `main`).
-- `tests/test_strategy_grid.py` — **create**: unit + end-to-end tests on a seeded temp evidence dir (mirror `test_kalshi_lag_series.py`'s `OPENTERMINAL_EVIDENCE_DIR` pattern).
-- Reused, unchanged: `scripts/research/kalshi_edge_common.py`, `scripts/research/q1_quote_lag.py`.
+- `scripts/research/strategy_grid.py` (repo root) — **create**: the whole sweep (grid, sim, gates, stats, artifacts, `main`).
+- `openmarketterminal-qt/tests/test_strategy_grid.py` — **create**: unit + end-to-end tests on a seeded temp evidence dir (mirror `test_kalshi_lag_series.py`'s `OPENTERMINAL_EVIDENCE_DIR` + `sys.path` pattern).
+- Reused, unchanged (repo root): `scripts/research/kalshi_edge_common.py`, `scripts/research/q1_quote_lag.py`.
 
 ---
 
