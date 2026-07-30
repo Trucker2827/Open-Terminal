@@ -1362,6 +1362,7 @@ set(SERVICE_SOURCES
     src/services/prediction/polymarket/PolymarketTypeMap.cpp
     src/services/prediction/polymarket/PolymarketAdapter.cpp
     src/services/prediction/kalshi/KalshiRestClient.cpp
+    src/services/prediction/kalshi/Kalshi15mCaptureController.cpp
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp

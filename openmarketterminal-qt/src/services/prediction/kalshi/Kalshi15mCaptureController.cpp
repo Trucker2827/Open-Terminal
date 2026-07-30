@@ -1,0 +1,64 @@
+#include "services/prediction/kalshi/Kalshi15mCaptureController.h"
+#include "services/prediction/kalshi/KalshiRestClient.h"
+#include "services/prediction/kalshi/Kalshi15mReconcile.h"
+#include "services/prediction/PredictionExchangeAdapter.h"
+
+namespace pred = openmarketterminal::services::prediction;
+namespace kalshi_ns = openmarketterminal::services::prediction::kalshi_ns;
+
+namespace {
+/// KalshiAdapter::subscribe_market/unsubscribe_market take asset_ids in
+/// "<ticker>:yes|no" form (it splits on the last ':' to recover the ticker
+/// for the WS channel — see KalshiAdapter::split_asset_id). The reconcile
+/// policy in Kalshi15mReconcile operates on bare market_id tickers (no
+/// colon), so we must re-attach a side suffix before calling the adapter or
+/// split_asset_id silently drops the (colon-less) ticker.
+QStringList to_asset_ids(const QStringList& tickers) {
+    QStringList out;
+    out.reserve(tickers.size());
+    for (const QString& t : tickers) out.append(t + QStringLiteral(":yes"));
+    return out;
+}
+}  // namespace
+
+Kalshi15mCaptureController::Kalshi15mCaptureController(
+    pred::PredictionExchangeAdapter* adapter, QObject* parent)
+    : QObject(parent), adapter_(adapter),
+      rest_(std::make_unique<kalshi_ns::KalshiRestClient>(this)) {
+    connect(rest_.get(), &kalshi_ns::KalshiRestClient::markets_ready,
+            this, &Kalshi15mCaptureController::on_markets_ready);
+    poll_timer_.setInterval(poll_interval_ms_);
+    connect(&poll_timer_, &QTimer::timeout, this, &Kalshi15mCaptureController::poll);
+}
+
+Kalshi15mCaptureController::~Kalshi15mCaptureController() = default;
+
+void Kalshi15mCaptureController::start() { poll(); poll_timer_.start(); }
+void Kalshi15mCaptureController::stop()  { poll_timer_.stop(); }
+
+void Kalshi15mCaptureController::poll() {
+    page_accum_.clear();
+    // Discover open markets for the (single, MVP) configured 15-minute series.
+    rest_->fetch_markets(QStringLiteral("open"), QString(), families_.first(),
+                         QString(), 100, QString());
+}
+
+void Kalshi15mCaptureController::on_markets_ready(
+    const QVector<pred::PredictionMarket>& markets, const QString& next_cursor) {
+    page_accum_ += markets;
+    if (!next_cursor.isEmpty()) {
+        rest_->fetch_markets(QStringLiteral("open"), QString(), families_.first(),
+                             QString(), 100, next_cursor);
+        return;
+    }
+    reconcile_and_apply();
+}
+
+void Kalshi15mCaptureController::reconcile_and_apply() {
+    const QStringList desired =
+        kalshi15m::desired_subscriptions(page_accum_, families_, cap_);
+    const kalshi15m::Delta d = kalshi15m::reconcile(desired, held_);
+    if (!d.to_subscribe.isEmpty())   adapter_->subscribe_market(to_asset_ids(d.to_subscribe));
+    if (!d.to_unsubscribe.isEmpty()) adapter_->unsubscribe_market(to_asset_ids(d.to_unsubscribe));
+    held_ = QSet<QString>(desired.begin(), desired.end());
+}
