@@ -1363,6 +1363,7 @@ set(SERVICE_SOURCES
     src/services/prediction/polymarket/PolymarketAdapter.cpp
     src/services/prediction/kalshi/KalshiRestClient.cpp
     src/services/prediction/kalshi/Kalshi15mCaptureController.cpp
+    src/services/prediction/kalshi/KalshiStrategyGridView.cpp
     src/services/prediction/kalshi/KalshiWsClient.cpp
     src/services/prediction/kalshi/KalshiAdapter.cpp
     src/services/prediction/kalshi/KalshiEvidenceEngine.cpp
@@ -3425,6 +3426,19 @@ target_include_directories(openterminalcli PRIVATE src)
 target_compile_definitions(openterminalcli PRIVATE
     OPENMARKETTERMINAL_VERSION_STRING="${PROJECT_VERSION}")
 target_link_libraries(openterminalcli PRIVATE openterminal_core Qt6::Core Qt6::Network)
+
+# openterminal_core's SpeechService references create_apple_speech_provider()
+# (added by #186 for native dictation). That symbol lives in
+# AppleSpeechProvider.mm, which was attached ONLY to the GUI target — so the CLI,
+# which also links core, failed to link (undefined symbol). Attach the .mm (and
+# AVFoundation) to the CLI too; the -fobjc-arc source property is set once above,
+# directory-scoped, so it applies here. The CLI never invokes speech — this only
+# satisfies the link.
+if(APPLE)
+    target_sources(openterminalcli PRIVATE src/services/stt/AppleSpeechProvider.mm)
+    target_link_libraries(openterminalcli PRIVATE
+        "-framework Speech" "-framework AVFoundation" "-framework Foundation")
+endif()
 
 option(OPENTERMINALCLI_INSTALL_OT_ALIAS "Install 'ot' symlink alias for openterminalcli on Unix" ON)
 

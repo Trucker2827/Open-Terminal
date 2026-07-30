@@ -42,6 +42,7 @@
 #include "screens/kalshi/KalshiBotPanelPresentation.h"
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotRuntime.h"
+#include "services/prediction/kalshi/KalshiStrategyGridView.h"
 
 #include <QHash>
 #include <QJsonArray>
@@ -157,6 +158,10 @@ struct BotCockpitScene {
     bool dormant = true;   ///< stopped / stale / off / unreadable — a dead cockpit
     QString banner;        ///< the unmissable line at the top of the scene
     QString mood_reason;   ///< why this mood and not another
+    /// One advisory line from the paper strategy-grid (kalshi-strategy-grid-latest.json):
+    /// UNAVAILABLE / no measured edge / a forming candidate / a measured survivor,
+    /// STALE-tagged. Advisory only — it sits beside the gate, never drives it.
+    QString grid_line;
 
     // ── rain ───────────────────────────────────────────────────────────────
     QList<BotCockpitColumn> columns;
@@ -352,10 +357,14 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                                            const QJsonArray& ledger_rows,
                                            const QJsonObject& live_status,
                                            qint64 now_ms,
+                                           const QByteArray& grid_json = QByteArray(),
                                            int max_columns = kBotCockpitMaxColumns,
                                            int max_pulses = kBotCockpitMaxPulses) {
     using namespace bot_cockpit_detail;
     BotCockpitScene scene;
+    // Advisory strategy-grid line, read-only over the engine's verdict file.
+    scene.grid_line = services::prediction::kalshi_ns::grid_cockpit_line(
+        services::prediction::kalshi_ns::parse_grid_latest(grid_json, now_ms));
 
     // ── mood ───────────────────────────────────────────────────────────────
     // Rule 3. `panel.mode_live` is true only when the newest READABLE tick said
@@ -813,7 +822,14 @@ inline BotCockpitScene load_bot_cockpit_scene(const QJsonObject& live_status, qi
         const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
         if (document.isObject()) report = document.object();
     }
-    return present_bot_cockpit(panel, report, gate, ledger, live_status, now_ms);
+    // The advisory strategy-grid verdict, read-only; missing/garbage/stale is
+    // handled inside present_bot_cockpit (fails closed to UNAVAILABLE/STALE).
+    QByteArray grid_json;
+    QFile grid_file(cli::kalshi_evidence_path(
+        QStringLiteral("kalshi-strategy-grid-latest.json")));
+    if (grid_file.open(QIODevice::ReadOnly)) grid_json = grid_file.readAll();
+    return present_bot_cockpit(panel, report, gate, ledger, live_status, now_ms,
+                               grid_json);
 }
 
 } // namespace openmarketterminal::screens::kalshi
