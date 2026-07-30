@@ -968,6 +968,13 @@ add_test(NAME e2e_kalshi_bot_kill_switch
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_kill_switch.sh)
 
+# `kalshi grid` — read-only surfacing of kalshi-strategy-grid-latest.json against
+# the real openterminalcli: headline + candidates in human output, raw JSON with
+# --json, and UNAVAILABLE + nonzero exit when the file is missing. Temp evidence.
+add_test(NAME e2e_kalshi_grid_cli
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_grid_cli.sh)
+
 # Issue #130 — micro-live containment, proved against the real openterminalcli:
 # `kalshi bot run --mode live` exits non-zero with a named, journaled refusal
 # when no human armed a session, the kill switch outranks even that check,
