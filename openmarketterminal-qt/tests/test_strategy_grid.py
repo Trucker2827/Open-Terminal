@@ -195,3 +195,32 @@ class EndToEndTest(unittest.TestCase):
         for key in ("side", "band", "gate", "exit", "delta_vs_hold", "delta_vs_market",
                     "effective_n", "ci95", "walkforward_delta", "trust"):
             self.assertIn(key, s)
+
+
+class CandidateTest(unittest.TestCase):
+    def _variant(self, vid, dh, dm, eff, survives, trust, p=0.5, wf=1.0):
+        return {"variant_id": vid, "side": "NO", "band": [0.10, 0.25], "gate": "mechanical",
+                "exit": {"kind": "sl", "amount": 0.15}, "delta_vs_hold": dh,
+                "delta_vs_market": dm, "effective_n": eff, "ci95": [0.0, 0.0],
+                "walkforward_delta": wf, "p_value": p, "survives_correction": survives,
+                "trust": trust}
+
+    def test_positive_near_miss_becomes_a_candidate_with_reason(self):
+        full = {"schema_version": sg.SCHEMA_VERSION, "as_of_utc": "2026-07-30T00:00:00+00:00",
+                "variants": [
+                    # positive both nulls, enough sample, but NOT BH-significant -> candidate
+                    self._variant("A", 0.02, 0.01, 40, False, "rejected", p=0.11),
+                    # positive both nulls but effective_n < 30 -> candidate, effective_n reason
+                    self._variant("B", 0.03, 0.02, 18, False, "insufficient_sample", p=0.5),
+                    # NEGATIVE market null -> never a candidate
+                    self._variant("C", 0.02, -0.01, 40, False, "rejected", p=0.11),
+                    # too small a sample (<10) -> never a candidate
+                    self._variant("D", 0.02, 0.01, 5, False, "insufficient_sample", p=0.5)]}
+        latest = sg.latest_summary(full)
+        ids = [c["variant_id"] for c in latest["candidates"]]
+        self.assertEqual(ids, ["B", "A"])   # ranked by delta_vs_market desc (0.02, 0.01)
+        by = {c["variant_id"]: c["blocked_by"] for c in latest["candidates"]}
+        self.assertIn("effective_n", by["B"])            # 18 < 30
+        self.assertIn("not significant", by["A"])        # BH
+        self.assertNotIn("C", ids)
+        self.assertNotIn("D", ids)

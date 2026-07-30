@@ -441,10 +441,25 @@ def run(evidence):
     }
 
 
+CANDIDATE_MIN_EFF_N = 10
+CANDIDATE_TOP_N = 8
+
+
+def _blocked_by(v):
+    """Why a positive-edge variant is NOT 'measured' — precedence: sample, then
+    significance, then walk-forward. First shortfall wins."""
+    eff = v.get("effective_n") or 0.0
+    if eff < SURVIVOR_MIN_EFF_N:
+        return "effective_n %.0f < %d" % (eff, SURVIVOR_MIN_EFF_N)
+    if not v.get("survives_correction"):
+        return "not significant (BH); p=%.3f" % (v.get("p_value") or 1.0)
+    return "walk-forward sign flip"
+
+
 def latest_summary(full):
-    """The compact, honest survivors file: only variants trusted as
-    'measured' are named, with the humility fields a reader needs to judge
-    them, never the full sweep."""
+    """The compact, honest consumer file: 'measured' survivors AND the top
+    positive near-miss CANDIDATES (each with why it fell short), with the
+    humility fields a reader needs to judge them — never the full sweep."""
     survivors = [v for v in full["variants"] if v.get("trust") == "measured"]
     survivors.sort(key=lambda v: v.get("delta_vs_hold") or 0.0, reverse=True)
     if survivors:
@@ -466,11 +481,29 @@ def latest_summary(full):
         "walkforward_delta": v.get("walkforward_delta"),
         "trust": v["trust"],
     } for v in survivors]
+    # Candidates: positive near-misses (beat BOTH nulls, real sample) that the
+    # gate did not bless, ranked by the HARDER null. A forming edge, made visible
+    # with its shortfall in plain sight — never promoted to a survivor.
+    non_surv = [v for v in full["variants"]
+                if v.get("trust") != "measured"
+                and (v.get("delta_vs_hold") or 0.0) > 0.0
+                and (v.get("delta_vs_market") or 0.0) > 0.0
+                and (v.get("effective_n") or 0.0) >= CANDIDATE_MIN_EFF_N]
+    non_surv.sort(key=lambda v: v.get("delta_vs_market") or 0.0, reverse=True)
+    candidates = [{
+        "variant_id": v["variant_id"], "side": v["side"], "band": v["band"],
+        "gate": v["gate"], "exit": v["exit"],
+        "delta_vs_hold": v["delta_vs_hold"], "delta_vs_market": v["delta_vs_market"],
+        "effective_n": v["effective_n"], "ci95": v.get("ci95"),
+        "walkforward_delta": v.get("walkforward_delta"),
+        "trust": v["trust"], "blocked_by": _blocked_by(v),
+    } for v in non_surv[:CANDIDATE_TOP_N]]
     return {
         "schema_version": full["schema_version"],
         "as_of_utc": full["as_of_utc"],
         "headline": headline,
         "survivors": out_survivors,
+        "candidates": candidates,
     }
 
 
