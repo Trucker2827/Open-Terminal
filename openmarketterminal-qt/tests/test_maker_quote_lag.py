@@ -112,12 +112,24 @@ class SimulateEventAheadSizeTest(unittest.TestCase):
         records = mql.simulate_event(event, book, trades, outcomes, sizes=sizes)
         by_horizon = {r["horizon_s"]: r for r in records
                      if r["rest_offset_ticks"] == 0}
+        by_horizon_offset1 = {r["horizon_s"]: r for r in records
+                              if r["rest_offset_ticks"] == 1}
 
         for horizon in (5, 15, 30):
             self.assertIn(horizon, by_horizon, f"missing horizon {horizon}")
             self.assertEqual(by_horizon[horizon]["ahead_size"], 12.0)
             self.assertEqual(by_horizon[horizon]["ahead_size_source"],
                              mql.AHEAD_SIZE_SOURCE_TOP_OF_BOOK)
+
+        # The +1 tick offset rests strictly INSIDE the spread (0.41, between
+        # the 0.40 touch and the 0.45 ask) -- a price nobody was already
+        # quoting at (else it would itself be the touch), so it is provably
+        # empty: ahead_size must be 0.0 here even though the touch has 12
+        # contracts resting, not the touch's yes_bid_size.
+        self.assertIn(5, by_horizon_offset1)
+        self.assertEqual(by_horizon_offset1[5]["ahead_size"], 0.0)
+        self.assertEqual(by_horizon_offset1[5]["ahead_size_source"],
+                         mql.AHEAD_SIZE_SOURCE_EMPTY_LEVEL)
 
         # At the 15s horizon the optimistic hit (t+1s) has landed but the
         # pessimistic hit (t+20s) has not -- proof the bracket is REAL, not

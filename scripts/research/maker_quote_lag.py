@@ -57,9 +57,13 @@ EXIT_HORIZONS_S = (5, 15, 30, 60)
 # applied: `AHEAD_SIZE_SOURCE_TOP_OF_BOOK` when a real size row was found
 # at/before `join_ts`, `AHEAD_SIZE_SOURCE_NO_SIZE_ROW` (falling back to 0.0 —
 # front-of-queue then equals back-of-queue, a real simplification, not a
-# hidden one) when none was.
+# hidden one) when none was, and `AHEAD_SIZE_SOURCE_EMPTY_LEVEL` for a
+# rest-offset strictly inside the spread (see `simulate_event`: such a price
+# is provably empty, by definition of "touch", independent of whether a
+# size row was found).
 AHEAD_SIZE_SOURCE_TOP_OF_BOOK = "top_of_book"
 AHEAD_SIZE_SOURCE_NO_SIZE_ROW = "no_size_row"
+AHEAD_SIZE_SOURCE_EMPTY_LEVEL = "empty_level_inside_spread"
 
 
 def load_sizes():
@@ -227,22 +231,36 @@ def simulate_event(event, book, trades, outcomes, sizes=None):
         won = None if market_won_yes is None else (
             market_won_yes if side == "YES" else not market_won_yes)
 
-        size_row = sizes.at(ticker, t) if sizes is not None else None
-        if size_row is None:
-            ahead_size = 0.0
-            ahead_size_source = AHEAD_SIZE_SOURCE_NO_SIZE_ROW
+        touch_size_row = sizes.at(ticker, t) if sizes is not None else None
+        if touch_size_row is None:
+            touch_ahead_size = 0.0
+            touch_ahead_size_source = AHEAD_SIZE_SOURCE_NO_SIZE_ROW
         else:
-            _, yes_bid_size, yes_ask_size = size_row
+            _, yes_bid_size, yes_ask_size = touch_size_row
             # RESTING side at join: a YES bet posts a YES bid (ahead ==
             # yes_bid_size); a NO bet posts a NO bid, which sits on the YES
             # ASK side of the same book (ahead == yes_ask_size).
-            ahead_size = yes_bid_size if side == "YES" else yes_ask_size
-            ahead_size_source = AHEAD_SIZE_SOURCE_TOP_OF_BOOK
+            touch_ahead_size = yes_bid_size if side == "YES" else yes_ask_size
+            touch_ahead_size_source = AHEAD_SIZE_SOURCE_TOP_OF_BOOK
 
         for offset_ticks in REST_OFFSET_TICKS:
             rest_price = round(touch_bid + offset_ticks * TICK_SIZE, 4)
             if rest_price >= touch_ask:
                 continue  # would cross the spread -- not a restable maker price
+            if offset_ticks == 0:
+                # Resting AT the touch: ahead of us is whatever top-of-book
+                # size the feed reports on the resting side.
+                ahead_size = touch_ahead_size
+                ahead_size_source = touch_ahead_size_source
+            else:
+                # Resting strictly INSIDE the spread (price-improving): by
+                # definition of "touch", nobody is quoting at this price yet
+                # -- if they were, this price would itself be the touch. The
+                # level is therefore provably empty, independent of whether
+                # a size row was found; using the touch's size here would
+                # overstate the queue ahead of us.
+                ahead_size = 0.0
+                ahead_size_source = AHEAD_SIZE_SOURCE_EMPTY_LEVEL
             hits = hits_against(side, rest_price, t, ticker_trades)
             fill = maker_fill(ahead_size, hits)
 
