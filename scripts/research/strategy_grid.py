@@ -46,3 +46,38 @@ def build_grid():
                     v["variant_id"] = variant_id(v)
                     grid.append(v)
     return grid
+
+FEE = common.fee_per_contract
+
+def bet_side_quotes(rows, side):
+    """(ts, yes_bid, yes_ask) -> (ts, bet_bid, bet_ask). NO buys/sells the complement."""
+    if side == "YES":
+        return [(ts, b, a) for ts, b, a in rows]
+    return [(ts, 1.0 - a, 1.0 - b) for ts, b, a in rows]   # NO: bid/ask flip & complement
+
+def simulate_exit(path, i0, entry_ask, exit_rule, close_ms):
+    """First (sell_bid, exit_ts) after i0 (before close) where the rule fires; taker at bid."""
+    kind, amt = exit_rule["kind"], exit_rule["amount"]
+    if kind == "hold":
+        return None, None
+    running_max = None
+    for ts, bid, _ask in path[i0 + 1:]:
+        if close_ms is not None and ts >= close_ms:
+            break
+        if kind == "tp" and bid >= entry_ask + amt:
+            return bid, ts
+        if kind == "sl" and bid <= entry_ask - amt:
+            return bid, ts
+        if kind == "trail":
+            running_max = bid if running_max is None else max(running_max, bid)
+            if bid <= running_max - amt:
+                return bid, ts
+    return None, None
+
+def contract_pnl(path, i0, entry_ask, exit_rule, won, close_ms=None):
+    hold_pnl = ((1.0 if won else 0.0) - entry_ask) - FEE(entry_ask)
+    sell_bid, _ts = simulate_exit(path, i0, entry_ask, exit_rule, close_ms)
+    if sell_bid is None:
+        return {"pnl": hold_pnl, "exited": False, "hold_pnl": hold_pnl}
+    pnl = (sell_bid - entry_ask) - FEE(entry_ask) - FEE(sell_bid)
+    return {"pnl": pnl, "exited": True, "hold_pnl": hold_pnl}

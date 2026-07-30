@@ -21,3 +21,34 @@ class GridTest(unittest.TestCase):
              "exit": {"kind": "sl", "amount": 0.15}}
         vid = sg.variant_id(v)
         self.assertEqual(vid, "NO|b10-25|physics|sl15")
+
+class SimTest(unittest.TestCase):
+    def _path(self):
+        # bet-side (ts_ms, bid, ask); price rises 0.20 -> 0.45 then settles
+        return [(1000, 0.19, 0.20), (2000, 0.30, 0.31), (3000, 0.44, 0.45)]
+
+    def test_take_profit_sells_at_bid_net_of_fees(self):
+        path = self._path()
+        # entered at ask 0.20 at i0=0; TP +0.20 -> first bid >= 0.40 is 0.44 @ t=3000
+        r = sg.contract_pnl(path, 0, 0.20, {"kind": "tp", "amount": 0.20}, won=False)
+        self.assertTrue(r["exited"])
+        expected = (0.44 - 0.20) - sg.common.fee_per_contract(0.20) - sg.common.fee_per_contract(0.44)
+        self.assertAlmostEqual(r["pnl"], expected, places=6)
+
+    def test_hold_uses_settlement_not_a_sale(self):
+        path = self._path()
+        r = sg.contract_pnl(path, 0, 0.20, {"kind": "hold", "amount": None}, won=True)
+        self.assertFalse(r["exited"])
+        self.assertAlmostEqual(r["pnl"], (1.0 - 0.20) - sg.common.fee_per_contract(0.20), places=6)
+
+    def test_stop_loss_triggers_on_decline(self):
+        path = [(1000, 0.49, 0.50), (2000, 0.33, 0.34), (3000, 0.20, 0.21)]
+        # entry ask 0.50; SL -0.15 -> first bid <= 0.35 is 0.33 @ t=2000
+        r = sg.contract_pnl(path, 0, 0.50, {"kind": "sl", "amount": 0.15}, won=False)
+        self.assertTrue(r["exited"])
+        expected = (0.33 - 0.50) - sg.common.fee_per_contract(0.50) - sg.common.fee_per_contract(0.33)
+        self.assertAlmostEqual(r["pnl"], expected, places=6)
+
+    def test_bet_side_quotes_flips_for_NO(self):
+        yes = [(1000, 0.60, 0.62)]
+        self.assertEqual(sg.bet_side_quotes(yes, "NO"), [(1000, 1 - 0.62, 1 - 0.60)])
