@@ -88,3 +88,14 @@ class GateTest(unittest.TestCase):
         self.assertTrue(sg.gate_ok("mechanical", "T", 1, "YES", s))
         self.assertTrue(sg.gate_ok("physics", "T", 1, "YES", s))
         self.assertIsNone(sg.gate_ok("calibrator", "T", 1, "YES", s))
+
+    def test_find_entry_floor_rejects_in_band_ticks_without_room(self):
+        close = 10_000_000
+        # in-band (0.02-0.10) ticks exist ONLY inside the last 120s -> floor skips all -> no entry
+        late_only = [(close - 90_000, 0.07, 0.08), (close - 30_000, 0.05, 0.06)]
+        self.assertIsNone(sg.find_entry(late_only, 0.02, 0.10, close))
+        # add one in-band tick WITH room (>120s) -> that tick is the entry
+        with_room = sorted(late_only + [(close - 300_000, 0.07, 0.08)])
+        got = sg.find_entry(with_room, 0.02, 0.10, close)
+        self.assertIsNotNone(got)
+        self.assertEqual(with_room[got[0]][0], close - 300_000)
