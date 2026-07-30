@@ -157,6 +157,12 @@ MAX_SECONDS_TO_CLOSE = 3600
 
 SOURCE_TICKERS = "kalshi-tickers.jsonl"
 SOURCE_BRTI = "kalshi-cf-benchmarks.jsonl"
+# Third retained stream (issue #170 Task 4, feeding the maker quote-lag engine
+# at scripts/research/maker_quote_lag.py): real trade prints for the SAME
+# threshold population the quotes are restricted to. Without this a fill
+# model has book prices but no real taker volume to bracket a resting order's
+# queue position against — see `collect_trades`.
+SOURCE_TRADES = "kalshi-trade-events.jsonl"
 ROTATIONS = ("{name}.1", "{name}")
 
 # ── deployment (issue #183) ──────────────────────────────────────────────────
@@ -457,6 +463,46 @@ def collect_brti(after_ms):
     return rows, oldest
 
 
+def collect_trades(after_ms):
+    """(rows, oldest_seen_ms) — in-band threshold trade prints newer than the cursor.
+
+    Restricted to the SAME population `collect_quotes` is: `-T` THRESHOLD
+    tickers (`parse_threshold_ticker`) within [MIN, MAX]_SECONDS_TO_CLOSE of
+    their own close. Unlike a quote row this file is kept VERBATIM in full —
+    not reconstructed field-by-field — because the maker fill model
+    (`scripts/research/maker_quote_lag.py`) reads `yes_price_dollars`,
+    `count_fp` and `taker_outcome_side`/`taker_side` off it directly, and a
+    series that quietly narrowed the schema could silently drop a field a
+    later reader needs without either side noticing.
+    """
+    rows = []
+    oldest = None
+    for _, record in _iter_source(SOURCE_TRADES):
+        ts_ms = _as_ms(record.get("ts_ms"))
+        if ts_ms is None:
+            continue
+        oldest = ts_ms if oldest is None else min(oldest, ts_ms)
+        if after_ms is not None and ts_ms <= after_ms:
+            continue
+        ticker = record.get("market_ticker")
+        if not ticker:
+            continue
+        parsed = parse_threshold_ticker(ticker)
+        if parsed is None:
+            continue
+        seconds_to_close = (parsed["close_ms"] - ts_ms) / 1000.0
+        if not MIN_SECONDS_TO_CLOSE <= seconds_to_close <= MAX_SECONDS_TO_CLOSE:
+            continue
+        row = dict(record)
+        row["source"] = SOURCE_TRADES
+        rows.append({
+            "stream": SOURCE_TRADES,
+            "ts_ms": ts_ms,
+            "row": row,
+        })
+    return rows, oldest
+
+
 # ── state / manifest ─────────────────────────────────────────────────────────
 def default_state():
     """Everything a run needs from its predecessor.
@@ -494,7 +540,8 @@ def recovered_state():
     state = default_state()
     state["files"] = {name: file_stats(series_path(name)) for name in day_files()}
     for stream, key in ((SOURCE_TICKERS, "quote_last_ts_ms"),
-                        (SOURCE_BRTI, "brti_last_ts_ms")):
+                        (SOURCE_BRTI, "brti_last_ts_ms"),
+                        (SOURCE_TRADES, "trades_last_ts_ms")):
         stamps = [stats.get(key) for stats in state["files"].values()
                   if stats.get(key) is not None]
         if stamps:
@@ -551,11 +598,16 @@ def header_row(day):
                        "every top-of-book change, plus a heartbeat at least "
                        "every %d ms per market"
                        % (MAX_SECONDS_TO_CLOSE, HEARTBEAT_MS)),
+        "trades_rule": ("KXBTCD -T threshold contracts within %d s of close: "
+                        "every qualifying trade print, kept verbatim, with no "
+                        "rate cap — trades are sparse enough already that one "
+                        "would only throw away the prints a maker fill model "
+                        "needs" % MAX_SECONDS_TO_CLOSE),
         "one_sided_rule": ("a one-sided book is retained as one-sided "
                            "(book_sided); no midpoint is ever completed from "
                            "1 - no_bid or from a missing side"),
         "close_time_assumption": CLOSE_TIME_ASSUMPTION,
-        "sources": [SOURCE_TICKERS, SOURCE_BRTI],
+        "sources": [SOURCE_TICKERS, SOURCE_BRTI, SOURCE_TRADES],
     }
 
 
@@ -577,10 +629,11 @@ def file_stats(path):
     one a lag measurement can use — is the intersection of the two, and a
     series that quoted a single combined span would overstate it.
     """
-    stats = {"rows": 0, "quote_rows": 0, "brti_rows": 0,
+    stats = {"rows": 0, "quote_rows": 0, "brti_rows": 0, "trades_rows": 0,
              "first_ts_ms": None, "last_ts_ms": None,
              "quote_first_ts_ms": None, "quote_last_ts_ms": None,
              "brti_first_ts_ms": None, "brti_last_ts_ms": None,
+             "trades_first_ts_ms": None, "trades_last_ts_ms": None,
              "markets": 0}
     markets = set()
     brti_times = []
@@ -605,6 +658,10 @@ def file_stats(path):
                 if ts_ms is not None:
                     brti_times.append(ts_ms)
                 prefix = "brti"
+            elif source == SOURCE_TRADES:
+                ts_ms = _as_ms(record.get("ts_ms"))
+                stats["trades_rows"] += 1
+                prefix = "trades"
             else:
                 continue                       # the header row carries no data
             stats["rows"] += 1
@@ -632,10 +689,11 @@ def build_manifest(state):
     as absent rather than as zero.
     """
     files = []
-    total = {"rows": 0, "quote_rows": 0, "brti_rows": 0}
+    total = {"rows": 0, "quote_rows": 0, "brti_rows": 0, "trades_rows": 0}
     first = last = None
     quote_first = quote_last = None
     brti_first = brti_last = None
+    trades_first = trades_last = None
     median_gaps = []
     markets = 0
     for name in day_files():
@@ -668,6 +726,12 @@ def build_manifest(state):
         if stats.get("brti_last_ts_ms") is not None:
             brti_last = (stats["brti_last_ts_ms"] if brti_last is None
                          else max(brti_last, stats["brti_last_ts_ms"]))
+        if stats.get("trades_first_ts_ms") is not None:
+            trades_first = (stats["trades_first_ts_ms"] if trades_first is None
+                            else min(trades_first, stats["trades_first_ts_ms"]))
+        if stats.get("trades_last_ts_ms") is not None:
+            trades_last = (stats["trades_last_ts_ms"] if trades_last is None
+                           else max(trades_last, stats["trades_last_ts_ms"]))
     median_gaps.sort()
 
     def hours(lo, hi):
@@ -713,6 +777,7 @@ def build_manifest(state):
             "rows": total["rows"],
             "quote_rows": total["quote_rows"],
             "brti_rows": total["brti_rows"],
+            "trades_rows": total["trades_rows"],
             "markets_max_per_day": markets,
             "first_ts_ms": first, "last_ts_ms": last,
             "first_utc": iso(first), "last_utc": iso(last),
@@ -721,10 +786,15 @@ def build_manifest(state):
             "quote_span_hours": hours(quote_first, quote_last),
             "brti_span_utc": [iso(brti_first), iso(brti_last)],
             "brti_span_hours": hours(brti_first, brti_last),
+            # NOT part of the paired window — trades are a real-volume
+            # supplement to the quote/BRTI pair, not a third leg of it; the
+            # maker engine joins them onto its own event window separately.
+            "trades_span_utc": [iso(trades_first), iso(trades_last)],
+            "trades_span_hours": hours(trades_first, trades_last),
             "paired_window_utc": [iso(paired_lo), iso(paired_hi)],
             "paired_window_hours": hours(paired_lo, paired_hi),
         },
-        "sources": [SOURCE_TICKERS, SOURCE_BRTI],
+        "sources": [SOURCE_TICKERS, SOURCE_BRTI, SOURCE_TRADES],
         "cursors": dict(state["cursors"]),
         # A hole reads as a hole: every span the compactor could not cover
         # because the source rotated away before it ran.
@@ -803,6 +873,23 @@ def select_brti_rows(rows, state):
     return kept
 
 
+def select_trade_rows(rows):
+    """Every in-band trade print, no cap and no cross-run state.
+
+    Deliberately UNLIKE `select_brti_rows` (a rate cap) and `select_quote_rows`
+    (on-change + heartbeat): a trade print is already a discrete, sparse event
+    — it exists only when someone crosses the book — so downsampling it would
+    throw away the exact prints `maker_quote_lag.py`'s fill model exists to
+    consume. No silent cap here, ever.
+    """
+    kept = []
+    for row in rows:
+        emitted = dict(row["row"])
+        emitted["series_row"] = "trade"
+        kept.append((row["ts_ms"], emitted))
+    return kept
+
+
 def prune_market_state(state, horizon_ms):
     """Forget markets whose last quote is older than the in-band horizon."""
     cutoff = (state["cursors"].get(SOURCE_TICKERS) or 0) - horizon_ms
@@ -859,21 +946,28 @@ def compact(now=None):
     state = load_state()
     quote_cursor = state["cursors"].get(SOURCE_TICKERS)
     brti_cursor = state["cursors"].get(SOURCE_BRTI)
+    trades_cursor = state["cursors"].get(SOURCE_TRADES)
 
     quotes, quotes_oldest = collect_quotes(quote_cursor)
     brti, brti_oldest = collect_brti(brti_cursor)
+    trades, trades_oldest = collect_trades(trades_cursor)
     gaps = [gap for gap in (note_gap(state, SOURCE_TICKERS, quotes_oldest),
-                            note_gap(state, SOURCE_BRTI, brti_oldest)) if gap]
+                            note_gap(state, SOURCE_BRTI, brti_oldest),
+                            note_gap(state, SOURCE_TRADES, trades_oldest)) if gap]
 
     quotes.sort(key=lambda row: row["ts_ms"])
     brti.sort(key=lambda row: row["ts_ms"])
-    selected = select_quote_rows(quotes, state) + select_brti_rows(brti, state)
+    trades.sort(key=lambda row: row["ts_ms"])
+    selected = (select_quote_rows(quotes, state) + select_brti_rows(brti, state)
+                + select_trade_rows(trades))
     selected.sort(key=lambda pair: pair[0])
 
     if quotes:
         state["cursors"][SOURCE_TICKERS] = max(row["ts_ms"] for row in quotes)
     if brti:
         state["cursors"][SOURCE_BRTI] = max(row["ts_ms"] for row in brti)
+    if trades:
+        state["cursors"][SOURCE_TRADES] = max(row["ts_ms"] for row in trades)
 
     written = append_rows(selected, state)
     prune_market_state(state, MAX_SECONDS_TO_CLOSE * 1000)
@@ -886,6 +980,7 @@ def compact(now=None):
     manifest = build_manifest(state)
     write_json_atomic(series_path(MANIFEST_NAME), manifest)
     return {"quote_rows_read": len(quotes), "brti_rows_read": len(brti),
+            "trades_rows_read": len(trades),
             "rows_written": sum(written.values()), "files_written": written,
             "files_pruned": removed, "gaps_recorded": gaps,
             "manifest": manifest}
@@ -1062,8 +1157,9 @@ def render_status(manifest, now=None):
         % (series["first_utc"], series["last_utc"],
            "%.2f" % series["span_hours"] if series["span_hours"] is not None else "n/a",
            series["days"]),
-        "  rows        %d total · %d quotes · %d BRTI"
-        % (series["rows"], series["quote_rows"], series["brti_rows"]),
+        "  rows        %d total · %d quotes · %d BRTI · %d trades"
+        % (series["rows"], series["quote_rows"], series["brti_rows"],
+           series["trades_rows"]),
         "  paired      %s h (%s -> %s)"
         % ("%.2f" % series["paired_window_hours"]
            if series["paired_window_hours"] is not None else "n/a",
@@ -1146,9 +1242,10 @@ def main(argv=None):
     if result is not None:
         manifest = result["manifest"]
         if not args.json:
-            print("compacted %d quote rows + %d BRTI rows read -> %d retained"
+            print("compacted %d quote rows + %d BRTI rows + %d trade rows "
+                  "read -> %d retained"
                   % (result["quote_rows_read"], result["brti_rows_read"],
-                     result["rows_written"]))
+                     result["trades_rows_read"], result["rows_written"]))
             for gap in result["gaps_recorded"]:
                 print("GAP %s %s -> %s (%.0f s): %s"
                       % (gap["stream"], gap["from_utc"], gap["to_utc"],

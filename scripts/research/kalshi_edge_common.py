@@ -51,16 +51,19 @@ import kalshi_lag_series  # noqa: E402
 # write rate, not of time — see the report's data-inventory table.
 ROTATIONS = ("{name}.1", "{name}")
 
-# Issue #170: the retained lag series (`kalshi-lag-series/`) is a downsampled,
-# TIME-bounded copy of these two streams, written by
+# Issue #170 (extended by Task 4 of the maker quote-lag engine): the retained
+# lag series (`kalshi-lag-series/`) is a downsampled, TIME-bounded copy of
+# these three streams, written by
 # openmarketterminal-qt/scripts/kalshi_lag_series.py. It is read here as the
 # OLDEST ROTATION of the same stream — the rows are in the source schema, so
-# every reader above (q1 in particular) sees a longer history and needs no
-# edit. The key is what each stream's own consumer already uses for time:
-# `load_brti` reads BRTI's `time` (int), while a ticker row's `ts_ms` is the
-# instant q1 bisects on.
+# every reader above (q1 and `maker_quote_lag.py` in particular) sees a
+# longer history and needs no edit. The key is what each stream's own
+# consumer already uses for time: `load_brti` reads BRTI's `time` (int),
+# while a ticker row's or a trade row's `ts_ms` is the instant q1 bisects on
+# / `maker_quote_lag.load_trades` sorts on.
 RETAINED_TS_KEY = {kalshi_lag_series.SOURCE_TICKERS: "ts_ms",
-                   kalshi_lag_series.SOURCE_BRTI: "time"}
+                   kalshi_lag_series.SOURCE_BRTI: "time",
+                   kalshi_lag_series.SOURCE_TRADES: "ts_ms"}
 
 MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
