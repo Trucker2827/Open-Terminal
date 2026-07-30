@@ -22,12 +22,22 @@ private slots:
         QCOMPARE(d.to_subscribe, (QStringList{"A"}));
         QCOMPARE(d.to_unsubscribe, (QStringList{"D"}));
     }
-    void reconcile_never_touches_foreign_held() {
+    void reconcile_empty_delta_when_desired_equals_held() {
         // A ticker the controller never added (held only) must be unsubscribed
         // ONLY because it is 15m-held here; foreign UI tickers are never in held.
         const auto d = kalshi15m::reconcile({"A"}, {"A"});
         QVERIFY(d.to_subscribe.isEmpty());
         QVERIFY(d.to_unsubscribe.isEmpty());
+    }
+    void desired_truncates_to_cap() {
+        QVector<pred::PredictionMarket> mk(3);
+        mk[0].key.market_id = "KXBTC15M-26JUL270300-00";
+        mk[1].key.market_id = "KXBTC15M-26JUL270315-15";
+        mk[2].key.market_id = "KXBTC15M-26JUL270330-30";
+        const auto got = kalshi15m::desired_subscriptions(mk, {"KXBTC15M"}, 2);
+        QCOMPARE(got.size(), 2);
+        QCOMPARE(got, (QStringList{"KXBTC15M-26JUL270300-00",
+                                   "KXBTC15M-26JUL270315-15"}));
     }
 };
 QTEST_MAIN(TstKalshi15mReconcile)

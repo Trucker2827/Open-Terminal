@@ -1,5 +1,5 @@
 #include "services/prediction/kalshi/Kalshi15mReconcile.h"
-#include <QLoggingCategory>
+#include <QtGlobal>
 
 namespace kalshi15m {
 
@@ -9,7 +9,7 @@ QStringList desired_subscriptions(const QVector<pred::PredictionMarket>& markets
     QSet<QString> seen;
     for (const auto& m : markets) {
         const QString id = m.key.market_id;
-        const int dash = id.indexOf('-');
+        const int dash = static_cast<int>(id.indexOf('-'));
         const QString family = dash < 0 ? id : id.left(dash);
         if (!families.contains(family) || seen.contains(id) || id.isEmpty())
             continue;
@@ -18,7 +18,7 @@ QStringList desired_subscriptions(const QVector<pred::PredictionMarket>& markets
     }
     if (cap > 0 && out.size() > cap) {
         qWarning("kalshi15m: %d open markets exceeds cap %d; capping",
-                 out.size(), cap);
+                 static_cast<int>(out.size()), cap);
         out = out.mid(0, cap);
     }
     return out;
