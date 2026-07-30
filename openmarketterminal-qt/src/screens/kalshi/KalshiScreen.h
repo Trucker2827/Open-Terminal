@@ -2,6 +2,7 @@
 
 #include "screens/kalshi/AutoCockpitPresentation.h"
 #include "services/edge_radar/KalshiAutoEngine.h"
+#include "services/prediction/kalshi/Kalshi15mCaptureController.h"
 
 #include "services/prediction/PredictionTypes.h"
 #include "trading/TradingTypes.h"
@@ -158,6 +159,7 @@ class KalshiScreen final : public QWidget {
     QString evidence_path(const QString& filename) const;
     services::prediction::PredictionExchangeAdapter* adapter() const;
 
+    Kalshi15mCaptureController* capture_15m_ = nullptr;
     QList<QMetaObject::Connection> connections_;
     QVector<services::prediction::PredictionMarket> markets_;
     QVector<services::prediction::PredictionMarket> all_markets_;

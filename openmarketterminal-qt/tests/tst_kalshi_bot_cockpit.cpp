@@ -318,6 +318,22 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(!scene.dormant);
     }
 
+    // The advisory strategy-grid line is plumbed from the verdict bytes and fails
+    // closed to UNAVAILABLE when there are none. (The line's full formatting is
+    // held to account by tst_kalshi_strategy_grid_view.)
+    void the_grid_line_surfaces_the_verdict_and_fails_closed() {
+        const QByteArray no_edge = QByteArrayLiteral(
+            "{\"schema_version\":1,\"as_of_utc\":\"2026-07-30T00:00:00+00:00\","
+            "\"headline\":\"no variant beats hold+market after correction\","
+            "\"survivors\":[],\"candidates\":[]}");
+        const BotCockpitScene edge_scene =
+            present_bot_cockpit(panel_for({}), {}, {}, {}, {}, kNow, no_edge);
+        QCOMPARE(edge_scene.grid_line, QStringLiteral("GRID: no measured edge"));
+        const BotCockpitScene missing =
+            present_bot_cockpit(panel_for({}), {}, {}, {}, {}, kNow, QByteArray());
+        QCOMPARE(missing.grid_line, QStringLiteral("GRID: UNAVAILABLE"));
+    }
+
     // A ledger row this build cannot read fails CLOSED (issue #145): the mood
     // must be dormant, never live and never a confident paper.
     void an_unreadable_newest_row_renders_dormant_not_live() {
@@ -687,7 +703,8 @@ class KalshiBotCockpitTest : public QObject {
                                              QStringLiteral("EDGE_BELOW_THRESHOLD"))};
         const QJsonObject report = calibrator_report(kNow - 10'000, predictions);
         const BotCockpitScene scene =
-            present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow, 5);
+            present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                QByteArray(), 5);
         QCOMPARE(scene.columns.size(), 5);
         QCOMPARE(scene.columns_total, 40);
         QVERIFY(scene.census.contains(QStringLiteral("5 of 40 watched contracts")));

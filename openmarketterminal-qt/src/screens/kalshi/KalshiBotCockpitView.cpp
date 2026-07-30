@@ -184,6 +184,22 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
     painter.drawText(census, Qt::AlignVCenter | Qt::AlignLeft,
                      elide(small_metrics, scene_.census, census.width()));
 
+    // ── strategy-grid advisory ─────────────────────────────────────────────
+    // One read-only line from the paper strategy-grid, beside the gate — never
+    // driving it. Cyan when a survivor/candidate is named, muted for "no
+    // measured edge" / UNAVAILABLE / STALE. The line is the presenter's;
+    // tst_kalshi_bot_cockpit and tst_kalshi_strategy_grid_view hold it to account.
+    const QRect grid_rect(kMargin, census.bottom() + 4, width() - (2 * kMargin),
+                          small_metrics.lineSpacing() + 4);
+    if (!scene_.grid_line.isEmpty()) {
+        const bool has_signal = scene_.grid_line.contains(QStringLiteral("forming")) ||
+                                scene_.grid_line.contains(QStringLiteral("ADVISORY"));
+        painter.setFont(small_font);
+        painter.setPen(QColor(has_signal ? colors::CYAN() : colors::TEXT_SECONDARY()));
+        painter.drawText(grid_rect, Qt::AlignVCenter | Qt::AlignLeft,
+                         elide(small_metrics, scene_.grid_line, grid_rect.width()));
+    }
+
     // ── WHAT THE RECORD TEACHES (issue #174) ───────────────────────────────
     // The autopsy's standing conclusions, above the rain: what the record has
     // already taught frames what the bot is doing right now. Every line is the
@@ -192,7 +208,7 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
     // stale artifact arrives here with its greens already demoted to amber.
     const int lesson_line_height = small_metrics.lineSpacing() + 2;
     const int lessons_lines = static_cast<int>(scene_.lessons.size());
-    const QRect lessons_rect(kMargin, census.bottom() + 6, width() - (2 * kMargin),
+    const QRect lessons_rect(kMargin, grid_rect.bottom() + 6, width() - (2 * kMargin),
                              lessons_lines > 0 ? (lessons_lines * lesson_line_height) + 10 : 0);
     if (lessons_lines > 0) {
         painter.fillRect(lessons_rect, with_alpha(QColor(colors::BG_RAISED()), dormant ? 70 : 120));

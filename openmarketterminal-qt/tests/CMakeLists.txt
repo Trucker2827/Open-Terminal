@@ -144,6 +144,15 @@ target_include_directories(tst_bridge_discovery_file PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(tst_bridge_discovery_file PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_bridge_discovery_file COMMAND tst_bridge_discovery_file)
 
+# Pure reader/formatter for kalshi-strategy-grid-latest.json — parse fails closed,
+# cockpit/CLI formatters, staleness. Depends only on Qt Core (QJsonDocument).
+add_executable(tst_kalshi_strategy_grid_view
+    tst_kalshi_strategy_grid_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/prediction/kalshi/KalshiStrategyGridView.cpp)
+target_include_directories(tst_kalshi_strategy_grid_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_strategy_grid_view PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_strategy_grid_view COMMAND tst_kalshi_strategy_grid_view)
+
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
@@ -655,6 +664,14 @@ target_include_directories(tst_kalshi_evidence PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_evidence PRIVATE openterminal_core Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_evidence COMMAND tst_kalshi_evidence)
 
+# Kalshi 15m subscription-reconcile policy — pure filter/dedupe/cap of desired
+# market_ids by family prefix, and set-difference reconcile (to_subscribe /
+# to_unsubscribe) against a held set. No I/O, no Qt objects beyond containers.
+add_executable(tst_kalshi_15m_reconcile tst_kalshi_15m_reconcile.cpp)
+target_include_directories(tst_kalshi_15m_reconcile PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_15m_reconcile PRIVATE openterminal_core Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_15m_reconcile COMMAND tst_kalshi_15m_reconcile)
+
 add_executable(tst_kalshi_settlement_scoreboard tst_kalshi_settlement_scoreboard.cpp)
 target_include_directories(tst_kalshi_settlement_scoreboard PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_settlement_scoreboard PRIVATE openterminal_core Qt6::Core Qt6::Test)
@@ -959,6 +976,13 @@ add_test(NAME e2e_kalshi_bot_kill_switch
          COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
                  bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_bot_kill_switch.sh)
 
+# `kalshi grid` — read-only surfacing of kalshi-strategy-grid-latest.json against
+# the real openterminalcli: headline + candidates in human output, raw JSON with
+# --json, and UNAVAILABLE + nonzero exit when the file is missing. Temp evidence.
+add_test(NAME e2e_kalshi_grid_cli
+         COMMAND ${CMAKE_COMMAND} -E env "BUILD_DIR=${CMAKE_BINARY_DIR}"
+                 bash ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kalshi_grid_cli.sh)
+
 # Issue #130 — micro-live containment, proved against the real openterminalcli:
 # `kalshi bot run --mode live` exits non-zero with a named, journaled refusal
 # when no human armed a session, the kill switch outranks even that check,
@@ -1098,7 +1122,8 @@ add_test(NAME tst_kalshi_auto_cockpit COMMAND tst_kalshi_auto_cockpit)
 # can never reach the LIVE mood, one ignition per real journal row, and every
 # number is the CLI's / the gate file's rather than one the scene computed.
 # Header-only, no DB/Widgets.
-add_executable(tst_kalshi_bot_cockpit tst_kalshi_bot_cockpit.cpp)
+add_executable(tst_kalshi_bot_cockpit tst_kalshi_bot_cockpit.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/prediction/kalshi/KalshiStrategyGridView.cpp)
 target_include_directories(tst_kalshi_bot_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_bot_cockpit PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_cockpit COMMAND tst_kalshi_bot_cockpit)
