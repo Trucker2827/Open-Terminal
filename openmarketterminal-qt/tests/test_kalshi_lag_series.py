@@ -212,6 +212,19 @@ class DownsamplingTest(EvidenceCase):
                                      tzinfo=datetime.timezone.utc)
         self.assertEqual(parsed["close_ms"], int(expected.timestamp() * 1000))
 
+    def test_parse_15m_close_agrees_with_analysis(self):
+        # The series and the analysis parse close times with independent, duplicated
+        # code; they must agree, and a 15m ticker is the only input that exercises
+        # the minutes (mm) capture that the threshold cross-check never hits.
+        ticker = "KXBTC15M-26JUL270330-30"
+        mine = series.parse_15m_ticker(ticker)
+        theirs = common.parse_ticker(ticker)
+        self.assertIsNotNone(mine)
+        self.assertIsNotNone(theirs)
+        self.assertEqual(mine["close_ms"], theirs["close_ms"])
+        self.assertIsNone(mine["strike"])
+        self.assertIsNone(theirs["strike"])
+
     def test_parse_15m_ticker_rejects_other_families_and_threshold(self):
         self.assertIsNone(series.parse_15m_ticker("KXETH15M-26JUL270330-30"))
         self.assertIsNone(series.parse_15m_ticker("KXBTCD-26JUL2719-T66499.99"))
@@ -404,6 +417,8 @@ class RetentionTest(EvidenceCase):
             {"event": "kalshi_ticker", "market_ticker": ticker, "ts_ms": in_window,
              "yes_bid_dollars": "0.4000", "yes_ask_dollars": "0.4200"},
             {"event": "kalshi_ticker", "market_ticker": ticker, "ts_ms": too_early,
+             "yes_bid_dollars": "0.4000", "yes_ask_dollars": "0.4200"},
+            {"event": "kalshi_ticker", "market_ticker": ticker, "ts_ms": close_ms + 60_000,
              "yes_bid_dollars": "0.4000", "yes_ask_dollars": "0.4200"},
         ]
         path = os.path.join(self.evidence, series.SOURCE_TICKERS)

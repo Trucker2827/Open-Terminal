@@ -587,9 +587,10 @@ def header_row(day):
         "quote_rule": ("KXBTCD -T threshold contracts within %d s of close; "
                        "and %s 15-minute directionals within %d s of close "
                        "(no strike, recorded-settlement outcomes only): "
-                       "every change of (yes_bid, yes_ask) plus a heartbeat"
+                       "every change of (yes_bid, yes_ask) plus a heartbeat "
+                       "at least every %d ms per market"
                        % (MAX_SECONDS_TO_CLOSE, ",".join(FIFTEEN_MIN_FAMILIES),
-                          MAX_15M_SECONDS_TO_CLOSE)),
+                          MAX_15M_SECONDS_TO_CLOSE, HEARTBEAT_MS)),
         "one_sided_rule": ("a one-sided book is retained as one-sided "
                            "(book_sided); no midpoint is ever completed from "
                            "1 - no_bid or from a missing side"),

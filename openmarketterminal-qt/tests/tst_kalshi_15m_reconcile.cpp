@@ -23,8 +23,7 @@ private slots:
         QCOMPARE(d.to_unsubscribe, (QStringList{"D"}));
     }
     void reconcile_empty_delta_when_desired_equals_held() {
-        // A ticker the controller never added (held only) must be unsubscribed
-        // ONLY because it is 15m-held here; foreign UI tickers are never in held.
+        // Identity case: desired == held -> both deltas empty (no churn when nothing changed).
         const auto d = kalshi15m::reconcile({"A"}, {"A"});
         QVERIFY(d.to_subscribe.isEmpty());
         QVERIFY(d.to_unsubscribe.isEmpty());
