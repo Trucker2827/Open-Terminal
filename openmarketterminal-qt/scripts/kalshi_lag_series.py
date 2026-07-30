@@ -12,13 +12,14 @@ because of RETENTION, not capture:
 
     kalshi-cf-benchmarks.jsonl  (BRTI spot)         2.6 s cadence   116.4 h
     kalshi-tickers.jsonl        (Kalshi top-of-book) 0.12 s cadence    8.0 h
+    kalshi-trade-events.jsonl   (executed trades)    bursty          ~2.8 h
 
 Every evidence log rotates by SIZE (~67 MB) into a single `.1` sibling that the
 next rotation overwrites, so retention is a function of write rate. Everything
 this analysis needs already streams at sub-second resolution. Nothing new needs
 recording — it needs KEEPING.
 
-WHAT THIS KEEPS. A distillate of the two logs above, small enough that a
+WHAT THIS KEEPS. A distillate of the three logs above, small enough that a
 TIME bound (30 days) is affordable where a size bound is not:
 
   BRTI      at most one row per second (~1 Hz), the settlement index itself.
@@ -26,6 +27,9 @@ TIME bound (30 days) is affordable where a size bound is not:
             heartbeat at least every HEARTBEAT_MS so that "unchanged" is
             distinguishable from "unobserved"; restricted to KXBTCD `-T`
             THRESHOLD contracts within MAX_SECONDS_TO_CLOSE of expiry.
+  Trades    each executed trade print (price, size, taker side) for the same
+            in-band threshold contracts — the maker quote-lag engine's fill
+            evidence, whose ~2.8 h size-bounded retention is the binding limit.
 
 The restriction is what makes the series small: measured over one full ticker
 rotation, 93.9k in-band rows carried only 6.5k top-of-book changes (6.9%).
