@@ -144,6 +144,15 @@ target_include_directories(tst_bridge_discovery_file PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(tst_bridge_discovery_file PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_bridge_discovery_file COMMAND tst_bridge_discovery_file)
 
+# Pure reader/formatter for kalshi-strategy-grid-latest.json — parse fails closed,
+# cockpit/CLI formatters, staleness. Depends only on Qt Core (QJsonDocument).
+add_executable(tst_kalshi_strategy_grid_view
+    tst_kalshi_strategy_grid_view.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/prediction/kalshi/KalshiStrategyGridView.cpp)
+target_include_directories(tst_kalshi_strategy_grid_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tst_kalshi_strategy_grid_view PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_kalshi_strategy_grid_view COMMAND tst_kalshi_strategy_grid_view)
+
 add_executable(tst_command_dispatch
     tst_command_dispatch.cpp
     ${CMAKE_SOURCE_DIR}/src/cli/CommandDispatch.cpp
