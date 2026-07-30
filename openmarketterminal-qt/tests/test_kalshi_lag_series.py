@@ -394,6 +394,27 @@ class RetentionTest(EvidenceCase):
                     [quote_row(ticker, ts_ms, "0.4500", "0.4700")])
         series.compact(now=ts_ms)
 
+    def test_collect_quotes_retains_in_window_15m(self):
+        close = datetime.datetime(2026, 7, 27, 7, 30, tzinfo=datetime.timezone.utc)
+        close_ms = int(close.timestamp() * 1000)
+        in_window = close_ms - 300_000          # 5 min before close -> kept
+        too_early = close_ms - 3_600_000        # 60 min before close -> 15m dropped
+        ticker = "KXBTC15M-26JUL270330-30"
+        rows = [
+            {"event": "kalshi_ticker", "market_ticker": ticker, "ts_ms": in_window,
+             "yes_bid_dollars": "0.4000", "yes_ask_dollars": "0.4200"},
+            {"event": "kalshi_ticker", "market_ticker": ticker, "ts_ms": too_early,
+             "yes_bid_dollars": "0.4000", "yes_ask_dollars": "0.4200"},
+        ]
+        path = os.path.join(self.evidence, series.SOURCE_TICKERS)
+        with open(path, "w", encoding="utf-8") as fh:
+            for r in rows:
+                fh.write(json.dumps(r) + "\n")
+        collected, _oldest = series.collect_quotes(None)
+        kept = [r for r in collected if r["ticker"] == ticker]
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["ts_ms"], in_window)
+
     def test_day_file_header_states_the_retention_bound(self):
         self._seed_day(self.close_ms - 30 * 60_000)
         name = series.day_files()[0]

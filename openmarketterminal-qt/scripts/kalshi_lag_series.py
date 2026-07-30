@@ -417,10 +417,14 @@ def collect_quotes(after_ms):
         if not ticker:
             continue
         parsed = parse_threshold_ticker(ticker)
+        max_s = MAX_SECONDS_TO_CLOSE
+        if parsed is None:
+            parsed = parse_15m_ticker(ticker)
+            max_s = MAX_15M_SECONDS_TO_CLOSE
         if parsed is None:
             continue
         seconds_to_close = (parsed["close_ms"] - ts_ms) / 1000.0
-        if not MIN_SECONDS_TO_CLOSE <= seconds_to_close <= MAX_SECONDS_TO_CLOSE:
+        if not MIN_SECONDS_TO_CLOSE <= seconds_to_close <= max_s:
             continue
         bid_raw = record.get("yes_bid_dollars")
         ask_raw = record.get("yes_ask_dollars")
@@ -580,10 +584,12 @@ def header_row(day):
         "retention_days": RETENTION_DAYS,
         "retention": RETENTION_SENTENCE.format(days=RETENTION_DAYS),
         "brti_rule": "BRTI index samples, at most one per %d ms" % BRTI_MIN_INTERVAL_MS,
-        "quote_rule": ("KXBTCD -T threshold contracts within %d s of close: "
-                       "every top-of-book change, plus a heartbeat at least "
-                       "every %d ms per market"
-                       % (MAX_SECONDS_TO_CLOSE, HEARTBEAT_MS)),
+        "quote_rule": ("KXBTCD -T threshold contracts within %d s of close; "
+                       "and %s 15-minute directionals within %d s of close "
+                       "(no strike, recorded-settlement outcomes only): "
+                       "every change of (yes_bid, yes_ask) plus a heartbeat"
+                       % (MAX_SECONDS_TO_CLOSE, ",".join(FIFTEEN_MIN_FAMILIES),
+                          MAX_15M_SECONDS_TO_CLOSE)),
         "one_sided_rule": ("a one-sided book is retained as one-sided "
                            "(book_sided); no midpoint is ever completed from "
                            "1 - no_bid or from a missing side"),
