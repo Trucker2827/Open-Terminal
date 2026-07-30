@@ -57,6 +57,7 @@
 #include "services/sandbox/SandboxScorer.h"
 #include "services/prediction/kalshi/KalshiAdapter.h"
 #include "services/prediction/kalshi/KalshiEvidenceEngine.h"
+#include "services/prediction/kalshi/KalshiStrategyGridView.h"
 #include "services/prediction/PredictionCredentialStore.h"
 #include "services/prediction/polymarket/PolymarketTypeMap.h"
 #include "services/polymarket/PolymarketTypes.h"
@@ -24117,12 +24118,33 @@ static int kalshi_auto_attribution_command(const GlobalOpts& opts, QStringList a
     return 0;
 }
 
+// `kalshi grid` — read-only surfacing of the paper strategy-grid verdict.
+// Reads kalshi-strategy-grid-latest.json and prints the headline + survivors +
+// closest candidates (or raw JSON with --json). It never recomputes, gates, or
+// trades; fails closed to UNAVAILABLE, tags STALE. Advisory only.
+static int kalshi_grid_command(const GlobalOpts& /*opts*/, QStringList args) {
+    namespace kv = openmarketterminal::services::prediction::kalshi_ns;
+    const bool as_json = args.contains(QStringLiteral("--json"));
+    const QString path =
+        kalshi_evidence_path(QStringLiteral("kalshi-strategy-grid-latest.json"));
+    QByteArray raw;
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly)) raw = f.readAll();
+    const kv::GridLatest g =
+        kv::parse_grid_latest(raw, QDateTime::currentMSecsSinceEpoch());
+    std::fputs(kv::grid_cli_report(g, as_json, raw).toUtf8().constData(), stdout);
+    std::fputc('\n', stdout);
+    return g.available ? 0 : 1;
+}
+
 static int kalshi_command(const GlobalOpts& opts, QStringList args) {
     int init_code = 0;
     if (!init_headless_for_cli(opts, init_code)) return init_code;
     const QString group = args.isEmpty() ? QString() : args.takeFirst().trimmed().toLower();
     // `bot` is the paper calibrator bot (rung 1) and lives in its own TU.
     if (group == QStringLiteral("bot")) return kalshi_bot_command(opts, args);
+    if (group == QStringLiteral("grid") || group == QStringLiteral("strategy-grid"))
+        return kalshi_grid_command(opts, args);
     if (group != QStringLiteral("auto")) {
         std::fprintf(stderr, "usage: kalshi auto status|flow|run|opportunities|audit|calibration|attribution|events|backfill|replay|positions|queue|paper|advise\n"
                              "       kalshi bot once|run   (paper calibrator bot)\n"); return 2;
