@@ -169,9 +169,9 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(latest["schema_version"], sg.SCHEMA_VERSION)
         self.assertIn("headline", latest)
         self.assertIsInstance(latest["survivors"], list)
-        # tiny sample -> nothing can be a "measured" survivor
-        self.assertTrue(all(s["trust"] == "measured" for s in latest["survivors"]))
-        self.assertTrue(all(s["effective_n"] >= 30 for s in latest["survivors"]))
+        # tiny sample -> nothing survives (previously asserted a tautology:
+        # survivors are filtered on trust=="measured" by construction)
+        self.assertEqual(latest["survivors"], [])   # a tiny sample -> nothing survives
 
     def test_latest_summary_extracts_a_measured_survivor(self):
         # hand-built `full` with one measured variant, exercising the

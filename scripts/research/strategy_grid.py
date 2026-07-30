@@ -182,10 +182,13 @@ class Signals:
         parsed = common.parse_ticker(ticker)
         if parsed is None or parsed["strike"] is None:
             return None
-        sample = self.brti.nearest(ts_ms)
-        if sample is None:
+        # Backward-only ("as-of") spot: the LAST BRTI sample at or before entry,
+        # within 5s freshness. brti.nearest() could return a FUTURE sample (it
+        # picks the temporally closest), which would leak look-ahead into the gate.
+        recent = self.brti.window(ts_ms - 5000, ts_ms)   # samples in [ts-5000, ts]
+        if not recent:
             return None
-        _t, spot, _avg = sample
+        spot = recent[-1][1]
         window = self.brti.window(ts_ms - 1_800_000, ts_ms)
         sigma = common.realized_vol_per_min_bps(window)
         minutes = (parsed["close_ms"] - ts_ms) / 60000.0
