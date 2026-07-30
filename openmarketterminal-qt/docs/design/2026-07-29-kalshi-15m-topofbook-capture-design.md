@@ -137,3 +137,39 @@ REST discover (30s) → controller reconciles subscriptions → WS `ticker` chan
 2. C++ controller + unit tests.
 3. Canary run; measure size/rotation; tune compactor interval if needed.
 4. After ~3–7 days of accrual, re-run `path_exit_sim` on 15-minute paths.
+
+## Amendments during implementation (2026-07-29)
+
+Recorded so this spec matches the code that shipped (final whole-branch review):
+
+- **Subscription reconcile is a full re-assert, not a delta.** The Architecture /
+  isolation text above describes issuing `subscribe(new)` / `unsubscribe(rolled_off)`
+  deltas. The shipped `reconcile_and_apply` instead **re-subscribes the full desired
+  set every poll** and unsubscribes only `held \ desired`. Reason (decided during
+  review): the app's WS keeps a **single, non-ref-counted** subscription set shared
+  with the UI, so a delta-only approach could leave a silent capture gap if the UI
+  unsubscribed a ticker the controller still wanted. The re-assert self-heals within
+  one poll (≤30 s). The isolation invariant still holds — `held_` only ever contains
+  the controller's own desired 15-minute tickers, so `held \ desired` can never
+  unsubscribe a UI ticker. Note this re-assert is **not free at the wire level**:
+  `KalshiWsClient::subscribe` re-sends a subscribe frame each call.
+- **`desired_subscriptions` signature.** Implemented as
+  `desired_subscriptions(markets, families, cap)` — no `now` and no close-time guard
+  (the controller intentionally subscribes ALL open 15-minute markets; the compactor
+  does the `[0,900]s` filtering). "Over-subscribe, under-retain," by design.
+- **Single-family discovery limit.** `poll()` discovers via
+  `fetch_markets(series_ticker = families_.first())`, so today only the first family
+  is *discovered* even though `desired_subscriptions` filters against all of
+  `families_`. Adding a second 15-minute series (ETH/SOL…) therefore DOES need a
+  small code change (a per-family fetch loop) — the "without code changes" claim
+  holds only for the retain/subscribe filter, not discovery. Acceptable for the
+  KXBTC15M-only MVP; tracked for when a second series is wanted.
+- **Canary must measure the whole subscribe surface, not just ticker rows.**
+  `subscribe_market` requests the `orderbook_delta`, `ticker`, `trade`, and
+  `market_lifecycle_v2` channels **and** triggers a per-ticker orderbook snapshot,
+  for up to `cap_ = 200` markets. The primary-risk framing above (ticker write-rate
+  only) understates the load. The canary should measure the added rows/day across
+  `kalshi-tickers.jsonl`, `kalshi-book-events.jsonl`, and `kalshi-trade-events.jsonl`
+  (and any orderbook/ladder log), plus the WS subscribe-frame traffic — then decide
+  whether to narrow the subscribed channel set to `ticker` only if the extra
+  channels prove costly and unused by capture.
