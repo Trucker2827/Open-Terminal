@@ -1,5 +1,6 @@
 import os, sys, json, unittest, tempfile, datetime
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts", "research"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "research"))
 import strategy_grid as sg  # noqa: E402
 
 class GridTest(unittest.TestCase):
