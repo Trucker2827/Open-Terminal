@@ -96,3 +96,70 @@ def gate_ok(gate, ticker, ts_ms, side, signals):
     if gate == "physics":
         return signals.physics_ok(ticker, ts_ms, side)
     return signals.calibrator_ok(ticker, ts_ms, side)   # None when un-gateable
+
+def clustered_mean(values, clusters):
+    n = len(values)
+    if n == 0:
+        return {"n": 0, "effective_n": 0.0, "mean": None, "se": None, "t": None, "ci95": [None, None]}
+    mean = sum(values) / n
+    sizes = collections.Counter(clusters)
+    eff = (n * n) / sum(s * s for s in sizes.values())
+    groups = collections.defaultdict(float)
+    for v, c in zip(values, clusters):
+        groups[c] += (v - mean)
+    cr_var = sum(g * g for g in groups.values()) / (n * n)
+    se = math.sqrt(cr_var)
+    t = mean / se if se > 0 else None
+    half = 1.96 * se
+    return {"n": n, "effective_n": eff, "mean": mean, "se": se, "t": t,
+            "ci95": [mean - half, mean + half]}
+
+def _normal_sf(z):
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+def _two_sided_p(t):
+    return 2.0 * _normal_sf(abs(t)) if t is not None else 1.0
+
+def benjamini_hochberg(pvals, alpha=0.05):
+    m = len(pvals)
+    order = sorted(range(m), key=lambda i: pvals[i])
+    rejected = [False] * m
+    max_k = -1
+    for rank, idx in enumerate(order, start=1):
+        if pvals[idx] <= alpha * (rank + 1) / m:
+            max_k = rank
+    for rank, idx in enumerate(order, start=1):
+        if rank <= max_k:
+            rejected[idx] = True
+    return rejected
+
+def _fold_bounds(sorted_close, folds=5):
+    m = len(sorted_close)
+    return [sorted_close[min(m - 1, (m * k) // folds)] for k in range(1, folds + 1)]
+
+def walkforward_delta(records, key):
+    if not records:
+        return None
+    closes = sorted(r["close_ms"] for r in records)
+    last_train_close = _fold_bounds(closes)[-2] if len(closes) >= 5 else closes[0]
+    test = [r for r in records if r["close_ms"] > last_train_close]
+    if not test:
+        return None
+    return sum(r["pnl"] - r[key] for r in test) / len(test)
+
+def score_variant(records):
+    if not records:
+        return {"n": 0}
+    dh = [r["pnl"] - r["hold_pnl"] for r in records]
+    dm = [r["pnl"] - r["market_pnl"] for r in records]
+    clusters = [r["cluster"] for r in records]
+    ch = clustered_mean(dh, clusters)
+    return {
+        "n": len(records),
+        "delta_vs_hold": sum(dh) / len(dh),
+        "delta_vs_market": sum(dm) / len(dm),
+        "clustered": ch,
+        "p_value": _two_sided_p(ch["t"]),
+        "walkforward_delta": walkforward_delta(records, "hold_pnl"),
+        "win_rate": sum(1 for r in records if r["won"]) / len(records),
+    }

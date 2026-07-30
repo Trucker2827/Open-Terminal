@@ -99,3 +99,27 @@ class GateTest(unittest.TestCase):
         got = sg.find_entry(with_room, 0.02, 0.10, close)
         self.assertIsNotNone(got)
         self.assertEqual(with_room[got[0]][0], close - 300_000)
+
+class StatsTest(unittest.TestCase):
+    def test_effective_n_collapses_correlated_clusters(self):
+        # 10 values all in ONE cluster -> effective_n == 1
+        r = sg.clustered_mean([0.1]*10, ["A"]*10)
+        self.assertEqual(r["n"], 10)
+        self.assertAlmostEqual(r["effective_n"], 1.0, places=6)
+        # 10 values in 10 clusters -> effective_n == 10
+        r2 = sg.clustered_mean([0.1]*10, [str(i) for i in range(10)])
+        self.assertAlmostEqual(r2["effective_n"], 10.0, places=6)
+
+    def test_benjamini_hochberg_rejects_expected_set(self):
+        # classic BH example
+        pvals = [0.001, 0.008, 0.039, 0.041, 0.9]
+        rej = sg.benjamini_hochberg(pvals, alpha=0.05)
+        self.assertEqual(rej, [True, True, True, True, False])
+
+    def test_score_variant_uses_two_nulls(self):
+        recs = [{"pnl": 0.05, "hold_pnl": 0.00, "market_pnl": 0.00,
+                 "won": True, "cluster": str(i), "close_ms": i} for i in range(40)]
+        s = sg.score_variant(recs)
+        self.assertAlmostEqual(s["delta_vs_hold"], 0.05, places=6)
+        self.assertIn("delta_vs_market", s)
+        self.assertGreaterEqual(s["clustered"]["effective_n"], 30)
