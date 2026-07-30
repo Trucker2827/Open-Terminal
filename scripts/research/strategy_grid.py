@@ -81,3 +81,18 @@ def contract_pnl(path, i0, entry_ask, exit_rule, won, close_ms=None):
         return {"pnl": hold_pnl, "exited": False, "hold_pnl": hold_pnl}
     pnl = (sell_bid - entry_ask) - FEE(entry_ask) - FEE(sell_bid)
     return {"pnl": pnl, "exited": True, "hold_pnl": hold_pnl}
+
+def find_entry(path, lo, hi, close_ms):
+    for i, (ts, _bid, ask) in enumerate(path):
+        if close_ms is not None and (close_ms - ts) / 1000.0 < MIN_ENTRY_S_TO_CLOSE:
+            continue
+        if lo <= ask < hi:
+            return i, ask
+    return None
+
+def gate_ok(gate, ticker, ts_ms, side, signals):
+    if gate == "mechanical":
+        return True
+    if gate == "physics":
+        return signals.physics_ok(ticker, ts_ms, side)
+    return signals.calibrator_ok(ticker, ts_ms, side)   # None when un-gateable

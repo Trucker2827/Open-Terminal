@@ -66,3 +66,25 @@ class SimTest(unittest.TestCase):
         r2 = sg.contract_pnl(path2, 0, 0.30, {"kind": "trail", "amount": 0.10}, won=True)
         self.assertFalse(r2["exited"])
         self.assertAlmostEqual(r2["pnl"], (1.0 - 0.30) - sg.common.fee_per_contract(0.30), places=6)
+
+class GateTest(unittest.TestCase):
+    def test_find_entry_first_touch_with_room(self):
+        # bet-side asks: 0.30 (too little time), 0.08 (in 2-10 band, room), 0.06
+        close = 10_000_000
+        path = [(close - 60_000, 0.29, 0.30),     # 60s left < 120s floor -> skip
+                (close - 300_000, 0.07, 0.08),    # 300s left, ask 0.08 in [0.02,0.10)
+                (close - 200_000, 0.05, 0.06)]
+        path.sort()
+        got = sg.find_entry(path, 0.02, 0.10, close)
+        self.assertIsNotNone(got)
+        i0, ask = got
+        self.assertAlmostEqual(ask, 0.06 if path[0][2] == 0.06 else 0.08)  # first in-band by time
+
+    def test_gate_mechanical_always_true_calibrator_ungateable_is_none(self):
+        class NoSig:
+            def physics_ok(self, *a): return True
+            def calibrator_ok(self, *a): return None   # no fresh prediction
+        s = NoSig()
+        self.assertTrue(sg.gate_ok("mechanical", "T", 1, "YES", s))
+        self.assertTrue(sg.gate_ok("physics", "T", 1, "YES", s))
+        self.assertIsNone(sg.gate_ok("calibrator", "T", 1, "YES", s))
