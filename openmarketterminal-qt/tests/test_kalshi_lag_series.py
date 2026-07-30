@@ -89,6 +89,16 @@ def brti_row(ts_ms, value, avg=None):
             "live_eligible": False}
 
 
+def trade_row(ticker, ts_ms, price, count, taker_outcome_side="yes"):
+    return {"event": "kalshi_trade_raw", "market_ticker": ticker, "ts_ms": ts_ms,
+            "ts": ts_ms // 1000, "trade_id": "trade-%d" % ts_ms,
+            "yes_price_dollars": price,
+            "no_price_dollars": "%.4f" % (1.0 - float(price)),
+            "count_fp": count, "taker_side": taker_outcome_side,
+            "taker_outcome_side": taker_outcome_side, "taker_book_side": "bid",
+            "received_ts": series.iso(ts_ms), "live_eligible": False}
+
+
 def write_jsonl(path, rows, mode="w"):
     with open(path, mode, encoding="utf-8") as handle:
         for row in rows:
@@ -255,6 +265,77 @@ class DownsamplingTest(EvidenceCase):
         self.assertIsNone(series.parse_threshold_ticker("KXBTC-26JUL2719-B64450"))
         self.assertIsNone(series.parse_threshold_ticker("garbage"))
         self.assertIsNone(common.parse_ticker("garbage"))
+
+
+class TradeRetentionTest(EvidenceCase):
+    """MQL Task 4 — trade prints retained for the maker quote-lag engine.
+
+    `collect_trades` mirrors `collect_brti`'s (rows, oldest) shape but is
+    filtered to the SAME in-band threshold population as `collect_quotes`
+    (`parse_threshold_ticker` + [MIN, MAX]_SECONDS_TO_CLOSE), not BRTI's
+    unconditional pass-through — a trade on a market outside that window, or
+    on a non-threshold ticker, must never be retained.
+    """
+
+    def test_collect_trades_keeps_only_the_in_band_threshold_trade(self):
+        ticker = ticker_for(self.close_ms, "64000.00")
+        base = self.close_ms - 30 * 60_000
+        far_close = self.close_ms + 4 * HOUR_MS
+        past_close_ticker = ticker_for(far_close, "64000.00")
+        write_jsonl(self.path(series.SOURCE_TRADES), [
+            trade_row(ticker, base, "0.4600", "12.00", "yes"),
+            # Same family, but 4 hours from ITS OWN close — out of band.
+            trade_row(past_close_ticker, base, "0.4600", "5.00", "no"),
+        ])
+        rows, oldest = series.collect_trades(None)
+        self.assertIsNotNone(oldest)
+        self.assertEqual(len(rows), 1)
+        kept = rows[0]["row"]
+        self.assertEqual(kept["source"], series.SOURCE_TRADES)
+        self.assertEqual(kept["market_ticker"], ticker)
+        self.assertEqual(kept["yes_price_dollars"], "0.4600")
+        self.assertEqual(kept["count_fp"], "12.00")
+        self.assertEqual(kept["taker_outcome_side"], "yes")
+        self.assertEqual(kept["taker_side"], "yes")
+
+    def test_compact_retains_trades_and_quote_sizes_survive(self):
+        ticker = ticker_for(self.close_ms, "64000.00")
+        base = self.close_ms - 30 * 60_000
+        write_jsonl(self.path(series.SOURCE_TICKERS),
+                    [quote_row(ticker, base, "0.4500", "0.4700",
+                              bid_size="37.00", ask_size="41.00")])
+        write_jsonl(self.path(series.SOURCE_TRADES),
+                    [trade_row(ticker, base + 1_000, "0.4600", "12.00", "yes")])
+        series.compact()
+        rows = read_series_rows(series.series_dir())
+        trades = [r for r in rows if r["source"] == series.SOURCE_TRADES]
+        quotes = [r for r in rows if r["source"] == series.SOURCE_TICKERS]
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(trades[0]["series_row"], "trade")
+        self.assertEqual(trades[0]["market_ticker"], ticker)
+        self.assertEqual(len(quotes), 1)
+        # The maker engine's ahead_size depends on these surviving verbatim.
+        self.assertEqual(quotes[0]["yes_bid_size_fp"], "37.00")
+        self.assertEqual(quotes[0]["yes_ask_size_fp"], "41.00")
+        manifest = series.read_manifest()
+        self.assertEqual(manifest["series"]["trades_rows"], 1)
+        self.assertIn(series.SOURCE_TRADES, manifest["sources"])
+
+    def test_retained_trades_are_read_back_through_common(self):
+        ticker = ticker_for(self.close_ms, "64000.00")
+        base = self.close_ms - 30 * 60_000
+        write_jsonl(self.path(series.SOURCE_TRADES),
+                    [trade_row(ticker, base, "0.4600", "12.00", "yes")])
+        series.compact()
+        # The live log just rotated: it's empty, so the whole retained series
+        # is in play, exactly like `ReaderTest` does for quotes/BRTI.
+        os.remove(self.path(series.SOURCE_TRADES))
+        records, inventory = common.read_jsonl(series.SOURCE_TRADES)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["market_ticker"], ticker)
+        self.assertEqual(records[0]["count_fp"], "12.00")
+        self.assertTrue(any(series.SERIES_DIR_NAME in entry["file"]
+                            for entry in inventory))
 
 
 class DaylightSavingTest(EvidenceCase):
