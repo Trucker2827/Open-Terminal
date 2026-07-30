@@ -52,3 +52,17 @@ class SimTest(unittest.TestCase):
     def test_bet_side_quotes_flips_for_NO(self):
         yes = [(1000, 0.60, 0.62)]
         self.assertEqual(sg.bet_side_quotes(yes, "NO"), [(1000, 1 - 0.62, 1 - 0.60)])
+
+    def test_trailing_stop_exits_on_pullback_from_peak(self):
+        # entry ask 0.30; bids rise to a 0.50 peak then pull back to 0.39;
+        # trail -0.10 -> 0.39 <= 0.50-0.10 -> exit at 0.39 (taker at bid).
+        path = [(1000, 0.34, 0.35), (2000, 0.50, 0.51), (3000, 0.39, 0.40)]
+        r = sg.contract_pnl(path, 0, 0.30, {"kind": "trail", "amount": 0.10}, won=False)
+        self.assertTrue(r["exited"])
+        expected = (0.39 - 0.30) - sg.common.fee_per_contract(0.30) - sg.common.fee_per_contract(0.39)
+        self.assertAlmostEqual(r["pnl"], expected, places=6)
+        # shallow pullback that never reaches the trail distance -> holds to settlement
+        path2 = [(1000, 0.34, 0.35), (2000, 0.50, 0.51), (3000, 0.45, 0.46)]
+        r2 = sg.contract_pnl(path2, 0, 0.30, {"kind": "trail", "amount": 0.10}, won=True)
+        self.assertFalse(r2["exited"])
+        self.assertAlmostEqual(r2["pnl"], (1.0 - 0.30) - sg.common.fee_per_contract(0.30), places=6)
