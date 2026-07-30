@@ -155,6 +155,12 @@ HEARTBEAT_MS = 10_000
 MIN_SECONDS_TO_CLOSE = 0
 MAX_SECONDS_TO_CLOSE = 3600
 
+# 15-minute directional contracts (issue: 15m top-of-book retention). Family-
+# gated so only the configured series are kept; expandable without code changes.
+FIFTEEN_MIN_FAMILIES = ("KXBTC15M",)
+# A 15-minute contract's whole life is <= 15 min; keep from open to close.
+MAX_15M_SECONDS_TO_CLOSE = 900
+
 SOURCE_TICKERS = "kalshi-tickers.jsonl"
 SOURCE_BRTI = "kalshi-cf-benchmarks.jsonl"
 ROTATIONS = ("{name}.1", "{name}")
@@ -314,6 +320,33 @@ def parse_threshold_ticker(ticker):
     return {"family": parts[0],
             "close_ms": int(close.timestamp() * 1000),
             "strike": float(strike.group(1))}
+
+
+def parse_15m_ticker(ticker):
+    """`KXBTC15M-26JUL270330-30` -> close instant, strike None. Else None.
+
+    15-minute directionals carry no strike (`-30` is the window marker, not a
+    `-T` strike), so their outcome is resolvable only from recorded settlements,
+    never derived — the same rule `kalshi_edge_common.parse_ticker` applies.
+    Family-gated to FIFTEEN_MIN_FAMILIES so the series keeps only the configured
+    15-minute markets. Close time uses the same real US/Eastern zone and fold as
+    the threshold parser, so the series and the analysis agree.
+    """
+    parts = ticker.split("-")
+    if len(parts) < 2 or parts[0] not in FIFTEEN_MIN_FAMILIES:
+        return None
+    matched = _TICKER_DATE.match(parts[1])
+    if not matched:
+        return None
+    yy, mon, dd, hh, mm = matched.groups()
+    if mon not in MONTHS:
+        return None
+    close = datetime.datetime(2000 + int(yy), MONTHS[mon], int(dd),
+                              int(hh), int(mm or 0), tzinfo=EASTERN,
+                              fold=CLOSE_FOLD)
+    return {"family": parts[0],
+            "close_ms": int(close.timestamp() * 1000),
+            "strike": None}
 
 
 def book_sided(bid, ask):

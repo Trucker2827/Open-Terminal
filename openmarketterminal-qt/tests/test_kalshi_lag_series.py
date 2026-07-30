@@ -202,6 +202,21 @@ class DownsamplingTest(EvidenceCase):
         # The reciprocal constraint that makes "q1 runs unchanged" true.
         self.assertLess(series.HEARTBEAT_MS, q1_quote_lag.QUOTE_STALENESS_MS)
 
+    def test_parse_15m_ticker_reads_close_and_has_no_strike(self):
+        parsed = series.parse_15m_ticker("KXBTC15M-26JUL270330-30")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["family"], "KXBTC15M")
+        self.assertIsNone(parsed["strike"])
+        # 03:30 America/New_York on 2026-07-27 (EDT = UTC-4) -> 07:30 UTC
+        expected = datetime.datetime(2026, 7, 27, 7, 30,
+                                     tzinfo=datetime.timezone.utc)
+        self.assertEqual(parsed["close_ms"], int(expected.timestamp() * 1000))
+
+    def test_parse_15m_ticker_rejects_other_families_and_threshold(self):
+        self.assertIsNone(series.parse_15m_ticker("KXETH15M-26JUL270330-30"))
+        self.assertIsNone(series.parse_15m_ticker("KXBTCD-26JUL2719-T66499.99"))
+        self.assertIsNone(series.parse_15m_ticker("garbage"))
+
     def test_ticker_parsing_agrees_with_the_analysis(self):
         strikes = ["64000.00", "57299.99", "66499.99"]
         for hours in (0, 5, 19):
