@@ -28,6 +28,7 @@ private slots:
     void on_markets_ready(
         const QVector<openmarketterminal::services::prediction::PredictionMarket>& markets,
         const QString& next_cursor);
+    void on_request_error(const QString& context, const QString& message);
 
 private:
     void reconcile_and_apply();
@@ -39,4 +40,5 @@ private:
     int poll_interval_ms_ = 30000;
     QVector<openmarketterminal::services::prediction::PredictionMarket> page_accum_;
     QSet<QString> held_;
+    bool in_flight_ = false;
 };

@@ -27,6 +27,8 @@ Kalshi15mCaptureController::Kalshi15mCaptureController(
       rest_(std::make_unique<kalshi_ns::KalshiRestClient>(this)) {
     connect(rest_.get(), &kalshi_ns::KalshiRestClient::markets_ready,
             this, &Kalshi15mCaptureController::on_markets_ready);
+    connect(rest_.get(), &kalshi_ns::KalshiRestClient::request_error,
+            this, &Kalshi15mCaptureController::on_request_error);
     poll_timer_.setInterval(poll_interval_ms_);
     connect(&poll_timer_, &QTimer::timeout, this, &Kalshi15mCaptureController::poll);
 }
@@ -34,9 +36,11 @@ Kalshi15mCaptureController::Kalshi15mCaptureController(
 Kalshi15mCaptureController::~Kalshi15mCaptureController() = default;
 
 void Kalshi15mCaptureController::start() { poll(); poll_timer_.start(); }
-void Kalshi15mCaptureController::stop()  { poll_timer_.stop(); }
+void Kalshi15mCaptureController::stop()  { poll_timer_.stop(); in_flight_ = false; }
 
 void Kalshi15mCaptureController::poll() {
+    if (in_flight_) return;   // a previous discovery cycle is still paginating
+    in_flight_ = true;
     page_accum_.clear();
     // Discover open markets for the (single, MVP) configured 15-minute series.
     rest_->fetch_markets(QStringLiteral("open"), QString(), families_.first(),
@@ -51,7 +55,18 @@ void Kalshi15mCaptureController::on_markets_ready(
                              QString(), 100, next_cursor);
         return;
     }
+    in_flight_ = false;
     reconcile_and_apply();
+}
+
+void Kalshi15mCaptureController::on_request_error(const QString& context,
+                                                 const QString& message) {
+    // A failed discovery fetch: abandon this cycle without reconciling, so a
+    // transient error never triggers spurious unsubscribes. Next timer tick retries.
+    qWarning("kalshi15m: discovery fetch failed (%s): %s",
+             qUtf8Printable(context), qUtf8Printable(message));
+    in_flight_ = false;
+    page_accum_.clear();
 }
 
 void Kalshi15mCaptureController::reconcile_and_apply() {
