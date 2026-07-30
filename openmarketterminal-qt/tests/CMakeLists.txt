@@ -1114,7 +1114,8 @@ add_test(NAME tst_kalshi_auto_cockpit COMMAND tst_kalshi_auto_cockpit)
 # can never reach the LIVE mood, one ignition per real journal row, and every
 # number is the CLI's / the gate file's rather than one the scene computed.
 # Header-only, no DB/Widgets.
-add_executable(tst_kalshi_bot_cockpit tst_kalshi_bot_cockpit.cpp)
+add_executable(tst_kalshi_bot_cockpit tst_kalshi_bot_cockpit.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/prediction/kalshi/KalshiStrategyGridView.cpp)
 target_include_directories(tst_kalshi_bot_cockpit PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tst_kalshi_bot_cockpit PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME tst_kalshi_bot_cockpit COMMAND tst_kalshi_bot_cockpit)
