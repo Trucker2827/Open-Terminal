@@ -164,3 +164,20 @@ class SimulateEventAheadSizeTest(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["ahead_size"], 0.0)
         self.assertEqual(matches[0]["ahead_size_source"], mql.AHEAD_SIZE_SOURCE_NO_SIZE_ROW)
+
+
+class CertifyTest(unittest.TestCase):
+    def test_optimistic_only_edge_is_not_certified(self):
+        cell = {"mean_pnl_pessimistic": -0.002, "mean_pnl_optimistic": 0.03,
+                "effective_n": 40, "walkforward_pessimistic": 0.01, "bh_rejected": True}
+        self.assertFalse(mql.certify(cell))
+
+    def test_positive_pessimistic_edge_certifies(self):
+        cell = {"mean_pnl_pessimistic": 0.012, "mean_pnl_optimistic": 0.03,
+                "effective_n": 40, "walkforward_pessimistic": 0.008, "bh_rejected": True}
+        self.assertTrue(mql.certify(cell))
+
+    def test_insufficient_sample_never_certifies(self):
+        cell = {"mean_pnl_pessimistic": 0.05, "mean_pnl_optimistic": 0.06,
+                "effective_n": 12, "walkforward_pessimistic": 0.04, "bh_rejected": True}
+        self.assertFalse(mql.certify(cell))
