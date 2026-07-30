@@ -73,7 +73,14 @@ void Kalshi15mCaptureController::reconcile_and_apply() {
     const QStringList desired =
         kalshi15m::desired_subscriptions(page_accum_, families_, cap_);
     const kalshi15m::Delta d = kalshi15m::reconcile(desired, held_);
-    if (!d.to_subscribe.isEmpty())   adapter_->subscribe_market(to_asset_ids(d.to_subscribe));
+    // Re-assert the FULL desired set every cycle, not just the delta: the UI
+    // shares one non-ref-counted WS subscription set, so if it unsubscribed a
+    // ticker we still want, re-subscribing here re-adds it within one poll
+    // (<=30s) instead of leaving a silent capture gap. subscribe is idempotent
+    // at the WS layer. Only tickers that have rolled off (held \ desired) are
+    // unsubscribed. (d.to_subscribe is intentionally superseded by this full
+    // re-assert; d.to_unsubscribe is still the correct roll-off set.)
+    if (!desired.isEmpty())          adapter_->subscribe_market(to_asset_ids(desired));
     if (!d.to_unsubscribe.isEmpty()) adapter_->unsubscribe_market(to_asset_ids(d.to_unsubscribe));
     held_ = QSet<QString>(desired.begin(), desired.end());
 }

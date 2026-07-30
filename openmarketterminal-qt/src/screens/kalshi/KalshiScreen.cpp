@@ -1979,6 +1979,10 @@ void KalshiScreen::wire_adapter() {
             render_market();
         }
     });
+    if (!capture_15m_ && adapter()) {
+        capture_15m_ = new Kalshi15mCaptureController(adapter(), this);
+        capture_15m_->start();
+    }
 }
 
 QString KalshiScreen::category_slug() const {
