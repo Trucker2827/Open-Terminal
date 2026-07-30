@@ -25,3 +25,11 @@ class FillModelTest(unittest.TestCase):
         r = mql.maker_fill(ahead_size=0.0, hits=[])
         self.assertIsNone(r["optimistic"])
         self.assertIsNone(r["pessimistic"])
+
+    def test_exact_clear_is_a_non_fill_pessimistic(self):
+        # ahead=15; hits sum to exactly 15 -> queue clears but our order is NOT
+        # reached (strict >). A '>=' regression would fake a fill here.
+        hits = [(1000, 5.0), (2000, 10.0)]
+        r = mql.maker_fill(ahead_size=15.0, hits=hits)
+        self.assertEqual(r["optimistic"], 1000)
+        self.assertIsNone(r["pessimistic"])
