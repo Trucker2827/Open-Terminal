@@ -127,3 +127,71 @@ class StatsTest(unittest.TestCase):
         self.assertAlmostEqual(s["delta_vs_hold"], 0.05, places=6)
         self.assertIn("delta_vs_market", s)
         self.assertGreaterEqual(s["clustered"]["effective_n"], 30)
+
+
+class EndToEndTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self._prev = os.environ.get("OPENTERMINAL_EVIDENCE_DIR")
+        os.environ["OPENTERMINAL_EVIDENCE_DIR"] = self.dir
+    def tearDown(self):
+        if self._prev is None: os.environ.pop("OPENTERMINAL_EVIDENCE_DIR", None)
+        else: os.environ["OPENTERMINAL_EVIDENCE_DIR"] = self._prev
+
+    def _write(self, name, rows):
+        with open(os.path.join(self.dir, name), "w") as f:
+            for r in rows: f.write(json.dumps(r) + "\n")
+
+    def test_run_emits_versioned_artifacts_with_humility_fields(self):
+        # one KXBTCD ticker, a short two-sided quote path, a recorded settlement, BRTI
+        close = datetime.datetime(2026, 7, 27, 19, 0, tzinfo=datetime.timezone.utc)
+        cms = int(close.timestamp() * 1000)
+        tk = "KXBTCD-26JUL2719-T63999.99"
+        self._write("kalshi-tickers.jsonl", [
+            {"event": "kalshi_ticker", "market_ticker": tk, "ts_ms": cms - 600_000,
+             "yes_bid_dollars": "0.20", "yes_ask_dollars": "0.22"},
+            {"event": "kalshi_ticker", "market_ticker": tk, "ts_ms": cms - 300_000,
+             "yes_bid_dollars": "0.40", "yes_ask_dollars": "0.42"}])
+        self._write("kalshi-settlements.jsonl", [
+            {"kalshi_market_id": tk, "result": "yes", "expiration_value": 64100.0}])
+        self._write("kalshi-cf-benchmarks.jsonl", [
+            {"id": "BRTI", "time": cms - 600_000, "value": 64000.0},
+            {"id": "BRTI", "time": cms, "value": 64100.0}])
+        full = sg.run(sg.common.evidence_dir())
+        self.assertEqual(full["schema_version"], sg.SCHEMA_VERSION)
+        self.assertIn("variants", full)
+        # every variant record carries the humility fields
+        v = full["variants"][0]
+        for key in ("variant_id", "n_contracts", "effective_n", "delta_vs_hold",
+                    "delta_vs_market", "survives_correction", "trust"):
+            self.assertIn(key, v)
+        latest = sg.latest_summary(full)
+        self.assertEqual(latest["schema_version"], sg.SCHEMA_VERSION)
+        self.assertIn("headline", latest)
+        self.assertIsInstance(latest["survivors"], list)
+        # tiny sample -> nothing can be a "measured" survivor
+        self.assertTrue(all(s["trust"] == "measured" for s in latest["survivors"]))
+        self.assertTrue(all(s["effective_n"] >= 30 for s in latest["survivors"]))
+
+    def test_latest_summary_extracts_a_measured_survivor(self):
+        # hand-built `full` with one measured variant, exercising the
+        # non-empty path of latest_summary (never hit by real or seeded data).
+        full = {"schema_version": sg.SCHEMA_VERSION, "as_of_utc": "2026-07-27T00:00:00+00:00",
+                "variants": [
+                    {"variant_id": "YES|b2-10|mechanical|hold", "side": "YES",
+                     "band": [0.02, 0.10], "gate": "mechanical", "exit": {"kind": "hold", "amount": None},
+                     "delta_vs_hold": 0.05, "delta_vs_market": 0.03, "effective_n": 40.0,
+                     "ci95": [0.01, 0.09], "walkforward_delta": 0.02, "trust": "measured"},
+                    {"variant_id": "NO|b50-75|physics|tp5", "side": "NO",
+                     "band": [0.50, 0.75], "gate": "physics", "exit": {"kind": "tp", "amount": 0.05},
+                     "delta_vs_hold": 0.0, "delta_vs_market": 0.0, "effective_n": 2.0,
+                     "ci95": [None, None], "walkforward_delta": None, "trust": "insufficient_sample"},
+                ]}
+        latest = sg.latest_summary(full)
+        self.assertEqual(latest["headline"], "1 variant beats hold+market after correction")
+        self.assertEqual(len(latest["survivors"]), 1)
+        s = latest["survivors"][0]
+        self.assertEqual(s["variant_id"], "YES|b2-10|mechanical|hold")
+        for key in ("side", "band", "gate", "exit", "delta_vs_hold", "delta_vs_market",
+                    "effective_n", "ci95", "walkforward_delta", "trust"):
+            self.assertIn(key, s)
