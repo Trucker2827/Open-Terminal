@@ -110,3 +110,32 @@ candidate view could surface a certified maker edge later — a follow-on, not t
 3. The event→rest→exit sweep + fee accounting.
 4. Statistical layer (two baselines, clustered effective-n, walk-forward, BH,
    certification) + evidence artifacts + a read-only smoke run.
+
+## Amendments during implementation (2026-07-30)
+
+Recorded so this spec matches the shipped engine (final whole-branch review: "coherent
+& honest"):
+
+- **`ahead_size` uses real top-of-book size.** The pessimistic bound reads the resting
+  side's size at join (YES bid → `yes_bid_size`, NO bid → `yes_ask_size`), via a
+  backward-only `SizeBook` over the ticker feed — the sizes `q1.QuoteBook` drops.
+  Without this the bracket is degenerate (pessimistic == optimistic); it is
+  neuter-checked in the tests. Inside-spread rests (`+1¢` offset) have `ahead_size = 0`
+  by construction (nothing rests ahead of a price between the touch), tagged
+  `empty_level_inside_spread` — a logical necessity, not the old bug.
+- **Certification is adversely-selected, not survivorship-inflated.** A record fills
+  pessimistically only after *more* size trades through the level, which correlates
+  with price moving against the resting bid — so conditioning on the pessimistic fill
+  cannot manufacture a fake positive. This is *why* the pessimistic bound is the honest
+  certifier.
+- **Fees are symmetric (conservative).** Same `fee_per_contract` on both legs, no maker
+  rebate modeled; if Kalshi rebates makers, the engine *understates* the edge.
+- **Deferred to a follow-on (design mentioned, not in the task briefs; per-cell fields
+  already support them):** Bonferroni-for-reference alongside BH; an explicit
+  optimistic-only *candidate* view for near-misses; and the dated
+  `docs/research/…-maker-quote-lag.md` human report (the engine emits stdout +
+  `maker-quote-lag.json` today).
+- **Current data reality:** retained trade prints are ~2.8h and (until the threshold
+  families trade) KXBTC15M-heavy, so the honest headline is "no cell certifies /
+  insufficient sample" — the engine degrades honestly rather than fabricating an edge.
+  The verdict waits for accrual, exactly as "retain first, then sweep" intended.
