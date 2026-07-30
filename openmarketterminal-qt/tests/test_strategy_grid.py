@@ -111,10 +111,14 @@ class StatsTest(unittest.TestCase):
         self.assertAlmostEqual(r2["effective_n"], 10.0, places=6)
 
     def test_benjamini_hochberg_rejects_expected_set(self):
-        # classic BH example
+        # Standard step-up BH at alpha=0.05, m=5. Thresholds (i/m)*alpha are
+        # 0.01, 0.02, 0.03, 0.04, 0.05. p(1)=0.001<=0.01 and p(2)=0.008<=0.02,
+        # but p(3)=0.039>0.03 and p(4)=0.041>0.04, so the largest passing rank is
+        # 2 -> reject ranks 1,2 only. (The too-lenient (rank+1)/m bug would wrongly
+        # give [T,T,T,T,F]; this pins the correct k/m formula.)
         pvals = [0.001, 0.008, 0.039, 0.041, 0.9]
         rej = sg.benjamini_hochberg(pvals, alpha=0.05)
-        self.assertEqual(rej, [True, True, True, True, False])
+        self.assertEqual(rej, [True, True, False, False, False])
 
     def test_score_variant_uses_two_nulls(self):
         recs = [{"pnl": 0.05, "hold_pnl": 0.00, "market_pnl": 0.00,
