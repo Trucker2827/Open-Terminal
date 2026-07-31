@@ -83,6 +83,22 @@ QString action(const QJsonArray& rows) {
     return only_row(rows).value(QStringLiteral("action")).toString();
 }
 
+// A filled paper position as KalshiBotOrders::replay hands it to settle_paper.
+QJsonObject open_position(const QString& ticker, qint64 placed_ms) {
+    return QJsonObject{
+        {QStringLiteral("action"), QStringLiteral("bid")},
+        {QStringLiteral("ticker"), ticker},
+        {QStringLiteral("side"), QStringLiteral("YES")},
+        {QStringLiteral("contracts"), 3},
+        {QStringLiteral("price"), 0.63},
+        {QStringLiteral("stake_usd"), 1.89},
+        {QStringLiteral("fee_usd"), 0.02},
+        {QStringLiteral("ts_ms"), static_cast<double>(placed_ms)},
+        {QStringLiteral("position_id"), ticker + QStringLiteral("@") + QString::number(placed_ms)}};
+}
+constexpr qint64 k49h = 49LL * 60 * 60 * 1000;
+constexpr qint64 k1h = 60LL * 60 * 1000;
+
 } // namespace
 
 class TestKalshiBotDecision : public QObject {
@@ -825,6 +841,89 @@ class TestKalshiBotDecision : public QObject {
             kNow);
         QCOMPARE(lost.first().toObject().value(QStringLiteral("won")).toBool(), false);
         QCOMPARE(lost.first().toObject().value(QStringLiteral("realized_pnl")).toDouble(), -stake - fee);
+    }
+
+    // --- Fix 2: an aged orphan with no settlement record is voided, not held ---
+
+    void an_aged_orphan_with_no_settlement_is_voided_and_retired() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray open{open_position(ticker, kNow)};
+
+        // No settlement records at all, position is 49h old (> 48h horizon).
+        const QJsonArray voids = KalshiBotDecision::settle_paper(open, {}, kNow + k49h);
+        QCOMPARE(voids.size(), 1);
+        const QJsonObject v = voids.first().toObject();
+        QCOMPARE(v.value(QStringLiteral("event")).toString(), QStringLiteral("kalshi_bot_paper_void"));
+        QCOMPARE(v.value(QStringLiteral("resolution")).toString(), QStringLiteral("unresolved_expired"));
+        QVERIFY(v.value(QStringLiteral("won")).isNull());
+        QCOMPARE(v.value(QStringLiteral("realized_pnl")).toDouble(), 0.0);
+
+        // Replaying [bid, fill, void] retires the FILLED position: nothing left
+        // open, no exposure. The bid row is the ledger shape KalshiBotOrders::replay
+        // consumes (event:kalshi_bot_decision, action:bid, carrying order_state so
+        // it registers as an ORDER rather than rung 1's assumed-fill shape); the
+        // fill row (action:fill) advances that same order, matched by the
+        // position_id the bid and fill share. Positive control first: [bid, fill]
+        // alone leaves ONE open position with non-zero exposure, so the drop below
+        // is the void's doing, not an empty ledger.
+        const QJsonObject bid_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("action"), QStringLiteral("bid")},
+            {QStringLiteral("ticker"), ticker},
+            {QStringLiteral("side"), QStringLiteral("YES")},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.63},
+            {QStringLiteral("order_state"), QStringLiteral("resting")},
+            {QStringLiteral("ts_ms"), static_cast<double>(kNow)},
+            {QStringLiteral("position_id"),
+             ticker + QStringLiteral("@") + QString::number(kNow)}};
+        const QJsonObject fill_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("action"), QStringLiteral("fill")},
+            {QStringLiteral("position_id"), bid_row.value(QStringLiteral("position_id"))},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.63},
+            {QStringLiteral("fee_usd"), 0.02}};
+        const QJsonArray filled_only{bid_row, fill_row};
+        const KalshiBotOrders::Book before = KalshiBotOrders::replay(filled_only);
+        QCOMPARE(before.positions.size(), 1);
+        QVERIFY(before.exposure_usd > 0.0);
+
+        QJsonArray with_void = filled_only;
+        with_void.append(v);
+        const KalshiBotOrders::Book after = KalshiBotOrders::replay(with_void);
+        QCOMPARE(after.positions.size(), 0);   // the void retired it
+        QCOMPARE(after.exposure_usd, 0.0);
+    }
+
+    void a_matching_settlement_settles_and_never_voids_even_when_old() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray open{open_position(ticker, kNow)};
+        const QJsonArray settlements{QJsonObject{{QStringLiteral("ticker"), ticker},
+                                                 {QStringLiteral("market_result"), QStringLiteral("YES")},
+                                                 {QStringLiteral("settled_time"), QStringLiteral("t")},
+                                                 {QStringLiteral("source"), QStringLiteral("kalshi-settlements.jsonl")}}};
+        const QJsonArray rows = KalshiBotDecision::settle_paper(open, settlements, kNow + k49h);
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().toObject().value(QStringLiteral("event")).toString(),
+                 QStringLiteral("kalshi_bot_paper_settlement"));   // settled, not voided
+    }
+
+    void a_young_orphan_is_not_voided() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray open{open_position(ticker, kNow)};
+        const QJsonArray rows = KalshiBotDecision::settle_paper(open, {}, kNow + k1h);  // 1h < 48h
+        QCOMPARE(rows.size(), 0);   // stays open, no void
+    }
+
+    /// The gate and funnel count only kalshi_bot_paper_settlement
+    /// (KalshiBotGate.cpp:323, KalshiBotFunnel.cpp:84), so a void is a distinct
+    /// event and is never scored as a settled bid. Lock the event name in.
+    void a_void_is_not_a_settlement_event() {
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const QJsonArray voids = KalshiBotDecision::settle_paper({open_position(ticker, kNow)}, {}, kNow + k49h);
+        QVERIFY(voids.first().toObject().value(QStringLiteral("event")).toString() !=
+                QStringLiteral("kalshi_bot_paper_settlement"));
     }
 
 };
