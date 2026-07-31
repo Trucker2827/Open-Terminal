@@ -864,8 +864,17 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
             harvest_stage.role = QStringLiteral("grey");
             harvest_stage.value = QStringLiteral("unknown");
             harvest_reason = QStringLiteral("FEED UNKNOWN — no engine status was supplied");
-        } else if (!feed.ws_connected || feed.newest_event_age_ms < 0 ||
-                   feed.newest_event_age_ms > 300'000) {
+        } else if (feed.newest_event_age_ms < 0 || feed.newest_event_age_ms > 300'000) {
+            // Genuinely stale — the real down signal — regardless of the
+            // connected bit: a market event age this old means the feed is
+            // down whether or not the socket still reports connected.
+            harvest_stage.role = QStringLiteral("red");
+            harvest_stage.value = QStringLiteral("down");
+            harvest_reason = QStringLiteral("FEED DOWN — %1")
+                                  .arg(feed.last_error.isEmpty()
+                                           ? QStringLiteral("no reason given")
+                                           : feed.last_error);
+        } else if (!feed.ws_connected && feed.newest_event_age_ms > 60'000) {
             harvest_stage.role = QStringLiteral("red");
             harvest_stage.value = QStringLiteral("down");
             harvest_reason = QStringLiteral("FEED DOWN — %1")
@@ -876,6 +885,15 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
             harvest_stage.role = QStringLiteral("amber");
             harvest_stage.value = span_text(feed.newest_event_age_ms);
             harvest_reason = QStringLiteral("FEED SLOW — newest market event %1 old")
+                                  .arg(span_text(feed.newest_event_age_ms));
+        } else if (!feed.ws_connected) {
+            // A momentary disconnect beside still-fresh events (anchored on
+            // the market-event AGE, a smooth clock) is de-bounced to amber
+            // rather than flashing red on a single dropped connected bit.
+            harvest_stage.role = QStringLiteral("amber");
+            harvest_stage.value = span_text(feed.newest_event_age_ms);
+            harvest_reason = QStringLiteral(
+                "FEED SLOW — websocket disconnected but newest market event is %1 old")
                                   .arg(span_text(feed.newest_event_age_ms));
         } else {
             harvest_stage.role = QStringLiteral("green");

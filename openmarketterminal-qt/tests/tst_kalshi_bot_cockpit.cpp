@@ -956,6 +956,37 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
     }
 
+    // ── FIX 3: de-bounce HARVEST on the market-event age, not a single
+    // connected blip ────────────────────────────────────────────────────────
+
+    // (a) A momentary websocket disconnect beside a still-FRESH market event
+    // (age 5s) must not flash HARVEST red — the real down signal is the
+    // event age going stale, not a single dropped connected bit. This is
+    // amber ("brief disconnect, events still fresh"), not red.
+    void a_momentary_disconnect_with_fresh_events_is_amber_not_red() {
+        const BotCockpitFeedHealth feed{/*readable=*/true, /*ws_connected=*/false,
+                                        /*credentials_ok=*/true, /*newest_event_age_ms=*/5'000, {}};
+        const QJsonArray ledger = bidding_ledger();
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), true);
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed);
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("amber"));
+    }
+
+    // (b) A disconnect beside a genuinely STALE event (age 6min) is still a
+    // real outage — red, not de-bounced away.
+    void a_disconnect_with_stale_events_is_still_red() {
+        const BotCockpitFeedHealth feed{/*readable=*/true, /*ws_connected=*/false,
+                                        /*credentials_ok=*/true, /*newest_event_age_ms=*/360'000, {}};
+        const QJsonArray ledger = bidding_ledger();
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), true);
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed);
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("red"));
+    }
+
     // ── FIX 2: grey HARVEST never greens the overall banner ────────────────
 
     // A grey (unknown) HARVEST is neither red nor amber, so the ladder used
