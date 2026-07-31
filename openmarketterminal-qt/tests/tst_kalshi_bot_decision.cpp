@@ -1,8 +1,12 @@
 #include "services/prediction/kalshi/KalshiBotDecision.h"
 #include "services/prediction/kalshi/KalshiBotOrders.h"
+#include "services/prediction/kalshi/KalshiBotRuntime.h"
 
+#include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include <cmath>
@@ -10,6 +14,8 @@
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotDecision;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotOrders;
 using openmarketterminal::services::prediction::kalshi_ns::KalshiBotStopFile;
+using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_is_replay_event;
+using openmarketterminal::services::prediction::kalshi_ns::kalshi_bot_read_ledger;
 
 namespace {
 
@@ -924,6 +930,77 @@ class TestKalshiBotDecision : public QObject {
         const QJsonArray voids = KalshiBotDecision::settle_paper({open_position(ticker, kNow)}, {}, kNow + k49h);
         QVERIFY(voids.first().toObject().value(QStringLiteral("event")).toString() !=
                 QStringLiteral("kalshi_bot_paper_settlement"));
+    }
+
+    // --- Fix 2's DISK-READ seam (whole-branch review, Important): a void must
+    // retire its position DURABLY once journaled, not just in the in-memory
+    // arrays the tests above hand settle_paper()/replay() directly ----------
+    //
+    // `run_tick()` (KalshiBotCommands.cpp) does not replay whatever array a
+    // caller built in memory: every tick it re-reads the WHOLE ledger from
+    // disk through `kalshi_bot_read_ledger()` with a predicate that decides
+    // which event kinds survive the read. That predicate used to keep only
+    // kalshi_bot_decision and kalshi_bot_paper_settlement, silently dropping
+    // kalshi_bot_paper_void on the way off disk. The tests above never catch
+    // that: they construct `[bid, fill, void]` as one in-memory QJsonArray and
+    // hand it straight to KalshiBotOrders::replay(), so the disk-read
+    // predicate is simply never in the path. This test drives the real seam —
+    // a void written to an actual file, read back through the same
+    // `kalshi_bot_read_ledger()` + predicate `run_tick()` uses — so a
+    // regression in that predicate (this one, or a future one) fails here.
+    void a_void_read_back_from_disk_retires_the_position_durably() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString ledger_path = dir.filePath(QStringLiteral("kalshi-bot-decisions.jsonl"));
+        const QString ticker = QStringLiteral("KXBTCD-26JUL2808-T63499.99");
+        const qint64 placed_ms = kNow - k49h;
+
+        // A "rung 1" legacy bid row (no order_state key): KalshiBotOrders::replay
+        // treats it as already filled at its own price/contracts/fee — the
+        // ledger shape a real open position was recorded in.
+        const QJsonObject bid_row = open_position(ticker, placed_ms);
+        // The void a PRIOR tick already journaled for this exact orphan: the
+        // real row settle_paper() emits for an aged position with no
+        // settlement record, not a hand-built stand-in.
+        const QJsonObject void_row =
+            KalshiBotDecision::settle_paper({bid_row}, {}, kNow).first().toObject();
+        QCOMPARE(void_row.value(QStringLiteral("event")).toString(),
+                 QStringLiteral("kalshi_bot_paper_void"));
+
+        QFile file(ledger_path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        QJsonObject raw_bid_row{
+            {QStringLiteral("event"), QStringLiteral("kalshi_bot_decision")},
+            {QStringLiteral("ts_ms"), static_cast<double>(placed_ms)},
+            {QStringLiteral("action"), QStringLiteral("bid")},
+            {QStringLiteral("ticker"), ticker},
+            {QStringLiteral("side"), QStringLiteral("YES")},
+            {QStringLiteral("contracts"), 3},
+            {QStringLiteral("price"), 0.63},
+            {QStringLiteral("fee_usd"), 0.02},
+            {QStringLiteral("position_id"), bid_row.value(QStringLiteral("position_id"))}};
+        for (const QJsonObject& row : {raw_bid_row, void_row})
+            file.write(QJsonDocument(row).toJson(QJsonDocument::Compact) + "\n");
+        file.close();
+
+        // Read the ledger back exactly as run_tick() does: through the shared
+        // predicate, off a real file — not the in-memory array the tests
+        // above build by hand.
+        const QJsonArray from_disk = kalshi_bot_read_ledger(ledger_path, kalshi_bot_is_replay_event);
+        const KalshiBotOrders::Book book = KalshiBotOrders::replay(from_disk);
+        // The void retired the position DURABLY: nothing open, no exposure.
+        QCOMPARE(book.positions.size(), 0);
+        QCOMPARE(book.exposure_usd, 0.0);
+
+        // And a second settle pass over that same re-read record must not
+        // mint a second void for an orphan it already closed out — the
+        // durability claim this whole test exists to prove. run_tick() only
+        // calls settle_paper() when book.positions is non-empty; asserting
+        // that directly is the load-bearing check, and calling settle_paper()
+        // here too (on the now-empty book) confirms there is nothing left to
+        // re-void even if that guard were ever removed.
+        const QJsonArray revoided = KalshiBotDecision::settle_paper(book.positions, {}, kNow + 1000);
+        QCOMPARE(revoided.size(), 0);
     }
 
 };

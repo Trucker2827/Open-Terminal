@@ -338,12 +338,11 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
             ++stopped.passes;
         }
         // The book is still out there while the bot is stopped; report it
-        // rather than printing zeros the ledger does not support.
-        const QJsonArray record = read_ledger(ledger_path, [](const QJsonObject& row) {
-            const QString event = row.value(QStringLiteral("event")).toString();
-            return event == QLatin1String(kDecisionEvent) ||
-                   event == QLatin1String(kSettlementEvent);
-        });
+        // rather than printing zeros the ledger does not support. Shared with
+        // the main path below (kalshi_bot_is_replay_event) so the two reads
+        // cannot drift the way they did before (issue #189's void kind reached
+        // one and not the other).
+        const QJsonArray record = read_ledger(ledger_path, kalshi_bot_is_replay_event);
         const KalshiBotOrders::Book book = KalshiBotOrders::replay(record);
         stopped.still_open = static_cast<int>(book.positions.size());
         stopped.resting = static_cast<int>(book.resting.size());
@@ -363,10 +362,7 @@ TickResult run_tick(const KalshiBotDecision::Config& config, qint64 now_ms,
         return stopped;
     }
 
-    QJsonArray ledger = read_ledger(ledger_path, [](const QJsonObject& row) {
-        const QString event = row.value(QStringLiteral("event")).toString();
-        return event == QLatin1String(kDecisionEvent) || event == QLatin1String(kSettlementEvent);
-    });
+    QJsonArray ledger = read_ledger(ledger_path, kalshi_bot_is_replay_event);
     const auto journal = [&ledger, &ledger_path](const QJsonObject& row) {
         journal_ledger_row(ledger_path, row);
         ledger.append(row);
