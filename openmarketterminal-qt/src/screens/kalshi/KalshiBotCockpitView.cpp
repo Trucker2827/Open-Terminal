@@ -1,5 +1,6 @@
 #include "screens/kalshi/KalshiBotCockpitView.h"
 
+#include "screens/kalshi/BotCockpitFeedHealthReader.h"
 #include "ui/theme/Theme.h"
 
 #include <QColor>
@@ -88,26 +89,19 @@ qint64 newest_ticker_event_age_ms(qint64 now_ms) {
 /// Feed/harvest health from kalshi-ws-engine.json, read at the same cadence
 /// (and through the same evidence-path helper) as calibrator.json, the gate,
 /// and the ledger already are in `load_bot_cockpit_scene`. Read-only: this
-/// never writes an evidence file.
+/// never writes an evidence file. The parsing itself (age off
+/// `last_market_event_at`, never the CF-Benchmarks-conflated `last_event_at`)
+/// lives in the pure, unit-tested `parse_bot_cockpit_feed_health`.
 BotCockpitFeedHealth read_bot_cockpit_feed_health(qint64 now_ms) {
-    BotCockpitFeedHealth feed;
     QFile engine_file(cli::kalshi_evidence_path(QStringLiteral("kalshi-ws-engine.json")));
     QJsonObject engine;
+    bool readable = false;
     if (engine_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         const QJsonDocument document = QJsonDocument::fromJson(engine_file.readAll());
-        feed.readable = document.isObject();
-        if (feed.readable) engine = document.object();
+        readable = document.isObject();
+        if (readable) engine = document.object();
     }
-    feed.ws_connected = engine.value(QStringLiteral("connected")).toBool();
-    feed.credentials_ok = engine.value(QStringLiteral("credentials")).toBool();
-    feed.last_error = engine.value(QStringLiteral("last_error")).toString();
-
-    const QDateTime last_event = QDateTime::fromString(
-        engine.value(QStringLiteral("last_event_at")).toString(), Qt::ISODateWithMs);
-    feed.newest_event_age_ms = last_event.isValid()
-        ? qMax<qint64>(0, now_ms - last_event.toMSecsSinceEpoch())
-        : newest_ticker_event_age_ms(now_ms);
-    return feed;
+    return parse_bot_cockpit_feed_health(engine, readable, now_ms, newest_ticker_event_age_ms(now_ms));
 }
 
 /// The head of a column: enough of the ticker to identify the contract in a

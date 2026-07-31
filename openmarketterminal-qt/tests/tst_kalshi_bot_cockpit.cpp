@@ -10,11 +10,13 @@
 
 #include <QtTest>
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
 #include <QString>
 
+#include "screens/kalshi/BotCockpitFeedHealthReader.h"
 #include "screens/kalshi/BotCockpitPresentation.h"
 
 using namespace openmarketterminal::screens::kalshi;
@@ -952,6 +954,49 @@ class KalshiBotCockpitTest : public QObject {
         // Not just "not green" — an unreadable feed reads grey/unknown, not
         // red either: the view said nothing, so nothing is claimed.
         QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
+    }
+
+    // ── FIX 1: HARVEST keys off a MARKET-data timestamp, not the
+    // CF-Benchmarks-conflated `last_event_at` ──────────────────────────────
+
+    // `last_event_at` is bumped by BOTH real market events AND the
+    // CF-Benchmarks BRTI tick, so a feed with a fresh `last_event_at` but a
+    // stale `last_market_event_at` is exactly "connected, market silent" —
+    // BRTI keeps ticking while the tradeable feed has gone quiet. The reader
+    // must age off the market-only stamp: reading `last_event_at` here would
+    // (wrongly) report a 2s-old feed and green HARVEST.
+    void feed_health_reader_ages_off_market_event_not_conflated_last_event_at() {
+        const QJsonObject engine{
+            {"connected", true},
+            {"credentials", true},
+            {"last_event_at", QDateTime::fromMSecsSinceEpoch(kNow - 2'000, Qt::UTC)
+                                  .toString(Qt::ISODateWithMs)},
+            {"last_market_event_at", QDateTime::fromMSecsSinceEpoch(kNow - 360'000, Qt::UTC)
+                                          .toString(Qt::ISODateWithMs)}};
+        const BotCockpitFeedHealth feed =
+            parse_bot_cockpit_feed_health(engine, /*readable=*/true, kNow, /*fallback_age_ms=*/-1);
+        QVERIFY(feed.newest_event_age_ms >= 300'000);
+
+        // Fed into the classifier: connected but market-stale still reds
+        // HARVEST — a connected-but-market-silent feed cannot green.
+        const QJsonArray ledger = bidding_ledger();
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), true);
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed);
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("red"));
+        QVERIFY(s.health_role != QStringLiteral("green"));
+    }
+
+    // When the engine has no `last_market_event_at` at all (an older engine
+    // build, or one that has connected but not yet ticked), the reader falls
+    // back to the caller-supplied age (e.g. the kalshi-tickers.jsonl tail)
+    // rather than silently reading `last_event_at`.
+    void feed_health_reader_falls_back_when_market_event_absent() {
+        const QJsonObject engine{{"connected", true}, {"credentials", true}};
+        const BotCockpitFeedHealth feed =
+            parse_bot_cockpit_feed_health(engine, /*readable=*/true, kNow, /*fallback_age_ms=*/4'000);
+        QCOMPARE(feed.newest_event_age_ms, qint64(4'000));
     }
 
     // ── the redesign is additive: pre-existing fields are untouched ────────

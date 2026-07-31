@@ -1336,6 +1336,10 @@ class KalshiLiveEventEngine final : public QObject {
         last_event_type_ = type;
         last_event_ticker_ = ticker;
         last_event_at_ = now_utc();
+        // Market-only clock (issue: HARVEST must not be conflated with the
+        // CF-Benchmarks BRTI tick, which also bumps `last_event_at_` below).
+        // Only this path — real Kalshi market data — sets it.
+        last_market_event_at_ = last_event_at_;
         last_transport_activity_ms_ = QDateTime::currentMSecsSinceEpoch();
         capture_exchange_timestamp(payload);
         status_dirty_ = true;
@@ -1645,6 +1649,10 @@ class KalshiLiveEventEngine final : public QObject {
                     ? std::max<qint64>(0, now_ms - last_account_reconcile_ms_) : -1)},
             {QStringLiteral("last_sequence"), QString::number(last_sequence_)},
             {QStringLiteral("last_event_at"), last_event_at_},
+            // Market-data-only stamp: bumped ONLY by observe_market_event, never
+            // by the CF-Benchmarks BRTI tick, so HARVEST can tell "the
+            // tradeable feed is silent" apart from "BRTI is still ticking".
+            {QStringLiteral("last_market_event_at"), last_market_event_at_},
             {QStringLiteral("last_event_type"), last_event_type_},
             {QStringLiteral("last_event_ticker"), last_event_ticker_},
             {QStringLiteral("last_exchange_timestamp"), last_exchange_timestamp_},
@@ -1740,6 +1748,7 @@ class KalshiLiveEventEngine final : public QObject {
     int last_process_exit_ = 0;
     bool process_timed_out_ = false;
     QString last_event_at_;
+    QString last_market_event_at_;
     QString last_event_type_;
     QString last_event_ticker_;
     QString last_exchange_timestamp_;
