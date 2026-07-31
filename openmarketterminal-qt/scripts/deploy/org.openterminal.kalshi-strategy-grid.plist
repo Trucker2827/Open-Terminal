@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  KALSHI STRATEGY GRID — the every-6h advisory sweep.
+  Companion to org.openterminal.kalshi-edge-report.plist. Runs the read-only
+  research sweep scripts/research/strategy_grid.py, which writes
+
+      ~/Library/Application Support/Open Terminal/Open Terminal/kalshi-strategy-grid.json
+      ~/Library/Application Support/Open Terminal/Open Terminal/kalshi-strategy-grid-latest.json
+
+  The BOT tab's GRID line and `kalshi grid` render -latest.json. READ-ONLY against
+  every ledger; artifact written temp-then-renamed. Changes nothing the bot's
+  decision path reads. RunAtLoad is false so bootstrapping does not kick a
+  multi-second sweep at an arbitrary moment; the 6h interval drives it.
+
+  INSTALL:
+      cp org.openterminal.kalshi-strategy-grid.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.openterminal.kalshi-strategy-grid.plist
+  UNINSTALL:
+      launchctl bootout gui/$UID/org.openterminal.kalshi-strategy-grid
+      rm ~/Library/LaunchAgents/org.openterminal.kalshi-strategy-grid.plist
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.openterminal.kalshi-strategy-grid</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>OPENTERMINAL_EVIDENCE_DIR</key><string>/Users/haydarevich/Library/Application Support/Open Terminal/Open Terminal</string>
+  </dict>
+  <key>ProgramArguments</key><array>
+    <string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/venv-numpy2/bin/python3</string>
+    <string>/Users/haydarevich/src/Open-Terminal/scripts/research/strategy_grid.py</string>
+  </array>
+  <key>StartInterval</key><integer>21600</integer>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+  <key>WorkingDirectory</key><string>/Users/haydarevich/src/Open-Terminal</string>
+  <key>StandardOutPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kalshi-strategy-grid.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/haydarevich/Library/Application Support/org.openterminal.OpenTerminal/logs/kalshi-strategy-grid.err.log</string>
+</dict></plist>
