@@ -220,6 +220,12 @@ QString KalshiRestClient::absolute_url(const QString& path) const {
 void KalshiRestClient::get_json(const QString& path, JsonCallback on_success, const QString& error_ctx) {
     QNetworkRequest req{QUrl(absolute_url(path))};
     req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("OpenMarketTerminal/0.1.0"));
+    // Qt's HTTP/2 client throws "HTTP/2 protocol error" / "Connection closed"
+    // against Kalshi's endpoint (curl reaches it fine over BOTH h2 and h1.1),
+    // which stalls the REST polls and the WS auth flow — the market feed goes
+    // dark until the process restarts, and the fresh process fails the same way.
+    // Force HTTP/1.1, the same fix LlmService already applies (LlmService.cpp).
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
     auto* reply = nam_->get(req);
     QPointer<KalshiRestClient> self = this;
     connect(reply, &QNetworkReply::finished, this, [self, reply, on_success, error_ctx]() {
@@ -518,6 +524,9 @@ void KalshiRestClient::fan_out_series_markets(const QStringList& series,
             QNetworkRequest req{QUrl(u.toString())};
             req.setHeader(QNetworkRequest::UserAgentHeader,
                           QStringLiteral("OpenMarketTerminal/0.1.0"));
+            // Force HTTP/1.1: Qt's HTTP/2 client fails against Kalshi (see
+            // get_json above; curl works over both h2 and h1.1).
+            req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
             auto* reply = self->nam_->get(req);
             self->connect(reply, &QNetworkReply::finished, self,
                           [self, reply, st, pump, s, category]() {
@@ -663,6 +672,9 @@ void KalshiRestClient::fan_out_series_events(const QStringList& series, bool as_
             QNetworkRequest req{QUrl(u.toString())};
             req.setHeader(QNetworkRequest::UserAgentHeader,
                           QStringLiteral("OpenMarketTerminal/0.1.0"));
+            // Force HTTP/1.1: Qt's HTTP/2 client fails against Kalshi (see
+            // get_json above; curl works over both h2 and h1.1).
+            req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
             auto* reply = self->nam_->get(req);
             self->connect(reply, &QNetworkReply::finished, self,
                           [self, reply, st, pump]() {
