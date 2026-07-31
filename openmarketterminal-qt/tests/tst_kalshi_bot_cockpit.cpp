@@ -956,6 +956,29 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
     }
 
+    // ── FIX 2: grey HARVEST never greens the overall banner ────────────────
+
+    // A grey (unknown) HARVEST is neither red nor amber, so the ladder used
+    // to fall through past it straight to GREEN "ACTING" whenever CALIBRATE
+    // and DECIDE were both healthy — an unreadable feed would then be
+    // rendered as a fully healthy pipeline. Grey HARVEST must cap the
+    // overall banner at amber (or grey), never green.
+    void grey_harvest_caps_the_overall_banner_never_green() {
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), /*adds_value=*/true);
+        const QJsonArray ledger = bidding_ledger();
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {},
+                                                      kNow);  // default feed {} => harvest grey
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate")), QStringLiteral("green"));
+        QCOMPARE(stage_role(s, QStringLiteral("decide")), QStringLiteral("green"));
+        QVERIFY(s.health_role != QStringLiteral("green"));
+        // Neuter: the same inputs with a live feed DO read overall green.
+        const BotCockpitScene ok = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                       QByteArray(), kBotCockpitMaxColumns,
+                                                       kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(ok.health_role, QStringLiteral("green"));
+    }
+
     // ── FIX 1: HARVEST keys off a MARKET-data timestamp, not the
     // CF-Benchmarks-conflated `last_event_at` ──────────────────────────────
 

@@ -963,6 +963,15 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         } else if (decide_stage.role == QStringLiteral("amber")) {
             scene.health_role = QStringLiteral("amber");
             scene.health_banner = decide_reason;
+        } else if (harvest_stage.role == QStringLiteral("grey")) {
+            // Grey (unknown) HARVEST is neither red nor amber above, so
+            // without this clause the ladder falls straight through to GREEN
+            // "ACTING" whenever CALIBRATE and DECIDE are both healthy — an
+            // unreadable feed would then be rendered as a fully healthy
+            // pipeline. An unknown feed caps the banner at amber; it is never
+            // allowed to green.
+            scene.health_role = QStringLiteral("amber");
+            scene.health_banner = harvest_reason;
         } else {
             scene.health_role = QStringLiteral("green");
             scene.health_banner = QStringLiteral("ACTING — %1").arg(decide_reason);
