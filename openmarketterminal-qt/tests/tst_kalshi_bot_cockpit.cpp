@@ -203,6 +203,17 @@ QJsonArray report_stale_ledger() {
                                    QStringLiteral("REPORT_STALE"))};
 }
 
+/// A ticking loop whose ONLY bid is older than `kDecideBidRecencyMs`, with a
+/// recent PASS after it so the loop still reads "running". The ledger tail is
+/// a byte window, not a time window, so this old bid can sit in it for a long
+/// stretch after the loop stopped bidding — DECIDE must not still call that
+/// "bidding".
+QJsonArray old_bid_ledger() {
+    return QJsonArray{bid_row(kNow - 200'000, QStringLiteral("KX-A")),
+                      decision_row(kNow - 5'000, QStringLiteral("KX-B"),
+                                   QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+}
+
 // Feed-health fixtures.
 BotCockpitFeedHealth feed_live() { return {true, true, true, 2'000, {}}; }
 BotCockpitFeedHealth feed_down() {
@@ -897,6 +908,24 @@ class KalshiBotCockpitTest : public QObject {
         QCOMPARE(s.health_role, QStringLiteral("green"));
         for (const auto& id : {"harvest", "calibrate", "decide"})
             QCOMPARE(stage_role(s, QString::fromLatin1(id)), QStringLiteral("green"));
+    }
+
+    // 4b. A bid sitting in the byte-window ledger tail but OLDER than
+    // kDecideBidRecencyMs must NOT read DECIDE green. The loop is still
+    // running (a recent PASS keeps it "running"), so this is amber
+    // "passing", never red and never a stale green — an old bid on a running
+    // loop just means nothing is being bid on right now.
+    void an_old_bid_in_the_tail_reads_decide_amber_not_green() {
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), true);
+        const QJsonArray ledger = old_bid_ledger();
+        const KalshiBotPanelView panel = panel_for(ledger);
+        QCOMPARE(panel.state, QStringLiteral("running"));
+        const BotCockpitScene s = present_bot_cockpit(panel, report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(stage_role(s, QStringLiteral("decide")), QStringLiteral("amber"));
+        QVERIFY(s.health_role != QStringLiteral("green"));
+        QVERIFY(s.health_role != QStringLiteral("red"));
     }
 
     // 5. Kill switch => DECIDE red "LOOP STOPPED", regardless of feed.

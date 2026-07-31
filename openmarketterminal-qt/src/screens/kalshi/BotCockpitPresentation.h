@@ -83,6 +83,17 @@ inline constexpr int kBotCockpitMaxColumns = 24;
 /// keeps. Also stated when it truncates.
 inline constexpr int kBotCockpitMaxPulses = 12;
 
+/// DECIDE reads GREEN "bidding" only when the winning bid's OWN `ts_ms` is
+/// within this many ms of `now_ms`. `newest_bid` is drawn from
+/// `read_kalshi_bot_ledger_tail()`, which is a 512 KB BYTE window, not a time
+/// window — so an old bid can sit inside that window long after the loop
+/// stopped bidding, and without this check DECIDE would keep reporting green
+/// "bidding" on a loop that has been merely passing for a long stretch.
+/// 3 x the bot's ~60s tick interval: a bid inside the last ~3 ticks counts as
+/// "recent". Older than that, DECIDE falls to amber "passing" (the loop is
+/// fine, just not bidding right now) — never red, and never a stale green.
+inline constexpr qint64 kDecideBidRecencyMs = 180'000;
+
 // ── Moods ──────────────────────────────────────────────────────────────────
 // "paper" is the cool scene, "live" the hot one, "dormant" the grey one. There
 // is no fourth: everything that is not a running paper loop or a live tick is
@@ -470,6 +481,11 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
     QSet<qint64> ticks_last_hour;
     qint64 oldest_row_ts = 0;
     qint64 newest_row_ts = 0;
+    // The newest bid's OWN timestamp, across every ticker — not the newest
+    // ledger row of any kind. DECIDE's recency check (kDecideBidRecencyMs)
+    // needs the age of the winning bid itself, since the byte-window tail can
+    // carry a fresh PASS beside a long-stale bid.
+    qint64 newest_bid_ts_ms = -1;
     for (const auto& value : ledger_rows) {
         const QJsonObject row = value.toObject();
         const QString event = row.value(QStringLiteral("event")).toString();
@@ -491,6 +507,7 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
             if (row.value(QStringLiteral("action")).toString() == QStringLiteral("bid")) {
                 // One ignition per real journal row (rule 1).
                 ignition_counts[ticker] += 1;
+                if (ts > newest_bid_ts_ms) newest_bid_ts_ms = ts;
                 const auto previous = newest_bid.constFind(ticker);
                 if (previous == newest_bid.constEnd() ||
                     services::prediction::kalshi_ns::kalshi_bot_row_ts_ms(*previous) <= ts)
@@ -894,13 +911,22 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
         decide_stage.id = QStringLiteral("decide");
         decide_stage.label = QStringLiteral("DECIDE");
         QString decide_reason;
+        // GREEN "bidding" needs the winning bid itself to be recent
+        // (kDecideBidRecencyMs) — `newest_bid` comes from a BYTE-window
+        // ledger tail, not a time window, so an old bid can still be sitting
+        // in that window long after the loop stopped bidding. An old bid on a
+        // running loop is "passing", not "bidding": the loop is fine, it just
+        // has nothing to bid on right now.
+        const bool has_recent_bid =
+            !newest_bid.isEmpty() && newest_bid_ts_ms >= 0 &&
+            now_ms - newest_bid_ts_ms <= kDecideBidRecencyMs;
         if (panel.state != QStringLiteral("running")) {
             // Stopped (kill switch) or no recent tick (stale/off): the loop is
             // never blamed for its input, but it IS blamed for not looping.
             decide_stage.role = QStringLiteral("red");
             decide_stage.value = QStringLiteral("stopped");
             decide_reason = QStringLiteral("LOOP STOPPED");
-        } else if (!newest_bid.isEmpty()) {
+        } else if (has_recent_bid) {
             decide_stage.role = QStringLiteral("green");
             decide_stage.value = QStringLiteral("bidding");
             decide_reason = QStringLiteral("BIDDING");
