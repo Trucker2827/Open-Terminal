@@ -429,6 +429,43 @@ class TestKalshiBotDecision : public QObject {
         QCOMPARE(row.value(QStringLiteral("price")).toDouble(), 0.84);
     }
 
+    // --- Fix 1: the paper loop is not bricked by the lifetime session budget --
+
+    /// With the budget exempted (paper), a bid still fires even though the
+    /// session's cumulative all-in is already at the cap. Neuter below proves the
+    /// flag is what gates it and live is unchanged.
+    void paper_accumulates_past_the_session_budget() {
+        const QJsonObject bidding = report(0.98, 0.83, 10.0);
+
+        KalshiBotDecision::Exposure at_cap;                 // cumulative opens at the cap
+        at_cap.session_opened_usd = 120.00;
+
+        KalshiBotDecision::Config paper;                    // paper: budget exempt
+        paper.enforce_session_budget = false;
+        const QJsonArray bids = KalshiBotDecision::decide(bidding, {}, {}, kNow, paper, {}, at_cap);
+        QCOMPARE(action(bids), QStringLiteral("bid"));
+
+        // Neuter: default config (live semantics) refuses the very same inputs.
+        const QJsonArray blocked = KalshiBotDecision::decide(bidding, {}, {}, kNow, {}, {}, at_cap);
+        QCOMPARE(action(blocked), QStringLiteral("pass"));
+        QCOMPARE(reason(blocked), QStringLiteral("SESSION_BUDGET_BLOCKS_BID"));
+    }
+
+    /// Exempting the session budget must NOT make paper unbounded: the current
+    /// open-exposure fence still refuses a bid that would breach it.
+    void paper_still_respects_the_open_exposure_cap() {
+        const QJsonObject bidding = report(0.98, 0.83, 10.0);
+
+        KalshiBotDecision::Exposure at_open_cap;            // open risk already at the cap
+        at_open_cap.at_risk_usd = 120.00;
+
+        KalshiBotDecision::Config paper;
+        paper.enforce_session_budget = false;
+        const QJsonArray rows = KalshiBotDecision::decide(bidding, {}, {}, kNow, paper, {}, at_open_cap);
+        QCOMPARE(action(rows), QStringLiteral("pass"));
+        QCOMPARE(reason(rows), QStringLiteral("EXPOSURE_CAP_BLOCKS_BID"));
+    }
+
     // --- sizing ----------------------------------------------------------
 
     void sizing_respects_the_stake_and_all_in_caps() {

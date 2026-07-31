@@ -396,7 +396,8 @@ QJsonArray KalshiBotDecision::decide(const QJsonObject& report,
             refuse_on_cap(kExposureCapBlocksBid, at_risk_usd, config.max_open_exposure_usd);
             continue;
         }
-        if (session_opened_usd + all_in > config.session_budget_usd + 1e-9) {
+        if (config.enforce_session_budget &&
+            session_opened_usd + all_in > config.session_budget_usd + 1e-9) {
             refuse_on_cap(kSessionBudgetBlocksBid, session_opened_usd, config.session_budget_usd);
             continue;
         }
