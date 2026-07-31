@@ -112,19 +112,24 @@ the live fence" property is preserved for *open* exposure.
 ## Fix 2 — retire (void) provably-expired orphaned paper positions
 
 In `settle_paper`, replace the unconditional *stay-open* branch (`:510-512`) with:
-if no settlement record is found **and** the position's contract has provably closed
-by a grace margin, emit a **void** row instead of leaving it open.
+if no settlement record is found **and** the position is older than a horizon that
+comfortably exceeds any contract's lifetime plus settlement lag, emit a **void** row
+instead of leaving it open.
 
-- **Expiry source (no look-ahead):** the contract close time is derived from the
-  ticker via the existing Kalshi ticker parser (`KalshiRestClient` /
-  `KalshiEvidenceEngine` parse the `KXBTCD-YYMMMDDHH…` / `KXBTC15M-YYMMMDDHHMM…`
-  close encoding). A position is eligible to void only when
-  `now_ms > contract_close_ms + kOrphanGraceMs`.
-- **Grace margin `kOrphanGraceMs`:** long enough that a real settlement would have
-  been recorded first (settlements for a just-closed contract appear within
-  minutes), short enough to free exposure promptly. Proposed **6 hours**. A genuine
-  settlement always wins the race: `settle_paper` matches real records first; the
-  void branch is reached only when none exists **and** the contract closed > 6h ago.
+- **Expiry signal (TZ-free, no look-ahead):** position **age since placement**, not
+  a ticker-parsed close time. The bot trades only hourly (`KXBTCD`, lifetime ≤ ~1h)
+  and 15-minute (`KXBTC15M`, ≤ ~15m) BTC contracts, so a position open far longer
+  than any such contract could live, with no settlement record, is unambiguously
+  orphaned. The placement timestamp is on the position — `position_id` is
+  `ticker@<placed_ms>` and the bid row carries `ts_ms`; use `placed_ms`. This avoids
+  parsing the `KXBTCD` ticker's ET-encoded hour, the exact ET/UTC hazard documented
+  in the lag-series work (`CLOSE_TIME_ASSUMPTION`).
+- **Void horizon `kOrphanVoidAgeMs`:** proposed **48 hours**. Longer than any
+  contract's lifetime **and** than the ~1-day settlement-record retention, so the
+  void branch is reached only for a genuine orphan. A real settlement always wins
+  the race: `settle_paper` matches real records first every tick; a position within
+  the retention window settles normally, and the void branch is reached only when no
+  record exists **and** the position is > 48h old.
 - **The void row** (a new event, retired the same way settlements are — see below):
 
 ```
@@ -132,8 +137,8 @@ by a grace margin, emit a **void** row instead of leaving it open.
   "position_id": <id>, "ticker": <ticker>, "side": <side>, "contracts": <n>,
   "stake_usd": <s>, "fee_usd": <f>,
   "resolution": "unresolved_expired",
-  "reason": "contract closed with no settlement record in the retained window",
-  "contract_close_ms": <parsed>, "won": null, "realized_pnl": 0.0 }
+  "reason": "position aged out with no settlement record in the retained window",
+  "placed_ms": <placed>, "age_ms": <now-placed>, "won": null, "realized_pnl": 0.0 }
 ```
 
 - **Retirement on replay:** `KalshiBotOrders::replay` sets `order.settled = true`
@@ -169,14 +174,15 @@ Unit tests in `tst_kalshi_bot_decision.cpp` (and `tst_kalshi_bot_orders` /
 2. **Fix 1 — open-exposure fence still binds in paper.** With the budget exempted
    but `at_risk_usd + all_in > max_open_exposure_usd`, the bid is still refused with
    `EXPOSURE_CAP_BLOCKS_BID`. Proves paper is not made unbounded.
-3. **Fix 2 — expired orphan voids.** An open position whose ticker close time is
-   `> now - kOrphanGraceMs` in the past, with **no** settlement record, produces one
+3. **Fix 2 — aged orphan voids.** An open position with `placed_ms` older than
+   `kOrphanVoidAgeMs` and **no** settlement record produces one
    `kalshi_bot_paper_void` (`won: null`, `realized_pnl: 0`), and after replay the
    position is gone from `book.positions` and its `at_risk_usd` is released.
 4. **Fix 2 — real settlement still wins the race / no premature void.** (a) A
    position with a matching settlement record settles normally (win/loss P&L), never
-   voids. (b) A position whose contract closed **less than** `kOrphanGraceMs` ago
-   with no record stays open (not voided) — no premature retirement.
+   voids, even when older than `kOrphanVoidAgeMs`. (b) A position **younger** than
+   `kOrphanVoidAgeMs` with no record stays open (not voided) — no premature
+   retirement.
 5. **Fix 2 — a void is never scored.** The gate ledger / funnel counting a fixture
    containing a `kalshi_bot_paper_void` row shows unchanged settled count, wins,
    losses, net P&L, and Brier — the void contributes nothing.
