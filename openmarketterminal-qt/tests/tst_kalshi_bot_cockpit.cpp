@@ -18,6 +18,7 @@
 
 #include "screens/kalshi/BotCockpitFeedHealthReader.h"
 #include "screens/kalshi/BotCockpitPresentation.h"
+#include "screens/kalshi/BotCockpitRainLabels.h"
 
 using namespace openmarketterminal::screens::kalshi;
 
@@ -954,6 +955,28 @@ class KalshiBotCockpitTest : public QObject {
         // Not just "not green" — an unreadable feed reads grey/unknown, not
         // red either: the view said nothing, so nothing is claimed.
         QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
+    }
+
+    // ── FIX 4: readable rain column labels (additive) ──────────────────────
+
+    // KXBTC15M contracts show their own close time HH:MM, parsed out of the
+    // ticker's YYMMMDDHHMM segment — not the raw `26JUL311730-30` tail.
+    void column_head_shows_the_15m_contracts_close_time() {
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXBTC15M-26JUL311730-30")),
+                 QStringLiteral("17:30"));
+    }
+
+    // KXBTCD threshold contracts show their strike compactly.
+    void column_head_shows_the_threshold_contracts_strike_compactly() {
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXBTCD-26JUL3118-T62899.99")),
+                 QStringLiteral("$62.9k"));
+    }
+
+    // An unrecognized ticker family falls back to the previous behavior
+    // rather than mislabeling itself.
+    void column_head_falls_back_for_an_unrecognized_family() {
+        QCOMPARE(bot_cockpit_column_head(QStringLiteral("KXSOMETHINGELSE-26JUL31-ABCD")),
+                 QStringLiteral("ABCD"));
     }
 
     // ── FIX 3: de-bounce HARVEST on the market-event age, not a single

@@ -1,6 +1,7 @@
 #include "screens/kalshi/KalshiBotCockpitView.h"
 
 #include "screens/kalshi/BotCockpitFeedHealthReader.h"
+#include "screens/kalshi/BotCockpitRainLabels.h"
 #include "ui/theme/Theme.h"
 
 #include <QColor>
@@ -102,19 +103,6 @@ BotCockpitFeedHealth read_bot_cockpit_feed_health(qint64 now_ms) {
         if (readable) engine = document.object();
     }
     return parse_bot_cockpit_feed_health(engine, readable, now_ms, newest_ticker_event_age_ms(now_ms));
-}
-
-/// The head of a column: enough of the ticker to identify the contract in a
-/// column that is only a few characters wide. `KXBTCD-26JUL2521-T64299.99`
-/// identifies itself by its strike, but `KXBTC15M-26JUL230800-00` ends in a
-/// bare `00`, so the last segment alone would label two different columns the
-/// same. A second segment is taken whenever the last one is that short.
-QString column_head(const QString& ticker) {
-    const QString last = ticker.section(QLatin1Char('-'), -1);
-    if (last.isEmpty()) return ticker;
-    if (last.size() >= 4) return last;
-    const QString previous = ticker.section(QLatin1Char('-'), -2, -2);
-    return previous.isEmpty() ? last : previous + QLatin1Char('-') + last;
 }
 
 } // namespace
@@ -392,7 +380,7 @@ void KalshiBotCockpitView::paintEvent(QPaintEvent* event) {
                                          : mood);
             painter.drawText(QRectF(cell.left(), cell.top() + 2, cell.width(), 14),
                              Qt::AlignHCenter | Qt::AlignVCenter,
-                             elide(small_metrics, column_head(column.ticker),
+                             elide(small_metrics, bot_cockpit_column_head(column.ticker),
                                    static_cast<int>(cell.width()) - 2));
             if (column.ignitions > 0) {
                 painter.setPen(ignition);
