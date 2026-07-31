@@ -151,6 +151,25 @@ struct BotCockpitNode {
     bool known = false;
 };
 
+/// Feed/harvest health the pure presentation cannot see for itself — supplied
+/// by the view from kalshi-ws-engine.json + the newest retained ticker event.
+struct BotCockpitFeedHealth {
+    bool    readable = false;            ///< the engine status parsed at all (false => UNKNOWN)
+    bool    ws_connected = false;        ///< "connected"
+    bool    credentials_ok = false;      ///< "credentials"
+    qint64  newest_event_age_ms = -1;    ///< age of the newest Kalshi market event (-1 => none)
+    QString last_error;                  ///< surfaced in the headline when HARVEST is red
+};
+
+/// One stage of the health strip. `role` is a colour vocabulary already used by
+/// the scene: "green" | "amber" | "red" | "grey".
+struct BotCockpitHealthStage {
+    QString id;      ///< "harvest" | "calibrate" | "decide" | "settle"
+    QString label;   ///< "HARVEST" ...
+    QString value;   ///< the one datum ("2s", "fresh·trusted", "8s·bidding", "32")
+    QString role = QStringLiteral("grey");
+};
+
 struct BotCockpitScene {
     // ── mood ───────────────────────────────────────────────────────────────
     QString mood = QString::fromLatin1(kBotCockpitMoodDormant);
@@ -211,6 +230,14 @@ struct BotCockpitScene {
 
     /// The BOT tab suggests the cockpit exactly while the loop is running.
     bool suggest_cockpit = false;
+
+    // ── health-first strip (HARVEST -> CALIBRATE -> DECIDE -> SETTLE) ───────
+    // Additive: the mood/banner above answer "is the loop ticking"; these
+    // answer "is the pipeline that feeds it healthy" — a dead feed or a stale
+    // report must not hide behind a ticking paper loop.
+    QList<BotCockpitHealthStage> health_stages;  ///< HARVEST -> CALIBRATE -> DECIDE -> SETTLE
+    QString health_banner;                       ///< the health-first headline (worst stage)
+    QString health_role = QStringLiteral("grey");///< colour of the headline
 
     const BotCockpitNode* node(const QString& id) const {
         for (const auto& n : nodes)
@@ -359,7 +386,8 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                                            qint64 now_ms,
                                            const QByteArray& grid_json = QByteArray(),
                                            int max_columns = kBotCockpitMaxColumns,
-                                           int max_pulses = kBotCockpitMaxPulses) {
+                                           int max_pulses = kBotCockpitMaxPulses,
+                                           const BotCockpitFeedHealth& feed = {}) {
     using namespace bot_cockpit_detail;
     BotCockpitScene scene;
     // Advisory strategy-grid line, read-only over the engine's verdict file.
@@ -801,6 +829,119 @@ inline BotCockpitScene present_bot_cockpit(const KalshiBotPanelView& panel,
                             .arg(pulses_total - scene.pulses.size());
             return note;
         }());
+
+    // ── health-first classifier ─────────────────────────────────────────────
+    // The mood/banner above answer "is the loop ticking"; this answers "is the
+    // pipeline that feeds it healthy" — a dead feed or a stale report must not
+    // hide behind a ticking paper loop. Four stages, worst wins. Pure over
+    // `feed`, `report`, `panel` and the ledger scan already done above
+    // (`generated_at_ms`, `newest_bid`, `settlement`).
+    {
+        BotCockpitHealthStage harvest_stage;
+        harvest_stage.id = QStringLiteral("harvest");
+        harvest_stage.label = QStringLiteral("HARVEST");
+        QString harvest_reason;
+        if (!feed.readable) {
+            // Rule: an UNKNOWN feed (the view supplied nothing) must never
+            // render HARVEST green — grey/unknown is the honest answer.
+            harvest_stage.role = QStringLiteral("grey");
+            harvest_stage.value = QStringLiteral("unknown");
+            harvest_reason = QStringLiteral("FEED UNKNOWN — no engine status was supplied");
+        } else if (!feed.ws_connected || feed.newest_event_age_ms < 0 ||
+                   feed.newest_event_age_ms > 300'000) {
+            harvest_stage.role = QStringLiteral("red");
+            harvest_stage.value = QStringLiteral("down");
+            harvest_reason = QStringLiteral("FEED DOWN — %1")
+                                  .arg(feed.last_error.isEmpty()
+                                           ? QStringLiteral("no reason given")
+                                           : feed.last_error);
+        } else if (feed.newest_event_age_ms > 60'000) {
+            harvest_stage.role = QStringLiteral("amber");
+            harvest_stage.value = span_text(feed.newest_event_age_ms);
+            harvest_reason = QStringLiteral("FEED SLOW — newest market event %1 old")
+                                  .arg(span_text(feed.newest_event_age_ms));
+        } else {
+            harvest_stage.role = QStringLiteral("green");
+            harvest_stage.value = span_text(feed.newest_event_age_ms);
+            harvest_reason = QStringLiteral("FEED LIVE");
+        }
+
+        BotCockpitHealthStage calibrate_stage;
+        calibrate_stage.id = QStringLiteral("calibrate");
+        calibrate_stage.label = QStringLiteral("CALIBRATE");
+        QString calibrate_reason;
+        const bool report_adds_value =
+            report.value(QStringLiteral("adds_value_over_market")).toBool();
+        if (generated_at_ms <= 0 || scene.report_age_ms < 0 || scene.report_age_ms >= 120'000) {
+            // A dominant REPORT_STALE in the ledger is the calibrator's fault,
+            // not the loop's — it reddens CALIBRATE (and, above, HARVEST if the
+            // feed is what went quiet), never DECIDE.
+            calibrate_stage.role = QStringLiteral("red");
+            calibrate_stage.value = QStringLiteral("stale");
+            calibrate_reason = QStringLiteral("CALIBRATOR STALE");
+        } else if (report_adds_value) {
+            calibrate_stage.role = QStringLiteral("green");
+            calibrate_stage.value = QStringLiteral("fresh·trusted");
+            calibrate_reason = QStringLiteral("CALIBRATOR TRUSTED");
+        } else {
+            calibrate_stage.role = QStringLiteral("amber");
+            calibrate_stage.value = QStringLiteral("fresh·untrusted");
+            calibrate_reason = QStringLiteral(
+                "SIGNAL UNTRUSTED — the calibrator has not beaten its market baseline");
+        }
+
+        BotCockpitHealthStage decide_stage;
+        decide_stage.id = QStringLiteral("decide");
+        decide_stage.label = QStringLiteral("DECIDE");
+        QString decide_reason;
+        if (panel.state != QStringLiteral("running")) {
+            // Stopped (kill switch) or no recent tick (stale/off): the loop is
+            // never blamed for its input, but it IS blamed for not looping.
+            decide_stage.role = QStringLiteral("red");
+            decide_stage.value = QStringLiteral("stopped");
+            decide_reason = QStringLiteral("LOOP STOPPED");
+        } else if (!newest_bid.isEmpty()) {
+            decide_stage.role = QStringLiteral("green");
+            decide_stage.value = QStringLiteral("bidding");
+            decide_reason = QStringLiteral("BIDDING");
+        } else {
+            decide_stage.role = QStringLiteral("amber");
+            decide_stage.value = QStringLiteral("passing");
+            decide_reason = QStringLiteral("NO EDGE — the loop is ticking and passing");
+        }
+
+        BotCockpitHealthStage settle_stage;
+        settle_stage.id = QStringLiteral("settle");
+        settle_stage.label = QStringLiteral("SETTLE");
+        // Informational only (never an alarm colour): context, not health.
+        settle_stage.role = settlement.isEmpty() ? QStringLiteral("grey") : QStringLiteral("green");
+        settle_stage.value = QString::number(settlement.size());
+
+        scene.health_stages = {harvest_stage, calibrate_stage, decide_stage, settle_stage};
+
+        if (harvest_stage.role == QStringLiteral("red")) {
+            scene.health_role = QStringLiteral("red");
+            scene.health_banner = harvest_reason;
+        } else if (calibrate_stage.role == QStringLiteral("red")) {
+            scene.health_role = QStringLiteral("red");
+            scene.health_banner = calibrate_reason;
+        } else if (decide_stage.role == QStringLiteral("red")) {
+            scene.health_role = QStringLiteral("red");
+            scene.health_banner = decide_reason;
+        } else if (harvest_stage.role == QStringLiteral("amber")) {
+            scene.health_role = QStringLiteral("amber");
+            scene.health_banner = harvest_reason;
+        } else if (calibrate_stage.role == QStringLiteral("amber")) {
+            scene.health_role = QStringLiteral("amber");
+            scene.health_banner = calibrate_reason;
+        } else if (decide_stage.role == QStringLiteral("amber")) {
+            scene.health_role = QStringLiteral("amber");
+            scene.health_banner = decide_reason;
+        } else {
+            scene.health_role = QStringLiteral("green");
+            scene.health_banner = QStringLiteral("ACTING — %1").arg(decide_reason);
+        }
+    }
 
     return scene;
 }

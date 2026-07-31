@@ -169,6 +169,52 @@ QStringList pulse_keys(const BotCockpitScene& scene, const QString& kind) {
     return keys;
 }
 
+// ── health-first classifier fixtures (Task 1) ──────────────────────────────
+
+/// A single prediction, trusted or not is decided by `calibrator_report`'s own
+/// `adds_value` argument — this fixture only supplies the report's rain.
+QJsonObject one_trusted_prediction() {
+    return QJsonObject{{"KX-A", prediction(0.55, 0.42)}};
+}
+
+/// A ticking loop (newest row well inside the staleness window) with a recent
+/// bid, so DECIDE has something to call "bidding".
+QJsonArray bidding_ledger() {
+    return QJsonArray{decision_row(kNow - 65'000, QStringLiteral("KX-A"),
+                                   QStringLiteral("EDGE_BELOW_THRESHOLD")),
+                      bid_row(kNow - 5'000, QStringLiteral("KX-B"))};
+}
+
+/// A ticking loop that is only passing — no bid in the window — so DECIDE
+/// reads "passing", not "bidding".
+QJsonArray passing_ledger() {
+    return QJsonArray{decision_row(kNow - 60'000, QStringLiteral("KX-A"),
+                                   QStringLiteral("EDGE_BELOW_THRESHOLD")),
+                      decision_row(kNow - 5'000, QStringLiteral("KX-B"),
+                                   QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+}
+
+/// A ticking loop whose recent decisions are dominated by REPORT_STALE — the
+/// calibrator's fault, not the loop's. DECIDE must not redden on this.
+QJsonArray report_stale_ledger() {
+    return QJsonArray{decision_row(kNow - 65'000, QStringLiteral("KX-A"),
+                                   QStringLiteral("REPORT_STALE")),
+                      decision_row(kNow - 5'000, QStringLiteral("KX-B"),
+                                   QStringLiteral("REPORT_STALE"))};
+}
+
+// Feed-health fixtures.
+BotCockpitFeedHealth feed_live() { return {true, true, true, 2'000, {}}; }
+BotCockpitFeedHealth feed_down() {
+    return {true, false, true, 14'400'000, QStringLiteral("WebSocket disconnected")};
+}
+
+QString stage_role(const BotCockpitScene& s, const QString& id) {
+    for (const auto& st : s.health_stages)
+        if (st.id == id) return st.role;
+    return QStringLiteral("missing");
+}
+
 } // namespace
 
 class KalshiBotCockpitTest : public QObject {
@@ -796,6 +842,139 @@ class KalshiBotCockpitTest : public QObject {
         QVERIFY(strip.contains(QStringLiteral("5 decisions / 2 ticks in the last 60m")));
         // A SPAN, not an age: "spans 66m", never "spans 66m ago".
         QVERIFY(strip.contains(QStringLiteral("ledger window spans 66m)")));
+    }
+
+    // ── health-first classifier (Task 1) ────────────────────────────────────
+
+    // 1. Feed down turns the banner RED even though the loop is ticking paper.
+    void feed_down_reddens_the_banner_over_a_ticking_loop() {
+        const QJsonArray ledger = bidding_ledger();
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), /*adds_value=*/true);
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed_down());
+        QCOMPARE(s.health_role, QStringLiteral("red"));
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("red"));
+        QVERIFY(s.health_banner.contains(QStringLiteral("FEED")));
+        // Neuter: the same inputs with a LIVE feed are not red.
+        const BotCockpitScene ok = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                       QByteArray(), kBotCockpitMaxColumns,
+                                                       kBotCockpitMaxPulses, feed_live());
+        QVERIFY(ok.health_role != QStringLiteral("red"));
+    }
+
+    // 2. Fresh feed + fresh-but-untrusted report => AMBER "no edge", not red.
+    void untrusted_signal_is_amber_not_red() {
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), /*adds_value=*/false);
+        const QJsonArray ledger = passing_ledger();
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(s.health_role, QStringLiteral("amber"));
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("green"));
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate")), QStringLiteral("amber"));
+    }
+
+    // 3. Report older than 120s => CALIBRATE red, and a REPORT_STALE loop does
+    // NOT redden DECIDE.
+    void stale_report_reddens_calibrate_not_decide() {
+        const QJsonObject report = calibrator_report(kNow - 200'000, one_trusted_prediction(), true);
+        const QJsonArray ledger = report_stale_ledger();
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(stage_role(s, QStringLiteral("calibrate")), QStringLiteral("red"));
+        QVERIFY(stage_role(s, QStringLiteral("decide")) != QStringLiteral("red"));
+    }
+
+    // 4. Fed + trusted + a recent bid => GREEN acting.
+    void acting_is_green() {
+        const QJsonObject report = calibrator_report(kNow, one_trusted_prediction(), true);
+        const QJsonArray ledger = bidding_ledger();
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow,
+                                                      QByteArray(), kBotCockpitMaxColumns,
+                                                      kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(s.health_role, QStringLiteral("green"));
+        for (const auto& id : {"harvest", "calibrate", "decide"})
+            QCOMPARE(stage_role(s, QString::fromLatin1(id)), QStringLiteral("green"));
+    }
+
+    // 5. Kill switch => DECIDE red "LOOP STOPPED", regardless of feed.
+    void stopped_loop_reddens_decide() {
+        openmarketterminal::services::prediction::kalshi_ns::KalshiBotStopFile stop;
+        stop.engaged = true;
+        stop.ts_ms = kNow - 5'000;
+        const QJsonArray ledger = bidding_ledger();
+        const BotCockpitScene s = present_bot_cockpit(panel_for(ledger, {}, {}, kNow, stop),
+                                                      calibrator_report(kNow, one_trusted_prediction(), true),
+                                                      {}, ledger, {}, kNow, QByteArray(),
+                                                      kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live());
+        QCOMPARE(stage_role(s, QStringLiteral("decide")), QStringLiteral("red"));
+        QVERIFY(s.health_banner.contains(QStringLiteral("STOPPED")));
+    }
+
+    // 6. Unknown feed (view supplied nothing) => HARVEST grey/unknown, never a
+    // false green.
+    void unknown_feed_is_not_green() {
+        const BotCockpitScene s = present_bot_cockpit(panel_for(bidding_ledger()),
+                                                      calibrator_report(kNow, one_trusted_prediction(), true),
+                                                      {}, bidding_ledger(), {}, kNow);  // default feed {}
+        QVERIFY(stage_role(s, QStringLiteral("harvest")) != QStringLiteral("green"));
+        // Not just "not green" — an unreadable feed reads grey/unknown, not
+        // red either: the view said nothing, so nothing is claimed.
+        QCOMPARE(stage_role(s, QStringLiteral("harvest")), QStringLiteral("grey"));
+    }
+
+    // ── the redesign is additive: pre-existing fields are untouched ────────
+
+    void health_fields_are_additive_and_leave_the_rest_of_the_scene_unchanged() {
+        const QJsonArray ledger{decision_row(kNow - 5'000, QStringLiteral("KX-A"),
+                                             QStringLiteral("EDGE_BELOW_THRESHOLD"))};
+        const QJsonObject report = calibrator_report(
+            kNow - 10'000, QJsonObject{{"KX-A", prediction(0.55, 0.42)}});
+        const BotCockpitScene baseline =
+            present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow);
+        const BotCockpitScene healthy =
+            present_bot_cockpit(panel_for(ledger), report, {}, ledger, {}, kNow, QByteArray(),
+                                kBotCockpitMaxColumns, kBotCockpitMaxPulses, feed_live());
+        // Supplying a feed cannot move any pre-existing field.
+        QCOMPARE(healthy.mood, baseline.mood);
+        QCOMPARE(healthy.banner, baseline.banner);
+        QCOMPARE(healthy.mood_reason, baseline.mood_reason);
+        QCOMPARE(healthy.columns.size(), baseline.columns.size());
+        QCOMPARE(healthy.columns.first().ticker, baseline.columns.first().ticker);
+        QCOMPARE(healthy.columns.first().frozen, baseline.columns.first().frozen);
+        QCOMPARE(healthy.columns_total, baseline.columns_total);
+        QCOMPARE(healthy.census, baseline.census);
+        QCOMPARE(healthy.nodes.size(), baseline.nodes.size());
+        QCOMPARE(healthy.pulses.size(), baseline.pulses.size());
+        QCOMPARE(healthy.lessons, baseline.lessons);
+        QCOMPARE(healthy.envelope, baseline.envelope);
+        QCOMPARE(healthy.kpi, baseline.kpi);
+        // Pin the concrete values for this fixture too, so a future change to
+        // a pre-existing field cannot slip through even if the health fields
+        // happened to move in lockstep with it (a `baseline`-vs-`healthy`
+        // comparison alone cannot catch the classifier corrupting a field the
+        // SAME way in both calls).
+        QCOMPARE(baseline.mood, QString::fromLatin1(kBotCockpitMoodPaper));
+        QVERIFY(baseline.banner.startsWith(QStringLiteral("PAPER")));
+        QCOMPARE(baseline.columns.size(), 1);
+        QVERIFY(!baseline.columns.first().frozen);
+        QCOMPARE(baseline.columns_total, 1);
+        QCOMPARE(baseline.census, QStringLiteral("1 watched contracts · all drawn"));
+        QCOMPARE(baseline.nodes.size(), 5);
+        QVERIFY(baseline.node(QStringLiteral("calibrator")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("settlements")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("gate")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("kill_switch")) != nullptr);
+        QVERIFY(baseline.node(QStringLiteral("exposure")) != nullptr);
+        QCOMPARE(baseline.pulses.size(), 1);
+        QCOMPARE(baseline.pulses.first().kind, QStringLiteral("calibrator"));
+        QVERIFY(!baseline.lessons_available);
+        QCOMPARE(baseline.lessons.size(), 1);
+        QVERIFY(baseline.lessons.first().contains(QStringLiteral("UNAVAILABLE")));
+        QVERIFY(!baseline.kpi_available);
+        QCOMPARE(baseline.kpi.size(), 2);
     }
 };
 
